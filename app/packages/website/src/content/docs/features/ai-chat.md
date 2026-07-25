@@ -22,6 +22,12 @@ Infrawrench ships an in-app **AI chat**, running on Google Gemini or Anthropic C
 - **In the sidebar** (web and desktop) — a **Chat** section lists your recent sessions (like Workflows and Dashboards). Click **+** to start a new chat, click a session to reopen it, or hover and click **×** to archive it. Click the section header to see all chats.
 - **API** — `POST /api/org/{orgId}/chat/conversations/{id}/messages`. Auth is the same WorkOS session as the rest of the web UI, or an [API key](../team-and-billing/api-keys.md) with the `chat:write` scope.
 
+## Who can use it
+
+Chat requires the `chat:read` permission to read conversations and `chat:write` to send messages or approve an action. All three system roles have both, so this changes nothing by default — but a [custom role](../team-and-billing/roles-and-permissions.md#custom-roles) that omits `chat:*` now blocks chat for the people assigned to it.
+
+Holding `chat:write` does not widen what chat can do. Every tool the assistant runs is checked against the caller's own permissions first, so the assistant can only do what that person could do through the UI. Ask it to delete a resource without `resources:delete` and the tool call is refused, not queued for approval. An API key is narrower still: its scopes are intersected with its owner's role, so a `chat:write`-only key can hold a conversation and nothing more.
+
 ## What the agent can do
 
 Everything the UI exposes. The chat shares the [MCP server](./mcp.md)'s tool registry:

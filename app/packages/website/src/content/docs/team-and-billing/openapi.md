@@ -58,6 +58,8 @@ post:
 
 The `Permission` enum component lists every recognised scope. Granted scopes can use wildcards (`resources:*:read`, `*`). Older keys created with `sync:read` / `sync:write` are migrated automatically the next time they authenticate to `resources:read` / `resources:write`.
 
+A key's scopes are a ceiling, not a grant: the server intersects them with the current role of the user who created the key, so `x-required-permission` must be satisfied by **both**. See [API keys](./api-keys.md#keys-are-bounded-by-their-owner).
+
 ## Generating client SDKs
 
 The spec ships with `operationId` for every operation, so any OpenAPI generator works. Examples:
@@ -85,4 +87,5 @@ Commit the resulting `openapi.json` so PR diffs show API surface changes.
 - Every request and response body has a Zod schema. Object schemas use `additionalProperties: false` unless they wrap genuinely free-form plugin data (in which case the schema is named `JsonObject` and explicitly opted in to `additionalProperties: true`).
 - `pluginId` and `typeId` path parameters are typed as enums of the live plugin / resource-type IDs.
 - `resourceId` follows the host's composite shape `pluginId:accountId:externalId` and is regex-validated in the schema.
-- Error responses share a single `Error` schema (`{ error: string }`).
+- Error responses share a single `Error` schema (`{ error: string }`), except the step-up 403 described below.
+- A handful of account-security operations under `/api/profile` return a `ReauthenticationRequired` 403 (`{ error, code: "reauthentication_required" }`) when the caller's sign-in is not recent enough. Branch on `code`, not the message: the request was well-formed and will succeed once the user signs in again. Bearer principals never satisfy this check — these operations are browser-only by design.

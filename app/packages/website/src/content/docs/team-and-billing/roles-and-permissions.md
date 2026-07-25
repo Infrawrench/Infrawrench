@@ -28,11 +28,11 @@ The `Settings → Roles` page lists the full catalogue grouped by category (Acco
 
 Every organization has three pre-seeded system roles. They cannot be edited or deleted.
 
-| Role   | Permissions                                                                                                                                                                                        |
-| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Owner  | `*` — everything, including billing and deleting the organization.                                                                                                                                 |
-| Admin  | Everything except `billing:write` and `org:settings:write`.                                                                                                                                        |
-| Member | Read everything; connect to resources (SSH/SQL/exec); manage own dashboards; view cost graphs and budgets (`costs:read`, `budgets:read` — creating budgets needs `budgets:write`, held by Admin+). |
+| Role   | Permissions                                                                                                                                                                                                                                                           |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Owner  | `*` — everything, including billing and deleting the organization.                                                                                                                                                                                                    |
+| Admin  | Everything except `billing:write` and `org:settings:write`.                                                                                                                                                                                                           |
+| Member | Read everything; connect to resources (SSH/SQL/exec); use [AI chat](../features/ai-chat.md) (`chat:read`, `chat:write`); manage own dashboards; view cost graphs and budgets (`costs:read`, `budgets:read` — creating budgets needs `budgets:write`, held by Admin+). |
 
 System role permissions are computed in code, so upgrades extend them automatically when new permissions are added.
 
@@ -53,6 +53,18 @@ Use **Settings → Team → (member) → Role picker** to change a member's role
 ## API key scopes
 
 API keys store the same permission strings as roles. When you create a key, pick the exact scopes it should carry; the server enforces them with the same matcher used for session permissions, including wildcards. Older keys created with the deprecated `sync:read`/`sync:write` scopes are migrated automatically the next time they authenticate.
+
+A key never carries more authority than its owner. Its effective permissions are the **intersection** of its scopes and the current role of the user who created it, recomputed on every call — so demoting someone narrows their keys immediately, and a broadly-scoped key cannot outrun a role change.
+
+Removing someone from the organization revokes the keys they created in it, and any key whose owner is no longer a member stops authenticating.
+
+## Where permissions are enforced
+
+The same permission set gates every surface, not just the web UI:
+
+- **HTTP API** — checked per route (see `x-required-permission` in the [API reference](./openapi.md)).
+- **[AI chat](../features/ai-chat.md) and [MCP](../features/mcp.md)** — reaching chat at all needs `chat:read` / `chat:write`, and each tool then declares the permission it needs, checked before the tool runs. A member who cannot delete a resource over HTTP cannot delete one by asking the assistant either, and destructive tools are re-checked at approval time rather than only when queued.
+- **WebSocket sessions** (SSH terminals, SQL console, Kubernetes exec and port-forward) — require `resources:execute`, whether the connection authenticates with a browser session or an API key.
 
 ## Audit trail
 

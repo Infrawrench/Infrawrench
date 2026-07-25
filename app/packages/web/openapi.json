@@ -300,6 +300,21 @@
         ],
         "additionalProperties": false
       },
+      "ReauthenticationRequired": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Human-readable error message"
+          },
+          "code": {
+            "type": "string",
+            "enum": ["reauthentication_required"]
+          }
+        },
+        "required": ["error", "code"],
+        "additionalProperties": false
+      },
       "Ok": {
         "type": "object",
         "properties": {
@@ -5320,11 +5335,9 @@
           "displayName": {
             "type": "string"
           },
-          "encryptedCredentials": {
-            "type": "string"
-          },
-          "credentialsIv": {
-            "type": "string"
+          "hasCredentials": {
+            "type": "boolean",
+            "description": "Whether the account has stored credentials. The credentials themselves are never returned here — this endpoint only requires `resources:read`. Fetch one with `GET /api/org/{orgId}/accounts/{id}/credentials`, which requires `secrets:read` and is audit-logged."
           },
           "syncVersion": {
             "type": "integer"
@@ -5342,8 +5355,7 @@
           "id",
           "pluginId",
           "displayName",
-          "encryptedCredentials",
-          "credentialsIv",
+          "hasCredentials",
           "syncVersion",
           "deletedAt",
           "updatedAt"
@@ -6075,6 +6087,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
           }
         },
         "operationId": "postProfilePasswordReset"
@@ -6143,6 +6165,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
           }
         },
         "operationId": "postProfileEmailChange"
@@ -6204,6 +6236,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
                 }
               }
             }
@@ -6304,6 +6346,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
                 }
               }
             }
@@ -6489,6 +6541,16 @@
               }
             }
           },
+          "403": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not found",
             "content": {
@@ -6623,6 +6685,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
                 }
               }
             }

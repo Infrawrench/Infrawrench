@@ -334,6 +334,29 @@ Frontend: `app/packages/web/src/auth/permissions-context.tsx` provides `<Permiss
 
 API key scopes use the same permission strings; the `Permission` enum in `app/packages/web/src/api/openapi/common.ts` is the OpenAPI representation. Legacy `sync:read`/`sync:write` scopes are migrated to `resources:read`/`resources:write` on next use by `authenticateApiRequest`.
 
+**HTTP is not the only surface.** Four non-route paths reach the same capabilities and each enforces permissions its own way — when you add a capability, check all five:
+
+1. **Chat endpoint** (`app/packages/web/src/chat/auth.ts`) — `authenticateChat` enforces `chat:read`/`chat:write` on **all three** auth paths (session cookie, WorkOS bearer, API key). It previously applied `requireScope` only to keys, so session callers reached chat on membership alone and the permission was unenforceable for the UI. `chat:read`/`chat:write` are in the member system role to preserve that behaviour; a custom role that omits them now actually blocks chat.
+2. **Tool registry** (`app/packages/web/src/tools/`) — consumed by both MCP and the chat agent. Every `ToolDefinition` declares `permission: Permission | null` mirroring the equivalent HTTP route's `requirePermission`. It is enforced centrally by `authorizeToolCall` (`tools/permissions.ts`) at each dispatch site — `mcp/server.ts` and both call sites in `chat/agent.ts` — never inside a handler, so a new tool cannot forget to gate itself. `null` means "exposes no org data" (static plugin catalogs only). `src/tools/__tests__/permissions.test.ts` asserts every tool declares one and that no write/destructive tool is ungated.
+3. **WebSocket gateway** (`app/packages/web/server.ts`) — `resources:execute` for every channel. The browser path gets it from `POST /ws-token`; the API-key fallback calls `requireScope` directly.
+4. **Step-up routes** (`app/packages/web/src/auth/step-up.ts`) — account-takeover-adjacent `/api/profile` operations additionally require a sign-in newer than `STEP_UP_MAX_AGE_MS`, returning a 403 with `code: "reauthentication_required"`.
+
+**API keys are bounded by their owner.** `auth/effective-permissions.ts` is the single resolver behind both the chat endpoint and the tool layer: it intersects a key's scopes with the owning user's current role permissions via `intersectPermissions` (catalog.ts). A `chat:write`-only key therefore cannot reach the tools its owner could. `authenticateApiRequest` also re-checks org membership on every call, and removing a member revokes the keys they minted in that org (`api/routes/team.ts`).
+
+**Tables without an `organization_id`.** `dashboard_pins` and `associations` are scoped transitively through `dashboards`/`resources`. Any query against them MUST join the parent and filter on it — `/api/v1/sync/pull` previously did not, and returned every tenant's rows. `src/api/routes/__tests__/sync.test.ts` guards the joins.
+
+Their `sync_version` bumps live in `services/sync-versions.ts` (`nextPinSyncVersion`, `nextAssociationSyncVersion`) because the usual inline `MAX(sync_version) WHERE organization_id = …` subquery can't work without that column. **Every write to either table must stamp one** — nothing did, so both sat at the default 0 and `syncVersion > lastSyncVersion` was false for any watermark a client could hold, making them invisible to `/pull` regardless of scoping.
+
+**Deletes on both tables are hard deletes**, and both keep an unused `deletedAt` column. That is a deliberate trade, not an oversight: sync is push-only (see [Desktop cloud sync](#desktop-cloud-sync)), so no client would ever read a tombstone and one would only accumulate rows. The cost is that **deletions are invisible to a puller** — anything that adds a downward apply has to reintroduce tombstones on unpin and on association delete, and at that point the pin insert must become an upsert clearing `deletedAt`, because the unique `(dashboard_id, resource_id)` row would then survive an unpin and a re-pin would otherwise silently no-op.
+
+Associations have a second, independent reason to stay hard-deleted: `provider_resource_id` is an FK with `ON DELETE RESTRICT`, so a tombstoned row would keep blocking a hard delete of the provider resource (`api/routes/agents.ts` does one on agent-VM teardown).
+
+`/pull` returns `hasCredentials: boolean`, never credential ciphertext. The blob was sealed with the server's master key and unreadable by any client, so it was pure credential-shaped material on the wire — under `resources:read`, when reading an actual credential requires `secrets:read`. The one supported way to obtain a credential is `GET /accounts/:id/credentials` (org-scoped, `secrets:read`, audit-logged as `account.credentials.read`).
+
+Desktop sync is push-only by design — see [Desktop cloud sync](#desktop-cloud-sync) for why a downward apply is neither needed nor expressible against the local schema.
+
+`GET /api/v1/sync/status` must consider **every** table `/pull` returns. It previously reported `max(accounts, resources)` only; a client advancing its watermark to that number steps over changes in any omitted table permanently, because the counter only moves forward.
+
 ---
 
 ## Plugin registry & loader
@@ -907,6 +930,16 @@ WorkOS AuthKit — middleware-enforced on all `(app)/*` routes. Auto-provisions 
 
 `sessionMiddleware` also puts the WorkOS `sid` on the context as `session.sessionId` (from `authenticate()`/`refresh()` on the cookie path, from the `sid` claim on the bearer path). That's what lets the account settings UI flag — and refuse to revoke — the session making the request.
 
+**Do not add `audience` or `issuer` options to `verifyWorkosAccessToken`.** It looks like missing hardening and it is not:
+
+- AuthKit access tokens carry **no `aud` claim** (`sub`, `sid`, `iss`, `org_id`, `role`, `permissions`, `exp`, `iat`). Passing `audience` to `jwtVerify` rejects every token — a total outage for MCP, mobile, desktop sync, and chat bearer auth.
+- `iss` is not stable across configuration or SDK version (`https://api.workos.com/`, the same without the trailing slash, or the custom AuthKit domain when set), so pinning it is a lockout waiting to happen.
+- Neither buys anything: `getJwksUrl(clientId)` resolves to `/sso/jwks/<clientId>`, a **per-client** key set, so a token minted for any other WorkOS client fails the signature check. That is the tenant isolation an `iss`/`aud` pin would be standing in for.
+
+`WORKOS_AUTHKIT_DOMAIN` is for MCP OAuth **discovery** only — it is not a token-verification input.
+
+`src/auth/__tests__/api-auth.test.ts` asserts both options stay absent.
+
 ### Personal account settings (`api/routes/profile.ts`)
 
 `/api/profile/*` is user-scoped, deliberately outside the org tree: one WorkOS identity is shared across every org a user belongs to. It wraps WorkOS user management for name, password reset, TOTP factors, and active sessions, and backs **Settings → General** on web plus **Settings → Account** on mobile.
@@ -1016,7 +1049,15 @@ $20/month per seat. Free tier: 1 user, 3 accounts, no audit/API keys/team.
 
 ### Sync engine
 
-`desktop/electron/cloud-sync.ts` — 60-second interval. Push: modified rows since `lastPushAt`. Pull: entities with `syncVersion > lastSyncVersion`. Credentials decrypted locally, sent plaintext over TLS, re-encrypted on server.
+`desktop/electron/cloud-sync.ts` — 60-second interval, **push-only by design**. Push sends rows modified since `lastPushAt`; credentials are decrypted locally, sent plaintext over TLS, and re-encrypted on the server.
+
+There is no downward apply, and adding one is not a matter of writing upserts:
+
+- **Cloud mode is a thin client.** `electron/cloud-data/*` proxies every read to the web API and `src/lib/ssh-dispatch.ts` routes cloud-key SSH through the WS proxy, so private keys never leave the server. There is no local mirror to refresh.
+- **The local schema forbids a credential-free mirror.** `accounts.encrypted_credentials` is `NOT NULL` and `resources.account_id` is `NOT NULL REFERENCES accounts(id)`, with associations and pins hanging off resources — no account row means no resource row means nothing downstream.
+- **A credential-bearing mirror has a second cost**: it would make the desktop an independent caller of provider APIs, outside the poller's per-plugin token buckets (`packages/poller/src/poll-account.ts`), which nothing coordinates.
+
+The server's `/api/v1/sync/pull` still exists and is correct; it simply has no first-party consumer. `status: "synced", pushOnly: true` is the permanent shape of the sync-status event, not a temporary caveat.
 
 ### Desktop SQLite v3 migration
 
@@ -1026,7 +1067,9 @@ Added `cloud_sync_state` table + `cloud_id`, `sync_version`, `deleted_at` column
 
 ## API key system
 
-Format: `iwk_` + 32 random bytes (base64url). Stored as SHA-256 hash. Prefix (first 12 chars) shown for identification. Scopes control access. Revokable, rotatable.
+Format: `iwk_` + 32 random bytes (base64url). Stored as an HMAC digest keyed off `ENCRYPTION_MASTER_KEY` (`keyedHash`), with a plain-SHA-256 fallback for pre-migration rows that rehashes on hit and dies at `legacyHashSunsetAt`. Prefix (first 12 chars) shown for identification. Revokable, rotatable.
+
+Authorization is scopes ∩ the owner's current role permissions, and authentication additionally requires the owner to still be a member of the key's org — see [Permissions](#permissions).
 
 ---
 

@@ -43,11 +43,24 @@ API keys carry an explicit list of **permission strings** (scopes). The same voc
 
 When you create a key you pick its scopes. Pick the narrowest set that gets the job done — a CI deploy key might only need `accounts:read` + `resources:read`, while a sync agent for the desktop app needs `resources:read` + `resources:write`.
 
+A sync-scoped key cannot read provider credentials. The sync endpoints report only whether an account has credentials stored; fetching one is a separate, audit-logged call that requires `secrets:read`.
+
 Wildcard scopes are honored: `resources:*:read`, `resources:postgres:*`, or just `*` for full access. The exact catalogue is documented in the [API reference](./openapi.md) under each operation's `x-required-permission` extension. The OpenAPI spec also exposes a `Permission` enum listing every recognised string.
 
 The `chat:read` and `chat:write` scopes gate the [AI chat](../features/ai-chat.md) API: list/inspect conversations vs. send messages and approve destructive tool calls. Calls authed by a `chat:write` key still meter tokens to the org and respect the org-level monthly spend cap.
 
+`chat:write` lets a key hold a conversation — it does not widen what that conversation can do. Every tool the assistant runs is checked against the key's own scopes, so a chat-only key can talk about your infrastructure but cannot read a secret or delete a resource unless you also granted `secrets:read` or `resources:delete`.
+
 Older keys created with the deprecated `sync:read` / `sync:write` scopes are migrated automatically the next time they authenticate.
+
+## Keys are bounded by their owner
+
+A key's effective permissions are its scopes **intersected with** the current role of the user who created it, evaluated on every request. Two consequences worth planning around:
+
+- Demoting a teammate immediately narrows every key they issued. A key scoped `*` held by someone moved from Admin to Member can now only do what a Member can.
+- Removing someone from the organization revokes the keys they created there. Any key whose owner is no longer a member stops authenticating, even if it was never explicitly revoked.
+
+For automation that must survive staff changes, create the key under an account that stays in the org — not a personal one belonging to someone who may leave.
 
 ## Audit
 
