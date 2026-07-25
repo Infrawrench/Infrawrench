@@ -29,6 +29,8 @@ interface AuthContextValue {
   state: AuthState;
   email: string | null;
   orgs: CloudOrg[];
+  /** Set when the last orgs fetch failed — `orgs` may be stale or empty. */
+  orgsError: string | null;
   orgId: string | null;
   tokens: TokenManager;
   api: CloudFetch;
@@ -45,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>("loading");
   const [email, setEmail] = useState<string | null>(null);
   const [orgs, setOrgs] = useState<CloudOrg[]>([]);
+  const [orgsError, setOrgsError] = useState<string | null>(null);
   const [orgId, setOrgId] = useState<string | null>(null);
   const authErrorRef = useRef<() => void>(() => {});
 
@@ -81,11 +84,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const orgList = await fetchOrgs(api);
       setOrgs(orgList);
+      setOrgsError(null);
       const valid = orgList.find((o) => o.id === storedOrg) ?? orgList[0];
       setOrgId(valid?.id ?? null);
-    } catch {
+    } catch (e) {
       // Orgs load can fail offline; stay signed in and restore the last
       // selected org so org-scoped screens (useOrgApi) still have an id.
+      // Record the error so screens can tell "fetch failed" from "no orgs".
+      setOrgsError(e instanceof Error ? e.message : "Failed to load organizations");
       if (storedOrg) setOrgId(storedOrg);
     }
     setState("signed-in");
@@ -105,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       state,
       email,
       orgs,
+      orgsError,
       orgId,
       tokens,
       api,
@@ -116,8 +123,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await SecureStore.setItemAsync(SELECTED_ORG_KEY, next);
       },
       async refreshOrgs() {
-        const orgList = await fetchOrgs(api);
-        setOrgs(orgList);
+        try {
+          const orgList = await fetchOrgs(api);
+          setOrgs(orgList);
+          setOrgsError(null);
+        } catch (e) {
+          setOrgsError(e instanceof Error ? e.message : "Failed to load organizations");
+        }
       },
       async signOut() {
         await unregisterCurrentDevice(api).catch(() => {});
@@ -129,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setOrgId(null);
       },
     }),
-    [state, email, orgs, orgId, tokens, api, loadSession],
+    [state, email, orgs, orgsError, orgId, tokens, api, loadSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

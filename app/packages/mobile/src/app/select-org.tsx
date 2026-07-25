@@ -1,11 +1,21 @@
-import { Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { colors, radii, spacing } from "@/lib/theme";
 
 export default function SelectOrg() {
   const router = useRouter();
-  const { orgs, selectOrg, signOut } = useAuth();
+  const { orgs, orgsError, refreshOrgs, selectOrg, signOut } = useAuth();
+  const [retrying, setRetrying] = useState(false);
 
   return (
     <View style={styles.container}>
@@ -14,9 +24,34 @@ export default function SelectOrg() {
         keyExtractor={(o) => o.id}
         contentContainerStyle={{ padding: spacing.lg, gap: spacing.sm }}
         ListEmptyComponent={
-          <Text style={styles.empty}>
-            You don't belong to any organizations yet. Create one on the web app first.
-          </Text>
+          orgsError ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorTitle}>Couldn't load your organizations</Text>
+              <Text style={styles.errorDetail}>{orgsError}</Text>
+              <Pressable
+                accessibilityRole="button"
+                disabled={retrying}
+                onPress={() => {
+                  setRetrying(true);
+                  void refreshOrgs().finally(() => setRetrying(false));
+                }}
+                style={({ pressed }) => [
+                  styles.retry,
+                  (pressed || retrying) && styles.retryPressed,
+                ]}
+              >
+                {retrying ? (
+                  <ActivityIndicator color={colors.text} />
+                ) : (
+                  <Text style={styles.retryText}>Try again</Text>
+                )}
+              </Pressable>
+            </View>
+          ) : (
+            <Text style={styles.empty}>
+              You don't belong to any organizations yet. Create one on the web app first.
+            </Text>
+          )
         }
         renderItem={({ item }) => (
           <Pressable
@@ -71,6 +106,22 @@ const styles = StyleSheet.create({
   name: { color: colors.text, fontSize: 16, fontWeight: "600" },
   role: { color: colors.textMuted, fontSize: 13 },
   empty: { color: colors.textMuted, textAlign: "center", marginTop: spacing.xl },
+  errorBox: { alignItems: "center", gap: spacing.sm, marginTop: spacing.xl },
+  errorTitle: { color: colors.text, fontSize: 16, fontWeight: "600" },
+  errorDetail: { color: colors.textMuted, fontSize: 13, textAlign: "center" },
+  retry: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    minWidth: 140,
+    alignItems: "center",
+  },
+  retryPressed: { backgroundColor: colors.surfaceOverlay },
+  retryText: { color: colors.text, fontSize: 14, fontWeight: "600" },
   signOut: { alignItems: "center", padding: spacing.lg },
   signOutText: { color: colors.danger, fontSize: 14 },
 });

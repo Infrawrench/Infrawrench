@@ -1,6 +1,6 @@
 export const PROTOCOL = "infrawrench";
 export const CLIENT_ID = "client_01KY8MAZ7NCYMN6K44G9FFZ5KS";
-export const CLOUD_URL = "https://web.infrawrench.com";
+export const CLOUD_URL = "https://app.infrawrench.com";
 export const TELEMETRY_URL = "https://telemetry.infrawrench.com";
 export const WORKOS_API_URL = "https://api.workos.com";
 export const SHOW_SIGN_IN_BUTTON = true;

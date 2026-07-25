@@ -8,7 +8,7 @@ import type { TokenManager } from "./tokens";
 
 export interface CloudFetchOptions {
   tokens: TokenManager;
-  /** Cloud origin, e.g. `https://web.infrawrench.com`. */
+  /** Cloud origin, e.g. `https://app.infrawrench.com`. */
   baseUrl: string;
   fetch?: typeof fetch;
   /**
