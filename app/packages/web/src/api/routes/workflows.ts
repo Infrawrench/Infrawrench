@@ -33,6 +33,35 @@ interface WorkflowBody {
   trigger?: WorkflowTrigger;
   metrics?: MetricDef[];
   enabled?: boolean;
+  /**
+   * HMAC secret for git triggers. `undefined` leaves the stored value alone;
+   * `null` or `""` clears it (and with it, signature enforcement).
+   */
+  webhookSecret?: string | null;
+}
+
+/**
+ * Resolve the webhook secret to persist. Write-only: the value is never echoed
+ * back by the read routes (see {@link redactWorkflow}), so the client sends it
+ * once and thereafter sees only whether one is configured.
+ */
+function nextWebhookSecret(body: WorkflowBody, existing: string | null): string | null | undefined {
+  if (body.webhookSecret === undefined) return undefined;
+  const trimmed = body.webhookSecret?.trim();
+  if (!trimmed) return null;
+  return trimmed === existing ? undefined : trimmed;
+}
+
+/**
+ * Strip the signing secret from anything we hand back, replacing it with a
+ * boolean. A workflow row is readable with `dashboards:read`, which is a much
+ * weaker permission than the secret warrants.
+ */
+function redactWorkflow<T extends { webhookSecret?: string | null }>(
+  row: T,
+): Omit<T, "webhookSecret"> & { hasWebhookSecret: boolean } {
+  const { webhookSecret, ...rest } = row;
+  return { ...rest, hasWebhookSecret: !!webhookSecret };
 }
 
 function orgId(c: Context): string {
@@ -78,7 +107,7 @@ app.get("/", async (c) => {
     .from(workflows)
     .where(and(eq(workflows.organizationId, orgId(c)), isNull(workflows.deletedAt)))
     .orderBy(desc(workflows.updatedAt));
-  return c.json(rows);
+  return c.json(rows.map(redactWorkflow));
 });
 
 // Create
@@ -100,13 +129,14 @@ app.post("/", async (c) => {
     metricDefs: body.metrics ?? [],
     enabled,
     webhookToken: derived.webhookToken,
+    webhookSecret: nextWebhookSecret(body, null) ?? null,
     nextRunAt: derived.nextRunAt,
     createdByUserId: (c.get("session") as { userId?: string } | undefined)?.userId ?? null,
     createdAt: now,
     updatedAt: now,
   });
   const [created] = await db.select().from(workflows).where(eq(workflows.id, id)).limit(1);
-  return c.json(created, 201);
+  return c.json(created ? redactWorkflow(created) : created, 201);
 });
 
 // Get one
@@ -114,7 +144,7 @@ app.get("/:id", async (c) => {
   requirePermission(c, "dashboards:read");
   const wf = await loadWorkflow(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
-  return c.json(wf);
+  return c.json(redactWorkflow(wf));
 });
 
 // Update
@@ -138,12 +168,16 @@ app.put("/:id", async (c) => {
       enabled,
       // Preserve an existing git webhook token; only (re)issue when needed.
       webhookToken: existing.webhookToken ?? derived.webhookToken,
+      ...(() => {
+        const secret = nextWebhookSecret(body, existing.webhookSecret);
+        return secret === undefined ? {} : { webhookSecret: secret };
+      })(),
       nextRunAt: derived.nextRunAt,
       updatedAt: new Date(),
     })
     .where(eq(workflows.id, id));
   const [updated] = await db.select().from(workflows).where(eq(workflows.id, id)).limit(1);
-  return c.json(updated);
+  return c.json(updated ? redactWorkflow(updated) : updated);
 });
 
 // Soft delete

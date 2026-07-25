@@ -1,0 +1,1 @@
+ALTER TABLE "workflows" ADD COLUMN "webhook_secret" text;

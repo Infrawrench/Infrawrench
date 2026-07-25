@@ -8,6 +8,7 @@
  * is best-effort filtered by branch/event before triggering a run.
  */
 import { Hono, type Context } from "hono";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 
 import type { WorkflowTrigger } from "@infrawrench/workflow-runtime";
@@ -51,6 +52,38 @@ function extractEvent(c: Context, body: Record<string, unknown>): string | null 
   return null;
 }
 
+/** Constant-time compare of two hex digests; false if lengths differ. */
+function digestsEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a, "utf8");
+  const bBuf = Buffer.from(b, "utf8");
+  if (aBuf.length !== bBuf.length) return false;
+  return timingSafeEqual(aBuf, bBuf);
+}
+
+/**
+ * Verify the delivery signature against `secret`. Covers the three shapes we
+ * see in practice:
+ *
+ *   - GitHub    `X-Hub-Signature-256: sha256=<hex>` over the raw body
+ *   - GitLab    `X-Gitlab-Token: <secret>` — a plain shared secret, not an HMAC
+ *   - generic   `X-Hub-Signature-256`, same as GitHub
+ *
+ * GitHub's legacy `X-Hub-Signature` (SHA-1) is deliberately NOT accepted:
+ * honouring it would let a sender downgrade to the weaker digest.
+ */
+function verifyGitSignature(c: Context, rawBody: string, secret: string): boolean {
+  const gitlabToken = c.req.header("x-gitlab-token");
+  if (gitlabToken) return digestsEqual(gitlabToken, secret);
+
+  const header = c.req.header("x-hub-signature-256");
+  if (!header) return false;
+  const [algorithm, provided] = header.split("=", 2);
+  if (algorithm !== "sha256" || !provided) return false;
+
+  const expected = createHmac("sha256", secret).update(rawBody, "utf8").digest("hex");
+  return digestsEqual(provided, expected);
+}
+
 workflowGitWebhook.post("/workflows/git/:token", async (c) => {
   const token = c.req.param("token");
   const [wf] = await db
@@ -65,10 +98,23 @@ workflowGitWebhook.post("/workflows/git/:token", async (c) => {
   if (trigger.kind !== "git") return c.json({ error: "Not found" }, 404);
   const gitTrigger: GitTrigger = trigger;
 
+  // Read the body as raw text first: HMAC has to be computed over the exact
+  // bytes the provider signed, not over a re-serialized parse of them.
+  const rawBody = await c.req.text().catch(() => "");
+
+  // When a signing secret is configured the signature is authoritative — the
+  // URL token alone is not enough, since it travels in the path and lands in
+  // access logs, proxy logs, and referrers.
+  if (wf.webhookSecret) {
+    if (!verifyGitSignature(c, rawBody, wf.webhookSecret)) {
+      return c.json({ error: "Invalid signature" }, 401);
+    }
+  }
+
   // Parse the body loosely; a missing/invalid JSON body still allows a trigger.
   let body: Record<string, unknown> = {};
   try {
-    const parsed = (await c.req.json()) as unknown;
+    const parsed = JSON.parse(rawBody) as unknown;
     if (parsed && typeof parsed === "object") body = parsed as Record<string, unknown>;
   } catch {
     body = {};

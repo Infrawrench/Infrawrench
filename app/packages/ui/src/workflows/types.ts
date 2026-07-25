@@ -41,6 +41,14 @@ export interface WorkflowSummary {
   metricDefs: WorkflowMetricDef[];
   enabled: boolean;
   webhookToken?: string | null;
+  /**
+   * Whether a git-webhook signing secret is configured. The secret itself is
+   * write-only — the API never returns it, so this boolean is all a client
+   * sees after saving one.
+   */
+  hasWebhookSecret?: boolean;
+  /** Write-only. Send to set or rotate the signing secret; `null` clears it. */
+  webhookSecret?: string | null;
   nextRunAt?: string | null;
   lastRunAt?: string | null;
   updatedAt?: string;

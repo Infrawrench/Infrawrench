@@ -35,6 +35,13 @@ export const workflows = pgTable(
     enabled: boolean("enabled").notNull().default(true),
     /** Shared secret used to match inbound git/webhook triggers (web only). */
     webhookToken: text("webhook_token"),
+    /**
+     * HMAC secret the git provider signs delivery bodies with. When set, an
+     * unsigned or badly-signed delivery is rejected — the token alone is not
+     * enough. Null on workflows created before signing existed, and on
+     * providers that don't sign.
+     */
+    webhookSecret: text("webhook_secret"),
     /** Last commit SHA the github-watcher saw for a git trigger's repo/branch. */
     gitLastSha: text("git_last_sha"),
     /** Next scheduled run for cron triggers (poller picks these up). */

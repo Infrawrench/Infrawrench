@@ -378,6 +378,9 @@ export function WorkflowsPanel({
             gitTriggers={gitTriggers}
             gitIntegration={gitIntegration}
             onChange={(t) => patch({ trigger: t })}
+            hasWebhookSecret={draft.hasWebhookSecret ?? false}
+            webhookSecret={draft.webhookSecret ?? null}
+            onWebhookSecretChange={(v) => patch({ webhookSecret: v })}
           />
 
           <MetricsEditor
@@ -499,11 +502,19 @@ function TriggerEditor({
   gitTriggers = false,
   gitIntegration,
   onChange,
+  hasWebhookSecret = false,
+  webhookSecret = null,
+  onWebhookSecretChange,
 }: {
   trigger: WorkflowTrigger;
   gitTriggers?: boolean;
   gitIntegration?: GitIntegration | undefined;
   onChange: (t: WorkflowTrigger) => void;
+  /** A signing secret is already stored (the value itself is never returned). */
+  hasWebhookSecret?: boolean;
+  /** Pending new secret in this edit session, if the user is typing one. */
+  webhookSecret?: string | null;
+  onWebhookSecretChange?: (value: string | null) => void;
 }) {
   const kind = trigger.kind;
   const triggerSelectId = useId();
@@ -631,10 +642,78 @@ function TriggerEditor({
               <span className="opacity-50">Runs on each new commit to the branch.</span>
             </>
           )}
+          <WebhookSecretField
+            hasWebhookSecret={hasWebhookSecret}
+            webhookSecret={webhookSecret}
+            onChange={onWebhookSecretChange}
+          />
         </div>
       )}
       {kind === "manual" && <span className="opacity-50">infra.prompt() available</span>}
     </div>
+  );
+}
+
+/**
+ * Signing secret for a git webhook. Write-only: once saved the server only
+ * reports that one exists, so the field shows a "Configured" state with the
+ * option to replace or remove it rather than echoing the value back.
+ */
+function WebhookSecretField({
+  hasWebhookSecret,
+  webhookSecret,
+  onChange,
+}: {
+  hasWebhookSecret: boolean;
+  webhookSecret: string | null;
+  onChange?: ((value: string | null) => void) | undefined;
+}) {
+  const fieldId = useId();
+  if (!onChange) return null;
+
+  // Configured, and the user hasn't started replacing it this session.
+  if (hasWebhookSecret && webhookSecret === null) {
+    return (
+      <span className="flex items-center gap-1.5">
+        <span className="text-emerald-300/80" title="Deliveries must carry a valid signature">
+          Signed ✓
+        </span>
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          className="opacity-60 hover:opacity-100 px-1.5 py-1 rounded hover:bg-white/10"
+        >
+          Replace
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex items-center gap-1.5">
+      <label htmlFor={fieldId} className="opacity-60">
+        Signing secret
+      </label>
+      <input
+        id={fieldId}
+        type="password"
+        value={webhookSecret ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="optional, but recommended"
+        autoComplete="off"
+        spellCheck={false}
+        className="bg-surface-overlay border border-white/15 rounded px-2 py-1 w-44 font-mono"
+      />
+      {hasWebhookSecret && (
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          className="opacity-60 hover:opacity-100 px-1.5 py-1 rounded hover:bg-white/10"
+        >
+          Cancel
+        </button>
+      )}
+    </span>
   );
 }
 

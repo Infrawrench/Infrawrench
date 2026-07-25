@@ -254,6 +254,19 @@ Git triggers use a **GitHub App** (a bot identity) rather than per-repo webhooks
 
 <insert [Screenshot of the git trigger settings showing Connect GitHub, the repository picker, and the branch field] here>
 
+### Signing webhook deliveries
+
+Workflows with a git trigger also expose a plain webhook endpoint, matched by an opaque token in the URL, for providers other than the GitHub App path above. A URL is a weak secret — it ends up in access logs, proxy logs, and referrer headers — so set a **signing secret** in the git trigger settings whenever you use it.
+
+With a secret set, a delivery must prove it knows the secret or it's rejected with a 401:
+
+- **GitHub** and compatible senders: `X-Hub-Signature-256: sha256=<hex>`, an HMAC-SHA256 of the exact request body. GitHub's older SHA-1 `X-Hub-Signature` is not accepted — honoring it would let a sender pick the weaker digest.
+- **GitLab**: `X-Gitlab-Token` matching the secret directly.
+
+Paste the same value into your provider's webhook configuration. The secret is write-only: after saving, the trigger shows **Signed ✓** and you can replace it, but the value is never displayed again. Leave it empty and the endpoint accepts unsigned deliveries on the strength of the token alone.
+
+<insert [Git trigger row with a signing secret configured, showing the "Signed ✓" state and the Replace button] here>
+
 ## The isolate sandbox
 
 Workflow code never runs in the host process. It executes in a **QuickJS WebAssembly isolate** with a hard memory limit and a wall-clock timeout, and with no ambient access to the network or filesystem — the only capabilities a workflow has are the ones `infra` grants it (which themselves run with your account credentials on the host side, never exposed to the script). The same isolate runs identically on desktop and on the server, so a workflow behaves the same wherever it runs.
