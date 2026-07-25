@@ -22,11 +22,20 @@ vi.mock("uuid", () => ({ v4: () => "assoc-uuid-1" }));
 const { associationRoutes } = await import("@/api/routes/associations");
 const buildApp = () => buildTestApp(associationRoutes);
 
-function resourceExists(rows: unknown[]) {
-  const limit = vi.fn().mockResolvedValue(rows);
-  const where = vi.fn().mockReturnValue({ limit });
-  const from = vi.fn().mockReturnValue({ where });
-  mockSelect.mockReturnValue({ from });
+/**
+ * Stub the org-scoped resource lookups. The handler runs two: consumer first,
+ * then provider. Pass one array to answer both the same way, or two to answer
+ * them differently.
+ */
+function resourceExists(rows: unknown[], providerRows: unknown[] = rows) {
+  const queue = [rows, providerRows];
+  mockSelect.mockImplementation(() => {
+    const result = queue.shift() ?? [];
+    const limit = vi.fn().mockResolvedValue(result);
+    const where = vi.fn().mockReturnValue({ limit });
+    const from = vi.fn().mockReturnValue({ where });
+    return { from };
+  });
 }
 
 function setupUpsert() {
@@ -40,6 +49,51 @@ describe("Association routes", () => {
   beforeEach(() => vi.clearAllMocks());
 
   describe("POST /", () => {
+    it("stamps a sync_version so /pull can return the row", async () => {
+      // Nothing bumped these, so every association sat at the default 0 and
+      // `syncVersion > lastSyncVersion` was false for any real watermark.
+      resourceExists([{ id: "r1" }]);
+      const values = setupUpsert();
+      const res = await buildApp().request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          consumerResourceId: "r1",
+          consumerFieldKey: "DB_URL",
+          providerResourceId: "p1",
+          providerOutputKey: "uri",
+          providerPluginId: "pg",
+          providerResourceTypeId: "db",
+          providerAccountId: "a1",
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(values).toHaveBeenCalledWith(
+        expect.objectContaining({ syncVersion: expect.anything() }),
+      );
+    });
+
+    it("returns 404 when the provider resource is in another org", async () => {
+      // `provider_resource_id` is an FK with ON DELETE RESTRICT, so accepting a
+      // foreign one lets a caller pin a row the other org then cannot delete.
+      resourceExists([{ id: "r1" }], []);
+      const res = await buildApp().request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          consumerResourceId: "r1",
+          consumerFieldKey: "DB_URL",
+          providerResourceId: "someone-elses-resource",
+          providerOutputKey: "uri",
+          providerPluginId: "pg",
+          providerResourceTypeId: "db",
+          providerAccountId: "a1",
+        }),
+      });
+      expect(res.status).toBe(404);
+      expect(mockInsert).not.toHaveBeenCalled();
+    });
+
     it("returns 404 when the consumer resource is not in the org", async () => {
       resourceExists([]);
       const res = await buildApp().request("/", {

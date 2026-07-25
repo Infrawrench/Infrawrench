@@ -5,6 +5,7 @@ import { db } from "../../db/client";
 import { associations, secretFieldStates, resources } from "../../db/schema";
 import { encrypt, buildAad } from "../../services/encryption";
 import { requirePermission } from "../../auth/permissions";
+import { nextAssociationSyncVersion } from "../../services/sync-versions";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -38,6 +39,21 @@ app.post("/", async (c) => {
     .limit(1);
   if (!consumer) return c.json({ error: "Resource not found" }, 404);
 
+  // The provider needs the same org check as the consumer. `provider_resource_id`
+  // is a foreign key with ON DELETE RESTRICT, so an unvalidated one lets a
+  // caller pin a row in someone else's organization: the owning org then can't
+  // hard-delete that resource (see the agent-session teardown in
+  // `api/routes/agents.ts`), and the failure lands after the cloud resource is
+  // already gone.
+  const [provider] = await db
+    .select({ id: resources.id })
+    .from(resources)
+    .where(
+      and(eq(resources.id, input.providerResourceId), eq(resources.organizationId, organizationId)),
+    )
+    .limit(1);
+  if (!provider) return c.json({ error: "Provider resource not found" }, 404);
+
   const now = new Date();
   const assocId = uuidv4();
 
@@ -49,12 +65,14 @@ app.post("/", async (c) => {
       consumerFieldKey: input.consumerFieldKey,
       providerResourceId: input.providerResourceId,
       providerOutputKey: input.providerOutputKey,
+      syncVersion: nextAssociationSyncVersion(organizationId),
     })
     .onConflictDoUpdate({
       target: [associations.consumerResourceId, associations.consumerFieldKey],
       set: {
         providerResourceId: input.providerResourceId,
         providerOutputKey: input.providerOutputKey,
+        syncVersion: nextAssociationSyncVersion(organizationId),
         updatedAt: now,
       },
     });
