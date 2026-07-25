@@ -52,7 +52,19 @@ app.post("/pull", async (c) => {
   if (!auth) return c.json({ error: "Unauthorized" }, 401);
   requireScope(auth, "resources:read");
 
-  const { lastSyncVersion } = await c.req.json<{ lastSyncVersion: number }>();
+  // Validated, not just typed. Every row starts at sync_version 0, so an
+  // unchecked negative here turns `syncVersion > lastSyncVersion` into "match
+  // everything" — which is how a caller reached rows the query didn't intend
+  // to return. The org scoping below is the real fix; this keeps a bad value
+  // from widening any future query that forgets one.
+  const body = await c.req
+    .json<{ lastSyncVersion?: unknown }>()
+    .catch(() => ({}) as { lastSyncVersion?: unknown });
+  const parsed = z.number().int().min(0).safeParse(body.lastSyncVersion);
+  if (!parsed.success) {
+    return c.json({ error: "lastSyncVersion must be a non-negative integer" }, 400);
+  }
+  const lastSyncVersion = parsed.data;
   const orgId = auth.organizationId;
 
   const [accountRows, resourceRows, dashboardRows, pinRows, assocRows] = await Promise.all([
@@ -61,8 +73,13 @@ app.post("/pull", async (c) => {
         id: accounts.id,
         pluginId: accounts.pluginId,
         displayName: accounts.displayName,
-        encryptedCredentials: accounts.encryptedCredentials,
-        credentialsIv: accounts.credentialsIv,
+        // Deliberately NOT the ciphertext. It is sealed with the server's
+        // master key, so no client can read it — shipping it put
+        // credential-shaped material on the wire and in client logs for
+        // exactly zero benefit. Callers that genuinely need a credential use
+        // `GET /accounts/:id/credentials`, which is gated on `secrets:read`
+        // (this route only requires `resources:read`) and audit-logged.
+        hasCredentials: sql<boolean>`${accounts.encryptedCredentials} IS NOT NULL AND ${accounts.encryptedCredentials} <> ''`,
         syncVersion: accounts.syncVersion,
         deletedAt: accounts.deletedAt,
         updatedAt: accounts.updatedAt,
@@ -99,8 +116,45 @@ app.post("/pull", async (c) => {
       .where(
         and(eq(dashboards.organizationId, orgId), gt(dashboards.syncVersion, lastSyncVersion)),
       ),
-    db.select().from(dashboardPins).where(gt(dashboardPins.syncVersion, lastSyncVersion)),
-    db.select().from(associations).where(gt(associations.syncVersion, lastSyncVersion)),
+    // `dashboard_pins` and `associations` carry no organization_id of their
+    // own — they are scoped transitively through the row they hang off. Both
+    // MUST join to that parent and filter on it, or the pull returns every
+    // organization's rows to any caller.
+    db
+      .select({
+        id: dashboardPins.id,
+        dashboardId: dashboardPins.dashboardId,
+        resourceId: dashboardPins.resourceId,
+        gridX: dashboardPins.gridX,
+        gridY: dashboardPins.gridY,
+        gridW: dashboardPins.gridW,
+        gridH: dashboardPins.gridH,
+        syncVersion: dashboardPins.syncVersion,
+        deletedAt: dashboardPins.deletedAt,
+        createdAt: dashboardPins.createdAt,
+      })
+      .from(dashboardPins)
+      .innerJoin(dashboards, eq(dashboards.id, dashboardPins.dashboardId))
+      .where(
+        and(eq(dashboards.organizationId, orgId), gt(dashboardPins.syncVersion, lastSyncVersion)),
+      ),
+    db
+      .select({
+        id: associations.id,
+        consumerResourceId: associations.consumerResourceId,
+        consumerFieldKey: associations.consumerFieldKey,
+        providerResourceId: associations.providerResourceId,
+        providerOutputKey: associations.providerOutputKey,
+        syncVersion: associations.syncVersion,
+        deletedAt: associations.deletedAt,
+        createdAt: associations.createdAt,
+        updatedAt: associations.updatedAt,
+      })
+      .from(associations)
+      .innerJoin(resources, eq(resources.id, associations.consumerResourceId))
+      .where(
+        and(eq(resources.organizationId, orgId), gt(associations.syncVersion, lastSyncVersion)),
+      ),
   ]);
 
   return c.json({
@@ -279,23 +333,32 @@ app.get("/status", async (c) => {
 
   const orgId = auth.organizationId;
 
+  // Must cover every table `/pull` returns. A client that advances its
+  // watermark to this number would otherwise step straight over changes in any
+  // table missing here and never see them again — the counter only moves
+  // forward. Pins and associations join their parent for the org filter,
+  // having no `organization_id` of their own.
   const [maxVersions] = await db
     .select({
-      accounts: sql<number>`COALESCE(MAX(${accounts.syncVersion}), 0)`,
+      max: sql<number>`GREATEST(
+        COALESCE((SELECT MAX(sync_version) FROM accounts WHERE organization_id = ${orgId}), 0),
+        COALESCE((SELECT MAX(sync_version) FROM resources WHERE organization_id = ${orgId}), 0),
+        COALESCE((SELECT MAX(sync_version) FROM dashboards WHERE organization_id = ${orgId}), 0),
+        COALESCE((
+          SELECT MAX(p.sync_version) FROM dashboard_pins p
+          JOIN dashboards d ON d.id = p.dashboard_id
+          WHERE d.organization_id = ${orgId}
+        ), 0),
+        COALESCE((
+          SELECT MAX(a.sync_version) FROM associations a
+          JOIN resources r ON r.id = a.consumer_resource_id
+          WHERE r.organization_id = ${orgId}
+        ), 0)
+      )`,
     })
-    .from(accounts)
-    .where(eq(accounts.organizationId, orgId));
+    .from(sql`(SELECT 1) AS _`);
 
-  const [resourceVersions] = await db
-    .select({
-      resources: sql<number>`COALESCE(MAX(${resources.syncVersion}), 0)`,
-    })
-    .from(resources)
-    .where(eq(resources.organizationId, orgId));
-
-  const maxSyncVersion = Math.max(maxVersions?.accounts ?? 0, resourceVersions?.resources ?? 0);
-
-  return c.json({ maxSyncVersion });
+  return c.json({ maxSyncVersion: maxVersions?.max ?? 0 });
 });
 
 export { app as syncRoutes };

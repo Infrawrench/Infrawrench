@@ -10,8 +10,10 @@ const SyncedAccount = strict({
   id: Uuid,
   pluginId: z.string(),
   displayName: z.string(),
-  encryptedCredentials: z.string(),
-  credentialsIv: z.string(),
+  hasCredentials: z.boolean().openapi({
+    description:
+      "Whether the account has stored credentials. The credentials themselves are never returned here — this endpoint only requires `resources:read`. Fetch one with `GET /api/org/{orgId}/accounts/{id}/credentials`, which requires `secrets:read` and is audit-logged.",
+  }),
   syncVersion: z.number().int(),
   deletedAt: IsoDateTime.nullable(),
   updatedAt: IsoDateTime,
