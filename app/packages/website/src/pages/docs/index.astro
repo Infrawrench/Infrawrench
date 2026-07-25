@@ -1,5 +1,6 @@
 ---
 import DocsLayout from "../../layouts/DocsLayout.astro";
+import DocsWipNotice from "../../components/DocsWipNotice.astro";
 import { getDocsNav } from "../../lib/docs-nav";
 
 export const prerender = true;
@@ -12,6 +13,8 @@ const sections = await getDocsNav();
   description="Guides for installing infrawrench, connecting accounts, and using the desktop and web apps."
 >
   <article class="docs-article">
+    <DocsWipNotice />
+
     <header class="docs-article-header">
       <h1 class="docs-article-title">Documentation</h1>
       <p class="docs-article-lede">

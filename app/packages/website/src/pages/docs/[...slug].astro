@@ -1,6 +1,7 @@
 ---
 import { getCollection, render } from "astro:content";
 import DocsLayout from "../../layouts/DocsLayout.astro";
+import DocsWipNotice from "../../components/DocsWipNotice.astro";
 
 export const prerender = true;
 
@@ -24,6 +25,8 @@ const tocItems = headings.filter((h) => h.depth === 2 || h.depth === 3);
 >
   <div class="docs-article-with-toc" data-has-toc={tocItems.length > 0 ? "" : undefined}>
     <article class="docs-article docs-article-body">
+      <DocsWipNotice />
+
       <header class="docs-article-header">
         <h1 class="docs-article-title">{entry.data.title}</h1>
         {entry.data.description && <p class="docs-article-lede">{entry.data.description}</p>}

@@ -1039,6 +1039,33 @@ footer {
   margin-bottom: 32px;
 }
 
+.docs-wip-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 10px;
+  background: rgba(245, 158, 11, 0.06);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 28px;
+}
+
+.docs-wip-notice-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #fbbf24;
+  white-space: nowrap;
+}
+
+.docs-wip-notice-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #d1d5db;
+}
+
 .docs-article-title {
   font-size: clamp(30px, 4vw, 42px);
   font-weight: 800;
