@@ -1,0 +1,57 @@
+---
+title: Account settings
+description: Manage your name, password, two-factor authentication, and active sessions from Settings → General.
+---
+
+**Settings → General** is your personal account, not the organization's. Everything on this page follows you across every organization you belong to — changing your name or turning on two-factor here applies everywhere you sign in.
+
+Your identity is managed by WorkOS, the same service that handles sign-in. infrawrench never stores your password.
+
+<insert [Settings → General showing the Profile, Password, Two-factor authentication, and Active sessions cards] here>
+
+## Profile
+
+Edit your **first name** and **last name** and press **Save changes**. The name appears next to you in [team lists](../team-and-billing/organizations-and-invites.md), the [audit log](../team-and-billing/audit-log.md), and anywhere a resource records who changed it.
+
+Your **email address** is read-only — it comes from the identity provider you signed in with. If it shows as **Unverified**, use **Resend verification email** to get a fresh link.
+
+If you signed in with Google, Microsoft, GitHub, Apple, or Salesforce, those show under **Connected accounts**.
+
+## Password
+
+**Change password** opens a one-time link to the hosted password page, where you can set a new one.
+
+This is also how you _add_ a password to an account that has only ever signed in through Google or SSO — useful if you want a fallback that doesn't depend on the identity provider being reachable. The link is single-use and expires; generate a new one any time.
+
+## Two-factor authentication
+
+Add a time-based one-time password (TOTP) from an authenticator app as a second step at sign-in.
+
+1. **Settings → General → Add authenticator app**.
+2. Scan the QR code with your authenticator app, or copy the setup key and enter it manually.
+3. Type the six-digit code the app shows and press **Turn on two-factor**.
+
+<insert [Add authenticator app dialog showing the QR code, manual setup key, and six-digit code field] here>
+
+The factor is only active once you've entered a valid code — closing the dialog before that discards it. You can enrol more than one app (for example a phone and a desktop client) so losing one device doesn't lock you out.
+
+To remove one, press **Remove** next to it. Removing your last factor turns two-factor off for your account.
+
+> Whether two-factor is _required_ at sign-in — for you or for everyone in your organization — is a policy set in the WorkOS dashboard by whoever administers your authentication. Enrolling here makes the factor available; it doesn't by itself force a challenge.
+
+## Active sessions
+
+Every place you're currently signed in: the web app, the [desktop app](../core-concepts/desktop-vs-web.md), the [CLI](./cli.md), and [mobile](./mobile-app.md). Each row shows the browser or app, the IP address, the sign-in method, and when the session started. The one you're using right now is marked **This device**.
+
+- **Sign out** on a single row ends that one session.
+- **Sign out other sessions** ends every session except the one you're using — the fastest response to a lost laptop or phone.
+
+Signing out a session invalidates it immediately; that device has to sign in again. To end your _current_ session, use the normal sign-out in the app menu.
+
+## On mobile
+
+The mobile app mirrors all of this under **Settings → (your email)**: profile, password reset, two-factor enrolment, and session management, against the same account.
+
+## API
+
+These same operations are available over HTTP under `/api/profile` — see the [OpenAPI reference](../team-and-billing/openapi.md). They're user-scoped, so they authenticate with a session cookie or a WorkOS access token rather than an organization [API key](../team-and-billing/api-keys.md).

@@ -16,6 +16,7 @@ import { workflowGitWebhook } from "./routes/workflows-git";
 import { githubRoutes, githubSetupRoute } from "./routes/github";
 
 import { authRoutes } from "./routes/auth";
+import { profileRoutes } from "./routes/profile";
 
 import { orgManagementRoutes } from "./routes/orgs";
 import { invitationAcceptRoutes } from "./routes/invitation-accept";
@@ -153,6 +154,8 @@ const authed = new Hono();
 authed.use("*", sessionMiddleware);
 
 authed.route("/auth", authRoutes);
+// Personal account settings — user-scoped, so it lives outside the org tree.
+authed.route("/profile", profileRoutes);
 authed.route("/orgs", orgManagementRoutes);
 authed.route("/invitations", invitationAcceptRoutes);
 // Platform-admin surface — session-authed here, allowlist-gated inside.

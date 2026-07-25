@@ -27,7 +27,11 @@ export default function SettingsScreen() {
 
       <SectionTitle>Account</SectionTitle>
       <Card>
-        <Row title={email ?? "Signed in"} subtitle="Signed-in account" />
+        <Row
+          title={email ?? "Signed in"}
+          subtitle="Profile, password, two-factor, sessions"
+          onPress={go("account")}
+        />
         <Row title="Switch organization" onPress={() => router.push("/select-org")} />
       </Card>
       <Button

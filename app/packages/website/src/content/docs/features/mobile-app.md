@@ -29,7 +29,7 @@ You can switch organizations at any time from the org switcher; everything you s
 - **[AI chat](./ai-chat.md)** — the full org chat with streamed markdown responses, the per-conversation model picker, the spend meter, and approve/reject buttons for pending actions. Approving a risky action from the couch works the same as from the desk.
 - **SSH terminal** — a real terminal on your phone; see below.
 - **Workflows & agents** — read-only views of your [workflows](./workflows.md) (definitions and run history) and [agent sessions](./agents.md).
-- **Settings** — team members, [API keys](../team-and-billing/api-keys.md) (view and revoke), the [audit log](../team-and-billing/audit-log.md), [SSH keys](../team-and-billing/ssh-keys.md), billing (read-only), and your [push notification](./mobile-push-notifications.md) preferences, devices, and test push.
+- **Settings** — team members, [API keys](../team-and-billing/api-keys.md) (view and revoke), the [audit log](../team-and-billing/audit-log.md), [SSH keys](../team-and-billing/ssh-keys.md), billing (read-only), your [push notification](./mobile-push-notifications.md) preferences, devices, and test push, and your [account settings](./account-settings.md) — name, password reset, two-factor enrolment, and active sessions.
 
 <insert [Mobile resource detail page for a droplet showing the schema-rendered overview, action buttons, and a metrics chart] here>
 

@@ -52,6 +52,8 @@ interface WorkosAccessTokenClaims extends JWTPayload {
   sub?: string;
   email?: string;
   org_id?: string;
+  /** WorkOS session id the token was minted for. */
+  sid?: string;
 }
 
 export async function verifyWorkosAccessToken(

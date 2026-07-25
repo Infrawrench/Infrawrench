@@ -12,6 +12,7 @@ export default function SettingsLayout() {
     >
       {/* Title still matters with the header hidden — iOS uses it as the back label. */}
       <Stack.Screen name="index" options={{ headerShown: false, title: "Settings" }} />
+      <Stack.Screen name="account" options={{ title: "Account" }} />
       <Stack.Screen name="team" options={{ title: "Team" }} />
       <Stack.Screen name="api-keys" options={{ title: "API keys" }} />
       <Stack.Screen name="audit-log" options={{ title: "Audit log" }} />

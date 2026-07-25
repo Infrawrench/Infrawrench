@@ -1,34 +1,593 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
-import { apiGet } from "@/lib/api";
+import { useState, useEffect, useCallback } from "react";
+import { Modal } from "@infrawrench/ui";
+import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api";
+import {
+  describeUserAgent,
+  formatAuthMethod,
+  formatProvider,
+  type AuthFactor,
+  type Profile,
+  type UserSession,
+} from "@/lib/profile";
 
 export const Route = createFileRoute("/org/$orgId/settings/")({
   component: SettingsGeneralPage,
 });
 
+const CARD = "border border-border rounded-xl p-5";
+const LABEL = "block text-xs text-on-surface-tertiary mb-1";
+const INPUT =
+  "w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong";
+const PRIMARY_BUTTON =
+  "px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors";
+const SECONDARY_BUTTON =
+  "px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors";
+
 function SettingsGeneralPage() {
   const { orgId } = useParams({ from: "/org/$orgId/settings/" });
-  const [session, setSession] = useState<{ email: string } | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    apiGet<{ email: string }>("/api/auth/me").then(setSession);
+  const loadProfile = useCallback(async () => {
+    try {
+      setProfile(await apiGet<Profile>("/api/profile"));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load your profile");
+    }
   }, []);
 
-  if (!session) return <div className="text-on-surface-muted text-sm animate-pulse">Loading…</div>;
+  useEffect(() => {
+    void loadProfile();
+  }, [loadProfile]);
+
+  if (error) return <p className="text-sm text-red-400">{error}</p>;
+  if (!profile) return <div className="text-on-surface-muted text-sm animate-pulse">Loading…</div>;
 
   return (
-    <div>
-      <h1 className="text-xl font-semibold mb-6">General</h1>
+    <div className="max-w-3xl">
+      <h1 className="text-xl font-semibold mb-1">General</h1>
+      <p className="text-sm text-on-surface-muted mb-6">
+        Your personal account. These settings follow you across every organization you belong to.
+      </p>
+
       <div className="space-y-4">
-        <div>
-          <span className="block text-xs text-on-surface-tertiary mb-1">Email</span>
-          <p className="text-sm text-on-surface-secondary">{session.email}</p>
-        </div>
-        <div>
-          <span className="block text-xs text-on-surface-tertiary mb-1">Organization ID</span>
+        <ProfileCard profile={profile} onSaved={loadProfile} />
+        <PasswordCard />
+        <TwoFactorCard />
+        <SessionsCard />
+        <div className={CARD}>
+          <h2 className="text-sm font-semibold text-on-surface-secondary mb-3">Organization</h2>
+          <span className={LABEL}>Organization ID</span>
           <p className="text-sm text-on-surface-secondary font-mono">{orgId}</p>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ProfileCard({ profile, onSaved }: { profile: Profile; onSaved: () => Promise<void> }) {
+  const [firstName, setFirstName] = useState(profile.firstName ?? "");
+  const [lastName, setLastName] = useState(profile.lastName ?? "");
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const dirty = firstName !== (profile.firstName ?? "") || lastName !== (profile.lastName ?? "");
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    setStatus(null);
+    try {
+      await apiPatch("/api/profile", { firstName, lastName });
+      await onSaved();
+      setStatus("Saved");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleResendVerification() {
+    setError(null);
+    setStatus(null);
+    try {
+      await apiPost("/api/profile/send-verification-email");
+      setStatus("Verification email sent");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to send verification email");
+    }
+  }
+
+  return (
+    <div className={CARD}>
+      <h2 className="text-sm font-semibold text-on-surface-secondary mb-4">Profile</h2>
+
+      <div className="flex items-start gap-4">
+        {profile.profilePictureUrl ? (
+          <img
+            src={profile.profilePictureUrl}
+            alt=""
+            className="w-14 h-14 rounded-full border border-border flex-shrink-0"
+          />
+        ) : (
+          <div className="w-14 h-14 rounded-full border border-border bg-surface-overlay flex items-center justify-center text-lg text-on-surface-tertiary flex-shrink-0">
+            {(profile.firstName ?? profile.email).charAt(0).toUpperCase()}
+          </div>
+        )}
+
+        <div className="flex-1 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="profile-first-name" className={LABEL}>
+                First name
+              </label>
+              <input
+                id="profile-first-name"
+                type="text"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                className={INPUT}
+              />
+            </div>
+            <div>
+              <label htmlFor="profile-last-name" className={LABEL}>
+                Last name
+              </label>
+              <input
+                id="profile-last-name"
+                type="text"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                className={INPUT}
+              />
+            </div>
+          </div>
+
+          <div>
+            <span className={LABEL}>Email</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-sm text-on-surface-secondary">{profile.email}</p>
+              {profile.emailVerified ? (
+                <span className="text-xs text-emerald-500">Verified</span>
+              ) : (
+                <>
+                  <span className="text-xs text-amber-500">Unverified</span>
+                  <button
+                    type="button"
+                    onClick={() => void handleResendVerification()}
+                    className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary underline"
+                  >
+                    Resend verification email
+                  </button>
+                </>
+              )}
+            </div>
+            <p className="text-xs text-on-surface-muted mt-1">
+              Your email address is managed by your identity provider and can&apos;t be changed
+              here.
+            </p>
+          </div>
+
+          {profile.identities.length > 0 && (
+            <div>
+              <span className={LABEL}>Connected accounts</span>
+              <p className="text-sm text-on-surface-secondary">
+                {profile.identities.map((i) => formatProvider(i.provider)).join(", ")}
+              </p>
+            </div>
+          )}
+
+          <div className="flex gap-6 text-xs text-on-surface-muted">
+            <span>Member since {new Date(profile.createdAt).toLocaleDateString()}</span>
+            {profile.lastSignInAt && (
+              <span>Last sign-in {new Date(profile.lastSignInAt).toLocaleString()}</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void handleSave()}
+              disabled={saving || !dirty}
+              className={PRIMARY_BUTTON}
+            >
+              {saving ? "Saving…" : "Save changes"}
+            </button>
+            {status && <span className="text-xs text-emerald-500">{status}</span>}
+            {error && <span className="text-xs text-red-400">{error}</span>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PasswordCard() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleReset() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { passwordResetUrl } = await apiPost<{ passwordResetUrl: string }>(
+        "/api/profile/password-reset",
+      );
+      window.open(passwordResetUrl, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create a reset link");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className={CARD}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-sm font-semibold text-on-surface-secondary mb-1">Password</h2>
+          <p className="text-xs text-on-surface-muted max-w-md">
+            Opens a one-time link where you can set a new password. Use it to add a password to an
+            account that only signs in with Google or SSO.
+          </p>
+          {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+        </div>
+        <button
+          type="button"
+          onClick={() => void handleReset()}
+          disabled={busy}
+          className={`${SECONDARY_BUTTON} flex-shrink-0`}
+        >
+          {busy ? "Opening…" : "Change password"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TwoFactorCard() {
+  const [factors, setFactors] = useState<AuthFactor[] | null>(null);
+  const [enrolling, setEnrolling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setFactors(await apiGet<AuthFactor[]>("/api/profile/mfa"));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load two-factor settings");
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function handleRemove(factorId: string) {
+    setError(null);
+    try {
+      await apiDelete(`/api/profile/mfa/${encodeURIComponent(factorId)}`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to remove");
+    }
+  }
+
+  return (
+    <div className={CARD}>
+      <div className="flex items-start justify-between gap-4 mb-3">
+        <div>
+          <h2 className="text-sm font-semibold text-on-surface-secondary mb-1">
+            Two-factor authentication
+          </h2>
+          <p className="text-xs text-on-surface-muted max-w-md">
+            Add a time-based one-time code from an authenticator app as a second step when you sign
+            in.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setEnrolling(true)}
+          className={`${PRIMARY_BUTTON} flex-shrink-0`}
+        >
+          Add authenticator app
+        </button>
+      </div>
+
+      {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
+
+      {factors === null ? (
+        <p className="text-xs text-on-surface-faint">Loading…</p>
+      ) : factors.length === 0 ? (
+        <p className="text-sm text-on-surface-muted">
+          No authenticator apps yet. Your account is protected by your sign-in method alone.
+        </p>
+      ) : (
+        <ul className="divide-y divide-border/50 border border-border rounded-lg">
+          {factors.map((factor) => (
+            <li key={factor.id} className="flex items-center justify-between px-3 py-2">
+              <div>
+                <p className="text-sm text-on-surface-secondary">
+                  {factor.totpUser ?? "Authenticator app"}
+                </p>
+                <p className="text-xs text-on-surface-muted">
+                  {factor.type.toUpperCase()} · added{" "}
+                  {new Date(factor.createdAt).toLocaleDateString()}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleRemove(factor.id)}
+                className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {enrolling && (
+        <EnrollTotpModal
+          onClose={() => {
+            setEnrolling(false);
+            void load();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+interface Enrollment {
+  factorId: string;
+  challengeId: string;
+  qrCode: string | null;
+  secret: string | null;
+  uri: string | null;
+}
+
+/**
+ * WorkOS creates the factor as soon as enrolment starts, so closing without
+ * verifying has to delete it again — otherwise a half-finished setup would sit
+ * in the list indistinguishable from a working one.
+ */
+function EnrollTotpModal({ onClose }: { onClose: () => void }) {
+  const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
+  const [code, setCode] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await apiPost<Enrollment>("/api/profile/mfa");
+        if (cancelled) {
+          await apiDelete(`/api/profile/mfa/${encodeURIComponent(result.factorId)}`).catch(
+            () => {},
+          );
+          return;
+        }
+        setEnrollment(result);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to start enrolment");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function handleCancel() {
+    if (enrollment && !done) {
+      void apiDelete(`/api/profile/mfa/${encodeURIComponent(enrollment.factorId)}`).catch(() => {});
+    }
+    onClose();
+  }
+
+  async function handleVerify() {
+    if (!enrollment) return;
+    setVerifying(true);
+    setError(null);
+    try {
+      await apiPost(`/api/profile/mfa/${encodeURIComponent(enrollment.factorId)}/verify`, {
+        challengeId: enrollment.challengeId,
+        code,
+      });
+      setDone(true);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Verification failed");
+      // The challenge is spent either way — get a fresh one so the next
+      // attempt isn't rejected for the wrong reason.
+      try {
+        const next = await apiPost<{ challengeId: string }>(
+          `/api/profile/mfa/${encodeURIComponent(enrollment.factorId)}/challenge`,
+        );
+        setEnrollment({ ...enrollment, challengeId: next.challengeId });
+      } catch {
+        /* keep the original challenge and let the user retry */
+      }
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  return (
+    <Modal onClose={handleCancel} ariaLabel="Add authenticator app">
+      <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h2 className="text-sm font-semibold text-on-surface-secondary">Add authenticator app</h2>
+          <button
+            type="button"
+            onClick={handleCancel}
+            aria-label="Close"
+            className="text-on-surface-faint hover:text-on-surface-tertiary text-lg"
+          >
+            &#215;
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          {!enrollment ? (
+            <p className="text-sm text-on-surface-muted">
+              {error ?? "Preparing your authenticator setup…"}
+            </p>
+          ) : (
+            <>
+              <p className="text-xs text-on-surface-muted">
+                Scan this code with your authenticator app, then enter the six-digit code it shows.
+              </p>
+              {enrollment.qrCode && (
+                <img
+                  src={enrollment.qrCode}
+                  alt="Two-factor enrolment QR code"
+                  className="w-40 h-40 mx-auto bg-white rounded-lg p-2"
+                />
+              )}
+              {enrollment.secret && (
+                <div>
+                  <span className={LABEL}>Or enter this key manually</span>
+                  <div className="bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 font-mono text-xs text-on-surface-secondary break-all select-all">
+                    {enrollment.secret}
+                  </div>
+                </div>
+              )}
+              <div>
+                <label htmlFor="totp-code" className={LABEL}>
+                  Six-digit code
+                </label>
+                <input
+                  id="totp-code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                  placeholder="123456"
+                  className={`${INPUT} font-mono tracking-widest`}
+                />
+              </div>
+              {error && <p className="text-xs text-red-400">{error}</p>}
+              <button
+                type="button"
+                onClick={() => void handleVerify()}
+                disabled={verifying || code.length !== 6}
+                className={`${PRIMARY_BUTTON} w-full`}
+              >
+                {verifying ? "Verifying…" : "Turn on two-factor"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function SessionsCard() {
+  const [sessions, setSessions] = useState<UserSession[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setSessions(await apiGet<UserSession[]>("/api/profile/sessions"));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load sessions");
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function handleRevoke(sessionId: string) {
+    setError(null);
+    try {
+      await apiDelete(`/api/profile/sessions/${encodeURIComponent(sessionId)}`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to revoke");
+    }
+  }
+
+  async function handleRevokeOthers() {
+    setBusy(true);
+    setError(null);
+    try {
+      await apiPost("/api/profile/sessions/revoke-others");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to revoke");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const others = (sessions ?? []).filter((s) => !s.current);
+
+  return (
+    <div className={CARD}>
+      <div className="flex items-start justify-between gap-4 mb-3">
+        <div>
+          <h2 className="text-sm font-semibold text-on-surface-secondary mb-1">Active sessions</h2>
+          <p className="text-xs text-on-surface-muted max-w-md">
+            Everywhere you&apos;re currently signed in — the web app, the desktop app, the CLI and
+            mobile.
+          </p>
+        </div>
+        {others.length > 0 && (
+          <button
+            type="button"
+            onClick={() => void handleRevokeOthers()}
+            disabled={busy}
+            className={`${SECONDARY_BUTTON} flex-shrink-0`}
+          >
+            {busy ? "Signing out…" : "Sign out other sessions"}
+          </button>
+        )}
+      </div>
+
+      {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
+
+      {sessions === null ? (
+        <p className="text-xs text-on-surface-faint">Loading…</p>
+      ) : sessions.length === 0 ? (
+        <p className="text-sm text-on-surface-muted">No active sessions.</p>
+      ) : (
+        <ul className="divide-y divide-border/50 border border-border rounded-lg">
+          {sessions.map((session) => (
+            <li key={session.id} className="flex items-center justify-between px-3 py-2 gap-3">
+              <div className="min-w-0">
+                <p className="text-sm text-on-surface-secondary truncate">
+                  {describeUserAgent(session.userAgent)}
+                  {session.current && (
+                    <span className="ml-2 text-xs text-emerald-500">This device</span>
+                  )}
+                </p>
+                <p className="text-xs text-on-surface-muted truncate">
+                  {session.ipAddress ?? "Unknown IP"} · {formatAuthMethod(session.authMethod)} ·
+                  started {new Date(session.createdAt).toLocaleString()}
+                </p>
+              </div>
+              {!session.current && (
+                <button
+                  type="button"
+                  onClick={() => void handleRevoke(session.id)}
+                  className="text-xs text-red-400 hover:text-red-500 dark:text-red-300 flex-shrink-0"
+                >
+                  Sign out
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

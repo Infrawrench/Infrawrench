@@ -19,6 +19,27 @@ export {
   type PushNotificationData,
   type PushPreferences,
 } from "./push";
+export {
+  fetchProfile,
+  updateProfile,
+  createPasswordResetLink,
+  listAuthFactors,
+  startTotpEnrollment,
+  verifyTotpEnrollment,
+  challengeAuthFactor,
+  deleteAuthFactor,
+  listUserSessions,
+  revokeUserSession,
+  revokeOtherUserSessions,
+  formatProvider,
+  formatAuthMethod,
+  describeUserAgent,
+  type Profile,
+  type ProfileIdentity,
+  type AuthFactor,
+  type TotpEnrollment,
+  type UserSession,
+} from "./profile";
 export * from "./chat/types";
 export { createBearerChatClient } from "./chat/bearer-client";
 export * from "./ws-protocol";

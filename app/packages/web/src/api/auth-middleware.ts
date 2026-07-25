@@ -13,6 +13,13 @@ import {
 export interface AuthSession {
   userId: string;
   email: string;
+  /**
+   * WorkOS session (`sid`) this request authenticated with, when there is one.
+   * Lets the account settings UI mark — and refuse to revoke — the session the
+   * user is currently browsing from. Absent only if WorkOS ever hands us a
+   * token without the claim.
+   */
+  sessionId?: string;
 }
 
 declare module "hono" {
@@ -41,7 +48,11 @@ export const sessionMiddleware = createMiddleware(async (c, next) => {
       if (!user) {
         return c.json({ error: "Unauthorized" }, 401);
       }
-      c.set("session", { userId: user.id, email: user.email });
+      c.set("session", {
+        userId: user.id,
+        email: user.email,
+        ...(typeof claims.sid === "string" ? { sessionId: claims.sid } : {}),
+      });
       return next();
     }
     return c.json({ error: "Unauthorized" }, 401);
@@ -77,7 +88,11 @@ export const sessionMiddleware = createMiddleware(async (c, next) => {
         }
         const user = refreshResult.user;
         await provisionUser(user);
-        c.set("session", { userId: user.id, email: user.email });
+        c.set("session", {
+          userId: user.id,
+          email: user.email,
+          sessionId: refreshResult.sessionId,
+        });
         return next();
       } catch {
         return c.json({ error: "Unauthorized" }, 401);
@@ -86,7 +101,11 @@ export const sessionMiddleware = createMiddleware(async (c, next) => {
 
     const user = authResult.user;
     await provisionUser(user);
-    c.set("session", { userId: user.id, email: user.email });
+    c.set("session", {
+      userId: user.id,
+      email: user.email,
+      sessionId: authResult.sessionId,
+    });
     return next();
   } catch {
     return c.json({ error: "Unauthorized" }, 401);

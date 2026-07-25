@@ -12,7 +12,7 @@ Infrawrench is an infrastructure management platform with both a desktop app and
 
 **Web app** — Hono server (Node) + Vite/React frontend with TanStack Router, Neon PostgreSQL via Drizzle ORM, WorkOS auth. All 16 plugins loaded server-side. SSH/SQL/K8s proxied through a custom WebSocket server (`server.ts`).
 
-**Mobile app** — Expo SDK 54 + expo-router (iOS/Android), `@infrawrench/mobile`. Signs into the cloud via WorkOS OAuth PKCE (tokens in SecureStore) and talks Bearer to the existing cloud API. Org switcher, dashboards/budgets home, account + resource browser with a native SchemaRenderer for plugin `DetailViewSchema` (actions, logs, metrics), global search, AI chat (SSE), SSH terminal via a WebView-hosted xterm.js on the existing `/api/ws` protocol, SFTP browser (cloud-proxied), read-only workflows/agents, settings incl. push preferences. Deliberate demotions: billing read-only, no Monaco editors, no secret-reroll wizard, dashboards render-only, no SSH host-key trust prompt (the terminal shows the trust-required error as text; trust the host from web or desktop first — web/desktop prompt via the structured `ssh:error` `ssh_host_key_trust_required` frame).
+**Mobile app** — Expo SDK 54 + expo-router (iOS/Android), `@infrawrench/mobile`. Signs into the cloud via WorkOS OAuth PKCE (tokens in SecureStore) and talks Bearer to the existing cloud API. Org switcher, dashboards/budgets home, account + resource browser with a native SchemaRenderer for plugin `DetailViewSchema` (actions, logs, metrics), global search, AI chat (SSE), SSH terminal via a WebView-hosted xterm.js on the existing `/api/ws` protocol, SFTP browser (cloud-proxied), read-only workflows/agents, settings incl. push preferences and personal account settings (name, password reset, TOTP two-factor, active sessions). Deliberate demotions: billing read-only, no Monaco editors, no secret-reroll wizard, dashboards render-only, no SSH host-key trust prompt (the terminal shows the trust-required error as text; trust the host from web or desktop first — web/desktop prompt via the structured `ssh:error` `ssh_host_key_trust_required` frame).
 
 **Shared UI** — `@infrawrench/ui` React component library used by both apps. Plugins return schema data, both hosts render via SchemaRenderer/DetailView. `@infrawrench/client-core` holds the host-agnostic cloud client pieces (TokenManager, `cloudFetch` 401-retry wrapper, SSE parser, bearer ChatClient, WS frame types, push registration) shared by mobile and future hosts; the chat types moved there and `@infrawrench/ui` re-exports them.
 
@@ -904,6 +904,19 @@ Desktop-only feature: the web app's server-side ssh2 has no path to reach a user
 ### Auth
 
 WorkOS AuthKit — middleware-enforced on all `(app)/*` routes. Auto-provisions user/org on first login. `requireAuth()` returns `{ userId, organizationId, email }`.
+
+`sessionMiddleware` also puts the WorkOS `sid` on the context as `session.sessionId` (from `authenticate()`/`refresh()` on the cookie path, from the `sid` claim on the bearer path). That's what lets the account settings UI flag — and refuse to revoke — the session making the request.
+
+### Personal account settings (`api/routes/profile.ts`)
+
+`/api/profile/*` is user-scoped, deliberately outside the org tree: one WorkOS identity is shared across every org a user belongs to. It wraps WorkOS user management for name, password reset, TOTP factors, and active sessions, and backs **Settings → General** on web plus **Settings → Account** on mobile.
+
+Things worth knowing before touching it:
+
+- **Ownership is re-checked on every mutation.** `mfa.deleteFactor` and `revokeSession` take a bare id with no user binding, so each handler first lists the caller's own factors/sessions and 404s ids that aren't in that list.
+- **Enrolment creates the factor immediately.** WorkOS returns the TOTP secret and a first challenge up front; the factor only becomes usable once a code verifies. `listAuthFactors` exposes no verified flag, so an abandoned enrolment is indistinguishable from a live one — the client DELETEs the factor on cancel to compensate.
+- **Password changes go through a hosted reset link**, not a current-password form. `authenticateWithPassword` would fail for exactly the users who enabled MFA, and it's also how an SSO/OAuth-only account sets a first password.
+- Client contract (types, formatters, and `CloudFetch` helpers) lives in `client-core/src/profile.ts` so mobile shares it; `@infrawrench/ui` re-exports the types for web and desktop.
 
 ### Database
 

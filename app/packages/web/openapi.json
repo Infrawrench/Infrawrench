@@ -33,6 +33,10 @@
       "description": "Session and identity."
     },
     {
+      "name": "Profile",
+      "description": "The signed-in user's own account: name, password reset, two-factor factors, and active sessions."
+    },
+    {
       "name": "Organizations",
       "description": "Org creation and membership."
     },
@@ -195,6 +199,212 @@
           }
         },
         "required": ["id", "displayName", "role"],
+        "additionalProperties": false
+      },
+      "Profile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "emailVerified": {
+            "type": "boolean"
+          },
+          "firstName": {
+            "type": ["string", "null"]
+          },
+          "lastName": {
+            "type": ["string", "null"]
+          },
+          "profilePictureUrl": {
+            "type": ["string", "null"]
+          },
+          "lastSignInAt": {
+            "type": ["string", "null"]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "identities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string",
+                  "description": "WorkOS OAuth provider id",
+                  "example": "GoogleOAuth"
+                }
+              },
+              "required": ["provider"],
+              "additionalProperties": false
+            },
+            "description": "Connected OAuth accounts, if any"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "emailVerified",
+          "firstName",
+          "lastName",
+          "profilePictureUrl",
+          "lastSignInAt",
+          "createdAt",
+          "identities"
+        ],
+        "additionalProperties": false
+      },
+      "ProfileSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "emailVerified": {
+            "type": "boolean"
+          },
+          "firstName": {
+            "type": ["string", "null"]
+          },
+          "lastName": {
+            "type": ["string", "null"]
+          },
+          "profilePictureUrl": {
+            "type": ["string", "null"]
+          },
+          "lastSignInAt": {
+            "type": ["string", "null"]
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "emailVerified",
+          "firstName",
+          "lastName",
+          "profilePictureUrl",
+          "lastSignInAt",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "Ok": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [true]
+          }
+        },
+        "required": ["ok"],
+        "additionalProperties": false
+      },
+      "AuthFactor": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["totp", "sms", "generic_otp"]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "totpIssuer": {
+            "type": ["string", "null"]
+          },
+          "totpUser": {
+            "type": ["string", "null"]
+          }
+        },
+        "required": ["id", "type", "createdAt", "updatedAt", "totpIssuer", "totpUser"],
+        "additionalProperties": false
+      },
+      "TotpEnrollment": {
+        "type": "object",
+        "properties": {
+          "factorId": {
+            "type": "string"
+          },
+          "challengeId": {
+            "type": "string"
+          },
+          "qrCode": {
+            "type": ["string", "null"],
+            "description": "Data-URI image of the enrolment QR code"
+          },
+          "secret": {
+            "type": ["string", "null"],
+            "description": "Base32 secret, for manual entry"
+          },
+          "uri": {
+            "type": ["string", "null"],
+            "description": "`otpauth://` URI"
+          }
+        },
+        "required": ["factorId", "challengeId", "qrCode", "secret", "uri"],
+        "additionalProperties": false
+      },
+      "UserSession": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ipAddress": {
+            "type": ["string", "null"]
+          },
+          "userAgent": {
+            "type": ["string", "null"]
+          },
+          "authMethod": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "current": {
+            "type": "boolean",
+            "description": "True for the session making this request"
+          }
+        },
+        "required": [
+          "id",
+          "ipAddress",
+          "userAgent",
+          "authMethod",
+          "status",
+          "expiresAt",
+          "createdAt",
+          "updatedAt",
+          "current"
+        ],
         "additionalProperties": false
       },
       "Organization": {
@@ -496,17 +706,6 @@
           }
         },
         "required": ["pluginId", "displayName", "credentials"],
-        "additionalProperties": false
-      },
-      "Ok": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "type": "boolean",
-            "enum": [true]
-          }
-        },
-        "required": ["ok"],
         "additionalProperties": false
       },
       "UpdatedAccount": {
@@ -5752,6 +5951,552 @@
         },
         "operationId": "postAuthSignOut",
         "x-internal": true
+      }
+    },
+    "/api/profile": {
+      "get": {
+        "tags": ["Profile"],
+        "summary": "The signed-in user's account profile",
+        "description": "User-scoped, not organization-scoped: one WorkOS identity is shared across every organization the user belongs to.",
+        "responses": {
+          "200": {
+            "description": "Profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getProfile"
+      },
+      "patch": {
+        "tags": ["Profile"],
+        "summary": "Update the signed-in user's name",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "firstName": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "lastName": {
+                    "type": "string",
+                    "maxLength": 128
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "patchProfile"
+      }
+    },
+    "/api/profile/password-reset": {
+      "post": {
+        "tags": ["Profile"],
+        "summary": "Mint a password reset link for the signed-in user",
+        "description": "Returns a one-time AuthKit-hosted reset URL rather than emailing it — the caller already holds a valid session for the account. Also the way to set a first password on an SSO or OAuth-only account.",
+        "responses": {
+          "200": {
+            "description": "Reset link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "passwordResetUrl": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["passwordResetUrl", "expiresAt"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postProfilePasswordReset"
+      }
+    },
+    "/api/profile/send-verification-email": {
+      "post": {
+        "tags": ["Profile"],
+        "summary": "Re-send the email verification message",
+        "responses": {
+          "200": {
+            "description": "Sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postProfileSendVerificationEmail"
+      }
+    },
+    "/api/profile/mfa": {
+      "get": {
+        "tags": ["Profile"],
+        "summary": "List enrolled authentication factors",
+        "description": "Includes factors whose enrolment was never confirmed — WorkOS does not expose a verified flag.",
+        "responses": {
+          "200": {
+            "description": "Factors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AuthFactor"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getProfileMfa"
+      },
+      "post": {
+        "tags": ["Profile"],
+        "summary": "Begin TOTP enrolment",
+        "description": "Creates the factor and a first challenge. The factor only becomes usable once a code is verified; abandon the flow by DELETEing the returned `factorId`.",
+        "responses": {
+          "200": {
+            "description": "Enrolment material",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TotpEnrollment"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postProfileMfa"
+      }
+    },
+    "/api/profile/mfa/{factorId}/challenge": {
+      "post": {
+        "tags": ["Profile"],
+        "summary": "Issue a fresh challenge for a factor",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "factorId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Challenge",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "challengeId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["challengeId"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postProfileMfaFactorIdChallenge"
+      }
+    },
+    "/api/profile/mfa/{factorId}/verify": {
+      "post": {
+        "tags": ["Profile"],
+        "summary": "Verify a code against a challenge",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "factorId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "challengeId": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string"
+                  }
+                },
+                "required": ["challengeId", "code"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verified",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "verified": {
+                      "type": "boolean",
+                      "enum": [true]
+                    }
+                  },
+                  "required": ["verified"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postProfileMfaFactorIdVerify"
+      }
+    },
+    "/api/profile/mfa/{factorId}": {
+      "delete": {
+        "tags": ["Profile"],
+        "summary": "Remove an authentication factor",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "factorId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteProfileMfaFactorId"
+      }
+    },
+    "/api/profile/sessions": {
+      "get": {
+        "tags": ["Profile"],
+        "summary": "List the signed-in user's active sessions",
+        "responses": {
+          "200": {
+            "description": "Sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserSession"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getProfileSessions"
+      }
+    },
+    "/api/profile/sessions/{sessionId}": {
+      "delete": {
+        "tags": ["Profile"],
+        "summary": "Revoke one session",
+        "description": "Refuses the session making the request — use sign-out for that.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "sessionId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteProfileSessionsSessionId"
+      }
+    },
+    "/api/profile/sessions/revoke-others": {
+      "post": {
+        "tags": ["Profile"],
+        "summary": "Revoke every session except the current one",
+        "responses": {
+          "200": {
+            "description": "Count revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "revoked": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["revoked"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postProfileSessionsRevokeOthers"
       }
     },
     "/api/orgs": {

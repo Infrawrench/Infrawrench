@@ -24,7 +24,8 @@ app.get("/me", async (c) => {
     .limit(1);
 
   return c.json({
-    ...session,
+    userId: session.userId,
+    email: session.email,
     needsOnboarding: memberships.length === 0,
   });
 });

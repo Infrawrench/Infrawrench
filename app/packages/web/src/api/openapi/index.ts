@@ -6,6 +6,7 @@ import type { BuildContext } from "./context";
 type OpenAPIObject = ReturnType<OpenApiGeneratorV31["generateDocument"]>;
 
 import { registerAuthPaths } from "./paths/auth";
+import { registerProfilePaths } from "./paths/profile";
 import { registerOrgPaths } from "./paths/orgs";
 import { registerInvitationPaths } from "./paths/invitations";
 import { registerAccountPaths } from "./paths/accounts";
@@ -73,6 +74,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   const ctx: BuildContext = { registry, enums };
 
   registerAuthPaths(ctx);
+  registerProfilePaths(ctx);
   registerOrgPaths(ctx);
   registerInvitationPaths(ctx);
   registerAccountPaths(ctx);
@@ -115,6 +117,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
     security: [{ sessionCookie: [] }, { bearerAuth: [] }],
     tags: [
       { name: "Auth", description: "Session and identity." },
+      {
+        name: "Profile",
+        description:
+          "The signed-in user's own account: name, password reset, two-factor factors, and active sessions.",
+      },
       { name: "Organizations", description: "Org creation and membership." },
       { name: "Invitations", description: "Accepting team invites." },
       { name: "Accounts", description: "Provider connections (cloud accounts)." },

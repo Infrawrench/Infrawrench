@@ -333,6 +333,22 @@ export type {
   Recipient,
 } from "./api-types.js";
 
+/**
+ * Personal-account contract. The definitions live in `@infrawrench/client-core`
+ * so mobile can share them; re-exported here because the web and desktop apps
+ * depend on `@infrawrench/ui`, not on client-core directly.
+ */
+export {
+  formatProvider,
+  formatAuthMethod,
+  describeUserAgent,
+  type Profile,
+  type ProfileIdentity,
+  type AuthFactor,
+  type TotpEnrollment,
+  type UserSession,
+} from "@infrawrench/client-core";
+
 export * from "./cost/index.js";
 
 export * from "./chat/index.js";
