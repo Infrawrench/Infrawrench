@@ -76,17 +76,32 @@ be destroyed after cutover — see [Migrating off DigitalOcean](#migrating-off-d
 
 5. **DNS** — point `app.infrawrench.com` (A record) at the `ingress_ip` output.
    cert-manager then issues the Let's Encrypt cert via HTTP-01 (the ACME email
-   is in `infra/k8s/cluster-issuer.yaml` — change it if needed).
+   is in `infra/k8s/cluster-issuer.yaml` — change it if needed). The record is
+   proxied through Cloudflare, so do this with the proxy **off** first — see
+   [Migrating off DigitalOcean](#migrating-off-digitalocean) for why.
 
 ## Migrating off DigitalOcean
 
 The two stacks can run side by side; the only shared, non-duplicable thing is
 the DNS record, so that's the cutover point.
 
+`app.infrawrench.com` is an **A record proxied through Cloudflare** (zone
+`infrawrench.com`). Two consequences that drive the order of operations:
+
+- Visitors terminate TLS at Cloudflare's edge cert, not at the origin, so
+  swapping the origin's certificate is not user-visible.
+- cert-manager's HTTP-01 challenge cannot be satisfied before cutover: Let's
+  Encrypt resolves the public name, which still points at the old origin, so
+  the solver never sees the request. And if the zone's SSL/TLS mode is
+  **Full (strict)**, flipping the proxied record to a cluster holding only
+  ingress-nginx's self-signed default cert gives 526s _and_ keeps the
+  challenge failing — a deadlock. Cutting over unproxied breaks it.
+
 1. Bootstrap GCP through step 4 above, but **don't** move DNS yet.
-2. Smoke-test against the ingress IP directly — `curl --resolve` with the real
-   Host header, or a temporary `gcp.infrawrench.com` record — so TLS, WebSocket
-   upgrade, and OAuth callbacks are all exercised on the new cluster.
+2. Smoke-test against the ingress IP directly, with `curl --resolve` and the
+   real Host header, so the app, the API, and WebSocket upgrade are all
+   exercised. Use `-k`: the origin still has ingress-nginx's fake cert at this
+   point, and that is expected, not a failure.
 3. Scale the DOKS `poller` and `github-watcher` to 0, against the DO
    kubeconfig:
 
@@ -97,9 +112,21 @@ the DNS record, so that's the cutover point.
    Both write to the shared Neon database, and running them in two clusters at
    once is wasteful even though the atomic-claim and CAS logic make it safe.
 
-4. Flip the A record. Existing WebSocket sessions on the DOKS pods stay up
-   until their clients reconnect; there is no in-cluster state to drain.
-5. Leave DOKS running for a day, then tear it down:
+4. Point the A record at the `ingress_ip` output **with the proxy off**
+   (`proxied: false`, low TTL). Let's Encrypt now validates directly against
+   the cluster and issues within a minute or two:
+
+   ```sh
+   kubectl -n infrawrench get certificate web-tls -w
+   ```
+
+   The origin IP is briefly exposed and unprotected during this window, so keep
+   it short.
+
+5. Once `web-tls` reports `READY=True`, turn the proxy back on
+   (`proxied: true`). The origin now presents a publicly-trusted certificate,
+   which satisfies Full (strict) as well as the laxer modes.
+6. Leave DOKS running for a day, then tear it down:
 
    ```sh
    cd infra/terraform/digitalocean
@@ -120,7 +147,10 @@ the images are byte-identical builds from `infra/docker/service.Dockerfile`.
   an older SHA (or revert the commit).
 - **Cluster access**: `gcloud container clusters get-credentials infrawrench-prod --region us-east4`.
   Needs the `gke-gcloud-auth-plugin` component
-  (`gcloud components install gke-gcloud-auth-plugin`).
+  (`gcloud components install gke-gcloud-auth-plugin`). On a Homebrew-installed
+  SDK the binary lands in `/opt/homebrew/share/google-cloud-sdk/bin` without
+  being symlinked onto `PATH`, so add that directory to `PATH` or `kubectl`
+  fails with "executable gke-gcloud-auth-plugin not found".
 - **Secrets rotate through terraform**: edit `app_env` in `terraform.tfvars`,
   `terraform apply`, then `kubectl -n infrawrench rollout restart deploy` so
   pods pick up the new values.
