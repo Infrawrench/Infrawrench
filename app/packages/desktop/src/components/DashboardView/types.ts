@@ -1,5 +1,7 @@
 export interface PinnedRow {
   resource_id: string;
+  /** Position in the dashboard's single drag-reorderable card sequence. */
+  grid_x: number;
   plugin_id: string;
   resource_type_id: string;
   account_id: string;

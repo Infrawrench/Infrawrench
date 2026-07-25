@@ -1347,6 +1347,16 @@ Docs: `website/src/content/docs/features/workflows.md`.
 
 **Still TODO**: dedicated `workflows:*` permissions; desktop↔cloud sync of workflows + workflow_metrics (syncVersion/deletedAt columns already present); desktop storage-object reads inside workflows (currently throws); web manual-run prompts (the panel's HTTP `/run` is non-interactive — interactive prompting needs the websocket path).
 
+## Dashboard card order (one sequence across three tables)
+
+Resource pins, workflow pins, and widgets each live in their own table with their own `grid_x`, but the grid drags as **one** sequence — a cost graph can sit between two resource cards. `ui/src/dnd/card-order.ts` owns the contract: `dashboardCardId(kind, id)` (`"widget:abc"`, parsed back by `parseDashboardCardId`; ids may themselves contain colons, so it splits on the first only), `orderDashboardCards`, `moveDashboardCard`, `cardOrderIndex`. `DndShell` emits `iw:dashboard-card-reorder` with `{activeCardId, overCardId}` (was `{activeResourceId, overResourceId}`); both `DashboardView`s merge their three collections into one `DashboardCard[]`, hold it in a ref for the once-registered listener, renumber every card's `gridX` to its new index, and persist.
+
+**No backfill migration.** Legacy dashboards have three independent 0..n sequences, so `orderDashboardCards` detects duplicate `gridX` values across kinds and falls back to the historical grouping (resources → workflows → widgets) until the first drag renumbers the dashboard into one global sequence. It converges on use. For that to hold, every insert has to take the next slot **across all three tables** — `nextGridX()` in `routes/dashboards.ts`, used by pin / workflow-pin / widget create.
+
+`POST /dashboards/:id/reorder` takes `{cards: [{kind, id}]}` (whole grid, index → `gridX`) and still accepts the older `{resourceIds}`. Only resource pins bump `syncVersion` — they're the only card kind the desktop sync protocol carries (`routes/sync.ts`). Desktop: `reorderCloudCards` → IPC `cloud_reorder_pins`; local mode updates `dashboard_pins`/`dashboard_workflow_pins` directly (widgets are cloud-only, so they never appear in a local sequence).
+
+**Layout gotcha:** the `SortableDashboardCard` wrapper is the grid item, so grid-positioning classes belong on it (`className="col-span-2"` for cost graphs, moved off `CostGraphCard`), and it carries `[&>*]:h-full` so the card still fills a row stretched by a taller neighbour.
+
 ## Cost graphs, budgets & alerts (cloud-only)
 
 Spend reporting as dashboard widgets. Pipeline mirrors the metrics path: **plugin `fetchCostData` → daily poller pass → ClickHouse `cost_daily` → `/api/org/:orgId/costs|budgets` → shared recharts components**.

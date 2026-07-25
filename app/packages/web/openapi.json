@@ -1599,6 +1599,23 @@
       "ReorderRequest": {
         "type": "object",
         "properties": {
+          "cards": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": ["resource", "workflow", "widget"]
+                },
+                "id": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "id"],
+              "additionalProperties": false
+            }
+          },
           "resourceIds": {
             "type": "array",
             "items": {
@@ -1606,7 +1623,6 @@
             }
           }
         },
-        "required": ["resourceIds"],
         "additionalProperties": false
       },
       "UnpinRequest": {
@@ -8039,7 +8055,8 @@
     "/api/org/{orgId}/dashboards/{id}/reorder": {
       "post": {
         "tags": ["Dashboards"],
-        "summary": "Reorder dashboard pins",
+        "summary": "Reorder dashboard cards",
+        "description": "Persists the order of a dashboard's grid. Pass `cards` to order resource pins, workflow pins, and widgets as one sequence; `resourceIds` orders resource pins alone.\n\n_Requires permission: `dashboards:write`._",
         "parameters": [
           {
             "schema": {
@@ -8096,8 +8113,7 @@
           }
         },
         "operationId": "postOrgOrgIdDashboardsIdReorder",
-        "x-required-permission": "dashboards:write",
-        "description": "_Requires permission: `dashboards:write`._"
+        "x-required-permission": "dashboards:write"
       }
     },
     "/api/org/{orgId}/dashboards/unpin": {

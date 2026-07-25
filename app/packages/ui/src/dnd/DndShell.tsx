@@ -70,14 +70,16 @@ export function DndShell({
     const resource = data?.resource as DraggableResource | undefined;
     const workflow = data?.workflow as DraggableWorkflow | undefined;
 
-    // Dashboard card reorder — both active and over are cards within the grid
+    // Dashboard card reorder — both active and over are cards within the grid.
+    // Ids are `dashboard-card:<kind>:<id>`; the host resolves them against its
+    // merged card list (see `card-order.ts`).
     if (String(active.id).startsWith("dashboard-card:") && overId.startsWith("dashboard-card:")) {
-      const activeResourceId = String(active.id).replace("dashboard-card:", "");
-      const overResourceId = overId.replace("dashboard-card:", "");
-      if (activeResourceId !== overResourceId) {
+      const activeCardId = String(active.id).replace("dashboard-card:", "");
+      const overCardId = overId.replace("dashboard-card:", "");
+      if (activeCardId !== overCardId) {
         window.dispatchEvent(
           new CustomEvent("iw:dashboard-card-reorder", {
-            detail: { activeResourceId, overResourceId },
+            detail: { activeCardId, overCardId },
           }),
         );
       }

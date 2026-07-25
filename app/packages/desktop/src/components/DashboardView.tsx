@@ -9,9 +9,13 @@ import {
   SortableDashboardCard,
   SortableContext,
   rectSortingStrategy,
-  arrayMove,
+  cardOrderIndex,
+  dashboardCardId,
+  moveDashboardCard,
+  orderDashboardCards,
   getListableResourceTypes,
   formatErrorMessage,
+  type DashboardCardKind,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
@@ -36,7 +40,7 @@ import {
   getCloudEnrichedPin,
   probeCloudPins,
   unpinCloudResource,
-  reorderCloudPins,
+  reorderCloudCards,
   renameCloudDashboard,
   deleteCloudDashboard,
   queryCloudCosts,
@@ -51,8 +55,8 @@ import {
   type CloudProbeItem,
 } from "../lib/cloud-api";
 import {
-  BudgetCard,
   BudgetConfigModal,
+  BudgetWidgetCard,
   CostCollectionNotice,
   CostGraphCard,
   CostGraphConfigModal,
@@ -70,6 +74,17 @@ import type { SearchResult } from "./SpotlightSearch";
 import { ResourceCard } from "./DashboardView/ResourceCard";
 import type { CardStatus, PinnedRow, PluginMeta } from "./DashboardView/types";
 
+/** One card in the dashboard grid, whichever table it came from. */
+type DashboardCard =
+  | { kind: "resource"; id: string; gridX: number; row: PinnedRow }
+  | {
+      kind: "workflow";
+      id: string;
+      gridX: number;
+      workflowPin: { pinId: string; workflowId: string; gridX: number };
+    }
+  | { kind: "widget"; id: string; gridX: number; widget: DashboardWidget };
+
 interface DashboardViewProps {
   dashboardId: string;
 }
@@ -77,7 +92,9 @@ interface DashboardViewProps {
 export function DashboardView({ dashboardId }: DashboardViewProps) {
   const navigate = useNavigate();
   const [pinned, setPinned] = useState<PinnedRow[]>([]);
-  const [workflowPins, setWorkflowPins] = useState<{ pinId: string; workflowId: string }[]>([]);
+  const [workflowPins, setWorkflowPins] = useState<
+    { pinId: string; workflowId: string; gridX: number }[]
+  >([]);
   const [pluginMeta, setPluginMeta] = useState<Record<string, PluginMeta>>({});
   const [loading, setLoading] = useState(true);
   const [dashboardName, setDashboardName] = useState("");
@@ -106,39 +123,89 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const { setNodeRef, isOver } = useDroppable({ id: `dashboard:${dashboardId}` });
 
+  /**
+   * One card per grid slot, whichever table it came from — the three kinds are
+   * dragged as a single sequence. Cloud dashboards carry resource pins and
+   * widgets; local ones carry resource pins and workflow pins.
+   */
+  const cards = useMemo(
+    () =>
+      orderDashboardCards<DashboardCard>([
+        ...pinned.map((row) => ({
+          kind: "resource" as const,
+          id: row.resource_id,
+          gridX: row.grid_x,
+          row,
+        })),
+        ...workflowPins.map((workflowPin) => ({
+          kind: "workflow" as const,
+          id: workflowPin.workflowId,
+          gridX: workflowPin.gridX,
+          workflowPin,
+        })),
+        ...widgets.map((widget) => ({
+          kind: "widget" as const,
+          id: widget.id,
+          gridX: widget.gridX,
+          widget,
+        })),
+      ]),
+    [pinned, workflowPins, widgets],
+  );
+  // The reorder listener is registered once; a ref keeps it off the card list
+  // without going stale.
+  const cardsRef = useRef(cards);
+  cardsRef.current = cards;
+
   const handleReorder = useCallback(
     (e: Event) => {
-      const { activeResourceId, overResourceId } = (e as CustomEvent).detail as {
-        activeResourceId: string;
-        overResourceId: string;
+      const { activeCardId, overCardId } = (e as CustomEvent).detail as {
+        activeCardId: string;
+        overCardId: string;
       };
-      setPinned((prev) => {
-        const oldIndex = prev.findIndex((p) => p.resource_id === activeResourceId);
-        const newIndex = prev.findIndex((p) => p.resource_id === overResourceId);
-        if (oldIndex === -1 || newIndex === -1) return prev;
-        const next = arrayMove(prev, oldIndex, newIndex);
-        void (async () => {
-          const orgId = useUIStore.getState().activeCloudOrgId;
-          if (orgId) {
-            await reorderCloudPins(
-              orgId,
-              dashboardId,
-              next.map((r) => r.resource_id),
-            );
-          } else {
-            const db = await getDb();
-            await Promise.all(
-              next.map((row, i) =>
-                db.execute(
+      // Resource pins, workflow pins, and widgets share one sequence, so a
+      // drag renumbers every card and the new index becomes its gridX.
+      const next = moveDashboardCard(cardsRef.current, activeCardId, overCardId);
+      if (next === cardsRef.current) return;
+      const indexOf = cardOrderIndex(next);
+      const gridXFor = (kind: DashboardCardKind, id: string, fallback: number) =>
+        indexOf.get(dashboardCardId(kind, id)) ?? fallback;
+
+      setPinned((prev) =>
+        prev.map((r) => ({ ...r, grid_x: gridXFor("resource", r.resource_id, r.grid_x) })),
+      );
+      setWorkflowPins((prev) =>
+        prev.map((w) => ({ ...w, gridX: gridXFor("workflow", w.workflowId, w.gridX) })),
+      );
+      setWidgets((prev) => prev.map((w) => ({ ...w, gridX: gridXFor("widget", w.id, w.gridX) })));
+
+      void (async () => {
+        const orgId = useUIStore.getState().activeCloudOrgId;
+        if (orgId) {
+          await reorderCloudCards(
+            orgId,
+            dashboardId,
+            next.map(({ kind, id }) => ({ kind, id })),
+          );
+          return;
+        }
+        // Local dashboards hold resource pins and workflow pins; widgets are
+        // cloud-only, so nothing else can appear in the sequence here.
+        const db = await getDb();
+        await Promise.all(
+          next.map((card, i) =>
+            card.kind === "workflow"
+              ? db.execute(
+                  "UPDATE dashboard_workflow_pins SET grid_x = $1 WHERE dashboard_id = $2 AND workflow_id = $3",
+                  [i, dashboardId, card.id],
+                )
+              : db.execute(
                   "UPDATE dashboard_pins SET grid_x = $1 WHERE dashboard_id = $2 AND resource_id = $3",
-                  [i, dashboardId, row.resource_id],
+                  [i, dashboardId, card.id],
                 ),
-              ),
-            );
-          }
-        })();
-        return next;
-      });
+          ),
+        );
+      })();
     },
     [dashboardId],
   );
@@ -200,7 +267,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
             .sort((a, b) => a.gridX - b.gridX)
             .map(async (pin) => {
               try {
-                return await getCloudEnrichedPin(orgId, pin.pinId);
+                const detail = await getCloudEnrichedPin(orgId, pin.pinId);
+                return detail ? { detail, gridX: pin.gridX } : null;
               } catch {
                 return null;
               }
@@ -208,10 +276,12 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         );
         rows = [];
         const initialStatus: Record<string, CardStatus> = {};
-        for (const e of enriched) {
-          if (!e) continue;
+        for (const entry of enriched) {
+          if (!entry) continue;
+          const e = entry.detail;
           rows.push({
             resource_id: e.resourceId,
+            grid_x: entry.gridX,
             plugin_id: e.pluginId,
             resource_type_id: e.resourceTypeId,
             account_id: e.accountId,
@@ -258,7 +328,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
 
         rows = await db.select<PinnedRow[]>(
           `
-          SELECT r.id as resource_id, r.plugin_id, r.resource_type_id,
+          SELECT r.id as resource_id, dp.grid_x, r.plugin_id, r.resource_type_id,
                  r.account_id, r.display_name, r.fields_json, r.outputs_json
           FROM dashboard_pins dp
           JOIN resources r ON r.id = dp.resource_id
@@ -270,9 +340,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         );
 
         // Workflow pins are local-only (desktop workflows live in SQLite).
-        const wfRows = await db.select<{ pin_id: string; workflow_id: string }[]>(
+        const wfRows = await db.select<{ pin_id: string; workflow_id: string; grid_x: number }[]>(
           `
-          SELECT dwp.id as pin_id, dwp.workflow_id
+          SELECT dwp.id as pin_id, dwp.workflow_id, dwp.grid_x
           FROM dashboard_workflow_pins dwp
           JOIN workflows w ON w.id = dwp.workflow_id
           WHERE dwp.dashboard_id = $1 AND dwp.deleted_at IS NULL AND w.deleted_at IS NULL
@@ -280,7 +350,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         `,
           [dashboardId],
         );
-        setWorkflowPins(wfRows.map((r) => ({ pinId: r.pin_id, workflowId: r.workflow_id })));
+        setWorkflowPins(
+          wfRows.map((r) => ({ pinId: r.pin_id, workflowId: r.workflow_id, gridX: r.grid_x })),
+        );
       }
 
       setDashboardName(loadedName);
@@ -876,72 +948,65 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           </div>
         ) : (
           <SortableContext
-            items={pinned.map((r) => `dashboard-card:${r.resource_id}`)}
+            items={cards.map((c) => `dashboard-card:${dashboardCardId(c.kind, c.id)}`)}
             strategy={rectSortingStrategy}
           >
             <div
               className="grid gap-4"
               style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
             >
-              {pinned.map((row) => (
-                <SortableDashboardCard key={row.resource_id} id={row.resource_id}>
-                  <ResourceCard
-                    row={row}
-                    pluginMeta={pluginMeta[row.plugin_id]}
-                    status={cardStatus[row.resource_id]}
-                    onOpen={() => goToResource(row)}
-                    onUnpin={() => void unpin(row.resource_id)}
-                    onConnect={
-                      cardStatus[row.resource_id]?.sshTarget ? () => goToResource(row) : undefined
-                    }
-                  />
+              {cards.map((card) => (
+                <SortableDashboardCard
+                  key={dashboardCardId(card.kind, card.id)}
+                  id={dashboardCardId(card.kind, card.id)}
+                  // The wrapper is the grid item, so a cost graph's span
+                  // belongs here rather than on the card.
+                  className={
+                    card.kind === "widget" && card.widget.kind === "cost_graph"
+                      ? "col-span-2"
+                      : undefined
+                  }
+                >
+                  {card.kind === "resource" ? (
+                    <ResourceCard
+                      row={card.row}
+                      pluginMeta={pluginMeta[card.row.plugin_id]}
+                      status={cardStatus[card.row.resource_id]}
+                      onOpen={() => goToResource(card.row)}
+                      onUnpin={() => void unpin(card.row.resource_id)}
+                      onConnect={
+                        cardStatus[card.row.resource_id]?.sshTarget
+                          ? () => goToResource(card.row)
+                          : undefined
+                      }
+                    />
+                  ) : card.kind === "workflow" ? (
+                    <WorkflowPinCard
+                      workflowId={card.workflowPin.workflowId}
+                      onOpen={() =>
+                        void navigateToWorkspaceTarget(navigate, workflowsTabTarget(), {
+                          label: "Workflows",
+                        })
+                      }
+                      onUnpin={() => void unpinPinnedWorkflow(card.workflowPin.workflowId)}
+                    />
+                  ) : card.widget.kind === "cost_graph" ? (
+                    <CostGraphCard
+                      title={card.widget.title}
+                      config={card.widget.config as CostGraphConfig}
+                      api={costApi}
+                      onEdit={() => setCostModal({ widget: card.widget })}
+                      onRemove={() => void removeWidget(card.widget.id)}
+                    />
+                  ) : (
+                    <BudgetWidgetCard
+                      budget={budgets.get((card.widget.config as { budgetId: string }).budgetId)}
+                      onEdit={() => setBudgetModal({ widget: card.widget })}
+                      onRemove={() => void removeWidget(card.widget.id)}
+                    />
+                  )}
                 </SortableDashboardCard>
               ))}
-
-              {workflowPins.map((wf) => (
-                <WorkflowPinCard
-                  key={wf.pinId}
-                  workflowId={wf.workflowId}
-                  onOpen={() =>
-                    void navigateToWorkspaceTarget(navigate, workflowsTabTarget(), {
-                      label: "Workflows",
-                    })
-                  }
-                  onUnpin={() => void unpinPinnedWorkflow(wf.workflowId)}
-                />
-              ))}
-
-              {widgets.map((widget) =>
-                widget.kind === "cost_graph" ? (
-                  <CostGraphCard
-                    key={widget.id}
-                    title={widget.title}
-                    config={widget.config as CostGraphConfig}
-                    api={costApi}
-                    onEdit={() => setCostModal({ widget })}
-                    onRemove={() => void removeWidget(widget.id)}
-                  />
-                ) : (
-                  (() => {
-                    const budget = budgets.get((widget.config as { budgetId: string }).budgetId);
-                    return budget ? (
-                      <BudgetCard
-                        key={widget.id}
-                        budget={budget}
-                        onEdit={() => setBudgetModal({ widget })}
-                        onRemove={() => void removeWidget(widget.id)}
-                      />
-                    ) : (
-                      <div
-                        key={widget.id}
-                        className="rounded-2xl border border-border bg-surface-raised flex items-center justify-center text-xs text-on-surface-faint min-h-[140px]"
-                      >
-                        Loading budget…
-                      </div>
-                    );
-                  })()
-                ),
-              )}
 
               <div className="relative min-h-[140px]">
                 <button

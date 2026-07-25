@@ -199,6 +199,18 @@ export { DroppableDashboardItem } from "./dnd/DroppableDashboardItem.js";
 export type { DroppableDashboardItemProps } from "./dnd/DroppableDashboardItem.js";
 export { DroppableDashboardArea } from "./dnd/DroppableDashboardArea.js";
 export type { DroppableDashboardAreaProps } from "./dnd/DroppableDashboardArea.js";
+export {
+  dashboardCardId,
+  parseDashboardCardId,
+  orderDashboardCards,
+  moveDashboardCard,
+  cardOrderIndex,
+} from "./dnd/card-order.js";
+export type {
+  DashboardCardKind,
+  DashboardCardRef,
+  OrderableDashboardCard,
+} from "./dnd/card-order.js";
 export { SortableDashboardCard } from "./dnd/SortableDashboardCard.js";
 export type { SortableDashboardCardProps } from "./dnd/SortableDashboardCard.js";
 export { SortableContext, rectSortingStrategy, arrayMove } from "@dnd-kit/sortable";

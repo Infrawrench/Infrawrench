@@ -1,13 +1,17 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   DroppableDashboardArea,
   SortableDashboardCard,
   SortableContext,
   rectSortingStrategy,
-  arrayMove,
   SparklineChart,
+  cardOrderIndex,
+  dashboardCardId,
+  moveDashboardCard,
+  orderDashboardCards,
   useUIStore,
+  type DashboardCardKind,
   formatErrorMessage,
   extractHostLabel,
   toast,
@@ -15,8 +19,8 @@ import {
 import type { ProbeStatus } from "@infrawrench/plugin-base";
 import { WorkflowDashboardCard, type WorkflowDashboardCardData } from "@infrawrench/ui/workflows";
 import {
-  BudgetCard,
   BudgetConfigModal,
+  BudgetWidgetCard,
   CostCollectionNotice,
   CostGraphCard,
   CostGraphConfigModal,
@@ -73,6 +77,16 @@ interface PinDetail {
   status: ProbeStatus;
 }
 
+/**
+ * One card in the grid, whichever table it came from. Resource pins, workflow
+ * pins, and widgets are dragged as a single sequence, so they have to be
+ * merged into one list before rendering.
+ */
+type DashboardCard =
+  | { kind: "resource"; id: string; gridX: number; pin: PinnedResource }
+  | { kind: "workflow"; id: string; gridX: number; workflowPin: WorkflowPin }
+  | { kind: "widget"; id: string; gridX: number; widget: DashboardWidget };
+
 interface DashboardViewProps {
   dashboardId: string;
   dashboardName: string;
@@ -117,6 +131,35 @@ export function DashboardView({
   useEffect(() => {
     setWidgets(initialWidgets ?? []);
   }, [initialWidgets]);
+
+  const cards = useMemo(
+    () =>
+      orderDashboardCards<DashboardCard>([
+        ...pins.map((pin) => ({
+          kind: "resource" as const,
+          id: pin.resourceId,
+          gridX: pin.gridX,
+          pin,
+        })),
+        ...workflowPins.map((workflowPin) => ({
+          kind: "workflow" as const,
+          id: workflowPin.workflowId,
+          gridX: workflowPin.gridX,
+          workflowPin,
+        })),
+        ...widgets.map((widget) => ({
+          kind: "widget" as const,
+          id: widget.id,
+          gridX: widget.gridX,
+          widget,
+        })),
+      ]),
+    [pins, workflowPins, widgets],
+  );
+  // The reorder listener is registered once; a ref keeps it off the card list
+  // without going stale.
+  const cardsRef = useRef(cards);
+  cardsRef.current = cards;
 
   const costApi: CostApi = useMemo(
     () => ({
@@ -259,19 +302,28 @@ export function DashboardView({
 
   const handleReorder = useCallback(
     (e: Event) => {
-      const { activeResourceId, overResourceId } = (e as CustomEvent).detail as {
-        activeResourceId: string;
-        overResourceId: string;
+      const { activeCardId, overCardId } = (e as CustomEvent).detail as {
+        activeCardId: string;
+        overCardId: string;
       };
-      setPins((prev) => {
-        const oldIndex = prev.findIndex((p) => p.resourceId === activeResourceId);
-        const newIndex = prev.findIndex((p) => p.resourceId === overResourceId);
-        if (oldIndex === -1 || newIndex === -1) return prev;
-        const next = arrayMove(prev, oldIndex, newIndex);
-        void apiPost(`/api/org/${orgId}/dashboards/${dashboardId}/reorder`, {
-          resourceIds: next.map((p) => p.resourceId),
-        });
-        return next;
+      // Cards from all three tables share one sequence, so a drag renumbers
+      // every card and the new index becomes each card's gridX.
+      const next = moveDashboardCard(cardsRef.current, activeCardId, overCardId);
+      if (next === cardsRef.current) return;
+      const indexOf = cardOrderIndex(next);
+      const gridXFor = (kind: DashboardCardKind, id: string, fallback: number) =>
+        indexOf.get(dashboardCardId(kind, id)) ?? fallback;
+
+      setPins((prev) =>
+        prev.map((p) => ({ ...p, gridX: gridXFor("resource", p.resourceId, p.gridX) })),
+      );
+      setWorkflowPins((prev) =>
+        prev.map((w) => ({ ...w, gridX: gridXFor("workflow", w.workflowId, w.gridX) })),
+      );
+      setWidgets((prev) => prev.map((w) => ({ ...w, gridX: gridXFor("widget", w.id, w.gridX) })));
+
+      void apiPost(`/api/org/${orgId}/dashboards/${dashboardId}/reorder`, {
+        cards: next.map(({ kind, id }) => ({ kind, id })),
       });
     },
     [dashboardId, orgId],
@@ -406,75 +458,68 @@ export function DashboardView({
             </div>
           ) : (
             <SortableContext
-              items={pins.map((p) => `dashboard-card:${p.resourceId}`)}
+              items={cards.map((c) => `dashboard-card:${dashboardCardId(c.kind, c.id)}`)}
               strategy={rectSortingStrategy}
             >
               <div
                 className="grid gap-4"
                 style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
               >
-                {pins.map((pin) => (
-                  <SortableDashboardCard key={pin.pinId} id={pin.resourceId}>
-                    <PinCard
-                      pinId={pin.pinId}
-                      orgId={orgId}
-                      onUnpin={() => void handleUnpin(pin.pinId, pin.resourceId)}
-                      onOpen={(detail) =>
-                        void navigate({
-                          to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-                          params: {
-                            orgId,
-                            pluginId: detail.pluginId,
-                            resourceTypeId: detail.resourceTypeId,
-                            resourceId: detail.resourceId,
-                          },
-                        })
-                      }
-                    />
+                {cards.map((card) => (
+                  <SortableDashboardCard
+                    key={dashboardCardId(card.kind, card.id)}
+                    id={dashboardCardId(card.kind, card.id)}
+                    // The wrapper is the grid item, so a cost graph's span
+                    // belongs here rather than on the card.
+                    className={
+                      card.kind === "widget" && card.widget.kind === "cost_graph"
+                        ? "col-span-2"
+                        : undefined
+                    }
+                  >
+                    {card.kind === "resource" ? (
+                      <PinCard
+                        pinId={card.pin.pinId}
+                        orgId={orgId}
+                        onUnpin={() => void handleUnpin(card.pin.pinId, card.pin.resourceId)}
+                        onOpen={(detail) =>
+                          void navigate({
+                            to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+                            params: {
+                              orgId,
+                              pluginId: detail.pluginId,
+                              resourceTypeId: detail.resourceTypeId,
+                              resourceId: detail.resourceId,
+                            },
+                          })
+                        }
+                      />
+                    ) : card.kind === "workflow" ? (
+                      <WorkflowDashboardCard
+                        data={toCardData(card.workflowPin)}
+                        onOpen={() =>
+                          void navigate({ to: "/org/$orgId/workflows", params: { orgId } })
+                        }
+                        onUnpin={() => void handleUnpinWorkflow(card.workflowPin.workflowId)}
+                        onRun={() => handleRunWorkflow(card.workflowPin.workflowId)}
+                      />
+                    ) : card.widget.kind === "cost_graph" ? (
+                      <CostGraphCard
+                        title={card.widget.title}
+                        config={card.widget.config as CostGraphConfig}
+                        api={costApi}
+                        onEdit={() => setCostModal({ widget: card.widget })}
+                        onRemove={() => void handleRemoveWidget(card.widget.id)}
+                      />
+                    ) : (
+                      <BudgetWidgetCard
+                        budget={budgets.get((card.widget.config as { budgetId: string }).budgetId)}
+                        onEdit={() => setBudgetModal({ widget: card.widget })}
+                        onRemove={() => void handleRemoveWidget(card.widget.id)}
+                      />
+                    )}
                   </SortableDashboardCard>
                 ))}
-
-                {workflowPins.map((wf) => (
-                  <WorkflowDashboardCard
-                    key={wf.pinId}
-                    data={toCardData(wf)}
-                    onOpen={() => void navigate({ to: "/org/$orgId/workflows", params: { orgId } })}
-                    onUnpin={() => void handleUnpinWorkflow(wf.workflowId)}
-                    onRun={() => handleRunWorkflow(wf.workflowId)}
-                  />
-                ))}
-
-                {widgets.map((widget) =>
-                  widget.kind === "cost_graph" ? (
-                    <CostGraphCard
-                      key={widget.id}
-                      title={widget.title}
-                      config={widget.config as CostGraphConfig}
-                      api={costApi}
-                      onEdit={() => setCostModal({ widget })}
-                      onRemove={() => void handleRemoveWidget(widget.id)}
-                    />
-                  ) : (
-                    (() => {
-                      const budget = budgets.get((widget.config as { budgetId: string }).budgetId);
-                      return budget ? (
-                        <BudgetCard
-                          key={widget.id}
-                          budget={budget}
-                          onEdit={() => setBudgetModal({ widget })}
-                          onRemove={() => void handleRemoveWidget(widget.id)}
-                        />
-                      ) : (
-                        <div
-                          key={widget.id}
-                          className="rounded-2xl border border-border bg-surface-raised flex items-center justify-center text-xs text-on-surface-faint min-h-[140px]"
-                        >
-                          Loading budget…
-                        </div>
-                      );
-                    })()
-                  ),
-                )}
 
                 <div className="relative min-h-[140px]">
                   <button

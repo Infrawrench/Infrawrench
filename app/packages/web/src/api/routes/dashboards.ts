@@ -43,6 +43,42 @@ declare module "hono" {
 
 const app = new Hono();
 
+/** Card kinds the grid can hold, and therefore that a reorder may name. */
+const CARD_KINDS = new Set(["resource", "workflow", "widget"]);
+
+/**
+ * Next free slot at the end of a dashboard's grid.
+ *
+ * Resource pins, workflow pins, and widgets share one drag-reorderable
+ * sequence, so a new card of any kind has to clear the highest `gridX` across
+ * all three tables — placing it at the end of its own table would drop it into
+ * the middle of the grid.
+ */
+async function nextGridX(dashboardId: string): Promise<number> {
+  const [pins, workflowPins, widgets] = await Promise.all([
+    db
+      .select({ value: max(dashboardPins.gridX) })
+      .from(dashboardPins)
+      .where(eq(dashboardPins.dashboardId, dashboardId)),
+    db
+      .select({ value: max(dashboardWorkflowPins.gridX) })
+      .from(dashboardWorkflowPins)
+      .where(eq(dashboardWorkflowPins.dashboardId, dashboardId)),
+    db
+      .select({ value: max(dashboardWidgets.gridX) })
+      .from(dashboardWidgets)
+      .where(
+        and(eq(dashboardWidgets.dashboardId, dashboardId), isNull(dashboardWidgets.deletedAt)),
+      ),
+  ]);
+  const highest = Math.max(
+    pins[0]?.value ?? -1,
+    workflowPins[0]?.value ?? -1,
+    widgets[0]?.value ?? -1,
+  );
+  return highest + 1;
+}
+
 interface WorkflowPinDto {
   pinId: string;
   workflowId: string;
@@ -301,11 +337,6 @@ app.post("/widgets", async (c) => {
     return c.json({ error: "Invalid widget config", issues: parsed.error.issues }, 400);
   }
 
-  const [maxX] = await db
-    .select({ value: max(dashboardWidgets.gridX) })
-    .from(dashboardWidgets)
-    .where(and(eq(dashboardWidgets.dashboardId, dashboard.id), isNull(dashboardWidgets.deletedAt)));
-
   const [created] = await db
     .insert(dashboardWidgets)
     .values({
@@ -315,7 +346,7 @@ app.post("/widgets", async (c) => {
       kind,
       title: body.title ?? "",
       config: parsed.data,
-      gridX: (maxX?.value ?? -1) + 1,
+      gridX: await nextGridX(dashboard.id),
     })
     .returning();
   return c.json(created);
@@ -449,15 +480,8 @@ app.post("/pin", async (c) => {
     .limit(1);
   if (!resource) return c.json({ error: "Resource not found" }, 404);
 
-  // When no explicit position, place at the end
-  let effectiveGridX = gridX ?? 0;
-  if (gridX == null) {
-    const [maxRow] = await db
-      .select({ maxX: max(dashboardPins.gridX) })
-      .from(dashboardPins)
-      .where(eq(dashboardPins.dashboardId, dashboardId));
-    effectiveGridX = (maxRow?.maxX ?? -1) + 1;
-  }
+  // When no explicit position, place at the end of the whole grid
+  const effectiveGridX = gridX ?? (await nextGridX(dashboardId));
 
   await db
     .insert(dashboardPins)
@@ -476,12 +500,27 @@ app.post("/pin", async (c) => {
   return c.json({ ok: true });
 });
 
-/** POST /api/dashboards/:id/reorder — persist card order */
+/**
+ * POST /api/dashboards/:id/reorder — persist card order.
+ *
+ * `cards` is the whole grid in its new order, mixing all three kinds, and
+ * `gridX` is written as the index within that one sequence. `resourceIds` is
+ * the older resource-pins-only form, kept for compatibility and treated as
+ * `cards` of kind "resource".
+ */
 app.post("/:id/reorder", async (c) => {
   requirePermission(c, "dashboards:write");
   const organizationId = c.get("organizationId");
   const dashboardId = c.req.param("id");
-  const { resourceIds } = await c.req.json<{ resourceIds: string[] }>();
+  const body = await c.req.json<{
+    cards?: Array<{ kind: string; id: string }>;
+    resourceIds?: string[];
+  }>();
+  const cards =
+    body.cards ?? (body.resourceIds ?? []).map((id) => ({ kind: "resource" as const, id }));
+  if (cards.some((card) => !CARD_KINDS.has(card.kind) || !card.id)) {
+    return c.json({ error: "Invalid card reference" }, 400);
+  }
 
   const [dashboard] = await db
     .select({ id: dashboards.id })
@@ -490,16 +529,30 @@ app.post("/:id/reorder", async (c) => {
     .limit(1);
   if (!dashboard) return c.json({ error: "Dashboard not found" }, 404);
 
-  // Update grid_x for each pin to reflect the new order
   await Promise.all(
-    resourceIds.map((resourceId, index) =>
-      db
+    cards.map(({ kind, id }, index) => {
+      if (kind === "workflow") {
+        return db
+          .update(dashboardWorkflowPins)
+          .set({ gridX: index })
+          .where(
+            and(
+              eq(dashboardWorkflowPins.dashboardId, dashboardId),
+              eq(dashboardWorkflowPins.workflowId, id),
+            ),
+          );
+      }
+      if (kind === "widget") {
+        return db
+          .update(dashboardWidgets)
+          .set({ gridX: index })
+          .where(and(eq(dashboardWidgets.dashboardId, dashboardId), eq(dashboardWidgets.id, id)));
+      }
+      return db
         .update(dashboardPins)
         .set({ gridX: index, syncVersion: nextPinSyncVersion(organizationId) })
-        .where(
-          and(eq(dashboardPins.dashboardId, dashboardId), eq(dashboardPins.resourceId, resourceId)),
-        ),
-    ),
+        .where(and(eq(dashboardPins.dashboardId, dashboardId), eq(dashboardPins.resourceId, id)));
+    }),
   );
 
   return c.json({ ok: true });
@@ -556,11 +609,6 @@ app.post("/workflow-pin", async (c) => {
     .limit(1);
   if (!workflow) return c.json({ error: "Workflow not found" }, 404);
 
-  const [maxRow] = await db
-    .select({ maxX: max(dashboardWorkflowPins.gridX) })
-    .from(dashboardWorkflowPins)
-    .where(eq(dashboardWorkflowPins.dashboardId, dashboardId));
-
   await db
     .insert(dashboardWorkflowPins)
     .values({
@@ -568,7 +616,7 @@ app.post("/workflow-pin", async (c) => {
       organizationId,
       dashboardId,
       workflowId,
-      gridX: (maxRow?.maxX ?? -1) + 1,
+      gridX: await nextGridX(dashboardId),
     })
     .onConflictDoNothing();
   return c.json({ ok: true });

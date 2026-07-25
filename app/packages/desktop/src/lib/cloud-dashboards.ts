@@ -1,4 +1,4 @@
-import type { Dashboard } from "@infrawrench/ui";
+import type { Dashboard, DashboardCardRef } from "@infrawrench/ui";
 import type { DashboardWidget } from "@infrawrench/ui/cost";
 import type { ProbeStatus } from "@infrawrench/plugin-base";
 import { invoke } from "./invoke";
@@ -83,12 +83,12 @@ export async function unpinCloudResource(
   await invoke("cloud_unpin_resource", { orgId, dashboardId, resourceId });
 }
 
-export async function reorderCloudPins(
+export async function reorderCloudCards(
   orgId: string,
   dashboardId: string,
-  resourceIds: string[],
+  cards: DashboardCardRef[],
 ): Promise<void> {
-  await invoke("cloud_reorder_pins", { orgId, dashboardId, resourceIds });
+  await invoke("cloud_reorder_pins", { orgId, dashboardId, cards });
 }
 
 export async function probeCloudPins(

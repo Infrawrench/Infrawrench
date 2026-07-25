@@ -74,6 +74,8 @@ ipcMain.handle(
   },
 );
 
+// `cards` is the whole grid in its new order — resource pins and widgets share
+// one drag sequence, so the reorder can't be expressed as resource ids alone.
 ipcMain.handle(
   "cloud_reorder_pins",
   async (
@@ -81,12 +83,12 @@ ipcMain.handle(
     {
       orgId,
       dashboardId,
-      resourceIds,
-    }: { orgId: string; dashboardId: string; resourceIds: string[] },
+      cards,
+    }: { orgId: string; dashboardId: string; cards: Array<{ kind: string; id: string }> },
   ) => {
     await cloudFetch(orgId, `/dashboards/${encodeURIComponent(dashboardId)}/reorder`, {
       method: "POST",
-      body: JSON.stringify({ resourceIds }),
+      body: JSON.stringify({ cards }),
     });
     return { ok: true };
   },

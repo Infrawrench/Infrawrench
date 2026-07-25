@@ -154,7 +154,16 @@ const UnpinRequest = strict({
 }).openapi("UnpinRequest");
 
 const ReorderRequest = strict({
-  resourceIds: z.array(ResourceId),
+  /**
+   * The whole grid in its new order. Resource pins, workflow pins, and
+   * widgets share one drag-reorderable sequence, and each card's `gridX`
+   * becomes its index within it.
+   */
+  cards: z
+    .array(strict({ kind: z.enum(["resource", "workflow", "widget"]), id: z.string() }))
+    .optional(),
+  /** Resource-pins-only form, equivalent to `cards` of kind "resource". */
+  resourceIds: z.array(ResourceId).optional(),
 }).openapi("ReorderRequest");
 
 const TabTarget = strict({
@@ -357,7 +366,10 @@ export function registerDashboardPaths(ctx: BuildContext) {
     method: "post",
     path: "/api/org/{orgId}/dashboards/{id}/reorder",
     tags: ["Dashboards"],
-    summary: "Reorder dashboard pins",
+    summary: "Reorder dashboard cards",
+    description:
+      "Persists the order of a dashboard's grid. Pass `cards` to order resource pins, " +
+      "workflow pins, and widgets as one sequence; `resourceIds` orders resource pins alone.",
     request: {
       params: params({ id: Uuid.openapi({ param: { name: "id", in: "path" } }) }),
       body: { content: { "application/json": { schema: ReorderRequest } }, required: true },

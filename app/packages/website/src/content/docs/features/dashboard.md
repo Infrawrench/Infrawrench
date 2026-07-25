@@ -20,6 +20,8 @@ The dashboard is the first thing you see after sign-in. It is a grid of pinned r
 - **Resize** from the bottom-right corner.
 - **Unpin** from the card’s menu, or from the resource detail page.
 
+Every kind of card is draggable and they all share one order, so a cost graph or budget can sit between two resource cards rather than being stuck at the end of the grid. New cards are added at the end. The order is per dashboard and shared with everyone in the org.
+
 <insert [Dashboard with a Droplet card, an EKS cluster card, and a Postgres database card] here>
 
 ## What cards show
@@ -38,7 +40,7 @@ Only **pinned** resources accumulate history. Unpin a resource and its history s
 
 ## Cost graphs and budgets
 
-The **+** tile on a dashboard is a menu: pin a resource, or add a **Cost graph** or **Budget** widget (cloud orgs only). Cost widgets chart the actual spend of your connected accounts and track monthly budgets with alerts — see [Cost graphs & budgets](./cloud-costs.md).
+The **+** tile on a dashboard is a menu: pin a resource, or add a **Cost graph** or **Budget** widget (cloud orgs only). Cost widgets chart the actual spend of your connected accounts and track monthly budgets with alerts — see [Cost graphs & budgets](./cloud-costs.md). They drag into place alongside resource cards like anything else on the grid; a cost graph occupies two columns.
 
 <insert [Dashboard "+" tile menu open showing Pin a resource, Cost graph, and Budget entries] here>
 

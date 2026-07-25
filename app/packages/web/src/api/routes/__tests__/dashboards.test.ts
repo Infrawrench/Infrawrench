@@ -249,6 +249,92 @@ describe("Dashboard routes", () => {
     });
   });
 
+  describe("POST /:id/reorder — persist card order", () => {
+    /** Captures the `set` payload of every update() in call order. */
+    function captureUpdates() {
+      const sets: Array<Record<string, unknown>> = [];
+      mockUpdate.mockImplementation(() => ({
+        set: (payload: Record<string, unknown>) => {
+          sets.push(payload);
+          return { where: vi.fn().mockResolvedValue(undefined) };
+        },
+      }));
+      return sets;
+    }
+
+    it("numbers every card kind into one sequence", async () => {
+      mockSelect.mockReturnValue(chainMock([{ id: "d1" }]));
+      const sets = captureUpdates();
+
+      const app = buildApp();
+      const res = await app.request("/d1/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cards: [
+            { kind: "widget", id: "w1" },
+            { kind: "resource", id: "r1" },
+            { kind: "workflow", id: "f1" },
+          ],
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      // gridX is the index within the merged grid, not within each table.
+      expect(sets.map((s) => s["gridX"])).toEqual([0, 1, 2]);
+      // Only resource pins carry a sync version — they are the only kind the
+      // desktop sync protocol pushes.
+      expect(sets[1]).toHaveProperty("syncVersion");
+      expect(sets[0]).not.toHaveProperty("syncVersion");
+    });
+
+    it("still accepts the resource-only body", async () => {
+      mockSelect.mockReturnValue(chainMock([{ id: "d1" }]));
+      const sets = captureUpdates();
+
+      const app = buildApp();
+      const res = await app.request("/d1/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resourceIds: ["r1", "r2"] }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(sets).toHaveLength(2);
+      expect(sets.every((s) => "syncVersion" in s)).toBe(true);
+    });
+
+    it("rejects an unknown card kind rather than silently skipping it", async () => {
+      mockSelect.mockReturnValue(chainMock([{ id: "d1" }]));
+      captureUpdates();
+
+      const app = buildApp();
+      const res = await app.request("/d1/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cards: [{ kind: "chart", id: "c1" }] }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it("returns 404 for a dashboard in another org", async () => {
+      mockSelect.mockReturnValue(chainMock([]));
+      captureUpdates();
+
+      const app = buildApp();
+      const res = await app.request("/d1/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cards: [{ kind: "resource", id: "r1" }] }),
+      });
+
+      expect(res.status).toBe(404);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+  });
+
   describe("POST /unpin — unpin a resource", () => {
     it("hard-deletes the pin and returns ok", async () => {
       const dashChain = chainMock([{ id: "d1" }]);

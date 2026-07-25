@@ -123,3 +123,26 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
     </div>
   );
 }
+
+export interface BudgetWidgetCardProps {
+  /** Undefined while the dashboard's budget list is still loading. */
+  budget: BudgetWithStatus | undefined;
+  onEdit?: (() => void) | undefined;
+  onRemove?: (() => void) | undefined;
+}
+
+/**
+ * A budget widget's slot in the dashboard grid. Budget rows load separately
+ * from the widgets that reference them, so the placeholder holds the card's
+ * position — and its drag handle — until the row arrives.
+ */
+export function BudgetWidgetCard({ budget, onEdit, onRemove }: BudgetWidgetCardProps) {
+  if (!budget) {
+    return (
+      <div className="rounded-2xl border border-border bg-surface-raised flex items-center justify-center text-xs text-on-surface-faint min-h-[140px]">
+        Loading budget…
+      </div>
+    );
+  }
+  return <BudgetCard budget={budget} onEdit={onEdit} onRemove={onRemove} />;
+}

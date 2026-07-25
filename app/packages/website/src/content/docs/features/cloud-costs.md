@@ -18,6 +18,8 @@ Cost graphs turn the billing data from your connected provider accounts into das
 
 <insert [Cost graph config modal with chart type, binning, date range, group-by, and a provider filter row] here>
 
+Cost and budget cards drag around the grid like pinned resources, and share the same order — see [Arrange cards](./dashboard.md#arrange-cards).
+
 ### What you can configure
 
 | Option     | Choices                                                                                    |

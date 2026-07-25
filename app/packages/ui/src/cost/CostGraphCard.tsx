@@ -339,7 +339,9 @@ export function CostGraphCard({
   };
 
   return (
-    <div className="group relative rounded-2xl border border-border bg-surface-raised hover:border-border-strong transition-colors flex flex-col overflow-hidden col-span-2 min-h-[18rem]">
+    // The double-width span lives on the dashboard's sortable wrapper (the
+    // grid item); this card only owns its own minimum height.
+    <div className="group relative rounded-2xl border border-border bg-surface-raised hover:border-border-strong transition-colors flex flex-col overflow-hidden min-h-[18rem]">
       <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all z-10">
         {onEdit && (
           <button

@@ -12,7 +12,7 @@ import {
   pinCloudResource,
   probeCloudPins,
   renameCloudDashboard,
-  reorderCloudPins,
+  reorderCloudCards,
   unpinCloudResource,
 } from "../cloud-dashboards";
 
@@ -72,12 +72,20 @@ describe("cloud-dashboards wrappers", () => {
     });
   });
 
-  it("reorderCloudPins", async () => {
-    await reorderCloudPins("org1", "d1", ["a", "b"]);
+  it("reorderCloudCards sends the whole mixed grid", async () => {
+    await reorderCloudCards("org1", "d1", [
+      { kind: "resource", id: "a" },
+      { kind: "widget", id: "w1" },
+      { kind: "resource", id: "b" },
+    ]);
     expect(invoke).toHaveBeenCalledWith("cloud_reorder_pins", {
       orgId: "org1",
       dashboardId: "d1",
-      resourceIds: ["a", "b"],
+      cards: [
+        { kind: "resource", id: "a" },
+        { kind: "widget", id: "w1" },
+        { kind: "resource", id: "b" },
+      ],
     });
   });
 

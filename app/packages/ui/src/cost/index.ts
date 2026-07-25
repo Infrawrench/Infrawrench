@@ -9,7 +9,12 @@ export {
   DEFAULT_COST_GRAPH_CONFIG,
   type CostGraphConfigModalProps,
 } from "./CostGraphConfigModal.js";
-export { BudgetCard, type BudgetCardProps } from "./BudgetCard.js";
+export {
+  BudgetCard,
+  BudgetWidgetCard,
+  type BudgetCardProps,
+  type BudgetWidgetCardProps,
+} from "./BudgetCard.js";
 export {
   BudgetConfigModal,
   DEFAULT_BUDGET_INPUT,
