@@ -24,6 +24,9 @@ const encryptionMock = {
   decrypt: vi.fn().mockResolvedValue(JSON.stringify({ token: "secret-val" })),
   buildAad: vi.fn().mockReturnValue("aad"),
 };
+const mockLogAudit = vi.fn();
+vi.mock("@/services/audit", () => ({ logAudit: (...a: unknown[]) => mockLogAudit(...a) }));
+
 vi.mock("@/services/encryption", () => encryptionMock);
 vi.mock("@infrawrench/server-core/encryption", () => encryptionMock);
 
@@ -165,6 +168,41 @@ describe("Account routes", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.ok).toBe(true);
+    });
+  });
+
+  describe("GET /:id/credentials — read decrypted credentials", () => {
+    it("returns the plaintext and writes an audit entry", async () => {
+      const where = vi
+        .fn()
+        .mockResolvedValue([{ encryptedCredentials: "enc", credentialsIv: "iv" }]);
+      mockSelect.mockReturnValue({ from: vi.fn().mockReturnValue({ where }) });
+
+      const res = await buildTestApp(accountRoutes).request("/a1/credentials");
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ token: "secret-val" });
+      // This is the only route that hands back a provider credential in the
+      // clear; an unaudited one leaves no trace of who read what.
+      expect(mockLogAudit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizationId: "org-1",
+          userId: "user-1",
+          action: "account.credentials.read",
+          entityType: "account",
+          entityId: "a1",
+        }),
+      );
+    });
+
+    it("404s without auditing when the account is not in the org", async () => {
+      const where = vi.fn().mockResolvedValue([]);
+      mockSelect.mockReturnValue({ from: vi.fn().mockReturnValue({ where }) });
+
+      const res = await buildTestApp(accountRoutes).request("/nope/credentials");
+
+      expect(res.status).toBe(404);
+      expect(mockLogAudit).not.toHaveBeenCalled();
     });
   });
 

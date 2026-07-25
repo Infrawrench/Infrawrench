@@ -8,6 +8,7 @@ import { encrypt, decrypt, buildAad } from "../../services/encryption";
 import { loadPlugins, getPlugin } from "../../plugins/loader";
 import { syncAccountResources, syncAccountResourceType } from "../../services/sync-resources";
 import { requirePermission } from "../../auth/permissions";
+import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -223,6 +224,17 @@ app.get("/:id/credentials", async (c) => {
     row.credentialsIv,
     buildAad("account", accountId, "credentials"),
   );
+  // This is the only route that hands a provider credential back in the clear,
+  // and it is the supported way for a client to obtain one. Every other
+  // secret-reading path audits (`export_credential`, `access_secret_version`,
+  // SSH agent forwarding); this one did not.
+  void logAudit({
+    organizationId,
+    userId: c.get("session").userId,
+    action: "account.credentials.read",
+    entityType: "account",
+    entityId: accountId,
+  });
   return c.json(JSON.parse(plaintext));
 });
 
