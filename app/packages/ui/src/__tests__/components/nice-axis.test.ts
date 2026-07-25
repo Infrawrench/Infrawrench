@@ -26,6 +26,23 @@ describe("niceAxis", () => {
     expect(ticks).toEqual([0, 0.25, 0.5, 0.75, 1]);
   });
 
+  it("flattens float drift from cancelling credits onto zero", () => {
+    // sum(amount) over a day whose charges and credits cancel returns values
+    // like -2.7e-17; that must not buy the axis a tick below zero.
+    const { domain, ticks } = niceAxis(-2.7e-17, 2.65);
+    expect(domain).toEqual([0, 3]);
+    expect(ticks).toEqual([0, 1, 2, 3]);
+  });
+
+  it("keeps ticks zero-based for a credit too small to earn one", () => {
+    const { domain, ticks } = niceAxis(-0.02, 2.65);
+    expect(ticks).toEqual([0, 1, 2, 3]);
+    // Snug, not a whole wasted step — but still low enough to draw the dip.
+    expect(domain[0]).toBeLessThanOrEqual(-0.02);
+    expect(domain[0]).toBeGreaterThan(-0.5);
+    expect(domain[1]).toBe(3);
+  });
+
   it("extends below zero only when the data does (credits, refunds)", () => {
     const { domain, ticks } = niceAxis(-3, 8);
     expect(domain[0]).toBeLessThanOrEqual(-3);
