@@ -21,7 +21,7 @@
  * `project.id`, `currency`, `cost` (FLOAT), `credits[].amount`.
  */
 
-import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
+import { CostSetupError, type CostFetchRange, type CostRow } from "@infrawrench/plugin-base";
 
 export interface GcpCostContext {
   /** Project the query job runs in — needs `bigquery.jobUser`. */
@@ -33,6 +33,16 @@ export interface GcpCostContext {
 
 export const BILLING_EXPORT_SETUP_URL =
   "https://cloud.google.com/billing/docs/how-to/export-data-bigquery";
+
+/**
+ * Console page where the export is turned on. It is billing-account-scoped
+ * and the plugin only knows the project, so pass `project` — the console
+ * resolves it to that project's linked billing account and otherwise falls
+ * back to its billing-account chooser.
+ */
+function billingExportConsoleUrl(project: string): string {
+  return `https://console.cloud.google.com/billing/export?project=${encodeURIComponent(project)}`;
+}
 
 /**
  * Table identifiers are interpolated into the SQL (BigQuery query parameters
@@ -102,15 +112,18 @@ export async function fetchGcpCostData(
 ): Promise<CostRow[]> {
   const table = ctx.billingExportTable.trim();
   if (!table) {
-    throw new Error(
-      "GCP cost collection needs the Cloud Billing BigQuery export. Configure the " +
-        `billing export table (project.dataset.table) in the GCP account settings — see ${BILLING_EXPORT_SETUP_URL}`,
+    throw new CostSetupError(
+      "GCP has no spend API — costs come from the Cloud Billing “standard usage cost” " +
+        "export to BigQuery. Turn the export on, then paste its project.dataset.table into " +
+        "the account's “Billing export table” field.",
+      { label: "Enable billing export to BigQuery", url: billingExportConsoleUrl(ctx.project) },
     );
   }
   if (!TABLE_ID_RE.test(table)) {
-    throw new Error(
-      `GCP cost collection: billing export table "${table}" is not a valid ` +
-        "project.dataset.table identifier. Edit it in the GCP account settings.",
+    throw new CostSetupError(
+      `The billing export table "${table}" is not a valid project.dataset.table ` +
+        "identifier. Copy it from the export's BigQuery dataset and edit the account.",
+      { label: "Billing export setup guide", url: BILLING_EXPORT_SETUP_URL },
     );
   }
   if (!ISO_DATE_RE.test(range.fromDate) || !ISO_DATE_RE.test(range.toDate)) {

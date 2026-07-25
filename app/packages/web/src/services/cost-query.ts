@@ -267,6 +267,9 @@ export async function getOrgCostStatus(organizationId: string) {
       costLastPolledAt: accounts.costLastPolledAt,
       costBackfilledAt: accounts.costBackfilledAt,
       costPollFailureCount: accounts.costPollFailureCount,
+      costPollError: accounts.costPollError,
+      costPollErrorHelpLabel: accounts.costPollErrorHelpLabel,
+      costPollErrorHelpUrl: accounts.costPollErrorHelpUrl,
     })
     .from(accounts)
     .where(and(eq(accounts.organizationId, organizationId), isNull(accounts.deletedAt)));
@@ -287,6 +290,17 @@ export async function getOrgCostStatus(organizationId: string) {
         costLastPolledAt: row.costLastPolledAt?.toISOString() ?? null,
         costBackfilledAt: row.costBackfilledAt?.toISOString() ?? null,
         costPollFailureCount: row.costPollFailureCount,
+        // Last failure, so an empty graph can explain itself. `helpLink` is
+        // set when the plugin knows which provider page fixes it.
+        costPollError: row.costPollError
+          ? {
+              message: row.costPollError,
+              helpLink:
+                row.costPollErrorHelpUrl && row.costPollErrorHelpLabel
+                  ? { label: row.costPollErrorHelpLabel, url: row.costPollErrorHelpUrl }
+                  : null,
+            }
+          : null,
         coverage: coverage.get(row.id) ?? null,
       };
     }),

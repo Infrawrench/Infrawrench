@@ -7,6 +7,8 @@ import { insertCostRows, toCostDailyRows } from "../clickhouse/cost-writers";
 
 import { addDays, isoDay, monthChunks } from "./dates";
 
+export { describeCostFailure, type CostFailureDescription } from "./failure";
+
 const DEFAULT_MAX_HISTORY_DAYS = 365;
 const DEFAULT_RESTATEMENT_DAYS = 3;
 

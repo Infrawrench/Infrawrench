@@ -20,6 +20,38 @@ interface CostQueryResponse {
   totals: Record<string, number>;
 }
 
+interface CostAccountStatus {
+  accountId: string;
+  displayName: string;
+  supportsCosts: boolean;
+  costPollError: { message: string; helpLink: { label: string; url: string } | null } | null;
+}
+
+/**
+ * Collection runs daily in the background and backs off on failure, so a
+ * misconfigured provider reads as missing spend rather than an error. Fetch
+ * the per-account state so the numbers below can be trusted (or explained).
+ */
+async function loadFailingAccounts(orgId: string): Promise<CostAccountStatus[]> {
+  try {
+    const res = await orgFetch<{ accounts: CostAccountStatus[] }>(orgId, "/costs/status");
+    return (res.accounts ?? []).filter((a) => a.supportsCosts && a.costPollError);
+  } catch {
+    return [];
+  }
+}
+
+function printCollectionWarnings(failing: CostAccountStatus[]): void {
+  for (const account of failing) {
+    println(`${c.yellow("!")} ${c.bold(account.displayName)} ${c.dim("cost collection failing")}`);
+    println(`  ${account.costPollError!.message}`);
+    if (account.costPollError!.helpLink) {
+      println(`  ${c.dim("→")} ${c.blue(account.costPollError!.helpLink.url)}`);
+    }
+  }
+  if (failing.length > 0) println();
+}
+
 function isoDay(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
@@ -41,24 +73,29 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
   const to = range.to ?? isoDay(Date.now());
   const from = range.from ?? isoDay(Date.parse(to) - (days - 1) * 86_400_000);
 
-  const response = await orgFetch<CostQueryResponse>(org.id, "/costs/query", {
-    method: "POST",
-    body: JSON.stringify({
-      from,
-      to,
-      binning: "daily",
-      groupBy,
-      filters: [],
-      topN: 8,
-      comparePreviousPeriod: false,
-      forecast: false,
+  const [response, failing] = await Promise.all([
+    orgFetch<CostQueryResponse>(org.id, "/costs/query", {
+      method: "POST",
+      body: JSON.stringify({
+        from,
+        to,
+        binning: "daily",
+        groupBy,
+        filters: [],
+        topN: 8,
+        comparePreviousPeriod: false,
+        forecast: false,
+      }),
     }),
-  });
+    loadFailingAccounts(org.id),
+  ]);
 
   if (ctx.flags.output === "json") {
-    printJson({ org: org.id, from, to, groupBy, ...response });
+    printJson({ org: org.id, from, to, groupBy, ...response, collectionFailures: failing });
     return;
   }
+
+  printCollectionWarnings(failing);
 
   const { series, totals } = response;
   if (series.length === 0) {

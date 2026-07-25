@@ -111,6 +111,16 @@ export const accounts = pgTable(
     costLastPolledAt: timestamp("cost_last_polled_at"),
     costNextPollAt: timestamp("cost_next_poll_at"),
     costPollFailureCount: integer("cost_poll_failure_count").notNull().default(0),
+    /**
+     * Last cost-collection failure, kept so the UI can explain an empty cost
+     * graph instead of leaving the user to guess. Cleared on the next success.
+     * The help link is populated when the plugin throws a `CostSetupError`
+     * (e.g. GCP's "billing export isn't enabled") and points at the provider
+     * page that fixes it.
+     */
+    costPollError: text("cost_poll_error"),
+    costPollErrorHelpLabel: text("cost_poll_error_help_label"),
+    costPollErrorHelpUrl: text("cost_poll_error_help_url"),
     /** Set once the initial cost-history backfill completes. */
     costBackfilledAt: timestamp("cost_backfilled_at"),
     deletedAt: timestamp("deleted_at"),

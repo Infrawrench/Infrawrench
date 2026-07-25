@@ -65,6 +65,16 @@ const CostAccountStatus = strict({
   costLastPolledAt: IsoDateTime.nullable(),
   costBackfilledAt: IsoDateTime.nullable(),
   costPollFailureCount: z.number().int(),
+  costPollError: strict({
+    message: z.string(),
+    helpLink: strict({ label: z.string(), url: z.string() }).nullable(),
+  })
+    .nullable()
+    .describe(
+      "Last cost-collection failure for this account, cleared on the next success. " +
+        "`helpLink` points at the provider page that fixes a setup problem when the " +
+        "plugin can identify one (e.g. GCP's billing export console).",
+    ),
   coverage: strict({ firstDay: IsoDate, lastDay: IsoDate }).nullable(),
 }).openapi("CostAccountStatus");
 

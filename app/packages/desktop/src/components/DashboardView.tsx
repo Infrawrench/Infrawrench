@@ -41,6 +41,7 @@ import {
   deleteCloudDashboard,
   queryCloudCosts,
   loadCloudCostDimensionValues,
+  loadCloudCostStatus,
   listCloudBudgets,
   createCloudBudget,
   updateCloudBudget,
@@ -52,12 +53,14 @@ import {
 import {
   BudgetCard,
   BudgetConfigModal,
+  CostCollectionNotice,
   CostGraphCard,
   CostGraphConfigModal,
   DEFAULT_BUDGET_INPUT,
   DEFAULT_COST_GRAPH_CONFIG,
   type BudgetInput,
   type BudgetWithStatus,
+  type CostAccountStatus,
   type CostApi,
   type CostGraphConfig,
   type DashboardWidget,
@@ -87,6 +90,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const [spotlightMode, setSpotlightMode] = useState<"pin" | "navigate" | null>(null);
   const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
   const [budgets, setBudgets] = useState<Map<string, BudgetWithStatus>>(new Map());
+  const [costStatus, setCostStatus] = useState<CostAccountStatus[]>([]);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [costModal, setCostModal] = useState<{ widget: DashboardWidget | null } | null>(null);
   const [budgetModal, setBudgetModal] = useState<{ widget: DashboardWidget | null } | null>(null);
@@ -180,6 +184,15 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           void listCloudBudgets(orgId)
             .then((rows) => setBudgets(new Map(rows.map((b) => [b.id, b]))))
             .catch(() => {});
+        }
+        // Any cost surface is only as good as the collection behind it — pull
+        // the per-account state so the notice can explain an empty graph.
+        if ((full.widgets ?? []).some((w) => w.kind === "cost_graph" || w.kind === "budget")) {
+          void loadCloudCostStatus(orgId)
+            .then(setCostStatus)
+            .catch(() => {
+              /* the notice is advisory — a failed status fetch stays silent */
+            });
         }
 
         const enriched = await Promise.all(
@@ -688,6 +701,11 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         if (!orgId) return Promise.resolve([]);
         return loadCloudCostDimensionValues(orgId, dimension, tagKey);
       },
+      loadCostStatus: () => {
+        const orgId = useUIStore.getState().activeCloudOrgId;
+        if (!orgId) return Promise.resolve([]);
+        return loadCloudCostStatus(orgId);
+      },
     }),
     [],
   );
@@ -819,6 +837,10 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       </div>
 
       <div className="flex-1 overflow-auto px-8 py-6">
+        <CostCollectionNotice
+          statuses={costStatus}
+          onOpenExternal={(url) => void invoke("open_external_url", { url })}
+        />
         {pinned.length === 0 && workflowPins.length === 0 && widgets.length === 0 ? (
           <div className="relative">
             <button

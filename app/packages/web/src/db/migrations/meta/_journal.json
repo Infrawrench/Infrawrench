@@ -204,6 +204,13 @@
       "when": 1785003827840,
       "tag": "0028_bumpy_nitro",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1785018309769,
+      "tag": "0029_naive_lady_ursula",
+      "breakpoints": true
     }
   ]
 }

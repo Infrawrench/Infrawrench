@@ -80,6 +80,8 @@ infrawrench costs --group-by account --json
 
 <insert [Terminal showing `infrawrench costs` output with the daily sparkline and per-provider horizontal bar chart] here>
 
+Accounts whose daily cost collection is failing are called out above the chart, with the provider link that fixes the cause; `--json` carries them as `collectionFailures`. See [when collection fails](./cloud-costs.md#when-collection-fails).
+
 ## The TUI
 
 `infrawrench` (or `infrawrench tui`) opens the interactive dashboard:

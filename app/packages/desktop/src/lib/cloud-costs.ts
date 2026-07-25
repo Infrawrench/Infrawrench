@@ -6,6 +6,7 @@
 import type {
   BudgetInput,
   BudgetWithStatus,
+  CostAccountStatus,
   CostDimensionOption,
   CostQueryRequest,
   CostQueryResponse,
@@ -30,6 +31,11 @@ export async function loadCloudCostDimensionValues(
     { orgId, dimension, ...(tagKey ? { tagKey } : {}) },
   );
   return (res?.values ?? []).map((v) => (typeof v === "string" ? { value: v, label: v } : v));
+}
+
+export async function loadCloudCostStatus(orgId: string): Promise<CostAccountStatus[]> {
+  const res = await invoke<{ accounts: CostAccountStatus[] }>("cloud_costs_status", { orgId });
+  return res?.accounts ?? [];
 }
 
 export async function listCloudBudgets(orgId: string): Promise<BudgetWithStatus[]> {

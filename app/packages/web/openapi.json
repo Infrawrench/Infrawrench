@@ -2127,6 +2127,30 @@
           "costPollFailureCount": {
             "type": "integer"
           },
+          "costPollError": {
+            "type": ["object", "null"],
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "helpLink": {
+                "type": ["object", "null"],
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": ["label", "url"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["message", "helpLink"],
+            "additionalProperties": false,
+            "description": "Last cost-collection failure for this account, cleared on the next success. `helpLink` points at the provider page that fixes a setup problem when the plugin can identify one (e.g. GCP's billing export console)."
+          },
           "coverage": {
             "type": ["object", "null"],
             "properties": {
@@ -2155,6 +2179,7 @@
           "costLastPolledAt",
           "costBackfilledAt",
           "costPollFailureCount",
+          "costPollError",
           "coverage"
         ],
         "additionalProperties": false

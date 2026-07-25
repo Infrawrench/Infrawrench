@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@infrawrench/server-core/db/client";
 import { accounts } from "@infrawrench/server-core/db/schema";
-import { collectAccountCosts } from "@infrawrench/server-core/cost/collect";
+import { collectAccountCosts, describeCostFailure } from "@infrawrench/server-core/cost/collect";
 import { evaluateBudgetsForOrg } from "@infrawrench/server-core/cost/budget-eval";
 import type { PollAccountRow } from "./poll-account";
 
@@ -31,6 +31,9 @@ export async function pollAccountCosts(account: PollAccountRow): Promise<void> {
         costLastPolledAt: new Date(),
         costNextPollAt: new Date(Date.now() + COST_INTERVAL_MS + jitter),
         costPollFailureCount: 0,
+        costPollError: null,
+        costPollErrorHelpLabel: null,
+        costPollErrorHelpUrl: null,
       })
       .where(eq(accounts.id, account.id));
 
@@ -41,12 +44,16 @@ export async function pollAccountCosts(account: PollAccountRow): Promise<void> {
     console.error(`[poller] cost collection for ${account.id} (${account.pluginId}) failed:`, e);
     const failures = account.pollFailureCount + 1;
     const backoff = Math.min(COST_BASE_BACKOFF_MS * Math.pow(2, failures - 1), COST_MAX_BACKOFF_MS);
+    const { message, helpLink } = describeCostFailure(e);
     await db
       .update(accounts)
       .set({
         costLastPolledAt: new Date(),
         costNextPollAt: new Date(Date.now() + backoff),
         costPollFailureCount: failures,
+        costPollError: message,
+        costPollErrorHelpLabel: helpLink?.label ?? null,
+        costPollErrorHelpUrl: helpLink?.url ?? null,
       })
       .where(eq(accounts.id, account.id));
   }

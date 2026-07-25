@@ -1,7 +1,9 @@
 import { Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
+import type { CostAccountStatus } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
+import { CostCollectionNotice } from "@/components/CostCollectionNotice";
 import {
   Card,
   EmptyView,
@@ -51,6 +53,13 @@ export default function OrgHome() {
     queryKey: ["budgets", orgId],
     queryFn: () => api.org<Budget[]>(orgId, "/budgets"),
   });
+  // Budgets read from the same collected spend, so a failing account makes
+  // them silently understate — surface the reason next to them.
+  const costStatus = useQuery({
+    queryKey: ["cost-status", orgId],
+    queryFn: async () =>
+      (await api.org<{ accounts: CostAccountStatus[] }>(orgId, "/costs/status"))?.accounts ?? [],
+  });
 
   if (dashboards.isLoading) return <LoadingView />;
   if (dashboards.isError) {
@@ -70,6 +79,7 @@ export default function OrgHome() {
       onRefresh={() => {
         void dashboards.refetch();
         void budgets.refetch();
+        void costStatus.refetch();
       }}
       refreshing={dashboards.isRefetching}
     >
@@ -90,6 +100,7 @@ export default function OrgHome() {
       </Card>
 
       <SectionTitle>Budgets</SectionTitle>
+      <CostCollectionNotice statuses={costStatus.data ?? []} />
       <Card>
         {budgetList.length === 0 ? (
           <Text style={{ color: colors.textMuted, fontSize: 13 }}>

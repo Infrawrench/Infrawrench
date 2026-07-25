@@ -17,12 +17,14 @@ import { WorkflowDashboardCard, type WorkflowDashboardCardData } from "@infrawre
 import {
   BudgetCard,
   BudgetConfigModal,
+  CostCollectionNotice,
   CostGraphCard,
   CostGraphConfigModal,
   DEFAULT_BUDGET_INPUT,
   DEFAULT_COST_GRAPH_CONFIG,
   type BudgetInput,
   type BudgetWithStatus,
+  type CostAccountStatus,
   type CostApi,
   type CostDimensionOption,
   type CostGraphConfig,
@@ -98,6 +100,7 @@ export function DashboardView({
   const [costModal, setCostModal] = useState<{ widget: DashboardWidget | null } | null>(null);
   const [budgetModal, setBudgetModal] = useState<{ widget: DashboardWidget | null } | null>(null);
   const [budgets, setBudgets] = useState<Map<string, BudgetWithStatus>>(new Map());
+  const [costStatus, setCostStatus] = useState<CostAccountStatus[]>([]);
   const [dashboardName, setDashboardName] = useState(initialName);
   const [editingName, setEditingName] = useState(false);
 
@@ -127,6 +130,12 @@ export function DashboardView({
         );
         return res.values.map((v) => (typeof v === "string" ? { value: v, label: v } : v));
       },
+      loadCostStatus: async () => {
+        const res = await apiGet<{ accounts: CostAccountStatus[] }>(
+          `/api/org/${orgId}/costs/status`,
+        );
+        return res.accounts;
+      },
     }),
     [orgId],
   );
@@ -144,6 +153,26 @@ export function DashboardView({
   useEffect(() => {
     if (hasBudgetWidgets) void refetchBudgets();
   }, [hasBudgetWidgets, refetchBudgets]);
+
+  // Any cost surface on the dashboard is only as good as the collection
+  // behind it, so pull the per-account state once and let the notice decide
+  // whether there is anything worth saying.
+  const hasCostWidgets = widgets.some((w) => w.kind === "cost_graph" || w.kind === "budget");
+  useEffect(() => {
+    if (!hasCostWidgets) return;
+    let cancelled = false;
+    costApi
+      .loadCostStatus()
+      .then((rows) => {
+        if (!cancelled) setCostStatus(rows);
+      })
+      .catch(() => {
+        /* the notice is advisory — a failed status fetch stays silent */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hasCostWidgets, costApi]);
 
   async function handleRemoveWidget(widgetId: string) {
     try {
@@ -344,6 +373,7 @@ export function DashboardView({
 
       {/* Content */}
       <div className="flex-1 overflow-auto px-8 py-6">
+        <CostCollectionNotice statuses={costStatus} />
         <DroppableDashboardArea dashboardId={dashboardId}>
           {pins.length === 0 && workflowPins.length === 0 && widgets.length === 0 ? (
             <div className="relative">

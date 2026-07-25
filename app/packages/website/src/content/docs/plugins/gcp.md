@@ -56,3 +56,5 @@ GCP has no cost API, so [cost graphs & budgets](../features/cloud-costs.md) read
 2. Put the export table — `project.dataset.table` — into the account's **Billing export table** field in infrawrench.
 
 The service account needs `roles/bigquery.jobUser` on its project and `roles/bigquery.dataViewer` on the export dataset. Costs are net of credits, broken down by service, region, and project. Note the export only accumulates data from the day it is enabled — it is not retroactive.
+
+Until both steps are done, GCP cost graphs stay empty and the dashboard shows a banner saying so, linked straight to the billing export settings for this account's project — see [when collection fails](../features/cloud-costs.md#when-collection-fails).

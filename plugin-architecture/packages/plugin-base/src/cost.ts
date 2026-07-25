@@ -68,6 +68,37 @@ export interface CostRow {
   usageUnit?: string;
 }
 
+/**
+ * A link the host renders next to a cost-collection failure. Same shape as
+ * `CredentialField.helpLink` — opened through the host's external-URL handler
+ * so it works in the browser, the desktop shell, and the mobile app.
+ */
+export interface CostHelpLink {
+  label: string;
+  url: string;
+}
+
+/**
+ * Thrown by `fetchCostData` when collection can't proceed until the user
+ * does something — the provider's billing export isn't enabled, a required
+ * credential field is blank, the billing role is missing. The host stores the
+ * message against the account and surfaces it wherever cost data is shown,
+ * rather than silently retrying forever.
+ *
+ * Plugins should build `helpLink.url` from what they know about the account
+ * (project id, subscription id, team slug) so the link lands on the page the
+ * user has to act on rather than a generic docs index.
+ */
+export class CostSetupError extends Error {
+  readonly helpLink: CostHelpLink | undefined;
+
+  constructor(message: string, helpLink?: CostHelpLink) {
+    super(message);
+    this.name = "CostSetupError";
+    this.helpLink = helpLink;
+  }
+}
+
 /** Inclusive ISO-date range passed to `fetchCostData`. */
 export interface CostFetchRange {
   /** First day to include, `YYYY-MM-DD` UTC. */

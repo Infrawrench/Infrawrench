@@ -45,6 +45,7 @@ export {
   type PendingEmailChange,
   type UserSession,
 } from "./profile";
+export { failingCostAccounts, type CostAccountStatus, type CostPollError } from "./costs";
 export * from "./chat/types";
 export { createBearerChatClient } from "./chat/bearer-client";
 export * from "./ws-protocol";
