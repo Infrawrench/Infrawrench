@@ -1,12 +1,15 @@
 /**
- * Chat agent loop — drives Claude with the shared tool registry, persists
- * conversation history, and bridges the destructive-tool approval flow through
- * the `chat_pending_actions` table.
+ * Chat agent loop — drives the selected model with the shared tool registry,
+ * persists conversation history, and bridges the destructive-tool approval flow
+ * through the `chat_pending_actions` table.
+ *
+ * The loop itself is model-agnostic: one turn of streaming is delegated to a
+ * provider (./providers), which owns all SDK and wire-format specifics. Message
+ * content is persisted in the Anthropic block shape for every provider.
  *
  * Streams via an async generator of typed events; the HTTP route adapts these
  * to SSE for the browser.
  */
-import Anthropic from "@anthropic-ai/sdk";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
@@ -20,10 +23,11 @@ import {
   type ChatContentBlock as AnthropicContentBlock,
 } from "@infrawrench/ui";
 import { recordUsage } from "./billing";
+import { providerForModel, type ProviderTool } from "./providers";
 
 const DEFAULT_MODEL = DEFAULT_CHAT_MODEL;
-// Hard cap on thinking + response text per request. Opus 5 thinks by default
-// (no `thinking` param means adaptive), so this needs room for both.
+// Hard cap on thinking + response text per request. Both Opus 5 and Gemini 3.6
+// Flash think by default, so this needs room for reasoning and the reply.
 const MAX_TOKENS = 32000;
 
 const SLEEP_TOOL_NAME = "sleep";
@@ -37,13 +41,13 @@ const MAX_SLEEP_SECONDS = 300;
  * `resume: true` when the time is up, and the loop continues with the tool
  * result.
  */
-const SLEEP_TOOL: Anthropic.Tool = {
+const SLEEP_TOOL: ProviderTool = {
   name: SLEEP_TOOL_NAME,
   description:
     "Pause for N seconds before continuing, then automatically resume. Use while waiting for a " +
     "slow operation to finish (resource provisioning, DNS propagation, a reboot) before " +
     "re-checking its status. Max 300 seconds per call; sleep again if you need longer.",
-  input_schema: {
+  inputSchema: {
     type: "object",
     properties: {
       seconds: {
@@ -173,10 +177,10 @@ async function loadConversationForApi(
   };
 }
 
-function toolToAnthropic(t: ToolDefinition): Anthropic.Tool {
-  // The Anthropic SDK expects JSON Schema (draft 2020-12) for tool input. We
-  // convert from the Zod shapes that MCP also uses. Must NOT use the openApi3
-  // target: OpenAPI 3.0 is a different dialect (boolean exclusiveMinimum/
+function toolToProvider(t: ToolDefinition): ProviderTool {
+  // Both providers take JSON Schema (draft 2020-12) for tool input. We convert
+  // from the Zod shapes that MCP also uses. Must NOT use the openApi3 target:
+  // OpenAPI 3.0 is a different dialect (boolean exclusiveMinimum/
   // exclusiveMaximum, nullable) that the API rejects with "JSON schema is
   // invalid". The default draft-07 output is 2020-12-compatible for the
   // constructs Zod emits. $refStrategy none keeps every schema inline.
@@ -190,9 +194,9 @@ function toolToAnthropic(t: ToolDefinition): Anthropic.Tool {
   return {
     name: t.name,
     description: t.description,
-    input_schema: {
+    inputSchema: {
       type: "object",
-      properties: properties as Record<string, Anthropic.Tool.InputSchema>,
+      properties,
       ...(required.length > 0 ? { required } : {}),
     },
   };
@@ -252,48 +256,28 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
     return;
   }
 
-  const apiKey = process.env["ANTHROPIC_API_KEY"];
-  if (!apiKey) {
-    yield { type: "error", message: "ANTHROPIC_API_KEY not configured for this deployment" };
-    return;
-  }
-  const client = new Anthropic({ apiKey });
-
   const registry = await getToolRegistry();
   const toolByName = new Map(registry.map((t) => [t.name, t] as const));
-  const anthropicTools = [...registry.map(toolToAnthropic), SLEEP_TOOL];
-  // Prompt-cache the system prompt + tool definitions. Both are large and
-  // stable across a session; the tool list is ~150kb of JSON Schema. Without
-  // caching every turn pays full ingestion cost.
-  const systemBlocks: Anthropic.TextBlockParam[] = [
-    {
-      type: "text",
-      text: SYSTEM_PROMPT,
-      cache_control: { type: "ephemeral" },
-    },
-  ];
-  if (anthropicTools.length > 0) {
-    // Mark the last tool's schema with cache_control to checkpoint the entire
-    // tools array — Anthropic's caching extends from the start of the prompt
-    // through the most recent cache_control marker.
-    const last = anthropicTools[anthropicTools.length - 1];
-    if (last) {
-      (last as Anthropic.Tool & { cache_control?: { type: "ephemeral" } }).cache_control = {
-        type: "ephemeral",
-      };
-    }
-  }
+  const providerTools = [...registry.map(toolToProvider), SLEEP_TOOL];
 
   // Loop until we get an end_turn / max_tokens / a destructive tool batch.
-  // Each iteration: load full history, call Anthropic, persist assistant
+  // Each iteration: load full history, call the model, persist assistant
   // message, dispatch tool_uses.
   let safetyCounter = 0;
   while (safetyCounter++ < 32) {
     const { messages: history, model } = await loadConversationForApi(conversationId);
+    const activeModel = model || DEFAULT_MODEL;
+    const provider = providerForModel(activeModel);
+    try {
+      provider.assertConfigured();
+    } catch (e) {
+      yield { type: "error", message: e instanceof Error ? e.message : "Provider misconfigured" };
+      return;
+    }
 
-    const apiMessages: Anthropic.MessageParam[] = history.map((m) => ({
-      role: m.role === "assistant" ? "assistant" : "user",
-      content: m.content as Anthropic.ContentBlockParam[],
+    const apiMessages = history.map((m) => ({
+      role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
+      content: m.content,
     }));
 
     const assistantMessageId = uuidv4();
@@ -304,94 +288,31 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
     let outputTokens = 0;
     let cacheReadTokens = 0;
     let cacheWriteTokens = 0;
-    const collectedBlocks: AnthropicContentBlock[] = [];
-    let currentTextIdx = -1;
-    const partialToolJson: Record<number, { id: string; name: string; json: string }> = {};
-    // Stream index → collectedBlocks index for thinking blocks. They must be
-    // persisted and echoed back verbatim (signature included) or the next
-    // loop iteration's request is rejected.
-    const thinkingIdx: Record<number, number> = {};
+    let collectedBlocks: AnthropicContentBlock[] = [];
 
     try {
-      const stream = await client.messages.stream({
-        model: model || DEFAULT_MODEL,
-        max_tokens: MAX_TOKENS,
-        system: systemBlocks,
-        tools: anthropicTools,
+      for await (const ev of provider.streamTurn({
+        model: activeModel,
+        system: SYSTEM_PROMPT,
+        tools: providerTools,
         messages: apiMessages,
-      });
-
-      for await (const ev of stream) {
-        if (ev.type === "content_block_start") {
-          const block = ev.content_block;
-          if (block.type === "text") {
-            currentTextIdx = collectedBlocks.length;
-            collectedBlocks.push({ type: "text", text: "" });
-          } else if (block.type === "tool_use") {
-            partialToolJson[ev.index] = { id: block.id, name: block.name, json: "" };
-            yield { type: "tool_use_start", toolUseId: block.id, name: block.name };
-          } else if (block.type === "thinking") {
-            thinkingIdx[ev.index] = collectedBlocks.length;
-            collectedBlocks.push({ type: "thinking", thinking: "", signature: "" });
-          }
-        } else if (ev.type === "content_block_delta") {
-          const delta = ev.delta;
-          if (delta.type === "text_delta") {
-            yield { type: "text_delta", delta: delta.text };
-            const last = collectedBlocks[currentTextIdx];
-            if (last && last.type === "text") last.text += delta.text;
-          } else if (delta.type === "thinking_delta" || delta.type === "signature_delta") {
-            const tb = collectedBlocks[thinkingIdx[ev.index] ?? -1];
-            if (tb && tb.type === "thinking") {
-              if (delta.type === "thinking_delta") tb.thinking += delta.thinking;
-              else tb.signature = delta.signature;
-            }
-          } else if (delta.type === "input_json_delta") {
-            const acc = partialToolJson[ev.index];
-            if (acc) {
-              acc.json += delta.partial_json;
-              yield {
-                type: "tool_use_input",
-                toolUseId: acc.id,
-                partialJson: delta.partial_json,
-              };
-            }
-          }
-        } else if (ev.type === "content_block_stop") {
-          const acc = partialToolJson[ev.index];
-          if (acc) {
-            let parsedInput: Record<string, unknown> = {};
-            try {
-              parsedInput = acc.json ? (JSON.parse(acc.json) as Record<string, unknown>) : {};
-            } catch {
-              parsedInput = { __parse_error: acc.json };
-            }
-            collectedBlocks.push({
-              type: "tool_use",
-              id: acc.id,
-              name: acc.name,
-              input: parsedInput,
-            });
-          }
-        } else if (ev.type === "message_delta") {
-          if (ev.delta.stop_reason) stopReason = ev.delta.stop_reason;
-          if (ev.usage) {
-            outputTokens = ev.usage.output_tokens ?? outputTokens;
-          }
-        } else if (ev.type === "message_start") {
-          const usage = ev.message.usage;
-          inputTokens = usage.input_tokens ?? 0;
-          outputTokens = usage.output_tokens ?? 0;
-          cacheReadTokens =
-            (usage as { cache_read_input_tokens?: number }).cache_read_input_tokens ?? 0;
-          cacheWriteTokens =
-            (usage as { cache_creation_input_tokens?: number }).cache_creation_input_tokens ?? 0;
+        maxTokens: MAX_TOKENS,
+      })) {
+        if (ev.type === "done") {
+          collectedBlocks = ev.blocks;
+          stopReason = ev.stopReason;
+          inputTokens = ev.usage.inputTokens;
+          outputTokens = ev.usage.outputTokens;
+          cacheReadTokens = ev.usage.cacheReadTokens;
+          cacheWriteTokens = ev.usage.cacheWriteTokens;
+        } else {
+          yield ev;
         }
       }
     } catch (e) {
       yield {
         type: "error",
-        message: e instanceof Error ? e.message : "Anthropic API request failed",
+        message: e instanceof Error ? e.message : `${provider.label} request failed`,
       };
       return;
     }
@@ -413,7 +334,7 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
       organizationId: auth.organizationId,
       conversationId,
       messageId: assistantMessageId,
-      model: model || DEFAULT_MODEL,
+      model: activeModel,
       usage: { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens },
     });
 

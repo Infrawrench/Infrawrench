@@ -21,6 +21,10 @@ spec:
       labels:
         app: web
     spec:
+      # Bound to the Vertex AI Google service account via Workload Identity
+      # (see infra/terraform/vertex.tf) so chat can call Gemini with ADC and no
+      # API key. Terraform owns this service account object.
+      serviceAccountName: web
       containers:
         - name: web
           image: REGION-docker.pkg.dev/PROJECT_ID/infrawrench/web:bootstrap

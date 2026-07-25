@@ -10,8 +10,29 @@
  * these for backwards compatibility.
  */
 
+/**
+ * Which provider minted a block's opaque signature. A conversation's model can
+ * be changed mid-thread (PATCH /conversations/:id), so history routinely mixes
+ * providers — and a thought signature is only valid to the provider that
+ * issued it. Blocks written before this field existed are Anthropic's, which is
+ * why `undefined` means Anthropic rather than "unknown".
+ */
+export type ChatBlockProvider = "anthropic" | "gemini";
+
 export type ChatContentBlock =
-  | { type: "text"; text: string }
+  | {
+      type: "text";
+      text: string;
+      /**
+       * Gemini only. Gemini 3 can attach a thought signature to a plain text
+       * part — a reply may carry reasoning tokens and a signature with no
+       * separate thought part at all — and it has to come back on the next
+       * request for the reasoning context to survive the turn. Stripped before
+       * the block reaches any other provider; renderers ignore it.
+       */
+      signature?: string;
+      provider?: ChatBlockProvider;
+    }
   | {
       // Opus 5+ thinks by default; the block must be echoed back to the API
       // unchanged on later loop iterations (text is empty unless the request
@@ -19,12 +40,21 @@ export type ChatContentBlock =
       type: "thinking";
       thinking: string;
       signature: string;
+      provider?: ChatBlockProvider;
     }
   | {
       type: "tool_use";
       id: string;
       name: string;
       input: Record<string, unknown>;
+      /**
+       * Gemini only. Gemini 3 attaches a thought signature to the function-call
+       * part itself (not just to thinking blocks), and rejects the follow-up
+       * request if it isn't echoed back. Stripped before the block is sent to
+       * any other provider.
+       */
+      signature?: string;
+      provider?: ChatBlockProvider;
     }
   | {
       type: "tool_result";
@@ -81,9 +111,14 @@ export interface ChatModelOption {
 
 export const CHAT_MODELS: ChatModelOption[] = [
   {
+    id: "gemini-3.6-flash",
+    label: "Gemini 3.6 Flash",
+    description: "Fast and inexpensive — the default for most chats",
+  },
+  {
     id: "claude-sonnet-5",
     label: "Claude Sonnet 5",
-    description: "Best for most chats — near-Opus quality at lower cost",
+    description: "Balanced — near-Opus quality at lower cost",
   },
   {
     id: "claude-opus-5",
@@ -97,7 +132,7 @@ export const CHAT_MODELS: ChatModelOption[] = [
   },
 ];
 
-export const DEFAULT_CHAT_MODEL = "claude-sonnet-5";
+export const DEFAULT_CHAT_MODEL = "gemini-3.6-flash";
 
 export interface SpendStatus {
   monthToDateMicros: number;

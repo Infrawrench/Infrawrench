@@ -1,12 +1,12 @@
 ---
 title: AI chat
-description: Drive your infrastructure through a Claude-powered agent — same tools as the UI, with a human-in-the-loop for destructive actions.
+description: Drive your infrastructure through an AI agent — same tools as the UI, with a human-in-the-loop for destructive actions.
 sidebar_order: 12
 ---
 
 > **Cloud feature**; metered separately from your seat plan. Available in the web app, the [mobile app](./mobile-app.md), and — when signed in to Infrawrench Cloud — in the desktop app, where it proxies through the web backend.
 
-Infrawrench ships an in-app **AI chat** powered by Anthropic Claude. The model has access to the same tools your UI uses — listing resources, inspecting outputs, running SQL queries, executing Docker commands, rotating secrets, attaching disks, applying manifests — and routes every destructive action through a UI approval step.
+Infrawrench ships an in-app **AI chat**, running on Google Gemini or Anthropic Claude — your pick per conversation. The model has access to the same tools your UI uses — listing resources, inspecting outputs, running SQL queries, executing Docker commands, rotating secrets, attaching disks, applying manifests — and routes every destructive action through a UI approval step.
 
 <insert [Chat page with a streamed assistant reply and a pending-approval card for a delete-resource tool use] here>
 
@@ -62,15 +62,23 @@ Every tool the agent executes goes through the same `logAudit` path the UI uses.
 
 Pick the model when you start a chat (the picker sits next to **New chat**), or switch an existing conversation's model at any time from the dropdown in the conversation header — the change takes effect on the next turn.
 
-| Model                     | Best for                                     |
-| ------------------------- | -------------------------------------------- |
-| Claude Sonnet 5 (default) | Most chats — near-Opus quality at lower cost |
-| Claude Opus 5             | Complex, multi-step infrastructure work      |
-| Claude Haiku 4.5          | Quick lookups, cheapest                      |
+| Model                      | Best for                                     |
+| -------------------------- | -------------------------------------------- |
+| Gemini 3.6 Flash (default) | Most chats — fast, and the cheapest per turn |
+| Claude Sonnet 5            | Balanced — near-Opus quality at lower cost   |
+| Claude Opus 5              | Complex, multi-step infrastructure work      |
+| Claude Haiku 4.5           | Quick lookups                                |
+
+Switching models mid-conversation is safe: each model's private reasoning traces stay with the model that produced them, and the visible transcript — your messages, its replies, every tool call and result — carries over intact.
 
 ## Billing
 
-Chat tokens are billed separately from your seat plan as Stripe metered usage. The charge is exactly **1.5× Anthropic's published per-model API rates** per million tokens — no other fees. Cache-read and cache-write tokens are billed at Anthropic's discounted/uplifted rates (×1.5) respectively; the system prompt and the tool registry are aggressively prompt-cached so a long working session typically pays the cache-read rate after the first turn.
+Chat tokens are billed separately from your seat plan as Stripe metered usage. The charge is exactly **1.5× the model provider's published per-model API rates** per million tokens — no other fees.
+
+Caching behaves differently per provider, and you're only ever charged 1.5× what we're charged:
+
+- **Claude** — the system prompt and the tool registry are aggressively prompt-cached, so a long working session typically pays the discounted cache-read rate after the first turn. Cache writes carry their own uplifted rate.
+- **Gemini** — caching is implicit and automatic. Cached input bills at a tenth of the input rate and there is no separate cache-write charge. Reasoning tokens bill at the output rate.
 
 ### Free tier
 

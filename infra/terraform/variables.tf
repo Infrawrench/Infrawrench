@@ -65,6 +65,18 @@ variable "github_repository" {
   default = "Infrawrench/Infrawrench"
 }
 
+variable "vertex_location" {
+  description = <<-EOT
+    Vertex AI location for Gemini chat inference, published to the workloads as
+    GOOGLE_CLOUD_LOCATION. `global` is the multi-region endpoint — widest model
+    availability and the fewest capacity-driven 429s. Pin it to a single region
+    only if data residency requires it; not every model is offered in every
+    region.
+  EOT
+  type        = string
+  default     = "global"
+}
+
 variable "app_env" {
   description = <<-EOT
     Runtime environment for all three services, written to the

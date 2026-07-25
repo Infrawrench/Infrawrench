@@ -34,6 +34,27 @@ describe("computeCostMicros", () => {
     expect(micros).toBe(37_500_000);
   });
 
+  it("prices Gemini 3.6 Flash input, output, and cached input at default markup", () => {
+    const micros = computeCostMicros("gemini-3.6-flash", {
+      inputTokens: 1_000_000,
+      outputTokens: 1_000_000,
+      cacheReadTokens: 1_000_000,
+      cacheWriteTokens: 0,
+    });
+    // (1.50 + 7.50 + 0.15) * 1.5 markup
+    expect(micros).toBe(13_725_000);
+  });
+
+  it("never charges Gemini a cache-write rate", () => {
+    const micros = computeCostMicros("gemini-3.6-flash", {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 1_000_000,
+    });
+    expect(micros).toBe(0);
+  });
+
   it("computes Haiku 4.5 output cost at default markup (5 * 1.5 = 7.5 USD/Mtok)", () => {
     const micros = computeCostMicros("claude-haiku-4-5", {
       inputTokens: 0,

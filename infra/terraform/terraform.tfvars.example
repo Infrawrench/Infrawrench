@@ -57,6 +57,15 @@ app_env = {
   # recommended in production. Create under expo.dev → Access tokens.
   EXPO_ACCESS_TOKEN = "..."
 
+  # Chat models. The default model (Gemini 3.6 Flash) needs no key at all —
+  # it's served through Vertex AI, and the web pods authenticate with Workload
+  # Identity (infra/terraform/vertex.tf). GOOGLE_CLOUD_PROJECT and
+  # GOOGLE_CLOUD_LOCATION are injected automatically from project_id and
+  # var.vertex_location; set them here only to override.
+  #
+  # ANTHROPIC_API_KEY is what enables the Claude models in the picker. Without
+  # it, picking one returns a configuration error and chat falls back to
+  # nothing — leave it set unless you intend Gemini-only.
   # Optional
   # ANTHROPIC_API_KEY    = "..."
   # OPENAI_API_KEY       = "..."

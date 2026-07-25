@@ -11,6 +11,10 @@ resource "google_project_service" "required" {
     "artifactregistry.googleapis.com",
     "iamcredentials.googleapis.com",
     "sts.googleapis.com",
+    # Gemini chat inference. Vertex rather than the AI Studio developer API on
+    # purpose: Vertex is a normal Cloud SKU, so project credits and CUDs apply
+    # to it, and it authenticates with Workload Identity instead of an API key.
+    "aiplatform.googleapis.com",
   ])
 
   service = each.key

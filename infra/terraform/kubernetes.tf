@@ -20,5 +20,16 @@ resource "kubernetes_secret" "app_env" {
     namespace = kubernetes_namespace.infrawrench.metadata[0].name
   }
   type = "Opaque"
-  data = var.app_env
+
+  # The Vertex AI coordinates are derived from variables we already have rather
+  # than hand-maintained in tfvars — they're addresses, not credentials (the
+  # credential is the Workload Identity binding in vertex.tf). tfvars still
+  # wins if someone sets them explicitly.
+  data = merge(
+    {
+      GOOGLE_CLOUD_PROJECT  = var.project_id
+      GOOGLE_CLOUD_LOCATION = var.vertex_location
+    },
+    var.app_env,
+  )
 }
