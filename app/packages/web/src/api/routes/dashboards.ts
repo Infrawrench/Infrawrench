@@ -33,6 +33,7 @@ import {
 import type { AuthSession } from "../auth-middleware";
 import { getPlugin } from "../../plugins/loader";
 import { requirePermission } from "../../auth/permissions";
+import { nextPinSyncVersion } from "../../services/sync-versions";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -460,7 +461,17 @@ app.post("/pin", async (c) => {
 
   await db
     .insert(dashboardPins)
-    .values({ id: uuidv4(), dashboardId, resourceId, gridX: effectiveGridX, gridY: gridY ?? 0 })
+    .values({
+      id: uuidv4(),
+      dashboardId,
+      resourceId,
+      gridX: effectiveGridX,
+      gridY: gridY ?? 0,
+      syncVersion: nextPinSyncVersion(organizationId),
+    })
+    // A conflict means the resource is already pinned here — unpin hard-deletes,
+    // so no tombstone can be in the way. Leave the existing card's position
+    // alone rather than yanking it back to the end of the row.
     .onConflictDoNothing();
   return c.json({ ok: true });
 });
@@ -484,7 +495,7 @@ app.post("/:id/reorder", async (c) => {
     resourceIds.map((resourceId, index) =>
       db
         .update(dashboardPins)
-        .set({ gridX: index })
+        .set({ gridX: index, syncVersion: nextPinSyncVersion(organizationId) })
         .where(
           and(eq(dashboardPins.dashboardId, dashboardId), eq(dashboardPins.resourceId, resourceId)),
         ),
@@ -510,6 +521,10 @@ app.post("/unpin", async (c) => {
     .limit(1);
   if (!dashboard) return c.json({ error: "Dashboard not found" }, 404);
 
+  // Hard delete. A tombstone would be what tells a pulling client the pin went
+  // away, but desktop sync is push-only (see electron/cloud-sync.ts) so nothing
+  // consumes one — it would just accumulate rows. Revisit alongside any future
+  // downward apply: deletions are invisible to a puller without it.
   await db
     .delete(dashboardPins)
     .where(

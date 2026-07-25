@@ -197,7 +197,7 @@ describe("Dashboard routes", () => {
   });
 
   describe("POST /pin — pin a resource to a dashboard", () => {
-    it("inserts a pin with onConflictDoNothing", async () => {
+    it("inserts a pin with a sync_version, no-oping if already pinned", async () => {
       // select for dashboard check
       const dashChain = chainMock([{ id: "d1" }]);
       // select for resource check
@@ -227,6 +227,11 @@ describe("Dashboard routes", () => {
       });
 
       expect(res.status).toBe(200);
+      // Inserted rows must carry a sync_version, or /pull never returns them.
+      expect(values).toHaveBeenCalledWith(
+        expect.objectContaining({ syncVersion: expect.anything() }),
+      );
+      // Already pinned → leave the existing card's position alone.
       expect(onConflictDoNothing).toHaveBeenCalled();
     });
 
@@ -245,7 +250,7 @@ describe("Dashboard routes", () => {
   });
 
   describe("POST /unpin — unpin a resource", () => {
-    it("deletes the pin and returns ok", async () => {
+    it("hard-deletes the pin and returns ok", async () => {
       const dashChain = chainMock([{ id: "d1" }]);
       mockSelect.mockReturnValue(dashChain);
 
@@ -261,6 +266,9 @@ describe("Dashboard routes", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.ok).toBe(true);
+      // No tombstone: sync is push-only, so nothing would ever read one.
+      expect(mockDelete).toHaveBeenCalled();
+      expect(mockUpdate).not.toHaveBeenCalled();
     });
   });
 

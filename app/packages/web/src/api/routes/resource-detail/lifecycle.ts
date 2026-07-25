@@ -8,6 +8,7 @@ import { encrypt, decrypt, buildAad } from "../../../services/encryption";
 import { normalizeResourceCreateResult, parseOutputRef } from "@infrawrench/plugin-base";
 import type { OutputRefValue } from "@infrawrench/plugin-base";
 import { requirePermission } from "../../../auth/permissions";
+import { nextAssociationSyncVersion } from "../../../services/sync-versions";
 
 /**
  * Lifecycle routes: create / delete / picker-resources / field-action /
@@ -276,12 +277,14 @@ export function registerLifecycleRoutes(app: Hono): void {
                 consumerFieldKey: fieldKey,
                 providerResourceId: ref.resourceId,
                 providerOutputKey: ref.outputKey,
+                syncVersion: nextAssociationSyncVersion(organizationId),
               })
               .onConflictDoUpdate({
                 target: [associations.consumerResourceId, associations.consumerFieldKey],
                 set: {
                   providerResourceId: ref.resourceId,
                   providerOutputKey: ref.outputKey,
+                  syncVersion: nextAssociationSyncVersion(organizationId),
                   updatedAt: new Date(),
                 },
               });
