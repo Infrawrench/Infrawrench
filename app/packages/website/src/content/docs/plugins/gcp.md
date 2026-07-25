@@ -50,11 +50,25 @@ If the instance has no public IP, the tab renders a static guidance pane explain
 
 ## Cost graphs
 
-GCP has no cost API, so [cost graphs & budgets](../features/cloud-costs.md) read your Cloud Billing **BigQuery export**. One-time setup:
+GCP has no cost API, so [cost graphs & budgets](../features/cloud-costs.md) read your Cloud Billing **BigQuery export**. This is a one-time setup done by a billing admin, and there is no API or `gcloud` equivalent — every step is in the console.
 
-1. [Enable the standard usage cost export](https://cloud.google.com/billing/docs/how-to/export-data-bigquery) on your billing account (a billing admin does this in the console).
-2. Put the export table — `project.dataset.table` — into the account's **Billing export table** field in infrawrench.
+**1. Create the dataset the export writes into.** BigQuery → **Create dataset**, in the project you want to bill the queries to. Any name works (`billing_export` is conventional). The export cannot be enabled without an existing dataset.
 
-The service account needs `roles/bigquery.jobUser` on its project and `roles/bigquery.dataViewer` on the export dataset. Costs are net of credits, broken down by service, region, and project. Note the export only accumulates data from the day it is enabled — it is not retroactive.
+**2. Turn on the export.** Open **Billing → Billing export** ([console.cloud.google.com/billing/export](https://console.cloud.google.com/billing/export)) and choose your Cloud Billing account if prompted, then:
 
-Until both steps are done, GCP cost graphs stay empty and the dashboard shows a banner saying so, linked straight to the billing export settings for this account's project — see [when collection fails](../features/cloud-costs.md#when-collection-fails).
+- Open the **BigQuery export** tab.
+- Click **Enable standard Export**. Each export type — FOCUS, standard, detailed — is enabled separately; Infrawrench reads the **standard usage cost** one.
+- Pick your project from the **Projects** dropdown and your dataset from **Dataset ID**.
+- Click **Save**. If the BigQuery API is not on yet, the page offers **Enable BigQuery API** first.
+
+<insert [Cloud Billing "Billing export" page, BigQuery export tab, with the standard usage cost export enabled and showing the project and dataset it writes to] here>
+
+**3. Copy the table name into Infrawrench.** The export creates a table named `gcp_billing_export_v1_<BILLING_ACCOUNT_ID>`, with the billing account's dashes turned into underscores. It appears a few hours after you save — not immediately — so come back once it exists. Paste the full `project.dataset.table` into the account's **Billing export table** field:
+
+```
+my-project.billing_export.gcp_billing_export_v1_012345_ABCDEF_678901
+```
+
+The service account needs `roles/bigquery.jobUser` on its project and `roles/bigquery.dataViewer` on the export dataset. Costs are net of credits, broken down by service, region, and project. Note the export only accumulates data from the day it is enabled — it is not retroactive, so cost graphs start there rather than covering the usual year of backfill.
+
+Until all three steps are done, GCP cost graphs stay empty and the dashboard shows a banner saying so, linked straight to the billing export settings for this account's project — see [when collection fails](../features/cloud-costs.md#when-collection-fails).
