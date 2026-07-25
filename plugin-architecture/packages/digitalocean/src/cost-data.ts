@@ -5,8 +5,9 @@
  * DAILY usage deltas derived from nightly invoice-item estimates — one data
  * point per (day, sku, description, region) with a USD `total_amount`. The
  * window is capped at 31 days per request, which matches the host's
- * month-aligned chunking, and data only exists from 1 December 2025 onward
- * (earlier windows come back empty). Because the points are nightly
+ * month-aligned chunking, and data only exists from 1 December 2025 onward —
+ * earlier windows are rejected outright (400) rather than returning an empty
+ * list, which the fetch loop below absorbs. Because the points are nightly
  * estimates, daily sums can drift slightly from the month-end invoice; DO
  * recommends invoices for final amounts.
  *
@@ -81,13 +82,18 @@ export async function fetchDoCostData(
         `/billing/${urn}/insights/${range.fromDate}/${range.toDate}?per_page=200&page=${page}`,
       );
     } catch (err) {
-      // Windows entirely before the 2025-12-01 data start can 404 rather
-      // than return an empty list — treat that as "no data" so the host's
-      // historical backfill doesn't hard-fail. Other errors (401 missing
-      // `billing:read` scope, 429, 5xx) propagate with status + body via
-      // jsonRestFetch's error message.
+      // Windows entirely before the 2025-12-01 data start don't return an
+      // empty list — treat them as "no data" so the host's historical
+      // backfill doesn't hard-fail. DO rejects them with 400 and an explicit
+      // "Start date cannot be before December 1, 2025." message; 404 is
+      // matched too because the endpoint has answered that way as well.
+      // Other errors (401 missing `billing:read` scope, 429, 5xx) propagate
+      // with status + body via jsonRestFetch's error message. Note the 400 is
+      // matched on message, not status alone — an unrelated 400 is a real
+      // failure and must not be swallowed as "no spend".
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes(" 404 ")) return [];
+      if (message.includes(" 400 ") && /Start date cannot be before/i.test(message)) return [];
       throw err;
     }
 
