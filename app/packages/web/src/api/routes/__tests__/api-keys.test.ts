@@ -28,6 +28,7 @@ vi.mock("@/services/audit", () => ({
 vi.mock("uuid", () => ({ v4: () => "test-uuid-1234" }));
 
 const { apiKeyRoutes } = await import("@/api/routes/api-keys");
+const { organizationMembers } = await import("@/db/schema");
 
 const buildApp = () => buildTestApp(apiKeyRoutes);
 
@@ -260,14 +261,25 @@ describe("authenticateApiRequest — legacy hash sunset", () => {
    * lookup) and `secondRows` on the second (legacy lookup). Returns the chain
    * so the assertions can inspect it.
    */
-  function mockTwoStageSelect(firstRows: unknown[], secondRows: unknown[]) {
+  function mockTwoStageSelect(
+    firstRows: unknown[],
+    secondRows: unknown[],
+    /** Membership rows for the owner-still-in-org check; a member by default. */
+    membershipRows: unknown[] = [{ id: "m1" }],
+  ) {
     const calls = [firstRows, secondRows];
-    mockSelect.mockImplementation(() => {
-      const rows = calls.shift() ?? [];
-      const where = vi.fn().mockResolvedValue(rows);
-      const from = vi.fn().mockReturnValue({ where });
-      return { from };
-    });
+    // Dispatch on the table rather than call order: the membership lookup only
+    // happens after a key matches, so its position in the sequence varies.
+    mockSelect.mockImplementation(() => ({
+      from: vi.fn().mockImplementation((table: unknown) => {
+        if (table === organizationMembers) {
+          const limit = vi.fn().mockResolvedValue(membershipRows);
+          return { where: vi.fn().mockReturnValue({ limit }) };
+        }
+        const rows = calls.shift() ?? [];
+        return { where: vi.fn().mockResolvedValue(rows) };
+      }),
+    }));
   }
 
   async function callAuth(token: string) {

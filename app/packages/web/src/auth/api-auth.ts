@@ -1,7 +1,8 @@
 import { eq, and, isNull } from "drizzle-orm";
+import { HTTPException } from "hono/http-exception";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { db } from "@/db/client";
-import { apiKeys } from "@/db/schema";
+import { apiKeys, organizationMembers } from "@/db/schema";
 import { keyedHash, legacySha256Hex } from "@/services/encryption";
 import { workos, clientId } from "./workos";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
@@ -56,6 +57,23 @@ interface WorkosAccessTokenClaims extends JWTPayload {
   sid?: string;
 }
 
+/**
+ * Verification deliberately pins neither `aud` nor `iss`. Both look like
+ * obvious hardening and both are wrong here:
+ *
+ * - **`aud`** — WorkOS AuthKit access tokens do not carry an audience claim at
+ *   all (`sub`, `sid`, `iss`, `org_id`, `role`, `permissions`, `exp`, `iat`).
+ *   Passing `audience` to `jwtVerify` would reject *every* token.
+ * - **`iss`** — the value is not stable across configurations or SDK versions
+ *   (`https://api.workos.com/`, the same without the trailing slash, or the
+ *   custom AuthKit domain when one is set), so pinning it risks locking every
+ *   bearer client out for no gain.
+ *
+ * No gain, because {@link getJwks} resolves to `/sso/jwks/<clientId>` — a
+ * per-client key set. A token minted for any other WorkOS client fails the
+ * signature check outright, which is the isolation an `iss`/`aud` pin would
+ * have been standing in for.
+ */
 export async function verifyWorkosAccessToken(
   token: string,
 ): Promise<WorkosAccessTokenClaims | null> {
@@ -108,6 +126,22 @@ export async function authenticateApiRequest(request: Request): Promise<ApiAuthR
 
     if (key.expiresAt && key.expiresAt < new Date()) return null;
 
+    // The key is only as valid as its owner's membership. Removing someone
+    // from an org deletes their membership row but cannot reach into the keys
+    // they minted — and once removed they can no longer see those keys in the
+    // UI to revoke them. Check here so access ends with the membership.
+    const [membership] = await db
+      .select({ id: organizationMembers.id })
+      .from(organizationMembers)
+      .where(
+        and(
+          eq(organizationMembers.userId, key.userId),
+          eq(organizationMembers.organizationId, key.organizationId),
+        ),
+      )
+      .limit(1);
+    if (!membership) return null;
+
     const storedScopes = (key.scopes as string[]) ?? [];
     const migrated = migrateScopes(storedScopes);
     const scopesChanged =
@@ -152,6 +186,9 @@ export async function authenticateApiRequest(request: Request): Promise<ApiAuthR
 export function requireScope(auth: ApiAuthResult, scope: string): void {
   if (!auth.scopes) return;
   if (!hasPermission(auth.scopes, scope)) {
-    throw new Error(`Missing required scope: ${scope}`);
+    // HTTPException, not a bare Error: Hono's error handler turns anything
+    // else into a 500 (and echoes the message outside production), which
+    // reports an authorization failure as a server fault.
+    throw new HTTPException(403, { message: `Missing required scope: ${scope}` });
   }
 }

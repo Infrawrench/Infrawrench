@@ -3,7 +3,7 @@ import { v4 as uuid } from "uuid";
 import { randomBytes, createHash } from "node:crypto";
 import { eq, and, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/client";
-import { users, invitations, organizationMembers, roles } from "../../db/schema";
+import { apiKeys, users, invitations, organizationMembers, roles } from "../../db/schema";
 import { logAudit } from "../../services/audit";
 import { requirePermission } from "../../auth/permissions";
 import {
@@ -396,12 +396,29 @@ app.delete("/members/:id", async (c) => {
       ),
     );
 
+  // Revoke the keys they minted in this org. `authenticateApiRequest` also
+  // re-checks membership, so this is belt-and-braces — but it leaves an
+  // accurate record rather than rows that merely happen to be unusable, and
+  // the removed user can no longer reach the UI to revoke them.
+  const revoked = await db
+    .update(apiKeys)
+    .set({ revokedAt: new Date() })
+    .where(
+      and(
+        eq(apiKeys.userId, userId),
+        eq(apiKeys.organizationId, organizationId),
+        isNull(apiKeys.revokedAt),
+      ),
+    )
+    .returning({ id: apiKeys.id });
+
   void logAudit({
     organizationId,
     userId: session.userId,
     action: "member.remove",
     entityType: "member",
     entityId: userId,
+    metadata: { revokedApiKeyIds: revoked.map((k) => k.id) },
   });
   return c.json({ ok: true });
 });

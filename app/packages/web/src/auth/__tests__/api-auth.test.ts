@@ -16,6 +16,7 @@ vi.mock("@/db/schema", () => ({
     revokedAt: "revoked_at",
     legacyHashSunsetAt: "legacy_hash_sunset_at",
   },
+  organizationMembers: { id: "id", userId: "user_id", organizationId: "organization_id" },
 }));
 
 const mockKeyedHash = vi.fn();
@@ -55,6 +56,17 @@ function selectReturning(rows: unknown[]) {
   return { from };
 }
 
+/** The membership lookup, which ends in `.limit(1)`. */
+function membershipReturning(rows: unknown[]) {
+  const limit = vi.fn().mockResolvedValue(rows);
+  const where = vi.fn().mockReturnValue({ limit });
+  const from = vi.fn().mockReturnValue({ where });
+  return { from };
+}
+
+/** A membership row, i.e. the key's owner is still in the org. */
+const MEMBER = [{ id: "m1" }];
+
 function updateChain() {
   const where = vi.fn().mockResolvedValue(undefined);
   const set = vi.fn().mockReturnValue({ where });
@@ -74,6 +86,29 @@ describe("verifyWorkosAccessToken", () => {
   it("returns null when verification throws", async () => {
     mockJwtVerify.mockRejectedValue(new Error("bad sig"));
     expect(await verifyWorkosAccessToken("bad")).toBeNull();
+  });
+
+  /**
+   * Regression guard. WorkOS AuthKit tokens carry no `aud` claim, and their
+   * `iss` varies by configuration and SDK version — passing either option to
+   * `jwtVerify` rejects every real token and locks out all bearer clients
+   * (MCP, mobile, desktop sync, chat). Isolation comes from the per-client
+   * JWKS instead. See the comment on `verifyWorkosAccessToken`.
+   */
+  it("does not constrain aud or iss during verification", async () => {
+    mockJwtVerify.mockResolvedValue({ payload: { sub: "u1" } });
+    await verifyWorkosAccessToken("token");
+
+    const options = mockJwtVerify.mock.calls[0]![2] as Record<string, unknown> | undefined;
+    expect(options?.["audience"]).toBeUndefined();
+    expect(options?.["issuer"]).toBeUndefined();
+  });
+
+  it("accepts a token with no aud claim", async () => {
+    mockJwtVerify.mockResolvedValue({
+      payload: { sub: "u1", sid: "session_1", iss: "https://auth.example.com" },
+    });
+    expect(await verifyWorkosAccessToken("no-aud")).toMatchObject({ sub: "u1" });
   });
 });
 
@@ -105,6 +140,7 @@ describe("authenticateApiRequest", () => {
         },
       ]),
     );
+    mockSelect.mockReturnValueOnce(membershipReturning(MEMBER));
     updateChain();
     const result = await authenticateApiRequest(req({ authorization: "Bearer iwk_abc" }));
     expect(result).toEqual({
@@ -137,6 +173,7 @@ describe("authenticateApiRequest", () => {
         },
       ]),
     );
+    mockSelect.mockReturnValueOnce(membershipReturning(MEMBER));
     const { set } = updateChain();
     const result = await authenticateApiRequest(req({ authorization: "Bearer iwk_legacy" }));
     expect(result?.scopes).toEqual(["resources:read", "resources:write"]);
@@ -179,6 +216,26 @@ describe("authenticateApiRequest", () => {
     );
     const result = await authenticateApiRequest(req({ authorization: "Bearer iwk_expired" }));
     expect(result).toBeNull();
+  });
+
+  it("rejects a key whose owner is no longer a member of the org", async () => {
+    mockSelect.mockReturnValueOnce(
+      selectReturning([
+        {
+          id: "k5",
+          userId: "removed-user",
+          organizationId: "o5",
+          scopes: ["resources:read"],
+          expiresAt: null,
+          legacyHashSunsetAt: null,
+        },
+      ]),
+    );
+    mockSelect.mockReturnValueOnce(membershipReturning([]));
+    const result = await authenticateApiRequest(req({ authorization: "Bearer iwk_orphan" }));
+    expect(result).toBeNull();
+    // Never records a use for a key it refused.
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it("falls back to WorkOS access token when not an iwk_ key", async () => {
