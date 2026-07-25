@@ -20,6 +20,10 @@ app_env = {
   WORKOS_CLIENT_ID       = "client_..."
   WORKOS_REDIRECT_URI    = "https://app.infrawrench.com/callback"
   WORKOS_COOKIE_PASSWORD = "<openssl rand -base64 32>"
+  # AuthKit domain — the authorization server advertised to MCP clients. Must be
+  # the AuthKit origin (Dashboard > Authentication > AuthKit), not api.workos.com.
+  # Dynamic Client Registration must also be enabled under Connect > Configuration.
+  WORKOS_AUTHKIT_DOMAIN  = "https://auth.infrawrench.com"
 
   # Stripe
   STRIPE_SECRET_KEY                    = "sk_live_..."
