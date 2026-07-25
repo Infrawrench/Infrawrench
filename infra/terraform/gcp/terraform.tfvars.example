@@ -1,0 +1,63 @@
+# Copy to terraform.tfvars (gitignored) and fill in. Credentials come from
+# `gcloud auth application-default login` rather than a variable — there is no
+# API-token equivalent to the DigitalOcean stack's do_token.
+
+project_id   = "infrawrench-prod"
+region       = "us-east4"
+cluster_name = "infrawrench-prod"
+
+# owner/repo allowed to push images and deploy via Workload Identity Federation.
+github_repository = "Infrawrench/infrawrench"
+
+# Runtime env for web + poller + github-watcher (one shared k8s secret).
+app_env = {
+  NODE_ENV = "production"
+
+  # Core
+  DATABASE_URL          = "postgres://...@....neon.tech/infrawrench?sslmode=require"
+  ENCRYPTION_MASTER_KEY = "<openssl rand -base64 32>"
+  APP_URL               = "https://app.infrawrench.com"
+
+  # WorkOS
+  WORKOS_API_KEY         = "sk_live_..."
+  WORKOS_CLIENT_ID       = "client_..."
+  WORKOS_REDIRECT_URI    = "https://app.infrawrench.com/callback"
+  WORKOS_COOKIE_PASSWORD = "<openssl rand -base64 32>"
+  # AuthKit domain — the authorization server advertised to MCP clients. Must be
+  # the AuthKit origin (Dashboard > Authentication > AuthKit), not api.workos.com.
+  # Dynamic Client Registration must also be enabled under Connect > Configuration.
+  WORKOS_AUTHKIT_DOMAIN = "https://auth.infrawrench.com"
+
+  # Stripe
+  STRIPE_SECRET_KEY                   = "sk_live_..."
+  STRIPE_WEBHOOK_SECRET               = "whsec_..."
+  STRIPE_PRICE_ID                     = "price_..." # $20/seat/mo licensed price
+  STRIPE_CHAT_PRICE_ID                = "price_..." # metered price bound to the chat meter
+  INFRAWRENCH_STRIPE_CHAT_METER_EVENT = "..."
+
+  # ClickHouse Cloud (metrics; all four together or writes/reads no-op).
+  # Stays on ClickHouse Cloud — if its IP access list is enabled, add the
+  # `egress_ip` output (the Cloud NAT address) to it.
+  CLICKHOUSE_METRICS_URL      = "https://xxxxx.clickhouse.cloud:8443"
+  CLICKHOUSE_METRICS_USER     = "default"
+  CLICKHOUSE_METRICS_PASSWORD = "..."
+  CLICKHOUSE_METRICS_DATABASE = "infrawrench"
+
+  # GitHub App (workflow git triggers; used by web + github-watcher)
+  GITHUB_APP_ID          = "..."
+  GITHUB_APP_PRIVATE_KEY = "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
+  GITHUB_APP_SLUG        = "..."
+
+  # Optional: comma-separated emails allowed on /api/admin + the /admin page
+  # (grant/revoke complimentary orgs). Omit to disable the admin surface.
+  INFRAWRENCH_PLATFORM_ADMIN_EMAILS = "you@example.com"
+
+  # Optional: Expo push access token (mobile notifications). Sends work
+  # without it unless the Expo project has Enhanced Push Security enabled —
+  # recommended in production. Create under expo.dev → Access tokens.
+  EXPO_ACCESS_TOKEN = "..."
+
+  # Optional
+  # ANTHROPIC_API_KEY    = "..."
+  # OPENAI_API_KEY       = "..."
+}

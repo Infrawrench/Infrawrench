@@ -16,11 +16,9 @@ spec:
       labels:
         app: poller
     spec:
-      imagePullSecrets:
-        - name: docr-pull
       containers:
         - name: poller
-          image: registry.digitalocean.com/infrawrench/poller:bootstrap
+          image: REGION-docker.pkg.dev/PROJECT_ID/infrawrench/poller:bootstrap
           env:
             - name: POLLER_CONCURRENCY
               value: "8"

@@ -1,9 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# The namespace, the `infrawrench-env` secret, and the `docr-pull` registry
-# secret are created by terraform (infra/terraform); everything here is the
-# workload layer, applied by CI (.github/workflows/web-deploy.yml).
+# The namespace and the `infrawrench-env` secret are created by terraform
+# (infra/terraform/gcp); everything here is the workload layer, applied by CI
+# (.github/workflows/web-deploy.yml). Nodes pull from Artifact Registry with
+# their own service account, so there is no image pull secret.
 namespace: infrawrench
 
 resources:
@@ -14,12 +15,15 @@ resources:
   - github-watcher-deployment.yaml
   - cluster-issuer.yaml
 
-# CI pins these to the commit SHA before applying:
-#   kustomize edit set image registry.digitalocean.com/infrawrench/<svc>:${GITHUB_SHA}
+# The image names below are deliberately unresolvable placeholders: the real
+# Artifact Registry host embeds the region and project id, which live in CI
+# variables rather than git. CI rewrites name *and* tag before applying:
+#   kustomize edit set image \
+#     REGION-docker.pkg.dev/PROJECT_ID/infrawrench/<svc>=$AR_REGISTRY/<svc>:$GITHUB_SHA
 images:
-  - name: registry.digitalocean.com/infrawrench/web
+  - name: REGION-docker.pkg.dev/PROJECT_ID/infrawrench/web
     newTag: bootstrap
-  - name: registry.digitalocean.com/infrawrench/poller
+  - name: REGION-docker.pkg.dev/PROJECT_ID/infrawrench/poller
     newTag: bootstrap
-  - name: registry.digitalocean.com/infrawrench/github-watcher
+  - name: REGION-docker.pkg.dev/PROJECT_ID/infrawrench/github-watcher
     newTag: bootstrap

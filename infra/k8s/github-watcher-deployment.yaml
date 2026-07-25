@@ -17,11 +17,9 @@ spec:
       labels:
         app: github-watcher
     spec:
-      imagePullSecrets:
-        - name: docr-pull
       containers:
         - name: github-watcher
-          image: registry.digitalocean.com/infrawrench/github-watcher:bootstrap
+          image: REGION-docker.pkg.dev/PROJECT_ID/infrawrench/github-watcher:bootstrap
           envFrom:
             - secretRef:
                 name: infrawrench-env

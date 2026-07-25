@@ -1,16 +1,22 @@
 name: web-deploy
 
 # Builds commit-SHA-tagged images for web, poller, and github-watcher, pushes
-# them to DOCR, runs DB migrations, then points the in-cluster kustomize
-# manifests at the new tag. The cluster/registry/secrets are provisioned by
-# infra/terraform.
+# them to Artifact Registry, runs DB migrations, then points the in-cluster
+# kustomize manifests at the new tag. The cluster/registry/secrets are
+# provisioned by infra/terraform/gcp.
+#
+# Auth is keyless: GitHub's OIDC token is exchanged for a short-lived
+# credential on the CI service account via Workload Identity Federation, so
+# there is no GCP key in repo secrets.
 #
 # Required repo secrets:
-#   DIGITALOCEAN_ACCESS_TOKEN — DO API token (registry push + kubeconfig)
-#   PROD_DATABASE_URL         — Neon connection string for drizzle migrations
-# Optional repo variables (defaults match infra/terraform defaults):
-#   DOCR_NAME    — registry name (default: infrawrench)
-#   DOKS_CLUSTER — cluster name  (default: infrawrench-prod)
+#   PROD_DATABASE_URL — Neon connection string for drizzle migrations
+# Required repo variables (all four are terraform outputs):
+#   GCP_WORKLOAD_IDENTITY_PROVIDER — projects/.../workloadIdentityPools/.../providers/github
+#   GCP_SERVICE_ACCOUNT            — infrawrench-prod-ci@<project>.iam.gserviceaccount.com
+#   AR_REGISTRY                    — us-east4-docker.pkg.dev/<project>/infrawrench
+#   GKE_CLUSTER                    — cluster name (default: infrawrench-prod)
+#   GKE_REGION                     — cluster region (default: us-east4)
 
 on:
   push:
@@ -34,12 +40,18 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  REGISTRY: registry.digitalocean.com/${{ vars.DOCR_NAME || 'infrawrench' }}
-  CLUSTER: ${{ vars.DOKS_CLUSTER || 'infrawrench-prod' }}
+  REGISTRY: ${{ vars.AR_REGISTRY }}
+  CLUSTER: ${{ vars.GKE_CLUSTER || 'infrawrench-prod' }}
+  REGION: ${{ vars.GKE_REGION || 'us-east4' }}
 
 jobs:
   build-push:
     runs-on: ubuntu-latest
+    # id-token lets the job mint the OIDC assertion Workload Identity
+    # Federation trades for GCP credentials.
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       matrix:
         include:
@@ -55,12 +67,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: digitalocean/action-doctl@v2
+      - uses: google-github-actions/auth@v2
         with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
-      - name: Log in to DOCR
-        run: doctl registry login --expiry-seconds 5400
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Log in to Artifact Registry
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
       - uses: docker/setup-buildx-action@v3
 
@@ -100,23 +115,33 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: [build-push, migrate]
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
-      - uses: digitalocean/action-doctl@v2
+      - uses: google-github-actions/auth@v2
         with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
-      - name: Fetch kubeconfig
-        run: doctl kubernetes cluster kubeconfig save "$CLUSTER"
+      # gke-gcloud-auth-plugin is what kubectl shells out to for GKE tokens;
+      # without it get-credentials writes a kubeconfig kubectl can't use.
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          install_components: gke-gcloud-auth-plugin
+
+      - name: Fetch cluster credentials
+        run: gcloud container clusters get-credentials "$CLUSTER" --region "$REGION"
 
       - name: Point manifests at ${{ github.sha }}
         working-directory: infra/k8s
         run: |
-          kustomize edit set image \
-            "$REGISTRY/web:${GITHUB_SHA}" \
-            "$REGISTRY/poller:${GITHUB_SHA}" \
-            "$REGISTRY/github-watcher:${GITHUB_SHA}"
+          for svc in web poller github-watcher; do
+            kustomize edit set image \
+              "REGION-docker.pkg.dev/PROJECT_ID/infrawrench/${svc}=${REGISTRY}/${svc}:${GITHUB_SHA}"
+          done
 
       - name: Apply manifests
         run: kubectl apply -k infra/k8s

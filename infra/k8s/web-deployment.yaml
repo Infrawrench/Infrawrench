@@ -21,11 +21,9 @@ spec:
       labels:
         app: web
     spec:
-      imagePullSecrets:
-        - name: docr-pull
       containers:
         - name: web
-          image: registry.digitalocean.com/infrawrench/web:bootstrap
+          image: REGION-docker.pkg.dev/PROJECT_ID/infrawrench/web:bootstrap
           ports:
             - name: http
               containerPort: 3000
