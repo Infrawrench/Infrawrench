@@ -2,7 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # The namespace and the `infrawrench-env` secret are created by terraform
-# (infra/terraform/gcp); everything here is the workload layer, applied by CI
+# (infra/terraform); everything here is the workload layer, applied by CI
 # (.github/workflows/web-deploy.yml). Nodes pull from Artifact Registry with
 # their own service account, so there is no image pull secret.
 namespace: infrawrench

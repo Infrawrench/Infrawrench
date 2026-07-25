@@ -86,7 +86,10 @@ export async function claimDueCostAccounts(
     WHERE id IN (
       SELECT id FROM accounts
       WHERE deleted_at IS NULL
-        AND plugin_id = ANY(${costCapablePluginIds})
+        -- IN, not = ANY(): the sql tag expands a JS array into a parenthesized
+        -- placeholder list ($2, $3, …), which is what IN takes. ANY() wants a
+        -- real array on the right and fails with 42809 against that list.
+        AND plugin_id IN ${costCapablePluginIds}
         AND (cost_next_poll_at IS NULL OR cost_next_poll_at <= now())
       ORDER BY cost_last_polled_at ASC NULLS FIRST, id ASC
       LIMIT ${limit}

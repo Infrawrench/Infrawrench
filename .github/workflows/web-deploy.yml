@@ -3,7 +3,7 @@ name: web-deploy
 # Builds commit-SHA-tagged images for web, poller, and github-watcher, pushes
 # them to Artifact Registry, runs DB migrations, then points the in-cluster
 # kustomize manifests at the new tag. The cluster/registry/secrets are
-# provisioned by infra/terraform/gcp.
+# provisioned by infra/terraform.
 #
 # Auth is keyless: GitHub's OIDC token is exchanged for a short-lived
 # credential on the CI service account via Workload Identity Federation, so

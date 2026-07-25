@@ -6,16 +6,16 @@ Prod web stack on GKE: `web` (Hono + WebSockets, 2 replicas), `poller`
 GitHub API reads). Postgres stays on Neon, metrics on ClickHouse Cloud;
 the CF Workers deployables (website, telemetry) are not part of this.
 
-| Layer                                                                 | Owner                                    |
-| --------------------------------------------------------------------- | ---------------------------------------- |
-| Network, cluster, registry, namespace, secrets, ingress, cert-manager | `infra/terraform/gcp` (applied manually) |
-| Deployments, Service, Ingress, ClusterIssuer                          | `infra/k8s` (applied by CI)              |
-| Images `web` / `poller` / `github-watcher`, tagged `:<commit sha>`    | `.github/workflows/web-deploy.yml`       |
-| Container registry `registry.infrawrench.com` (CF Worker + R2)        | `infra/registry` (deployed manually)     |
-| Image `bastion-agent`, tagged `:<commit sha>` + `:latest`             | `.github/workflows/bastion-deploy.yml`   |
+| Layer                                                                 | Owner                                  |
+| --------------------------------------------------------------------- | -------------------------------------- |
+| Network, cluster, registry, namespace, secrets, ingress, cert-manager | `infra/terraform` (applied manually)   |
+| Deployments, Service, Ingress, ClusterIssuer                          | `infra/k8s` (applied by CI)            |
+| Images `web` / `poller` / `github-watcher`, tagged `:<commit sha>`    | `.github/workflows/web-deploy.yml`     |
+| Container registry `registry.infrawrench.com` (CF Worker + R2)        | `infra/registry` (deployed manually)   |
+| Image `bastion-agent`, tagged `:<commit sha>` + `:latest`             | `.github/workflows/bastion-deploy.yml` |
 
-`infra/terraform/digitalocean` is the previous DOKS stack, kept only so it can
-be destroyed after cutover — see [Migrating off DigitalOcean](#migrating-off-digitalocean).
+This replaced a DigitalOcean DOKS stack, which was destroyed on 2026-07-25.
+Nothing DigitalOcean-side remains.
 
 ## Shape of the GCP stack
 
@@ -43,7 +43,7 @@ be destroyed after cutover — see [Migrating off DigitalOcean](#migrating-off-d
 
    ```sh
    gcloud auth application-default login
-   cd infra/terraform/gcp
+   cd infra/terraform
    cp terraform.tfvars.example terraform.tfvars   # fill in project_id + app_env
    terraform init && terraform apply
    ```
@@ -78,66 +78,39 @@ be destroyed after cutover — see [Migrating off DigitalOcean](#migrating-off-d
    cert-manager then issues the Let's Encrypt cert via HTTP-01 (the ACME email
    is in `infra/k8s/cluster-issuer.yaml` — change it if needed). The record is
    proxied through Cloudflare, so do this with the proxy **off** first — see
-   [Migrating off DigitalOcean](#migrating-off-digitalocean) for why.
+   [TLS, Cloudflare, and the ACME deadlock](#tls-cloudflare-and-the-acme-deadlock)
+   for why.
 
-## Migrating off DigitalOcean
-
-The two stacks can run side by side; the only shared, non-duplicable thing is
-the DNS record, so that's the cutover point.
+## TLS, Cloudflare, and the ACME deadlock
 
 `app.infrawrench.com` is an **A record proxied through Cloudflare** (zone
-`infrawrench.com`). Two consequences that drive the order of operations:
+`infrawrench.com`). That shapes anything involving certificates:
 
-- Visitors terminate TLS at Cloudflare's edge cert, not at the origin, so
-  swapping the origin's certificate is not user-visible.
-- cert-manager's HTTP-01 challenge cannot be satisfied before cutover: Let's
-  Encrypt resolves the public name, which still points at the old origin, so
-  the solver never sees the request. And if the zone's SSL/TLS mode is
-  **Full (strict)**, flipping the proxied record to a cluster holding only
-  ingress-nginx's self-signed default cert gives 526s _and_ keeps the
-  challenge failing — a deadlock. Cutting over unproxied breaks it.
+- Visitors terminate TLS at Cloudflare's edge certificate, not at the origin.
+  The origin's Let's Encrypt cert is what Cloudflare validates on the back
+  half of the connection, so replacing it is never user-visible.
+- **cert-manager's HTTP-01 challenge cannot be satisfied while the record
+  points somewhere else.** Let's Encrypt resolves the public name, so if that
+  still answers from another origin, the solver never sees the request. Worse,
+  if the zone's SSL/TLS mode is **Full (strict)**, pointing the proxied record
+  at a cluster that only has ingress-nginx's self-signed default cert returns
+  526 to visitors _and_ keeps the challenge failing — a deadlock where the
+  cert can't issue because the cert isn't valid yet.
 
-1. Bootstrap GCP through step 4 above, but **don't** move DNS yet.
-2. Smoke-test against the ingress IP directly, with `curl --resolve` and the
-   real Host header, so the app, the API, and WebSocket upgrade are all
-   exercised. Use `-k`: the origin still has ingress-nginx's fake cert at this
-   point, and that is expected, not a failure.
-3. Scale the DOKS `poller` and `github-watcher` to 0, against the DO
-   kubeconfig:
+The way out is to move the record with the **proxy off** (`proxied: false`,
+low TTL). Let's Encrypt then validates directly against the ingress IP:
 
-   ```sh
-   kubectl -n infrawrench scale deploy/poller deploy/github-watcher --replicas=0
-   ```
+```sh
+kubectl -n infrawrench get certificate web-tls -w
+```
 
-   Both write to the shared Neon database, and running them in two clusters at
-   once is wasteful even though the atomic-claim and CAS logic make it safe.
+Once `web-tls` reports `READY=True`, re-enable the proxy. The origin now
+presents a publicly-trusted certificate, which satisfies Full (strict) as well
+as the laxer modes. Keep the unproxied window short — the origin IP is exposed
+and unprotected while it lasts.
 
-4. Point the A record at the `ingress_ip` output **with the proxy off**
-   (`proxied: false`, low TTL). Let's Encrypt now validates directly against
-   the cluster and issues within a minute or two:
-
-   ```sh
-   kubectl -n infrawrench get certificate web-tls -w
-   ```
-
-   The origin IP is briefly exposed and unprotected during this window, so keep
-   it short.
-
-5. Once `web-tls` reports `READY=True`, turn the proxy back on
-   (`proxied: true`). The origin now presents a publicly-trusted certificate,
-   which satisfies Full (strict) as well as the laxer modes.
-6. Leave DOKS running for a day, then tear it down:
-
-   ```sh
-   cd infra/terraform/digitalocean
-   terraform destroy
-   ```
-
-   Then delete that directory and the `DIGITALOCEAN_ACCESS_TOKEN` repo secret.
-
-Nothing in the application changed: the database is the same Neon instance
-reached over plain TCP with `postgres.js`, ClickHouse Cloud is untouched, and
-the images are byte-identical builds from `infra/docker/service.Dockerfile`.
+Reissues on renewal are unaffected: the record already points at this cluster,
+so HTTP-01 resolves correctly with the proxy on.
 
 ## Day-2 notes
 
