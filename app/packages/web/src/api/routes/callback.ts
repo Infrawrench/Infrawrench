@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { timingSafeEqual } from "node:crypto";
 import { workos, clientId } from "../../auth/workos";
-import { OAUTH_STATE_COOKIE } from "../oauth-state";
+import { OAUTH_STATE_COOKIE, RETURN_TO_COOKIE, safeReturnPath } from "../oauth-state";
 
 const app = new Hono();
 
@@ -54,7 +54,12 @@ app.get("/", async (c) => {
     maxAge: 60 * 60 * 24 * 400, // ~13 months
   });
 
-  return c.redirect("/");
+  // Re-validate on the way out as well as on the way in: the cookie is ours and
+  // httpOnly, but the redirect target is worth checking at the point of use.
+  const returnTo = safeReturnPath(getCookie(c, RETURN_TO_COOKIE));
+  deleteCookie(c, RETURN_TO_COOKIE, { path: "/" });
+
+  return c.redirect(returnTo ?? "/");
 });
 
 export { app as callbackRoutes };

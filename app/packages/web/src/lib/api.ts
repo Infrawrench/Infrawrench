@@ -6,8 +6,18 @@
  */
 
 import { isHostKeyTrustResponse, type HostKeyTrustPayload } from "./host-key-trust";
+import { REAUTHENTICATION_REQUIRED } from "@infrawrench/ui";
 
 const SIGN_IN_URL = "/api/auth/sign-in";
+
+/** True for the structured 403 that `auth/step-up.ts` returns. */
+function isReauthenticationRequired(parsed: unknown): boolean {
+  return (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    (parsed as { code?: unknown }).code === REAUTHENTICATION_REQUIRED
+  );
+}
 
 /**
  * Error thrown by `apiFetch` when a response carries the structured
@@ -51,6 +61,14 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     }
     if (res.status === 409 && isHostKeyTrustResponse(parsed)) {
       throw new HostKeyTrustRequiredClientError(parsed);
+    }
+    // Step-up: the server accepted who we are but wants a fresher sign-in
+    // before allowing this change. Treated like the 401 path — bounce through
+    // sign-in — but with a return_to so the user lands back where they were.
+    if (res.status === 403 && isReauthenticationRequired(parsed)) {
+      const returnTo = `${window.location.pathname}${window.location.search}`;
+      window.location.href = `${SIGN_IN_URL}?return_to=${encodeURIComponent(returnTo)}`;
+      return new Promise(() => {});
     }
     let message = text;
     if (parsed && typeof parsed === "object" && parsed !== null && "error" in parsed) {

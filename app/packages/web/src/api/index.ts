@@ -8,7 +8,7 @@ import { apiReference } from "@scalar/hono-api-reference";
 import { sessionMiddleware, orgMiddleware, permissionsMiddleware } from "./auth-middleware";
 import { workos, clientId } from "../auth/workos";
 import { getPublicOpenApiDocument } from "./openapi/index";
-import { OAUTH_STATE_COOKIE } from "./oauth-state";
+import { OAUTH_STATE_COOKIE, RETURN_TO_COOKIE, safeReturnPath } from "./oauth-state";
 
 import { callbackRoutes } from "./routes/callback";
 import { stripeWebhookRoutes } from "./routes/stripe-webhook";
@@ -135,6 +135,19 @@ api.get("/api/auth/sign-in", async (c) => {
     path: "/",
     maxAge: 60 * 5,
   });
+  // Where to land afterwards. Used by the step-up flow so a user sent back to
+  // sign-in mid-settings-change returns to the page they were on. Validated to
+  // a same-origin path — an open redirect here would be a phishing primitive.
+  const returnTo = safeReturnPath(c.req.query("return_to"));
+  if (returnTo) {
+    setCookie(c, RETURN_TO_COOKIE, returnTo, {
+      httpOnly: true,
+      secure: process.env["NODE_ENV"] === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 5,
+    });
+  }
   const url = workos.userManagement.getAuthorizationUrl({
     provider: "authkit",
     clientId,

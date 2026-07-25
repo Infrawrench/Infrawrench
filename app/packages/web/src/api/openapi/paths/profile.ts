@@ -119,6 +119,7 @@ export function registerProfilePaths(ctx: BuildContext) {
         },
       },
       401: ErrorResponses[401],
+      403: ErrorResponses.reauth,
     },
   });
 
@@ -145,6 +146,7 @@ export function registerProfilePaths(ctx: BuildContext) {
       },
       400: ErrorResponses[400],
       401: ErrorResponses[401],
+      403: ErrorResponses.reauth,
     },
   });
 
@@ -164,6 +166,7 @@ export function registerProfilePaths(ctx: BuildContext) {
       },
       400: ErrorResponses[400],
       401: ErrorResponses[401],
+      403: ErrorResponses.reauth,
     },
   });
 
@@ -208,6 +211,7 @@ export function registerProfilePaths(ctx: BuildContext) {
         content: { "application/json": { schema: TotpEnrollment } },
       },
       401: ErrorResponses[401],
+      403: ErrorResponses.reauth,
     },
   });
 
@@ -262,6 +266,7 @@ export function registerProfilePaths(ctx: BuildContext) {
     responses: {
       200: { description: "Removed", content: { "application/json": { schema: Ok } } },
       401: ErrorResponses[401],
+      403: ErrorResponses.reauth,
       404: ErrorResponses[404],
     },
   });
@@ -308,6 +313,7 @@ export function registerProfilePaths(ctx: BuildContext) {
         },
       },
       401: ErrorResponses[401],
+      403: ErrorResponses.reauth,
     },
   });
 }

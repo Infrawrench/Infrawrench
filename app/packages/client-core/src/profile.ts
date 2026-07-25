@@ -1,4 +1,4 @@
-import type { CloudFetch } from "./fetch";
+import { CloudApiError, type CloudFetch } from "./fetch";
 
 /**
  * The signed-in user's own account — name, two-factor factors, and active
@@ -154,6 +154,28 @@ export async function revokeOtherUserSessions(api: CloudFetch): Promise<number> 
     method: "POST",
   });
   return result?.revoked ?? 0;
+}
+
+/**
+ * Marker the server puts on a 403 when an operation needs a fresh sign-in.
+ * Mirrors `REAUTHENTICATION_REQUIRED` in web `auth/step-up.ts`.
+ */
+export const REAUTHENTICATION_REQUIRED = "reauthentication_required";
+
+/**
+ * True when a rejection is the server asking the user to sign in again before
+ * the action is allowed (see `auth/step-up.ts`). Callers should route the user
+ * back through sign-in rather than surfacing the raw error — the request is
+ * well-formed and will succeed once the session is fresh.
+ */
+export function isReauthenticationRequired(error: unknown): boolean {
+  if (!(error instanceof CloudApiError) || error.status !== 403) return false;
+  try {
+    const parsed = JSON.parse(error.body) as { code?: unknown };
+    return parsed?.code === REAUTHENTICATION_REQUIRED;
+  } catch {
+    return false;
+  }
 }
 
 /** `GoogleOAuth` → `Google`. Unknown providers pass through unchanged. */

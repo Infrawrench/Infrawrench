@@ -10,6 +10,11 @@
  * guessable, and `mfa.deleteFactor` / `revokeSession` take a bare id with no
  * user binding of their own, so each handler first lists the caller's own
  * factors/sessions and refuses ids that aren't in that list.
+ *
+ * The routes that can convert a borrowed session into permanent control of the
+ * account — password-reset links, email changes, MFA enrolment/removal, and
+ * revoking every other session — additionally require a recent sign-in via
+ * `requireRecentAuthentication`. See `auth/step-up.ts`.
  */
 
 import { Hono } from "hono";
@@ -17,6 +22,7 @@ import { eq } from "drizzle-orm";
 import { workos } from "../../auth/workos";
 import { db } from "../../db/client";
 import { users } from "../../db/schema";
+import { requireRecentAuthentication } from "../../auth/step-up";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -109,6 +115,7 @@ app.patch("/", async (c) => {
  * round-trip would prove nothing extra.
  */
 app.post("/password-reset", async (c) => {
+  await requireRecentAuthentication(c);
   const session = c.get("session");
   const user = await workos.userManagement.getUser(session.userId);
   const reset = await workos.userManagement.createPasswordReset({ email: user.email });
@@ -139,6 +146,7 @@ app.post("/send-verification-email", async (c) => {
  * pin. Swap these two calls for the SDK helpers whenever we take the v10 bump.
  */
 app.post("/email-change", async (c) => {
+  await requireRecentAuthentication(c);
   const session = c.get("session");
   const body = await c.req
     .json<{ newEmail?: unknown }>()
@@ -170,6 +178,7 @@ app.post("/email-change", async (c) => {
 
 /** POST /api/profile/email-change/confirm — redeem the code and switch the address. */
 app.post("/email-change/confirm", async (c) => {
+  await requireRecentAuthentication(c);
   const session = c.get("session");
   const body = await c.req.json<{ code?: unknown }>().catch(() => ({}) as { code?: unknown });
 
@@ -212,6 +221,7 @@ app.get("/mfa", async (c) => {
  * `listAuthFactors` cannot distinguish a pending factor from a live one.
  */
 app.post("/mfa", async (c) => {
+  await requireRecentAuthentication(c);
   const session = c.get("session");
   const user = await workos.userManagement.getUser(session.userId);
 
@@ -277,6 +287,7 @@ app.post("/mfa/:factorId/challenge", async (c) => {
 
 /** DELETE /api/profile/mfa/:factorId — remove a factor (also the cancel path for enrolment). */
 app.delete("/mfa/:factorId", async (c) => {
+  await requireRecentAuthentication(c);
   const session = c.get("session");
   const factorId = c.req.param("factorId");
   if (!(await ownsFactor(session.userId, factorId))) {
@@ -326,6 +337,7 @@ app.delete("/sessions/:sessionId", async (c) => {
 
 /** POST /api/profile/sessions/revoke-others — sign out everywhere but here. */
 app.post("/sessions/revoke-others", async (c) => {
+  await requireRecentAuthentication(c);
   const session = c.get("session");
   const list = await workos.userManagement.listSessions(session.userId);
   const targets = list.data.filter((s) => s.status === "active" && s.id !== session.sessionId);

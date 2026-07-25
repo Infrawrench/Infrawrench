@@ -342,6 +342,8 @@ export {
   formatProvider,
   formatAuthMethod,
   describeUserAgent,
+  REAUTHENTICATION_REQUIRED,
+  isReauthenticationRequired,
   type Profile,
   type ProfileIdentity,
   type AuthFactor,

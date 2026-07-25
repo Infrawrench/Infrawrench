@@ -9,6 +9,14 @@ Your identity is managed by WorkOS, the same service that handles sign-in. infra
 
 <insert [Settings → General showing the Profile, Password, Two-factor authentication, and Active sessions cards] here>
 
+## Confirming it's you
+
+Changing your email, generating a password link, adding or removing two-factor, and signing out every other device all need a **recent sign-in** — not just a valid session. If you last signed in more than ten minutes ago, infrawrench sends you back through sign-in first and returns you to the page you were on. Nothing you had typed is submitted until you're back.
+
+This is deliberately stricter than the rest of the app. A session cookie lasts a long time by design, and each of these actions can hand over the account permanently — so a laptop left open, or a session someone else got hold of, shouldn't be enough on its own.
+
+Everything else in settings works from any valid session.
+
 ## Profile
 
 Edit your **first name** and **last name** and press **Save changes**. The name appears next to you in [team lists](../team-and-billing/organizations-and-invites.md), the [audit log](../team-and-billing/audit-log.md), and anywhere a resource records who changed it.
