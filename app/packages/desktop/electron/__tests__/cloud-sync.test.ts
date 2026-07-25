@@ -69,7 +69,7 @@ vi.mock("../main-utils", () => ({
 
 vi.stubGlobal("fetch", h.fetchMock);
 
-import { pullChanges, runSyncCycle } from "../cloud-sync";
+import { runSyncCycle } from "../cloud-sync";
 
 // --- Helpers ---------------------------------------------------------------
 
@@ -96,92 +96,34 @@ beforeEach(() => {
   h.getAccessToken.mockReset();
 });
 
-// --- pullChanges -------------------------------------------------------------
-
-describe("pullChanges", () => {
-  it("requests versions above the stored cursor", async () => {
-    h.syncState.set("last_sync_version", "3");
-    h.fetchMock.mockResolvedValueOnce(
-      jsonResponse({ accounts: [], resources: [], dashboards: [] }),
-    );
-
-    await pullChanges("tok");
-
-    expect(h.fetchMock).toHaveBeenCalledWith(
-      "https://cloud.test/api/v1/sync/pull",
-      expect.objectContaining({ body: JSON.stringify({ lastSyncVersion: 3 }) }),
-    );
-  });
-
-  it("does NOT advance last_sync_version even when records are returned (they are not applied)", async () => {
-    h.syncState.set("last_sync_version", "3");
-    h.fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        accounts: [{ id: "a1", syncVersion: 7 }],
-        resources: [{ id: "r1", syncVersion: 9 }],
-        dashboards: [{ id: "d1", syncVersion: 8 }],
-      }),
-    );
-
-    const pending = await pullChanges("tok");
-
-    // Advancing the cursor without applying would permanently skip these
-    // records once pull-apply is implemented.
-    expect(h.syncState.get("last_sync_version")).toBe("3");
-    expect(h.dbExecute).not.toHaveBeenCalled();
-    expect(pending).toEqual({ accounts: 1, resources: 1, dashboards: 1 });
-  });
-
-  it("defaults the cursor to 0 and leaves it unset", async () => {
-    h.fetchMock.mockResolvedValueOnce(
-      jsonResponse({ accounts: [{ id: "a1", syncVersion: 1 }], resources: [], dashboards: [] }),
-    );
-
-    await pullChanges("tok");
-
-    expect(h.fetchMock).toHaveBeenCalledWith(
-      "https://cloud.test/api/v1/sync/pull",
-      expect.objectContaining({ body: JSON.stringify({ lastSyncVersion: 0 }) }),
-    );
-    expect(h.syncState.has("last_sync_version")).toBe(false);
-  });
-
-  it("throws on a non-OK response", async () => {
-    h.fetchMock.mockResolvedValueOnce(jsonResponse({}, false, 500));
-
-    await expect(pullChanges("tok")).rejects.toThrow("Pull failed: 500");
-  });
-});
-
 // --- runSyncCycle ------------------------------------------------------------
 
 describe("runSyncCycle", () => {
   it("reports push-only synced status after a successful push", async () => {
     h.getAccessToken.mockResolvedValue("tok");
-    // No local changes -> push skips the network; pull probe returns pending data.
-    h.fetchMock.mockResolvedValueOnce(
-      jsonResponse({ accounts: [{ id: "a1", syncVersion: 5 }], resources: [], dashboards: [] }),
-    );
 
     await runSyncCycle();
 
     const events = statusEvents();
     expect(events[0]).toEqual({ status: "syncing" });
+    // `pushOnly` is the permanent shape of cloud sync, not a temporary caveat:
+    // cloud mode reads live from the API, so there is no local mirror to claim
+    // was refreshed.
     expect(events[1]).toMatchObject({ status: "synced", pushOnly: true });
     expect(events[1]?.["lastSyncedAt"]).toEqual(expect.any(String));
-    // Pull probe must not advance the cursor.
     expect(h.syncState.has("last_sync_version")).toBe(false);
   });
 
-  it("still reports synced when the pull probe fails (pull applies nothing)", async () => {
+  it("makes no pull request — sync is push-only", async () => {
     h.getAccessToken.mockResolvedValue("tok");
-    h.fetchMock.mockRejectedValueOnce(new Error("network down"));
 
     await runSyncCycle();
 
-    const events = statusEvents();
-    expect(events.map((e) => e["status"])).toEqual(["syncing", "synced"]);
-    expect(events[1]).toMatchObject({ pushOnly: true });
+    // A downward probe was scaffolding for an apply that is not coming; it cost
+    // a request per cycle and produced nothing but a log line.
+    for (const [url] of h.fetchMock.mock.calls as Array<[string]>) {
+      expect(url).not.toContain("/sync/pull");
+    }
   });
 
   it("reports an error when push fails", async () => {

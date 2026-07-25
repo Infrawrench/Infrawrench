@@ -114,65 +114,31 @@ async function pushChanges(token: string): Promise<void> {
   await setSyncState("last_push_at", new Date().toISOString());
 }
 
-interface PendingPull {
-  accounts: number;
-  resources: number;
-  dashboards: number;
-}
-
 /**
- * Pull is currently FETCH-ONLY: it reports how many remote changes are
- * pending but applies nothing locally, and it deliberately does NOT advance
- * the `last_sync_version` cursor. The server only returns records with
- * `syncVersion > lastSyncVersion`, so advancing the cursor without applying
- * the records would permanently skip them once apply is implemented.
+ * Sync is deliberately PUSH-ONLY.
  *
- * TODO(pull-apply): applying pulled records is blocked on a protocol change,
- * not on local plumbing. `/api/v1/sync/pull` returns account credentials
- * encrypted with the SERVER's master key (`encryptedCredentials` /
- * `credentialsIv`, see web `src/api/routes/sync.ts`), which this process
- * cannot decrypt — the desktop only holds its own per-install key
- * (`main-utils.getEncryptionKey`). Push works because the desktop sends
- * plaintext credentials over TLS and the server re-encrypts. Full pull-apply
- * needs:
- *   1. The server to return credentials in a client-decryptable form (e.g.
- *      plaintext over TLS, mirroring push).
- *   2. Decided conflict semantics between the server's per-org `syncVersion`
- *      counter and local `updated_at` timestamps.
- *   3. Local upserts into accounts / resources / dashboards (re-encrypting
- *      credentials with the local master key), deletion handling via
- *      `deletedAt`, and the `dashboardPins` / `associations` collections the
- *      payload also carries.
- * Only after records are actually applied may `last_sync_version` advance.
+ * The desktop has two modes and only one of them has local data to reconcile:
+ *
+ *  - **Local workspace** — its own SQLite store. `pushChanges` sends that
+ *    upward so work started locally can be adopted by a cloud organization.
+ *  - **Cloud workspace** — a thin client. `electron/cloud-data/*` proxies every
+ *    read to the web API, and `src/lib/ssh-dispatch.ts` routes cloud-key SSH
+ *    through the WS proxy so private keys never leave the server. There is no
+ *    local mirror to update, so there is nothing to pull into.
+ *
+ * A downward apply was scaffolded once and is not coming back. Beyond being
+ * unnecessary, it is not expressible against this schema: `accounts.
+ * encrypted_credentials` is `NOT NULL` and `resources.account_id` is
+ * `NOT NULL REFERENCES accounts(id)`, with associations and pins hanging off
+ * resources — so a credential-free mirror cannot be written at all, and a
+ * credential-bearing one would put provider secrets on every device and make
+ * the desktop a second caller of provider APIs outside the poller's per-plugin
+ * rate limits (`packages/poller/src/poll-account.ts`).
+ *
+ * The server's `/api/v1/sync/pull` still exists and is still correct — it is
+ * simply not something this client consumes. Reviving a local mirror means
+ * answering the credential question first, not writing upserts.
  */
-export async function pullChanges(token: string): Promise<PendingPull> {
-  const lastSyncVersion = Number((await getSyncState("last_sync_version")) ?? "0");
-
-  const response = await fetch(`${CLOUD_URL}/api/v1/sync/pull`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ lastSyncVersion }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Pull failed: ${response.status}`);
-  }
-
-  const data = (await response.json()) as {
-    accounts?: Array<{ id: string; syncVersion: number }>;
-    resources?: Array<{ id: string; syncVersion: number }>;
-    dashboards?: Array<{ id: string; syncVersion: number }>;
-  };
-
-  return {
-    accounts: data.accounts?.length ?? 0,
-    resources: data.resources?.length ?? 0,
-    dashboards: data.dashboards?.length ?? 0,
-  };
-}
 
 export async function runSyncCycle(): Promise<void> {
   if (isSyncing) return;
@@ -186,27 +152,13 @@ export async function runSyncCycle(): Promise<void> {
 
     await pushChanges(token);
 
-    // Only push actually syncs data today; scope the success signal so
-    // "synced" never claims remote changes were applied locally.
+    // `pushOnly` is permanent, not provisional: cloud mode reads live from
+    // the API, so "synced" must never imply a local mirror was refreshed.
     notifyRenderer("cloud-sync-status", {
       status: "synced",
       lastSyncedAt: new Date().toISOString(),
       pushOnly: true,
     });
-
-    // Best-effort probe of the pull endpoint. It applies nothing (see
-    // pullChanges), so a failure here must not flip the cycle to "error".
-    try {
-      const pending = await pullChanges(token);
-      const total = pending.accounts + pending.resources + pending.dashboards;
-      if (total > 0) {
-        console.info(
-          `[cloud-sync] ${total} remote change(s) pending; pull-apply is not implemented yet`,
-        );
-      }
-    } catch (probeError) {
-      console.warn("[cloud-sync] pull probe failed:", probeError);
-    }
   } catch (e) {
     console.error("[cloud-sync] Sync error:", e);
     notifyRenderer("cloud-sync-status", {
