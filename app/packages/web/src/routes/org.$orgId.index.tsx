@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useUIStore, RESOURCES_CHANGED_EVENT } from "@infrawrench/ui";
+import type { DashboardWidget } from "@infrawrench/ui/cost/config";
 import { DashboardView, type WorkflowPin } from "@/components/DashboardView";
 import { apiGet } from "@/lib/api";
 import { dashboardTabTarget } from "@/lib/workspace-tabs";
@@ -23,6 +24,7 @@ function HomePage() {
       gridH: number;
     }>;
     workflowPins?: WorkflowPin[];
+    widgets?: DashboardWidget[];
   } | null>(null);
 
   useEffect(() => {
@@ -52,6 +54,7 @@ function HomePage() {
       isHome
       pins={data.pins}
       workflowPins={data.workflowPins}
+      widgets={data.widgets}
     />
   );
 }
