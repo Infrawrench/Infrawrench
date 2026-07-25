@@ -23,13 +23,33 @@ Authentication is OAuth via WorkOS AuthKit. The flow is standards-compliant ([RF
 3. Client fetches the metadata, discovers the WorkOS authorization server, runs Dynamic Client Registration, and prompts the user to sign in.
 4. Client retries with `Authorization: Bearer <token>`.
 
-The bearer token is verified against WorkOS JWKS on every request, then mapped to a user + organization — so each MCP connection only ever sees the org the signed-in user is currently scoped to.
+The bearer token is verified against WorkOS JWKS on every request, then mapped to a user + organization — so each MCP connection only ever sees orgs the signed-in user is a member of.
+
+### Choosing an organization
+
+MCP clients have no organization picker, and the OAuth token AuthKit issues them does not necessarily carry an `org_id` claim. So the server resolves the org itself:
+
+- If the token carries an `org_id`, it is used — after checking the caller is a member of it.
+- Otherwise the **oldest organization you belong to** becomes the default for the connection.
+
+To work with a different org, every tool takes an optional **`org_id`**. Call `list_organizations` to see what you can address:
+
+```json
+[
+  { "org_id": "org_01H…", "name": "Acme", "role": "owner", "default": true },
+  { "org_id": "org_01J…", "name": "Side project", "role": "member", "default": false }
+]
+```
+
+Then pass it on any call — `list_resources { "org_id": "org_01J…" }`. An `org_id` you are not a member of is refused before the tool runs, so this can never reach beyond your own memberships.
+
+`org_id` and `list_organizations` are **MCP-only**. The [AI chat](./ai-chat.md) already knows its organization from your session and has no org switcher, so neither appears there.
 
 <insert [Claude Desktop MCP settings panel showing the infrawrench server configured with the /api/mcp URL] here>
 
 ## What the model can do
 
-The MCP server registers the full shared tool registry — the same tools the [AI chat](./ai-chat.md) uses:
+The MCP server registers the full shared tool registry — the same tools the [AI chat](./ai-chat.md) uses — plus `list_organizations` (see [Choosing an organization](#choosing-an-organization)), which is MCP-only:
 
 - **Discover** — `list_plugins`, `list_resource_types`, `list_accounts`, `list_resource_sidecars` (which peer plugins a resource exposes — e.g. `kubernetes` on a managed cluster, `postgres` on a managed database).
 - **Read** — `search_resources`, `list_resources`, `get_resource`, `get_resource_inputs`, `get_resource_outputs`, `get_resource_stats`, `get_resource_metrics`, `describe_resource`.

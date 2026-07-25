@@ -24,7 +24,7 @@ vi.mock("@/auth/api-auth", () => ({
 vi.mock("@/api/auth-middleware", () => ({
   ensureUserFromClaims: vi.fn(),
   hasMembership: vi.fn(),
-  listMembershipOrgIds: vi.fn(),
+  listUserOrganizations: vi.fn(),
   sessionMiddleware: vi.fn(),
   orgMiddleware: vi.fn(),
 }));
@@ -147,7 +147,9 @@ describe("authenticateMcpRequest", () => {
       id: "user_123",
       email: "u@example.com",
     });
-    vi.mocked(middleware.listMembershipOrgIds).mockResolvedValue(["org_789"]);
+    vi.mocked(middleware.listUserOrganizations).mockResolvedValue([
+      { id: "org_789", displayName: "Acme", role: "owner" },
+    ]);
 
     const result = await authenticateMcpRequest("Bearer jwt-no-org");
     expect(result).toEqual({
@@ -167,7 +169,10 @@ describe("authenticateMcpRequest", () => {
       id: "user_123",
       email: "u@example.com",
     });
-    vi.mocked(middleware.listMembershipOrgIds).mockResolvedValue(["org_old", "org_new"]);
+    vi.mocked(middleware.listUserOrganizations).mockResolvedValue([
+      { id: "org_old", displayName: "Old", role: "owner" },
+      { id: "org_new", displayName: "New", role: "member" },
+    ]);
 
     const result = await authenticateMcpRequest("Bearer jwt-multi-org");
     expect(result?.organizationId).toBe("org_old");
@@ -182,7 +187,7 @@ describe("authenticateMcpRequest", () => {
       id: "user_123",
       email: "u@example.com",
     });
-    vi.mocked(middleware.listMembershipOrgIds).mockResolvedValue([]);
+    vi.mocked(middleware.listUserOrganizations).mockResolvedValue([]);
 
     const result = await authenticateMcpRequest("Bearer jwt-no-orgs");
     expect(result).toBeNull();

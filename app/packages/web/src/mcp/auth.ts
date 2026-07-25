@@ -1,5 +1,5 @@
 import { verifyWorkosAccessToken } from "../auth/api-auth";
-import { ensureUserFromClaims, hasMembership, listMembershipOrgIds } from "../api/auth-middleware";
+import { ensureUserFromClaims, hasMembership, listUserOrganizations } from "../api/auth-middleware";
 
 export interface McpAuthContext {
   userId: string;
@@ -54,19 +54,20 @@ export async function authenticateMcpRequest(
     }
     organizationId = claims.org_id;
   } else {
-    const orgIds = await listMembershipOrgIds(user.id);
-    const first = orgIds[0];
+    const orgs = await listUserOrganizations(user.id);
+    const first = orgs[0];
     if (!first) {
       console.warn(`[mcp-auth] rejected: user ${user.id} belongs to no organization`);
       return null;
     }
-    if (orgIds.length > 1) {
+    if (orgs.length > 1) {
       console.warn(
         `[mcp-auth] token for user ${user.id} carries no org_id and the user belongs to ` +
-          `${orgIds.length} orgs; defaulting to the oldest membership (${first}).`,
+          `${orgs.length} orgs; defaulting to the oldest membership (${first.id}). ` +
+          `Callers can override per call with the org_id tool parameter.`,
       );
     }
-    organizationId = first;
+    organizationId = first.id;
   }
 
   const ctx: McpAuthContext = {

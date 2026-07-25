@@ -4,7 +4,7 @@ import { eq, and } from "drizzle-orm";
 import { workos } from "../auth/workos";
 import { verifyWorkosAccessToken } from "../auth/api-auth";
 import { db } from "../db/client";
-import { users, organizationMembers } from "../db/schema";
+import { users, organizationMembers, organizations } from "../db/schema";
 import {
   type ResolvedRole,
   resolveEffectivePermissions,
@@ -207,17 +207,27 @@ export async function hasMembership(userId: string, orgId: string): Promise<bool
   return rows.length > 0;
 }
 
+export interface UserOrganization {
+  id: string;
+  displayName: string;
+  role: string;
+}
+
 /**
- * The org IDs a user belongs to, oldest membership first. Used by callers that
- * have no org in hand — notably MCP, where the OAuth token is not guaranteed to
- * carry an `org_id` claim and there is no UI to pick one. Read-only: it can
- * only ever return orgs the user is already a member of.
+ * The organizations a user belongs to, oldest membership first. Used by callers
+ * that have no org in hand — notably MCP, where the OAuth token is not
+ * guaranteed to carry an `org_id` claim and there is no UI to pick one.
+ * Read-only: it can only ever return orgs the user is already a member of.
  */
-export async function listMembershipOrgIds(userId: string): Promise<string[]> {
-  const rows = await db
-    .select({ organizationId: organizationMembers.organizationId })
+export async function listUserOrganizations(userId: string): Promise<UserOrganization[]> {
+  return await db
+    .select({
+      id: organizations.id,
+      displayName: organizations.displayName,
+      role: organizationMembers.role,
+    })
     .from(organizationMembers)
+    .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
     .where(eq(organizationMembers.userId, userId))
     .orderBy(organizationMembers.createdAt);
-  return rows.map((r) => r.organizationId);
 }
