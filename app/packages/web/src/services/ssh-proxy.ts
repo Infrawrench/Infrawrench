@@ -17,6 +17,7 @@ import { buildPluginHostServices } from "@/services/host-services";
 import { buildInProcessAgent, type AgentAuditContext } from "@/services/ssh-agent";
 import { logAudit } from "@/services/audit";
 import { HostKeyTrustRequiredError, makeHostKeyVerifier } from "@/services/ssh-host-keys";
+import { assertHostNotInternal } from "@/services/host-validation";
 import { makeWsBackpressure, type WsBackpressure } from "@/services/ws-backpressure";
 import { forwardOutHop, resolveSshChain, type SshHop } from "@infrawrench/plugin-ssh";
 
@@ -99,6 +100,16 @@ export async function handleSshSession(
       if (!key || !key.encryptedPrivateKey || !key.privateKeyIv) {
         ws.send(JSON.stringify({ type: "ssh:error", error: "SSH key not found" }));
         return;
+      }
+
+      // `host` comes straight off the WebSocket frame, so this is the one
+      // place a caller picks the destination outright. Refuse internal address
+      // space for the same reason the tunnel routes do — without it the server
+      // will happily dial 127.0.0.1 or the cloud metadata endpoint on request.
+      // Skipped when jumping through a bastion: the whole point of a jump host
+      // is to reach hosts that are private from where we sit.
+      if (!directSsh.connectThroughAccountId) {
+        await assertHostNotInternal(directSsh.host);
       }
 
       const privateKey = await decrypt(

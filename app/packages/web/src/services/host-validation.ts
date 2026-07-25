@@ -76,10 +76,17 @@ function isBlockedIp(ip: string): boolean {
 }
 
 /**
- * Resolve `host` via DNS and throw if it resolves to (or already is) a
- * blocked address. Hostnames with no A/AAAA records are also rejected.
+ * Resolve `host`, reject it if any answer is in blocked address space, and
+ * return the specific address that was cleared.
+ *
+ * Callers should connect to the RETURNED address rather than re-resolving the
+ * hostname themselves. Checking a name and then handing that same name to a
+ * socket library leaves a DNS-rebinding window: an attacker serving a
+ * short-TTL record can answer the validation lookup with a public IP and the
+ * connect-time lookup with 169.254.169.254. Pinning the vetted address closes
+ * it, because only one lookup ever happens.
  */
-export async function assertHostNotInternal(host: string): Promise<void> {
+export async function resolveSafeHost(host: string): Promise<string> {
   const trimmed = host.trim();
   if (!trimmed) throw new Error("SSH host is required");
 
@@ -88,7 +95,7 @@ export async function assertHostNotInternal(host: string): Promise<void> {
     if (isBlockedIp(trimmed)) {
       throw new Error(`SSH host ${trimmed} resolves to a blocked address range`);
     }
-    return;
+    return trimmed;
   }
 
   let addrs: Array<{ address: string; family: number }>;
@@ -103,9 +110,23 @@ export async function assertHostNotInternal(host: string): Promise<void> {
   if (addrs.length === 0) {
     throw new Error(`SSH host ${trimmed} did not resolve to any address`);
   }
+  // Every answer must be clean, not just the one we pick — a name that returns
+  // both a public and a private address is being used to straddle the check.
   for (const a of addrs) {
     if (isBlockedIp(a.address)) {
       throw new Error(`SSH host ${trimmed} resolves to a blocked address (${a.address})`);
     }
   }
+  return addrs[0]!.address;
+}
+
+/**
+ * Throw if `host` resolves to (or already is) a blocked address.
+ *
+ * Prefer {@link resolveSafeHost} where the caller controls the address it
+ * dials — this variant leaves the rebinding window open by design and exists
+ * for call sites that only validate.
+ */
+export async function assertHostNotInternal(host: string): Promise<void> {
+  await resolveSafeHost(host);
 }

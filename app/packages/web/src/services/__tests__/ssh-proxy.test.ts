@@ -84,6 +84,12 @@ vi.mock("@/services/ssh-host-keys", () => ({
   makeHostKeyVerifier: (...a: unknown[]) => mockMakeHostKeyVerifier(...a),
 }));
 
+// Real DNS is off-limits in tests; the SSRF guard is covered by its own suite.
+const mockAssertHostNotInternal = vi.fn().mockResolvedValue(undefined);
+vi.mock("@/services/host-validation", () => ({
+  assertHostNotInternal: (...a: unknown[]) => mockAssertHostNotInternal(...a),
+}));
+
 const mockResolveSshChain = vi.fn();
 const mockForwardOutHop = vi.fn();
 vi.mock("@infrawrench/plugin-ssh", () => ({
@@ -127,6 +133,47 @@ describe("handleSshSession", () => {
     vi.clearAllMocks();
     sshClients.length = 0;
     mockMakeHostKeyVerifier.mockReturnValue(() => {});
+  });
+
+  it("refuses a direct-SSH host in blocked address space", async () => {
+    selectRows([KEY_ROW]);
+    mockAssertHostNotInternal.mockRejectedValueOnce(
+      new Error("SSH host 127.0.0.1 resolves to a blocked address range"),
+    );
+    const ws = fakeWs();
+    await handleSshSession(ws as never, "org-1", "acct-1", undefined, {
+      ...DIRECT,
+      host: "127.0.0.1",
+    });
+
+    expect(mockAssertHostNotInternal).toHaveBeenCalledWith("127.0.0.1");
+    expect(sshClients).toHaveLength(0);
+    expect(ws.sent).toContainEqual({
+      type: "ssh:error",
+      error: "SSH host 127.0.0.1 resolves to a blocked address range",
+    });
+  });
+
+  it("skips the SSRF guard when jumping through a bastion", async () => {
+    selectRows([KEY_ROW]);
+    mockResolveSshChain.mockResolvedValue([
+      { host: "jump.example", port: 22, username: "jb", privateKey: "JUMP_KEY" },
+    ]);
+    mockForwardOutHop.mockRejectedValue(new Error("stop here"));
+    const ws = fakeWs();
+    // A private target is exactly what a jump host is for, so the guard must
+    // not fire — reaching hop establishment at all proves it didn't.
+    const session = handleSshSession(ws as never, "org-1", "acct-1", undefined, {
+      ...DIRECT,
+      host: "10.0.0.5",
+      connectThroughAccountId: "jump-1",
+    });
+
+    await vi.waitFor(() => expect(sshClients.length).toBe(2));
+    sshClients[1]!.emit("ready");
+    await session;
+
+    expect(mockAssertHostNotInternal).not.toHaveBeenCalled();
   });
 
   it("wires a host verifier into the final connect", async () => {
