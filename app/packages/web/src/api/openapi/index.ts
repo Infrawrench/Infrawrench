@@ -1,5 +1,6 @@
 import { OpenAPIRegistry, OpenApiGeneratorV31 } from "@asteasolutions/zod-to-openapi";
 import { buildDynamicEnums } from "./dynamic";
+import { injectInternalMarkers, toPublicDocument } from "./public-spec";
 import type { BuildContext } from "./context";
 
 type OpenAPIObject = ReturnType<OpenApiGeneratorV31["generateDocument"]>;
@@ -37,6 +38,18 @@ interface BuildOptions {
   servers?: Array<{ url: string; description?: string }>;
   /** Override the spec version (defaults to the package.json version). */
   version?: string;
+}
+
+/**
+ * Servers to advertise when the caller doesn't specify. A deployment knows its
+ * own origin (`APP_URL` / `PUBLIC_BASE_URL`, set in prod), so serve that alone —
+ * otherwise Scalar picks the first entry and every "try it" request and code
+ * snippet on the production docs points at `localhost:3000`.
+ */
+function defaultServers(): Array<{ url: string; description?: string }> {
+  const explicit = process.env["PUBLIC_BASE_URL"] ?? process.env["APP_URL"];
+  if (explicit) return [{ url: explicit.replace(/\/$/, ""), description: "This deployment" }];
+  return [{ url: "http://localhost:3000", description: "Local dev" }];
 }
 
 export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<OpenAPIObject> {
@@ -98,10 +111,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
       license: { name: "BUSL-1.1", url: "https://mariadb.com/bsl11/" },
     },
-    servers: opts.servers ?? [
-      { url: "http://localhost:3000", description: "Local dev" },
-      { url: "https://app.infrawrench.com", description: "Production" },
-    ],
+    servers: opts.servers ?? defaultServers(),
     security: [{ sessionCookie: [] }, { bearerAuth: [] }],
     tags: [
       { name: "Auth", description: "Session and identity." },
@@ -148,6 +158,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
 
   injectOperationIds(doc);
   injectRequiredPermissions(doc);
+  injectInternalMarkers(doc);
   return doc;
 }
 
@@ -359,11 +370,24 @@ function deriveOperationId(method: string, path: string): string {
   return method + segments.map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join("");
 }
 
-/** Cached document; safe to call repeatedly from request handlers. */
+/** Cached documents; safe to call repeatedly from request handlers. */
 let _cached: OpenAPIObject | null = null;
+let _cachedPublic: OpenAPIObject | null = null;
 
+/** The full spec, internal routes included. Used by `generate:openapi`. */
 export async function getOpenApiDocument(opts: BuildOptions = {}): Promise<OpenAPIObject> {
   if (_cached) return _cached;
   _cached = await buildOpenApiDocument(opts);
   return _cached;
+}
+
+/**
+ * The spec we publish — the same document with `x-internal` operations, the
+ * `sessionCookie` scheme, and the tags/schemas only they used removed. This is
+ * what `/openapi.json` serves and what `/docs` renders. See `./public-spec.ts`.
+ */
+export async function getPublicOpenApiDocument(opts: BuildOptions = {}): Promise<OpenAPIObject> {
+  if (_cachedPublic) return _cachedPublic;
+  _cachedPublic = toPublicDocument(await getOpenApiDocument(opts));
+  return _cachedPublic;
 }

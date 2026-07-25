@@ -7,7 +7,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { apiReference } from "@scalar/hono-api-reference";
 import { sessionMiddleware, orgMiddleware, permissionsMiddleware } from "./auth-middleware";
 import { workos, clientId } from "../auth/workos";
-import { getOpenApiDocument } from "./openapi/index";
+import { getPublicOpenApiDocument } from "./openapi/index";
 import { OAUTH_STATE_COOKIE } from "./oauth-state";
 
 import { callbackRoutes } from "./routes/callback";
@@ -72,14 +72,41 @@ api.route("/api", workflowGitWebhook);
 api.route("/api", githubSetupRoute);
 api.route("/.well-known", wellKnownRoutes);
 
-// Public — the spec describes the API surface, not private data.
-api.get("/openapi.json", async (c) => c.json(await getOpenApiDocument()));
+// Public — the spec describes the API surface, not private data. Internal
+// routes (platform admin, webhooks, browser auth, desktop sync, ws-token, push)
+// and the `sessionCookie` scheme are stripped here; see `openapi/public-spec.ts`.
+api.get("/openapi.json", async (c) => c.json(await getPublicOpenApiDocument()));
 api.get(
   "/docs",
   apiReference({
     spec: { url: "/openapi.json" },
     pageTitle: "Infrawrench API",
     theme: "default",
+    // Snippets for languages we can actually vouch for, with curl the default.
+    // Left unfiltered, Scalar offers ~35 clients (Clojure, OCaml, ObjC…) that
+    // nobody here has run against this API.
+    defaultHttpClient: { targetKey: "shell", clientKey: "curl" },
+    hiddenClients: {
+      c: true,
+      clojure: true,
+      csharp: true,
+      dart: true,
+      http: true,
+      java: true,
+      kotlin: true,
+      objc: true,
+      ocaml: true,
+      php: true,
+      powershell: true,
+      r: true,
+      ruby: true,
+      swift: true,
+      // Keep one idiomatic client per remaining language.
+      shell: ["httpie", "wget"],
+      js: ["axios", "jquery", "ofetch", "xhr"],
+      node: ["axios", "ofetch", "undici"],
+      python: ["python3"],
+    },
   }),
 );
 

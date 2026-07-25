@@ -17,10 +17,13 @@ import { buildOpenApiDocument } from "../src/api/openapi/index";
 const here = dirname(fileURLToPath(import.meta.url));
 const out = resolve(here, "..", "openapi.json");
 
+// Production first: generators take the first server as the client's default
+// base URL, and this artifact is what people generate SDKs from. (A running
+// server advertises its own origin instead — see `defaultServers()`.)
 const doc = await buildOpenApiDocument({
   servers: [
-    { url: "http://localhost:3000", description: "Local dev" },
     { url: "https://app.infrawrench.com", description: "Production" },
+    { url: "http://localhost:3000", description: "Local dev" },
   ],
 });
 

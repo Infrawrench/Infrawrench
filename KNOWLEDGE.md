@@ -1023,8 +1023,13 @@ Format: `iwk_` + 32 random bytes (base64url). Stored as SHA-256 hash. Prefix (fi
 - `dynamic.ts` — calls `loadPlugins()` and emits `PluginId` / `ResourceTypeId` / `CredentialFormatId` Zod enums.
 - `common.ts` — shared schemas (`Uuid`, `Email`, `IsoDateTime`, `Ok`, `ErrorResponse`, `ResourceId`, `JsonObject`). `strict()` helper wraps `z.object().strict()` so `additionalProperties: false` is the default.
 - `paths/*.ts` — one file per route module (`auth.ts`, `accounts.ts`, `resources.ts`, `connection-features.ts`, etc.). Each exports a `register*Paths(ctx)` function that registers operations against `ctx.registry`.
+- `public-spec.ts` — the difference between what the spec knows and what we publish. `injectInternalMarkers()` stamps `x-internal: true` on operations whose path matches `INTERNAL_PATHS` / `INTERNAL_PATH_PREFIXES`; `toPublicDocument()` returns a copy with those ops removed, the `sessionCookie` scheme removed (`UNPUBLISHED_SECURITY_SCHEMES`), and the fallout cleaned up (paths with no ops left, tags nothing references any more, component schemas no longer reachable via `$ref`). Currently internal: `/api/admin/*`, `/api/v1/webhooks/*`, `/api/v1/sync/*`, `/api/push/*`, the browser auth redirects (`/api/auth/sign-in`, `/api/auth/sign-out`, `/callback`), `ws-token`, and the org-scoped `push/*` routes.
 
-Runtime serving: `GET /openapi.json` returns the cached document, `GET /docs` renders the Scalar reference UI. Both are public.
+The cookie still authenticates — dropping `sessionCookie` from the published spec is presentational: the only way to obtain one is the (internal) browser redirect flow, and while it was advertised Scalar defaulted to it and generated `Cookie:` snippets instead of `Authorization: Bearer`.
+
+Servers: `defaultServers()` advertises `PUBLIC_BASE_URL`/`APP_URL` alone when set (prod does), else just `http://localhost:3000` — a deployment should never tell readers to call localhost. `generate:openapi` overrides with production-first + local dev, since generators take the first server as the SDK's base URL.
+
+Runtime serving: `GET /openapi.json` returns `getPublicOpenApiDocument()` (cached), and `GET /docs` renders the Scalar reference UI over it, with `hiddenClients`/`defaultHttpClient` narrowing ~35 snippet clients to curl (default), js/fetch, node/fetch, python/requests and go/native. Both are public. `getOpenApiDocument()` is the unfiltered document; only `generate:openapi` uses it, so the committed `openapi.json` keeps internal routes (marked `x-internal`) and `sessionCookie` while the published site shows neither. When you add an internal-only route, add it to `public-spec.ts`.
 
 Build artifact: `pnpm --filter @infrawrench/web generate:openapi` writes `app/packages/web/openapi.json`. Commit it so PR diffs show API surface changes.
 

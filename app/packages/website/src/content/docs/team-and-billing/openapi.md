@@ -16,16 +16,37 @@ The Infrawrench cloud API is described by an OpenAPI 3.1 document that's **gener
 | Raw spec              | [`/openapi.json`](https://app.infrawrench.com/openapi.json) | OpenAPI 3.1, served directly.                                                             |
 | Build artifact        | `app/packages/web/openapi.json`                             | Checked into the repo. Regenerate with `pnpm --filter @infrawrench/web generate:openapi`. |
 
-Both runtime endpoints are public — they describe the API surface, not any private data.
+Both runtime endpoints are public — they describe the API surface, not any private data. A running server advertises its own origin as the spec's `server`, so the "try it" panel on `/docs` talks to the deployment you're reading it on.
+
+## Internal routes
+
+A handful of routes exist only so our own clients (and third-party webhook senders) can talk to the server. They carry no stability promise, so they're **excluded from `/docs` and `/openapi.json`**:
+
+| Route                                                  | Why it's internal                                                               |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `/api/admin/*`                                         | Platform-operator surface, gated on an email allowlist — 403 for everyone else. |
+| `/api/v1/webhooks/*`                                   | Inbound, signature-verified calls from third parties. Never called by you.      |
+| `/api/auth/sign-in`, `/api/auth/sign-out`, `/callback` | Browser redirect flow for the session cookie.                                   |
+| `/api/v1/sync/*`                                       | Bi-directional resource sync used by the desktop app.                           |
+| `/api/org/{orgId}/ws-token`                            | Mints short-lived tokens for our WebSocket gateway.                             |
+| `/api/push/*`, `/api/org/{orgId}/push/*`               | Mobile push-notification device registration and preferences.                   |
+
+They're still in the source and in the checked-in `app/packages/web/openapi.json`, tagged with an `x-internal: true` extension — the server strips those operations (and any schemas only they used) before publishing the spec. Build against them at your own risk; they can change or disappear without notice.
 
 <insert [Screenshot of /docs Scalar reference UI showing the Resources tag expanded] here>
 
 ## Authentication
 
-Every operation accepts one of:
+The published spec advertises a single scheme:
 
-- **`sessionCookie`** — the `wos-session` cookie set by `/callback`. Used by browser clients.
-- **`bearerAuth`** — a WorkOS access token (JWT) or an Infrawrench [API key](./api-keys.md). Used by scripts and CI.
+- **`bearerAuth`** — a WorkOS access token (JWT) or an Infrawrench [API key](./api-keys.md). Send it as `Authorization: Bearer <token>`.
+
+```sh
+curl https://app.infrawrench.com/api/org/$ORG_ID/accounts \
+  -H "Authorization: Bearer $INFRAWRENCH_API_KEY"
+```
+
+The server also accepts the `wos-session` cookie — that's how the web UI authenticates — but the only way to get one is the browser sign-in redirect, which is [internal](#internal-routes). It's left out of the published spec so generated snippets and Scalar's "try it" panel default to bearer auth.
 
 API keys must include the right scope for the operation. Scopes are **permission strings** — the same vocabulary used for [roles](./roles-and-permissions.md). Every operation that requires a permission carries an `x-required-permission` extension naming it, e.g.:
 

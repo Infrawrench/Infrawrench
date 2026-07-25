@@ -11,12 +11,12 @@
   },
   "servers": [
     {
-      "url": "http://localhost:3000",
-      "description": "Local dev"
-    },
-    {
       "url": "https://app.infrawrench.com",
       "description": "Production"
+    },
+    {
+      "url": "http://localhost:3000",
+      "description": "Local dev"
     }
   ],
   "security": [
@@ -5615,7 +5615,8 @@
             "description": "Redirect to WorkOS"
           }
         },
-        "operationId": "getAuthSignIn"
+        "operationId": "getAuthSignIn",
+        "x-internal": true
       }
     },
     "/callback": {
@@ -5660,7 +5661,8 @@
             }
           }
         },
-        "operationId": "getCallback"
+        "operationId": "getCallback",
+        "x-internal": true
       }
     },
     "/api/auth/me": {
@@ -5748,7 +5750,8 @@
             }
           }
         },
-        "operationId": "postAuthSignOut"
+        "operationId": "postAuthSignOut",
+        "x-internal": true
       }
     },
     "/api/orgs": {
@@ -13268,7 +13271,8 @@
         },
         "operationId": "postOrgOrgIdWsToken",
         "x-required-permission": "resources:execute",
-        "description": "_Requires permission: `resources:execute`._"
+        "description": "_Requires permission: `resources:execute`._",
+        "x-internal": true
       }
     },
     "/api/v1/sync/pull": {
@@ -13314,7 +13318,8 @@
           }
         },
         "operationId": "postV1SyncPull",
-        "x-required-permission": "resources:read"
+        "x-required-permission": "resources:read",
+        "x-internal": true
       }
     },
     "/api/v1/sync/push": {
@@ -13360,7 +13365,8 @@
           }
         },
         "operationId": "postV1SyncPush",
-        "x-required-permission": "resources:write"
+        "x-required-permission": "resources:write",
+        "x-internal": true
       }
     },
     "/api/v1/sync/status": {
@@ -13396,7 +13402,8 @@
         },
         "operationId": "getV1SyncStatus",
         "x-required-permission": "resources:read",
-        "description": "_Requires permission: `resources:read`._"
+        "description": "_Requires permission: `resources:read`._",
+        "x-internal": true
       }
     },
     "/api/v1/webhooks/stripe": {
@@ -13464,7 +13471,8 @@
             }
           }
         },
-        "operationId": "postV1WebhooksStripe"
+        "operationId": "postV1WebhooksStripe",
+        "x-internal": true
       }
     },
     "/api/admin/organizations": {
@@ -13497,7 +13505,8 @@
             }
           }
         },
-        "operationId": "getAdminOrganizations"
+        "operationId": "getAdminOrganizations",
+        "x-internal": true
       }
     },
     "/api/admin/organizations/{orgId}/complimentary": {
@@ -13567,7 +13576,8 @@
             }
           }
         },
-        "operationId": "putAdminOrganizationsOrgIdComplimentary"
+        "operationId": "putAdminOrganizationsOrgIdComplimentary",
+        "x-internal": true
       }
     },
     "/api/push/devices": {
@@ -13628,7 +13638,8 @@
             }
           }
         },
-        "operationId": "postPushDevices"
+        "operationId": "postPushDevices",
+        "x-internal": true
       },
       "get": {
         "tags": ["Push"],
@@ -13648,7 +13659,8 @@
             }
           }
         },
-        "operationId": "getPushDevices"
+        "operationId": "getPushDevices",
+        "x-internal": true
       }
     },
     "/api/push/devices/{id}": {
@@ -13694,7 +13706,8 @@
             }
           }
         },
-        "operationId": "deletePushDevicesId"
+        "operationId": "deletePushDevicesId",
+        "x-internal": true
       }
     },
     "/api/org/{orgId}/push/preferences": {
@@ -13727,7 +13740,8 @@
             }
           }
         },
-        "operationId": "getOrgOrgIdPushPreferences"
+        "operationId": "getOrgOrgIdPushPreferences",
+        "x-internal": true
       },
       "put": {
         "tags": ["Push"],
@@ -13783,7 +13797,8 @@
             }
           }
         },
-        "operationId": "putOrgOrgIdPushPreferences"
+        "operationId": "putOrgOrgIdPushPreferences",
+        "x-internal": true
       }
     },
     "/api/org/{orgId}/push/recipients": {
@@ -13820,7 +13835,8 @@
           }
         },
         "operationId": "getOrgOrgIdPushRecipients",
-        "x-required-permission": "org:settings:write"
+        "x-required-permission": "org:settings:write",
+        "x-internal": true
       }
     },
     "/api/org/{orgId}/push/test": {
@@ -13875,7 +13891,8 @@
             }
           }
         },
-        "operationId": "postOrgOrgIdPushTest"
+        "operationId": "postOrgOrgIdPushTest",
+        "x-internal": true
       }
     }
   },
