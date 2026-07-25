@@ -68,8 +68,10 @@ export function hasPermission(granted: readonly string[], required: string): boo
  * every permission; `team:*` expands to every permission starting with `team:`
  * (matching segment-by-segment). Non-wildcard entries pass through unchanged
  * (even if not in the catalog — unknown strings are simply themselves).
+ *
+ * Exported for {@link intersectPermissions}.
  */
-function expandPermission(entry: string): string[] {
+export function expandPermission(entry: string): string[] {
   if (entry === "*") return [...ALL_PERMISSIONS];
   if (!entry.includes("*")) return [entry];
   const entryParts = entry.split(":");
@@ -88,6 +90,26 @@ function expandPermission(entry: string): string[] {
     if (ok) matches.push(perm);
   }
   return matches;
+}
+
+/**
+ * Narrow `base` by `limit`, returning the concrete permissions implied by both.
+ * Wildcards on either side are expanded against the catalog first, so
+ * `intersect(["*"], ["resources:*"])` yields every `resources:` permission.
+ *
+ * Used to confine an API key to its stored scopes: the key's holder can never
+ * exceed the scopes it was minted with, nor the permissions of the role the
+ * owning user currently has — whichever is narrower wins on each entry.
+ */
+export function intersectPermissions(base: readonly string[], limit: readonly string[]): string[] {
+  const allowed = new Set(limit.flatMap((entry) => expandPermission(entry)));
+  const out: string[] = [];
+  for (const entry of base) {
+    for (const permission of expandPermission(entry)) {
+      if (allowed.has(permission) && !out.includes(permission)) out.push(permission);
+    }
+  }
+  return out;
 }
 
 /**
