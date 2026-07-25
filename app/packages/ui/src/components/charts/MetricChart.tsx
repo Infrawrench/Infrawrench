@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { useChartTheme } from "../../chart-theme.js";
+import { niceAxis, rowsExtent } from "./nice-axis.js";
 
 const COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f87171", "#a78bfa", "#fb923c"];
 
@@ -38,6 +39,11 @@ export function MetricChart({ node }: MetricChartProps) {
   const data = [...tsMap.values()].sort((a, b) => a["timestamp"]! - b["timestamp"]!);
 
   const unit = node.series[0]?.unit ?? "";
+
+  // Zero-anchored y scale with nice steps — recharts' own ticks stretch the
+  // domain below zero when the data max doesn't divide evenly.
+  const extent = rowsExtent(data, { keys: node.series.map((s) => s.label) });
+  const yScale = niceAxis(extent.min, extent.max);
 
   // Text alternative for the chart: metric name plus the latest value of
   // each series, read as a single image by assistive tech.
@@ -73,6 +79,8 @@ export function MetricChart({ node }: MetricChartProps) {
               tick={{ fill: chart.tick, fontSize: 11 }}
               stroke={chart.axis}
               tickFormatter={(v: number) => (unit ? `${v}${unit}` : String(v))}
+              domain={yScale.domain}
+              ticks={yScale.ticks}
               width={50}
             />
             <Tooltip

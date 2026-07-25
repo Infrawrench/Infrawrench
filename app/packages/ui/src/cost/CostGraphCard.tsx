@@ -15,6 +15,7 @@ import {
   YAxis,
 } from "recharts";
 import { useChartTheme } from "../chart-theme.js";
+import { niceAxis, rowsExtent } from "../components/charts/nice-axis.js";
 import {
   resolveCostDateRange,
   type CostGraphConfig,
@@ -210,6 +211,20 @@ export function CostGraphCard({
     const isBar = config.chartType === "stacked_bar" || config.chartType === "multi_bar";
     const stacked = config.chartType === "stacked_bar" || config.chartType === "area";
 
+    // Own the y scale rather than leaving it to recharts, which stretches the
+    // domain below zero to hit its tick count (a US$2.65 max axis starting at
+    // -US$0.90). Ticks follow from a nice step over the plotted values.
+    const seriesKeys = pivot.series.map((s) => s.dataKey);
+    const overlayKeys = [
+      ...(response.comparison ? [COMPARISON_KEY] : []),
+      ...(response.forecast ? [FORECAST_KEY] : []),
+    ];
+    const extent = rowsExtent(pivot.rows, {
+      stackedKeys: stacked ? seriesKeys : [],
+      keys: stacked ? overlayKeys : [...seriesKeys, ...overlayKeys],
+    });
+    const yScale = niceAxis(extent.min, extent.max);
+
     return (
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={pivot.rows} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
@@ -225,6 +240,8 @@ export function CostGraphCard({
             tick={{ fill: chart.tick, fontSize: 11 }}
             stroke={chart.axis}
             tickFormatter={(v: number) => formatMoney(v, currency)}
+            domain={yScale.domain}
+            ticks={yScale.ticks}
             width={70}
           />
           <Tooltip
