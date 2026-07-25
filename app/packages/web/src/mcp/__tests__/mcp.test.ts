@@ -24,6 +24,7 @@ vi.mock("@/auth/api-auth", () => ({
 vi.mock("@/api/auth-middleware", () => ({
   ensureUserFromClaims: vi.fn(),
   hasMembership: vi.fn(),
+  listMembershipOrgIds: vi.fn(),
   sessionMiddleware: vi.fn(),
   orgMiddleware: vi.fn(),
 }));
@@ -134,12 +135,56 @@ describe("authenticateMcpRequest", () => {
     expect(result).toBeNull();
   });
 
-  it("returns null when the token has no org_id claim", async () => {
+  // AuthKit OAuth tokens issued to MCP clients are not guaranteed to carry an
+  // org_id claim, and an MCP client has no org picker — fall back to the
+  // caller's own memberships rather than 401.
+  it("falls back to the caller's membership when the token has no org_id", async () => {
     vi.mocked(apiAuth.verifyWorkosAccessToken).mockResolvedValue({
       sub: "user_123",
       email: "u@example.com",
     } as never);
+    vi.mocked(middleware.ensureUserFromClaims).mockResolvedValue({
+      id: "user_123",
+      email: "u@example.com",
+    });
+    vi.mocked(middleware.listMembershipOrgIds).mockResolvedValue(["org_789"]);
+
     const result = await authenticateMcpRequest("Bearer jwt-no-org");
+    expect(result).toEqual({
+      userId: "user_123",
+      organizationId: "org_789",
+      email: "u@example.com",
+    });
+    expect(middleware.hasMembership).not.toHaveBeenCalled();
+  });
+
+  it("picks the oldest membership when the caller belongs to several orgs", async () => {
+    vi.mocked(apiAuth.verifyWorkosAccessToken).mockResolvedValue({
+      sub: "user_123",
+      email: "u@example.com",
+    } as never);
+    vi.mocked(middleware.ensureUserFromClaims).mockResolvedValue({
+      id: "user_123",
+      email: "u@example.com",
+    });
+    vi.mocked(middleware.listMembershipOrgIds).mockResolvedValue(["org_old", "org_new"]);
+
+    const result = await authenticateMcpRequest("Bearer jwt-multi-org");
+    expect(result?.organizationId).toBe("org_old");
+  });
+
+  it("returns null when the caller belongs to no organization", async () => {
+    vi.mocked(apiAuth.verifyWorkosAccessToken).mockResolvedValue({
+      sub: "user_123",
+      email: "u@example.com",
+    } as never);
+    vi.mocked(middleware.ensureUserFromClaims).mockResolvedValue({
+      id: "user_123",
+      email: "u@example.com",
+    });
+    vi.mocked(middleware.listMembershipOrgIds).mockResolvedValue([]);
+
+    const result = await authenticateMcpRequest("Bearer jwt-no-orgs");
     expect(result).toBeNull();
   });
 

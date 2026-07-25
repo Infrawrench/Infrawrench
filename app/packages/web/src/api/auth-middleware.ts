@@ -206,3 +206,18 @@ export async function hasMembership(userId: string, orgId: string): Promise<bool
     .limit(1);
   return rows.length > 0;
 }
+
+/**
+ * The org IDs a user belongs to, oldest membership first. Used by callers that
+ * have no org in hand — notably MCP, where the OAuth token is not guaranteed to
+ * carry an `org_id` claim and there is no UI to pick one. Read-only: it can
+ * only ever return orgs the user is already a member of.
+ */
+export async function listMembershipOrgIds(userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ organizationId: organizationMembers.organizationId })
+    .from(organizationMembers)
+    .where(eq(organizationMembers.userId, userId))
+    .orderBy(organizationMembers.createdAt);
+  return rows.map((r) => r.organizationId);
+}
