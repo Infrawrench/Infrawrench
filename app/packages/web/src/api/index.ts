@@ -72,6 +72,14 @@ api.route("/api", workflowGitWebhook);
 api.route("/api", githubSetupRoute);
 api.route("/.well-known", wellKnownRoutes);
 
+/**
+ * The `@scalar/api-reference` standalone bundle the docs page loads. Keep this
+ * in step with the `@scalar/hono-api-reference` dependency: the integration
+ * emits a config shape the bundle has to understand, and a drifting pair
+ * renders a half-broken page (client-library picker showing bare labels, etc.).
+ */
+const SCALAR_VERSION = "1.63.0";
+
 // Public — the spec describes the API surface, not private data. Internal
 // routes (platform admin, webhooks, browser auth, desktop sync, ws-token, push)
 // and the `sessionCookie` scheme are stripped here; see `openapi/public-spec.ts`.
@@ -79,9 +87,13 @@ api.get("/openapi.json", async (c) => c.json(await getPublicOpenApiDocument()));
 api.get(
   "/docs",
   apiReference({
-    spec: { url: "/openapi.json" },
+    url: "/openapi.json",
     pageTitle: "Infrawrench API",
     theme: "default",
+    // Pin the standalone bundle. The default CDN URL is unversioned, so the
+    // docs UI would otherwise track upstream releases — which is how the page
+    // ended up rendering a v1 bundle against a v0.5 config shape.
+    cdn: `https://cdn.jsdelivr.net/npm/@scalar/api-reference@${SCALAR_VERSION}`,
     // Snippets for languages we can actually vouch for, with curl the default.
     // Left unfiltered, Scalar offers ~35 clients (Clojure, OCaml, ObjC…) that
     // nobody here has run against this API.
