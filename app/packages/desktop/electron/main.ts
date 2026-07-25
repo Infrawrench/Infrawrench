@@ -136,6 +136,34 @@ function createWindow() {
     },
   });
 
+  // The renderer only ever shows our own bundle. Anything trying to navigate
+  // it elsewhere — an injected link, a redirect from an embedded response, a
+  // window.open — is either a bug or an attempt to load untrusted content into
+  // a window that holds the user's cloud session and preload bridge. Send
+  // external URLs to the system browser and refuse in-window navigation.
+  const isInternalUrl = (url: string): boolean => {
+    const rendererUrl = process.env["ELECTRON_RENDERER_URL"];
+    if (rendererUrl && url.startsWith(rendererUrl)) return true;
+    return url.startsWith("file://");
+  };
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:$/.test(new URL(url).protocol)) void shell.openExternal(url);
+    return { action: "deny" };
+  });
+
+  win.webContents.on("will-navigate", (event, url) => {
+    if (isInternalUrl(url)) return;
+    event.preventDefault();
+    if (/^https?:$/.test(new URL(url).protocol)) void shell.openExternal(url);
+  });
+
+  // A renderer compromise shouldn't be able to attach a WebView with its own
+  // (weaker) webPreferences.
+  win.webContents.on("will-attach-webview", (event) => {
+    event.preventDefault();
+  });
+
   win.on("close", (event) => {
     if (quitting) return;
     if (hasBackgroundWork()) {
