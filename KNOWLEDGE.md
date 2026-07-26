@@ -8,9 +8,9 @@
 
 Infrawrench is an infrastructure management platform with both a desktop app and a cloud SaaS web app.
 
-**Desktop app** — Electron + Vite + React, local SQLite, works offline. All 16 provider plugins loaded. SSH terminals, SQL editors, K8s exec, SFTP browsers run locally.
+**Desktop app** — Electron + Vite + React, local SQLite, works offline. All 28 provider plugins loaded. SSH terminals, SQL editors, K8s exec, SFTP browsers run locally.
 
-**Web app** — Hono server (Node) + Vite/React frontend with TanStack Router, Neon PostgreSQL via Drizzle ORM, WorkOS auth. All 16 plugins loaded server-side. SSH/SQL/K8s proxied through a custom WebSocket server (`server.ts`).
+**Web app** — Hono server (Node) + Vite/React frontend with TanStack Router, Neon PostgreSQL via Drizzle ORM, WorkOS auth. All 28 plugins loaded server-side. SSH/SQL/K8s proxied through a custom WebSocket server (`server.ts`).
 
 **Mobile app** — Expo SDK 54 + expo-router (iOS/Android), `@infrawrench/mobile`. Signs into the cloud via WorkOS OAuth PKCE (tokens in SecureStore) and talks Bearer to the existing cloud API. Org switcher, dashboards/budgets home, account + resource browser with a native SchemaRenderer for plugin `DetailViewSchema` (actions, logs, metrics), global search, AI chat (SSE), SSH terminal via a WebView-hosted xterm.js on the existing `/api/ws` protocol, SFTP browser (cloud-proxied), read-only workflows/agents, settings incl. push preferences and personal account settings (name, password reset, TOTP two-factor, active sessions). Deliberate demotions: billing read-only, no Monaco editors, no secret-reroll wizard, dashboards render-only, no SSH host-key trust prompt (the terminal shows the trust-required error as text; trust the host from web or desktop first — web/desktop prompt via the structured `ssh:error` `ssh_host_key_trust_required` frame). Chrome icons (tab bar, header) are drawn in `mobile/src/components/icons.tsx` with `react-native-svg` on the same 24×24 stroke grid as the web app's `WorkflowIcon` — **never a Unicode glyph in a `<Text>`**: the OS picks the font, so weights differ between glyphs and some (⚙ especially) resolve to a colour emoji that ignores the `color` the tab bar passes for active/inactive state.
 
@@ -48,18 +48,30 @@ infrawrench/
 │   ├── netlify/              # @infrawrench/plugin-netlify
 │   ├── cloudinary/           # @infrawrench/plugin-cloudinary
 │   ├── clickhouse/           # @infrawrench/plugin-clickhouse
-│   └── kafka/                # @infrawrench/plugin-kafka
+│   ├── kafka/                # @infrawrench/plugin-kafka
+│   ├── aws/                  # @infrawrench/plugin-aws
+│   ├── cloudflare/           # @infrawrench/plugin-cloudflare
+│   ├── mongodb/              # @infrawrench/plugin-mongodb
+│   ├── mssql/                # @infrawrench/plugin-mssql
+│   ├── opensearch/           # @infrawrench/plugin-opensearch
+│   ├── ovh/                  # @infrawrench/plugin-ovh
+│   └── planetscale/          # @infrawrench/plugin-planetscale
 ├── app/packages/
-│   ├── desktop/              # @infrawrench/desktop — Electron app
+│   ├── desktop/              # @infrawrench/desktop — Electron app (and the `infrawrench` CLI)
 │   ├── mobile/               # @infrawrench/mobile — Expo (SDK 54) iOS/Android app against the cloud API
 │   ├── ui/                   # @infrawrench/ui — shared React components (incl. Toast feature)
 │   ├── client-core/          # @infrawrench/client-core — host-agnostic cloud client (tokens, cloudFetch, SSE, chat, WS types, push registration)
 │   ├── server-core/          # @infrawrench/server-core — db client, schema, plugin loader, sync, host services (shared by web + poller)
+│   ├── workflow-runtime/     # @infrawrench/workflow-runtime — QuickJS-WASM sandbox, host bridge, infra.d.ts codegen
 │   ├── web/                  # @infrawrench/web — Hono + Vite/React SaaS web app
 │   ├── poller/               # @infrawrench/poller — background resource poller microservice
+│   ├── github-watcher/       # @infrawrench/github-watcher — polls GitHub App installs, fires git-triggered workflows
+│   ├── bastion-agent/        # @infrawrench/bastion-agent — self-hosted Docker agent; dials out over WSS so calls exit the user's IP
 │   ├── telemetry/            # @infrawrench/telemetry — Hono on Cloudflare Workers; anonymous desktop ping endpoint (Hyperdrive + Postgres)
 │   ├── egress-proxy/         # @infrawrench/egress-proxy — Cloudflare Worker that performs workflow `fetch()` from OUTSIDE the k8s cluster
 │   └── website/              # @infrawrench/website — Astro on Cloudflare Workers; landing + releases API
+├── infra/                    # Terraform (GKE), k8s manifests, service Dockerfile, container registry
+├── patches/                  # pnpm patchedDependencies (app-builder-lib, desktop-only)
 ├── CLAUDE.md                 # Hard rules (keep short)
 └── KNOWLEDGE.md              # This file
 ```

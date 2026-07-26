@@ -1,26 +1,53 @@
 # Infrawrench
 
-Infrastructure management for the cloud and your servers — desktop app and web SaaS, sharing one plugin system.
+Infrastructure management for the cloud and your servers — desktop, web, mobile and CLI, sharing one plugin system.
 
 - **Desktop** (Electron + React, local SQLite) — works offline, runs SSH terminals, SQL editors, K8s exec and SFTP browsers locally.
-- **CLI** (`infrawrench …`) — the desktop app doubles as a terminal tool: an interactive TUI dashboard with charts, plus scriptable `--json`/text output over the same local accounts, cloud session, and organizations.
 - **Web** (Hono + Vite/React + Neon Postgres + WorkOS) — same plugins server-side, with SSH/SQL/K8s proxied through a WebSocket server.
-- **Plugins** — one self-contained package per provider. Currently: AWS, Azure, GCP, DigitalOcean, Hetzner, Scaleway, Fly, Vercel, Netlify, Cloudflare, Cloudinary, Databricks, Neon, Turso, PlanetScale, Kubernetes, Docker, Postgres, MySQL, Redis, Memcached, ClickHouse, SSH.
+- **Mobile** (Expo + expo-router, iOS/Android) — a cloud companion against the same HTTP API: dashboards, resource browser, AI chat, SSH terminal, push notifications.
+- **CLI** (`infrawrench …`) — the desktop app doubles as a terminal tool: an interactive TUI dashboard with charts, plus scriptable `--json`/text output over the same local accounts, cloud session, and organizations.
 
-The Electron and Hono hosts are deliberately generic — all provider-specific logic (API calls, field shapes, SQL strings, credentials) lives in the plugin packages under `plugin-architecture/packages/`.
+## What it does
+
+Connect provider accounts once, then browse and edit every resource behind them from one place — with the things a provider console makes you leave for:
+
+- **Consoles** — SSH terminals and jumpboxes, SQL editors, Redis/Memcached KV consoles, SFTP and object-storage file browsers, Docker controls.
+- **Costs** — cross-provider spend, budgets and threshold alerts.
+- **Dashboards** — resource metrics and charts, on the desktop, web and mobile.
+- **AI** — chat and agents over your infrastructure, plus a hosted [MCP server](./app/packages/website/src/content/docs/features/mcp.md) at `/api/mcp` for Claude Desktop, Cursor, or any other MCP client.
+- **Workflows** — TypeScript automations run in a QuickJS-WASM sandbox, triggered on a cron, a git push, or by hand.
+- **Alerts** — mobile push, Slack, and phone paging on sync failures, budget breaches and workflow pages.
+
+## Plugins
+
+One self-contained package per provider, 28 of them, loaded in full by both the desktop app and the server (mobile renders what the cloud sends it):
+
+AWS, Azure, GCP, DigitalOcean, Hetzner, OVH, Scaleway, Fly, Vercel, Netlify, Cloudflare, Cloudinary, Databricks, Neon, Turso, PlanetScale, Kubernetes, Docker, Postgres, MySQL, SQL Server, MongoDB, Redis, Memcached, ClickHouse, OpenSearch, Kafka, SSH.
+
+The Electron and Hono hosts are deliberately generic — all provider-specific logic (API calls, field shapes, SQL strings, credentials) lives in the plugin packages under `plugin-architecture/packages/`. Plugins return schema data; the hosts render it.
 
 ## Repo layout
 
 ```
 infrawrench/
-├── plugin-architecture/packages/   # plugin-base + per-provider plugins
-└── app/packages/
-    ├── desktop/        # Electron app
-    ├── web/            # Hono + Vite/React SaaS
-    ├── server-core/    # db, schema, plugin loader, sync (shared by web + poller)
-    ├── poller/         # background resource poller
-    ├── ui/             # shared React components
-    └── website/        # Astro landing site + docs
+├── plugin-architecture/packages/   # plugin-base + 28 provider plugins,
+│                                   # plus shared sftp-host and ssh-tunnel-core
+├── app/packages/
+│   ├── desktop/            # Electron app (and the `infrawrench` CLI)
+│   ├── web/                # Hono + Vite/React SaaS
+│   ├── mobile/             # Expo iOS/Android app
+│   ├── ui/                 # shared React components (web + desktop)
+│   ├── client-core/        # host-agnostic cloud client — tokens, fetch, SSE, chat, push
+│   ├── server-core/        # db, schema, plugin loader, sync (shared by the backend services)
+│   ├── workflow-runtime/   # QuickJS-WASM workflow sandbox and host bridge
+│   ├── poller/             # background resource poller
+│   ├── github-watcher/     # polls GitHub App installs, fires git-triggered workflows
+│   ├── bastion-agent/      # self-hosted agent that dials out, so calls exit your own IP
+│   ├── egress-proxy/       # Cloudflare Worker running workflow fetch() off-cluster
+│   ├── telemetry/          # Cloudflare Worker for anonymous desktop pings
+│   └── website/            # Astro landing site + docs
+├── infra/                  # Terraform, k8s manifests, service Dockerfile, container registry
+└── patches/                # pnpm patchedDependencies
 ```
 
 pnpm workspaces + Turborepo. All cross-package references use `workspace:*`.
@@ -35,6 +62,7 @@ pnpm dev          # run all apps in dev
 pnpm build        # build everything
 pnpm typecheck
 pnpm test
+pnpm lint
 pnpm format       # prettier --write .
 ```
 
@@ -43,6 +71,7 @@ To run a single app:
 ```bash
 pnpm --filter @infrawrench/desktop dev
 pnpm --filter @infrawrench/web dev
+pnpm --filter @infrawrench/mobile dev      # Expo; add ios / android to build natively
 pnpm --filter @infrawrench/website dev
 ```
 
@@ -59,6 +88,12 @@ infrawrench costs --group-by provider
 ```
 
 Docs: [`features/cli.md`](./app/packages/website/src/content/docs/features/cli.md). Implementation: `app/packages/desktop/electron/cli/`.
+
+## HTTP API and SDKs
+
+The cloud API is described by `app/packages/web/openapi.json`, generated from Zod route definitions in `app/packages/web/src/api/openapi/`. Client SDKs for nine languages — TypeScript, Python, Go, Rust, Ruby, PHP, Java, C#, Swift — are generated from that spec and published on release.
+
+`API_VERSION` in `src/api/openapi/version.ts` is the single version number for all of it; bump it in the same change as any user-visible API change, then run `pnpm --filter @infrawrench/web generate:openapi`. Nothing publishes until that number changes.
 
 ## Documentation
 
