@@ -113,7 +113,10 @@ const pushOrgRoutes = new Hono();
 interface PreferencesPayload {
   syncIncidents: boolean;
   budgetAlerts: boolean;
+  workflowPages: boolean;
 }
+
+const PREFERENCE_KEYS = ["syncIncidents", "budgetAlerts", "workflowPages"] as const;
 
 pushOrgRoutes.get("/preferences", async (c) => {
   const session = c.get("session");
@@ -130,6 +133,7 @@ pushOrgRoutes.get("/preferences", async (c) => {
   const payload: PreferencesPayload = {
     syncIncidents: row?.syncIncidents ?? true,
     budgetAlerts: row?.budgetAlerts ?? true,
+    workflowPages: row?.workflowPages ?? true,
   };
   return c.json(payload);
 });
@@ -139,7 +143,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
   const organizationId = c.get("organizationId");
   const body = await c.req.json<Partial<PreferencesPayload>>();
 
-  for (const key of ["syncIncidents", "budgetAlerts"] as const) {
+  for (const key of PREFERENCE_KEYS) {
     if (body[key] != null && typeof body[key] !== "boolean") {
       return c.json({ error: `${key} must be a boolean` }, 400);
     }
@@ -154,12 +158,14 @@ pushOrgRoutes.put("/preferences", async (c) => {
       organizationId,
       syncIncidents: body.syncIncidents ?? true,
       budgetAlerts: body.budgetAlerts ?? true,
+      workflowPages: body.workflowPages ?? true,
     })
     .onConflictDoUpdate({
       target: [pushPreferences.userId, pushPreferences.organizationId],
       set: {
         ...(body.syncIncidents != null ? { syncIncidents: body.syncIncidents } : {}),
         ...(body.budgetAlerts != null ? { budgetAlerts: body.budgetAlerts } : {}),
+        ...(body.workflowPages != null ? { workflowPages: body.workflowPages } : {}),
         updatedAt: now,
       },
     });
@@ -170,7 +176,11 @@ pushOrgRoutes.put("/preferences", async (c) => {
     action: "push.preferences.update",
     entityType: "push_preferences",
     entityId: session.userId,
-    metadata: { syncIncidents: body.syncIncidents, budgetAlerts: body.budgetAlerts },
+    metadata: {
+      syncIncidents: body.syncIncidents,
+      budgetAlerts: body.budgetAlerts,
+      workflowPages: body.workflowPages,
+    },
   });
   return c.json({ ok: true });
 });
@@ -193,6 +203,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
       disabledAt: pushDevices.disabledAt,
       syncIncidents: pushPreferences.syncIncidents,
       budgetAlerts: pushPreferences.budgetAlerts,
+      workflowPages: pushPreferences.workflowPages,
     })
     .from(organizationMembers)
     .innerJoin(users, eq(organizationMembers.userId, users.id))
@@ -217,6 +228,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
       displayName: string | null;
       syncIncidents: boolean;
       budgetAlerts: boolean;
+      workflowPages: boolean;
       devices: Array<{ id: string; platform: string; deviceName: string | null }>;
     }
   >();
@@ -229,6 +241,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
         displayName: r.displayName,
         syncIncidents: r.syncIncidents ?? true,
         budgetAlerts: r.budgetAlerts ?? true,
+        workflowPages: r.workflowPages ?? true,
         devices: [],
       };
       byUser.set(r.userId, entry);

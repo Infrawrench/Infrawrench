@@ -163,7 +163,7 @@ describe("push org routes", () => {
       const from = vi.fn().mockReturnValue({ where });
       mockSelect.mockReturnValue({ from });
       const body = await (await buildOrgApp().request("/preferences")).json();
-      expect(body).toEqual({ syncIncidents: true, budgetAlerts: true });
+      expect(body).toEqual({ syncIncidents: true, budgetAlerts: true, workflowPages: true });
     });
   });
 

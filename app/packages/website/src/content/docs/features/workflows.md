@@ -206,6 +206,49 @@ infra.log("starting reconcile");
 await infra.output({ updated: 3 }); // shown in the run result
 ```
 
+### Paging a human
+
+A workflow that finds a problem can wake someone up. `infra.page(...)` delivers to the same recipients as [sync-failure incidents and budget alerts](./mobile-push-notifications.md): SMS (and optionally a voice call) through your org's Twilio credentials, plus mobile push to everyone who has the app installed. Configure who receives them under **Settings → Notifications**.
+
+```ts
+// Cron: hourly. Page when a pod's restart count runs away.
+const cluster = infra.accounts.kubernetes.getByName("prod");
+for (const pod of await cluster.pods.list()) {
+  const restarts = Number(pod.fields.restarts ?? 0);
+  if (restarts > 5) {
+    await infra.page(`${pod.displayName} has restarted ${restarts} times`, {
+      title: "Pod restarts",
+      key: pod.displayName,
+    });
+  } else {
+    // Recovered — re-arm this pod so a fresh spike pages immediately.
+    await infra.page.clear(pod.displayName);
+  }
+}
+```
+
+**Repeat pages are throttled, so call it unconditionally.** A monitoring cron re-finds the same problem on every tick; if each tick paged, an hourly check would send 24 messages a day about one broken pod. Instead every page carries a **key**, and a page under a key that has already fired is suppressed until its cooldown elapses — one hour by default. The check above is meant to run every hour and page once.
+
+Choose the key to match what you're watching. The example uses the pod name, so ten unhealthy pods produce ten pages and one flapping pod can't mute the other nine. Omit `key` and everything shares a single key called `default`, which is the right choice when the workflow watches one thing.
+
+| Option            | Default             | What it does                                                       |
+| ----------------- | ------------------- | ------------------------------------------------------------------ |
+| `title`           | the workflow's name | Headline of the push notification.                                 |
+| `key`             | `"default"`         | Throttle bucket. Pages sharing a key suppress one another.         |
+| `cooldownMinutes` | `60`                | How long a key stays quiet after firing. `0` sends on every call.  |
+| `voice`           | `false`             | Also place a Twilio voice call to recipients who opted into voice. |
+
+The returned object tells you what happened — `delivered`, `suppressed`, how many `sms` and `push` deliveries landed, and `retryAt` when it was suppressed:
+
+```ts
+const result = await infra.page("nightly backup did not complete");
+if (result.suppressed) infra.log(`already paged; quiet until ${result.retryAt}`);
+```
+
+`infra.page.clear(key)` drops a key's cooldown. Call it when the condition recovers so the next occurrence pages immediately instead of waiting out a stale timer. A cooldown is only started by a page that actually reached somebody — if every transport fails, the next run tries again rather than going quiet.
+
+In the **desktop app** there are no Twilio or push recipients, so a page becomes a native OS notification on the machine running the workflow. The key and cooldown behave exactly the same.
+
 ### Reporting your own cost data
 
 Infrawrench collects spend from every provider that has a billing API, but plenty of money doesn't come from one — a SaaS invoice, an internal chargeback, a colo bill, a provider with no plugin yet. A workflow can report those numbers itself, and they land in exactly the same place provider-collected spend does: [cost graphs](./cloud-costs.md), dimension filters, and budgets.
@@ -358,6 +401,8 @@ The [AI chat](./ai-chat.md) and [MCP](./mcp.md) surfaces can author workflows fo
 | `write_workflow`        | Creates or updates a workflow. Type-checks first and **refuses to save** source with type errors.  |
 | `run_workflow`          | Runs it now and returns the status, logs, output, and any error.                                   |
 | `delete_workflow`       | Soft-deletes it (run history is kept).                                                             |
+
+Asking for a recurring check is a single request too — "check my Kubernetes clusters' pods every hour and page me if any restart count goes above 5" builds the cron workflow above, `infra.page` and all. The typings tell the model that paging exists and that it is throttled per key, so it writes the check to page unconditionally rather than inventing its own bookkeeping.
 
 `get_workflow_typings` is the important one. The `infra` API is generated per organization — account names, which resource groups exist, which fields `create()` takes — so a model that writes from memory guesses wrong. Handing it the real declaration file first is what makes the generated code compile against _your_ setup. It also reflects the trigger: a budget-triggered workflow gets `infra.event` typed as the crossing payload, and only manual workflows get `infra.prompt`.
 

@@ -57,10 +57,11 @@ function PagingPage() {
       <div>
         <h1 className="text-xl font-semibold">Notifications</h1>
         <p className="text-sm text-on-surface-muted mt-1">
-          Alert your team when a resource type fails to sync repeatedly or a budget threshold is
-          crossed. Incidents are triggered by the background poller; manual syncs from the UI never
-          page. Delivery goes to mobile push (the Infrawrench app) and, when Twilio credentials are
-          configured, SMS and voice calls.
+          Alert your team when a resource type fails to sync repeatedly, a budget threshold is
+          crossed, or a workflow calls <code>infra.page()</code>. Incidents are triggered by the
+          background poller; manual syncs from the UI never page. Delivery goes to mobile push (the
+          Infrawrench app) and, when Twilio credentials are configured, SMS and voice calls — the
+          recipients below receive all three kinds.
         </p>
       </div>
 
@@ -409,6 +410,8 @@ interface PushDevice {
 interface PushPreferences {
   syncIncidents: boolean;
   budgetAlerts: boolean;
+  /** Alerts raised by a workflow calling `infra.page(...)`. */
+  workflowPages: boolean;
 }
 
 /**
@@ -515,6 +518,14 @@ function PushPreferencesSection({ orgId }: { orgId: string }) {
           />
           <span>Budget alerts</span>
         </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={prefs.workflowPages}
+            onChange={(e) => void updatePref({ workflowPages: e.target.checked })}
+          />
+          <span>Workflow pages</span>
+        </label>
       </div>
 
       {devices.length === 0 ? (
@@ -572,6 +583,7 @@ interface PushRecipientRow {
   displayName: string | null;
   syncIncidents: boolean;
   budgetAlerts: boolean;
+  workflowPages: boolean;
   devices: Array<{ id: string; platform: string; deviceName: string | null }>;
 }
 
@@ -603,7 +615,11 @@ function PushRosterSection({ orgId }: { orgId: string }) {
               <p className="text-on-surface-secondary">{r.displayName ?? r.email}</p>
               <p className="text-xs text-on-surface-tertiary">
                 {r.devices.length} device(s) ·{" "}
-                {[r.syncIncidents && "incidents", r.budgetAlerts && "budgets"]
+                {[
+                  r.syncIncidents && "incidents",
+                  r.budgetAlerts && "budgets",
+                  r.workflowPages && "workflow pages",
+                ]
                   .filter(Boolean)
                   .join(", ") || "all triggers off"}
               </p>

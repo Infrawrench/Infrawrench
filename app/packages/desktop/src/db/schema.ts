@@ -255,6 +255,25 @@ CREATE INDEX IF NOT EXISTS dashboard_workflow_pins_dashboard_idx ON dashboard_wo
 
 MIGRATIONS.push(DASHBOARD_WORKFLOW_PINS_MIGRATION);
 
+// Cooldown state for `infra.page(...)`, one row per (workflow, page key). A
+// monitoring cron finds the same problem every tick, so a repeat page under the
+// same key is suppressed until its cooldown elapses. Mirrors the cloud's
+// `workflow_pages` table; desktop pages are delivered as OS notifications and
+// never leave the machine, so there is no cloud-sync column here.
+const WORKFLOW_PAGES_MIGRATION = `
+CREATE TABLE IF NOT EXISTS workflow_pages (
+  id TEXT PRIMARY KEY,
+  workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  last_paged_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_message TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(workflow_id, key)
+);
+`;
+
+MIGRATIONS.push(WORKFLOW_PAGES_MIGRATION);
+
 const AGENTS_MIGRATION = `
 CREATE TABLE IF NOT EXISTS agent_settings (
   id TEXT PRIMARY KEY DEFAULT 'default',

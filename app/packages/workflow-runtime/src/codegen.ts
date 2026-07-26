@@ -478,6 +478,63 @@ interface InfraCosts {
   write(rows: CostRowInput | CostRowInput[]): Promise<{ written: number }>;
 }`;
 
+/**
+ * `infra.page` — raising an alert to the humans who own the workflow. The
+ * cooldown is enforced by the host and keyed, so a cron that keeps finding the
+ * same problem pages once instead of once per run. Mirrors `PageSpec` /
+ * `PageResult` in types.ts.
+ */
+const PAGE_INTERFACE = `interface PageOptions {
+  /** Short headline for the notification. Defaults to this workflow's name. */
+  title?: string;
+  /**
+   * Throttle key. Pages sharing a key are suppressed while that key is in
+   * cooldown. Use a per-object key (a pod name, a cluster id) to alert once
+   * per object; the default single key alerts once for the whole workflow.
+   */
+  key?: string;
+  /**
+   * Minutes to suppress repeat pages under the same key. Defaults to 60;
+   * \`0\` sends on every call.
+   */
+  cooldownMinutes?: number;
+  /**
+   * Also place a voice call to recipients who opted into voice. Off by
+   * default — reserve it for things worth waking someone up for.
+   */
+  voice?: boolean;
+}
+
+interface PageSpec extends PageOptions {
+  /** The alert text. Becomes the SMS body and the notification body. */
+  message: string;
+}
+
+interface PageResult {
+  /** True when at least one recipient was reached on any transport. */
+  readonly delivered: boolean;
+  /** True when the key was still in cooldown, so nothing was sent. */
+  readonly suppressed: boolean;
+  /** Twilio deliveries (SMS + voice) that Twilio accepted. */
+  readonly sms: number;
+  /** Push notifications accepted by Expo. */
+  readonly push: number;
+  /** When suppressed, the ISO timestamp at which this key can page again. */
+  readonly retryAt?: string;
+}
+
+interface InfraPage {
+  /** Alert the workflow's owners. Repeat pages under the same key are throttled. */
+  (message: string, opts?: PageOptions): Promise<PageResult>;
+  /** Alert the workflow's owners, passing every option in one object. */
+  (spec: PageSpec): Promise<PageResult>;
+  /**
+   * Clear a key's cooldown so the next page under it delivers immediately.
+   * Call this once the condition you alerted on has recovered.
+   */
+  clear(key?: string): Promise<void>;
+}`;
+
 export interface GenerateInfraDtsInput {
   plugins: WorkflowPluginInfo[];
   metrics: MetricDef[];
@@ -535,6 +592,8 @@ ${renderEventType(input.triggerKind ?? "manual")}
 
 ${input.costs === false ? "" : COSTS_INTERFACE}
 
+${PAGE_INTERFACE}
+
 ${renderSshExecOptions(sshKeyNames)}
 
 ${resourceInterfaces}
@@ -558,6 +617,13 @@ ${promptDecl}
   /** What started this run. Frozen. */
   readonly event: WorkflowEvent;
 ${costsDecl}
+  /**
+   * Alert the humans who own this workflow — SMS/voice (Twilio) and mobile
+   * push in the cloud, a desktop notification locally. Repeat pages under the
+   * same key are throttled, so a monitoring cron can call this every run and
+   * only the first occurrence gets through.
+   */
+  readonly page: InfraPage;
   /** Record a JSON-serializable result for this run. */
   output(value: JsonValue): Promise<void>;
   /** Stream an SSH \`{ stdout, stderr }\` object to the run log live (stderr in red). */

@@ -649,6 +649,8 @@ export const pushPreferences = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     syncIncidents: boolean("sync_incidents").notNull().default(true),
     budgetAlerts: boolean("budget_alerts").notNull().default(true),
+    /** Alerts raised by a workflow calling `infra.page(...)`. */
+    workflowPages: boolean("workflow_pages").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

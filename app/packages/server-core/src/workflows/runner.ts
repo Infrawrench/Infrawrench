@@ -36,6 +36,7 @@ import { getOrgAccountClient } from "../org-accounts";
 import { buildWorkflowSshDeps } from "./ssh-host";
 import { enrichPlugin } from "./create-fields-cache";
 import { buildSshKeyFieldResolver } from "./ssh-key-fields";
+import { clearWorkflowPage, pageFromWorkflow } from "./paging";
 import { staticResourceCapabilities } from "@infrawrench/workflow-runtime";
 
 // Re-exported so the cloud web host (which builds its own interactive host) can
@@ -55,6 +56,10 @@ export { getOrgAccountClient } from "../org-accounts";
 export interface OrgWorkflowHostExtras {
   /** Provided for interactive (manual) runs; omitted for automated triggers. */
   prompt?: (spec: PromptSpec) => Promise<MetricValue>;
+  /** Default title for pages this run raises. Falls back to "Workflow". */
+  workflowName?: string;
+  /** The run raising a page, so its notification can deep-link to the logs. */
+  runId?: string;
   /** Provided when storage object reads should be supported for this run. */
   readStorageObject?: (accountId: string, bucket: string, key: string) => Promise<Uint8Array>;
   /** Debugger line hook (instrumented runs); blocks per line until continued. */
@@ -249,6 +254,17 @@ export function buildOrgWorkflowHost(
       costRowsWritten += result.written;
       return result;
     },
+    page: (spec) =>
+      pageFromWorkflow(
+        {
+          organizationId,
+          workflowId,
+          workflowName: extras.workflowName ?? "Workflow",
+          ...(extras.runId ? { runId: extras.runId } : {}),
+        },
+        spec,
+      ),
+    clearPage: (key) => clearWorkflowPage(workflowId, key),
     transformCreateFields: buildSshKeyFieldResolver(organizationId, async (accountId) => {
       const ctx = await getOrgAccountClient(accountId, organizationId);
       return ctx ? { client: ctx.client, pluginId: ctx.account.pluginId } : null;
@@ -325,6 +341,8 @@ export async function runOrgWorkflow(opts: RunOrgWorkflowOptions): Promise<RunOr
   });
 
   const host = buildOrgWorkflowHost(opts.organizationId, wf.id, {
+    workflowName: wf.name,
+    runId,
     ...(opts.prompt ? { prompt: opts.prompt } : {}),
     ...(opts.readStorageObject ? { readStorageObject: opts.readStorageObject } : {}),
     ...(opts.line ? { line: opts.line } : {}),

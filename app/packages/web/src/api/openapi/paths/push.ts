@@ -15,6 +15,9 @@ const PushDevice = strict({
 const PushPreferences = strict({
   syncIncidents: z.boolean(),
   budgetAlerts: z.boolean(),
+  workflowPages: z
+    .boolean()
+    .openapi({ description: "Alerts raised by a workflow calling infra.page(...)" }),
 }).openapi("PushPreferences");
 
 // Registered under its own name — `.partial()` on a registered schema would
@@ -23,6 +26,7 @@ const PushPreferences = strict({
 const PushPreferencesUpdate = strict({
   syncIncidents: z.boolean().optional(),
   budgetAlerts: z.boolean().optional(),
+  workflowPages: z.boolean().optional(),
 }).openapi("PushPreferencesUpdate");
 
 const PushRecipient = strict({
@@ -31,6 +35,7 @@ const PushRecipient = strict({
   displayName: z.string().nullable(),
   syncIncidents: z.boolean(),
   budgetAlerts: z.boolean(),
+  workflowPages: z.boolean(),
   devices: z.array(
     strict({
       id: z.string(),

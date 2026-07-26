@@ -24,6 +24,8 @@ import type {
 } from "./host.js";
 import type {
   MetricValue,
+  PageResult,
+  PageSpec,
   PromptSpec,
   WorkflowCostRow,
   WorkflowCostWriteResult,
@@ -78,6 +80,11 @@ export interface ClientHostDeps {
 
   /** Write daily spend into the org's cost store (cloud-only). */
   writeCosts?(rows: WorkflowCostRow[]): Promise<WorkflowCostWriteResult>;
+
+  /** Deliver an alert and enforce its per-key cooldown (powers `infra.page`). */
+  page?(spec: PageSpec): Promise<PageResult>;
+  /** Re-arm a page key so the next page under it delivers immediately. */
+  clearPage?(key: string): Promise<void>;
 
   /** Debugger line hook (instrumented runs); may block to pause at a breakpoint. */
   line?(line: number): Promise<void>;
@@ -303,6 +310,8 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
     ...(deps.sftpMkdir ? { sftpMkdir: deps.sftpMkdir } : {}),
     ...(deps.sftpDelete ? { sftpDelete: deps.sftpDelete } : {}),
     ...(deps.writeCosts ? { writeCosts: deps.writeCosts } : {}),
+    ...(deps.page ? { page: deps.page } : {}),
+    ...(deps.clearPage ? { clearPage: deps.clearPage } : {}),
     ...(deps.line ? { line: deps.line } : {}),
   };
 }

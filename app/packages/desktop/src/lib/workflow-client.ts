@@ -18,8 +18,12 @@ import {
   generateInfraDts,
   mergeCapabilities,
   staticResourceCapabilities,
+  DEFAULT_PAGE_COOLDOWN_MINUTES,
+  DEFAULT_PAGE_KEY,
   type MetricDef,
   type MetricValue,
+  type PageResult,
+  type PageSpec,
   type PromptSpec,
   type WorkflowCreateFieldInfo,
   type WorkflowPluginInfo,
@@ -374,6 +378,64 @@ async function pluginIdForAccount(accountId: string): Promise<string> {
   const pluginId = rows[0]?.plugin_id;
   if (!pluginId) throw new Error(`Account ${accountId} not found.`);
   return pluginId;
+}
+
+/**
+ * Deliver `infra.page(...)` locally as a native OS notification.
+ *
+ * The cloud fans a page out to Twilio + mobile push; desktop has no recipients
+ * to fan out to, so the machine running the workflow is the pager. The per-key
+ * cooldown still applies — that is what makes a cron that finds the same
+ * problem every tick notify once instead of every tick — and it lives in the
+ * local `workflow_pages` table so it survives restarts. Single process, so a
+ * read-then-write is enough; the cloud needs a conditional upsert because two
+ * poller replicas can race the same workflow.
+ */
+async function pageFromLocalWorkflow(
+  workflowId: string,
+  workflowName: string,
+  spec: PageSpec,
+): Promise<PageResult> {
+  const db = await getDb();
+  const key = spec.key || DEFAULT_PAGE_KEY;
+  const cooldownMs = Math.max(0, spec.cooldownMinutes ?? DEFAULT_PAGE_COOLDOWN_MINUTES) * 60_000;
+
+  const rows = await db.select<{ last_paged_at: string }[]>(
+    "SELECT last_paged_at FROM workflow_pages WHERE workflow_id = $1 AND key = $2",
+    [workflowId, key],
+  );
+  const last = rows[0]?.last_paged_at ? Date.parse(rows[0].last_paged_at) : null;
+  if (last !== null && Number.isFinite(last) && Date.now() - last < cooldownMs) {
+    return {
+      delivered: false,
+      suppressed: true,
+      sms: 0,
+      push: 0,
+      retryAt: new Date(last + cooldownMs).toISOString(),
+    };
+  }
+
+  await invoke("show_notification", {
+    title: spec.title ?? workflowName,
+    body: spec.message,
+  });
+  const now = new Date().toISOString();
+  await db.execute(
+    `INSERT INTO workflow_pages (id, workflow_id, key, last_paged_at, last_message)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT(workflow_id, key) DO UPDATE SET last_paged_at = excluded.last_paged_at, last_message = excluded.last_message`,
+    [crypto.randomUUID(), workflowId, key, now, spec.message],
+  );
+  return { delivered: true, suppressed: false, sms: 0, push: 0 };
+}
+
+/** Drop a key's cooldown so its next page notifies immediately. */
+async function clearLocalWorkflowPage(workflowId: string, key: string): Promise<void> {
+  const db = await getDb();
+  await db.execute("DELETE FROM workflow_pages WHERE workflow_id = $1 AND key = $2", [
+    workflowId,
+    key,
+  ]);
 }
 
 /** Raise an interactive prompt via the renderer modal (window.prompt is a no-op in Electron). */
@@ -743,6 +805,11 @@ export async function runWorkflowById(
       );
     },
     prompt: askUser,
+
+    // Alerts surface as native OS notifications on desktop (no Twilio/push
+    // recipients exist locally), with the same per-key cooldown as the cloud.
+    page: (spec) => pageFromLocalWorkflow(id, wf.name, spec),
+    clearPage: (key) => clearLocalWorkflowPage(id, key),
 
     // Debugger: highlight the current line + pause at breakpoints (debug runs).
     ...(debugLine ? { line: debugLine } : {}),

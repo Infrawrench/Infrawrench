@@ -199,6 +199,55 @@ export interface WorkflowCostWriteResult {
   written: number;
 }
 
+/**
+ * Default throttle window for `infra.page(...)`. A monitoring cron that finds
+ * the same problem every run should page once and then stay quiet, so repeat
+ * pages under the same key are suppressed for an hour unless the author says
+ * otherwise.
+ */
+export const DEFAULT_PAGE_COOLDOWN_MINUTES = 60;
+
+/** Throttle key used when `infra.page(...)` is called without one. */
+export const DEFAULT_PAGE_KEY = "default";
+
+/** An alert raised by `infra.page(...)`. */
+export interface PageSpec {
+  /** The alert text. Becomes the SMS body and the notification body. */
+  message: string;
+  /** Short headline for the notification. Defaults to the workflow's name. */
+  title?: string;
+  /**
+   * Throttle key. Pages sharing a key are suppressed while that key is in
+   * cooldown, so a per-object key (a pod name, a cluster id) alerts per object
+   * while the default single key alerts once for the whole workflow.
+   */
+  key?: string;
+  /**
+   * Minutes to suppress repeat pages under the same key. Defaults to
+   * {@link DEFAULT_PAGE_COOLDOWN_MINUTES}; `0` sends every time.
+   */
+  cooldownMinutes?: number;
+  /**
+   * Also place a voice call to recipients who opted into voice. Off by
+   * default — reserve it for things worth waking someone up for.
+   */
+  voice?: boolean;
+}
+
+/** What `infra.page(...)` reports back to the workflow. */
+export interface PageResult {
+  /** True when at least one recipient was reached on any transport. */
+  delivered: boolean;
+  /** True when the key was still in cooldown, so nothing was sent. */
+  suppressed: boolean;
+  /** Twilio deliveries (SMS + voice) that Twilio accepted. */
+  sms: number;
+  /** Push notifications accepted by Expo. */
+  push: number;
+  /** When suppressed, the ISO timestamp at which this key can page again. */
+  retryAt?: string;
+}
+
 /** Lightweight account descriptor exposed to the bridge + codegen. */
 export interface WorkflowAccountInfo {
   id: string;

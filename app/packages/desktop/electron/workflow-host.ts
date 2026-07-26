@@ -26,6 +26,8 @@ import { ipcMain, type WebContents } from "electron";
 // matching how main.ts loads other ESM-only deps (see electron-updater).
 import type {
   MetricValue,
+  PageResult,
+  PageSpec,
   PromptSpec,
   ResourceInstanceLite,
   SftpEntryLite,
@@ -97,6 +99,8 @@ function createBridgedHost(sender: WebContents, runToken: string): WorkflowHost 
     readStorageObject: (accountId, bucket, key) =>
       call<StorageObjectBody>("readStorageObject", [accountId, bucket, key]),
     prompt: (spec: PromptSpec) => call<MetricValue>("prompt", [spec]),
+    page: (spec: PageSpec) => call<PageResult>("page", [spec]),
+    clearPage: (key: string) => call<void>("clearPage", [key]),
     getMetric: (key) => call<MetricValue>("getMetric", [key]),
     setMetric: (key, value) => call<void>("setMetric", [key, value]),
     listMetrics: () => call<Record<string, MetricValue>>("listMetrics", []),

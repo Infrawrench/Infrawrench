@@ -196,7 +196,7 @@ async function sendCall({ creds, to, say }: SendCallArgs): Promise<void> {
   }
 }
 
-interface FanOutResult {
+export interface FanOutResult {
   attempted: number;
   succeeded: number;
   failed: number;
@@ -238,28 +238,43 @@ async function fanOutPage(
 }
 
 /**
- * One-shot SMS page for budget alerts. Skips the poll-failure incident
- * machinery — budget alerts dedupe upstream (once per budget/threshold/month
- * via the budget_alert_events unique index) — but respects the org's Twilio
- * enabled flag and recipient SMS opt-ins. Voice is intentionally not used for
+ * One-shot page that skips the poll-failure incident machinery entirely — for
+ * callers that already deduped upstream (budget alerts via the
+ * budget_alert_events unique index; workflow pages via the workflow_pages
+ * cooldown row). It still respects the org's Twilio enabled flag and each
+ * recipient's SMS/voice opt-ins.
+ *
+ * Voice is opt-in per call: a budget crossing is not worth a phone call, but a
+ * workflow that asked for `voice: true` is. Never throws — a transport failure
+ * must not fail the run that raised the alert.
+ */
+export async function sendOneShotPage(
+  organizationId: string,
+  body: string,
+  opts: { voice?: boolean } = {},
+): Promise<FanOutResult> {
+  const none: FanOutResult = { attempted: 0, succeeded: 0, failed: 0 };
+  try {
+    const settings = await loadSettings(organizationId);
+    if (!settings || !settings.enabled || !settings.creds) return none;
+    const recipients = (await loadRecipients(organizationId))
+      .map((r) => ({ ...r, voice: r.voice && opts.voice === true }))
+      .filter((r) => r.sms || r.voice);
+    if (recipients.length === 0) return none;
+    return await fanOutPage(settings.creds, recipients, truncate(body, 320));
+  } catch (err) {
+    console.error("[twilio-pager] one-shot page failed:", err);
+    return none;
+  }
+}
+
+/**
+ * SMS-only one-shot page for budget alerts. Voice is intentionally not used for
  * budgets. Returns true when at least one SMS was delivered to Twilio.
  */
 export async function sendBudgetAlertPage(organizationId: string, body: string): Promise<boolean> {
-  try {
-    const settings = await loadSettings(organizationId);
-    if (!settings || !settings.enabled || !settings.creds) return false;
-    const recipients = (await loadRecipients(organizationId)).filter((r) => r.sms);
-    if (recipients.length === 0) return false;
-    const result = await fanOutPage(
-      settings.creds,
-      recipients.map((r) => ({ ...r, voice: false })),
-      truncate(body, 320),
-    );
-    return result.succeeded > 0;
-  } catch (err) {
-    console.error("[twilio-pager] budget alert page failed:", err);
-    return false;
-  }
+  const result = await sendOneShotPage(organizationId, body);
+  return result.succeeded > 0;
 }
 
 export interface NotePollOutcomeArgs {

@@ -22,6 +22,7 @@ Notification triggers are toggled per user, per organization, in **Settings → 
 | ------------------ | --------------------------------------------------------------------------------- |
 | **Sync incidents** | An account's background sync keeps failing and crosses the org's paging threshold |
 | **Budget alerts**  | A [budget threshold](./cloud-costs.md) is crossed                                 |
+| **Workflow pages** | A [workflow](./workflows.md) calls `infra.page(...)`                              |
 
 <insert [Web Settings → Notifications page showing the push trigger toggles, a registered device row, and the Send test push button] here>
 
@@ -39,6 +40,12 @@ Tapping a sync-incident notification deep-links straight to the failing account'
 ### Budget alerts
 
 Budget threshold breaches notify **at most once per budget, per threshold, per calendar month** — the same dedupe as the budget badge and SMS. Budget pushes are independent of the org's Twilio settings: they deliver even if paging/SMS is not set up at all. Tapping one opens the org home screen, where the budget card shows its alert badge.
+
+### Workflow pages
+
+A [workflow](./workflows.md) that finds a problem can raise an alert itself by calling `infra.page(...)` — "page me if any pod's restart count goes above 5" is a cron workflow that does exactly this. Unlike the two triggers above, the condition is whatever the workflow's author wrote, so the dedupe is author-controlled: every page carries a **key** and repeats under the same key are suppressed for a cooldown (**default: 60 minutes**) that the workflow can set per call or clear when the condition recovers.
+
+Workflow pages deliver over both channels — mobile push, and SMS to the Twilio recipient list when credentials are configured. A workflow can additionally request a **voice call** for something genuinely worth waking up for. Tapping a workflow page opens that workflow in the app, where its recent runs and logs show what tripped it.
 
 ## The Notifications settings page
 

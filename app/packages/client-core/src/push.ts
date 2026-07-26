@@ -38,6 +38,13 @@ export type PushNotificationData =
       month: string;
       thresholdPercent: number;
     }
+  | {
+      type: "workflow_page";
+      orgId: string;
+      workflowId: string;
+      /** The run that raised the page, so the app can open its logs. */
+      runId?: string;
+    }
   | { type: "test"; orgId: string };
 
 export async function registerPushToken(
@@ -61,6 +68,8 @@ export async function unregisterPushDevice(api: CloudFetch, deviceId: string): P
 export interface PushPreferences {
   syncIncidents: boolean;
   budgetAlerts: boolean;
+  /** Alerts raised by a workflow calling `infra.page(...)`. */
+  workflowPages: boolean;
 }
 
 export async function getPushPreferences(api: CloudFetch, orgId: string): Promise<PushPreferences> {
@@ -68,6 +77,7 @@ export async function getPushPreferences(api: CloudFetch, orgId: string): Promis
     (await api.org<PushPreferences>(orgId, "/push/preferences")) ?? {
       syncIncidents: true,
       budgetAlerts: true,
+      workflowPages: true,
     }
   );
 }

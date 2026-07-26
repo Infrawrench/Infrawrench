@@ -123,6 +123,40 @@ export const workflowMetrics = pgTable(
 );
 
 /**
+ * Cooldown state for `infra.page(...)`, one row per (workflow, page key).
+ *
+ * A monitoring cron finds the same problem on every tick, so paging is
+ * throttled per key rather than per run. `lastPagedAt` is only advanced when a
+ * page is actually sent, and the send is gated by a conditional upsert on this
+ * row — that single statement is what keeps two poller replicas racing the same
+ * workflow from double-paging. `infra.page.clear(key)` deletes the row so a
+ * recovered-then-recurring condition alerts again immediately.
+ */
+export const workflowPages = pgTable(
+  "workflow_pages",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workflowId: text("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
+    /** The author-chosen throttle key; "default" when unspecified. */
+    key: text("key").notNull(),
+    /** When this key last delivered a page — the start of its cooldown. */
+    lastPagedAt: timestamp("last_paged_at").notNull().defaultNow(),
+    /** The message that was sent, for the run log and the settings UI. */
+    lastMessage: text("last_message"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    workflowKeyUnique: uniqueIndex("workflow_pages_workflow_key_unique").on(t.workflowId, t.key),
+    orgIdx: index("workflow_pages_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
  * A GitHub App installation connected to an org. The github-watcher uses the
  * installation id to mint short-lived installation tokens (acting as the app /
  * bot) to list repos and read branch heads. Repos a workflow watches are stored

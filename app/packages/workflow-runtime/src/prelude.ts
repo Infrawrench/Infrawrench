@@ -399,12 +399,26 @@ export const PRELUDE = String.raw`
     },
   };
 
+  // Raise an alert to whoever owns this workflow. Accepts either
+  // page("text", opts) or page({ message, ... }) so the common case stays one
+  // argument. Throttling lives host-side (keyed, so it holds across runs).
+  const page = (messageOrSpec, opts) => {
+    const spec = typeof messageOrSpec === "string"
+      ? Object.assign({}, opts || {}, { message: messageOrSpec })
+      : (messageOrSpec || {});
+    return rpc("page", { spec });
+  };
+  // Re-arm a key after the condition it alerted on recovered, so the next
+  // occurrence pages immediately instead of waiting out a stale cooldown.
+  page.clear = (key) => rpc("page.clear", { key });
+
   globalThis.infra = {
     accounts,
     prompt: (spec) => rpc("prompt", { spec: typeof spec === "string" ? { message: spec } : spec }),
     metrics,
     event,
     costs,
+    page,
     output: (value) => rpc("output", { value }),
     log: infraLog,
   };

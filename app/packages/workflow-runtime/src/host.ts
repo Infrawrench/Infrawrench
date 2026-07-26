@@ -8,9 +8,12 @@
  * ./sandbox + ./prelude); {@link dispatch} is the router for that RPC.
  */
 
+import { DEFAULT_PAGE_COOLDOWN_MINUTES, DEFAULT_PAGE_KEY } from "./types.js";
 import type {
   LogLevel,
   MetricValue,
+  PageResult,
+  PageSpec,
   PromptSpec,
   RunLogEntry,
   WorkflowCostRow,
@@ -206,6 +209,20 @@ export interface WorkflowHost {
   writeCosts?(rows: WorkflowCostRow[]): Promise<WorkflowCostWriteResult>;
 
   /**
+   * Raise an alert to the humans who own this workflow (powers `infra.page`).
+   * The host owns both delivery (SMS/voice/push on the cloud, a desktop
+   * notification locally) and the per-key cooldown, so a workflow that finds
+   * the same problem every run pages once rather than every run.
+   */
+  page?(spec: PageSpec): Promise<PageResult>;
+  /**
+   * Clear a page key's cooldown so the next `infra.page` under it delivers
+   * immediately (powers `infra.page.clear`). Called when a workflow observes
+   * that the condition it alerted on has recovered.
+   */
+  clearPage?(key: string): Promise<void>;
+
+  /**
    * Debugger hook: reports the 1-based source line about to execute (instrumented
    * runs only). Implementations highlight the line and may block to pause at a
    * breakpoint. Resolving continues the run; rejecting aborts it (Stop).
@@ -300,6 +317,28 @@ function sftpParams(args: Record<string, unknown>): SftpParamsLite {
     resourceId: String(args["resourceId"]),
     ...(args["sshKeyId"] ? { sshKeyId: String(args["sshKeyId"]) } : {}),
     ...(args["username"] ? { username: String(args["username"]) } : {}),
+  };
+}
+
+/** Longest page message we forward; transports truncate further as needed. */
+const MAX_PAGE_MESSAGE = 1000;
+
+/**
+ * Marshal + validate the `infra.page(...)` argument. Defaults are applied here
+ * rather than in the prelude so every host sees the same normalized spec, and a
+ * blank message is rejected outright — an empty page is a page nobody can act on.
+ */
+function pageSpec(raw: unknown): PageSpec {
+  const spec = (raw ?? {}) as Record<string, unknown>;
+  const message = String(spec["message"] ?? "").trim();
+  if (!message) throw new Error("infra.page() needs a message describing the alert.");
+  const cooldown = Number(spec["cooldownMinutes"] ?? DEFAULT_PAGE_COOLDOWN_MINUTES);
+  return {
+    message: message.slice(0, MAX_PAGE_MESSAGE),
+    ...(spec["title"] ? { title: String(spec["title"]).slice(0, 120) } : {}),
+    key: String(spec["key"] || DEFAULT_PAGE_KEY).slice(0, 200),
+    cooldownMinutes: Number.isFinite(cooldown) && cooldown > 0 ? cooldown : 0,
+    ...(spec["voice"] ? { voice: true } : {}),
   };
 }
 
@@ -595,6 +634,16 @@ export async function dispatch(
         host,
         (args["rows"] as WorkflowCostRow[]) ?? [],
       );
+
+    case "page":
+      return requireMethod(host.page, "page").call(host, pageSpec(args["spec"]));
+
+    case "page.clear":
+      await requireMethod(host.clearPage, "clearPage").call(
+        host,
+        String(args["key"] || DEFAULT_PAGE_KEY),
+      );
+      return null;
 
     case "metric.get":
       return host.getMetric(String(args["key"]));

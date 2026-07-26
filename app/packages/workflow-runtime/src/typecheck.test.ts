@@ -153,6 +153,38 @@ describe("typecheckWorkflow", () => {
     ).toBe(true);
   });
 
+  it("types both call shapes of infra.page, and rejects a bad option", () => {
+    const source = [
+      'const r = await infra.page("3 pods are crash-looping", { key: "restarts" });',
+      "if (r.suppressed) await infra.log(r.retryAt);",
+      'await infra.page({ message: "still bad", cooldownMinutes: 15, voice: true });',
+      'await infra.page.clear("restarts");',
+    ].join("\n");
+    expect(typecheckWorkflow({ source, dts }).diagnostics).toEqual([]);
+    // Author typos in the options bag are caught before the workflow is saved.
+    expect(
+      typecheckWorkflow({
+        source: 'await infra.page("down", { cooldownMinutes: "15" });',
+        dts,
+      }).hasErrors,
+    ).toBe(true);
+  });
+
+  it("keeps infra.page available to automated triggers", () => {
+    // Paging exists precisely so a cron can wake someone up, so unlike
+    // infra.prompt it must survive the non-interactive typings.
+    const cronDts = generateInfraDts({
+      plugins: PLUGINS,
+      metrics: [],
+      interactive: false,
+      triggerKind: "cron",
+    });
+    expect(
+      typecheckWorkflow({ source: 'await infra.page("nightly check failed");', dts: cronDts })
+        .hasErrors,
+    ).toBe(false);
+  });
+
   it("caps the number of returned diagnostics", () => {
     const source = Array.from({ length: 30 }, () => "infra.nope();").join("\n");
     expect(typecheckWorkflow({ source, dts, limit: 5 }).diagnostics).toHaveLength(5);

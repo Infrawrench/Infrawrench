@@ -78,7 +78,7 @@ export default function NotificationsScreen() {
     );
   }
 
-  const current = prefs.data ?? { syncIncidents: true, budgetAlerts: true };
+  const current = prefs.data ?? { syncIncidents: true, budgetAlerts: true, workflowPages: true };
   const deviceList = devices.data ?? [];
 
   const confirmRemove = (d: PushDeviceSummary) => {
@@ -129,6 +129,21 @@ export default function NotificationsScreen() {
           <Switch
             value={current.budgetAlerts}
             onValueChange={(v) => updatePrefs.mutate({ budgetAlerts: v })}
+            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
+          />
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
+              Workflow pages
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+              A workflow raises an alert with infra.page().
+            </Text>
+          </View>
+          <Switch
+            value={current.workflowPages}
+            onValueChange={(v) => updatePrefs.mutate({ workflowPages: v })}
             trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
           />
         </View>

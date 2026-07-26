@@ -31,9 +31,16 @@ export type PushData =
       month: string;
       thresholdPercent: number;
     }
+  | {
+      type: "workflow_page";
+      orgId: string;
+      workflowId: string;
+      /** The run that raised the page, so the app can open its logs. */
+      runId?: string;
+    }
   | { type: "test"; orgId: string };
 
-export type PushTrigger = "syncIncidents" | "budgetAlerts";
+export type PushTrigger = "syncIncidents" | "budgetAlerts" | "workflowPages";
 
 export interface PushMessage {
   title: string;
@@ -62,8 +69,11 @@ async function resolveTargets(
   organizationId: string,
   trigger: PushTrigger,
 ): Promise<TargetDevice[]> {
-  const prefColumn =
-    trigger === "syncIncidents" ? pushPreferences.syncIncidents : pushPreferences.budgetAlerts;
+  const prefColumn = {
+    syncIncidents: pushPreferences.syncIncidents,
+    budgetAlerts: pushPreferences.budgetAlerts,
+    workflowPages: pushPreferences.workflowPages,
+  }[trigger];
   return db
     .select({ id: pushDevices.id, expoPushToken: pushDevices.expoPushToken })
     .from(organizationMembers)

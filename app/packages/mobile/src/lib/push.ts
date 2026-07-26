@@ -124,13 +124,16 @@ export { listPushDevices };
 
 /**
  * Map a notification payload to an expo-router path. Sync incidents land on
- * the failing account; budget breaches land on the org home (budgets live on
- * the home surface); tests land on the org home.
+ * the failing account; workflow pages land on the workflow that raised them
+ * (its run list is the first thing you want); budget breaches land on the org
+ * home (budgets live on the home surface); tests land on the org home.
  */
 export function pushDataToPath(data: PushNotificationData): string {
   switch (data.type) {
     case "sync_incident":
       return `/org/${data.orgId}/accounts/${data.accountId}`;
+    case "workflow_page":
+      return `/org/${data.orgId}/workflows/${data.workflowId}`;
     case "budget_breach":
       return `/org/${data.orgId}`;
     case "test":
@@ -147,5 +150,6 @@ export function parsePushData(raw: unknown): PushNotificationData | null {
   // Type-specific required fields — a malformed payload must not deep-link
   // to a path containing "undefined".
   if (data.type === "sync_incident" && typeof data.accountId !== "string") return null;
+  if (data.type === "workflow_page" && typeof data.workflowId !== "string") return null;
   return data as unknown as PushNotificationData;
 }

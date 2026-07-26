@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.1.1",
+    "version": "0.2.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -5793,9 +5793,13 @@
           },
           "budgetAlerts": {
             "type": "boolean"
+          },
+          "workflowPages": {
+            "type": "boolean",
+            "description": "Alerts raised by a workflow calling infra.page(...)"
           }
         },
-        "required": ["syncIncidents", "budgetAlerts"],
+        "required": ["syncIncidents", "budgetAlerts", "workflowPages"],
         "additionalProperties": false
       },
       "PushPreferencesUpdate": {
@@ -5805,6 +5809,9 @@
             "type": "boolean"
           },
           "budgetAlerts": {
+            "type": "boolean"
+          },
+          "workflowPages": {
             "type": "boolean"
           }
         },
@@ -5828,6 +5835,9 @@
           "budgetAlerts": {
             "type": "boolean"
           },
+          "workflowPages": {
+            "type": "boolean"
+          },
           "devices": {
             "type": "array",
             "items": {
@@ -5849,7 +5859,15 @@
             }
           }
         },
-        "required": ["userId", "email", "displayName", "syncIncidents", "budgetAlerts", "devices"],
+        "required": [
+          "userId",
+          "email",
+          "displayName",
+          "syncIncidents",
+          "budgetAlerts",
+          "workflowPages",
+          "devices"
+        ],
         "additionalProperties": false
       }
     },

@@ -290,7 +290,12 @@ export function workflowTools(): ToolDefinition[] {
         "get_workflow_typings FIRST so you write against this organization's real accounts. " +
         "Before saving, the source is type-checked against those same typings and the save is " +
         "REJECTED with diagnostics if it has errors: read them, fix the source, and call again " +
-        "(set skipTypecheck to save anyway). Only fields you pass are changed. Audit-logged.",
+        "(set skipTypecheck to save anyway). To alert a human when the workflow finds a problem, " +
+        "call `infra.page(message, { key })` in the source — it delivers SMS and mobile push to " +
+        "the org's paging recipients and throttles repeats per key, so a monitoring cron can page " +
+        "unconditionally and only the first occurrence gets through. Prefer a cron trigger plus " +
+        "`infra.page` over asking the user to watch something themselves. " +
+        "Only fields you pass are changed. Audit-logged.",
       inputSchema: {
         workflowId: z.string().optional().describe("Omit to create a new workflow."),
         name: z.string().optional(),
