@@ -65,18 +65,54 @@ function PagingPage() {
         </p>
       </div>
 
-      <SettingsForm orgId={orgId} initial={settings} onSaved={() => void load()} />
-
-      <RecipientsSection orgId={orgId} recipients={recipients} onChanged={() => void load()} />
+      <TwilioSection
+        orgId={orgId}
+        settings={settings}
+        recipients={recipients}
+        onChanged={() => void load()}
+      />
 
       <SlackSection orgId={orgId} />
-
-      <TestSection orgId={orgId} settings={settings} recipientCount={recipients.length} />
 
       <PushPreferencesSection orgId={orgId} />
 
       <PushRosterSection orgId={orgId} />
     </div>
+  );
+}
+
+/**
+ * Everything SMS/voice in one card: the Twilio credentials, the recipients they
+ * page, and the test send that exercises both. They are one setup — splitting
+ * them across cards made the page read as three unrelated features.
+ */
+function TwilioSection({
+  orgId,
+  settings,
+  recipients,
+  onChanged,
+}: {
+  orgId: string;
+  settings: PagingSettings;
+  recipients: Recipient[];
+  onChanged: () => void;
+}) {
+  return (
+    <section className="border border-border rounded-xl p-5 space-y-5">
+      <div>
+        <h2 className="text-sm font-semibold text-on-surface-secondary">SMS &amp; voice</h2>
+        <p className="text-xs text-on-surface-muted mt-1">
+          Paging over Twilio. Add your credentials, list who should be reached, then send a test to
+          confirm the whole path works.
+        </p>
+      </div>
+
+      <SettingsForm orgId={orgId} initial={settings} onSaved={onChanged} />
+
+      <RecipientsPanel orgId={orgId} recipients={recipients} onChanged={onChanged} />
+
+      <TestPanel orgId={orgId} settings={settings} recipientCount={recipients.length} />
+    </section>
   );
 }
 
@@ -127,9 +163,7 @@ function SettingsForm({
   }
 
   return (
-    <section className="border border-border rounded-xl p-5 space-y-4">
-      <h2 className="text-sm font-semibold text-on-surface-secondary">Twilio configuration</h2>
-
+    <div className="space-y-4">
       <label className="flex items-center gap-2 text-sm text-on-surface-secondary">
         <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
         <span>Paging enabled</span>
@@ -217,11 +251,11 @@ function SettingsForm({
           {saving ? "Saving..." : "Save settings"}
         </button>
       </div>
-    </section>
+    </div>
   );
 }
 
-function RecipientsSection({
+function RecipientsPanel({
   orgId,
   recipients,
   onChanged,
@@ -265,8 +299,10 @@ function RecipientsSection({
   }
 
   return (
-    <section className="border border-border rounded-xl p-5 space-y-4">
-      <h2 className="text-sm font-semibold text-on-surface-secondary">Recipients</h2>
+    <div className="space-y-4 pt-5 border-t border-border/50">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-tertiary">
+        Recipients
+      </h3>
 
       {recipients.length === 0 ? (
         <p className="text-sm text-on-surface-muted">No recipients yet.</p>
@@ -339,7 +375,7 @@ function RecipientsSection({
           {saving ? "Adding..." : "Add recipient"}
         </button>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -766,7 +802,7 @@ function AddSlackChannel({
   );
 }
 
-function TestSection({
+function TestPanel({
   orgId,
   settings,
   recipientCount,
@@ -798,8 +834,7 @@ function TestSection({
   }
 
   return (
-    <section className="border border-border rounded-xl p-5 space-y-3">
-      <h2 className="text-sm font-semibold text-on-surface-secondary">Send test page</h2>
+    <div className="space-y-3 pt-5 border-t border-border/50">
       <p className="text-xs text-on-surface-muted">
         Sends a one-off SMS and/or voice call to every recipient to verify your Twilio setup. Save
         credentials and add at least one recipient first.
@@ -820,7 +855,7 @@ function TestSection({
           {busy ? "Sending..." : "Send test page"}
         </button>
       </div>
-    </section>
+    </div>
   );
 }
 
