@@ -20,6 +20,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   orientation: "portrait",
   userInterfaceStyle: "dark",
   newArchEnabled: true,
+  // Both icons derive from the website's `public/icon.png`, which is a rounded
+  // badge floating on transparency. iOS rejects an alpha channel and masks its
+  // own corners, so `icon.png` is the badge cropped to its bounds and made
+  // opaque. Android composites `adaptiveIcon` itself, so that one keeps the
+  // transparency and is inset to ~62% to survive the circular safe zone.
+  icon: "./assets/icon.png",
   ios: {
     bundleIdentifier: "com.infrawrench.mobile",
     supportsTablet: true,
@@ -30,6 +36,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   android: {
     package: "com.infrawrench.mobile",
     edgeToEdgeEnabled: true,
+    adaptiveIcon: {
+      foregroundImage: "./assets/adaptive-icon.png",
+      backgroundColor: "#0b0d10",
+    },
   },
   plugins: [
     "expo-router",
