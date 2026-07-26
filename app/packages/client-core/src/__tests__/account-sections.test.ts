@@ -2,19 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   getVisibleAccountCategories,
   pickDefaultAccountSectionId,
-} from "../components/AccountResourceSections.utils";
-import type {
-  SectionCategoryState,
-  SectionResource,
-  SectionTypeDef,
-} from "../components/AccountResourceSections.types";
+  type SectionCategoryState,
+  type SectionResource,
+  type SectionTypeDef,
+} from "../account-sections";
 
 type Cat = SectionCategoryState<SectionTypeDef, SectionResource>;
 
 function cat(partial: {
   id: string;
-  parentTypeId?: string;
-  showInSidebar?: boolean;
   supportsCreate?: boolean;
   loading?: boolean;
   displayName?: string;
@@ -26,8 +22,6 @@ function cat(partial: {
       id: partial.id,
       displayName: partial.displayName ?? partial.id,
       pluralDisplayName: partial.pluralDisplayName ?? partial.id + "s",
-      parentTypeId: partial.parentTypeId,
-      showInSidebar: partial.showInSidebar,
       supportsCreate: partial.supportsCreate,
     },
     loading: partial.loading ?? false,
@@ -37,25 +31,34 @@ function cat(partial: {
 }
 
 describe("getVisibleAccountCategories", () => {
-  it("hides child types without sidebar opt-in when not searching", () => {
+  it("lists every populated type when not searching, parentage regardless", () => {
     const cats = [
       cat({ id: "top", resources: [{ id: "r", displayName: "R" }] }),
-      cat({ id: "child", parentTypeId: "top", resources: [{ id: "r2", displayName: "R2" }] }),
+      cat({ id: "child", resources: [{ id: "r2", displayName: "R2" }] }),
     ];
     const visible = getVisibleAccountCategories(cats, "");
-    expect(visible.map((c) => c.typeDef.id)).toEqual(["top"]);
+    expect(visible.map((c) => c.typeDef.id)).toEqual(["child", "top"]);
   });
 
-  it("shows sidebar-opted child types when not searching", () => {
+  it("shows the same set of sections empty-query and searching", () => {
+    // Regression: the empty-query path used to hide child types while the search
+    // path did not, so typing a letter grew the tab bar instead of narrowing it.
     const cats = [
       cat({
-        id: "child",
-        parentTypeId: "top",
-        showInSidebar: true,
-        resources: [{ id: "r2", displayName: "R2" }],
+        id: "domain",
+        pluralDisplayName: "Domains",
+        resources: [{ id: "1", displayName: "d" }],
+      }),
+      cat({
+        id: "dns-record",
+        pluralDisplayName: "DNS Records",
+        resources: [{ id: "2", displayName: "d" }],
       }),
     ];
-    expect(getVisibleAccountCategories(cats, "").map((c) => c.typeDef.id)).toEqual(["child"]);
+    const empty = getVisibleAccountCategories(cats, "").map((c) => c.typeDef.id);
+    const searched = getVisibleAccountCategories(cats, "d").map((c) => c.typeDef.id);
+    expect(empty).toEqual(["dns-record", "domain"]);
+    expect(searched).toEqual(empty);
   });
 
   it("hides empty non-creatable categories", () => {

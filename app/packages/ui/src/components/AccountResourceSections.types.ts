@@ -1,30 +1,25 @@
 import type { ReactNode } from "react";
 
-/** Minimal resource-type shape needed by the section tabs. */
-export interface SectionTypeDef {
-  id: string;
-  displayName: string;
-  pluralDisplayName: string;
-  parentTypeId?: string | undefined;
-  supportsCreate?: boolean | undefined;
-  /** Child types opt in here to surface in the sidebar/account view alongside top-level types. */
-  showInSidebar?: boolean | undefined;
-}
+/**
+ * The section shapes live in `@infrawrench/client-core` alongside the filter
+ * rule that consumes them, so mobile shares both. Re-exported here to keep the
+ * historical `@infrawrench/ui` import paths working.
+ *
+ * Note none of them carry `parentTypeId`/`showInSidebar`: the account page
+ * lists every type, so parentage does not affect section visibility. Those
+ * fields scope the sidebar (`getListableResourceTypes`, `?topLevelOnly=true`).
+ */
+export type {
+  SectionTypeDef,
+  SectionResource,
+  SectionCategoryState,
+} from "@infrawrench/client-core";
 
-/** Minimal resource shape needed for search filtering. */
-export interface SectionResource {
-  id: string;
-  displayName: string;
-  fieldsJson?: Record<string, unknown> | null;
-  fields?: Record<string, unknown>;
-}
-
-export interface SectionCategoryState<T extends SectionTypeDef, R extends SectionResource> {
-  typeDef: T;
-  loading: boolean;
-  error: string | null;
-  resources: R[];
-}
+import type {
+  SectionCategoryState,
+  SectionResource,
+  SectionTypeDef,
+} from "@infrawrench/client-core";
 
 export interface AccountResourceSectionsProps<T extends SectionTypeDef, R extends SectionResource> {
   categories: SectionCategoryState<T, R>[];

@@ -373,29 +373,14 @@ export function buildDefaultFields(
 }
 
 /**
- * Returns resource types to show on the account page.
- * Top-level types show their full resource list + create button.
- * Child types opt in via `showInSidebar` to also appear with their full list.
- * Child types with supportsCreate show only the create button (no resource
- * listing — those appear nested under their parent on the detail page).
- */
-export function getAccountResourceTypes<T extends ResourceTypeInfo>(resourceTypes: T[]): T[] {
-  return resourceTypes.filter(
-    (typeDef) => !typeDef.parentTypeId || typeDef.showInSidebar || typeDef.supportsCreate,
-  );
-}
-
-/**
  * Returns resource types whose instances should be listed in the sidebar —
  * top-level types plus child types that opted in via `showInSidebar`.
+ *
+ * This is the only place `showInSidebar` belongs. Account pages list every
+ * type regardless of parentage; see `getVisibleAccountCategories`.
  */
 export function getListableResourceTypes<T extends ResourceTypeInfo>(resourceTypes: T[]): T[] {
   return resourceTypes.filter((typeDef) => !typeDef.parentTypeId || typeDef.showInSidebar);
-}
-
-/** Whether a type should hide its resource list on the account page */
-export function isCreateOnlyType(typeDef: ResourceTypeInfo): boolean {
-  return !!typeDef.parentTypeId && !typeDef.showInSidebar && !!typeDef.supportsCreate;
 }
 
 /** Extract and truncate a display-friendly host from resource fields. */

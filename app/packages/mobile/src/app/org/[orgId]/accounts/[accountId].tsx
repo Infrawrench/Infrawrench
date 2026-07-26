@@ -1,7 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { StyleSheet, TextInput } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getVisibleAccountCategories, type SectionCategoryState } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
+import { colors, radii, spacing } from "@/lib/theme";
 import {
   Button,
   Card,
@@ -22,6 +25,17 @@ interface ResourceRow {
   displayName: string;
   externalId: string | null;
   parentResourceId: string | null;
+  fieldsJson?: Record<string, unknown> | null;
+}
+
+interface ResourceTypeSummary {
+  id: string;
+  displayName: string;
+  pluralDisplayName: string;
+}
+
+interface AccountDetail {
+  resourceTypes: ResourceTypeSummary[];
 }
 
 export default function AccountResources() {
@@ -29,14 +43,21 @@ export default function AccountResources() {
   const { accountId } = useLocalSearchParams<{ accountId: string }>();
   const { api, orgId } = useOrgApi();
   const queryClient = useQueryClient();
+  const [query, setQuery] = useState("");
 
+  // No `topLevelOnly` here: the account page is the account's full inventory,
+  // child resources included, matching web and desktop.
   const resources = useQuery({
     queryKey: ["account-resources", orgId, accountId],
     queryFn: () =>
-      api.org<ResourceRow[]>(
-        orgId,
-        `/accounts/${encodeURIComponent(accountId)}/resources?topLevelOnly=true`,
-      ),
+      api.org<ResourceRow[]>(orgId, `/accounts/${encodeURIComponent(accountId)}/resources`),
+  });
+
+  // Supplies each section its human-readable plural name.
+  const detail = useQuery({
+    queryKey: ["account-detail", orgId, accountId],
+    queryFn: () =>
+      api.org<AccountDetail>(orgId, `/accounts/${encodeURIComponent(accountId)}/detail`),
   });
 
   const sync = useMutation({
@@ -46,15 +67,31 @@ export default function AccountResources() {
       queryClient.invalidateQueries({ queryKey: ["account-resources", orgId, accountId] }),
   });
 
-  const grouped = useMemo(() => {
-    const groups = new Map<string, ResourceRow[]>();
+  const sections = useMemo(() => {
+    const byType = new Map<string, ResourceRow[]>();
     for (const r of resources.data ?? []) {
-      const list = groups.get(r.resourceTypeId) ?? [];
+      const list = byType.get(r.resourceTypeId) ?? [];
       list.push(r);
-      groups.set(r.resourceTypeId, list);
+      byType.set(r.resourceTypeId, list);
     }
-    return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [resources.data]);
+
+    // Prefer the plugin's type list so names and ordering match the other
+    // surfaces; fall back to the ids present in the rows if detail is slow.
+    const types: ResourceTypeSummary[] =
+      detail.data?.resourceTypes ??
+      [...byType.keys()].map((id) => ({ id, displayName: id, pluralDisplayName: id }));
+
+    const categories: SectionCategoryState<ResourceTypeSummary, ResourceRow>[] = types.map(
+      (typeDef) => ({
+        typeDef,
+        loading: false,
+        error: null,
+        resources: byType.get(typeDef.id) ?? [],
+      }),
+    );
+
+    return getVisibleAccountCategories(categories, query.trim().toLowerCase());
+  }, [resources.data, detail.data, query]);
 
   if (resources.isLoading) return <LoadingView />;
   if (resources.isError) {
@@ -66,6 +103,8 @@ export default function AccountResources() {
     );
   }
 
+  const hasAnyResources = (resources.data ?? []).length > 0;
+
   return (
     <Screen onRefresh={() => void resources.refetch()} refreshing={resources.isRefetching}>
       <Button
@@ -74,14 +113,31 @@ export default function AccountResources() {
         disabled={sync.isPending}
         onPress={() => sync.mutate()}
       />
-      {grouped.length === 0 ? (
+      {hasAnyResources && (
+        <TextInput
+          style={styles.input}
+          placeholder="Search sections or resources…"
+          placeholderTextColor={colors.textFaint}
+          value={query}
+          onChangeText={setQuery}
+          autoCapitalize="none"
+          autoCorrect={false}
+          accessibilityLabel="Search sections or resources"
+        />
+      )}
+      {!hasAnyResources ? (
         <EmptyView message="No resources synced for this account yet." />
+      ) : sections.length === 0 ? (
+        <EmptyView message={`No sections or resources match “${query.trim()}”.`} />
       ) : (
-        grouped.map(([typeId, rows]) => (
-          <Card key={typeId}>
-            <SectionTitle>{typeId}</SectionTitle>
+        sections.map((section) => (
+          <Card key={section.typeDef.id}>
+            <SectionTitle>
+              {section.typeDef.pluralDisplayName}
+              {section.resources.length > 0 ? ` (${section.resources.length})` : ""}
+            </SectionTitle>
             <RowGroup>
-              {rows.map((r) => (
+              {section.resources.map((r) => (
                 <Row
                   key={r.id}
                   title={r.displayName}
@@ -100,3 +156,16 @@ export default function AccountResources() {
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  input: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    color: colors.text,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    fontSize: 15,
+  },
+});

@@ -23,7 +23,7 @@ You can switch organizations at any time from the org switcher; everything you s
 ## What you can do
 
 - **Home** — your org's [dashboards](./dashboard.md) and [budgets](./cloud-costs.md) at a glance. Dashboards are render-only on mobile: pinned tiles, metric charts, and cost graphs display live, but you arrange and configure them on web or desktop.
-- **Accounts & resources** — browse every connected account and drill into its resources. Resource detail pages are rendered from the same plugin schemas as web and desktop, so a droplet, a bucket, or a Kubernetes deployment looks like itself — including plugin actions, a Logs tab, and metrics charts.
+- **Accounts & resources** — browse every connected account and drill into its resources. An account page lists every resource type the plugin exposes, nested ones like DNS records and database users included, with a search box that narrows those sections exactly as it does on web and desktop. Resource detail pages are rendered from the same plugin schemas as web and desktop, so a droplet, a bucket, or a Kubernetes deployment looks like itself — including plugin actions, a Logs tab, and metrics charts.
 - **Search** — global search across your org's resources, same as [spotlight search](./spotlight-search.md).
 - **SFTP files** — browse, download (to the share sheet), and upload files on SSH-capable hosts, proxied through the cloud. Object-storage browsers (GCS, S3, R2, Azure Blob) remain on web and desktop.
 - **[AI chat](./ai-chat.md)** — the full org chat with streamed markdown responses, the per-conversation model picker, the spend meter, and approve/reject buttons for pending actions. Approving a risky action from the couch works the same as from the desk.

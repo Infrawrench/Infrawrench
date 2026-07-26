@@ -7,9 +7,7 @@ import {
   formatErrorMessage,
   evaluateShowWhen,
   buildDefaultFields,
-  getAccountResourceTypes,
   getListableResourceTypes,
-  isCreateOnlyType,
   extractHostLabel,
   buildChildResourceGroups,
   resourceTabTitle,
@@ -230,22 +228,9 @@ describe("resource type filters", () => {
     { id: "child-create", parentTypeId: "top", supportsCreate: true },
   ];
 
-  it("getAccountResourceTypes keeps top-level, sidebar, and create-only children", () => {
-    const ids = getAccountResourceTypes(types).map((t) => t.id);
-    expect(ids).toEqual(["top", "child-sidebar", "child-create"]);
-  });
-
   it("getListableResourceTypes keeps top-level and sidebar children only", () => {
     const ids = getListableResourceTypes(types).map((t) => t.id);
     expect(ids).toEqual(["top", "child-sidebar"]);
-  });
-
-  it("isCreateOnlyType true only for create-only child", () => {
-    expect(isCreateOnlyType({ parentTypeId: "top", supportsCreate: true })).toBe(true);
-    expect(
-      isCreateOnlyType({ parentTypeId: "top", showInSidebar: true, supportsCreate: true }),
-    ).toBe(false);
-    expect(isCreateOnlyType({ supportsCreate: true })).toBe(false);
   });
 });
 

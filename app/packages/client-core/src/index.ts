@@ -75,6 +75,13 @@ export {
   type UserSession,
 } from "./profile";
 export { failingCostAccounts, type CostAccountStatus, type CostPollError } from "./costs";
+export {
+  getVisibleAccountCategories,
+  pickDefaultAccountSectionId,
+  type SectionTypeDef,
+  type SectionResource,
+  type SectionCategoryState,
+} from "./account-sections";
 export * from "./chat/types";
 export { createBearerChatClient } from "./chat/bearer-client";
 export * from "./ws-protocol";

@@ -49,6 +49,20 @@ Providers
 
 The sidebar auto-refreshes every 30 seconds. You can manually refresh an account or resource group from its context menu.
 
+The sidebar is deliberately shallow — it lists top-level resources so you can reach the common ones quickly. Nested resources like DNS records and database users are reached through their parent, or through the account page below.
+
+## Account pages
+
+Click an account name to open its account page — the full inventory of everything Infrawrench knows about that account.
+
+Every resource type the plugin exposes gets its own tab, including nested types like DNS Records and DB Users that the sidebar leaves out. A tab shows its resource count in parentheses; types with nothing in them are still listed if you can create one, so the create button stays reachable. Selecting a tab triggers a fresh provider-side sync for just that type, so a slow-to-list group loads on demand rather than holding up the page.
+
+The search box narrows that same set of tabs. It matches a type's name as well as individual resource names, hosts, regions, and engines — so typing `d` keeps every tab whose name or contents match, and typing a droplet's name jumps you to it. Searching only ever removes tabs; it never reveals ones that were hidden.
+
+The [mobile app](../features/mobile-app.md) shows the same sections and the same search, stacked as scrollable cards instead of tabs.
+
+<insert [A DigitalOcean account page with the full tab bar visible and one tab selected, then the same page with a search query typed showing the narrowed tabs] here>
+
 ## Resource detail pages
 
 Click any resource to open its detail page. Every detail page has:
