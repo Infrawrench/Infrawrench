@@ -46,7 +46,7 @@ Each budget has one or more thresholds:
 - **Actual spend** thresholds fire when month-to-date spend crosses a percentage of the budget.
 - **Forecast** thresholds fire when the projected month-end total crosses it — early warning while there is still time to react.
 
-Every threshold fires at most once per calendar month. Alerts show up as a badge on the budget card, as a [mobile push notification](./mobile-push-notifications.md) to org members who have the app installed and budget alerts enabled in their per-org notification preferences, in any [Slack channel](./slack-alerts.md) opted into budget alerts, and — if your org has Twilio configured on the **Settings → Notifications** page — as an SMS to your on-call recipients.
+Every threshold fires at most once per calendar month. Alerts show up as a badge on the budget card, as a [mobile push notification](./mobile-push-notifications.md) to org members who have the app installed and budget alerts enabled in their per-org notification preferences, in any [Slack](./slack-alerts.md) or [Microsoft Teams](./teams-alerts.md) channel opted into budget alerts, and — if your org has Twilio configured on the **Settings → Notifications** page — as an SMS to your on-call recipients.
 
 <insert [Budget card showing a progress bar at 72% with threshold ticks, a forecast marker, and an alert badge] here>
 

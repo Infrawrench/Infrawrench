@@ -10,16 +10,17 @@ import {
 import { buildAad, decrypt, encrypt } from "./encryption";
 import { sendPushToOrg } from "./push/dispatch";
 import { sendSlackToOrg } from "./slack";
+import { sendMsTeamsToOrg } from "./msteams";
 
 /**
  * Paging pipeline. Records sync-failure history per (account, type), opens an
  * incident when the org-configured threshold is crossed, and delivers via
  * Twilio SMS + voice (when creds are configured), mobile push (see
- * push/dispatch.ts), and Slack channels opted into sync incidents (see
- * slack.ts). Subsequent failures while the incident is open re-page every
- * `cooldownMinutes` until a successful sync closes it.
+ * push/dispatch.ts), and Slack (slack.ts) / Microsoft Teams (msteams.ts)
+ * channels opted into sync incidents. Subsequent failures while the incident is
+ * open re-page every `cooldownMinutes` until a successful sync closes it.
  *
- * The org's `enabled` flag is the master switch for all three transports, not
+ * The org's `enabled` flag is the master switch for all four transports, not
  * just Twilio — an org that turns paging off gets no incident alerts anywhere.
  *
  * Wired from the background poller only — manual sync calls from the UI go
@@ -439,18 +440,30 @@ export async function notePollOutcome(args: NotePollOutcomeArgs): Promise<void> 
       context: `${args.resourceTypeId} · ${count} failures in ${Math.round(settings.windowMs / 60_000)} min`,
     });
 
+    const msTeamsResult = await sendMsTeamsToOrg(args.organizationId, "syncIncidents", {
+      title: `Sync failure: ${args.accountLabel}`,
+      body,
+      context: `${args.resourceTypeId} · ${count} failures in ${Math.round(settings.windowMs / 60_000)} min`,
+    });
+
     // Only mark the incident as paged if at least one transport succeeded —
     // otherwise the cooldown gate would suppress retries even though the
     // recipients never actually heard from us. A push success gates Twilio
     // re-sends too (one cooldown cadence per incident), and vice versa.
-    if (twilioResult.succeeded + pushResult.succeeded + slackResult.succeeded > 0) {
+    if (
+      twilioResult.succeeded +
+        pushResult.succeeded +
+        slackResult.succeeded +
+        msTeamsResult.succeeded >
+      0
+    ) {
       await db
         .update(pagingIncidents)
         .set({ pagedAt: now })
         .where(eq(pagingIncidents.id, incidentId));
     } else {
       console.error(
-        `[twilio-pager] all ${twilioResult.attempted + pushResult.attempted + slackResult.attempted} deliveries failed for incident ${incidentId}; will retry on next poll`,
+        `[twilio-pager] all ${twilioResult.attempted + pushResult.attempted + slackResult.attempted + msTeamsResult.attempted} deliveries failed for incident ${incidentId}; will retry on next poll`,
       );
     }
   } catch (err) {

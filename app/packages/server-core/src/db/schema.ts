@@ -619,6 +619,58 @@ export const slackChannels = pgTable(
 );
 
 /**
+ * A Microsoft Teams channel an org routes alerts to, identified by the webhook
+ * URL of a Teams "Workflows" automation (or a legacy Office 365 connector).
+ * The three flags mirror `slackChannels` and `pushPreferences`.
+ *
+ * There is no installation table above this one, as there is for Slack: Teams
+ * has no app-only OAuth flow we can use, so each channel stands alone with its
+ * own URL. See `server-core/src/msteams.ts` for why.
+ *
+ * The URL is a bearer credential — it carries its own signature — so it is
+ * stored encrypted and never leaves the server. `urlHost` and `urlHint` are the
+ * non-secret parts kept in the clear for display and diagnostics.
+ */
+export const msteamsWebhooks = pgTable(
+  "msteams_webhooks",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** User-supplied display name, e.g. `#alerts (Platform)`. */
+    label: text("label").notNull(),
+    /** AES-256-GCM encrypted webhook URL. AAD: `msteams:<orgId>:webhookUrl`. */
+    encryptedUrl: text("encrypted_url").notNull(),
+    urlIv: text("url_iv").notNull(),
+    /**
+     * Keyed HMAC of the URL. Lets re-pasting the same webhook update the
+     * existing row instead of doubling up delivery, without storing the URL in
+     * a comparable form.
+     */
+    urlDigest: text("url_digest").notNull(),
+    /** Hostname, for display and for spotting legacy connector URLs. */
+    urlHost: text("url_host").notNull(),
+    /** Non-secret display hint, e.g. `contoso.webhook.office.com · …a7f2`. */
+    urlHint: text("url_hint").notNull(),
+    syncIncidents: boolean("sync_incidents").notNull().default(true),
+    budgetAlerts: boolean("budget_alerts").notNull().default(true),
+    /** Alerts raised by a workflow calling `infra.page(...)`. */
+    workflowPages: boolean("workflow_pages").notNull().default(true),
+    createdByUserId: text("created_by_user_id"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("msteams_webhooks_org_idx").on(t.organizationId),
+    orgDigestUnique: uniqueIndex("msteams_webhooks_org_digest_unique").on(
+      t.organizationId,
+      t.urlDigest,
+    ),
+  }),
+);
+
+/**
  * Rolling-window record of poller sync failures, used by the Twilio pager to
  * decide whether a (account, resourceType) has crossed its threshold. Rows
  * older than the org's `windowMinutes` are deleted on each tick.

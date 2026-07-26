@@ -35,6 +35,7 @@ import { registerWebhookPaths } from "./paths/webhooks";
 import { registerAdminPaths } from "./paths/admin";
 import { registerPushPaths } from "./paths/push";
 import { registerSlackPaths } from "./paths/slack";
+import { registerMsTeamsPaths } from "./paths/msteams";
 
 interface BuildOptions {
   /** Server URL(s) to advertise in the spec. */
@@ -104,6 +105,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerAdminPaths(ctx);
   registerPushPaths(ctx);
   registerSlackPaths(ctx);
+  registerMsTeamsPaths(ctx);
 
   const generator = new OpenApiGeneratorV31(registry.definitions);
 
@@ -164,6 +166,10 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       },
       { name: "Push", description: "Mobile push notification devices and preferences." },
       { name: "Slack", description: "Slack workspace connection and per-channel alert routing." },
+      {
+        name: "Microsoft Teams",
+        description: "Microsoft Teams webhook connections and per-channel alert routing.",
+      },
     ],
   });
 

@@ -16,6 +16,7 @@ import { forecastMonthTotal, type DailyPoint } from "./forecast";
 import { sendBudgetAlertPage } from "../twilio-pager";
 import { sendPushToOrg } from "../push/dispatch";
 import { sendSlackToOrg } from "../slack";
+import { sendMsTeamsToOrg } from "../msteams";
 import {
   fireBudgetTriggerWorkflows,
   listBudgetTriggerWorkflows,
@@ -179,7 +180,7 @@ export async function evaluateBudgetsForOrg(
             thresholdPercent: threshold.percent,
           },
         });
-        // Slack, like push, is independent of the org's Twilio settings.
+        // Slack and Teams, like push, are independent of the org's Twilio settings.
         const url = budgetUrl(organizationId, budget.id);
         const slacked = await sendSlackToOrg(organizationId, "budgetAlerts", {
           title: `Budget "${budget.name}" at ${threshold.percent}%`,
@@ -187,7 +188,13 @@ export async function evaluateBudgetsForOrg(
           context: `${status.month} · ${kind}`,
           ...(url ? { url } : {}),
         });
-        if (paged || pushed.succeeded > 0 || slacked.succeeded > 0) {
+        const teamed = await sendMsTeamsToOrg(organizationId, "budgetAlerts", {
+          title: `Budget "${budget.name}" at ${threshold.percent}%`,
+          body: alertBody,
+          context: `${status.month} · ${kind}`,
+          ...(url ? { url } : {}),
+        });
+        if (paged || pushed.succeeded > 0 || slacked.succeeded > 0 || teamed.succeeded > 0) {
           await db
             .update(budgetAlertEvents)
             .set({ notifiedAt: new Date() })

@@ -15,6 +15,9 @@ vi.mock("../push/dispatch", () => ({ sendPushToOrg }));
 const sendSlackToOrg = vi.fn(async () => ({ attempted: 0, succeeded: 0, failed: 0 }));
 vi.mock("../slack", () => ({ sendSlackToOrg }));
 
+const sendMsTeamsToOrg = vi.fn(async () => ({ attempted: 0, succeeded: 0, failed: 0 }));
+vi.mock("../msteams", () => ({ sendMsTeamsToOrg }));
+
 // A single cost group: $500 spent this month, in one bucket.
 const queryCosts = vi.fn();
 vi.mock("../clickhouse/cost-readers", () => ({ queryCosts }));

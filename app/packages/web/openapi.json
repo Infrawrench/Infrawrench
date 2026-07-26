@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -135,6 +135,10 @@
     {
       "name": "Slack",
       "description": "Slack workspace connection and per-channel alert routing."
+    },
+    {
+      "name": "Microsoft Teams",
+      "description": "Microsoft Teams webhook connections and per-channel alert routing."
     }
   ],
   "components": {
@@ -6005,6 +6009,89 @@
       "SlackChannelUpdate": {
         "type": "object",
         "properties": {
+          "syncIncidents": {
+            "type": "boolean"
+          },
+          "budgetAlerts": {
+            "type": "boolean"
+          },
+          "workflowPages": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MsTeamsWebhook": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string",
+            "description": "Display name for the channel, e.g. #alerts"
+          },
+          "urlHint": {
+            "type": "string",
+            "description": "Non-secret hint at the stored webhook URL (host and last four characters). The URL itself is never returned."
+          },
+          "syncIncidents": {
+            "type": "boolean"
+          },
+          "budgetAlerts": {
+            "type": "boolean"
+          },
+          "workflowPages": {
+            "type": "boolean",
+            "description": "Alerts raised by a workflow calling infra.page(...)"
+          }
+        },
+        "required": ["id", "label", "urlHint", "syncIncidents", "budgetAlerts", "workflowPages"],
+        "additionalProperties": false
+      },
+      "MsTeamsStatus": {
+        "type": "object",
+        "properties": {
+          "webhooks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MsTeamsWebhook"
+            }
+          }
+        },
+        "required": ["webhooks"],
+        "additionalProperties": false
+      },
+      "MsTeamsWebhookCreate": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The webhook URL from a Teams 'Workflows' automation. Must be https and on a Microsoft-operated host (*.api.powerautomate.com, *.api.powerplatform.com, *.logic.azure.com, *.flow.microsoft.com, or a legacy *.webhook.office.com connector)."
+          },
+          "syncIncidents": {
+            "type": "boolean"
+          },
+          "budgetAlerts": {
+            "type": "boolean"
+          },
+          "workflowPages": {
+            "type": "boolean"
+          }
+        },
+        "required": ["label", "url"],
+        "additionalProperties": false
+      },
+      "MsTeamsWebhookUpdate": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
           "syncIncidents": {
             "type": "boolean"
           },
@@ -15472,6 +15559,268 @@
           }
         },
         "operationId": "postOrgOrgIdSlackTest"
+      }
+    },
+    "/api/org/{orgId}/msteams/status": {
+      "get": {
+        "tags": ["Microsoft Teams"],
+        "summary": "List the organization's Teams channels",
+        "description": "Returns the Teams channels alerts are routed to and which triggers each takes. Webhook URLs are never included.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Routed channels",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MsTeamsStatus"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdMsteamsStatus"
+      }
+    },
+    "/api/org/{orgId}/msteams/webhooks": {
+      "post": {
+        "tags": ["Microsoft Teams"],
+        "summary": "Route alerts to a Teams channel",
+        "description": "Adds a channel by webhook URL, or updates the one already holding that URL. Each trigger defaults to enabled. Responds 400 when the URL is not https or its host is not Microsoft-operated.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MsTeamsWebhookCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The channel routing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MsTeamsWebhook"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdMsteamsWebhooks"
+      }
+    },
+    "/api/org/{orgId}/msteams/webhooks/{id}": {
+      "patch": {
+        "tags": ["Microsoft Teams"],
+        "summary": "Rename a Teams channel or change which alerts it receives",
+        "description": "The webhook URL is immutable — remove the channel and re-add it to change it.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MsTeamsWebhookUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated channel routing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MsTeamsWebhook"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "patchOrgOrgIdMsteamsWebhooksId"
+      },
+      "delete": {
+        "tags": ["Microsoft Teams"],
+        "summary": "Stop routing alerts to a Teams channel",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdMsteamsWebhooksId"
+      }
+    },
+    "/api/org/{orgId}/msteams/test": {
+      "post": {
+        "tags": ["Microsoft Teams"],
+        "summary": "Post a test card to every configured Teams channel",
+        "description": "Ignores trigger opt-ins — every channel gets the test. Fails with the error Microsoft returned when nothing could be delivered (HTTP 404 usually means the Workflow was deleted or turned off).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Delivery summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "webhookCount": {
+                      "type": "integer"
+                    },
+                    "attempted": {
+                      "type": "integer"
+                    },
+                    "succeeded": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["ok", "webhookCount", "attempted", "succeeded"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdMsteamsTest"
       }
     }
   },

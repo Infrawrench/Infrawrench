@@ -19,7 +19,14 @@ import {
  * normalized spec. These lock that contract down.
  */
 
-const OK: PageResult = { delivered: true, suppressed: false, sms: 1, push: 2, slack: 1 };
+const OK: PageResult = {
+  delivered: true,
+  suppressed: false,
+  sms: 1,
+  push: 2,
+  slack: 1,
+  msTeams: 1,
+};
 
 const ctx: WorkflowRunContext = {
   interactive: false,

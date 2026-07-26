@@ -246,6 +246,8 @@ export interface PageResult {
   push: number;
   /** Slack channel posts Slack accepted. */
   slack: number;
+  /** Microsoft Teams webhook posts Teams accepted. */
+  msTeams: number;
   /** When suppressed, the ISO timestamp at which this key can page again. */
   retryAt?: string;
 }

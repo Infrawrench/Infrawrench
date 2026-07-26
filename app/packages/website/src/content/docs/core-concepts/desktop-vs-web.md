@@ -24,6 +24,7 @@ Infrawrench ships as a desktop app, a hosted web app, and a [mobile app](../feat
 | [AI chat](../features/ai-chat.md)           | When signed in to cloud (proxied through the web backend) | Yes                                 | Yes                                                        |
 | Push notifications                          | n/a                                                       | Configured in settings              | [Delivered here](../features/mobile-push-notifications.md) |
 | [Slack alerts](../features/slack-alerts.md) | n/a (pages become OS notifications)                       | Connect a workspace, route channels | Connect and route channels                                 |
+| [Teams alerts](../features/teams-alerts.md) | n/a (pages become OS notifications)                       | Add channels by webhook URL         | Add channels by webhook URL                                |
 
 ## Which should you use
 

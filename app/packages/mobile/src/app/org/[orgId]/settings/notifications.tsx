@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, Switch, Text, View } from "react-native";
+import { Alert, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -15,16 +15,35 @@ import {
   unregisterPushDevice,
   updatePushPreferences,
   updateSlackChannel,
+  addMsTeamsWebhook,
+  getMsTeamsStatus,
+  removeMsTeamsWebhook,
+  sendMsTeamsTestMessage,
+  updateMsTeamsWebhook,
   type PushDeviceSummary,
   type PushPreferences,
   type SlackChannel,
   type SlackChannelTriggers,
   type SlackStatus,
+  type MsTeamsStatus,
+  type MsTeamsWebhook,
+  type MsTeamsWebhookTriggers,
 } from "@infrawrench/client-core";
 import type { CloudFetch } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
-import { Button, Card, ErrorView, LoadingView, Row, Screen, SectionTitle } from "@/components/ui";
-import { colors, spacing } from "@/lib/theme";
+import {
+  Button,
+  Card,
+  EmptyView,
+  ErrorView,
+  LoadingView,
+  Row,
+  RowGroup,
+  Separator,
+  Screen,
+  SectionTitle,
+} from "@/components/ui";
+import { colors, radii, spacing } from "@/lib/theme";
 
 /** Shape of POST /api/org/:orgId/push/test (web api/routes/push-devices.ts). */
 interface TestPushResult {
@@ -164,9 +183,9 @@ export default function NotificationsScreen() {
       </Card>
 
       <SectionTitle>Your devices</SectionTitle>
-      <Card>
+      <Card list>
         {deviceList.length === 0 ? (
-          <Text style={{ color: colors.textMuted, fontSize: 13 }}>No registered devices.</Text>
+          <EmptyView message="No registered devices." />
         ) : (
           deviceList.map((d) => (
             <Row
@@ -194,6 +213,8 @@ export default function NotificationsScreen() {
       />
 
       <SlackSection api={api} orgId={orgId} />
+
+      <MsTeamsSection api={api} orgId={orgId} />
     </Screen>
   );
 }
@@ -369,6 +390,7 @@ function SlackSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
             />
           }
         />
+        <Separator />
 
         {channels.length === 0 ? (
           <Text style={{ color: colors.textMuted, fontSize: 13 }}>
@@ -399,23 +421,25 @@ function SlackSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
               Every channel the app can see is already routed here.
             </Text>
           ) : (
-            options.map((c) => (
-              <Row
-                key={c.id}
-                title={`#${c.name}`}
-                subtitle={c.isPrivate ? "private" : undefined}
-                right={
-                  <Button
-                    label="Add"
-                    variant="secondary"
-                    disabled={addChannel.isPending}
-                    onPress={() =>
-                      addChannel.mutate({ id: c.id, name: c.name, isPrivate: c.isPrivate })
-                    }
-                  />
-                }
-              />
-            ))
+            <RowGroup>
+              {options.map((c) => (
+                <Row
+                  key={c.id}
+                  title={`#${c.name}`}
+                  subtitle={c.isPrivate ? "private" : undefined}
+                  right={
+                    <Button
+                      label="Add"
+                      variant="secondary"
+                      disabled={addChannel.isPending}
+                      onPress={() =>
+                        addChannel.mutate({ id: c.id, name: c.name, isPrivate: c.isPrivate })
+                      }
+                    />
+                  }
+                />
+              ))}
+            </RowGroup>
           )}
           <Button label="Cancel" variant="secondary" onPress={() => setPicking(false)} />
         </Card>
@@ -475,3 +499,207 @@ function SlackChannelRow({
     </View>
   );
 }
+
+const MSTEAMS_TRIGGERS = [
+  { key: "syncIncidents", label: "Sync failures" },
+  { key: "budgetAlerts", label: "Budgets" },
+  { key: "workflowPages", label: "Workflow pages" },
+] as const satisfies ReadonlyArray<{ key: keyof MsTeamsWebhookTriggers; label: string }>;
+
+/**
+ * Microsoft Teams routing for the whole org. There is no "Add to Teams" button
+ * because Teams has no app-only install flow for posting channel messages — a
+ * channel is identified by the webhook URL of a Teams "Workflows" automation,
+ * which the user creates in Teams and pastes here. See the web settings page
+ * and `server-core/src/msteams.ts` for the full reasoning.
+ */
+function MsTeamsSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
+  const queryClient = useQueryClient();
+  const statusKey = ["msteams-status", orgId] as const;
+  const [adding, setAdding] = useState(false);
+  const [label, setLabel] = useState("");
+  const [url, setUrl] = useState("");
+
+  const status = useQuery({
+    queryKey: statusKey,
+    queryFn: () => getMsTeamsStatus(api, orgId),
+  });
+
+  const refetchStatus = () => queryClient.invalidateQueries({ queryKey: statusKey });
+  const alertError = (title: string) => (e: unknown) =>
+    Alert.alert(title, e instanceof Error ? e.message : "Unknown error");
+
+  const toggle = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<MsTeamsWebhookTriggers> }) =>
+      updateMsTeamsWebhook(api, orgId, id, patch),
+    onMutate: async ({ id, patch }) => {
+      await queryClient.cancelQueries({ queryKey: statusKey });
+      const previous = queryClient.getQueryData<MsTeamsStatus>(statusKey);
+      if (previous) {
+        queryClient.setQueryData<MsTeamsStatus>(statusKey, {
+          ...previous,
+          webhooks: previous.webhooks.map((w) => (w.id === id ? { ...w, ...patch } : w)),
+        });
+      }
+      return { previous };
+    },
+    onError: (e, _vars, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(statusKey, ctx.previous);
+      alertError("Update failed")(e);
+    },
+    onSettled: () => void refetchStatus(),
+  });
+
+  const add = useMutation({
+    mutationFn: () => addMsTeamsWebhook(api, orgId, { label, url }),
+    onSuccess: () => {
+      setAdding(false);
+      setLabel("");
+      setUrl("");
+      void refetchStatus();
+    },
+    onError: alertError("Add channel failed"),
+  });
+
+  const removeWebhook = useMutation({
+    mutationFn: (id: string) => removeMsTeamsWebhook(api, orgId, id),
+    onSuccess: () => void refetchStatus(),
+    onError: alertError("Remove failed"),
+  });
+
+  const test = useMutation({
+    mutationFn: () => sendMsTeamsTestMessage(api, orgId),
+    onSuccess: (result) =>
+      Alert.alert(
+        "Teams test",
+        result
+          ? `Posted to ${result.succeeded} of ${result.webhookCount} channel(s).`
+          : "Test message sent.",
+      ),
+    onError: alertError("Teams test failed"),
+  });
+
+  if (status.isLoading || !status.data) return null;
+
+  const webhooks = status.data.webhooks;
+
+  return (
+    <>
+      <SectionTitle>Microsoft Teams</SectionTitle>
+      <Card>
+        {webhooks.length === 0 ? (
+          <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+            No channels yet. Add one to start receiving alerts.
+          </Text>
+        ) : (
+          webhooks.map((w) => (
+            <MsTeamsWebhookRow
+              key={w.id}
+              webhook={w}
+              onToggle={(patch) => toggle.mutate({ id: w.id, patch })}
+              onRemove={() => removeWebhook.mutate(w.id)}
+            />
+          ))
+        )}
+      </Card>
+
+      {adding ? (
+        <Card>
+          <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+            In Teams, open the channel&apos;s More options (…) → Workflows, pick &quot;Post to a
+            channel when a webhook request is received&quot;, then paste the URL it gives you.
+          </Text>
+          <TextInput
+            style={msTeamsStyles.input}
+            value={label}
+            onChangeText={setLabel}
+            placeholder="Label, e.g. #alerts (Platform)"
+            placeholderTextColor={colors.textFaint}
+          />
+          <TextInput
+            style={msTeamsStyles.input}
+            value={url}
+            onChangeText={setUrl}
+            placeholder="Webhook URL"
+            placeholderTextColor={colors.textFaint}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+          />
+          <Button
+            label={add.isPending ? "Adding…" : "Add channel"}
+            variant="secondary"
+            disabled={add.isPending || !label.trim() || !url.trim()}
+            onPress={() => add.mutate()}
+          />
+          <Button label="Cancel" variant="secondary" onPress={() => setAdding(false)} />
+        </Card>
+      ) : (
+        <Button label="Add a channel" variant="secondary" onPress={() => setAdding(true)} />
+      )}
+
+      <Text style={{ color: colors.textMuted, fontSize: 12, paddingHorizontal: spacing.md }}>
+        The webhook URL is a credential — anyone holding it can post to that channel. It&apos;s
+        stored encrypted and never shown again after you add it.
+      </Text>
+
+      <Button
+        label={test.isPending ? "Posting…" : "Send test message"}
+        variant="secondary"
+        disabled={test.isPending || webhooks.length === 0}
+        onPress={() => test.mutate()}
+      />
+    </>
+  );
+}
+
+function MsTeamsWebhookRow({
+  webhook,
+  onToggle,
+  onRemove,
+}: {
+  webhook: MsTeamsWebhook;
+  onToggle: (patch: Partial<MsTeamsWebhookTriggers>) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <View style={{ gap: spacing.sm }}>
+      <Row
+        title={webhook.label}
+        subtitle={webhook.urlHint}
+        right={<Button label="Remove" variant="secondary" onPress={onRemove} />}
+      />
+      {MSTEAMS_TRIGGERS.map((t) => (
+        <View
+          key={t.key}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: spacing.md,
+            paddingLeft: spacing.md,
+          }}
+        >
+          <Text style={{ color: colors.textMuted, fontSize: 13, flex: 1 }}>{t.label}</Text>
+          <Switch
+            value={webhook[t.key]}
+            onValueChange={(v) => onToggle({ [t.key]: v })}
+            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
+          />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const msTeamsStyles = StyleSheet.create({
+  input: {
+    backgroundColor: colors.surfaceOverlay,
+    borderColor: colors.borderStrong,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    color: colors.text,
+    fontSize: 15,
+  },
+});

@@ -280,7 +280,7 @@ A run can make up to 250 requests, and time spent in `fetch` counts against the 
 
 ### Paging a human
 
-A workflow that finds a problem can wake someone up. `infra.page(...)` delivers to the same recipients as [sync-failure incidents and budget alerts](./mobile-push-notifications.md): SMS (and optionally a voice call) through your org's Twilio credentials, mobile push to everyone who has the app installed, and any [Slack channels](./slack-alerts.md) opted into workflow pages. Configure who receives them under **Settings → Notifications**.
+A workflow that finds a problem can wake someone up. `infra.page(...)` delivers to the same recipients as [sync-failure incidents and budget alerts](./mobile-push-notifications.md): SMS (and optionally a voice call) through your org's Twilio credentials, mobile push to everyone who has the app installed, and any [Slack](./slack-alerts.md) or [Microsoft Teams](./teams-alerts.md) channels opted into workflow pages. Configure who receives them under **Settings → Notifications**.
 
 ```ts
 // Cron: hourly. Page when a pod's restart count runs away.
@@ -310,7 +310,7 @@ Choose the key to match what you're watching. The example uses the pod name, so 
 | `cooldownMinutes` | `60`                | How long a key stays quiet after firing. `0` sends on every call.  |
 | `voice`           | `false`             | Also place a Twilio voice call to recipients who opted into voice. |
 
-The returned object tells you what happened — `delivered`, `suppressed`, how many `sms`, `push`, and `slack` deliveries landed, and `retryAt` when it was suppressed:
+The returned object tells you what happened — `delivered`, `suppressed`, how many `sms`, `push`, `slack`, and `msTeams` deliveries landed, and `retryAt` when it was suppressed:
 
 ```ts
 const result = await infra.page("nightly backup did not complete");
@@ -319,7 +319,7 @@ if (result.suppressed) infra.log(`already paged; quiet until ${result.retryAt}`)
 
 `infra.page.clear(key)` drops a key's cooldown. Call it when the condition recovers so the next occurrence pages immediately instead of waiting out a stale timer. A cooldown is only started by a page that actually reached somebody — if every transport fails, the next run tries again rather than going quiet.
 
-In the **desktop app** there are no Twilio, push, or Slack recipients — the Slack connection is an org-level thing the cloud holds — so a page becomes a native OS notification on the machine running the workflow. The key and cooldown behave exactly the same.
+In the **desktop app** there are no Twilio, push, Slack, or Teams recipients — those connections are org-level things the cloud holds — so a page becomes a native OS notification on the machine running the workflow. The key and cooldown behave exactly the same.
 
 ### Reporting your own cost data
 

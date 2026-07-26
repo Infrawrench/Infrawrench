@@ -4,7 +4,8 @@
  * A workflow raises an alert; this module decides whether it is still in
  * cooldown and, if not, fans it out over the same transports the sync-failure
  * pager and budget alerts already use — Twilio SMS (plus voice on request),
- * mobile push, and any Slack channel opted into workflow pages.
+ * mobile push, and any Slack or Microsoft Teams channel opted into workflow
+ * pages.
  *
  * The cooldown is a row in `workflow_pages` keyed by (workflow, page key), and
  * the claim is a single conditional upsert: whoever wins the statement sends,
@@ -27,6 +28,7 @@ import { db } from "../db/client";
 import { workflowPages } from "../db/schema";
 import { sendPushToOrg } from "../push/dispatch";
 import { sendSlackToOrg } from "../slack";
+import { sendMsTeamsToOrg } from "../msteams";
 import { sendOneShotPage } from "../twilio-pager";
 
 /** Which workflow (and run) is raising the alert. */
@@ -130,6 +132,7 @@ export async function pageFromWorkflow(
       sms: 0,
       push: 0,
       slack: 0,
+      msTeams: 0,
       retryAt: new Date(since.getTime() + cooldownMinutes * 60_000).toISOString(),
     };
   }
@@ -155,7 +158,14 @@ export async function pageFromWorkflow(
     ...(url ? { url } : {}),
   });
 
-  const delivered = twilio.succeeded + push.succeeded + slack.succeeded > 0;
+  const msTeams = await sendMsTeamsToOrg(ctx.organizationId, "workflowPages", {
+    title: spec.title ?? ctx.workflowName,
+    body: spec.message,
+    context: `Workflow: ${ctx.workflowName}`,
+    ...(url ? { url } : {}),
+  });
+
+  const delivered = twilio.succeeded + push.succeeded + slack.succeeded + msTeams.succeeded > 0;
   if (!delivered) {
     await releaseSlot(ctx.workflowId, key, prior);
   }
@@ -165,10 +175,11 @@ export async function pageFromWorkflow(
     sms: twilio.succeeded,
     push: push.succeeded,
     slack: slack.succeeded,
+    msTeams: msTeams.succeeded,
   };
 }
 
-/** Deep link to the workflow, for the Slack message's button. */
+/** Deep link to the workflow, for the Slack and Teams message buttons. */
 function workflowUrl(ctx: WorkflowPageContext): string | null {
   const base = process.env["APP_URL"] ?? process.env["NEXT_PUBLIC_APP_URL"];
   if (!base) return null;

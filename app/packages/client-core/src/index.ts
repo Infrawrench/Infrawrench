@@ -37,6 +37,18 @@ export {
   type AddSlackChannelArgs,
 } from "./slack";
 export {
+  getMsTeamsStatus,
+  addMsTeamsWebhook,
+  updateMsTeamsWebhook,
+  removeMsTeamsWebhook,
+  sendMsTeamsTestMessage,
+  type MsTeamsStatus,
+  type MsTeamsWebhook,
+  type MsTeamsWebhookTriggers,
+  type MsTeamsTestResult,
+  type AddMsTeamsWebhookArgs,
+} from "./msteams";
+export {
   fetchProfile,
   updateProfile,
   createPasswordResetLink,

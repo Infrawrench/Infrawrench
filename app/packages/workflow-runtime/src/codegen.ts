@@ -546,6 +546,8 @@ interface PageResult {
   readonly push: number;
   /** Slack channel posts Slack accepted. */
   readonly slack: number;
+  /** Microsoft Teams webhook posts Teams accepted. */
+  readonly msTeams: number;
   /** When suppressed, the ISO timestamp at which this key can page again. */
   readonly retryAt?: string;
 }

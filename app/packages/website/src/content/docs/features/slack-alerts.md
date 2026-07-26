@@ -4,7 +4,7 @@ description: Route sync-failure incidents, budget alerts, and workflow pages to 
 sidebar_order: 16
 ---
 
-Infrawrench Cloud can post alerts into Slack. It sits alongside Twilio SMS/voice and [mobile push](./mobile-push-notifications.md) as a third delivery channel — same triggers, same thresholds — and it is usually the one people actually read during working hours.
+Infrawrench Cloud can post alerts into Slack. It sits alongside Twilio SMS/voice, [mobile push](./mobile-push-notifications.md), and [Microsoft Teams](./teams-alerts.md) as another delivery channel — same triggers, same thresholds — and it is usually the one people actually read during working hours.
 
 > **Cloud only.** Alerts are dispatched by the cloud's background poller, cost evaluation, and workflow runner. The desktop app has no Slack connection; a workflow page there becomes a native OS notification instead.
 

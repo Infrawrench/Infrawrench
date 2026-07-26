@@ -239,6 +239,13 @@
       "when": 1785092744644,
       "tag": "0033_small_hex",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1785107914819,
+      "tag": "0034_low_captain_stacy",
+      "breakpoints": true
     }
   ]
 }
