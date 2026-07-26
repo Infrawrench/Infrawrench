@@ -206,6 +206,46 @@ infra.log("starting reconcile");
 await infra.output({ updated: 3 }); // shown in the run result
 ```
 
+### Calling an HTTP API
+
+`fetch` is available as a global, and works the way you'd expect:
+
+```ts
+const res = await fetch("https://api.example.com/v1/incidents", {
+  method: "POST",
+  headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+  body: { title: "disk 90% full", severity: "warning" },
+});
+if (!res.ok) throw new Error(`incident API returned ${res.status}`);
+const created = await res.json<{ id: string }>();
+await infra.log(`opened incident ${created.id}`);
+```
+
+This is what lets a workflow talk to things Infrawrench has no plugin for — a status page, a ticketing system, an internal service with an HTTP API, a vendor's billing export you then hand to [`infra.costs.write`](#reporting-your-own-cost-data).
+
+It is a deliberately small subset of the browser's `fetch`:
+
+| Difference                                                          | Why                                                                                            |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| The body is fully buffered — `text()`/`json()`/`bytes()` re-read    | No streaming across the isolate boundary; in exchange the body isn't single-use.               |
+| A non-string, non-bytes `body` is JSON-encoded automatically        | With `content-type: application/json` unless you set that header yourself.                     |
+| Two extra options: `timeoutMs` (default 30s) and `maxBytes` (5 MiB) | Every request has to end, and a response bigger than the cap **fails** rather than truncating. |
+| No `Request`/`Headers` constructors, no cookies, no `signal`        | Nothing in a workflow needs them; less surface to get wrong.                                   |
+
+Methods are limited to GET, HEAD, POST, PUT, PATCH, DELETE, and OPTIONS, and connection-level headers (`host`, `content-length`, `transfer-encoding`, …) can't be set.
+
+**Where the request comes from is not where your workflow runs.** In the cloud, workflow code executes on our Kubernetes cluster, so making its HTTP requests from there would put that cluster's internal network one `fetch()` away from any workflow. Instead the request is handed to a proxy that runs outside the cluster entirely, and only the public internet is reachable through it. Private and loopback addresses (`10.0.0.1`, `127.0.0.1`, `169.254.169.254`), cluster-internal names (`*.svc`, `*.cluster.local`, `*.internal`), and non-HTTP schemes are refused — including on a redirect, so a public URL can't bounce you somewhere private. You'll see the refusal in the run log:
+
+```
+fetch() failed: 169.254.169.254 is a private address and is not proxied.
+```
+
+To reach something on a private network, give the workflow a path to it that you control — an SSH command on a resource that can see it ([`resource.ssh`](#ssh-into-a-resource)), or a tunnel — rather than expecting `fetch` to route there.
+
+In the **desktop app** there's no cluster and no proxy: the request is made directly from your own machine, so your LAN and localhost are reachable. A workflow that hits `http://192.168.1.10:9200/` works on desktop and is refused in the cloud, which is worth remembering if you move one there.
+
+A run can make up to 250 requests, and time spent in `fetch` counts against the run's execution budget (unlike SSH waits, which are excluded) — so a loop that polls an API can't outlive the run.
+
 ### Paging a human
 
 A workflow that finds a problem can wake someone up. `infra.page(...)` delivers to the same recipients as [sync-failure incidents and budget alerts](./mobile-push-notifications.md): SMS (and optionally a voice call) through your org's Twilio credentials, mobile push to everyone who has the app installed, and any [Slack channels](./slack-alerts.md) opted into workflow pages. Configure who receives them under **Settings → Notifications**.
@@ -414,7 +454,7 @@ A workflow's code runs with your account credentials. Read the source of anythin
 
 ## The isolate sandbox
 
-Workflow code never runs in the host process. It executes in a **QuickJS WebAssembly isolate** with a hard memory limit and a wall-clock timeout, and with no ambient access to the network or filesystem — the only capabilities a workflow has are the ones `infra` grants it (which themselves run with your account credentials on the host side, never exposed to the script). The same isolate runs identically on desktop and on the server, so a workflow behaves the same wherever it runs.
+Workflow code never runs in the host process. It executes in a **QuickJS WebAssembly isolate** with a hard memory limit and a wall-clock timeout, and with no ambient access to the filesystem or to sockets — the only capabilities a workflow has are the ones `infra` grants it and the `fetch` described above, all of which are performed by the host (with your account credentials, never exposed to the script). The same isolate runs identically on desktop and on the server, so a workflow behaves the same wherever it runs — with the one documented exception that a cloud `fetch` leaves through a proxy and can only reach the public internet.
 
 ## Debugging
 

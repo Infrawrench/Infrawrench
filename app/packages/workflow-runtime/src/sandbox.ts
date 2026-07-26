@@ -33,6 +33,10 @@ import {
  * budget: interactive prompts and SSH calls — the latter may pop a host-key
  * confirmation dialog or wait minutes for a VM to boot. A runaway pure-JS loop
  * stays bounded (its CPU time still counts); only genuine waits are paused.
+ *
+ * `fetch` is deliberately NOT here. Each call is already bounded by its own
+ * timeout, and counting them keeps `while (true) await fetch(...)` inside the
+ * run's budget — pausing would make that loop unkillable.
  */
 const PAUSED_METHODS = new Set([
   "prompt",
@@ -184,6 +188,12 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunResult> 
     }
   };
 
+  /** Milliseconds of budget consumed so far (host waits excluded, see above). */
+  const elapsed = (): number => {
+    const livePause = pauseStart !== null ? Date.now() - pauseStart : 0;
+    return Date.now() - execStart - pausedMs - livePause;
+  };
+
   const env = {
     __accountsTree: JSON.stringify(tree),
     __metrics: JSON.stringify(metricsSnapshot),
@@ -196,6 +206,17 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunResult> 
         return "";
       }
       const pause = PAUSED_METHODS.has(method);
+      // The interrupt handler below is the isolate's only other exit, and
+      // QuickJS consults it on an instruction count — a loop that spends its
+      // time *suspended* in host calls executes very few instructions, so it
+      // can overrun the budget by a wide margin before the handler is asked.
+      // Refusing to serve a call once the run is over (or stopped) closes that:
+      // the loop that outlives its budget is exactly the loop that has to come
+      // back here for its next request.
+      if (opts.signal?.aborted) throw new Error("Workflow stopped.");
+      if (!pause && limits.timeoutMs > 0 && elapsed() > limits.timeoutMs) {
+        throw new Error(`Workflow exceeded its ${limits.timeoutMs}ms execution budget.`);
+      }
       if (pause) pauseTimeout();
       try {
         const result = await dispatch(opts.host, ctx, method, args);
@@ -229,8 +250,7 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunResult> 
         // Stop: abort as soon as the guest is executing again.
         if (opts.signal?.aborted) return true;
         if (limits.timeoutMs <= 0) return false;
-        const livePause = pauseStart !== null ? Date.now() - pauseStart : 0;
-        return Date.now() - execStart - pausedMs - livePause > limits.timeoutMs;
+        return elapsed() > limits.timeoutMs;
       });
       return evalCode(program);
     }, sandboxOptions);

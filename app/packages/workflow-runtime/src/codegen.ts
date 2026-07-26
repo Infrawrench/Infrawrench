@@ -537,6 +537,63 @@ interface InfraPage {
   clear(key?: string): Promise<void>;
 }`;
 
+/**
+ * The global `fetch`. Declared here rather than pulled from `lib.dom` because
+ * the sandbox implements a deliberately small subset: a fully-buffered body
+ * (so the reader methods can be called more than once), no `Request`/`Headers`
+ * constructors, no streaming, no cookies — plus two non-standard options
+ * (`timeoutMs`, `maxBytes`) that the host enforces. Mirrors what the prelude
+ * builds and what `WorkflowFetchRequest` in types.ts validates.
+ */
+const FETCH_INTERFACES = `interface FetchInit {
+  /** GET (default), HEAD, POST, PUT, PATCH, DELETE, or OPTIONS. */
+  method?: "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS";
+  /** Request headers. Hop-by-hop headers (host, content-length, …) are rejected. */
+  headers?: Record<string, string>;
+  /**
+   * Request body. A string or bytes are sent as-is; anything else is
+   * JSON-encoded and sent with \`content-type: application/json\` unless you
+   * set that header yourself.
+   */
+  body?: string | Uint8Array | ArrayBuffer | JsonValue;
+  /** Give up after this many milliseconds. Default 30000, max 120000. */
+  timeoutMs?: number;
+  /** Fail if the response body exceeds this many bytes. Default 5 MiB, max 10 MiB. */
+  maxBytes?: number;
+  /** "follow" (default; up to 5 hops) or "manual" to get the 3xx back. */
+  redirect?: "follow" | "manual";
+}
+
+/** Response headers. Names are matched case-insensitively. */
+interface FetchHeaders {
+  get(name: string): string | null;
+  has(name: string): boolean;
+  keys(): string[];
+  entries(): [string, string][];
+  forEach(fn: (value: string, name: string) => void): void;
+  toJSON(): Record<string, string>;
+}
+
+/**
+ * A fetched response. The body is already buffered, so \`text()\`/\`json()\`/
+ * \`bytes()\` can each be called more than once (unlike a browser Response).
+ */
+interface FetchResponse {
+  /** HTTP status code. A 4xx/5xx resolves normally — check \`ok\` or \`status\`. */
+  readonly status: number;
+  readonly statusText: string;
+  /** True for 2xx. */
+  readonly ok: boolean;
+  /** Final URL, after any redirects that were followed. */
+  readonly url: string;
+  readonly redirected: boolean;
+  readonly headers: FetchHeaders;
+  text(): Promise<string>;
+  json<T = unknown>(): Promise<T>;
+  bytes(): Promise<Uint8Array>;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}`;
+
 export interface GenerateInfraDtsInput {
   plugins: WorkflowPluginInfo[];
   metrics: MetricDef[];
@@ -596,6 +653,8 @@ ${input.costs === false ? "" : COSTS_INTERFACE}
 
 ${PAGE_INTERFACE}
 
+${FETCH_INTERFACES}
+
 ${renderSshExecOptions(sshKeyNames)}
 
 ${resourceInterfaces}
@@ -635,5 +694,14 @@ ${costsDecl}
 }
 
 declare const infra: InfraApi;
+
+/**
+ * Call an HTTP API. In the cloud the request is made by a proxy that sits
+ * outside the Kubernetes cluster the workflow runs in, so only the public
+ * internet is reachable — private and cluster-internal addresses are refused.
+ * On the desktop app the request comes from your own machine, so your LAN is
+ * reachable too.
+ */
+declare function fetch(url: string, init?: FetchInit): Promise<FetchResponse>;
 `;
 }

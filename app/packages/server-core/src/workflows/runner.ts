@@ -34,6 +34,7 @@ import { writeWorkflowCostRows } from "../cost/workflow-costs";
 import { loadPlugins } from "../plugin-loader";
 import { getOrgAccountClient } from "../org-accounts";
 import { buildWorkflowSshDeps } from "./ssh-host";
+import { buildWorkflowFetch } from "./fetch";
 import { enrichPlugin } from "./create-fields-cache";
 import { buildSshKeyFieldResolver } from "./ssh-key-fields";
 import { clearWorkflowPage, pageFromWorkflow } from "./paging";
@@ -45,6 +46,7 @@ import { staticResourceCapabilities } from "@infrawrench/workflow-runtime";
 export { buildWorkflowSshDeps } from "./ssh-host";
 export { enrichPlugin } from "./create-fields-cache";
 export { buildSshKeyFieldResolver, listOrgSshKeyNames } from "./ssh-key-fields";
+export { buildWorkflowFetch, isWorkflowFetchConfigured } from "./fetch";
 export { getOrgAccountClient } from "../org-accounts";
 
 /**
@@ -254,6 +256,9 @@ export function buildOrgWorkflowHost(
       costRowsWritten += result.written;
       return result;
     },
+    // Outbound HTTP leaves through the egress proxy, never from the pod the
+    // isolate runs in (see ./fetch.ts).
+    fetch: buildWorkflowFetch(),
     page: (spec) =>
       pageFromWorkflow(
         {

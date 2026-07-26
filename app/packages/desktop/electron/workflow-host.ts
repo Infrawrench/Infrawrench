@@ -21,6 +21,7 @@
  * See src/lib/workflow-runner.ts for the renderer half.
  */
 import { ipcMain, type WebContents } from "electron";
+import { workflowFetch } from "./workflow-fetch";
 // The runtime is ESM-only (its package exports raw .ts), so this CommonJS main
 // module pulls types statically (erased) and `runWorkflow` via dynamic import,
 // matching how main.ts loads other ESM-only deps (see electron-updater).
@@ -38,6 +39,8 @@ import type {
   SshStreamChunkLite,
   StorageObjectBody,
   StorageObjectLite,
+  WorkflowFetchRequest,
+  WorkflowFetchResponse,
   WorkflowHost,
   WorkflowPluginInfo,
 } from "@infrawrench/workflow-runtime" with { "resolution-mode": "import" };
@@ -99,6 +102,9 @@ function createBridgedHost(sender: WebContents, runToken: string): WorkflowHost 
     readStorageObject: (accountId, bucket, key) =>
       call<StorageObjectBody>("readStorageObject", [accountId, bucket, key]),
     prompt: (spec: PromptSpec) => call<MetricValue>("prompt", [spec]),
+    // Served here rather than bridged: an HTTP request needs nothing the
+    // renderer owns, and main is where Node's CORS-free fetch lives.
+    fetch: (request: WorkflowFetchRequest) => workflowFetch(request),
     page: (spec: PageSpec) => call<PageResult>("page", [spec]),
     clearPage: (key: string) => call<void>("clearPage", [key]),
     getMetric: (key) => call<MetricValue>("getMetric", [key]),

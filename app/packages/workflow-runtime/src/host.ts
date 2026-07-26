@@ -8,7 +8,20 @@
  * ./sandbox + ./prelude); {@link dispatch} is the router for that RPC.
  */
 
-import { DEFAULT_PAGE_COOLDOWN_MINUTES, DEFAULT_PAGE_KEY } from "./types.js";
+import {
+  ALLOWED_FETCH_METHODS,
+  DEFAULT_FETCH_MAX_BYTES,
+  DEFAULT_FETCH_TIMEOUT_MS,
+  DEFAULT_PAGE_COOLDOWN_MINUTES,
+  DEFAULT_PAGE_KEY,
+  FORBIDDEN_FETCH_HEADERS,
+  MAX_FETCH_BODY_BYTES,
+  MAX_FETCH_HEADER_NAME_LENGTH,
+  MAX_FETCH_HEADER_VALUE_LENGTH,
+  MAX_FETCH_HEADERS,
+  MAX_FETCH_MAX_BYTES,
+  MAX_FETCH_TIMEOUT_MS,
+} from "./types.js";
 import type {
   LogLevel,
   MetricValue,
@@ -18,6 +31,8 @@ import type {
   RunLogEntry,
   WorkflowCostRow,
   WorkflowCostWriteResult,
+  WorkflowFetchRequest,
+  WorkflowFetchResponse,
   WorkflowPluginInfo,
 } from "./types.js";
 
@@ -223,6 +238,16 @@ export interface WorkflowHost {
   clearPage?(key: string): Promise<void>;
 
   /**
+   * Make one outbound HTTP request on the workflow's behalf (powers the
+   * sandbox's global `fetch`). The request is already normalized and validated
+   * by {@link dispatch}; what a host adds is *where the request leaves from* —
+   * the cloud sends it through an egress proxy that lives outside the Kubernetes
+   * cluster, so a workflow can never reach cluster-internal services, while
+   * desktop just makes the call from the user's own machine.
+   */
+  fetch?(request: WorkflowFetchRequest): Promise<WorkflowFetchResponse>;
+
+  /**
    * Debugger hook: reports the 1-based source line about to execute (instrumented
    * runs only). Implementations highlight the line and may block to pause at a
    * breakpoint. Resolving continues the run; rejecting aborts it (Stop).
@@ -339,6 +364,99 @@ function pageSpec(raw: unknown): PageSpec {
     key: String(spec["key"] || DEFAULT_PAGE_KEY).slice(0, 200),
     cooldownMinutes: Number.isFinite(cooldown) && cooldown > 0 ? cooldown : 0,
     ...(spec["voice"] ? { voice: true } : {}),
+  };
+}
+
+/** Bytes a base64 string decodes to, without decoding it. */
+function base64ByteLength(base64: string): number {
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.floor((base64.length * 3) / 4) - padding;
+}
+
+/** Clamp a caller-supplied number into a range, falling back when unusable. */
+function clamp(raw: unknown, fallback: number, max: number): number {
+  const value = Number(raw ?? fallback);
+  if (!Number.isFinite(value) || value <= 0) return fallback;
+  return Math.min(Math.floor(value), max);
+}
+
+/** RFC 7230 token, which is what a header name is allowed to be. */
+const HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+
+/**
+ * Marshal + validate the sandbox's `fetch(...)` arguments.
+ *
+ * Everything a host could be tricked by is settled here, once, so no host has
+ * to re-derive it: the URL must be absolute `http`/`https` (no `file:`, no
+ * `data:`), the method must be one a workflow is allowed to send, hop-by-hop
+ * headers are dropped, and the sizes are bounded on both directions. Where the
+ * request physically leaves from is the host's business (see `WorkflowHost.fetch`).
+ */
+function fetchRequest(raw: unknown): WorkflowFetchRequest {
+  const args = (raw ?? {}) as Record<string, unknown>;
+
+  const rawUrl = String(args["url"] ?? "").trim();
+  if (!rawUrl) throw new Error("fetch() needs a URL.");
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error(`fetch() needs an absolute URL, got ${JSON.stringify(rawUrl)}.`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`fetch() only supports http and https URLs, not ${url.protocol}`);
+  }
+
+  const method = String(args["method"] ?? "GET").toUpperCase();
+  if (!(ALLOWED_FETCH_METHODS as readonly string[]).includes(method)) {
+    throw new Error(
+      `fetch() does not support the ${method} method (allowed: ${ALLOWED_FETCH_METHODS.join(", ")}).`,
+    );
+  }
+
+  const headers: Record<string, string> = {};
+  const rawHeaders = (args["headers"] ?? {}) as Record<string, unknown>;
+  for (const [name, value] of Object.entries(rawHeaders)) {
+    if (value === undefined || value === null) continue;
+    const lower = name.toLowerCase();
+    if (FORBIDDEN_FETCH_HEADERS.has(lower)) {
+      throw new Error(`fetch() cannot set the ${lower} header.`);
+    }
+    if (!HEADER_NAME_RE.test(lower) || lower.length > MAX_FETCH_HEADER_NAME_LENGTH) {
+      throw new Error(`fetch() got an invalid header name: ${JSON.stringify(name)}`);
+    }
+    const text = String(value);
+    if (text.length > MAX_FETCH_HEADER_VALUE_LENGTH) {
+      throw new Error(`fetch() header ${lower} is longer than ${MAX_FETCH_HEADER_VALUE_LENGTH}.`);
+    }
+    // A newline in a value would let a caller inject extra headers downstream.
+    if (/[\r\n]/.test(text)) {
+      throw new Error(`fetch() header ${lower} may not contain a newline.`);
+    }
+    headers[lower] = text;
+    if (Object.keys(headers).length > MAX_FETCH_HEADERS) {
+      throw new Error(`fetch() may send at most ${MAX_FETCH_HEADERS} headers.`);
+    }
+  }
+
+  const bodyBase64 = args["bodyBase64"] === undefined ? undefined : String(args["bodyBase64"]);
+  if (bodyBase64 !== undefined) {
+    if (method === "GET" || method === "HEAD") {
+      throw new Error(`fetch() cannot send a body with ${method}.`);
+    }
+    if (base64ByteLength(bodyBase64) > MAX_FETCH_BODY_BYTES) {
+      throw new Error(`fetch() request bodies are limited to ${MAX_FETCH_BODY_BYTES} bytes.`);
+    }
+  }
+
+  return {
+    url: url.toString(),
+    method,
+    headers,
+    ...(bodyBase64 !== undefined ? { bodyBase64 } : {}),
+    timeoutMs: clamp(args["timeoutMs"], DEFAULT_FETCH_TIMEOUT_MS, MAX_FETCH_TIMEOUT_MS),
+    maxBytes: clamp(args["maxBytes"], DEFAULT_FETCH_MAX_BYTES, MAX_FETCH_MAX_BYTES),
+    redirect: args["redirect"] === "manual" ? "manual" : "follow",
   };
 }
 
@@ -634,6 +752,9 @@ export async function dispatch(
         host,
         (args["rows"] as WorkflowCostRow[]) ?? [],
       );
+
+    case "fetch":
+      return requireMethod(host.fetch, "fetch").call(host, fetchRequest(args["request"]));
 
     case "page":
       return requireMethod(host.page, "page").call(host, pageSpec(args["spec"]));

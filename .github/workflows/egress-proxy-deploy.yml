@@ -1,0 +1,46 @@
+name: Deploy Egress Proxy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/packages/egress-proxy/**"
+      - "pnpm-lock.yaml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build and deploy to Cloudflare
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/cache@v5
+        with:
+          path: |
+            .turbo
+            node_modules
+          key: ${{ runner.os }}-egress-proxy-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-egress-proxy-
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - run: corepack enable
+
+      - run: pnpm install --frozen-lockfile
+
+      # The proxy is the only thing standing between a workflow's fetch() and
+      # the private networks it must never reach, so its own tests gate deploys.
+      - name: Test
+        run: pnpm --filter @infrawrench/egress-proxy test
+
+      - name: Deploy
+        run: pnpm --filter @infrawrench/egress-proxy exec wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

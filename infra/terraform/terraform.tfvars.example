@@ -52,6 +52,15 @@ app_env = {
   # (grant/revoke complimentary orgs). Omit to disable the admin surface.
   INFRAWRENCH_PLATFORM_ADMIN_EMAILS = "you@example.com"
 
+  # Workflow outbound HTTP. `fetch()` inside a workflow is performed by the
+  # egress proxy Worker (app/packages/egress-proxy), which runs on Cloudflare —
+  # outside this cluster — so a workflow can't reach pods, the kubelet, or the
+  # metadata server on 169.254.169.254. Without both of these, fetch() throws
+  # and says it isn't configured; it never falls back to a request from the pod.
+  # The token is the Worker's PROXY_TOKEN secret.
+  WORKFLOW_FETCH_PROXY_URL   = "https://egress.infrawrench.com"
+  WORKFLOW_FETCH_PROXY_TOKEN = "<openssl rand -base64 32>"
+
   # Optional: Expo push access token (mobile notifications). Sends work
   # without it unless the Expo project has Enhanced Push Security enabled —
   # recommended in production. Create under expo.dev → Access tokens.

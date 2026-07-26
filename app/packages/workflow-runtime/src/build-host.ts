@@ -29,6 +29,8 @@ import type {
   PromptSpec,
   WorkflowCostRow,
   WorkflowCostWriteResult,
+  WorkflowFetchRequest,
+  WorkflowFetchResponse,
   WorkflowPluginInfo,
 } from "./types.js";
 
@@ -80,6 +82,13 @@ export interface ClientHostDeps {
 
   /** Write daily spend into the org's cost store (cloud-only). */
   writeCosts?(rows: WorkflowCostRow[]): Promise<WorkflowCostWriteResult>;
+
+  /**
+   * Perform one outbound HTTP request for the workflow (powers the global
+   * `fetch`). Platform-supplied because the *route out* differs: the cloud goes
+   * through an egress proxy outside the cluster, desktop calls directly.
+   */
+  fetch?(request: WorkflowFetchRequest): Promise<WorkflowFetchResponse>;
 
   /** Deliver an alert and enforce its per-key cooldown (powers `infra.page`). */
   page?(spec: PageSpec): Promise<PageResult>;
@@ -310,6 +319,7 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
     ...(deps.sftpMkdir ? { sftpMkdir: deps.sftpMkdir } : {}),
     ...(deps.sftpDelete ? { sftpDelete: deps.sftpDelete } : {}),
     ...(deps.writeCosts ? { writeCosts: deps.writeCosts } : {}),
+    ...(deps.fetch ? { fetch: deps.fetch } : {}),
     ...(deps.page ? { page: deps.page } : {}),
     ...(deps.clearPage ? { clearPage: deps.clearPage } : {}),
     ...(deps.line ? { line: deps.line } : {}),

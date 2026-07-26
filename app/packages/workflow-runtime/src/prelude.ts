@@ -399,6 +399,75 @@ export const PRELUDE = String.raw`
     },
   };
 
+  // A minimal WHATWG-ish Headers view over the plain object the host returns.
+  // Names arrive lowercased; get/has lowercase what they're asked for so
+  // res.headers.get("Content-Type") works like it does everywhere else.
+  const makeHeaders = (raw) => {
+    const map = raw || {};
+    return {
+      get: (name) => {
+        const v = map[String(name).toLowerCase()];
+        return v === undefined ? null : v;
+      },
+      has: (name) => Object.prototype.hasOwnProperty.call(map, String(name).toLowerCase()),
+      keys: () => Object.keys(map),
+      entries: () => Object.entries(map),
+      forEach: (fn) => { for (const [k, v] of Object.entries(map)) fn(v, k); },
+      toJSON: () => Object.assign({}, map),
+    };
+  };
+
+  // Coerce a fetch body into bytes. Strings and byte buffers pass through
+  // toBytes; anything else is JSON (with a content-type, unless one was set),
+  // so posting an object is one call rather than a stringify + header dance.
+  const fetchBody = (body, headers) => {
+    if (body === undefined || body === null) return undefined;
+    if (typeof body === "string" || body instanceof Uint8Array) return toBytes(body);
+    if (typeof ArrayBuffer !== "undefined") {
+      if (body instanceof ArrayBuffer) return new Uint8Array(body);
+      if (ArrayBuffer.isView(body)) return new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+    }
+    if (!Object.keys(headers).some((h) => h.toLowerCase() === "content-type")) {
+      headers["content-type"] = "application/json";
+    }
+    return toBytes(JSON.stringify(body));
+  };
+
+  // The sandbox has no sockets: fetch is an RPC the host performs on our
+  // behalf. The body is fully buffered (bounded by maxBytes), so the reader
+  // methods below are synchronous underneath but still return promises, and
+  // await res.json() reads the same as it does anywhere else. Unlike a real
+  // Response the body isn't single-use; you can read it twice.
+  const fetchImpl = async (url, init) => {
+    init = init || {};
+    const headers = Object.assign({}, init.headers || {});
+    const bytes = fetchBody(init.body, headers);
+    const res = await rpc("fetch", {
+      request: {
+        url: typeof url === "string" ? url : String(url),
+        method: init.method,
+        headers,
+        bodyBase64: bytes === undefined ? undefined : b64enc(bytes),
+        timeoutMs: init.timeoutMs,
+        maxBytes: init.maxBytes,
+        redirect: init.redirect,
+      },
+    });
+    const body = b64(res.bodyBase64 || "");
+    return {
+      status: res.status,
+      statusText: res.statusText || "",
+      ok: res.status >= 200 && res.status < 300,
+      url: res.url,
+      redirected: !!res.redirected,
+      headers: makeHeaders(res.headers),
+      text: () => Promise.resolve(utf8(body)),
+      json: () => Promise.resolve(JSON.parse(utf8(body))),
+      bytes: () => Promise.resolve(body),
+      arrayBuffer: () => Promise.resolve(body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength)),
+    };
+  };
+
   // Raise an alert to whoever owns this workflow. Accepts either
   // page("text", opts) or page({ message, ... }) so the common case stays one
   // argument. Throttling lives host-side (keyed, so it holds across runs).
@@ -422,6 +491,10 @@ export const PRELUDE = String.raw`
     output: (value) => rpc("output", { value }),
     log: infraLog,
   };
+
+  // HTTP is a global, not an infra.* method: a workflow that talks to an API
+  // should read like every other bit of JavaScript that talks to an API.
+  globalThis.fetch = fetchImpl;
 
   // Route console.* to the run log as well.
   const c = (level) => (...parts) => rpc("log", { level, message: fmtParts(parts) });

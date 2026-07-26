@@ -185,6 +185,52 @@ describe("typecheckWorkflow", () => {
     ).toBe(false);
   });
 
+  it("types the global fetch, including a JSON body and the response readers", () => {
+    const source = [
+      'const res = await fetch("https://api.example.com/v1/status", {',
+      '  method: "POST",',
+      '  headers: { authorization: "Bearer t" },',
+      "  body: { probe: true },",
+      "  timeoutMs: 5000,",
+      "});",
+      "if (!res.ok) throw new Error(`HTTP ${res.status}`);",
+      "const body = await res.json<{ healthy: boolean }>();",
+      'await infra.log(body.healthy, res.headers.get("content-type"));',
+    ].join("\n");
+    expect(typecheckWorkflow({ source, dts }).diagnostics).toEqual([]);
+  });
+
+  it("rejects fetch options and methods the host would refuse at runtime", () => {
+    // Better to fail at save time than to fail the run — these are exactly the
+    // requests dispatch throws on (see fetch.test.ts).
+    expect(
+      typecheckWorkflow({
+        source: 'await fetch("https://a.example.com/", { method: "TRACE" });',
+        dts,
+      }).hasErrors,
+    ).toBe(true);
+    expect(
+      typecheckWorkflow({ source: 'await fetch("https://a.example.com/", { timeout: 5 });', dts })
+        .hasErrors,
+    ).toBe(true);
+  });
+
+  it("keeps fetch available to automated triggers", () => {
+    // A cron that pulls an API on a schedule is the main reason fetch exists.
+    const cronDts = generateInfraDts({
+      plugins: PLUGINS,
+      metrics: [],
+      interactive: false,
+      triggerKind: "cron",
+    });
+    expect(
+      typecheckWorkflow({
+        source: 'const r = await fetch("https://a.example.com/");',
+        dts: cronDts,
+      }).hasErrors,
+    ).toBe(false);
+  });
+
   it("caps the number of returned diagnostics", () => {
     const source = Array.from({ length: 30 }, () => "infra.nope();").join("\n");
     expect(typecheckWorkflow({ source, dts, limit: 5 }).diagnostics).toHaveLength(5);

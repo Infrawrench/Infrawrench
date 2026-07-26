@@ -250,6 +250,92 @@ export interface PageResult {
   retryAt?: string;
 }
 
+/** Wall-clock budget for one `fetch(...)` when the caller doesn't set one. */
+export const DEFAULT_FETCH_TIMEOUT_MS = 30_000;
+
+/** Ceiling for `timeoutMs`. Longer than this and the run's own budget is the limit. */
+export const MAX_FETCH_TIMEOUT_MS = 120_000;
+
+/** Response bytes a `fetch(...)` will buffer before failing, by default. */
+export const DEFAULT_FETCH_MAX_BYTES = 5 * 1024 * 1024;
+
+/** Ceiling for `maxBytes` — the whole body is buffered in memory on both sides. */
+export const MAX_FETCH_MAX_BYTES = 10 * 1024 * 1024;
+
+/** Largest request body a workflow may send (base64 is decoded before this check). */
+export const MAX_FETCH_BODY_BYTES = 2 * 1024 * 1024;
+
+/** Request headers per call, and the size of each. */
+export const MAX_FETCH_HEADERS = 50;
+export const MAX_FETCH_HEADER_NAME_LENGTH = 128;
+export const MAX_FETCH_HEADER_VALUE_LENGTH = 4096;
+
+/** Methods a workflow may send. Anything else is rejected before the host runs. */
+export const ALLOWED_FETCH_METHODS = [
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "OPTIONS",
+] as const;
+
+/**
+ * Headers a workflow can't set: they describe the connection rather than the
+ * request, and letting a caller forge them would either confuse the proxy or
+ * let it be used to smuggle a second request.
+ */
+export const FORBIDDEN_FETCH_HEADERS = new Set([
+  "connection",
+  "content-length",
+  "expect",
+  "host",
+  "keep-alive",
+  "proxy-authorization",
+  "proxy-connection",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+]);
+
+/**
+ * One outbound HTTP request from a workflow, normalized by
+ * {@link file://./host.ts} `dispatch` so every host receives the same validated
+ * shape. Bodies cross as base64 because the sandbox bridge is JSON.
+ */
+export interface WorkflowFetchRequest {
+  /** Absolute `http:`/`https:` URL. */
+  url: string;
+  /** Uppercased method from {@link ALLOWED_FETCH_METHODS}. */
+  method: string;
+  /** Lowercased header names; hop-by-hop headers are already stripped. */
+  headers: Record<string, string>;
+  /** Base64 request body, absent for bodyless methods. */
+  bodyBase64?: string;
+  /** Clamped to {@link MAX_FETCH_TIMEOUT_MS}. */
+  timeoutMs: number;
+  /** Clamped to {@link MAX_FETCH_MAX_BYTES}; a larger response fails the call. */
+  maxBytes: number;
+  /** "follow" (default, max 5 hops, each re-validated) or "manual". */
+  redirect: "follow" | "manual";
+}
+
+/** What a host returns for a {@link WorkflowFetchRequest}. */
+export interface WorkflowFetchResponse {
+  status: number;
+  statusText: string;
+  /** Final URL after redirects (equals the request URL when none were followed). */
+  url: string;
+  /** Lowercased response header names. */
+  headers: Record<string, string>;
+  /** Base64 response body ("" for an empty body). */
+  bodyBase64: string;
+  /** True when the response came from a followed redirect. */
+  redirected: boolean;
+}
+
 /** Lightweight account descriptor exposed to the bridge + codegen. */
 export interface WorkflowAccountInfo {
   id: string;

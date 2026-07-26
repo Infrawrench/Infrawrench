@@ -1,0 +1,16 @@
+// The workflow egress proxy — see src/index.ts for why it exists, README.md for
+// how to deploy it. It runs on Cloudflare's edge specifically because that is
+// *not* the GKE cluster the workflow isolate runs in.
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "infrawrench-egress-proxy",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-01",
+  "workers_dev": false,
+  "observability": {
+    "enabled": true,
+  },
+  "routes": [{ "pattern": "egress.infrawrench.com", "custom_domain": true }],
+  // PROXY_TOKEN is a secret, not a var:
+  //   pnpm --filter @infrawrench/egress-proxy exec wrangler secret put PROXY_TOKEN
+}

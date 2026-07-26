@@ -6,13 +6,23 @@ Prod web stack on GKE: `web` (Hono + WebSockets, 2 replicas), `poller`
 GitHub API reads). Postgres stays on Neon, metrics on ClickHouse Cloud;
 the CF Workers deployables (website, telemetry) are not part of this.
 
-| Layer                                                                 | Owner                                  |
-| --------------------------------------------------------------------- | -------------------------------------- |
-| Network, cluster, registry, namespace, secrets, ingress, cert-manager | `infra/terraform` (applied manually)   |
-| Deployments, Service, Ingress, ClusterIssuer                          | `infra/k8s` (applied by CI)            |
-| Images `web` / `poller` / `github-watcher`, tagged `:<commit sha>`    | `.github/workflows/web-deploy.yml`     |
-| Container registry `registry.infrawrench.com` (CF Worker + R2)        | `infra/registry` (deployed manually)   |
-| Image `bastion-agent`, tagged `:<commit sha>` + `:latest`             | `.github/workflows/bastion-deploy.yml` |
+| Layer                                                                 | Owner                                       |
+| --------------------------------------------------------------------- | ------------------------------------------- |
+| Network, cluster, registry, namespace, secrets, ingress, cert-manager | `infra/terraform` (applied manually)        |
+| Deployments, Service, Ingress, ClusterIssuer                          | `infra/k8s` (applied by CI)                 |
+| Images `web` / `poller` / `github-watcher`, tagged `:<commit sha>`    | `.github/workflows/web-deploy.yml`          |
+| Container registry `registry.infrawrench.com` (CF Worker + R2)        | `infra/registry` (deployed manually)        |
+| Image `bastion-agent`, tagged `:<commit sha>` + `:latest`             | `.github/workflows/bastion-deploy.yml`      |
+| Workflow egress proxy `egress.infrawrench.com` (CF Worker)            | `.github/workflows/egress-proxy-deploy.yml` |
+
+**The egress proxy is deliberately not on this cluster.** Workflow `fetch()`
+runs in the `web`/`poller` isolates; if those pods made the request, every
+workflow would be one URL away from pod-to-pod traffic and the metadata server
+on 169.254.169.254. The request is handed to a Cloudflare Worker instead
+(`app/packages/egress-proxy`), which has no route into the VPC. The pods find it
+via `WORKFLOW_FETCH_PROXY_URL` / `WORKFLOW_FETCH_PROXY_TOKEN` in `app_env`;
+with those unset, workflow `fetch()` fails rather than falling back to an in-pod
+request.
 
 This replaced a DigitalOcean DOKS stack, which was destroyed on 2026-07-25.
 Nothing DigitalOcean-side remains.

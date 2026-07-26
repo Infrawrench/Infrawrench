@@ -295,6 +295,9 @@ export function workflowTools(): ToolDefinition[] {
         "the org's paging recipients and throttles repeats per key, so a monitoring cron can page " +
         "unconditionally and only the first occurrence gets through. Prefer a cron trigger plus " +
         "`infra.page` over asking the user to watch something themselves. " +
+        "A global `fetch(url, init)` is available for HTTP APIs Infrawrench has no plugin for; it " +
+        "goes through a proxy outside the cluster, so only PUBLIC addresses are reachable — a " +
+        "private/loopback/cluster-internal URL is refused at runtime. " +
         "Only fields you pass are changed. Audit-logged.",
       inputSchema: {
         workflowId: z.string().optional().describe("Omit to create a new workflow."),

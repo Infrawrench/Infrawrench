@@ -808,6 +808,10 @@ export async function runWorkflowById(
     },
     prompt: askUser,
 
+    // NOTE: no `fetch` here. Unlike every other capability, outbound HTTP is
+    // served by electron main itself (electron/workflow-fetch.ts) — it needs
+    // nothing the renderer owns, and main's Node fetch has no CORS.
+
     // Alerts surface as native OS notifications on desktop (no Twilio/push
     // recipients exist locally), with the same per-key cooldown as the cloud.
     page: (spec) => pageFromLocalWorkflow(id, wf.name, spec),
