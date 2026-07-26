@@ -7,6 +7,7 @@ import {
   type PluginInfo,
 } from "@infrawrench/ui";
 import { apiGet, apiPost } from "@/lib/api";
+import { fetchPluginCatalog } from "@/lib/plugin-catalog";
 import { useOrgId } from "@/lib/useOrgId";
 import type { AccountListItem, Bastion } from "@/lib/api-types";
 
@@ -37,10 +38,7 @@ export function AddAccountModal({
   const [bastions, setBastions] = useState<BastionOption[]>([]);
   const [accounts, setAccounts] = useState<AccountReferenceOption[]>([]);
 
-  const loadPlugins = useCallback(
-    () => apiGet<PluginInfo[]>(`/api/org/${orgId}/accounts/plugins`),
-    [orgId],
-  );
+  const loadPlugins = useCallback(() => fetchPluginCatalog(orgId), [orgId]);
 
   useEffect(() => {
     apiGet<BastionListItem[]>(`/api/org/${orgId}/bastions`)

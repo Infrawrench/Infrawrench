@@ -14,6 +14,7 @@ import {
   toast,
 } from "@infrawrench/ui";
 import { apiDelete, apiGet, apiPatch, apiPut } from "@/lib/api";
+import { fetchPluginCatalog } from "@/lib/plugin-catalog";
 import { useOrgId } from "@/lib/useOrgId";
 import type { AccountListItem, ResourceTypeSummary } from "@/lib/api-types";
 import { CreateResourceModal } from "./CreateResourceModal";
@@ -88,7 +89,7 @@ export function AccountDetailView({
   async function openEditCredentials() {
     try {
       const [plugins, current] = await Promise.all([
-        apiGet<PluginInfo[]>(`/api/org/${orgId}/plugins`),
+        fetchPluginCatalog(orgId),
         apiGet<Record<string, string>>(`/api/org/${orgId}/accounts/${account.id}/credentials`),
       ]);
       const plugin = plugins.find((p) => p.id === account.pluginId);

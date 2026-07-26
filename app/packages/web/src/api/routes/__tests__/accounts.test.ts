@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { Hono } from "hono";
 import { buildTestApp } from "./test-utils";
 
 const mockInsert = vi.fn();
@@ -55,8 +56,20 @@ vi.mock("@infrawrench/server-core/tunnel-resolver", () => ({
 vi.mock("uuid", () => ({ v4: () => "acct-uuid-1" }));
 
 const { accountRoutes } = await import("@/api/routes/accounts");
+const { pluginCatalogUrl } = await import("@/lib/plugin-catalog");
 
 const buildApp = () => buildTestApp(accountRoutes);
+
+/**
+ * Mounted the way `api/index.ts` mounts it, so tests can request the exact
+ * URLs the web client builds. The Update Credentials flow shipped asking for
+ * `/api/org/:orgId/plugins` — a path no router serves — and 404'd every time.
+ */
+const buildMountedApp = () => {
+  const app = new Hono();
+  app.route("/api/org/:orgId/accounts", buildTestApp(accountRoutes));
+  return app;
+};
 
 function chainMock(result: unknown) {
   const push = vi.fn();
@@ -104,6 +117,14 @@ describe("Account routes", () => {
       expect(body[0].id).toBe("aws");
       expect(body[0].credentialFields[0].key).toBe("accessKeyId");
       expect(body[0].credentialFields[0].sensitive).toBe(true);
+    });
+
+    it("serves the URL the web client asks for", async () => {
+      mockLoadPlugins.mockResolvedValue([]);
+
+      const res = await buildMountedApp().request(pluginCatalogUrl("org-1"));
+
+      expect(res.status).toBe(200);
     });
   });
 
