@@ -1,0 +1,33 @@
+/*
+ * Part of the hand-written half of the generated Java SDK.
+ *
+ * The `.java.txt` suffix keeps this file out of every javac/IDE source path in
+ * this repository — it is not our code, it is the *package's* code. The
+ * generator copies everything below the sentinel into
+ * `sdk/java/src/main/java/com/infrawrench/sdk/`. Nothing here may import
+ * anything outside the JDK.
+ */
+// --8<-- everything below this line is emitted verbatim into the SDK --8<--
+package com.infrawrench.sdk;
+
+/**
+ * Base class for every failure this SDK raises.
+ *
+ * <p>Unchecked on purpose. A checked hierarchy would put {@code throws} on all
+ * of the generated methods, which buys nothing — there is no meaningful local
+ * recovery from "the network is down" at each of a hundred-odd call sites — and
+ * would make adding a new failure mode a source-breaking change for every
+ * caller. Catch this type when you want "anything the SDK can go wrong with".
+ */
+public abstract class InfrawrenchException extends RuntimeException {
+
+  private static final long serialVersionUID = 1L;
+
+  protected InfrawrenchException(String message) {
+    super(message);
+  }
+
+  protected InfrawrenchException(String message, Throwable cause) {
+    super(message, cause);
+  }
+}

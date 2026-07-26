@@ -1,0 +1,368 @@
+// See JSONValue.swift.txt for why this file is `.txt`.
+//
+// Two tokens are substituted at generation time — `@@BASE_URL@@`,
+// `@@SCOPE_PARAM@@` and `@@API_VERSION@@` — so this file reads as ordinary
+// Swift with placeholder values.
+//
+// --8<-- everything below this line is copied into the generated SDK --8<--
+import Foundation
+
+// `URLSession`'s async API lives in a separate module on Linux. Importing it
+// conditionally is what keeps this package from being Apple-only.
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
+
+/// Facts about the spec this package was generated from.
+///
+/// SwiftPM takes a package's version from its VCS tag rather than from
+/// `Package.swift`, so there is nowhere in the manifest to record which API
+/// version the code matches. It is recorded here instead.
+public enum InfrawrenchSDKInfo {
+    /// `info.version` of the OpenAPI document this package was generated from.
+    public static let apiVersion = "@@API_VERSION@@"
+    /// First server advertised by the spec.
+    public static let defaultBaseURL = "@@BASE_URL@@"
+    /// Path parameter the client can carry as configuration instead of taking
+    /// it on every call. `nil` when the API has no such parameter.
+    public static let scopeParameter: String? = "@@SCOPE_PARAM@@"
+}
+
+/// How to reach the API. Everything has a default except the credential.
+public struct ClientOptions: @unchecked Sendable {
+    /// Base URL of the deployment. Defaults to production.
+    public var baseURL: String
+    /// API key or access token, sent as `Authorization: Bearer <token>`.
+    /// Omit it only if you are supplying that header yourself.
+    public var apiKey: String?
+    /// Default organization id. Every org-scoped call takes an `orgId`; set it
+    /// here once and you can leave it off the call sites.
+    public var orgId: String?
+    /// Headers merged into every request. Per-call headers win.
+    public var headers: [String: String]
+    /// Abort requests after this many seconds. `URLSession`'s default (60s)
+    /// applies when this is `nil`.
+    public var timeout: TimeInterval?
+    /// Swap the session — for tests, proxies, or a custom configuration.
+    public var session: URLSession
+
+    public init(
+        baseURL: String = InfrawrenchSDKInfo.defaultBaseURL,
+        apiKey: String? = nil,
+        orgId: String? = nil,
+        headers: [String: String] = [:],
+        timeout: TimeInterval? = nil,
+        session: URLSession = .shared
+    ) {
+        self.baseURL = baseURL
+        self.apiKey = apiKey
+        self.orgId = orgId
+        self.headers = headers
+        self.timeout = timeout
+        self.session = session
+    }
+}
+
+/// Per-call overrides, accepted as the last argument of every method.
+public struct RequestOptions: @unchecked Sendable {
+    /// Headers for this call only. Merged over the client-wide ones.
+    public var headers: [String: String]
+    /// Timeout for this call only, overriding the client-wide one.
+    public var timeout: TimeInterval?
+
+    public init(headers: [String: String] = [:], timeout: TimeInterval? = nil) {
+        self.headers = headers
+        self.timeout = timeout
+    }
+}
+
+/// One HTTP call, as described by a generated namespace method.
+///
+/// Public because the generated code constructs these, not because you should:
+/// reach for the namespace methods instead.
+public struct RequestSpec: Sendable {
+    public var method: String
+    /// URL template with `{name}` placeholders, e.g. `/api/org/{orgId}/accounts`.
+    public var path: String
+    /// Values for those placeholders. A `nil` falls back to client configuration.
+    public var pathParameters: [String: String?]
+    /// Query entries, in declaration order. `nil` values are omitted.
+    public var query: [QueryParameter]
+    /// JSON request body.
+    public var body: AnyEncodable?
+    /// `multipart/form-data` parts. Mutually exclusive with ``body``.
+    public var multipart: [MultipartField]?
+
+    public init(
+        method: String,
+        path: String,
+        pathParameters: [String: String?] = [:],
+        query: [QueryParameter] = [],
+        body: AnyEncodable? = nil,
+        multipart: [MultipartField]? = nil
+    ) {
+        self.method = method
+        self.path = path
+        self.pathParameters = pathParameters
+        self.query = query
+        self.body = body
+        self.multipart = multipart
+    }
+}
+
+/// Request plumbing shared by every namespace.
+///
+/// `@unchecked Sendable` covers the stored `URLSession`: it is documented as
+/// safe to use from multiple threads, but is not universally annotated
+/// `Sendable` across the platforms this package supports. Every other stored
+/// property is a `let` over a value type.
+public final class ApiTransport: @unchecked Sendable {
+    /// Normalized base URL, without a trailing slash.
+    public let baseURL: String
+    private let apiKey: String?
+    private let defaults: [String: String]
+    private let headers: [String: String]
+    private let timeout: TimeInterval?
+    private let session: URLSession
+
+    public init(options: ClientOptions = ClientOptions()) {
+        var base = options.baseURL
+        while base.hasSuffix("/") { base.removeLast() }
+        baseURL = base
+        apiKey = options.apiKey
+        if let scope = InfrawrenchSDKInfo.scopeParameter, let orgId = options.orgId {
+            defaults = [scope: orgId]
+        } else {
+            defaults = [:]
+        }
+        headers = options.headers
+        timeout = options.timeout
+        session = options.session
+    }
+
+    // MARK: - Sending
+
+    /// A call that returns JSON.
+    public func send<Response: Decodable>(
+        _ spec: RequestSpec,
+        as type: Response.Type = Response.self,
+        options: RequestOptions? = nil
+    ) async throws -> Response {
+        let (data, _) = try await perform(spec, accept: "application/json", options: options)
+        return try decode(Response.self, from: data)
+    }
+
+    /// A call that returns raw bytes — a file download.
+    public func sendData(
+        _ spec: RequestSpec,
+        options: RequestOptions? = nil
+    ) async throws -> Data {
+        let (data, _) = try await perform(spec, accept: "*/*", options: options)
+        return data
+    }
+
+    /// A call whose success response has no body.
+    public func sendVoid(
+        _ spec: RequestSpec,
+        options: RequestOptions? = nil
+    ) async throws {
+        _ = try await perform(spec, accept: "application/json", options: options)
+    }
+
+    // MARK: - Building
+
+    /// The URL a spec resolves to. Exposed so callers can log or sign it.
+    public func url(for spec: RequestSpec) throws -> URL {
+        let resolved = baseURL + (try resolvePath(spec))
+        guard var components = URLComponents(string: resolved) else {
+            throw ClientError.invalidURL(resolved)
+        }
+        let pairs = spec.query.compactMap { parameter -> String? in
+            guard let value = parameter.value else { return nil }
+            return "\(escape(parameter.name))=\(escape(value))"
+        }
+        // `percentEncodedQuery` rather than `queryItems`: Foundation leaves `+`
+        // unescaped in a query item value, where a server reading it as a form
+        // encoding would see a space.
+        if !pairs.isEmpty { components.percentEncodedQuery = pairs.joined(separator: "&") }
+        guard let url = components.url else { throw ClientError.invalidURL(resolved) }
+        return url
+    }
+
+    private func resolvePath(_ spec: RequestSpec) throws -> String {
+        var result = ""
+        var rest = Substring(spec.path)
+        while let open = rest.firstIndex(of: "{") {
+            guard let close = rest[open...].firstIndex(of: "}") else { break }
+            result += rest[rest.startIndex..<open]
+            let name = String(rest[rest.index(after: open)..<close])
+            // An explicit `nil` from the call site means "use my configuration",
+            // which is what makes `orgId` optional on every org-scoped method.
+            guard let value = spec.pathParameters[name].flatMap({ $0 }) ?? defaults[name],
+                !value.isEmpty
+            else {
+                throw ClientError.missingPathParameter(
+                    name: name,
+                    request: "\(spec.method) \(spec.path)"
+                )
+            }
+            result += escape(value)
+            rest = rest[rest.index(after: close)...]
+        }
+        return result + rest
+    }
+
+    /// RFC 3986 unreserved characters only. Composite ids carry `:` and `/`,
+    /// and both have to survive as data rather than as path structure.
+    private func escape(_ value: String) -> String {
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+    }
+
+    private func perform(
+        _ spec: RequestSpec,
+        accept: String,
+        options: RequestOptions?
+    ) async throws -> (Data, HTTPURLResponse) {
+        let url = try url(for: spec)
+        var request = URLRequest(url: url)
+        request.httpMethod = spec.method
+        request.setValue(accept, forHTTPHeaderField: "Accept")
+
+        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
+        for (name, value) in options?.headers ?? [:] {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        if let apiKey, !apiKey.isEmpty {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+        if let interval = options?.timeout ?? timeout { request.timeoutInterval = interval }
+
+        if let parts = spec.multipart {
+            let boundary = "infrawrench-\(UUID().uuidString)"
+            request.setValue(
+                "multipart/form-data; boundary=\(boundary)",
+                forHTTPHeaderField: "Content-Type"
+            )
+            request.httpBody = Self.multipartBody(parts, boundary: boundary)
+        } else if let body = spec.body {
+            let encoder = JSONEncoder()
+            // Stable key order: it costs nothing and makes request bodies
+            // diffable in logs and comparable in tests.
+            encoder.outputFormatting = [.sortedKeys]
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try encoder.encode(body)
+        }
+
+        let (data, response) = try await fetch(request)
+        guard let http = response as? HTTPURLResponse else {
+            throw ClientError.invalidResponse("\(spec.method) \(url) did not return an HTTP response")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw Self.apiError(
+                status: http.statusCode,
+                data: data,
+                method: spec.method,
+                url: url.absoluteString
+            )
+        }
+        return (data, http)
+    }
+
+    #if canImport(FoundationNetworking)
+        /// swift-corelibs-foundation shipped `URLSession`'s async methods later
+        /// than Darwin did, and some distributions still lack them, so bridge
+        /// the completion-handler API that has always been there.
+        private func fetch(_ request: URLRequest) async throws -> (Data, URLResponse) {
+            try await withCheckedThrowingContinuation { continuation in
+                let task = session.dataTask(with: request) { data, response, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else if let data, let response {
+                        continuation.resume(returning: (data, response))
+                    } else {
+                        continuation.resume(
+                            throwing: ClientError.invalidResponse("empty URLSession callback")
+                        )
+                    }
+                }
+                task.resume()
+            }
+        }
+    #else
+        private func fetch(_ request: URLRequest) async throws -> (Data, URLResponse) {
+            try await session.data(for: request)
+        }
+    #endif
+
+    // MARK: - Decoding
+
+    private func decode<Value: Decodable>(_ type: Value.Type, from data: Data) throws -> Value {
+        // A 204, or a 200 with no body, stands in for JSON `null` — which is a
+        // decodable value whenever the response type is optional.
+        let payload = data.isEmpty ? Data("null".utf8) : data
+        let decoder = JSONDecoder()
+        do {
+            return try decoder.decode(Value.self, from: payload)
+        } catch let error as DecodingError {
+            // Foundation rejects some top-level JSON fragments — a bare `null`
+            // among them, which is exactly what a nullable response body is.
+            // Wrapping it gives the decoder the keyed container it insists on.
+            var wrapped = Data("{\"value\":".utf8)
+            wrapped.append(payload)
+            wrapped.append(Data("}".utf8))
+            if let boxed = try? decoder.decode(FragmentBox<Value>.self, from: wrapped) {
+                return boxed.value
+            }
+            throw error
+        }
+    }
+
+    private struct FragmentBox<Value: Decodable>: Decodable {
+        let value: Value
+    }
+
+    // MARK: - Errors
+
+    private static func apiError(
+        status: Int,
+        data: Data,
+        method: String,
+        url: String
+    ) -> ApiError {
+        let text = String(data: data, encoding: .utf8) ?? ""
+        let parsed = (try? JSONDecoder().decode(JSONValue.self, from: data)) ?? .string(text)
+        let message =
+            parsed["error"]?.stringValue
+            ?? parsed["message"]?.stringValue
+            ?? (text.isEmpty ? HTTPURLResponse.localizedString(forStatusCode: status) : text)
+        return ApiError(
+            status: status,
+            code: parsed["code"]?.stringValue,
+            message: message,
+            body: parsed,
+            rawBody: data,
+            method: method,
+            url: url
+        )
+    }
+
+    private static func multipartBody(_ parts: [MultipartField], boundary: String) -> Data {
+        var body = Data()
+        for part in parts {
+            body.append(Data("--\(boundary)\r\n".utf8))
+            var disposition = "form-data; name=\"\(part.name)\""
+            if let filename = part.filename { disposition += "; filename=\"\(filename)\"" }
+            body.append(Data("Content-Disposition: \(disposition)\r\n".utf8))
+            if let contentType = part.contentType {
+                body.append(Data("Content-Type: \(contentType)\r\n".utf8))
+            }
+            body.append(Data("\r\n".utf8))
+            body.append(part.data)
+            body.append(Data("\r\n".utf8))
+        }
+        body.append(Data("--\(boundary)--\r\n".utf8))
+        return body
+    }
+}

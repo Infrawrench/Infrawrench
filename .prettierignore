@@ -10,3 +10,4 @@ pnpm-lock.yaml
 routeTree.gen.ts
 **/assets/generated
 .expo
+/sdk

@@ -1,0 +1,26 @@
+// Hand-written runtime source. See ./SdkJson.cs.txt for how this file is used.
+//
+// --8<-- everything below this line is copied into the generated SDK --8<--
+
+using System.Collections.Generic;
+
+namespace Infrawrench.Sdk;
+
+/// <summary>
+/// Per-call overrides. Every generated method takes one as its second-to-last
+/// argument, defaulted to <c>null</c>.
+/// </summary>
+/// <remarks>
+/// Deliberately thin. Cancellation is a <c>CancellationToken</c> argument on the
+/// method itself, which is what .NET callers reach for, and a timeout belongs on
+/// the <c>HttpClient</c> — so the only thing left that genuinely varies per call
+/// is the header set.
+/// </remarks>
+public sealed class RequestOptions
+{
+    /// <summary>
+    /// Headers for this call only. These replace, rather than append to, a
+    /// same-named header from <see cref="ClientOptions.Headers"/>.
+    /// </summary>
+    public IDictionary<string, string>? Headers { get; set; }
+}

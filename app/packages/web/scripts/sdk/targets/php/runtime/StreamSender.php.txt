@@ -1,0 +1,80 @@
+<?php
+// This file ships as-is. Read ./README.md before editing.
+// --8<-- everything below this line is emitted into the generated SDK --8<--
+
+declare(strict_types=1);
+
+namespace Infrawrench\Sdk\Http;
+
+use Infrawrench\Sdk\TransportException;
+
+/**
+ * The no-extensions fallback, built on `file_get_contents` and a stream context.
+ *
+ * Only used when `ext-curl` is missing, which is why the SDK can list cURL under
+ * `suggest` rather than `require`. Two behaviours differ from
+ * {@see CurlSender} and neither is worth working around here:
+ * `allow_url_fopen` must be on, and `timeout` covers only stream inactivity, not
+ * the whole request.
+ */
+final class StreamSender implements HttpSender
+{
+    public function send(
+        string $method,
+        string $url,
+        array $headers,
+        ?string $body,
+        ?float $timeout,
+    ): HttpResponse {
+        $headerLines = [];
+        foreach ($headers as $name => $value) {
+            $headerLines[] = "{$name}: {$value}";
+        }
+
+        $http = [
+            'method' => $method,
+            'header' => implode("\r\n", $headerLines),
+            // Without this a 4xx makes file_get_contents return false, and the
+            // body — which carries the error code the caller needs — is lost.
+            'ignore_errors' => true,
+            'follow_location' => 0,
+        ];
+        if ($body !== null) {
+            $http['content'] = $body;
+        }
+        if ($timeout !== null) {
+            $http['timeout'] = $timeout;
+        }
+
+        $context = stream_context_create(['http' => $http]);
+        $result = @file_get_contents($url, false, $context);
+        if ($result === false) {
+            $reason = error_get_last()['message'] ?? 'no response';
+            throw new TransportException("{$method} {$url} failed: {$reason}");
+        }
+
+        // `$http_response_header` is populated in the calling scope by the HTTP
+        // stream wrapper. It is the only way to read status and headers here.
+        /** @var list<string> $rawHeaders */
+        $rawHeaders = $http_response_header ?? [];
+
+        $status = 0;
+        $responseHeaders = [];
+        foreach ($rawHeaders as $line) {
+            if (preg_match('#^HTTP/\S+\s+(\d{3})#', $line, $matches) === 1) {
+                // Reset on each status line: a 1xx or a redirect chain leaves
+                // several sets of headers here and the last one is the real one.
+                $status = (int) $matches[1];
+                $responseHeaders = [];
+                continue;
+            }
+            $separator = strpos($line, ':');
+            if ($separator !== false) {
+                $name = strtolower(trim(substr($line, 0, $separator)));
+                $responseHeaders[$name] = trim(substr($line, $separator + 1));
+            }
+        }
+
+        return new HttpResponse($status, $responseHeaders, $result);
+    }
+}

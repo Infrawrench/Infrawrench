@@ -1,0 +1,357 @@
+// Hand-written runtime source. See ./SdkJson.cs.txt for how this file is used.
+//
+// Two tokens are substituted at generation time — see `SUBSTITUTIONS` in
+// ../index.ts. They are written as ordinary string literals so this file still
+// reads as valid C#.
+//
+// --8<-- everything below this line is copied into the generated SDK --8<--
+
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Infrawrench.Sdk;
+
+/// <summary>
+/// The request plumbing every namespace shares.
+/// </summary>
+/// <remarks>
+/// Public because the generated namespace classes take one in their
+/// constructors. It is not part of the stable surface — reach for
+/// <see cref="APIV1Client"/> instead, and for nothing here beyond
+/// <see cref="BaseUrl"/>.
+/// </remarks>
+public sealed class ApiTransport : IDisposable
+{
+    /// <summary>
+    /// The path parameter the client can carry as configuration instead of
+    /// taking on every call, or null when the API has no such parameter.
+    /// Replaced at generation time.
+    /// </summary>
+    private static readonly string? ScopeParam = "@@SCOPE_PARAM@@";
+
+    private readonly string? _apiKey;
+    private readonly string? _scopeValue;
+    private readonly Dictionary<string, string> _headers;
+    private readonly HttpClient _http;
+    private readonly bool _ownsHttp;
+    private bool _disposed;
+
+    /// <summary>Build the transport from client configuration.</summary>
+    public ApiTransport(ClientOptions? options = null)
+    {
+        var settings = options ?? new ClientOptions();
+
+        var baseUrl = string.IsNullOrEmpty(settings.BaseUrl)
+            ? ClientOptions.DefaultBaseUrl
+            : settings.BaseUrl;
+        BaseUrl = baseUrl!.TrimEnd('/');
+
+        _apiKey = settings.ApiKey;
+        _scopeValue = settings.OrgId;
+
+        _headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (settings.Headers != null)
+        {
+            foreach (var header in settings.Headers)
+            {
+                _headers[header.Key] = header.Value;
+            }
+        }
+
+        if (settings.HttpClient != null)
+        {
+            _http = settings.HttpClient;
+            _ownsHttp = false;
+        }
+        else
+        {
+            _http = new HttpClient();
+            _ownsHttp = true;
+            if (settings.Timeout.HasValue)
+            {
+                _http.Timeout = settings.Timeout.Value;
+            }
+        }
+    }
+
+    /// <summary>The resolved base URL, without a trailing slash.</summary>
+    public string BaseUrl { get; }
+
+    /// <summary>Send a request and deserialize its JSON body.</summary>
+    /// <typeparam name="T">The response model.</typeparam>
+    public async Task<T> SendJsonAsync<T>(
+        RequestSpec spec,
+        RequestOptions? options,
+        CancellationToken cancellationToken)
+    {
+        var response = await SendAsync(spec, options, "application/json", cancellationToken)
+            .ConfigureAwait(false);
+        try
+        {
+            var text = await response.Content.ReadAsStringAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (text.Length == 0)
+            {
+                // A 2xx with no body where one was documented. Handing back the
+                // default beats throwing: the call succeeded.
+                return default!;
+            }
+
+            return JsonSerializer.Deserialize<T>(text, SdkJson.Options)!;
+        }
+        finally
+        {
+            response.Dispose();
+        }
+    }
+
+    /// <summary>Send a request and return its body as raw bytes.</summary>
+    public async Task<byte[]> SendBinaryAsync(
+        RequestSpec spec,
+        RequestOptions? options,
+        CancellationToken cancellationToken)
+    {
+        var response = await SendAsync(spec, options, "application/octet-stream", cancellationToken)
+            .ConfigureAwait(false);
+        try
+        {
+            return await response.Content.ReadAsByteArrayAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            response.Dispose();
+        }
+    }
+
+    /// <summary>Send a request whose response carries no body.</summary>
+    public async Task SendEmptyAsync(
+        RequestSpec spec,
+        RequestOptions? options,
+        CancellationToken cancellationToken)
+    {
+        var response = await SendAsync(spec, options, "application/json", cancellationToken)
+            .ConfigureAwait(false);
+        response.Dispose();
+    }
+
+    /// <summary>Dispose the HttpClient, but only if this transport created it.</summary>
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        if (_ownsHttp)
+        {
+            _http.Dispose();
+        }
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(
+        RequestSpec spec,
+        RequestOptions? options,
+        string accept,
+        CancellationToken cancellationToken)
+    {
+        var url = BaseUrl + ResolvePath(spec) + SerializeQuery(spec.Query);
+
+        using (var request = new HttpRequestMessage(new HttpMethod(spec.Method), url))
+        {
+            request.Headers.TryAddWithoutValidation("Accept", accept);
+
+            foreach (var header in _headers)
+            {
+                request.Headers.Remove(header.Key);
+                request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+            }
+
+            if (options != null && options.Headers != null)
+            {
+                foreach (var header in options.Headers)
+                {
+                    request.Headers.Remove(header.Key);
+                    request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                }
+            }
+
+            if (!string.IsNullOrEmpty(_apiKey))
+            {
+                request.Headers.Remove("Authorization");
+                request.Headers.TryAddWithoutValidation("Authorization", "Bearer " + _apiKey);
+            }
+
+            var payload = spec.Body;
+            if (spec.Form != null)
+            {
+                // Content-Type is left alone on purpose: MultipartFormDataContent
+                // has already written the boundary into it.
+                request.Content = spec.Form;
+            }
+            else if (payload != null)
+            {
+                // The non-generic overload, so the *runtime* type is serialized.
+                // `RequestSpec.Body` is declared `object?`, and the generic
+                // overload would infer `object` and happily emit `{}`.
+                var json = JsonSerializer.Serialize(payload, payload.GetType(), SdkJson.Options);
+                request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+            }
+
+            var response = await _http
+                .SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var failure = await ApiException.FromResponseAsync(response, spec.Method, url)
+                    .ConfigureAwait(false);
+                response.Dispose();
+                throw failure;
+            }
+
+            return response;
+        }
+    }
+
+    /// <summary>Fill the <c>{name}</c> placeholders, URL-encoding each value.</summary>
+    private string ResolvePath(RequestSpec spec)
+    {
+        var template = spec.Path;
+        var result = new StringBuilder(template.Length);
+        var index = 0;
+
+        while (index < template.Length)
+        {
+            var open = template.IndexOf('{', index);
+            if (open < 0)
+            {
+                result.Append(template, index, template.Length - index);
+                break;
+            }
+
+            var close = template.IndexOf('}', open + 1);
+            if (close < 0)
+            {
+                result.Append(template, index, template.Length - index);
+                break;
+            }
+
+            result.Append(template, index, open - index);
+            var name = template.Substring(open + 1, close - open - 1);
+            result.Append(Uri.EscapeDataString(ResolvePathValue(spec, name)));
+            index = close + 1;
+        }
+
+        return result.ToString();
+    }
+
+    private string ResolvePathValue(RequestSpec spec, string name)
+    {
+        string? text = null;
+        if (spec.PathParams != null && spec.PathParams.TryGetValue(name, out var supplied))
+        {
+            text = Stringify(supplied);
+        }
+
+        if (string.IsNullOrEmpty(text) && string.Equals(name, ScopeParam, StringComparison.Ordinal))
+        {
+            text = _scopeValue;
+        }
+
+        if (string.IsNullOrEmpty(text))
+        {
+            var hint = string.Equals(name, ScopeParam, StringComparison.Ordinal)
+                ? " — pass it on the call, or set ClientOptions.OrgId when constructing the client."
+                : ".";
+            throw new InvalidOperationException(string.Format(
+                CultureInfo.InvariantCulture,
+                "Missing path parameter \"{0}\" for {1} {2}{3}",
+                name,
+                spec.Method,
+                spec.Path,
+                hint));
+        }
+
+        return text!;
+    }
+
+    private static string SerializeQuery(IReadOnlyList<KeyValuePair<string, object?>>? query)
+    {
+        if (query == null || query.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var result = new StringBuilder();
+        foreach (var entry in query)
+        {
+            var value = entry.Value;
+            if (value == null)
+            {
+                continue;
+            }
+
+            // A collection repeats the key; a string is a collection of chars,
+            // hence the explicit exclusion.
+            if (value is not string && value is System.Collections.IEnumerable items)
+            {
+                foreach (var item in items)
+                {
+                    AppendQuery(result, entry.Key, Stringify(item));
+                }
+
+                continue;
+            }
+
+            AppendQuery(result, entry.Key, Stringify(value));
+        }
+
+        return result.Length == 0 ? string.Empty : "?" + result.ToString();
+    }
+
+    private static void AppendQuery(StringBuilder result, string key, string? value)
+    {
+        if (value == null)
+        {
+            return;
+        }
+
+        if (result.Length > 0)
+        {
+            result.Append('&');
+        }
+
+        result.Append(Uri.EscapeDataString(key));
+        result.Append('=');
+        result.Append(Uri.EscapeDataString(value));
+    }
+
+    /// <summary>
+    /// Render a path or query value. Invariant culture throughout — a German
+    /// locale must not send <c>1,5</c> where the server expects <c>1.5</c>.
+    /// </summary>
+    internal static string? Stringify(object? value)
+    {
+        switch (value)
+        {
+            case null:
+                return null;
+            case string text:
+                return text;
+            case bool flag:
+                return flag ? "true" : "false";
+            case IFormattable formattable:
+                return formattable.ToString(null, CultureInfo.InvariantCulture);
+            default:
+                return value.ToString();
+        }
+    }
+}

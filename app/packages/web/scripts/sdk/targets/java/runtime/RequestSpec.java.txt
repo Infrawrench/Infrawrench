@@ -1,0 +1,106 @@
+/*
+ * Part of the hand-written half of the generated Java SDK. See
+ * InfrawrenchException.java.txt for why these files carry a `.txt` suffix.
+ */
+// --8<-- everything below this line is emitted verbatim into the SDK --8<--
+package com.infrawrench.sdk;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * One HTTP call, as described by a generated namespace method.
+ *
+ * <p>Public only because the generated namespace classes build these; it is not
+ * part of the stable surface. The fluent shape is what keeps a generated method
+ * body to a single readable statement:
+ *
+ * <pre>{@code
+ * new RequestSpec("GET", "/api/org/{orgId}/accounts/{id}")
+ *     .path("orgId", orgId)
+ *     .path("id", id)
+ *     .query("limit", limit)
+ * }</pre>
+ *
+ * <p>Every setter drops {@code null}, which is how "optional parameter the
+ * caller left out" is spelled at the call site — see the note on nulls in the
+ * README.
+ */
+public final class RequestSpec {
+
+  private final String method;
+  private final String path;
+  private final Map<String, String> pathParams = new LinkedHashMap<>();
+  private final List<String> query = new ArrayList<>();
+  private Object jsonBody;
+  private Object multipartBody;
+
+  public RequestSpec(String method, String path) {
+    this.method = method;
+    this.path = path;
+  }
+
+  /** Bind a {@code {name}} placeholder. A null value falls back to client config. */
+  public RequestSpec path(String name, Object value) {
+    if (value != null) {
+      pathParams.put(name, String.valueOf(value));
+    }
+    return this;
+  }
+
+  /** Append a query parameter. Null is omitted; a collection repeats the key. */
+  public RequestSpec query(String name, Object value) {
+    if (value == null) {
+      return this;
+    }
+    if (value instanceof Collection<?> items) {
+      for (Object item : items) {
+        if (item != null) {
+          query.add(Uris.encode(name) + "=" + Uris.encode(String.valueOf(item)));
+        }
+      }
+    } else {
+      query.add(Uris.encode(name) + "=" + Uris.encode(String.valueOf(value)));
+    }
+    return this;
+  }
+
+  /** Send this value as a JSON request body. */
+  public RequestSpec json(Object body) {
+    this.jsonBody = body;
+    return this;
+  }
+
+  /** Send this value as {@code multipart/form-data}. Mutually exclusive with {@link #json}. */
+  public RequestSpec multipart(Object form) {
+    this.multipartBody = form;
+    return this;
+  }
+
+  String method() {
+    return method;
+  }
+
+  String path() {
+    return path;
+  }
+
+  String pathParam(String name) {
+    return pathParams.get(name);
+  }
+
+  String queryString() {
+    return query.isEmpty() ? "" : "?" + String.join("&", query);
+  }
+
+  Object jsonBody() {
+    return jsonBody;
+  }
+
+  Object multipartBody() {
+    return multipartBody;
+  }
+}

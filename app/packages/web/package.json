@@ -13,6 +13,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "generate:openapi": "tsx --import ./env-loader.mjs scripts/generate-openapi.ts",
+    "generate:sdk": "tsx --import ./env-loader.mjs scripts/generate-sdk.ts",
     "test": "vitest run"
   },
   "dependencies": {

@@ -1,0 +1,104 @@
+/*
+ * Part of the hand-written half of the generated Java SDK. See
+ * InfrawrenchException.java.txt for why these files carry a `.txt` suffix.
+ */
+// --8<-- everything below this line is emitted verbatim into the SDK --8<--
+package com.infrawrench.sdk;
+
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
+import java.util.Collection;
+import java.util.Map;
+
+/**
+ * {@code multipart/form-data} encoding, RFC 7578.
+ *
+ * <p>Package-private: it exists because {@link java.net.http.HttpRequest} has no
+ * multipart body publisher, which is the one thing the JDK client is missing for
+ * this API's two upload endpoints.
+ *
+ * <p>The body is assembled in memory. Uploads here are configuration-sized, and
+ * a streaming publisher would trade that ceiling for a lot more machinery.
+ */
+final class Multipart {
+
+  private static final SecureRandom RANDOM = new SecureRandom();
+  private static final byte[] CRLF = {'\r', '\n'};
+
+  private Multipart() {}
+
+  /** An encoded body together with the {@code Content-Type} that describes it. */
+  record Body(String contentType, byte[] content) {}
+
+  static Body encode(Object form) {
+    String boundary = "InfrawrenchBoundary" + Long.toHexString(RANDOM.nextLong());
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    for (Map.Entry<String, Object> entry : Json.formFields(form).entrySet()) {
+      writeField(out, boundary, entry.getKey(), entry.getValue());
+    }
+    write(out, "--" + boundary + "--");
+    out.writeBytes(CRLF);
+    return new Body("multipart/form-data; boundary=" + boundary, out.toByteArray());
+  }
+
+  private static void writeField(
+      ByteArrayOutputStream out, String boundary, String name, Object value) {
+    if (value instanceof FileUpload file) {
+      writePart(out, boundary, name, file.filename(), file.contentType(), file.content());
+    } else if (value instanceof byte[] bytes) {
+      // No filename was supplied, so borrow the field name: a part without
+      // `filename=` is delivered as a text field, not a file.
+      writePart(out, boundary, name, name, FileUpload.DEFAULT_CONTENT_TYPE, bytes);
+    } else if (value instanceof Collection<?> items) {
+      for (Object item : items) {
+        if (item != null) {
+          writeField(out, boundary, name, item);
+        }
+      }
+    } else if (value instanceof String || value instanceof Number || value instanceof Boolean) {
+      writePart(out, boundary, name, null, null, String.valueOf(value)
+          .getBytes(StandardCharsets.UTF_8));
+    } else {
+      // Structured field in a multipart form: send it as a JSON part, which is
+      // what the API's zod-based parsers expect for nested shapes.
+      writePart(out, boundary, name, null, "application/json",
+          Json.encode(value).getBytes(StandardCharsets.UTF_8));
+    }
+  }
+
+  private static void writePart(
+      ByteArrayOutputStream out,
+      String boundary,
+      String name,
+      String filename,
+      String contentType,
+      byte[] content) {
+    write(out, "--" + boundary);
+    out.writeBytes(CRLF);
+    StringBuilder disposition =
+        new StringBuilder("Content-Disposition: form-data; name=\"").append(escape(name))
+            .append('"');
+    if (filename != null) {
+      disposition.append("; filename=\"").append(escape(filename)).append('"');
+    }
+    write(out, disposition.toString());
+    out.writeBytes(CRLF);
+    if (contentType != null) {
+      write(out, "Content-Type: " + contentType);
+      out.writeBytes(CRLF);
+    }
+    out.writeBytes(CRLF);
+    out.writeBytes(content);
+    out.writeBytes(CRLF);
+  }
+
+  private static void write(ByteArrayOutputStream out, String text) {
+    out.writeBytes(text.getBytes(StandardCharsets.UTF_8));
+  }
+
+  /** Header values are not escaped by any standard, so strip what would break them. */
+  private static String escape(String value) {
+    return value.replace("\"", "").replace("\r", "").replace("\n", "");
+  }
+}

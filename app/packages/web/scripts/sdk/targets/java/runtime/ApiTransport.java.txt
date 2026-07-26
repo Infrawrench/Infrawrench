@@ -1,0 +1,232 @@
+/*
+ * Part of the hand-written half of the generated Java SDK. See
+ * InfrawrenchException.java.txt for why these files carry a `.txt` suffix.
+ *
+ * Two tokens are substituted at generation time (see SUBSTITUTIONS in
+ * ../index.ts). They are written as ordinary string literals so this file still
+ * reads as Java.
+ */
+// --8<-- everything below this line is emitted verbatim into the SDK --8<--
+package com.infrawrench.sdk;
+
+import java.io.IOException;
+import java.lang.reflect.Type;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * Request plumbing shared by every namespace.
+ *
+ * <p>Built on {@link HttpClient} because it is the only HTTP stack the JDK
+ * ships, and the whole point of this package is that adding it to a build
+ * changes nothing else about that build. Reach for {@code APIV1Client} instead
+ * of constructing one of these; the type is public only so the generated
+ * namespace classes can name it.
+ *
+ * <p>Thread-safe once constructed, as is the underlying {@link HttpClient}.
+ */
+public final class ApiTransport {
+
+  /** Replaced with the first server the spec advertises. */
+  static final String DEFAULT_BASE_URL = "@@BASE_URL@@";
+
+  /**
+   * Replaced with the path parameter the client carries as configuration
+   * ({@code orgId}), or {@code null} when the API has no such parameter.
+   */
+  static final String SCOPE_PARAM = "@@SCOPE_PARAM@@";
+
+  private static final Pattern PLACEHOLDER = Pattern.compile("\\{([^}]+)\\}");
+  private static final int MAX_ERROR_BODY = 8192;
+
+  private final String baseUrl;
+  private final String apiKey;
+  private final String scopeValue;
+  private final Map<String, String> headers;
+  private final Duration timeout;
+  private final HttpClient http;
+
+  public ApiTransport(ClientOptions options) {
+    String base = options.baseUrl() == null ? DEFAULT_BASE_URL : options.baseUrl();
+    this.baseUrl = base.replaceAll("/+$", "");
+    this.apiKey = options.apiKey();
+    this.scopeValue = options.defaultPathParam();
+    this.headers = options.headers();
+    this.timeout = options.timeout();
+    this.http = options.httpClient() == null ? defaultHttpClient(options) : options.httpClient();
+  }
+
+  private static HttpClient defaultHttpClient(ClientOptions options) {
+    HttpClient.Builder builder =
+        HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL);
+    if (options.timeout() != null) {
+      builder.connectTimeout(options.timeout());
+    }
+    return builder.build();
+  }
+
+  /** Resolved base URL, without a trailing slash. */
+  public String baseUrl() {
+    return baseUrl;
+  }
+
+  /** Perform a call whose response is JSON, decoded into {@code type}. */
+  @SuppressWarnings("unchecked")
+  public <T> T request(RequestSpec spec, Type type) {
+    HttpResponse<byte[]> response = send(spec, "application/json");
+    byte[] body = response.body();
+    if (body == null || body.length == 0 || response.statusCode() == 204) {
+      return null;
+    }
+    String text = new String(body, StandardCharsets.UTF_8);
+    if (text.isBlank()) {
+      return null;
+    }
+    if (!contentType(response).contains("json")) {
+      // A proxy or a misconfigured route answered 2xx with something else.
+      // Handing the raw text to the converter beats pretending it parsed.
+      return (T) Json.convert(text, type);
+    }
+    return (T) Json.decode(text, type);
+  }
+
+  /** Perform a call whose response is raw bytes. */
+  public byte[] bytes(RequestSpec spec) {
+    byte[] body = send(spec, "application/octet-stream").body();
+    return body == null ? new byte[0] : body;
+  }
+
+  /** Perform a call whose response carries no content. */
+  public void execute(RequestSpec spec) {
+    send(spec, "application/json");
+  }
+
+  private HttpResponse<byte[]> send(RequestSpec spec, String accept) {
+    String url = baseUrl + resolvePath(spec) + spec.queryString();
+    HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url));
+    builder.header("Accept", accept);
+    for (Map.Entry<String, String> header : headers.entrySet()) {
+      builder.header(header.getKey(), header.getValue());
+    }
+    if (apiKey != null && !apiKey.isEmpty()) {
+      builder.header("Authorization", "Bearer " + apiKey);
+    }
+
+    HttpRequest.BodyPublisher publisher;
+    if (spec.multipartBody() != null) {
+      Multipart.Body form = Multipart.encode(spec.multipartBody());
+      builder.header("Content-Type", form.contentType());
+      publisher = HttpRequest.BodyPublishers.ofByteArray(form.content());
+    } else if (spec.jsonBody() != null) {
+      builder.header("Content-Type", "application/json");
+      publisher =
+          HttpRequest.BodyPublishers.ofString(Json.encode(spec.jsonBody()), StandardCharsets.UTF_8);
+    } else {
+      publisher = HttpRequest.BodyPublishers.noBody();
+    }
+    builder.method(spec.method(), publisher);
+    if (timeout != null) {
+      builder.timeout(timeout);
+    }
+
+    HttpResponse<byte[]> response;
+    try {
+      response = http.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());
+    } catch (IOException e) {
+      throw new ApiConnectionException(spec.method() + " " + url + " failed: " + e.getMessage(), e);
+    } catch (InterruptedException e) {
+      // Swallowing the interrupt here would strand a caller that is trying to
+      // shut down, so put the flag back before unwinding.
+      Thread.currentThread().interrupt();
+      throw new ApiConnectionException(spec.method() + " " + url + " was interrupted", e);
+    }
+
+    int status = response.statusCode();
+    if (status < 200 || status >= 300) {
+      throw toApiException(response, spec.method(), url);
+    }
+    return response;
+  }
+
+  /**
+   * Fill {@code {param}} placeholders from the call, falling back to client
+   * configuration for the scoped parameter.
+   */
+  private String resolvePath(RequestSpec spec) {
+    Matcher matcher = PLACEHOLDER.matcher(spec.path());
+    StringBuilder out = new StringBuilder();
+    while (matcher.find()) {
+      String name = matcher.group(1);
+      String value = spec.pathParam(name);
+      if ((value == null || value.isEmpty()) && name.equals(SCOPE_PARAM)) {
+        value = scopeValue;
+      }
+      if (value == null || value.isEmpty()) {
+        throw new IllegalArgumentException(
+            "Missing path parameter \"" + name + "\" for " + spec.method() + " " + spec.path()
+                + (name.equals(SCOPE_PARAM)
+                    ? " — pass it on the call, or set ." + name
+                        + "(…) on APIV1Client.builder()."
+                    : "."));
+      }
+      matcher.appendReplacement(out, Matcher.quoteReplacement(Uris.encode(value)));
+    }
+    matcher.appendTail(out);
+    return out.toString();
+  }
+
+  private static ApiException toApiException(
+      HttpResponse<byte[]> response, String method, String url) {
+    byte[] raw = response.body();
+    String text = raw == null ? "" : new String(raw, StandardCharsets.UTF_8);
+    if (text.length() > MAX_ERROR_BODY) {
+      text = text.substring(0, MAX_ERROR_BODY) + "…";
+    }
+    Object body = text;
+    if (!text.isEmpty() && contentType(response).contains("json")) {
+      try {
+        body = Json.parse(text);
+      } catch (JsonException e) {
+        // Advertised as JSON but isn't. The raw text is more useful than a
+        // parse failure that hides the status code the caller came for.
+        body = text;
+      }
+    }
+
+    String detail = null;
+    String code = null;
+    if (body instanceof Map<?, ?> fields) {
+      detail = string(fields.get("error"));
+      if (detail == null) {
+        detail = string(fields.get("message"));
+      }
+      code = string(fields.get("code"));
+    }
+    if (detail == null) {
+      detail = "HTTP " + response.statusCode();
+    }
+    return new ApiException(
+        response.statusCode(),
+        method + " " + url + " failed: " + detail,
+        code,
+        body,
+        text,
+        method,
+        url);
+  }
+
+  private static String string(Object value) {
+    return value instanceof String s ? s : null;
+  }
+
+  private static String contentType(HttpResponse<byte[]> response) {
+    return response.headers().firstValue("content-type").orElse("");
+  }
+}

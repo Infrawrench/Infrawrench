@@ -10,6 +10,16 @@ The mobile app (`app/packages/mobile`, Expo + expo-router) is a cloud companion 
 
 When you make code for providers remember that the user shouldn't have to know the API. If it needs a resource or a slug of some kind, add a picker. Also remember this replaces the cloud dash by in large and is not a replacement to it. If you add something, think about how the user can edit it if possible. Look online to verify API's, assume your memory is wrong. Make sure to include all possible metrics/side tools where possible. When you want a logo SVG, please also look online. You aren't good at freestyling logos.
 
+## API versioning and SDK releases
+
+`API_VERSION` in `app/packages/web/src/api/openapi/version.ts` is the single version number for the HTTP API. It is stamped into `openapi.json` and becomes the version of all nine generated client SDKs.
+
+**Bump it in the same change as any user-visible API change.** That means a new or removed route, a changed request or response shape, a new required field, a new permission — and anything that alters the `pluginId` / `resourceTypeId` enums, which adding or removing a plugin does. Semver is against the HTTP surface, not the server's internals: patch for fixes a client cannot observe, minor for additive changes, major for anything an existing client could break on.
+
+Nothing publishes until that number changes. `.github/workflows/publish-sdks.yml` regenerates the SDKs on every push that touches the spec, but only builds and publishes when the tag `sdk-v<API_VERSION>` does not already exist. Forgetting the bump means the spec ships and the clients silently do not.
+
+After bumping, run `pnpm --filter @infrawrench/web generate:openapi` and commit the regenerated `openapi.json` — that command also refreshes the SDKs locally.
+
 ## Documentation
 
 User-facing docs live in `app/packages/website/src/content/docs/`, organized by section:

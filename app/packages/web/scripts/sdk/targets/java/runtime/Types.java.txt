@@ -1,0 +1,81 @@
+/*
+ * Part of the hand-written half of the generated Java SDK. See
+ * InfrawrenchException.java.txt for why these files carry a `.txt` suffix.
+ */
+// --8<-- everything below this line is emitted verbatim into the SDK --8<--
+package com.infrawrench.sdk;
+
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Reified generic types for {@link Json#decode}.
+ *
+ * <p>Erasure means {@code List<Account>.class} does not exist, and the usual fix
+ * — an anonymous {@code TypeToken<List<Account>>(){}} subclass — costs a class
+ * per call site. The generated code knows its return type statically, so it can
+ * just build the {@link ParameterizedType} directly: {@code Types.list(Account.class)}.
+ */
+public final class Types {
+
+  private Types() {}
+
+  /** {@code List<element>}. */
+  public static Type list(Type element) {
+    return new Parameterized(List.class, new Type[] {element});
+  }
+
+  /** {@code Map<String, value>}. */
+  public static Type map(Type value) {
+    return new Parameterized(Map.class, new Type[] {String.class, value});
+  }
+
+  private record Parameterized(Class<?> raw, Type[] arguments) implements ParameterizedType {
+
+    @Override
+    public Type[] getActualTypeArguments() {
+      return arguments.clone();
+    }
+
+    @Override
+    public Type getRawType() {
+      return raw;
+    }
+
+    @Override
+    public Type getOwnerType() {
+      return null;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      if (!(other instanceof ParameterizedType that)) {
+        return false;
+      }
+      return that.getOwnerType() == null
+          && raw.equals(that.getRawType())
+          && Arrays.equals(arguments, that.getActualTypeArguments());
+    }
+
+    @Override
+    public int hashCode() {
+      return Arrays.hashCode(arguments) ^ Objects.hashCode(raw);
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder out = new StringBuilder(raw.getName()).append('<');
+      for (int i = 0; i < arguments.length; i++) {
+        if (i > 0) {
+          out.append(", ");
+        }
+        out.append(arguments[i].getTypeName());
+      }
+      return out.append('>').toString();
+    }
+  }
+}

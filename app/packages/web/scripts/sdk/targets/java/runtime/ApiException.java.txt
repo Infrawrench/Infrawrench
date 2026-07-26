@@ -1,0 +1,75 @@
+/*
+ * Part of the hand-written half of the generated Java SDK. See
+ * InfrawrenchException.java.txt for why these files carry a `.txt` suffix.
+ */
+// --8<-- everything below this line is emitted verbatim into the SDK --8<--
+package com.infrawrench.sdk;
+
+/**
+ * Thrown for any non-2xx response.
+ *
+ * <p>Branch on {@link #code()}, not on the message: the API sends a stable
+ * machine-readable discriminator there (e.g. {@code reauthentication_required}
+ * on a step-up 403) while the message is prose that may be reworded. {@link
+ * #body()} is the parsed JSON payload — a {@code Map<String, Object>} for an
+ * object response — and {@link #rawBody()} is the untouched text, which is the
+ * one to look at when the server returned HTML from a proxy rather than JSON.
+ */
+public final class ApiException extends InfrawrenchException {
+
+  private static final long serialVersionUID = 1L;
+
+  private final int statusCode;
+  private final String code;
+  private final transient Object body;
+  private final String rawBody;
+  private final String method;
+  private final String url;
+
+  ApiException(
+      int statusCode,
+      String message,
+      String code,
+      Object body,
+      String rawBody,
+      String method,
+      String url) {
+    super(message);
+    this.statusCode = statusCode;
+    this.code = code;
+    this.body = body;
+    this.rawBody = rawBody;
+    this.method = method;
+    this.url = url;
+  }
+
+  /** HTTP status of the failing response. */
+  public int statusCode() {
+    return statusCode;
+  }
+
+  /** The {@code code} field of the error payload, or {@code null} if absent. */
+  public String code() {
+    return code;
+  }
+
+  /** Parsed response body: a {@code Map}, {@code List}, scalar, or {@code null}. */
+  public Object body() {
+    return body;
+  }
+
+  /** Response body exactly as it came off the wire. Never {@code null}. */
+  public String rawBody() {
+    return rawBody;
+  }
+
+  /** HTTP method of the failing request. */
+  public String method() {
+    return method;
+  }
+
+  /** Fully resolved URL of the failing request. */
+  public String url() {
+    return url;
+  }
+}

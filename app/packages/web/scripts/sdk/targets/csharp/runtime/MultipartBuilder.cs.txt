@@ -1,0 +1,70 @@
+// Hand-written runtime source. See ./SdkJson.cs.txt for how this file is used.
+//
+// --8<-- everything below this line is copied into the generated SDK --8<--
+
+using System;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+
+namespace Infrawrench.Sdk;
+
+/// <summary>
+/// Builds the parts of a <c>multipart/form-data</c> body.
+/// </summary>
+/// <remarks>
+/// Models the spec sends as multipart get a generated <c>ToMultipartContent()</c>
+/// that calls straight into these overloads, one line per field. That keeps the
+/// whole path reflection-free and, more to the point, keeps the file bytes out
+/// of JSON — walked generically, a <c>byte[]</c> would have arrived base64-encoded,
+/// which is not what the server is parsing.
+/// </remarks>
+internal static class MultipartBuilder
+{
+    /// <summary>Add a file part. A null upload is skipped entirely.</summary>
+    internal static void Add(MultipartFormDataContent content, string name, FileUpload? file)
+    {
+        if (file == null)
+        {
+            return;
+        }
+
+        var part = new ByteArrayContent(file.Content);
+        if (!string.IsNullOrEmpty(file.ContentType))
+        {
+            part.Headers.ContentType = new MediaTypeHeaderValue(file.ContentType!);
+        }
+
+        content.Add(part, name, file.FileName);
+    }
+
+    /// <summary>Add a scalar part. A null value is skipped entirely.</summary>
+    internal static void Add(MultipartFormDataContent content, string name, object? value)
+    {
+        if (value == null)
+        {
+            return;
+        }
+
+        string? text;
+        if (value is string || value is bool || value is IFormattable)
+        {
+            // Scalars render exactly as they would in a path or a query string.
+            text = ApiTransport.Stringify(value);
+        }
+        else
+        {
+            // Anything else is structured, and the only faithful way to put a
+            // structure in a form field is as JSON.
+            text = JsonSerializer.Serialize(value, value.GetType(), SdkJson.Options);
+        }
+
+        if (text == null)
+        {
+            return;
+        }
+
+        content.Add(new StringContent(text, Encoding.UTF8), name);
+    }
+}

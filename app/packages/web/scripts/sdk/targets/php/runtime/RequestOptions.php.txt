@@ -1,0 +1,26 @@
+<?php
+// This file ships as-is. Read ./README.md before editing.
+// --8<-- everything below this line is emitted into the generated SDK --8<--
+
+declare(strict_types=1);
+
+namespace Infrawrench\Sdk;
+
+/**
+ * Per-call overrides. Every generated method accepts one as a trailing
+ * `$options` argument, so it can be supplied by name and skipped otherwise.
+ */
+final class RequestOptions
+{
+    /**
+     * @param array<string, string> $headers Merged over the client-wide headers
+     *                                       for this call only.
+     * @param float|null            $timeout Seconds to wait, overriding the
+     *                                       client-wide timeout. `null` keeps it.
+     */
+    public function __construct(
+        public readonly array $headers = [],
+        public readonly ?float $timeout = null,
+    ) {
+    }
+}

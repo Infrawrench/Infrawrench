@@ -1,0 +1,244 @@
+<?php
+// This file ships as-is. Read ./README.md before editing.
+// --8<-- everything below this line is emitted into the generated SDK --8<--
+
+declare(strict_types=1);
+
+namespace Infrawrench\Sdk\Internal;
+
+use Infrawrench\Sdk\ApiException;
+use Infrawrench\Sdk\Http\CurlSender;
+use Infrawrench\Sdk\Http\HttpResponse;
+use Infrawrench\Sdk\Http\HttpSender;
+use Infrawrench\Sdk\Http\StreamSender;
+use Infrawrench\Sdk\MissingParameterException;
+use Infrawrench\Sdk\RequestOptions;
+use Infrawrench\Sdk\TransportException;
+
+/**
+ * Request plumbing shared by every namespace.
+ *
+ * Public because the generated namespace classes take one in their constructor,
+ * but not part of the stable surface — reach for `APIV1Client` instead.
+ */
+final class Transport
+{
+    /** Replaced with the first server advertised by the spec. */
+    public const DEFAULT_BASE_URL = '@@BASE_URL@@';
+
+    /** Sent so a deployment can tell generated traffic apart from hand-rolled. */
+    public const USER_AGENT = '@@USER_AGENT@@';
+
+    /**
+     * The path parameter the client can carry as configuration instead of taking
+     * on every call, or `null` if the API has no such parameter.
+     */
+    public const SCOPE_PARAM = '@@SCOPE_PARAM@@';
+
+    /** Resolved base URL, without a trailing slash. */
+    public readonly string $baseUrl;
+
+    private readonly ?string $apiKey;
+
+    /** @var array<string, string|null> */
+    private readonly array $defaults;
+
+    /** @var array<string, string> */
+    private readonly array $headers;
+
+    private readonly ?float $timeout;
+
+    private readonly HttpSender $sender;
+
+    /**
+     * @param array<string, string> $headers
+     */
+    public function __construct(
+        ?string $apiKey = null,
+        ?string $orgId = null,
+        ?string $baseUrl = null,
+        array $headers = [],
+        ?float $timeout = null,
+        ?HttpSender $sender = null,
+    ) {
+        $this->baseUrl = rtrim($baseUrl ?? self::DEFAULT_BASE_URL, '/');
+        $this->apiKey = $apiKey;
+        $this->defaults = self::SCOPE_PARAM === '' ? [] : [self::SCOPE_PARAM => $orgId];
+        $this->headers = $headers;
+        $this->timeout = $timeout;
+        // cURL is the better sender but not a hard requirement, so it is a
+        // `suggest` in composer.json and the choice is made here at runtime.
+        $this->sender = $sender ?? (extension_loaded('curl') ? new CurlSender() : new StreamSender());
+    }
+
+    /**
+     * Perform one call and return its decoded body.
+     *
+     * @return mixed An associative array for a JSON response, the raw bytes for
+     *               a binary one, `null` for an empty one.
+     *
+     * @throws ApiException       on any non-2xx response.
+     * @throws TransportException if no response arrived, or a 2xx body claimed
+     *                            to be JSON and was not.
+     */
+    public function request(RequestSpec $spec, ?RequestOptions $options = null): mixed
+    {
+        $url = $this->baseUrl . $this->resolvePath($spec) . self::serializeQuery($spec->query);
+
+        $headers = [
+            'accept' => $spec->accept === 'binary' ? 'application/octet-stream' : 'application/json',
+            'user-agent' => self::USER_AGENT,
+        ];
+        foreach ($this->headers as $name => $value) {
+            $headers[strtolower($name)] = $value;
+        }
+        foreach ($options?->headers ?? [] as $name => $value) {
+            $headers[strtolower($name)] = $value;
+        }
+        // Set last so a stray `authorization` in the header bags cannot leave a
+        // configured key unsent — a request that quietly goes out unauthorised
+        // is worse than one that ignores an override.
+        if ($this->apiKey !== null && $this->apiKey !== '') {
+            $headers['authorization'] = 'Bearer ' . $this->apiKey;
+        }
+
+        $body = null;
+        if ($spec->form !== null) {
+            $boundary = Multipart::boundary();
+            $headers['content-type'] = 'multipart/form-data; boundary=' . $boundary;
+            $body = Multipart::encode($spec->form, $boundary);
+        } elseif ($spec->hasBody) {
+            $headers['content-type'] = 'application/json';
+            $encoded = json_encode($spec->body, JSON_UNESCAPED_SLASHES);
+            if ($encoded === false) {
+                throw new TransportException(
+                    "Could not encode the request body for {$spec->method} {$spec->path}: " . json_last_error_msg(),
+                );
+            }
+            $body = $encoded;
+        }
+
+        $response = $this->sender->send(
+            $spec->method,
+            $url,
+            $headers,
+            $body,
+            $options?->timeout ?? $this->timeout,
+        );
+
+        if ($response->status < 200 || $response->status >= 300) {
+            throw self::toApiException($response, $spec->method, $url);
+        }
+
+        if ($spec->accept === 'binary') {
+            return $response->body;
+        }
+        // 204/205 are checked as well as the declared encoding: a route that
+        // usually returns JSON may still answer with no content.
+        if ($spec->accept === 'empty' || $response->status === 204 || $response->status === 205) {
+            return null;
+        }
+        if ($response->body === '') {
+            return null;
+        }
+        if (!str_contains($response->header('content-type') ?? '', 'json')) {
+            return $response->body;
+        }
+
+        $decoded = json_decode($response->body, true);
+        if ($decoded === null && json_last_error() !== JSON_ERROR_NONE) {
+            throw new TransportException(
+                "{$spec->method} {$url} returned {$response->status} with a malformed JSON body: "
+                    . json_last_error_msg(),
+            );
+        }
+
+        return $decoded;
+    }
+
+    /** Fill `{name}` placeholders from the call, falling back to client config. */
+    private function resolvePath(RequestSpec $spec): string
+    {
+        $resolved = preg_replace_callback(
+            '/\{([^}]+)\}/',
+            function (array $match) use ($spec): string {
+                $name = $match[1];
+                $value = $spec->pathParams[$name] ?? $this->defaults[$name] ?? null;
+                if ($value === null || $value === '') {
+                    $hint = $name === self::SCOPE_PARAM
+                        ? " — pass it, or set `{$name}` when constructing the client."
+                        : '.';
+                    throw new MissingParameterException(
+                        "Missing path parameter \"{$name}\" for {$spec->method} {$spec->path}{$hint}",
+                        $name,
+                    );
+                }
+
+                return rawurlencode(is_scalar($value) ? (string) $value : '');
+            },
+            $spec->path,
+        );
+
+        return $resolved ?? $spec->path;
+    }
+
+    /**
+     * @param array<string, mixed> $query
+     */
+    private static function serializeQuery(array $query): string
+    {
+        $pairs = [];
+        foreach ($query as $key => $value) {
+            if ($value === null) {
+                continue;
+            }
+            // A repeated key rather than `key[]=`: that is what the API's own
+            // parser expects, and http_build_query would produce the other one.
+            foreach (is_array($value) ? $value : [$value] as $item) {
+                if ($item === null) {
+                    continue;
+                }
+                $pairs[] = rawurlencode($key) . '=' . rawurlencode(self::queryScalar($item));
+            }
+        }
+
+        return $pairs === [] ? '' : '?' . implode('&', $pairs);
+    }
+
+    private static function queryScalar(mixed $value): string
+    {
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        return is_scalar($value) ? (string) $value : (json_encode($value) ?: '');
+    }
+
+    private static function toApiException(HttpResponse $response, string $method, string $url): ApiException
+    {
+        $body = $response->body === '' ? null : json_decode($response->body, true);
+        if ($body === null && $response->body !== '' && json_last_error() !== JSON_ERROR_NONE) {
+            $body = $response->body;
+        }
+
+        $fields = is_array($body) ? $body : [];
+        $detail = null;
+        foreach (['error', 'message'] as $key) {
+            if (isset($fields[$key]) && is_string($fields[$key])) {
+                $detail = $fields[$key];
+                break;
+            }
+        }
+        $detail ??= "HTTP {$response->status}";
+        $code = isset($fields['code']) && is_string($fields['code']) ? $fields['code'] : null;
+
+        return new ApiException(
+            "{$method} {$url} failed: {$detail}",
+            $response->status,
+            $body,
+            $code,
+            $method,
+            $url,
+        );
+    }
+}

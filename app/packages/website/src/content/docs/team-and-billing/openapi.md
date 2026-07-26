@@ -62,14 +62,21 @@ A key's scopes are a ceiling, not a grant: the server intersects them with the c
 
 ## Generating client SDKs
 
-The spec ships with `operationId` for every operation, so any OpenAPI generator works. Examples:
+There are first-party [client SDKs](./client-sdks.md) for nine languages —
+TypeScript, Python, Ruby, Go, Java, C#, PHP, Swift and Rust — generated from
+this spec, MIT-licensed, with calls namespaced to match the routes
+(`client.accounts.sync({ id })`). Reach for those first. Build them from a
+checkout with:
 
 ```sh
-# TypeScript fetch client (openapi-typescript-codegen)
-npx openapi-typescript-codegen --input openapi.json --output ./client --client fetch
+pnpm --filter @infrawrench/web generate:sdk
+```
 
-# Python (openapi-python-client)
-openapi-python-client generate --path openapi.json
+For a language we don't ship, the spec carries a stable `operationId` on every
+operation, so any OpenAPI generator works:
+
+```sh
+openapi-generator-cli generate -i openapi.json -g kotlin -o ./client
 ```
 
 ## Regenerating the spec after a change
@@ -80,7 +87,9 @@ The spec is built by walking the plugin registry, so any time you add/remove a p
 pnpm --filter @infrawrench/web generate:openapi
 ```
 
-Commit the resulting `openapi.json` so PR diffs show API surface changes.
+Commit the resulting `openapi.json` so PR diffs show API surface changes. That
+command also refreshes the [generated SDKs](./client-sdks.md) if the API
+version changed; they're build output and are not committed.
 
 ## Strictness
 

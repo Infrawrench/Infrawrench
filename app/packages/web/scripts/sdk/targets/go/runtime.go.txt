@@ -1,0 +1,699 @@
+// The hand-written half of the generated Go SDK.
+//
+// The `.txt` extension is load-bearing: this is real Go, but it lives inside a
+// TypeScript package that also contains Go tooling elsewhere in the monorepo,
+// and a stray `.go` file here would be picked up by `go build ./...` from the
+// repository root. The generator reads it off disk and writes everything below
+// the sentinel to `client.go`, ahead of the generated models and namespaces.
+//
+// Keeping it as real source (rather than a template string in index.ts) means
+// it can be gofmt-ed, vetted and read as Go while it is being written, which is
+// the whole point — request plumbing is where the bugs are.
+//
+// Four tokens are substituted at generation time; see SUBSTITUTIONS in
+// ./index.ts. They are written as ordinary string literals so this file stays
+// syntactically valid Go on its own.
+//
+// Nothing here may import outside the standard library: the published module
+// has no `require` directives at all, and that is a feature.
+
+// --8<-- everything below this line is written to client.go --8<--
+
+// Package infrawrench is a client for the Infrawrench API.
+//
+// Construct a client, then call through the namespaces that mirror the URL
+// structure:
+//
+//	client := infrawrench.NewAPIV1Client(
+//		infrawrench.WithAPIKey(os.Getenv("INFRAWRENCH_API_KEY")),
+//		infrawrench.WithOrgID(os.Getenv("INFRAWRENCH_ORG_ID")),
+//	)
+//	accounts, err := client.Accounts.List(ctx, nil)
+//
+// Every call takes a context.Context first and a variadic list of
+// RequestOption last. Non-2xx responses come back as *APIError.
+package infrawrench
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"net/url"
+	"path/filepath"
+	"reflect"
+	"strconv"
+	"strings"
+)
+
+// DefaultBaseURL is the deployment a client talks to unless WithBaseURL says
+// otherwise. It is the first server the OpenAPI document advertises.
+const DefaultBaseURL = "@@BASE_URL@@"
+
+// APIVersion is info.version from the spec this package was generated from.
+//
+// A Go module takes its version from a VCS tag rather than from a manifest
+// field, so there is nowhere else for the API version to live — this constant
+// is what you compare against when you need to know which API shape you have.
+const APIVersion = "@@API_VERSION@@"
+
+// scopeParam is the single path parameter a client may carry as configuration
+// instead of taking it on every call, or "" when the API has no such
+// parameter. The exported option that sets it is generated next to the
+// namespaces, so it can be named after the parameter the spec actually uses.
+const scopeParam = "@@SCOPE_PARAM@@"
+
+// scopeOption is the name of that generated option, quoted back to the caller
+// when a call reaches the wire without a value for scopeParam.
+const scopeOption = "@@SCOPE_OPTION@@"
+
+const defaultUserAgent = "infrawrench-go/" + APIVersion
+
+// ErrMissingPathParam is returned when a path parameter was supplied by
+// neither the call nor the client configuration. Match it with errors.Is.
+var ErrMissingPathParam = errors.New("infrawrench: missing path parameter")
+
+// APIError is returned for every non-2xx response.
+//
+// Branch on Code, not on Message: Code is the machine-readable discriminator
+// the API sends (for example "reauthentication_required" on a step-up 403),
+// while Message is prose that may change.
+type APIError struct {
+	// StatusCode is the HTTP status code, for example 403.
+	StatusCode int
+	// Status is the full HTTP status line, for example "403 Forbidden".
+	Status string
+	// Code is the value of the body's "code" field, or "" when absent.
+	Code string
+	// Message is the body's "error" or "message" field, falling back to the
+	// status line.
+	Message string
+	// Body is the raw response body. Always populated, even when it is not
+	// JSON, so nothing is lost when an intermediary answers instead of the API.
+	Body []byte
+	// Data is Body decoded as JSON, or nil when the body was not valid JSON.
+	Data any
+	// Method is the HTTP method of the request that failed.
+	Method string
+	// URL is the fully resolved URL of the request that failed.
+	URL string
+}
+
+// Error implements the error interface.
+func (e *APIError) Error() string {
+	code := ""
+	if e.Code != "" {
+		code = " [" + e.Code + "]"
+	}
+	return fmt.Sprintf("infrawrench: %s %s: %d %s%s", e.Method, e.URL, e.StatusCode, e.Message, code)
+}
+
+// AsAPIError reports whether err is, or wraps, an *APIError. It is a shorthand
+// for errors.As with the right variable already declared.
+func AsAPIError(err error) (*APIError, bool) {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return apiErr, true
+	}
+	return nil, false
+}
+
+// ClientOption configures a client at construction time.
+type ClientOption func(*clientConfig)
+
+type clientConfig struct {
+	baseURL    string
+	apiKey     string
+	scopeValue string
+	userAgent  string
+	httpClient *http.Client
+	header     http.Header
+}
+
+// WithBaseURL points the client at a different deployment. Trailing slashes are
+// trimmed, so both "https://host" and "https://host/" behave the same.
+func WithBaseURL(baseURL string) ClientOption {
+	return func(cfg *clientConfig) {
+		cfg.baseURL = baseURL
+	}
+}
+
+// WithAPIKey sets the API key or access token sent as "Authorization: Bearer".
+// Leave it unset only if you are supplying that header yourself with
+// WithHeader.
+func WithAPIKey(apiKey string) ClientOption {
+	return func(cfg *clientConfig) {
+		cfg.apiKey = apiKey
+	}
+}
+
+// WithHTTPClient swaps the *http.Client used for every request — for proxies,
+// custom transports, or a client with a timeout. Defaults to
+// http.DefaultClient.
+func WithHTTPClient(httpClient *http.Client) ClientOption {
+	return func(cfg *clientConfig) {
+		cfg.httpClient = httpClient
+	}
+}
+
+// WithHeader sets a header on every request. Call it more than once for more
+// than one header; a per-call WithRequestHeader wins over it.
+func WithHeader(name, value string) ClientOption {
+	return func(cfg *clientConfig) {
+		if cfg.header == nil {
+			cfg.header = http.Header{}
+		}
+		cfg.header.Set(name, value)
+	}
+}
+
+// WithUserAgent overrides the default "infrawrench-go/<version>" User-Agent.
+func WithUserAgent(userAgent string) ClientOption {
+	return func(cfg *clientConfig) {
+		cfg.userAgent = userAgent
+	}
+}
+
+// withScope sets the value used for the API's scoping path parameter. The
+// exported wrapper is generated rather than written here so that it can be
+// named after the parameter the spec actually declares.
+func withScope(value string) ClientOption {
+	return func(cfg *clientConfig) {
+		cfg.scopeValue = value
+	}
+}
+
+// RequestOption overrides configuration for a single call. Cancellation and
+// deadlines are not here on purpose: that is what the context.Context every
+// method takes is for.
+type RequestOption func(*requestConfig)
+
+type requestConfig struct {
+	header http.Header
+	query  url.Values
+}
+
+// WithRequestHeader sets a header on this call only, overriding any header of
+// the same name set on the client.
+func WithRequestHeader(name, value string) RequestOption {
+	return func(cfg *requestConfig) {
+		cfg.header.Set(name, value)
+	}
+}
+
+// WithQueryParam appends a query parameter this call's signature does not
+// describe — an escape hatch for a server that has grown a parameter the
+// generated code has not caught up with.
+func WithQueryParam(name, value string) RequestOption {
+	return func(cfg *requestConfig) {
+		cfg.query.Add(name, value)
+	}
+}
+
+// transport is the request plumbing every namespace shares. It is unexported:
+// the client is the supported surface.
+type transport struct {
+	cfg clientConfig
+}
+
+func newTransport(opts []ClientOption) *transport {
+	cfg := clientConfig{
+		baseURL:   DefaultBaseURL,
+		userAgent: defaultUserAgent,
+		header:    http.Header{},
+	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&cfg)
+		}
+	}
+	cfg.baseURL = strings.TrimRight(cfg.baseURL, "/")
+	if cfg.httpClient == nil {
+		cfg.httpClient = http.DefaultClient
+	}
+	if cfg.header == nil {
+		cfg.header = http.Header{}
+	}
+	return &transport{cfg: cfg}
+}
+
+// request is one call, as described by a generated method before the transport
+// turns it into an *http.Request.
+type request struct {
+	method     string
+	path       string
+	pathParams map[string]string
+	query      url.Values
+	body       any
+	hasBody    bool
+	form       any
+	hasForm    bool
+}
+
+func newRequest(method, path string) *request {
+	return &request{
+		method:     method,
+		path:       path,
+		pathParams: map[string]string{},
+		query:      url.Values{},
+	}
+}
+
+// setPath records a path parameter. An absent value — a nil pointer from an
+// optional field — is left unset so client configuration can fill it in.
+func (r *request) setPath(name string, value any) {
+	if text, ok := formatValue(value); ok && text != "" {
+		r.pathParams[name] = text
+	}
+}
+
+// addQuery appends a query parameter, skipping absent values so an optional
+// parameter that was not passed never reaches the wire as an empty string.
+func (r *request) addQuery(name string, value any) {
+	rv := reflect.ValueOf(value)
+	if rv.IsValid() && rv.Kind() == reflect.Slice && rv.Type().Elem().Kind() != reflect.Uint8 {
+		if rv.IsNil() {
+			return
+		}
+		for i := 0; i < rv.Len(); i++ {
+			if text, ok := formatValue(rv.Index(i).Interface()); ok {
+				r.query.Add(name, text)
+			}
+		}
+		return
+	}
+	if text, ok := formatValue(value); ok {
+		r.query.Add(name, text)
+	}
+}
+
+// setJSONBody attaches a JSON request body. A nil body is treated as absent, so
+// an optional body that was not passed sends no body at all rather than "null".
+func (r *request) setJSONBody(value any) {
+	if isNil(value) {
+		return
+	}
+	r.body = value
+	r.hasBody = true
+}
+
+// setFormBody attaches a multipart/form-data body built from a generated form
+// struct.
+func (r *request) setFormBody(value any) {
+	if isNil(value) {
+		return
+	}
+	r.form = value
+	r.hasForm = true
+}
+
+// do performs a request and decodes a JSON response into out. Pass a nil out
+// for endpoints that return no content.
+func (t *transport) do(ctx context.Context, r *request, out any, opts []RequestOption) error {
+	resp, err := t.send(ctx, r, "application/json", opts)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if out == nil {
+		// Drain rather than abandon: an undrained body keeps the connection out
+		// of the idle pool.
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("infrawrench: %s %s: reading the response body: %w", r.method, resp.Request.URL, err)
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(data, out); err != nil {
+		return fmt.Errorf("infrawrench: %s %s: decoding the response body: %w", r.method, resp.Request.URL, err)
+	}
+	return nil
+}
+
+// stream performs a request and hands back the undecoded response body. The
+// caller owns it and must Close it.
+func (t *transport) stream(ctx context.Context, r *request, opts []RequestOption) (io.ReadCloser, error) {
+	resp, err := t.send(ctx, r, "application/octet-stream", opts)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Body, nil
+}
+
+// baseURL reports the normalized base URL requests are sent to.
+func (t *transport) baseURL() string {
+	return t.cfg.baseURL
+}
+
+func (t *transport) send(ctx context.Context, r *request, accept string, opts []RequestOption) (*http.Response, error) {
+	call := requestConfig{header: http.Header{}, query: url.Values{}}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&call)
+		}
+	}
+
+	endpoint, err := t.resolveURL(r, call.query)
+	if err != nil {
+		return nil, err
+	}
+
+	var body io.Reader
+	contentType := ""
+	switch {
+	case r.hasForm:
+		encoded, formType, err := encodeMultipart(r.form)
+		if err != nil {
+			return nil, fmt.Errorf("infrawrench: %s %s: encoding the multipart body: %w", r.method, endpoint, err)
+		}
+		body = encoded
+		contentType = formType
+	case r.hasBody:
+		encoded, err := json.Marshal(r.body)
+		if err != nil {
+			return nil, fmt.Errorf("infrawrench: %s %s: encoding the request body: %w", r.method, endpoint, err)
+		}
+		body = bytes.NewReader(encoded)
+		contentType = "application/json"
+	}
+
+	req, err := http.NewRequestWithContext(ctx, r.method, endpoint, body)
+	if err != nil {
+		return nil, fmt.Errorf("infrawrench: %s %s: %w", r.method, endpoint, err)
+	}
+
+	req.Header.Set("Accept", accept)
+	req.Header.Set("User-Agent", t.cfg.userAgent)
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	if t.cfg.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+t.cfg.apiKey)
+	}
+	// Configured headers are applied after the defaults, and per-call headers
+	// after those, so the more specific setting always wins.
+	overrideHeader(req.Header, t.cfg.header)
+	overrideHeader(req.Header, call.header)
+
+	resp, err := t.cfg.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("infrawrench: %s %s: %w", r.method, endpoint, err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		defer resp.Body.Close()
+		return nil, newAPIError(resp, r.method, endpoint)
+	}
+	return resp, nil
+}
+
+func (t *transport) resolveURL(r *request, extra url.Values) (string, error) {
+	path, err := t.resolvePath(r)
+	if err != nil {
+		return "", err
+	}
+
+	query := r.query
+	if len(extra) > 0 {
+		query = url.Values{}
+		for name, values := range r.query {
+			query[name] = append([]string(nil), values...)
+		}
+		for name, values := range extra {
+			for _, value := range values {
+				query.Add(name, value)
+			}
+		}
+	}
+
+	endpoint := t.cfg.baseURL + path
+	if encoded := query.Encode(); encoded != "" {
+		endpoint += "?" + encoded
+	}
+	return endpoint, nil
+}
+
+// resolvePath fills the {param} placeholders in a URL template, falling back to
+// client configuration for the scoping parameter and percent-encoding every
+// value so an id containing a slash cannot invent a path segment.
+func (t *transport) resolvePath(r *request) (string, error) {
+	var out strings.Builder
+	rest := r.path
+	for {
+		open := strings.IndexByte(rest, '{')
+		if open < 0 {
+			out.WriteString(rest)
+			break
+		}
+		end := strings.IndexByte(rest[open:], '}')
+		if end < 0 {
+			out.WriteString(rest)
+			break
+		}
+		name := rest[open+1 : open+end]
+		out.WriteString(rest[:open])
+
+		value := r.pathParams[name]
+		if value == "" && name == scopeParam {
+			value = t.cfg.scopeValue
+		}
+		if value == "" {
+			return "", missingPathParam(r, name)
+		}
+		out.WriteString(url.PathEscape(value))
+		rest = rest[open+end+1:]
+	}
+	return out.String(), nil
+}
+
+func missingPathParam(r *request, name string) error {
+	hint := ""
+	if name == scopeParam && scopeOption != "" {
+		hint = fmt.Sprintf(", or set %s when constructing the client", scopeOption)
+	}
+	return fmt.Errorf("%w %q for %s %s: pass it in the call parameters%s",
+		ErrMissingPathParam, name, r.method, r.path, hint)
+}
+
+func newAPIError(resp *http.Response, method, endpoint string) *APIError {
+	body, _ := io.ReadAll(resp.Body)
+	apiErr := &APIError{
+		StatusCode: resp.StatusCode,
+		Status:     resp.Status,
+		Body:       body,
+		Method:     method,
+		URL:        endpoint,
+	}
+
+	var decoded any
+	if json.Unmarshal(body, &decoded) == nil {
+		apiErr.Data = decoded
+	}
+	if fields, ok := apiErr.Data.(map[string]any); ok {
+		if code, ok := fields["code"].(string); ok {
+			apiErr.Code = code
+		}
+		for _, key := range []string{"error", "message"} {
+			if message, ok := fields[key].(string); ok && message != "" {
+				apiErr.Message = message
+				break
+			}
+		}
+	}
+	if apiErr.Message == "" {
+		apiErr.Message = strings.TrimSpace(resp.Status)
+	}
+	if apiErr.Message == "" {
+		apiErr.Message = "request failed"
+	}
+	return apiErr
+}
+
+func overrideHeader(dst, src http.Header) {
+	for name, values := range src {
+		dst.Del(name)
+		for _, value := range values {
+			dst.Add(name, value)
+		}
+	}
+}
+
+// encodeMultipart renders a generated form struct as multipart/form-data.
+//
+// It goes through reflection rather than through generated per-form encoders
+// because the json tags already carry the wire names: reading them here is what
+// guarantees the multipart encoding and the JSON encoding of the same struct
+// can never disagree.
+func encodeMultipart(value any) (io.Reader, string, error) {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	if err := writeMultipart(writer, reflect.ValueOf(value)); err != nil {
+		return nil, "", err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, "", err
+	}
+	return &buf, writer.FormDataContentType(), nil
+}
+
+func writeMultipart(writer *multipart.Writer, rv reflect.Value) error {
+	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+		if rv.IsNil() {
+			return nil
+		}
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Struct {
+		return fmt.Errorf("a multipart body must be a struct, got %s", rv.Kind())
+	}
+
+	rt := rv.Type()
+	for i := 0; i < rt.NumField(); i++ {
+		field := rt.Field(i)
+		if !field.IsExported() {
+			continue
+		}
+		name, skip := wireName(field)
+		if skip {
+			continue
+		}
+
+		value := rv.Field(i)
+		for value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface {
+			if value.IsNil() {
+				break
+			}
+			value = value.Elem()
+		}
+		if !value.IsValid() || value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface {
+			continue
+		}
+
+		// The file part has to be recognized before the scalar formatting below
+		// gets a chance to stringify an io.Reader into its struct printout.
+		if reader, ok := rv.Field(i).Interface().(io.Reader); ok && reader != nil {
+			part, err := writer.CreateFormFile(name, uploadFileName(reader, name))
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(part, reader); err != nil {
+				return err
+			}
+			continue
+		}
+
+		text, ok := formatValue(value.Interface())
+		if !ok {
+			continue
+		}
+		if err := writer.WriteField(name, text); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// uploadFileName prefers the reader's own name — *os.File has one — because a
+// server that stores uploads under their original name should get it.
+func uploadFileName(reader io.Reader, fallback string) string {
+	named, ok := reader.(interface{ Name() string })
+	if !ok {
+		return fallback
+	}
+	name := filepath.Base(named.Name())
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		return fallback
+	}
+	return name
+}
+
+func wireName(field reflect.StructField) (string, bool) {
+	tag, ok := field.Tag.Lookup("json")
+	if !ok {
+		return field.Name, false
+	}
+	name, _, _ := strings.Cut(tag, ",")
+	switch name {
+	case "-":
+		return "", true
+	case "":
+		return field.Name, false
+	default:
+		return name, false
+	}
+}
+
+// formatValue renders a path, query or form value as a string. The second
+// result is false when the value is absent — a nil pointer or a nil interface —
+// which is how an omitted optional parameter is told apart from an empty one.
+func formatValue(value any) (string, bool) {
+	switch v := value.(type) {
+	case nil:
+		return "", false
+	case string:
+		return v, true
+	case bool:
+		return strconv.FormatBool(v), true
+	case int:
+		return strconv.Itoa(v), true
+	case int32:
+		return strconv.FormatInt(int64(v), 10), true
+	case int64:
+		return strconv.FormatInt(v, 10), true
+	case float32:
+		return strconv.FormatFloat(float64(v), 'f', -1, 32), true
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), true
+	case fmt.Stringer:
+		return v.String(), true
+	}
+
+	rv := reflect.ValueOf(value)
+	if !rv.IsValid() {
+		return "", false
+	}
+	if rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+		if rv.IsNil() {
+			return "", false
+		}
+		return formatValue(rv.Elem().Interface())
+	}
+
+	switch rv.Kind() {
+	case reflect.String:
+		return rv.String(), true
+	case reflect.Bool:
+		return strconv.FormatBool(rv.Bool()), true
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return strconv.FormatInt(rv.Int(), 10), true
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return strconv.FormatUint(rv.Uint(), 10), true
+	case reflect.Float32, reflect.Float64:
+		return strconv.FormatFloat(rv.Float(), 'f', -1, 64), true
+	}
+	return fmt.Sprint(value), true
+}
+
+// isNil reports whether value is a typed nil. A plain `value == nil` misses
+// (*Foo)(nil) stored in an interface, which is exactly the case an optional
+// body field produces.
+func isNil(value any) bool {
+	if value == nil {
+		return true
+	}
+	rv := reflect.ValueOf(value)
+	switch rv.Kind() {
+	case reflect.Pointer, reflect.Interface, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan:
+		return rv.IsNil()
+	}
+	return false
+}

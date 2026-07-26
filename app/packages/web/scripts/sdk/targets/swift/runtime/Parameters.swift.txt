@@ -1,0 +1,105 @@
+// See JSONValue.swift.txt for why this file is `.txt`.
+//
+// --8<-- everything below this line is copied into the generated SDK --8<--
+import Foundation
+
+/// Something that can appear in a URL path or query string.
+///
+/// The generated call sites say `id.parameterValue` without knowing whether
+/// `id` is a `String`, an `Int`, or one of the generated string enums — this
+/// protocol is what lets them all spell it the same way.
+public protocol ParameterValue: Sendable {
+    var parameterValue: String { get }
+}
+
+extension String: ParameterValue {
+    public var parameterValue: String { self }
+}
+
+extension Int: ParameterValue {
+    public var parameterValue: String { String(self) }
+}
+
+extension Double: ParameterValue {
+    public var parameterValue: String { String(self) }
+}
+
+extension Bool: ParameterValue {
+    public var parameterValue: String { self ? "true" : "false" }
+}
+
+extension UUID: ParameterValue {
+    public var parameterValue: String { uuidString }
+}
+
+/// Every generated string enum is `RawRepresentable` over `String`, so one
+/// constrained extension covers all of them at once.
+extension ParameterValue where Self: RawRepresentable, Self.RawValue == String {
+    public var parameterValue: String { rawValue }
+}
+
+/// One query string entry. A `nil` value is dropped rather than sent empty,
+/// which is what makes optional query parameters simply absent.
+public struct QueryParameter: Hashable, Sendable {
+    public let name: String
+    public let value: String?
+
+    public init<Value: ParameterValue>(_ name: String, _ value: Value?) {
+        self.name = name
+        self.value = value?.parameterValue
+    }
+}
+
+/// One part of a `multipart/form-data` body.
+public struct MultipartField: Hashable, Sendable {
+    public let name: String
+    public let filename: String?
+    public let contentType: String?
+    public let data: Data
+
+    public init(name: String, filename: String? = nil, contentType: String? = nil, data: Data) {
+        self.name = name
+        self.filename = filename
+        self.contentType = contentType
+        self.data = data
+    }
+
+    /// A plain form field.
+    public static func text(_ name: String, _ value: String) -> MultipartField {
+        MultipartField(name: name, data: Data(value.utf8))
+    }
+
+    /// A file part. `filename` is what makes a server treat the part as an
+    /// upload rather than a field, so it is never omitted.
+    public static func file(
+        _ name: String,
+        _ data: Data,
+        filename: String,
+        contentType: String = "application/octet-stream"
+    ) -> MultipartField {
+        MultipartField(name: name, filename: filename, contentType: contentType, data: data)
+    }
+}
+
+/// Implemented by the generated model for every `multipart/form-data` request
+/// body, so the transport can turn one into parts without reflection.
+public protocol MultipartEncodable: Sendable {
+    var multipartFields: [MultipartField] { get }
+}
+
+/// Type-erases a request body.
+///
+/// `JSONEncoder.encode` is generic over a concrete `Encodable`, and `any
+/// Encodable` does not satisfy that constraint — so the body is boxed in
+/// something concrete that forwards to the value's own `encode(to:)`.
+public struct AnyEncodable: Encodable, Sendable {
+    private let encodeValue: @Sendable (any Encoder) throws -> Void
+
+    public init<Value: Encodable & Sendable>(_ value: Value) {
+        encodeValue = { encoder in try value.encode(to: encoder) }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        try encodeValue(encoder)
+    }
+}

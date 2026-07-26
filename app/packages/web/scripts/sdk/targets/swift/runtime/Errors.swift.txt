@@ -1,0 +1,86 @@
+// See JSONValue.swift.txt for why this file is `.txt`.
+//
+// --8<-- everything below this line is copied into the generated SDK --8<--
+import Foundation
+
+/// Thrown for any non-2xx response.
+///
+/// Branch on ``code`` rather than on ``message``: it is the machine-readable
+/// discriminator the API sends (`reauthentication_required` on a step-up 403,
+/// for example), while the message exists to be read by a human.
+public struct ApiError: Error, Hashable, Sendable {
+    /// HTTP status code.
+    public let status: Int
+    /// The API's `code` field, when the response carried one.
+    public let code: String?
+    /// The API's `error` or `message` field, falling back to the status line.
+    public let message: String
+    /// The response body, parsed as JSON. Non-JSON bodies arrive as `.string`.
+    public let body: JSONValue
+    /// The response body exactly as it came off the wire.
+    public let rawBody: Data
+    /// HTTP method of the request that failed.
+    public let method: String
+    /// Fully resolved URL of the request that failed.
+    public let url: String
+
+    public init(
+        status: Int,
+        code: String?,
+        message: String,
+        body: JSONValue,
+        rawBody: Data,
+        method: String,
+        url: String
+    ) {
+        self.status = status
+        self.code = code
+        self.message = message
+        self.body = body
+        self.rawBody = rawBody
+        self.method = method
+        self.url = url
+    }
+}
+
+extension ApiError: CustomStringConvertible {
+    public var description: String { "\(method) \(url) failed (\(status)): \(message)" }
+}
+
+extension ApiError: LocalizedError {
+    public var errorDescription: String? { description }
+}
+
+/// Thrown before a request leaves the process, for things the caller can fix.
+///
+/// Deliberately separate from ``ApiError``: these never involve the server, so
+/// retrying is pointless and `catch let error as ApiError` should not swallow
+/// them.
+public enum ClientError: Error, Hashable, Sendable {
+    /// A `{placeholder}` in the route had no value from the call or the client.
+    case missingPathParameter(name: String, request: String)
+    /// The base URL and path did not combine into something `URL` accepts.
+    case invalidURL(String)
+    /// The transport got something other than an HTTP response back.
+    case invalidResponse(String)
+}
+
+extension ClientError: CustomStringConvertible {
+    public var description: String {
+        switch self {
+        case .missingPathParameter(let name, let request):
+            return """
+                Missing path parameter "\(name)" for \(request) — pass \(name) to the call, \
+                or set it once via ClientOptions when you create the client.
+                """
+        case .invalidURL(let url):
+            return "Could not build a valid URL from \"\(url)\"."
+        case .invalidResponse(let detail):
+            return "Unexpected response: \(detail)"
+        }
+    }
+}
+
+extension ClientError: LocalizedError {
+    public var errorDescription: String? { description }
+}

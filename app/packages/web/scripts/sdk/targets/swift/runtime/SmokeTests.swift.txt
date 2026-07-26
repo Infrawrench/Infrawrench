@@ -1,0 +1,404 @@
+// The generated package's own smoke suite. Hand-written like the rest of
+// `runtime/`, and `.txt` for the same reason — see JSONValue.swift.txt.
+//
+// It names real generated symbols (`client.accounts.list`,
+// `client.resources.secretVersions.add`, `SecretAddRequest`), so if the spec
+// renames one of those the failure lands here rather than on a user.
+//
+// --8<-- everything below this line is copied into the generated SDK --8<--
+import Foundation
+
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
+
+import InfrawrenchSDK
+
+/// Intercepts every request the client makes, so the suite needs no network.
+///
+/// This is the supported way to test `URLSession` code: register the class on a
+/// `URLSessionConfiguration` and hand the resulting session to the client, which
+/// is exactly what `ClientOptions(session:)` exists for.
+final class StubURLProtocol: URLProtocol {
+    /// Serial by construction: the suite runs one call at a time and sets this
+    /// immediately before each.
+    nonisolated(unsafe) static var respond: ((URLRequest) -> (Int, Data))?
+    nonisolated(unsafe) static var lastRequest: URLRequest?
+    nonisolated(unsafe) static var lastBody: Data?
+
+    static func session() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubURLProtocol.self]
+        return URLSession(configuration: configuration)
+    }
+
+    static func reset() {
+        respond = nil
+        lastRequest = nil
+        lastBody = nil
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        StubURLProtocol.lastRequest = request
+        // `URLProtocol` moves an in-memory body onto `httpBodyStream`, so the
+        // original `httpBody` is already gone by the time a request lands here.
+        StubURLProtocol.lastBody = request.httpBody ?? StubURLProtocol.drain(request.httpBodyStream)
+
+        let (status, body) = StubURLProtocol.respond?(request) ?? (200, Data("null".utf8))
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: status,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: body)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+
+    private static func drain(_ stream: InputStream?) -> Data? {
+        guard let stream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let read = stream.read(&buffer, maxLength: buffer.count)
+            if read <= 0 { break }
+            data.append(contentsOf: buffer[0..<read])
+        }
+        return data
+    }
+}
+
+/// A dozen assertions and a failure count.
+///
+/// Not XCTest: a Command Line Tools-only macOS toolchain has no XCTest module,
+/// and swift-testing would be a package dependency — which this package, by
+/// design, does not have. An executable target runs wherever the package builds.
+final class Check {
+    private(set) var failures = 0
+    private(set) var passes = 0
+
+    func equal<Value: Equatable>(_ actual: Value, _ expected: Value, _ what: String) {
+        if actual == expected {
+            pass(what)
+        } else {
+            fail("\(what)\n      expected: \(expected)\n      actual:   \(actual)")
+        }
+    }
+
+    func isNil(_ actual: Any?, _ what: String) {
+        actual == nil ? pass(what) : fail("\(what) — expected nil, got \(actual!)")
+    }
+
+    func isTrue(_ condition: Bool, _ what: String) {
+        condition ? pass(what) : fail(what)
+    }
+
+    func pass(_ what: String) {
+        passes += 1
+        print("  ok   \(what)")
+    }
+
+    func fail(_ what: String) {
+        failures += 1
+        print("  FAIL \(what)")
+    }
+}
+
+@main
+enum SmokeTests {
+    static let baseURL = "https://api.test"
+
+    static func client(orgId: String? = "org_default") -> APIV1Client {
+        APIV1Client(
+            ClientOptions(
+                baseURL: baseURL,
+                apiKey: "sk-test",
+                orgId: orgId,
+                session: StubURLProtocol.session()
+            )
+        )
+    }
+
+    static func stub(_ json: String, status: Int = 200) {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond = { _ in (status, Data(json.utf8)) }
+    }
+
+    static func requestedURL() -> String {
+        StubURLProtocol.lastRequest?.url?.absoluteString ?? "<no request>"
+    }
+
+    static func main() async {
+        let check = Check()
+
+        await defaultOrgId(check)
+        await perCallOrgIdOverride(check)
+        await pathAndQuery(check)
+        await absentQueryParameters(check)
+        await reservedCharacters(check)
+        await jsonBody(check)
+        await deepNamespace(check)
+        await binaryResponse(check)
+        await nullResponse(check)
+        unknownEnumValue(check)
+        await apiErrorCarriesStatusBodyAndCode(check)
+        await nonJsonErrorBody(check)
+        await missingOrgId(check)
+        packageFacts(check)
+
+        print("")
+        print("\(check.passes) passed, \(check.failures) failed")
+        exit(check.failures == 0 ? 0 : 1)
+    }
+
+    // MARK: - URL construction
+
+    static func defaultOrgId(_ check: Check) async {
+        stub("[]")
+        do {
+            _ = try await client().accounts.list()
+            check.equal(requestedURL(), "\(baseURL)/api/org/org_default/accounts", "default orgId")
+            check.equal(
+                StubURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization"),
+                "Bearer sk-test",
+                "bearer header"
+            )
+        } catch {
+            check.fail("default orgId threw \(error)")
+        }
+    }
+
+    static func perCallOrgIdOverride(_ check: Check) async {
+        stub("[]")
+        do {
+            _ = try await client().accounts.list(orgId: "org_other")
+            check.equal(requestedURL(), "\(baseURL)/api/org/org_other/accounts", "orgId override")
+        } catch {
+            check.fail("orgId override threw \(error)")
+        }
+    }
+
+    static func pathAndQuery(_ check: Check) async {
+        stub(#"{"entries":[],"total":0}"#)
+        do {
+            _ = try await client().auditLogs.get(page: 2, pageSize: 50, action: "account create")
+            check.equal(
+                requestedURL(),
+                "\(baseURL)/api/org/org_default/audit-logs?page=2&pageSize=50&action=account%20create",
+                "path + query"
+            )
+        } catch {
+            check.fail("path + query threw \(error)")
+        }
+    }
+
+    static func absentQueryParameters(_ check: Check) async {
+        stub(#"{"entries":[],"total":0}"#)
+        do {
+            _ = try await client().auditLogs.get(page: 1)
+            check.equal(
+                requestedURL(),
+                "\(baseURL)/api/org/org_default/audit-logs?page=1",
+                "absent query parameters are omitted"
+            )
+        } catch {
+            check.fail("absent query parameters threw \(error)")
+        }
+    }
+
+    /// Composite ids carry `:` and `/`, and both have to survive as data rather
+    /// than as path or query structure.
+    static func reservedCharacters(_ check: Check) async {
+        stub("{}")
+        // The stubbed body will not decode into `ResourceDetail`; the URL is
+        // what this case is about, and it is recorded before the response is.
+        _ = try? await client().resources.detail(
+            pluginId: .gcp,
+            typeId: .gceInstance,
+            resourceId: "gcp:acct/1:projects/p/instances/i"
+        )
+        check.equal(
+            requestedURL(),
+            "\(baseURL)/api/org/org_default/resources/gcp/gce-instance/detail"
+                + "?resourceId=gcp%3Aacct%2F1%3Aprojects%2Fp%2Finstances%2Fi",
+            "reserved characters are percent-encoded"
+        )
+    }
+
+    // MARK: - Bodies
+
+    static func jsonBody(_ check: Check) async {
+        stub(#"{"id":"key_1","key":"iwk_secret"}"#)
+        do {
+            let created = try await client().apiKeys.create(
+                body: CreateApiKeyRequest(name: "ci", scopes: [.accountsRead])
+            )
+            check.equal(StubURLProtocol.lastRequest?.httpMethod, "POST", "POST method")
+            check.equal(
+                StubURLProtocol.lastRequest?.value(forHTTPHeaderField: "Content-Type"),
+                "application/json",
+                "JSON content type"
+            )
+            // Keys are sorted by the encoder, so this comparison is stable. The
+            // absent `expiresAt` is omitted rather than sent as null.
+            check.equal(
+                StubURLProtocol.lastBody.flatMap { String(data: $0, encoding: .utf8) },
+                #"{"name":"ci","scopes":["accounts:read"]}"#,
+                "JSON request body"
+            )
+            check.equal(created.key, "iwk_secret", "decoded response")
+        } catch {
+            check.fail("JSON body threw \(error)")
+        }
+    }
+
+    /// A namespace three levels deep, with two typed path parameters.
+    static func deepNamespace(_ check: Check) async {
+        stub(#"{"version":{"id":"3","state":"ENABLED","createdAt":"2026-01-01T00:00:00Z"}}"#)
+        do {
+            let response = try await client().resources.secretVersions.add(
+                pluginId: .gcp,
+                typeId: .secretManagerSecret,
+                body: SecretAddRequest(
+                    accountId: "acct_1",
+                    resourceId: "gcp:acct_1:projects/p/secrets/s",
+                    value: "hunter2"
+                )
+            )
+            check.equal(
+                requestedURL(),
+                "\(baseURL)/api/org/org_default/resources/gcp/secret-manager-secret"
+                    + "/secret-versions/add",
+                "client.resources.secretVersions.add"
+            )
+            check.equal(response.version.id, "3", "nested model decoded")
+            check.equal(response.version.state, .enabled, "nested enum decoded")
+        } catch {
+            check.fail("deep namespace threw \(error)")
+        }
+    }
+
+    // MARK: - Responses
+
+    static func binaryResponse(_ check: Check) async {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond = { _ in (200, Data([0x00, 0x01, 0xFF])) }
+        do {
+            let bytes = try await client().storage.download(
+                accountId: "acct_1",
+                bucket: "b",
+                keys: "k"
+            )
+            check.equal(bytes, Data([0x00, 0x01, 0xFF]), "binary response")
+        } catch {
+            check.fail("binary response threw \(error)")
+        }
+    }
+
+    /// A nullable response is a bare `null` on the wire — a top-level JSON
+    /// fragment, which is the case Foundation's decoder is fussiest about.
+    static func nullResponse(_ check: Check) async {
+        stub("null")
+        do {
+            let settings = try await client().agents.settings.get()
+            check.isNil(settings, "null response decodes to nil")
+        } catch {
+            check.fail("null response threw \(error)")
+        }
+    }
+
+    /// A value the server knows about and this SDK does not must not throw.
+    static func unknownEnumValue(_ check: Check) {
+        let json = #"{"id":"1","state":"ARCHIVED","createdAt":"2026-01-01T00:00:00Z"}"#
+        do {
+            let version = try JSONDecoder().decode(SecretVersion.self, from: Data(json.utf8))
+            check.equal(version.state, .unrecognized("ARCHIVED"), "unknown enum value is kept")
+            check.equal(version.state.rawValue, "ARCHIVED", "unknown enum raw value")
+            check.isTrue(
+                !SecretVersion.State.allKnownCases.contains(version.state),
+                "unknown value is absent from allKnownCases"
+            )
+        } catch {
+            check.fail("unknown enum value threw \(error)")
+        }
+    }
+
+    // MARK: - Errors
+
+    static func apiErrorCarriesStatusBodyAndCode(_ check: Check) async {
+        stub(
+            #"{"error":"Confirm your identity","code":"reauthentication_required"}"#,
+            status: 403
+        )
+        do {
+            _ = try await client().accounts.list()
+            check.fail("403 did not throw")
+        } catch let error as ApiError {
+            check.equal(error.status, 403, "ApiError.status")
+            check.equal(error.code, "reauthentication_required", "ApiError.code")
+            check.equal(error.message, "Confirm your identity", "ApiError.message")
+            check.equal(
+                error.body["error"]?.stringValue,
+                "Confirm your identity",
+                "ApiError.body is parsed JSON"
+            )
+            check.equal(error.method, "GET", "ApiError.method")
+            check.isTrue(error.description.contains("403"), "ApiError describes itself")
+        } catch {
+            check.fail("403 threw \(error) rather than ApiError")
+        }
+    }
+
+    static func nonJsonErrorBody(_ check: Check) async {
+        stub("upstream is down", status: 502)
+        do {
+            _ = try await client().accounts.list()
+            check.fail("502 did not throw")
+        } catch let error as ApiError {
+            check.equal(error.status, 502, "non-JSON error status")
+            check.isNil(error.code, "non-JSON error has no code")
+            check.equal(error.body, .string("upstream is down"), "non-JSON body kept as text")
+        } catch {
+            check.fail("502 threw \(error) rather than ApiError")
+        }
+    }
+
+    /// No org id anywhere: this has to fail before a request is built, and say
+    /// what to do about it.
+    static func missingOrgId(_ check: Check) async {
+        StubURLProtocol.reset()
+        do {
+            _ = try await client(orgId: nil).accounts.list()
+            check.fail("missing orgId did not throw")
+        } catch let error as ClientError {
+            guard case .missingPathParameter(let name, let request) = error else {
+                return check.fail("expected .missingPathParameter, got \(error)")
+            }
+            check.equal(name, "orgId", "missing parameter is named")
+            check.equal(request, "GET /api/org/{orgId}/accounts", "missing parameter names the call")
+            check.isTrue(
+                error.description.contains("ClientOptions"),
+                "missing parameter says how to fix it"
+            )
+            check.isNil(StubURLProtocol.lastRequest, "nothing was sent")
+        } catch {
+            check.fail("missing orgId threw \(error) rather than ClientError")
+        }
+    }
+
+    // MARK: - Package facts
+
+    static func packageFacts(_ check: Check) {
+        check.equal(InfrawrenchSDKInfo.apiVersion, "@@API_VERSION@@", "recorded API version")
+        check.equal(InfrawrenchSDKInfo.defaultBaseURL, "@@BASE_URL@@", "recorded default base URL")
+        check.equal(InfrawrenchSDKInfo.scopeParameter, "@@SCOPE_PARAM@@", "recorded scope parameter")
+    }
+}

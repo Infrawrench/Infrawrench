@@ -1,0 +1,27 @@
+<?php
+// This file ships as-is. Read ./README.md before editing.
+// --8<-- everything below this line is emitted into the generated SDK --8<--
+
+declare(strict_types=1);
+
+namespace Infrawrench\Sdk\Http;
+
+/** What an {@see HttpSender} hands back. Deliberately dumb: no decoding here. */
+final class HttpResponse
+{
+    /**
+     * @param array<string, string> $headers Header names lowercased, so lookups
+     *                                       do not have to guess at casing.
+     */
+    public function __construct(
+        public readonly int $status,
+        public readonly array $headers = [],
+        public readonly string $body = '',
+    ) {
+    }
+
+    public function header(string $name): ?string
+    {
+        return $this->headers[strtolower($name)] ?? null;
+    }
+}

@@ -1,0 +1,39 @@
+/*
+ * Part of the hand-written half of the generated Java SDK. See
+ * InfrawrenchException.java.txt for why these files carry a `.txt` suffix.
+ */
+// --8<-- everything below this line is emitted verbatim into the SDK --8<--
+package com.infrawrench.sdk;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+/**
+ * Wire metadata for one record component, read reflectively by {@link Json}.
+ *
+ * <p>Two things the component name alone cannot express:
+ *
+ * <ul>
+ *   <li>{@link #name()} — the JSON key, when it differs from the Java name
+ *       (a key that is a Java keyword, or that isn't a legal identifier).
+ *   <li>{@link #required()} — whether the schema requires the key to be
+ *       <em>present</em>. That is not the same as non-null: a required field
+ *       typed {@code string | null} must be sent as {@code null} rather than
+ *       omitted, and omitting it would fail server-side validation.
+ * </ul>
+ *
+ * <p>Only emitted where it changes behaviour, so an unannotated component means
+ * "JSON key equals the Java name, omit when null".
+ */
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.RECORD_COMPONENT)
+public @interface JsonField {
+
+  /** JSON key. Empty means "same as the record component name". */
+  String name() default "";
+
+  /** Send the key even when the value is {@code null}. */
+  boolean required() default false;
+}

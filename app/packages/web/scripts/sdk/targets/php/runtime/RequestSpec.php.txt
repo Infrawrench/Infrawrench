@@ -1,0 +1,43 @@
+<?php
+// This file ships as-is. Read ./README.md before editing.
+// --8<-- everything below this line is emitted into the generated SDK --8<--
+
+declare(strict_types=1);
+
+namespace Infrawrench\Sdk\Internal;
+
+/**
+ * One HTTP call, exactly as a generated method describes it.
+ *
+ * Every generated method builds one of these and hands it to {@see Transport}.
+ * Nothing about a particular route lives in the transport, and nothing about
+ * HTTP lives in the generated methods.
+ */
+final class RequestSpec
+{
+    /**
+     * @param string               $path       URL template with `{name}` placeholders.
+     * @param array<string, mixed> $pathParams Values for those placeholders. A
+     *                                         `null` falls through to the client's
+     *                                         own configuration.
+     * @param array<string, mixed> $query      Query parameters; `null` values are dropped.
+     * @param mixed                $body       JSON body. Only read when `$hasBody`.
+     * @param array<string, mixed>|null $form  `multipart/form-data` fields. Mutually
+     *                                         exclusive with `$body`.
+     * @param 'json'|'binary'|'empty' $accept  What the endpoint returns.
+     * @param bool                 $hasBody    Distinguishes "no body" from a body
+     *                                         that is literally `null`, which
+     *                                         `$body` alone cannot.
+     */
+    public function __construct(
+        public readonly string $method,
+        public readonly string $path,
+        public readonly array $pathParams = [],
+        public readonly array $query = [],
+        public readonly mixed $body = null,
+        public readonly ?array $form = null,
+        public readonly string $accept = 'json',
+        public readonly bool $hasBody = false,
+    ) {
+    }
+}

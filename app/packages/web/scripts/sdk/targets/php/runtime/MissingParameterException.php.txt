@@ -1,0 +1,28 @@
+<?php
+// This file ships as-is. Read ./README.md before editing.
+// --8<-- everything below this line is emitted into the generated SDK --8<--
+
+declare(strict_types=1);
+
+namespace Infrawrench\Sdk;
+
+/**
+ * A URL placeholder had nothing to fill it with.
+ *
+ * In practice this is always `@@SCOPE_PARAM@@`: it is optional at the call site
+ * because the client can supply it, so forgetting both the constructor argument
+ * and the per-call argument is a mistake PHP's own signature checking cannot
+ * catch. Raised before any network call, and it names the parameter and the
+ * route so the fix is obvious from the message alone.
+ */
+class MissingParameterException extends \InvalidArgumentException
+{
+    /** Name of the placeholder that could not be resolved. */
+    public readonly string $parameter;
+
+    public function __construct(string $message, string $parameter)
+    {
+        parent::__construct($message);
+        $this->parameter = $parameter;
+    }
+}

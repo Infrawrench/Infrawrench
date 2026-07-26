@@ -11,6 +11,11 @@ coverage
 !.env.example
 *.tsbuildinfo
 
+# Generated client SDKs (`pnpm --filter @infrawrench/web generate:sdk`).
+# Deliberately outside the pnpm workspace and never committed — the checked-in
+# openapi.json is the source of truth, these are build output.
+/sdk
+
 # Astro / Wrangler
 .astro
 .wrangler

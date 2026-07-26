@@ -1,0 +1,26 @@
+/*
+ * Part of the hand-written half of the generated Java SDK. See
+ * InfrawrenchException.java.txt for why these files carry a `.txt` suffix.
+ */
+// --8<-- everything below this line is emitted verbatim into the SDK --8<--
+package com.infrawrench.sdk;
+
+/**
+ * A response body could not be parsed into the type the spec promised, or a
+ * request body could not be serialized.
+ *
+ * <p>In practice this means the deployment you are pointed at is running a
+ * different API version than this SDK was generated from.
+ */
+public final class JsonException extends InfrawrenchException {
+
+  private static final long serialVersionUID = 1L;
+
+  JsonException(String message) {
+    super(message);
+  }
+
+  JsonException(String message, Throwable cause) {
+    super(message, cause);
+  }
+}

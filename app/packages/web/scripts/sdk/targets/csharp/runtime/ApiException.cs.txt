@@ -1,0 +1,137 @@
+// Hand-written runtime source. See ./SdkJson.cs.txt for how this file is used.
+//
+// --8<-- everything below this line is copied into the generated SDK --8<--
+
+using System;
+using System.Globalization;
+using System.Net.Http;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Threading.Tasks;
+
+namespace Infrawrench.Sdk;
+
+/// <summary>
+/// Thrown for any non-2xx response.
+/// </summary>
+/// <remarks>
+/// Branch on <see cref="Code"/>, not on <see cref="Exception.Message"/>: the
+/// message is assembled for a human and its wording is not a contract, whereas
+/// <c>code</c> is the machine-readable discriminator the API sends (for example
+/// <c>reauthentication_required</c> on a step-up 403).
+/// </remarks>
+public sealed class ApiException : Exception
+{
+    /// <summary>Create an exception describing a failed response.</summary>
+    public ApiException(
+        int statusCode,
+        string message,
+        string? code,
+        JsonNode? body,
+        string? rawBody,
+        string method,
+        string url)
+        : base(message)
+    {
+        StatusCode = statusCode;
+        Code = code;
+        Body = body;
+        RawBody = rawBody;
+        Method = method;
+        Url = url;
+    }
+
+    /// <summary>The HTTP status code, e.g. <c>404</c>.</summary>
+    public int StatusCode { get; }
+
+    /// <summary>
+    /// The API's machine-readable error code, when the response carried one.
+    /// </summary>
+    public string? Code { get; }
+
+    /// <summary>
+    /// The parsed response body, or null when the body was absent or not JSON.
+    /// Use <c>Body.Deserialize&lt;T&gt;()</c> if you know the error shape.
+    /// </summary>
+    public JsonNode? Body { get; }
+
+    /// <summary>
+    /// The response body exactly as it arrived. Kept alongside <see cref="Body"/>
+    /// because the interesting failures are often the ones that were not JSON at
+    /// all — an HTML error page from a proxy, say.
+    /// </summary>
+    public string? RawBody { get; }
+
+    /// <summary>The HTTP method of the request that failed.</summary>
+    public string Method { get; }
+
+    /// <summary>The fully resolved URL of the request that failed.</summary>
+    public string Url { get; }
+
+    /// <summary>Build the exception for a response that has already been read.</summary>
+    internal static async Task<ApiException> FromResponseAsync(
+        HttpResponseMessage response,
+        string method,
+        string url)
+    {
+        string raw;
+        try
+        {
+            raw = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // The body is diagnostic detail. Losing it must not replace the
+            // status code the caller actually needs with a read error.
+            raw = string.Empty;
+        }
+
+        JsonNode? body = null;
+        if (raw.Length > 0)
+        {
+            try
+            {
+                body = JsonNode.Parse(raw);
+            }
+            catch (JsonException)
+            {
+                body = null;
+            }
+        }
+
+        var payload = body as JsonObject;
+        var detail = ReadString(payload, "error") ?? ReadString(payload, "message");
+        var status = (int)response.StatusCode;
+        var summary = detail ?? string.Format(
+            CultureInfo.InvariantCulture,
+            "{0} {1}",
+            status,
+            string.IsNullOrEmpty(response.ReasonPhrase) ? "Request failed" : response.ReasonPhrase);
+
+        return new ApiException(
+            status,
+            string.Format(CultureInfo.InvariantCulture, "{0} {1} failed: {2}", method, url, summary),
+            ReadString(payload, "code"),
+            body,
+            raw.Length == 0 ? null : raw,
+            method,
+            url);
+    }
+
+    private static string? ReadString(JsonObject? payload, string key)
+    {
+        if (payload == null)
+        {
+            return null;
+        }
+
+        if (!payload.TryGetPropertyValue(key, out var node) || node == null)
+        {
+            return null;
+        }
+
+        // TryGetValue rather than GetValue: a server that puts a number where a
+        // string was expected should not turn a 404 into a cast exception.
+        return node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
+    }
+}

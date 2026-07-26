@@ -1,0 +1,194 @@
+<?php
+// This file ships as-is. Read ./README.md before editing.
+// --8<-- everything below this line is emitted into the generated SDK --8<--
+
+declare(strict_types=1);
+
+namespace Infrawrench\Sdk\Internal;
+
+use Infrawrench\Sdk\FileUpload;
+
+/**
+ * Narrowing helpers used by every generated `fromArray()`.
+ *
+ * `json_decode` produces `mixed`, and the models declare real types, so
+ * something has to bridge the two. These do it *leniently*: a field that is
+ * missing, null, or the wrong JSON type becomes the zero value rather than
+ * raising.
+ *
+ * That is a deliberate trade. The alternative — validating each field against
+ * the spec — turns any additive or slightly-off server response into a total
+ * failure of an already-deployed client, for a payload the caller might not
+ * even be reading. The TypeScript client makes the same call and does no
+ * runtime validation at all; this is the typed-language equivalent. Callers who
+ * need certainty should check the field they care about.
+ */
+final class Coerce
+{
+    public static function toString(mixed $value): string
+    {
+        if (is_string($value)) {
+            return $value;
+        }
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        return is_scalar($value) ? (string) $value : '';
+    }
+
+    public static function toStringOrNull(mixed $value): ?string
+    {
+        return $value === null ? null : self::toString($value);
+    }
+
+    public static function toInt(mixed $value): int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+
+        // `is_numeric` first so a non-numeric string does not silently become 0
+        // via PHP's string-to-int rules; it still ends up 0, but only once.
+        return is_float($value) || (is_string($value) && is_numeric($value)) || is_bool($value)
+            ? (int) $value
+            : 0;
+    }
+
+    public static function toIntOrNull(mixed $value): ?int
+    {
+        return $value === null ? null : self::toInt($value);
+    }
+
+    public static function toFloat(mixed $value): float
+    {
+        if (is_float($value) || is_int($value)) {
+            return (float) $value;
+        }
+
+        return is_string($value) && is_numeric($value) ? (float) $value : 0.0;
+    }
+
+    public static function toFloatOrNull(mixed $value): ?float
+    {
+        return $value === null ? null : self::toFloat($value);
+    }
+
+    public static function toBool(mixed $value): bool
+    {
+        return is_bool($value) ? $value : (bool) $value;
+    }
+
+    public static function toBoolOrNull(mixed $value): ?bool
+    {
+        return $value === null ? null : self::toBool($value);
+    }
+
+    /**
+     * A JSON object, as an associative array.
+     *
+     * @return array<string, mixed>
+     */
+    public static function toArray(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        /** @var array<string, mixed> $out */
+        $out = [];
+        foreach ($value as $key => $item) {
+            $out[(string) $key] = $item;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public static function toArrayOrNull(mixed $value): ?array
+    {
+        return $value === null ? null : self::toArray($value);
+    }
+
+    /**
+     * A JSON array, reindexed so it really is a `list` and `array_map` keeps it one.
+     *
+     * @return list<mixed>
+     */
+    public static function toList(mixed $value): array
+    {
+        return is_array($value) ? array_values($value) : [];
+    }
+
+    /**
+     * @return list<mixed>|null
+     */
+    public static function toListOrNull(mixed $value): ?array
+    {
+        return $value === null ? null : self::toList($value);
+    }
+
+    /**
+     * File bytes, which reach a model either as raw content from the wire or as
+     * a {@see FileUpload} the caller built on the way out.
+     */
+    public static function toBytes(mixed $value): FileUpload|string
+    {
+        return $value instanceof FileUpload ? $value : self::toString($value);
+    }
+
+    public static function toBytesOrNull(mixed $value): FileUpload|string|null
+    {
+        return $value === null ? null : self::toBytes($value);
+    }
+
+    /**
+     * Decode a JSON array element-wise.
+     *
+     * Exists so the generated `fromArray()` bodies never have to name the same
+     * subexpression twice — which, given they are one big named-argument call,
+     * is the difference between a readable model and an unreadable one.
+     *
+     * @template T
+     *
+     * @param  callable(mixed): T $decode
+     * @return list<T>
+     */
+    public static function mapList(mixed $value, callable $decode): array
+    {
+        return array_map($decode, self::toList($value));
+    }
+
+    /**
+     * Decode a JSON object value-wise, keeping the keys.
+     *
+     * @template T
+     *
+     * @param  callable(mixed): T $decode
+     * @return array<string, T>
+     */
+    public static function mapValues(mixed $value, callable $decode): array
+    {
+        $out = [];
+        foreach (self::toArray($value) as $key => $item) {
+            $out[$key] = $decode($item);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Apply `$decode` unless the value is absent.
+     *
+     * @template T
+     *
+     * @param  callable(mixed): T $decode
+     * @return T|null
+     */
+    public static function nullable(mixed $value, callable $decode): mixed
+    {
+        return $value === null ? null : $decode($value);
+    }
+}

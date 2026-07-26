@@ -1,0 +1,137 @@
+/*
+ * Part of the hand-written half of the generated Java SDK. See
+ * InfrawrenchException.java.txt for why these files carry a `.txt` suffix.
+ */
+// --8<-- everything below this line is emitted verbatim into the SDK --8<--
+package com.infrawrench.sdk;
+
+import java.net.http.HttpClient;
+import java.time.Duration;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/**
+ * Everything the transport needs, assembled once.
+ *
+ * <p>Deliberately API-agnostic — {@link #defaultPathParam()} is "the value for
+ * the path parameter the client carries as configuration", not "the org id".
+ * The generated client puts the domain name on it: {@code
+ * APIV1Client.builder().orgId(…)} is the builder you actually call, and it
+ * forwards here. That keeps this file free of anything the spec could rename.
+ */
+public final class ClientOptions {
+
+  private final String baseUrl;
+  private final String apiKey;
+  private final String defaultPathParam;
+  private final Map<String, String> headers;
+  private final Duration timeout;
+  private final HttpClient httpClient;
+
+  private ClientOptions(Builder builder) {
+    this.baseUrl = builder.baseUrl;
+    this.apiKey = builder.apiKey;
+    this.defaultPathParam = builder.defaultPathParam;
+    this.headers = Collections.unmodifiableMap(new LinkedHashMap<>(builder.headers));
+    this.timeout = builder.timeout;
+    this.httpClient = builder.httpClient;
+  }
+
+  public static Builder builder() {
+    return new Builder();
+  }
+
+  /** Base URL, or {@code null} to use the one the spec advertises. */
+  public String baseUrl() {
+    return baseUrl;
+  }
+
+  /** API key sent as {@code Authorization: Bearer …}, or {@code null}. */
+  public String apiKey() {
+    return apiKey;
+  }
+
+  /** Default value for the client-scoped path parameter, or {@code null}. */
+  public String defaultPathParam() {
+    return defaultPathParam;
+  }
+
+  /** Headers merged into every request. Never {@code null}. */
+  public Map<String, String> headers() {
+    return headers;
+  }
+
+  /** Per-request timeout, or {@code null} for none. */
+  public Duration timeout() {
+    return timeout;
+  }
+
+  /** Caller-supplied {@link HttpClient}, or {@code null} to let the SDK build one. */
+  public HttpClient httpClient() {
+    return httpClient;
+  }
+
+  /** Copy these options so a caller can vary one field. */
+  public Builder toBuilder() {
+    Builder builder = new Builder();
+    builder.baseUrl = baseUrl;
+    builder.apiKey = apiKey;
+    builder.defaultPathParam = defaultPathParam;
+    builder.headers.putAll(headers);
+    builder.timeout = timeout;
+    builder.httpClient = httpClient;
+    return builder;
+  }
+
+  /** Mutable accumulator. Not thread-safe; the {@link ClientOptions} it builds is. */
+  public static final class Builder {
+
+    private String baseUrl;
+    private String apiKey;
+    private String defaultPathParam;
+    private final Map<String, String> headers = new LinkedHashMap<>();
+    private Duration timeout;
+    private HttpClient httpClient;
+
+    Builder() {}
+
+    public Builder baseUrl(String value) {
+      this.baseUrl = value;
+      return this;
+    }
+
+    public Builder apiKey(String value) {
+      this.apiKey = value;
+      return this;
+    }
+
+    public Builder defaultPathParam(String value) {
+      this.defaultPathParam = value;
+      return this;
+    }
+
+    public Builder header(String name, String value) {
+      this.headers.put(name, value);
+      return this;
+    }
+
+    public Builder timeout(Duration value) {
+      this.timeout = value;
+      return this;
+    }
+
+    /**
+     * Supply the {@link HttpClient}. Use this for a proxy, a custom
+     * {@code SSLContext}, or to share one connection pool across clients.
+     */
+    public Builder httpClient(HttpClient value) {
+      this.httpClient = value;
+      return this;
+    }
+
+    public ClientOptions build() {
+      return new ClientOptions(this);
+    }
+  }
+}

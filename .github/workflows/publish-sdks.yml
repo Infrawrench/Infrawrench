@@ -1,0 +1,394 @@
+# Generate the nine client SDKs, then build and publish each one.
+#
+# Shape: one `generate` job produces every package once and uploads them as an
+# artifact; every publish job downloads that same artifact. Nothing regenerates
+# per-language, so all nine registries are guaranteed to receive bytes built
+# from one run of the generator against one spec.
+#
+# Gate: publishing only happens when the API version changes. The version is
+# `API_VERSION` in app/packages/web/src/api/openapi/version.ts, which is stamped
+# into openapi.json and into all nine package manifests. `generate` checks
+# whether the tag `sdk-v<version>` already exists and skips everything
+# downstream if it does — so re-running on an unchanged spec is a no-op, and a
+# re-run after a partial failure resumes rather than double-publishing.
+#
+# Auth: OIDC trusted publishing wherever the registry supports it, so no
+# long-lived tokens are stored. As of July 2026 that is npm, PyPI, RubyGems,
+# crates.io and NuGet. Maven Central has no OIDC path and needs Portal
+# credentials plus a GPG key; the three registry-less languages (Go, Swift, PHP)
+# publish by pushing a tag to a satellite repository, which needs a GitHub App
+# token. Those three secrets are the whole non-OIDC surface.
+name: Publish SDKs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/packages/web/src/api/openapi/**"
+      - "app/packages/web/openapi.json"
+      - "app/packages/web/scripts/sdk/**"
+      - ".github/workflows/publish-sdks.yml"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Publish even if this API version was already released"
+        type: boolean
+        default: false
+
+# Publishing is not cancel-safe: a half-cancelled fan-out leaves some registries
+# on the new version and some on the old.
+concurrency:
+  group: publish-sdks
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # Satellite repositories for the languages with no central registry. Go module
+  # paths and SwiftPM URLs resolve straight to a Git URL, so these names are
+  # load-bearing — `packageName` in the Go target must match GO_REPO exactly.
+  GO_REPO: infrawrench-go
+  SWIFT_REPO: infrawrench-swift
+  PHP_REPO: infrawrench-php
+
+jobs:
+  generate:
+    name: Generate
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.gate.outputs.version }}
+      publish: ${{ steps.gate.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Tags are the publish ledger; a shallow clone can't see them.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: corepack enable
+
+      # `--ignore-scripts` skips native builds (node-pty, ssh2) that the
+      # generator never loads: it reads the committed openapi.json and needs
+      # only tsx and typescript.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Generate all SDKs
+        run: pnpm --filter @infrawrench/web generate:sdk -- --force
+
+      - name: Decide whether to publish
+        id: gate
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./app/packages/web/openapi.json').info.version")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ inputs.force }}" = "true" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Forced publish of API v$VERSION."
+          elif git rev-parse -q --verify "refs/tags/sdk-v$VERSION" >/dev/null; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::API v$VERSION is already released (tag sdk-v$VERSION). Nothing to publish."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::API v$VERSION has not been released yet. Publishing."
+          fi
+
+      - name: Verify every package carries the API version
+        if: steps.gate.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          V="${{ steps.gate.outputs.version }}"
+          grep -q "\"version\": \"$V\"" sdk/typescript/package.json
+          grep -q "version = \"$V\"" sdk/python/pyproject.toml
+          grep -q "$V" sdk/ruby/lib/infrawrench/version.rb
+          grep -q "<version>$V</version>" sdk/java/pom.xml
+          grep -q "<Version>$V</Version>" sdk/csharp/Infrawrench.Sdk.csproj
+          grep -q "^version = \"$V\"" sdk/rust/Cargo.toml
+          echo "All manifests report $V."
+
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.publish == 'true'
+        with:
+          name: sdks
+          path: sdk/
+          retention-days: 7
+          include-hidden-files: true
+
+  # --------------------------------------------------------------------------
+  # OIDC trusted publishing — no stored credentials.
+  # --------------------------------------------------------------------------
+
+  npm:
+    name: "npm — @infrawrench/sdk"
+    needs: generate
+    if: needs.generate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: sdks, path: sdk }
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm >= 11.5.1; the bundled CLI may be older.
+      - run: npm install -g npm@latest
+      - name: Publish
+        working-directory: sdk/typescript
+        # Scoped packages default to restricted. Provenance is automatic under
+        # trusted publishing, so no --provenance flag.
+        run: npm publish --access public
+
+  pypi:
+    name: "PyPI — infrawrench-sdk"
+    needs: generate
+    if: needs.generate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: sdks, path: sdk }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python -m pip install --upgrade build
+      - name: Build wheel and sdist
+        working-directory: sdk/python
+        run: python -m build
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: sdk/python/dist
+
+  rubygems:
+    name: "RubyGems — infrawrench-sdk"
+    needs: generate
+    if: needs.generate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: sdks, path: sdk }
+      - uses: ruby/setup-ruby@v1
+        with: { ruby-version: "3.3" }
+      # `rubygems/release-gem` assumes bundler's rake release tasks, which a
+      # generated gem has no reason to carry — configure credentials from OIDC
+      # and drive gem build/push directly instead.
+      - uses: rubygems/configure-rubygems-credentials@v1
+      - name: Build and push
+        working-directory: sdk/ruby
+        run: |
+          set -euo pipefail
+          gem build infrawrench-sdk.gemspec
+          gem push "infrawrench-sdk-${{ needs.generate.outputs.version }}.gem"
+
+  crates:
+    name: "crates.io — infrawrench-sdk"
+    needs: generate
+    if: needs.generate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: sdks, path: sdk }
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        working-directory: sdk/rust
+        run: cargo build --locked || cargo build
+      # Cargo does not speak OIDC itself (RFC 3691) — this action exchanges the
+      # GitHub token for a 30-minute crates.io token and revokes it on exit.
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - name: Publish
+        working-directory: sdk/rust
+        run: cargo publish --token "${{ steps.auth.outputs.token }}"
+
+  nuget:
+    name: "NuGet — Infrawrench.Sdk"
+    needs: generate
+    if: needs.generate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: sdks, path: sdk }
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "8.0.x" }
+      - name: Build and pack
+        working-directory: sdk/csharp
+        run: |
+          dotnet build -c Release
+          dotnet pack -c Release -o ../../nupkg
+      # nuget.org keys live one hour, so mint immediately before the push.
+      - uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+      - name: Push
+        run: |
+          dotnet nuget push "nupkg/*.nupkg" \
+            --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+  # --------------------------------------------------------------------------
+  # Maven Central — the one registry with no OIDC trusted publishing.
+  # --------------------------------------------------------------------------
+
+  maven:
+    name: "Maven Central — com.infrawrench:infrawrench-sdk"
+    needs: generate
+    if: needs.generate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: sdks, path: sdk }
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+          # Writes a settings.xml with a <server id="central"> reading these env
+          # vars, which is what central-publishing-maven-plugin authenticates with.
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_PASSWORD
+          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+      - name: Deploy
+        working-directory: sdk/java
+        # `-Prelease` adds the sources/javadoc/GPG/publishing plugins that
+        # Central requires and that a local build has no use for.
+        run: mvn --batch-mode --no-transfer-progress -Prelease deploy
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+
+  # --------------------------------------------------------------------------
+  # Go, Swift and PHP have no central registry — `go get`, SwiftPM and Packagist
+  # all resolve a Git URL and a semver tag, so publishing is a push.
+  # --------------------------------------------------------------------------
+
+  git-registries:
+    name: Git registries (Go, Swift, PHP)
+    needs: generate
+    if: needs.generate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+    strategy:
+      # Sequential: one bad push should not leave two of three tagged.
+      max-parallel: 1
+      matrix:
+        include:
+          - language: go
+            repo_var: GO_REPO
+          - language: swift
+            repo_var: SWIFT_REPO
+          - language: php
+            repo_var: PHP_REPO
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: sdks, path: sdk }
+
+      # OIDC cannot grant write access to a *different* repository, so this is
+      # the one place a stored credential is unavoidable. A GitHub App is used
+      # rather than a PAT: the token is installation-scoped and expires in an
+      # hour.
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.SDK_PUBLISHER_APP_ID }}
+          private-key: ${{ secrets.SDK_PUBLISHER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ env[matrix.repo_var] }}
+
+      - name: Push and tag
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ env[matrix.repo_var] }}
+          VERSION: ${{ needs.generate.outputs.version }}
+          LANGUAGE: ${{ matrix.language }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git" satellite
+          cd satellite
+
+          # Replace the tree wholesale — the satellite mirrors generated output,
+          # so a file dropped from the spec must disappear here too. `.git` is
+          # the only thing that survives, so anything a satellite needs to keep
+          # across releases has to be added to this exclusion list.
+          find . -mindepth 1 -maxdepth 1 -not -name .git -exec rm -rf {} +
+          cp -R "../sdk/${LANGUAGE}/." .
+          rm -f .sdk-stamp.json
+
+          git config user.name "infrawrench-sdk-bot"
+          git config user.email "astrid@infrawrench.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "::notice::${OWNER}/${REPO} already matches v${VERSION}; nothing to commit."
+          else
+            git commit -m "Release v${VERSION}
+
+          Generated from the Infrawrench OpenAPI spec. Do not edit here — see
+          https://github.com/${{ github.repository }}."
+            git push origin HEAD
+          fi
+
+          # SwiftPM and Go both want a bare `vX.Y.Z` tag.
+          if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
+            echo "::notice::${OWNER}/${REPO} is already tagged v${VERSION}."
+          else
+            git tag -a "v${VERSION}" -m "v${VERSION}"
+            git push origin "v${VERSION}"
+          fi
+
+      # Ask the module proxy to fetch the new version so the first `go get`
+      # doesn't have to wait for it.
+      - name: Warm the Go module proxy
+        if: matrix.language == 'go'
+        run: |
+          curl -fsS "https://proxy.golang.org/github.com/!infrawrench/infrawrench-go/@v/v${{ needs.generate.outputs.version }}.info" \
+            || echo "::warning::Proxy has not indexed the tag yet; it will catch up."
+
+  # --------------------------------------------------------------------------
+
+  tag:
+    name: Record the release
+    needs: [generate, npm, pypi, rubygems, crates, nuget, maven, git-registries]
+    if: needs.generate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      # Written only after every registry has accepted the version, so the tag
+      # means "all nine are live" — which is exactly what the gate reads back.
+      - name: Tag sdk-v${{ needs.generate.outputs.version }}
+        run: |
+          set -euo pipefail
+          V="${{ needs.generate.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "sdk-v$V" -m "SDKs published for API v$V"
+          git push origin "sdk-v$V"

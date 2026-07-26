@@ -1,6 +1,7 @@
 import { OpenAPIRegistry, OpenApiGeneratorV31 } from "@asteasolutions/zod-to-openapi";
 import { buildDynamicEnums } from "./dynamic";
 import { injectInternalMarkers, toPublicDocument } from "./public-spec";
+import { API_VERSION } from "./version";
 import type { BuildContext } from "./context";
 
 type OpenAPIObject = ReturnType<OpenApiGeneratorV31["generateDocument"]>;
@@ -37,7 +38,7 @@ import { registerPushPaths } from "./paths/push";
 interface BuildOptions {
   /** Server URL(s) to advertise in the spec. */
   servers?: Array<{ url: string; description?: string }>;
-  /** Override the spec version (defaults to the package.json version). */
+  /** Override the spec version (defaults to `API_VERSION`). */
   version?: string;
 }
 
@@ -108,7 +109,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
     openapi: "3.1.0",
     info: {
       title: "Infrawrench API",
-      version: opts.version ?? "0.1.0",
+      version: opts.version ?? API_VERSION,
       description:
         "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
       license: { name: "BUSL-1.1", url: "https://mariadb.com/bsl11/" },

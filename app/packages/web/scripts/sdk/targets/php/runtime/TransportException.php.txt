@@ -1,0 +1,18 @@
+<?php
+// This file ships as-is. Read ./README.md before editing.
+// --8<-- everything below this line is emitted into the generated SDK --8<--
+
+declare(strict_types=1);
+
+namespace Infrawrench\Sdk;
+
+/**
+ * The request never produced a usable response: DNS failure, connection reset,
+ * TLS error, timeout, or a 2xx whose body claimed to be JSON and was not.
+ *
+ * Kept distinct from {@see ApiException} because the two want different
+ * handling — this one is worth retrying, an `ApiException` usually is not.
+ */
+class TransportException extends \RuntimeException
+{
+}

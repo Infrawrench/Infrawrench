@@ -7,25 +7,22 @@
  *   - Plus enums for `pluginId` / `resourceTypeId` sourced from the live plugin
  *     registry via `loadPlugins()` — so the spec always matches the running server.
  *
+ * Then the client SDKs are refreshed from it, but only if they're out of date —
+ * see `./sdk/generate.ts`. To rebuild them on their own, use `generate:sdk`.
+ *
  * Usage:  pnpm --filter @infrawrench/web generate:openapi
  */
 import { writeFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildOpenApiDocument } from "../src/api/openapi/index";
+import { generateSdks } from "./sdk/generate";
+import { SPEC_SERVERS } from "./spec-servers";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const out = resolve(here, "..", "openapi.json");
 
-// Production first: generators take the first server as the client's default
-// base URL, and this artifact is what people generate SDKs from. (A running
-// server advertises its own origin instead — see `defaultServers()`.)
-const doc = await buildOpenApiDocument({
-  servers: [
-    { url: "https://app.infrawrench.com", description: "Production" },
-    { url: "http://localhost:3000", description: "Local dev" },
-  ],
-});
+const doc = await buildOpenApiDocument({ servers: [...SPEC_SERVERS] });
 
 await writeFile(out, JSON.stringify(doc, null, 2) + "\n");
 
@@ -40,3 +37,5 @@ const opCount = Object.values(doc.paths ?? {}).reduce<number>(
 );
 console.log(`✓ Wrote ${out}`);
 console.log(`  ${pathCount} paths, ${opCount} operations`);
+
+await generateSdks({ document: doc, log: (message) => console.log(message) });

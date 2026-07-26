@@ -1,0 +1,42 @@
+// The hand-written half of the generated C# SDK.
+//
+// Nothing in this repository compiles this file — the `.cs.txt` suffix keeps it
+// out of every glob — but the generator copies everything below the sentinel
+// into the emitted package verbatim, with the generated banner prepended. It is
+// kept as real C# rather than a template string in ../index.ts so it can be read
+// and reviewed as the code it is.
+//
+// --8<-- everything below this line is copied into the generated SDK --8<--
+
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace Infrawrench.Sdk;
+
+/// <summary>
+/// The one <see cref="JsonSerializerOptions"/> instance the client serializes
+/// and deserializes with.
+/// </summary>
+/// <remarks>
+/// Shared and cached deliberately: System.Text.Json builds a metadata cache per
+/// options instance, so constructing a fresh one per call would re-reflect over
+/// every model on every request.
+/// <para>
+/// Every generated property carries an explicit <c>[JsonPropertyName]</c>, so no
+/// naming policy is configured — the wire names come from the spec, not from a
+/// casing convention that could drift away from it.
+/// </para>
+/// </remarks>
+internal static class SdkJson
+{
+    internal static readonly JsonSerializerOptions Options = new JsonSerializerOptions
+    {
+        // An optional field the caller left unset must not appear on the wire at
+        // all: several endpoints treat an explicit null as "clear this" and a
+        // missing key as "leave it alone".
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        // The spec's names are already exact. Case-insensitive matching is cheap
+        // insurance against a server that changes casing on a field.
+        PropertyNameCaseInsensitive = true,
+    };
+}

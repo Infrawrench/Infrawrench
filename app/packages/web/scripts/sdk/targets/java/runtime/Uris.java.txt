@@ -1,0 +1,41 @@
+/*
+ * Part of the hand-written half of the generated Java SDK. See
+ * InfrawrenchException.java.txt for why these files carry a `.txt` suffix.
+ */
+// --8<-- everything below this line is emitted verbatim into the SDK --8<--
+package com.infrawrench.sdk;
+
+import java.nio.charset.StandardCharsets;
+
+/**
+ * Percent-encoding for path segments and query values.
+ *
+ * <p>{@code java.net.URLEncoder} is the wrong tool here despite the name: it
+ * implements {@code application/x-www-form-urlencoded}, so it turns a space into
+ * {@code +}. That is correct in a form body and wrong in a path segment, where a
+ * resource id containing a space would resolve to a literal plus sign. This is
+ * the {@code encodeURIComponent} rule instead, applied to both halves of the URL
+ * so the two never disagree.
+ */
+final class Uris {
+
+  private static final String UNRESERVED =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()";
+
+  private Uris() {}
+
+  static String encode(String value) {
+    StringBuilder out = new StringBuilder(value.length());
+    for (byte b : value.getBytes(StandardCharsets.UTF_8)) {
+      char c = (char) (b & 0xFF);
+      if (UNRESERVED.indexOf(c) >= 0) {
+        out.append(c);
+      } else {
+        out.append('%');
+        out.append(Character.toUpperCase(Character.forDigit((b >> 4) & 0xF, 16)));
+        out.append(Character.toUpperCase(Character.forDigit(b & 0xF, 16)));
+      }
+    }
+    return out.toString();
+  }
+}

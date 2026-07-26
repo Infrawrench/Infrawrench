@@ -1,0 +1,598 @@
+/*
+ * Part of the hand-written half of the generated Java SDK. See
+ * InfrawrenchException.java.txt for why these files carry a `.txt` suffix.
+ */
+// --8<-- everything below this line is emitted verbatim into the SDK --8<--
+package com.infrawrench.sdk;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.GenericArrayType;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.RecordComponent;
+import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
+import java.lang.reflect.WildcardType;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * The SDK's JSON codec.
+ *
+ * <p>Jackson would be three lines instead of this file, and that is exactly why
+ * it isn't here: a client library that drags in a serialization framework drags
+ * in its version conflicts too, and "which Jackson does this pin?" is the single
+ * most common reason an SDK cannot be added to an existing service. Zero
+ * dependencies is a feature, and the subset of JSON an OpenAPI document can
+ * describe is small enough to hand-write.
+ *
+ * <p>Models are records, so the mapping is driven by {@link Class#getRecordComponents()}
+ * rather than by generated per-type serializers: a record's components are its
+ * schema, complete with generic types ({@code List<Account>} survives erasure on
+ * {@link RecordComponent#getGenericType()}), so one reflective walk replaces
+ * ~350 generated methods. The cost is reflection at runtime, which matters for
+ * GraalVM native-image (register the model package for reflection) and nowhere
+ * else.
+ */
+public final class Json {
+
+  private Json() {}
+
+  // -------------------------------------------------------------------------
+  // Encoding
+  // -------------------------------------------------------------------------
+
+  /** Serialize a record, {@code Map}, {@code List} or scalar to JSON text. */
+  public static String encode(Object value) {
+    StringBuilder out = new StringBuilder();
+    write(value, out);
+    return out.toString();
+  }
+
+  /**
+   * An if/else ladder rather than a pattern switch: the generated package
+   * targets Java 17, where pattern matching for {@code switch} is still a
+   * preview feature. {@code instanceof} patterns are standard from 16, so they
+   * are fair game.
+   */
+  private static void write(Object value, StringBuilder out) {
+    if (value == null) {
+      out.append("null");
+    } else if (value instanceof String s) {
+      writeString(s, out);
+    } else if (value instanceof Boolean b) {
+      out.append(b.booleanValue());
+    } else if (value instanceof Double || value instanceof Float) {
+      writeDouble(((Number) value).doubleValue(), out);
+    } else if (value instanceof Number n) {
+      out.append(n);
+    } else if (value instanceof byte[] bytes) {
+      writeString(Base64.getEncoder().encodeToString(bytes), out);
+    } else if (value instanceof Enum<?> e) {
+      writeString(e.name(), out);
+    } else if (value instanceof FileUpload) {
+      throw new JsonException(
+          "A file can only be sent as multipart/form-data, not inside a JSON body.");
+    } else if (value instanceof Map<?, ?> map) {
+      writeMap(map, out);
+    } else if (value instanceof Collection<?> items) {
+      writeArray(items, out);
+    } else if (value instanceof Object[] items) {
+      writeArray(List.of(items), out);
+    } else {
+      writeObject(value, out);
+    }
+  }
+
+  private static void writeDouble(double value, StringBuilder out) {
+    if (Double.isNaN(value) || Double.isInfinite(value)) {
+      throw new JsonException("JSON cannot represent " + value);
+    }
+    // Whole numbers print as `1` rather than `1.0`: the API's integer-valued
+    // fields are typed `number` in places, and a trailing `.0` fails an
+    // int-shaped server-side validator.
+    if (value == Math.rint(value) && Math.abs(value) < 1e15) {
+      out.append((long) value);
+    } else {
+      out.append(value);
+    }
+  }
+
+  private static void writeMap(Map<?, ?> map, StringBuilder out) {
+    out.append('{');
+    boolean first = true;
+    for (Map.Entry<?, ?> entry : map.entrySet()) {
+      if (entry.getValue() == null) {
+        continue;
+      }
+      if (!first) {
+        out.append(',');
+      }
+      first = false;
+      writeString(String.valueOf(entry.getKey()), out);
+      out.append(':');
+      write(entry.getValue(), out);
+    }
+    out.append('}');
+  }
+
+  private static void writeArray(Collection<?> items, StringBuilder out) {
+    out.append('[');
+    boolean first = true;
+    for (Object item : items) {
+      if (!first) {
+        out.append(',');
+      }
+      first = false;
+      write(item, out);
+    }
+    out.append(']');
+  }
+
+  private static void writeObject(Object value, StringBuilder out) {
+    if (!value.getClass().isRecord()) {
+      throw new JsonException("Cannot serialize " + value.getClass().getName() + " to JSON");
+    }
+    out.append('{');
+    boolean first = true;
+    for (RecordComponent component : value.getClass().getRecordComponents()) {
+      Object member = read(component, value);
+      JsonField field = component.getAnnotation(JsonField.class);
+      // Absent optional fields are dropped; a required-but-nullable field is
+      // sent as an explicit null, because the schema demands the key.
+      if (member == null && (field == null || !field.required())) {
+        continue;
+      }
+      if (!first) {
+        out.append(',');
+      }
+      first = false;
+      writeString(wireName(component), out);
+      out.append(':');
+      write(member, out);
+    }
+    out.append('}');
+  }
+
+  private static void writeString(String value, StringBuilder out) {
+    out.append('"');
+    for (int i = 0; i < value.length(); i++) {
+      char c = value.charAt(i);
+      switch (c) {
+        case '"' -> out.append("\\\"");
+        case '\\' -> out.append("\\\\");
+        case '\n' -> out.append("\\n");
+        case '\r' -> out.append("\\r");
+        case '\t' -> out.append("\\t");
+        case '\b' -> out.append("\\b");
+        case '\f' -> out.append("\\f");
+        default -> {
+          if (c < 0x20) {
+            out.append(String.format("\\u%04x", (int) c));
+          } else {
+            out.append(c);
+          }
+        }
+      }
+    }
+    out.append('"');
+  }
+
+  // -------------------------------------------------------------------------
+  // Decoding
+  // -------------------------------------------------------------------------
+
+  /** Parse JSON text into the type the spec promised. */
+  public static Object decode(String text, Type type) {
+    return convert(parse(text), type);
+  }
+
+  /** Parse JSON text into {@code Map}/{@code List}/{@code String}/number/boolean/null. */
+  public static Object parse(String text) {
+    Parser parser = new Parser(text);
+    parser.skipWhitespace();
+    Object value = parser.value();
+    parser.skipWhitespace();
+    if (!parser.done()) {
+      throw new JsonException("Trailing content after JSON value at offset " + parser.offset());
+    }
+    return value;
+  }
+
+  /** Coerce an already-parsed tree into {@code type}. */
+  public static Object convert(Object tree, Type type) {
+    Class<?> raw = rawClass(type);
+    if (tree == null) {
+      return raw.isPrimitive() ? primitiveZero(raw) : null;
+    }
+    if (raw == Object.class || raw == null) {
+      return tree;
+    }
+    if (raw == String.class) {
+      return tree instanceof String ? tree : String.valueOf(tree);
+    }
+    if (raw == boolean.class || raw == Boolean.class) {
+      return tree instanceof Boolean b ? b : Boolean.valueOf(String.valueOf(tree));
+    }
+    if (raw == long.class || raw == Long.class) {
+      return toNumber(tree).longValue();
+    }
+    if (raw == int.class || raw == Integer.class) {
+      return toNumber(tree).intValue();
+    }
+    if (raw == double.class || raw == Double.class) {
+      return toNumber(tree).doubleValue();
+    }
+    if (raw == float.class || raw == Float.class) {
+      return toNumber(tree).floatValue();
+    }
+    if (raw == byte[].class) {
+      return Base64.getDecoder().decode(String.valueOf(tree));
+    }
+    if (raw.isEnum()) {
+      return toEnum(raw, String.valueOf(tree));
+    }
+    if (Collection.class.isAssignableFrom(raw)) {
+      return toList(tree, typeArgument(type, 0));
+    }
+    if (Map.class.isAssignableFrom(raw)) {
+      return toMap(tree, typeArgument(type, 1));
+    }
+    if (raw.isRecord()) {
+      return toRecord(tree, raw);
+    }
+    if (raw.isInstance(tree)) {
+      return tree;
+    }
+    throw new JsonException(
+        "Cannot decode " + tree.getClass().getSimpleName() + " into " + raw.getName());
+  }
+
+  private static Number toNumber(Object tree) {
+    if (tree instanceof Number n) {
+      return n;
+    }
+    try {
+      return Double.valueOf(String.valueOf(tree));
+    } catch (NumberFormatException e) {
+      throw new JsonException("Expected a number, got " + tree, e);
+    }
+  }
+
+  private static Object toEnum(Class<?> raw, String wire) {
+    for (Object constant : raw.getEnumConstants()) {
+      if (((Enum<?>) constant).name().equals(wire)) {
+        return constant;
+      }
+    }
+    throw new JsonException("Unknown value \"" + wire + "\" for enum " + raw.getName());
+  }
+
+  private static Object toList(Object tree, Type element) {
+    if (!(tree instanceof Collection<?> items)) {
+      throw new JsonException("Expected a JSON array, got " + tree.getClass().getSimpleName());
+    }
+    List<Object> out = new ArrayList<>(items.size());
+    for (Object item : items) {
+      out.add(convert(item, element));
+    }
+    return out;
+  }
+
+  private static Object toMap(Object tree, Type value) {
+    if (!(tree instanceof Map<?, ?> entries)) {
+      throw new JsonException("Expected a JSON object, got " + tree.getClass().getSimpleName());
+    }
+    Map<String, Object> out = new LinkedHashMap<>();
+    for (Map.Entry<?, ?> entry : entries.entrySet()) {
+      out.put(String.valueOf(entry.getKey()), convert(entry.getValue(), value));
+    }
+    return out;
+  }
+
+  private static Object toRecord(Object tree, Class<?> raw) {
+    if (!(tree instanceof Map<?, ?> entries)) {
+      throw new JsonException(
+          "Expected a JSON object for " + raw.getSimpleName() + ", got "
+              + tree.getClass().getSimpleName());
+    }
+    RecordComponent[] components = raw.getRecordComponents();
+    Class<?>[] parameters = new Class<?>[components.length];
+    Object[] arguments = new Object[components.length];
+    for (int i = 0; i < components.length; i++) {
+      parameters[i] = components[i].getType();
+      arguments[i] = convert(entries.get(wireName(components[i])), components[i].getGenericType());
+    }
+    try {
+      Constructor<?> canonical = raw.getDeclaredConstructor(parameters);
+      return canonical.newInstance(arguments);
+    } catch (NoSuchMethodException | InstantiationException | IllegalAccessException e) {
+      throw new JsonException("Cannot construct " + raw.getName(), e);
+    } catch (InvocationTargetException e) {
+      throw new JsonException(
+          "Constructing " + raw.getName() + " failed: " + e.getCause().getMessage(), e.getCause());
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Reflection helpers, shared with Multipart
+  // -------------------------------------------------------------------------
+
+  /** JSON key for one record component, honouring {@link JsonField#name()}. */
+  static String wireName(RecordComponent component) {
+    JsonField field = component.getAnnotation(JsonField.class);
+    return field == null || field.name().isEmpty() ? component.getName() : field.name();
+  }
+
+  /** Wire name → value for every non-null component, in declaration order. */
+  static Map<String, Object> formFields(Object value) {
+    if (value instanceof Map<?, ?> map) {
+      Map<String, Object> out = new LinkedHashMap<>();
+      for (Map.Entry<?, ?> entry : map.entrySet()) {
+        if (entry.getValue() != null) {
+          out.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+      }
+      return out;
+    }
+    if (!value.getClass().isRecord()) {
+      throw new JsonException(
+          "A multipart body must be a record or a Map, got " + value.getClass().getName());
+    }
+    Map<String, Object> out = new LinkedHashMap<>();
+    for (RecordComponent component : value.getClass().getRecordComponents()) {
+      Object member = read(component, value);
+      if (member != null) {
+        out.put(wireName(component), member);
+      }
+    }
+    return out;
+  }
+
+  private static Object read(RecordComponent component, Object owner) {
+    try {
+      return component.getAccessor().invoke(owner);
+    } catch (IllegalAccessException | InvocationTargetException e) {
+      throw new JsonException(
+          "Cannot read " + owner.getClass().getSimpleName() + "." + component.getName(), e);
+    }
+  }
+
+  private static Class<?> rawClass(Type type) {
+    if (type instanceof Class<?> c) {
+      return c;
+    }
+    if (type instanceof ParameterizedType p) {
+      return rawClass(p.getRawType());
+    }
+    if (type instanceof GenericArrayType) {
+      return Object[].class;
+    }
+    if (type instanceof WildcardType w && w.getUpperBounds().length > 0) {
+      return rawClass(w.getUpperBounds()[0]);
+    }
+    if (type instanceof TypeVariable<?>) {
+      return Object.class;
+    }
+    return Object.class;
+  }
+
+  private static Type typeArgument(Type type, int index) {
+    if (type instanceof ParameterizedType parameterized) {
+      Type[] arguments = parameterized.getActualTypeArguments();
+      if (index < arguments.length) {
+        return arguments[index];
+      }
+    }
+    return Object.class;
+  }
+
+  private static Object primitiveZero(Class<?> raw) {
+    if (raw == boolean.class) {
+      return Boolean.FALSE;
+    }
+    if (raw == long.class) {
+      return 0L;
+    }
+    if (raw == int.class) {
+      return 0;
+    }
+    if (raw == double.class) {
+      return 0d;
+    }
+    if (raw == float.class) {
+      return 0f;
+    }
+    return (char) 0;
+  }
+
+  // -------------------------------------------------------------------------
+  // Parser
+  // -------------------------------------------------------------------------
+
+  private static final class Parser {
+
+    private final String src;
+    private int at;
+
+    Parser(String src) {
+      this.src = src;
+    }
+
+    int offset() {
+      return at;
+    }
+
+    boolean done() {
+      return at >= src.length();
+    }
+
+    void skipWhitespace() {
+      while (at < src.length() && Character.isWhitespace(src.charAt(at))) {
+        at++;
+      }
+    }
+
+    Object value() {
+      if (done()) {
+        throw new JsonException("Unexpected end of JSON input");
+      }
+      char c = src.charAt(at);
+      return switch (c) {
+        case '{' -> object();
+        case '[' -> array();
+        case '"' -> string();
+        case 't' -> literal("true", Boolean.TRUE);
+        case 'f' -> literal("false", Boolean.FALSE);
+        case 'n' -> literal("null", null);
+        default -> number();
+      };
+    }
+
+    private Object literal(String text, Object result) {
+      if (!src.startsWith(text, at)) {
+        throw new JsonException("Unexpected character '" + src.charAt(at) + "' at offset " + at);
+      }
+      at += text.length();
+      return result;
+    }
+
+    private Map<String, Object> object() {
+      Map<String, Object> out = new LinkedHashMap<>();
+      at++;
+      skipWhitespace();
+      if (peek() == '}') {
+        at++;
+        return out;
+      }
+      while (true) {
+        skipWhitespace();
+        String key = string();
+        skipWhitespace();
+        expect(':');
+        skipWhitespace();
+        out.put(key, value());
+        skipWhitespace();
+        char c = next();
+        if (c == '}') {
+          return out;
+        }
+        if (c != ',') {
+          throw new JsonException("Expected ',' or '}' at offset " + (at - 1));
+        }
+      }
+    }
+
+    private List<Object> array() {
+      List<Object> out = new ArrayList<>();
+      at++;
+      skipWhitespace();
+      if (peek() == ']') {
+        at++;
+        return out;
+      }
+      while (true) {
+        skipWhitespace();
+        out.add(value());
+        skipWhitespace();
+        char c = next();
+        if (c == ']') {
+          return out;
+        }
+        if (c != ',') {
+          throw new JsonException("Expected ',' or ']' at offset " + (at - 1));
+        }
+      }
+    }
+
+    private String string() {
+      expect('"');
+      StringBuilder out = new StringBuilder();
+      while (true) {
+        char c = next();
+        if (c == '"') {
+          return out.toString();
+        }
+        if (c != '\\') {
+          out.append(c);
+          continue;
+        }
+        char escape = next();
+        switch (escape) {
+          case '"' -> out.append('"');
+          case '\\' -> out.append('\\');
+          case '/' -> out.append('/');
+          case 'b' -> out.append('\b');
+          case 'f' -> out.append('\f');
+          case 'n' -> out.append('\n');
+          case 'r' -> out.append('\r');
+          case 't' -> out.append('\t');
+          case 'u' -> {
+            if (at + 4 > src.length()) {
+              throw new JsonException("Truncated \\u escape at offset " + at);
+            }
+            out.append((char) Integer.parseInt(src.substring(at, at + 4), 16));
+            at += 4;
+          }
+          default -> throw new JsonException("Invalid escape \\" + escape + " at offset " + at);
+        }
+      }
+    }
+
+    private Number number() {
+      int start = at;
+      if (peek() == '-' || peek() == '+') {
+        at++;
+      }
+      boolean fractional = false;
+      while (at < src.length()) {
+        char c = src.charAt(at);
+        if (c >= '0' && c <= '9') {
+          at++;
+        } else if (c == '.' || c == 'e' || c == 'E' || c == '+' || c == '-') {
+          fractional = fractional || c == '.' || c == 'e' || c == 'E';
+          at++;
+        } else {
+          break;
+        }
+      }
+      String text = src.substring(start, at);
+      if (text.isEmpty()) {
+        throw new JsonException("Expected a value at offset " + start);
+      }
+      try {
+        // Integral literals stay integral: routing them through double would
+        // round ids above 2^53 and print them back with an exponent.
+        return fractional ? Double.valueOf(text) : Long.valueOf(text);
+      } catch (NumberFormatException e) {
+        try {
+          return Double.valueOf(text);
+        } catch (NumberFormatException nested) {
+          throw new JsonException("Invalid number \"" + text + "\" at offset " + start, nested);
+        }
+      }
+    }
+
+    private char peek() {
+      return at < src.length() ? src.charAt(at) : '\0';
+    }
+
+    private char next() {
+      if (done()) {
+        throw new JsonException("Unexpected end of JSON input");
+      }
+      return src.charAt(at++);
+    }
+
+    private void expect(char expected) {
+      char c = next();
+      if (c != expected) {
+        throw new JsonException("Expected '" + expected + "' at offset " + (at - 1));
+      }
+    }
+  }
+}

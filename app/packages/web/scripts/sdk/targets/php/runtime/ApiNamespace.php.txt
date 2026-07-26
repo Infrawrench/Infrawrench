@@ -1,0 +1,21 @@
+<?php
+// This file ships as-is. Read ./README.md before editing.
+// --8<-- everything below this line is emitted into the generated SDK --8<--
+
+declare(strict_types=1);
+
+namespace Infrawrench\Sdk\Internal;
+
+/**
+ * Base class for every generated namespace — `$client->accounts`,
+ * `$client->accounts->credentials`, and so on.
+ *
+ * It exists only to hold the transport, so the generated classes are nothing
+ * but their child namespaces and their calls.
+ */
+abstract class ApiNamespace
+{
+    public function __construct(protected readonly Transport $transport)
+    {
+    }
+}

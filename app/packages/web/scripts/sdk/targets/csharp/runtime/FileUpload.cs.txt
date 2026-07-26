@@ -1,0 +1,39 @@
+// Hand-written runtime source. See ./SdkJson.cs.txt for how this file is used.
+//
+// --8<-- everything below this line is copied into the generated SDK --8<--
+
+using System;
+
+namespace Infrawrench.Sdk;
+
+/// <summary>
+/// A file being uploaded. Every spec field with <c>format: binary</c> is typed
+/// as one of these.
+/// </summary>
+/// <remarks>
+/// A bare <c>byte[]</c> would have been the smaller type, but <c>multipart/form-data</c>
+/// needs a filename for the part and there is nowhere else to carry one — the
+/// server uses it, so leaving the caller no way to set it would be a hole.
+/// </remarks>
+public sealed class FileUpload
+{
+    /// <summary>Create an upload from bytes already in memory.</summary>
+    /// <param name="content">The file's bytes. Not copied.</param>
+    /// <param name="fileName">Filename sent with the multipart part.</param>
+    /// <param name="contentType">MIME type, or null to let the server sniff it.</param>
+    public FileUpload(byte[] content, string fileName, string? contentType = null)
+    {
+        Content = content ?? throw new ArgumentNullException(nameof(content));
+        FileName = fileName ?? throw new ArgumentNullException(nameof(fileName));
+        ContentType = contentType;
+    }
+
+    /// <summary>The file's bytes.</summary>
+    public byte[] Content { get; }
+
+    /// <summary>Filename sent with the multipart part.</summary>
+    public string FileName { get; }
+
+    /// <summary>MIME type, when the caller knows it.</summary>
+    public string? ContentType { get; }
+}

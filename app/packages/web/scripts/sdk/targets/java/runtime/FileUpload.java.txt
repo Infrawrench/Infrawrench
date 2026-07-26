@@ -1,0 +1,72 @@
+/*
+ * Part of the hand-written half of the generated Java SDK. See
+ * InfrawrenchException.java.txt for why these files carry a `.txt` suffix.
+ */
+// --8<-- everything below this line is emitted verbatim into the SDK --8<--
+package com.infrawrench.sdk;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+/**
+ * One file in a {@code multipart/form-data} request.
+ *
+ * <p>The spec says only "these bytes are a file", but a bare {@code byte[]}
+ * cannot carry a filename, and a multipart part without {@code filename=} is
+ * delivered to the server as a text field rather than a file — so the upload
+ * would silently arrive as the string "[object File]"-shaped nonsense instead of
+ * failing loudly. Carrying the filename and content type alongside the bytes is
+ * the difference between an upload that works and one that looks like it did.
+ */
+public record FileUpload(String filename, String contentType, byte[] content) {
+
+  /** What a part gets when the caller doesn't say. */
+  public static final String DEFAULT_CONTENT_TYPE = "application/octet-stream";
+
+  public FileUpload {
+    if (content == null) {
+      throw new IllegalArgumentException("FileUpload content must not be null");
+    }
+    if (filename == null || filename.isEmpty()) {
+      filename = "file";
+    }
+    if (contentType == null || contentType.isEmpty()) {
+      contentType = DEFAULT_CONTENT_TYPE;
+    }
+  }
+
+  public static FileUpload of(String filename, byte[] content) {
+    return new FileUpload(filename, DEFAULT_CONTENT_TYPE, content);
+  }
+
+  public static FileUpload of(String filename, String text) {
+    return new FileUpload(filename, "text/plain", text.getBytes(StandardCharsets.UTF_8));
+  }
+
+  /** Read a file off disk, taking its name from the path. */
+  public static FileUpload ofPath(Path path) {
+    try {
+      String probed = Files.probeContentType(path);
+      return new FileUpload(path.getFileName().toString(), probed, Files.readAllBytes(path));
+    } catch (IOException e) {
+      throw new ApiConnectionException("Could not read " + path + ": " + e.getMessage(), e);
+    }
+  }
+
+  /** Byte count, so callers don't have to reach into {@link #content()}. */
+  public int size() {
+    return content.length;
+  }
+
+  /**
+   * Deliberately does not print the bytes. The record-generated version would,
+   * and an upload is exactly the kind of thing you don't want in a log line.
+   */
+  @Override
+  public String toString() {
+    return "FileUpload[filename=" + filename + ", contentType=" + contentType + ", size=" + size()
+        + "]";
+  }
+}

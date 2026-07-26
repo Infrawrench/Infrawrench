@@ -1,0 +1,22 @@
+/*
+ * Part of the hand-written half of the generated Java SDK. See
+ * InfrawrenchException.java.txt for why these files carry a `.txt` suffix.
+ */
+// --8<-- everything below this line is emitted verbatim into the SDK --8<--
+package com.infrawrench.sdk;
+
+/**
+ * The request never produced a response — DNS, TLS, connect/read timeout, or
+ * the calling thread being interrupted.
+ *
+ * <p>Kept distinct from {@link ApiException} because the two want opposite
+ * handling: a transport failure is usually worth retrying, a 4xx never is.
+ */
+public final class ApiConnectionException extends InfrawrenchException {
+
+  private static final long serialVersionUID = 1L;
+
+  ApiConnectionException(String message, Throwable cause) {
+    super(message, cause);
+  }
+}
