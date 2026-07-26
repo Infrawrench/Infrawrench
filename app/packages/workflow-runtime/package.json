@@ -13,6 +13,8 @@
   },
   "scripts": {
     "build": "tsc --noEmit",
+    "//typecheck": "Same check as build (this package ships source, so build only type-checks). Aliased so `turbo typecheck` covers it instead of silently skipping it.",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
