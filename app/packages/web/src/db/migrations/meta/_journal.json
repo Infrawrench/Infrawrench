@@ -232,6 +232,13 @@
       "when": 1785084734069,
       "tag": "0032_public_blob",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1785092744644,
+      "tag": "0033_small_hex",
+      "breakpoints": true
     }
   ]
 }

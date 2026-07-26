@@ -18,7 +18,7 @@ import {
   type AgentEvent,
 } from "../../chat/agent";
 import { getMonthlySpend } from "../../chat/billing";
-import { CHAT_MODELS } from "@infrawrench/ui";
+import { CHAT_MODELS, DEFAULT_CHAT_MODEL } from "@infrawrench/ui";
 import type { ToolAuthContext } from "../../tools/types";
 
 const app = new Hono();
@@ -72,7 +72,11 @@ app.post("/conversations", async (c) => {
     organizationId: auth.organizationId,
     userId: auth.userId,
     title: body.title?.slice(0, 200) ?? "New chat",
-    ...(body.model ? { model: body.model } : {}),
+    // Always write a model rather than letting the column default decide. A
+    // caller that omits one (the desktop sidebar's New chat did) would
+    // otherwise get whatever the schema happens to say, which is how new chats
+    // silently opened on the most expensive model instead of the cheapest.
+    model: body.model ?? DEFAULT_CHAT_MODEL,
     ...(body.systemPrompt ? { systemPrompt: body.systemPrompt } : {}),
   });
   return c.json({ id });

@@ -4,6 +4,7 @@ import { getDb } from "../db/client";
 import { createDashboard } from "../lib/pins";
 import {
   CHAT_CONVERSATIONS_CHANGED_EVENT,
+  DEFAULT_CHAT_MODEL,
   DroppableDashboardItem,
   emitChatConversationsChanged,
   useUIStore,
@@ -74,7 +75,10 @@ export function SidebarDashboards() {
   async function handleNewChat() {
     if (!activeCloudOrgId) return;
     try {
-      const created = await getDesktopChatClient(activeCloudOrgId).createConversation();
+      // Name the model rather than relying on the server's fallback: this
+      // button has no picker, so whatever it asks for is what the user gets.
+      const created =
+        await getDesktopChatClient(activeCloudOrgId).createConversation(DEFAULT_CHAT_MODEL);
       emitChatConversationsChanged();
       void navigateToWorkspaceTarget(navigate, chatTabTarget(created.id), { label: "New chat" });
     } catch (err) {

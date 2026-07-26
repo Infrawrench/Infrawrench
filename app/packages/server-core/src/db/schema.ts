@@ -780,7 +780,13 @@ export const chatConversations = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     title: text("title").notNull().default("New chat"),
-    model: text("model").notNull().default("claude-opus-5"),
+    /**
+     * Must stay in step with `DEFAULT_CHAT_MODEL` in client-core (server-core
+     * can't import it — no dependency that way). The API writes the model
+     * explicitly, so this is only reached by a caller that forgets; it points
+     * at the cheapest model so forgetting is cheap rather than expensive.
+     */
+    model: text("model").notNull().default("gemini-3.6-flash"),
     /** System prompt override; null means use the default from chat/agent.ts */
     systemPrompt: text("system_prompt"),
     archivedAt: timestamp("archived_at"),
