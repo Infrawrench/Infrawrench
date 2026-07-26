@@ -11,3 +11,8 @@ routeTree.gen.ts
 **/assets/generated
 .expo
 /sdk
+
+# Terraform state — machine-written JSON, rewritten by every apply. Linting it
+# only produces a false format:check failure right after you deploy.
+*.tfstate
+*.tfstate.*
