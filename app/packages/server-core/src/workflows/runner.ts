@@ -22,6 +22,7 @@ import {
   type RunLogEntry,
   type RunResult,
   type RunTriggerSource,
+  type WorkflowEvent,
   type WorkflowHost,
   type WorkflowPluginInfo,
 } from "@infrawrench/workflow-runtime";
@@ -71,6 +72,11 @@ export interface RunOrgWorkflowOptions extends OrgWorkflowHostExtras {
   onLog?: (entry: RunLogEntry) => void;
   /** Instrument the run so `line` is called before each statement (debugger). */
   debug?: boolean;
+  /**
+   * Trigger payload exposed to the body as `infra.event`. Budget triggers pass
+   * the crossing; other sources leave it to default to `{ kind: triggerSource }`.
+   */
+  event?: WorkflowEvent;
 }
 
 export interface RunOrgWorkflowResult {
@@ -266,6 +272,15 @@ async function seedMetrics(
 }
 
 /**
+ * The `infra.event.kind` for a run with no richer payload. A budget-sourced run
+ * always supplies its own event, so "budget" here would mean a caller forgot —
+ * fall back to "api" rather than claiming a crossing that isn't described.
+ */
+function eventKindFor(source: RunTriggerSource): "manual" | "cron" | "git" | "api" {
+  return source === "budget" ? "api" : source;
+}
+
+/**
  * Execute a single workflow run for an automated (cron/git) or manual trigger.
  * Persists a `workflow_runs` row, runs the source in the isolate, records the
  * outcome, and bumps `workflows.lastRunAt`.
@@ -306,6 +321,9 @@ export async function runOrgWorkflow(opts: RunOrgWorkflowOptions): Promise<RunOr
     source: wf.source,
     host,
     interactive: Boolean(opts.interactive),
+    // `api` and `budget` are both "not a person at a keyboard"; the event still
+    // reports the real source so a workflow can branch on it.
+    event: opts.event ?? { kind: eventKindFor(opts.triggerSource) },
     ...(opts.onLog ? { onLog: opts.onLog } : {}),
     ...(opts.debug ? { debug: true } : {}),
     ...(opts.signal ? { signal: opts.signal } : {}),

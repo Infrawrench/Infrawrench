@@ -211,6 +211,13 @@
       "when": 1785018309769,
       "tag": "0029_naive_lady_ursula",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1785024579668,
+      "tag": "0030_kind_vengeance",
+      "breakpoints": true
     }
   ]
 }

@@ -24,6 +24,7 @@ import {
   type RunLimits,
   type RunLogEntry,
   type RunResult,
+  type WorkflowEvent,
   type WorkflowPluginInfo,
 } from "./types.js";
 
@@ -58,6 +59,11 @@ export interface RunWorkflowOptions {
   debug?: boolean;
   /** Abort the run (Stop): the interrupt handler ends execution when aborted. */
   signal?: AbortSignal;
+  /**
+   * What started this run, exposed to the body as `infra.event`. Defaults to
+   * `{ kind: "manual" }`.
+   */
+  event?: WorkflowEvent;
 }
 
 /**
@@ -79,6 +85,7 @@ function buildProgram(userJs: string, debug: boolean): string {
     `const __host = env.__host;`,
     `const __accountsTree = env.__accountsTree;`,
     `const __metrics = env.__metrics;`,
+    `const __event = env.__event;`,
     // Debug runs inject `await __line(n)` before each statement (see transpile);
     // route it to the host so the editor can highlight + pause at breakpoints.
     debug ? `const __line = (n) => __host("line", JSON.stringify({ line: n }));` : ``,
@@ -180,6 +187,7 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunResult> 
   const env = {
     __accountsTree: JSON.stringify(tree),
     __metrics: JSON.stringify(metricsSnapshot),
+    __event: JSON.stringify(opts.event ?? { kind: "manual" }),
     __host: async (method: string, argsJson: string): Promise<string> => {
       const args = argsJson ? (JSON.parse(argsJson) as Record<string, unknown>) : {};
       // Completion sentinel emitted by the program wrapper for guest errors.

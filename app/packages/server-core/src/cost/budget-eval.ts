@@ -15,6 +15,10 @@ import { queryCosts, type CostFilter } from "../clickhouse/cost-readers";
 import { forecastMonthTotal, type DailyPoint } from "./forecast";
 import { sendBudgetAlertPage } from "../twilio-pager";
 import { sendPushToOrg } from "../push/dispatch";
+import {
+  fireBudgetTriggerWorkflows,
+  listBudgetTriggerWorkflows,
+} from "../workflows/budget-triggers";
 import { isoDay, addDays } from "./dates";
 
 interface BudgetThreshold {
@@ -76,8 +80,10 @@ export async function budgetMonthStatus(
 }
 
 /**
- * Evaluate every budget in an org. Errors are logged, never thrown — budget
- * evaluation must not break the poller's cost pass.
+ * Evaluate every budget in an org: fire alert pages for freshly crossed
+ * thresholds, and run any workflows triggered by this budget. Errors are
+ * logged, never thrown — budget evaluation must not break the poller's cost
+ * pass.
  */
 export async function evaluateBudgetsForOrg(
   organizationId: string,
@@ -94,10 +100,17 @@ export async function evaluateBudgetsForOrg(
     return;
   }
 
+  // Loaded once for the org, not per budget. A budget with no alert thresholds
+  // still needs its status computed when a workflow watches it.
+  const triggerWorkflows = await listBudgetTriggerWorkflows(organizationId);
+
   for (const budget of rows) {
     try {
       const thresholds = (budget.thresholds ?? []) as BudgetThreshold[];
-      if (thresholds.length === 0 || budget.amountCents <= 0) continue;
+      const watchers = triggerWorkflows.filter(
+        (w) => (w.trigger as { budgetId?: string } | null)?.budgetId === budget.id,
+      );
+      if ((thresholds.length === 0 && watchers.length === 0) || budget.amountCents <= 0) continue;
 
       const status = await budgetMonthStatus(
         organizationId,
@@ -105,6 +118,20 @@ export async function evaluateBudgetsForOrg(
         budget.currency,
         now,
       );
+
+      if (watchers.length > 0) {
+        await fireBudgetTriggerWorkflows({
+          organizationId,
+          budget: {
+            id: budget.id,
+            name: budget.name,
+            amountCents: budget.amountCents,
+            currency: budget.currency,
+          },
+          status,
+          candidates: watchers,
+        });
+      }
 
       for (const threshold of thresholds) {
         const limitCents = Math.round((budget.amountCents * threshold.percent) / 100);

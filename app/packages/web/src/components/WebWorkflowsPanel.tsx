@@ -1,16 +1,24 @@
 import { useCallback, useEffect, useState } from "react";
-import { WorkflowsPanel, type GitRepoOption, type WorkflowClient } from "@infrawrench/ui/workflows";
+import {
+  WorkflowsPanel,
+  type BudgetOption,
+  type GitRepoOption,
+  type WorkflowClient,
+} from "@infrawrench/ui/workflows";
 import { apiGet } from "@/lib/api";
 
 /**
- * Web wrapper around the shared WorkflowsPanel that supplies the GitHub
- * integration for git triggers: it loads the org's connection status + repos
- * and opens the install flow. Desktop renders WorkflowsPanel directly (git off).
+ * Web wrapper around the shared WorkflowsPanel that supplies the cloud-only
+ * trigger sources: the GitHub integration for git triggers (connection status +
+ * repos + install flow) and the org's cost budgets for budget triggers. Desktop
+ * renders WorkflowsPanel directly with both off.
  */
 export function WebWorkflowsPanel({ client, orgId }: { client: WorkflowClient; orgId: string }) {
   const [repos, setRepos] = useState<GitRepoOption[]>([]);
   const [configured, setConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [budgets, setBudgets] = useState<BudgetOption[]>([]);
+  const [budgetsLoading, setBudgetsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -30,9 +38,31 @@ export function WebWorkflowsPanel({ client, orgId }: { client: WorkflowClient; o
     }
   }, [orgId]);
 
+  // Budgets are read once — the picker only needs id/name/amount, and a member
+  // without `budgets:read` simply gets an empty list (and no Budget option).
+  const refreshBudgets = useCallback(async () => {
+    setBudgetsLoading(true);
+    try {
+      const rows = await apiGet<BudgetOption[]>(`/api/org/${orgId}/budgets`);
+      setBudgets(
+        rows.map(({ id, name, amountCents, currency }) => ({
+          id,
+          name,
+          amountCents,
+          currency,
+        })),
+      );
+    } catch {
+      setBudgets([]);
+    } finally {
+      setBudgetsLoading(false);
+    }
+  }, [orgId]);
+
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    void refreshBudgets();
+  }, [refresh, refreshBudgets]);
 
   // Re-check when the window regains focus — e.g. after the user installs the
   // app / picks repos in the GitHub tab and comes back.
@@ -55,6 +85,7 @@ export function WebWorkflowsPanel({ client, orgId }: { client: WorkflowClient; o
       client={client}
       gitTriggers
       gitIntegration={{ configured, repos, loading, onConnect }}
+      budgetIntegration={{ budgets, loading: budgetsLoading }}
     />
   );
 }

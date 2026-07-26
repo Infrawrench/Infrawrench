@@ -3,6 +3,8 @@ import { useDraggable } from "@dnd-kit/core";
 
 import { WorkflowEditorView } from "./WorkflowEditorView.js";
 import type {
+  BudgetIntegration,
+  BudgetOption,
   DebugSession,
   GitIntegration,
   WorkflowClient,
@@ -70,6 +72,12 @@ interface WorkflowsPanelProps {
   gitTriggers?: boolean;
   /** GitHub connection + repos for the git-trigger picker (web only). */
   gitIntegration?: GitIntegration;
+  /**
+   * The org's cost budgets, enabling the Budget trigger. Cloud-only: budgets
+   * are a cloud feature and the crossing is evaluated by the poller, so the
+   * desktop/local client omits this and the option stays hidden.
+   */
+  budgetIntegration?: BudgetIntegration;
 }
 
 type TriggerKind = WorkflowTrigger["kind"];
@@ -78,6 +86,7 @@ export function WorkflowsPanel({
   client,
   gitTriggers = false,
   gitIntegration,
+  budgetIntegration,
 }: WorkflowsPanelProps) {
   const [list, setList] = useState<WorkflowSummary[]>([]);
   const [search, setSearch] = useState("");
@@ -377,6 +386,7 @@ export function WorkflowsPanel({
             trigger={draft.trigger}
             gitTriggers={gitTriggers}
             gitIntegration={gitIntegration}
+            budgetIntegration={budgetIntegration}
             onChange={(t) => patch({ trigger: t })}
             hasWebhookSecret={draft.hasWebhookSecret ?? false}
             webhookSecret={draft.webhookSecret ?? null}
@@ -497,10 +507,27 @@ function describeCron(expr: string): string {
   return "Runs on a custom schedule.";
 }
 
+/** Default threshold for a new budget trigger — "goes over budget". */
+const DEFAULT_BUDGET_PERCENT = 100;
+
+/** Format a budget's monthly limit for the trigger summary line. */
+function formatBudgetAmount(amountCents: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    }).format(amountCents / 100);
+  } catch {
+    return `${(amountCents / 100).toFixed(0)} ${currency}`;
+  }
+}
+
 function TriggerEditor({
   trigger,
   gitTriggers = false,
   gitIntegration,
+  budgetIntegration,
   onChange,
   hasWebhookSecret = false,
   webhookSecret = null,
@@ -509,6 +536,7 @@ function TriggerEditor({
   trigger: WorkflowTrigger;
   gitTriggers?: boolean;
   gitIntegration?: GitIntegration | undefined;
+  budgetIntegration?: BudgetIntegration | undefined;
   onChange: (t: WorkflowTrigger) => void;
   /** A signing secret is already stored (the value itself is never returned). */
   hasWebhookSecret?: boolean;
@@ -530,6 +558,13 @@ function TriggerEditor({
           const k = e.target.value as TriggerKind;
           if (k === "manual") onChange({ kind: "manual" });
           else if (k === "cron") onChange({ kind: "cron", expression: "0 * * * *" });
+          else if (k === "budget")
+            onChange({
+              kind: "budget",
+              budgetId: budgetIntegration?.budgets[0]?.id ?? "",
+              percent: DEFAULT_BUDGET_PERCENT,
+              metric: "actual",
+            });
           else onChange({ kind: "git", events: ["push"] });
         }}
         className="bg-transparent border border-white/15 rounded px-2 py-1"
@@ -538,6 +573,8 @@ function TriggerEditor({
         <option value="cron">Cron</option>
         {/* Git triggers need an always-on host to watch the repo — web/proxy only. */}
         {(gitTriggers || kind === "git") && <option value="git">Git</option>}
+        {/* Budgets are a cloud feature; the crossing is evaluated server-side. */}
+        {(budgetIntegration || kind === "budget") && <option value="budget">Budget</option>}
       </select>
       {trigger.kind === "cron" && (
         <div className="flex flex-wrap items-center gap-2">
@@ -649,7 +686,97 @@ function TriggerEditor({
           />
         </div>
       )}
+      {trigger.kind === "budget" && (
+        <BudgetTriggerFields
+          trigger={trigger}
+          budgets={budgetIntegration?.budgets ?? []}
+          loading={budgetIntegration?.loading ?? false}
+          onChange={onChange}
+        />
+      )}
       {kind === "manual" && <span className="opacity-50">infra.prompt() available</span>}
+    </div>
+  );
+}
+
+/**
+ * Budget-trigger controls: which budget, at what percentage of its monthly
+ * amount, measured against month-to-date spend or the month-end forecast. The
+ * crossing fires at most once per calendar month (editing any of these three
+ * re-arms it), and the workflow receives the details as `infra.event`.
+ */
+function BudgetTriggerFields({
+  trigger,
+  budgets,
+  loading,
+  onChange,
+}: {
+  trigger: Extract<WorkflowTrigger, { kind: "budget" }>;
+  budgets: BudgetOption[];
+  loading: boolean;
+  onChange: (t: WorkflowTrigger) => void;
+}) {
+  const percent = trigger.percent ?? DEFAULT_BUDGET_PERCENT;
+  const metric = trigger.metric ?? "actual";
+  const selected = budgets.find((b) => b.id === trigger.budgetId);
+
+  if (budgets.length === 0) {
+    return (
+      <span className="opacity-60">
+        {loading ? "Loading budgets…" : "No budgets yet — create one on a dashboard first."}
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <select
+        value={trigger.budgetId}
+        onChange={(e) => onChange({ ...trigger, budgetId: e.target.value })}
+        className="bg-transparent border border-white/15 rounded px-2 py-1 max-w-56"
+        aria-label="Budget"
+      >
+        <option value="">Select a budget…</option>
+        {budgets.map((b) => (
+          <option key={b.id} value={b.id}>
+            {b.name}
+          </option>
+        ))}
+      </select>
+      <span className="opacity-60">goes over</span>
+      <input
+        type="number"
+        min={1}
+        value={percent}
+        onChange={(e) => {
+          const next = Number(e.target.value);
+          onChange({ ...trigger, percent: next > 0 ? next : DEFAULT_BUDGET_PERCENT });
+        }}
+        className="bg-surface-overlay border border-white/15 rounded px-2 py-1 w-16 text-right font-mono"
+        aria-label="Budget threshold percent"
+      />
+      <span className="opacity-60">% of</span>
+      <select
+        value={metric}
+        onChange={(e) =>
+          onChange({ ...trigger, metric: e.target.value === "forecast" ? "forecast" : "actual" })
+        }
+        className="bg-transparent border border-white/15 rounded px-2 py-1"
+        aria-label="Budget measure"
+      >
+        <option value="actual">spend so far</option>
+        <option value="forecast">forecast spend</option>
+      </select>
+      {selected && (
+        <span className="text-[11px] text-blue-300/80">
+          Runs once a month, when {metric === "actual" ? "spend" : "the month-end forecast"} reaches{" "}
+          {formatBudgetAmount(
+            Math.round((selected.amountCents * percent) / 100),
+            selected.currency,
+          )}{" "}
+          of {formatBudgetAmount(selected.amountCents, selected.currency)}.
+        </span>
+      )}
     </div>
   );
 }

@@ -237,6 +237,7 @@ Open the trigger settings to choose how a workflow runs:
 - **Manual** — run on demand from the UI. The only mode that allows `infra.prompt`. Available everywhere (desktop, web, proxy).
 - **Cron** — run on a schedule. Pick a preset (every 15 minutes, daily at 9am, weekly…) or type a raw 5-field cron expression; the editor shows a plain-English summary of what you entered.
 - **Git** — run on each new commit to a branch. **Connect GitHub**, choose a repository from the picker, and set the branch — the Infrawrench GitHub App watches that repo as a bot and runs the workflow when the branch head changes. Web/proxy only; the desktop app doesn't offer git triggers (its workflows are local with no always-on host to watch a repo).
+- **Budget** — run when a [cost budget](./cloud-costs.md) crosses a threshold. Pick a budget, a percentage of its monthly amount, and whether to compare **spend so far** or the **forecast** month-end total. Web/proxy only (budgets are a cloud feature).
 
 **Platform support for automated triggers:**
 
@@ -245,6 +246,7 @@ Open the trigger settings to choose how a workflow runs:
 | Manual  | ✅                | ✅  | ✅        |
 | Cron    | ✅ (while open\*) | ✅  | ✅        |
 | Git     | —                 | ✅  | ✅        |
+| Budget  | —                 | ✅  | ✅        |
 
 The web app runs cron and git triggers on an always-on cloud host. The **desktop app** runs your local cron workflows itself: while at least one cron workflow is enabled, Infrawrench keeps running in the background after you close the window (just like active metric-ping alerts) so the schedule keeps firing. \*It can't fire while the app is fully quit — quit it and the local schedule pauses until you reopen. For schedules that must run 24/7 regardless, use the cloud or the [web proxy](../core-concepts/desktop-vs-web.md).
 
@@ -253,6 +255,40 @@ The web app runs cron and git triggers on an always-on cloud host. The **desktop
 Git triggers use a **GitHub App** (a bot identity) rather than per-repo webhooks. In the git trigger settings, click **Connect GitHub** — you'll install the app on the repositories you want to watch in a new tab, and when the install finishes that tab returns to Infrawrench with a confirmation and the repositories appear in the repo picker. If you're a member (not an owner) of the GitHub organization, GitHub only lets you _request_ the install — Infrawrench will tell you the install is awaiting an owner's approval, and the repos show up once an owner approves it on GitHub. A separate **github-watcher** service polls each watched repo's branch head and runs the workflow on a new commit. Self-hosters configure the app with `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (PEM), and `GITHUB_APP_SLUG`, and point the app's setup URL at `/api/github/setup`.
 
 <insert [Screenshot of the git trigger settings showing Connect GitHub, the repository picker, and the branch field] here>
+
+### Budget triggers
+
+A budget trigger reads: **when budget _A_ goes over _X_%, run this workflow**. Choose the budget, the percentage of its monthly amount, and which number to compare:
+
+- **spend so far** — month-to-date actual spend. Fires once the money is genuinely gone.
+- **forecast spend** — the projected month-end total. Fires earlier, while you can still do something about it.
+
+Leave the percentage at `100` for a plain "went over budget". Set it lower (say `80`) to act before the limit, or above `100` to catch a serious overrun.
+
+The crossing is evaluated on the server right after each cost collection, so a budget trigger needs no schedule of its own. It fires **at most once per calendar month** per budget — a workflow that shuts down a runaway cluster won't re-run every 15 minutes for the rest of the month. Editing the budget, percentage, or measure re-arms it immediately. Budget alerts (SMS/push) are configured separately on the budget itself; a workflow trigger doesn't require any alert thresholds on the budget.
+
+The workflow receives the crossing as `infra.event`, typed for you when the trigger is set to Budget:
+
+```ts
+// infra.event is the budget crossing that started this run.
+await infra.log(
+  `${infra.event.budgetName} hit ${infra.event.percent}% ` +
+    `(${infra.event.observedCents / 100} ${infra.event.currency} of ` +
+    `${infra.event.amountCents / 100}) in ${infra.event.month}`,
+);
+
+// Scale the dev cluster down to nothing for the rest of the month.
+const gcp = infra.accounts.gcp.getByName("production");
+for (const cluster of await gcp.gkeClusters.list()) {
+  if (cluster.name.startsWith("dev-")) await cluster.delete();
+}
+
+await infra.output({ budget: infra.event.budgetId, actedAt: infra.event.month });
+```
+
+For every other trigger `infra.event` is just `{ kind: "manual" | "cron" | "git" | "api" }`, so a workflow can branch on how it was started.
+
+<insert [Screenshot of the budget trigger settings showing the budget picker, the percentage field, the spend/forecast selector, and the plain-English summary line] here>
 
 ### Signing webhook deliveries
 
@@ -266,6 +302,28 @@ With a secret set, a delivery must prove it knows the secret or it's rejected wi
 Paste the same value into your provider's webhook configuration. The secret is write-only: after saving, the trigger shows **Signed ✓** and you can replace it, but the value is never displayed again. Leave it empty and the endpoint accepts unsigned deliveries on the strength of the token alone.
 
 <insert [Git trigger row with a signing secret configured, showing the "Signed ✓" state and the Replace button] here>
+
+## Writing workflows with an AI client
+
+The [AI chat](./ai-chat.md) and [MCP](./mcp.md) surfaces can author workflows for you — "make a workflow that shuts down the dev cluster when my Production budget goes over 90%" is a single request. Both use the same tools:
+
+| Tool                    | What it does                                                                                       |
+| ----------------------- | -------------------------------------------------------------------------------------------------- |
+| `list_workflows`        | The org's workflows with their triggers, metrics, and last/next run.                               |
+| `get_workflow`          | One workflow, including its source, current metric values, and recent runs.                        |
+| `get_workflow_typings`  | The generated `infra.d.ts` — your real accounts, resource types, create fields, and SSH key names. |
+| `check_workflow_source` | Type-checks a draft without saving it.                                                             |
+| `write_workflow`        | Creates or updates a workflow. Type-checks first and **refuses to save** source with type errors.  |
+| `run_workflow`          | Runs it now and returns the status, logs, output, and any error.                                   |
+| `delete_workflow`       | Soft-deletes it (run history is kept).                                                             |
+
+`get_workflow_typings` is the important one. The `infra` API is generated per organization — account names, which resource groups exist, which fields `create()` takes — so a model that writes from memory guesses wrong. Handing it the real declaration file first is what makes the generated code compile against _your_ setup. It also reflects the trigger: a budget-triggered workflow gets `infra.event` typed as the crossing payload, and only manual workflows get `infra.prompt`.
+
+`write_workflow` then runs the same type check the editor runs and returns the diagnostics (`line:column`, TypeScript error code, message) instead of saving a broken workflow — so the model can fix its own mistakes before anything is persisted. Pass `skipTypecheck` to override that deliberately.
+
+Workflow tools need the same `dashboards:read` / `dashboards:write` [permissions](../team-and-billing/roles-and-permissions.md) as the Workflows tab, and `write_workflow`, `run_workflow`, and `delete_workflow` are all audit-logged. `run_workflow` and `delete_workflow` are **destructive tools** — in chat they wait for your approval before running. Running a workflow executes arbitrary code that can create or delete infrastructure, which is why it needs the same confirmation as deleting one.
+
+A workflow's code runs with your account credentials. Read the source of anything you didn't write before you enable it or hand it to `run_workflow`.
 
 ## The isolate sandbox
 

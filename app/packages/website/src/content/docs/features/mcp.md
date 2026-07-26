@@ -57,6 +57,7 @@ The MCP server registers the full shared tool registry — the same tools the [A
 - **Manifests** — `get_manifest`, `apply_manifest` (see [Manifest editor](./manifest-editor.md)).
 - **Connections** — `sql_query`, `sql_execute`, `introspect_sql_schema`, `kv_command`, `docker_command`, `ssh_exec`, and the storage tools (`list_storage_objects`, `make_storage_folder`, `delete_storage_object`).
 - **Costs & budgets** — `query_costs` (aggregate spend series with grouping, filters, previous-period comparison, and forecasts), `list_cost_dimension_values`, `get_cost_status`, `list_budgets`, `get_budget`, `create_budget`, `update_budget`, `delete_budget`. See [Cloud costs](./cloud-costs.md).
+- **Workflows** — `list_workflows`, `get_workflow`, `get_workflow_typings`, `check_workflow_source`, `write_workflow`, `run_workflow`, `delete_workflow`. See [Writing workflows with an AI client](./workflows.md#writing-workflows-with-an-ai-client).
 - **SSH keys** — `list_ssh_keys`, `create_ssh_key` (generates an Ed25519 keypair; the private key stays encrypted server-side and is usable by id with `ssh_exec` and tunnels — it is never returned through a tool), `import_ssh_key` (public key only), `delete_ssh_key`. See [SSH keys](../team-and-billing/ssh-keys.md).
 - **SSH host trust** — `list_trusted_ssh_hosts`, `trust_ssh_host`, `remove_ssh_host_trust`. When `ssh_exec` hits an untrusted host it fails with the presented fingerprint; verify it out-of-band, then `trust_ssh_host { host, port, fingerprint }` and retry. See [Trusted SSH hosts](../team-and-billing/ssh-host-keys.md).
 
@@ -66,11 +67,11 @@ Create tools for VM types that install an SSH key at create time (DigitalOcean D
 
 Most resource tools take an optional `parentResourceId` to target a **sidecar** — the peer plugin a managed resource exposes through its outputs. "What's running in my DOKS cluster?" is `list_resource_sidecars` on the cluster, then `list_resources { pluginId: "kubernetes", resourceTypeId: "k8s-deployment", parentResourceId: <cluster id> }` — the kubeconfig is resolved server-side from the cluster's outputs, and the same pattern drives `describe_resource`, `invoke_action`, `apply_manifest`, and the per-plugin create tools inside the cluster or database.
 
-The cost, budget, and SSH-key tools enforce the same [role permissions](../team-and-billing/roles-and-permissions.md) as the web dashboard (`costs:read`, `budgets:read`, `budgets:write`, `ssh-keys:read`, `ssh-keys:write`) — a member whose role can't see spend in the UI can't read it through MCP either. Deleting another member's SSH key additionally requires `team:role:write`, matching the HTTP API.
+The cost, budget, workflow, and SSH-key tools enforce the same [role permissions](../team-and-billing/roles-and-permissions.md) as the web dashboard (`costs:read`, `budgets:read`, `budgets:write`, `dashboards:read`, `dashboards:write`, `ssh-keys:read`, `ssh-keys:write`) — a member whose role can't see spend in the UI can't read it through MCP either. Deleting another member's SSH key additionally requires `team:role:write`, matching the HTTP API.
 
 ## Audit and safety
 
-Every mutating tool call (`create_resource`, `delete_resource`, `invoke_action`, `apply_manifest`, the budget tools, the per-plugin create tools) writes a row to the [audit log](../team-and-billing/audit-log.md) with `source: "mcp"`. You can filter the audit log by source to see exactly what the model has done in your org.
+Every mutating tool call (`create_resource`, `delete_resource`, `invoke_action`, `apply_manifest`, the budget tools, the workflow tools, the per-plugin create tools) writes a row to the [audit log](../team-and-billing/audit-log.md) with `source: "mcp"`. You can filter the audit log by source to see exactly what the model has done in your org.
 
 There is no destructive-action confirmation step inside the protocol — that responsibility lives in the client. Claude Desktop and Cursor surface a permission prompt before each tool call by default; we recommend leaving those prompts on for the mutating tools at a minimum.
 

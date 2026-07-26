@@ -13,6 +13,7 @@ import type {
   WorkflowCreateFieldInfo,
   WorkflowPluginInfo,
   WorkflowResourceTypeInfo,
+  WorkflowTriggerKind,
 } from "./types.js";
 
 /** A valid TS identifier fragment derived from an arbitrary id. */
@@ -394,11 +395,57 @@ ${props}
 }`;
 }
 
+/**
+ * The `infra.event` type for this workflow's trigger. Budget triggers carry a
+ * payload (which budget, which threshold, what the spend actually was) so the
+ * body can act on the numbers; the other kinds only report how they were
+ * invoked. Mirrors `WorkflowEvent` in types.ts.
+ */
+function renderEventType(kind: WorkflowTriggerKind): string {
+  if (kind !== "budget") {
+    return `/** What started this run. */
+interface WorkflowEvent {
+  readonly kind: "manual" | "cron" | "git" | "api";
+}`;
+  }
+  return `/**
+ * The budget crossing that started this run. Amounts are in the budget
+ * currency's minor unit (cents).
+ */
+interface WorkflowEvent {
+  readonly kind: "budget";
+  readonly budgetId: string;
+  readonly budgetName: string;
+  /** Calendar month the crossing was observed in, \`YYYY-MM\`. */
+  readonly month: string;
+  /** ISO-4217 code of every amount below. */
+  readonly currency: string;
+  /** The budget's monthly limit. */
+  readonly amountCents: number;
+  /** Which measure crossed the threshold. */
+  readonly metric: "actual" | "forecast";
+  /** The threshold that fired, as a percentage of \`amountCents\`. */
+  readonly percent: number;
+  /** Value of \`metric\` when it crossed. */
+  readonly observedCents: number;
+  /** Month-to-date spend. */
+  readonly actualCents: number;
+  /** Projected month-end spend; \`null\` when there wasn't enough data. */
+  readonly forecastCents: number | null;
+}`;
+}
+
 export interface GenerateInfraDtsInput {
   plugins: WorkflowPluginInfo[];
   metrics: MetricDef[];
   /** When false, prompt() is typed as unavailable (automated triggers). */
   interactive?: boolean;
+  /**
+   * The workflow's trigger kind. Narrows `infra.event` — a budget-triggered
+   * workflow gets the full crossing payload typed, everything else gets the
+   * bare `{ kind }` discriminant.
+   */
+  triggerKind?: WorkflowTriggerKind;
   /**
    * Names of the caller's Infrawrench-managed SSH keys. Surfaced as autocomplete
    * for `ssh-key-picker` create fields and `resource.ssh`'s `sshKey` option.
@@ -430,6 +477,8 @@ export function generateInfraDts(input: GenerateInfraDtsInput): string {
 
   return `${STATIC_PREAMBLE}
 
+${renderEventType(input.triggerKind ?? "manual")}
+
 ${renderSshExecOptions(sshKeyNames)}
 
 ${resourceInterfaces}
@@ -450,6 +499,8 @@ interface InfraApi {
 ${promptDecl}
   /** Read and write this workflow's declared metrics. */
   readonly metrics: InfraMetrics;
+  /** What started this run. Frozen. */
+  readonly event: WorkflowEvent;
   /** Record a JSON-serializable result for this run. */
   output(value: JsonValue): Promise<void>;
   /** Stream an SSH \`{ stdout, stderr }\` object to the run log live (stderr in red). */

@@ -571,6 +571,7 @@ export function createDesktopWorkflowClient(): WorkflowClient {
         plugins,
         metrics: wf ? safeParse<MetricDef[]>(wf.metric_defs, []) : [],
         interactive: trigger.kind === "manual",
+        triggerKind: trigger.kind,
         sshKeyNames,
       });
     },

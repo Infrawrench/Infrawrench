@@ -54,6 +54,8 @@ export {
   WorkflowsPanel,
 } from "./workflows/index.js";
 export type {
+  BudgetIntegration,
+  BudgetOption,
   DebugSession,
   GitIntegration,
   GitRepoOption,

@@ -30,7 +30,35 @@ export type WorkflowTrigger =
       branch?: string;
       events?: string[];
       installationId?: number;
+    }
+  | {
+      kind: "budget";
+      /** The budget being watched (`budgets.id`). */
+      budgetId: string;
+      /** Percentage of the budget amount that fires the run. Defaults to 100. */
+      percent?: number;
+      /** Compare month-to-date spend or the projected month-end total. */
+      metric?: "actual" | "forecast";
     };
+
+/** A budget the workflow panel can offer as a trigger source (cloud only). */
+export interface BudgetOption {
+  id: string;
+  name: string;
+  /** Monthly limit in the currency's minor unit. */
+  amountCents: number;
+  currency: string;
+}
+
+/**
+ * Budget surface passed into the panel (web only — budgets are a cloud
+ * feature, so the desktop/local client leaves this out and the Budget trigger
+ * option stays hidden).
+ */
+export interface BudgetIntegration {
+  budgets: BudgetOption[];
+  loading?: boolean;
+}
 
 export interface WorkflowSummary {
   id: string;

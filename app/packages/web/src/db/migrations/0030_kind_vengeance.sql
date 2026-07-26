@@ -1,0 +1,1 @@
+ALTER TABLE "workflows" ADD COLUMN "budget_last_fired_key" text;

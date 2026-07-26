@@ -44,6 +44,13 @@ export const workflows = pgTable(
     webhookSecret: text("webhook_secret"),
     /** Last commit SHA the github-watcher saw for a git trigger's repo/branch. */
     gitLastSha: text("git_last_sha"),
+    /**
+     * Dedupe key for budget triggers: `"<YYYY-MM>:<metric>:<percent>"` of the
+     * crossing that last fired. A conditional UPDATE on this column is what
+     * makes a budget trigger fire exactly once per month across competing
+     * poller replicas — and re-arms immediately when the threshold is edited.
+     */
+    budgetLastFiredKey: text("budget_last_fired_key"),
     /** Next scheduled run for cron triggers (poller picks these up). */
     nextRunAt: timestamp("next_run_at"),
     lastRunAt: timestamp("last_run_at"),

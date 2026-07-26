@@ -5,6 +5,7 @@
  *   - `__host(method, argsJson)` — async RPC into the host (returns a JSON string)
  *   - `__accountsTree` — JSON string of WorkflowPluginInfo[] (accounts by plugin)
  *   - `__metrics` — JSON string of the declared metrics' current values
+ *   - `__event` — JSON string describing what triggered this run
  *
  * Keeping the ergonomic object graph in pure JS here (rather than marshalling a
  * deep object across the WASM boundary) makes the bridge robust and trivially
@@ -376,10 +377,17 @@ export const PRELUDE = String.raw`
     metricDirty.clear();
   };
 
+  // What kicked off this run. Frozen: it describes the past, and a workflow
+  // mutating it would only confuse a later read of the same object.
+  const event = Object.freeze((() => {
+    try { return JSON.parse(__event || '{"kind":"manual"}'); } catch (e) { return { kind: "manual" }; }
+  })());
+
   globalThis.infra = {
     accounts,
     prompt: (spec) => rpc("prompt", { spec: typeof spec === "string" ? { message: spec } : spec }),
     metrics,
+    event,
     output: (value) => rpc("output", { value }),
     log: infraLog,
   };

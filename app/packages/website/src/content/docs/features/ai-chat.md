@@ -42,6 +42,7 @@ Everything the UI exposes. The chat shares the [MCP server](./mcp.md)'s tool reg
 - **Secrets** — list / access / add / enable / disable / destroy versions on versioned-secret resources (e.g. GCP Secret Manager).
 - **Credentials** — `export_credential` to download IAM access keys, service-account JSON, connection strings, etc.
 - **SSH keys** — list, generate (Ed25519), import, and delete the org's [SSH keys](../team-and-billing/ssh-keys.md). Generated private keys stay encrypted server-side and are used by id with `ssh_exec`; deletion goes through the approval flow.
+- **Workflows** — read, write, type-check, and run [workflows](./workflows.md). Ask for "a workflow that scales the dev cluster to zero when the Production budget goes over 90%" and the agent fetches your org's generated `infra` typings, writes the source against them, type-checks it before saving, and can run it once to prove it works. Deleting a workflow goes through the approval flow. See [Writing workflows with an AI client](./workflows.md#writing-workflows-with-an-ai-client).
 - **Costs & budgets** — `query_costs` for spend questions ("what did we spend on AWS last month?"), `list_cost_dimension_values`, `get_cost_status`, and budget CRUD (`list_budgets`, `get_budget`, `create_budget`, `update_budget`, `delete_budget`). These enforce the caller's `costs:read` / `budgets:*` [role permissions](../team-and-billing/roles-and-permissions.md). See [Cloud costs](./cloud-costs.md).
 
 ## Destructive-action approval

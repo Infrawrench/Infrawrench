@@ -22,9 +22,60 @@ export type WorkflowTrigger =
       events?: string[];
       /** GitHub App installation that authorizes watching `repo` (github-watcher). */
       installationId?: number;
+    }
+  | {
+      kind: "budget";
+      /** The `budgets.id` this workflow watches (cloud-only — budgets are a cloud feature). */
+      budgetId: string;
+      /**
+       * Fire when spend reaches this percentage of the budget's monthly amount.
+       * Defaults to 100 ("goes over budget").
+       */
+      percent?: number;
+      /**
+       * Which measure to compare: month-to-date `actual` spend (default) or the
+       * projected month-end `forecast`.
+       */
+      metric?: "actual" | "forecast";
     };
 
 export type WorkflowTriggerKind = WorkflowTrigger["kind"];
+
+/** Default threshold for a budget trigger that doesn't specify one. */
+export const DEFAULT_BUDGET_TRIGGER_PERCENT = 100;
+
+/**
+ * The budget crossing that started a run, handed to the workflow as
+ * `infra.event`. Amounts are in the budget currency's minor unit (cents).
+ */
+export interface BudgetTriggerEvent {
+  kind: "budget";
+  budgetId: string;
+  budgetName: string;
+  /** Calendar month the crossing was observed in, `YYYY-MM`. */
+  month: string;
+  /** ISO-4217 code of every amount below. */
+  currency: string;
+  /** The budget's monthly limit. */
+  amountCents: number;
+  /** Which measure crossed the threshold. */
+  metric: "actual" | "forecast";
+  /** The threshold that fired, as a percentage of `amountCents`. */
+  percent: number;
+  /** Value of `metric` when it crossed. */
+  observedCents: number;
+  /** Month-to-date spend. */
+  actualCents: number;
+  /** Projected month-end spend; null when there wasn't enough data to fit one. */
+  forecastCents: number | null;
+}
+
+/**
+ * What started this run, exposed to the workflow body as `infra.event`. Only
+ * budget triggers carry a payload today; every other trigger reports its kind
+ * so a workflow can branch on how it was invoked.
+ */
+export type WorkflowEvent = { kind: "manual" | "cron" | "git" | "api" } | BudgetTriggerEvent;
 
 /** Value types a user-defined metric can hold. */
 export type MetricValueType = "number" | "string" | "boolean";
@@ -57,7 +108,7 @@ export interface WorkflowDefinition {
 
 export type RunStatus = "pending" | "running" | "success" | "failure" | "canceled";
 
-export type RunTriggerSource = "manual" | "cron" | "git" | "api";
+export type RunTriggerSource = "manual" | "cron" | "git" | "api" | "budget";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 

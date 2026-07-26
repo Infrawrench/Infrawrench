@@ -2,111 +2,58 @@
  * HTTP API for workflows (org-scoped, mounted at /api/org/:orgId/workflows).
  *
  * CRUD plus: GET /:id/typings (generated infra.d.ts for the Monaco editor),
- * POST /:id/run (manual run in the isolate), GET /:id/runs, GET /:id/metrics.
+ * POST /:id/check (headless type check), POST /:id/run (manual run in the
+ * isolate), GET /:id/runs, GET /:id/metrics.
+ *
+ * The logic lives in services/workflows.ts so the MCP/chat tool registry drives
+ * exactly the same code path; this file is transport only.
  *
  * NOTE: workflows reuse the dashboards:read / dashboards:write permissions for
  * now; dedicated workflows:* permissions are a follow-up (see WORKFLOWS_PLAN.md).
  */
 import { Hono, type Context } from "hono";
-import { and, desc, eq, isNull } from "drizzle-orm";
 
-import {
-  generateInfraDts,
-  type MetricDef,
-  type WorkflowTrigger,
-} from "@infrawrench/workflow-runtime";
-
-import { db } from "@infrawrench/server-core/db/client";
-import { workflowMetrics, workflowRuns, workflows } from "@infrawrench/server-core/db/schema";
+import type { MetricDef, WorkflowTrigger } from "@infrawrench/workflow-runtime";
 
 import { requirePermission } from "../../auth/permissions";
-import { listOrgSshKeyNames } from "@infrawrench/server-core/workflows/runner";
-import { listOrgPlugins } from "../../services/workflow-host";
+import {
+  WorkflowError,
+  checkWorkflowSource,
+  createWorkflow,
+  generateWorkflowTypings,
+  getWorkflow,
+  listWorkflowMetrics,
+  listWorkflowRuns,
+  listWorkflows,
+  redactWorkflow,
+  softDeleteWorkflow,
+  updateWorkflow,
+  type WorkflowBody,
+} from "../../services/workflows";
 import { runWorkflowById } from "../../services/workflow-runner";
 
 const app = new Hono();
-
-interface WorkflowBody {
-  name?: string;
-  description?: string | null;
-  source?: string;
-  trigger?: WorkflowTrigger;
-  metrics?: MetricDef[];
-  enabled?: boolean;
-  /**
-   * HMAC secret for git triggers. `undefined` leaves the stored value alone;
-   * `null` or `""` clears it (and with it, signature enforcement).
-   */
-  webhookSecret?: string | null;
-}
-
-/**
- * Resolve the webhook secret to persist. Write-only: the value is never echoed
- * back by the read routes (see {@link redactWorkflow}), so the client sends it
- * once and thereafter sees only whether one is configured.
- */
-function nextWebhookSecret(body: WorkflowBody, existing: string | null): string | null | undefined {
-  if (body.webhookSecret === undefined) return undefined;
-  const trimmed = body.webhookSecret?.trim();
-  if (!trimmed) return null;
-  return trimmed === existing ? undefined : trimmed;
-}
-
-/**
- * Strip the signing secret from anything we hand back, replacing it with a
- * boolean. A workflow row is readable with `dashboards:read`, which is a much
- * weaker permission than the secret warrants.
- */
-function redactWorkflow<T extends { webhookSecret?: string | null }>(
-  row: T,
-): Omit<T, "webhookSecret"> & { hasWebhookSecret: boolean } {
-  const { webhookSecret, ...rest } = row;
-  return { ...rest, hasWebhookSecret: !!webhookSecret };
-}
 
 function orgId(c: Context): string {
   return c.get("organizationId") as string;
 }
 
-/** When a workflow has a cron/git trigger, derive scheduling/secret fields. */
-function triggerDerived(
-  trigger: WorkflowTrigger,
-  enabled: boolean,
-): { nextRunAt: Date | null; webhookToken: string | null } {
-  if (trigger.kind === "cron" && enabled) {
-    // Poller computes the precise next time from the cron expression; seed "now"
-    // so it gets picked up on the next tick.
-    return { nextRunAt: new Date(), webhookToken: null };
-  }
-  if (trigger.kind === "git") {
-    return { nextRunAt: null, webhookToken: crypto.randomUUID() };
-  }
-  return { nextRunAt: null, webhookToken: null };
+/** Map a service-level failure onto its HTTP response. */
+function fail(c: Context, e: unknown) {
+  if (e instanceof WorkflowError) return c.json({ error: e.message }, e.status);
+  throw e;
 }
 
-async function loadWorkflow(c: Context, id: string) {
-  const [wf] = await db
-    .select()
-    .from(workflows)
-    .where(
-      and(
-        eq(workflows.id, id),
-        eq(workflows.organizationId, orgId(c)),
-        isNull(workflows.deletedAt),
-      ),
-    )
-    .limit(1);
-  return wf;
+/** Load a workflow or return the 404 body; callers bail when it's null. */
+async function load(c: Context, id: string) {
+  const wf = await getWorkflow(orgId(c), id);
+  return wf ?? null;
 }
 
 // List
 app.get("/", async (c) => {
   requirePermission(c, "dashboards:read");
-  const rows = await db
-    .select()
-    .from(workflows)
-    .where(and(eq(workflows.organizationId, orgId(c)), isNull(workflows.deletedAt)))
-    .orderBy(desc(workflows.updatedAt));
+  const rows = await listWorkflows(orgId(c));
   return c.json(rows.map(redactWorkflow));
 });
 
@@ -114,35 +61,18 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   requirePermission(c, "dashboards:write");
   const body = (await c.req.json()) as WorkflowBody;
-  const trigger: WorkflowTrigger = body.trigger ?? { kind: "manual" };
-  const enabled = body.enabled ?? true;
-  const derived = triggerDerived(trigger, enabled);
-  const now = new Date();
-  const id = crypto.randomUUID();
-  await db.insert(workflows).values({
-    id,
-    organizationId: orgId(c),
-    name: body.name?.trim() || "Untitled workflow",
-    description: body.description ?? null,
-    source: body.source ?? "",
-    trigger,
-    metricDefs: body.metrics ?? [],
-    enabled,
-    webhookToken: derived.webhookToken,
-    webhookSecret: nextWebhookSecret(body, null) ?? null,
-    nextRunAt: derived.nextRunAt,
-    createdByUserId: (c.get("session") as { userId?: string } | undefined)?.userId ?? null,
-    createdAt: now,
-    updatedAt: now,
-  });
-  const [created] = await db.select().from(workflows).where(eq(workflows.id, id)).limit(1);
-  return c.json(created ? redactWorkflow(created) : created, 201);
+  const userId = (c.get("session") as { userId?: string } | undefined)?.userId ?? null;
+  try {
+    return c.json(redactWorkflow(await createWorkflow(orgId(c), body, userId)), 201);
+  } catch (e) {
+    return fail(c, e);
+  }
 });
 
 // Get one
 app.get("/:id", async (c) => {
   requirePermission(c, "dashboards:read");
-  const wf = await loadWorkflow(c, c.req.param("id"));
+  const wf = await load(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
   return c.json(redactWorkflow(wf));
 });
@@ -150,74 +80,54 @@ app.get("/:id", async (c) => {
 // Update
 app.put("/:id", async (c) => {
   requirePermission(c, "dashboards:write");
-  const id = c.req.param("id");
-  const existing = await loadWorkflow(c, id);
-  if (!existing) return c.json({ error: "Not found" }, 404);
   const body = (await c.req.json()) as WorkflowBody;
-  const trigger: WorkflowTrigger = body.trigger ?? (existing.trigger as WorkflowTrigger);
-  const enabled = body.enabled ?? existing.enabled;
-  const derived = triggerDerived(trigger, enabled);
-  await db
-    .update(workflows)
-    .set({
-      name: body.name?.trim() || existing.name,
-      description: body.description ?? existing.description,
-      source: body.source ?? existing.source,
-      trigger,
-      metricDefs: body.metrics ?? existing.metricDefs,
-      enabled,
-      // Preserve an existing git webhook token; only (re)issue when needed.
-      webhookToken: existing.webhookToken ?? derived.webhookToken,
-      ...(() => {
-        const secret = nextWebhookSecret(body, existing.webhookSecret);
-        return secret === undefined ? {} : { webhookSecret: secret };
-      })(),
-      nextRunAt: derived.nextRunAt,
-      updatedAt: new Date(),
-    })
-    .where(eq(workflows.id, id));
-  const [updated] = await db.select().from(workflows).where(eq(workflows.id, id)).limit(1);
-  return c.json(updated ? redactWorkflow(updated) : updated);
+  try {
+    return c.json(redactWorkflow(await updateWorkflow(orgId(c), c.req.param("id"), body)));
+  } catch (e) {
+    return fail(c, e);
+  }
 });
 
 // Soft delete
 app.delete("/:id", async (c) => {
   requirePermission(c, "dashboards:write");
-  const id = c.req.param("id");
-  const existing = await loadWorkflow(c, id);
-  if (!existing) return c.json({ error: "Not found" }, 404);
-  await db
-    .update(workflows)
-    .set({ deletedAt: new Date(), updatedAt: new Date() })
-    .where(eq(workflows.id, id));
-  return c.json({ ok: true });
+  try {
+    await softDeleteWorkflow(orgId(c), c.req.param("id"));
+    return c.json({ ok: true });
+  } catch (e) {
+    return fail(c, e);
+  }
 });
 
 // Generated TypeScript typings for the editor
 app.get("/:id/typings", async (c) => {
   requirePermission(c, "dashboards:read");
-  const wf = await loadWorkflow(c, c.req.param("id"));
+  const wf = await load(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
-  // Enrichment + key listing are best-effort niceties — never let them fail the
-  // whole typings response (which would drop the editor back to `infra: any`).
-  const [plugins, sshKeyNames] = await Promise.all([
-    listOrgPlugins(orgId(c), { enrichCreateFields: true }).catch(() => listOrgPlugins(orgId(c))),
-    listOrgSshKeyNames(orgId(c)).catch(() => [] as string[]),
-  ]);
-  const trigger = wf.trigger as WorkflowTrigger;
-  const dts = generateInfraDts({
-    plugins,
+  const dts = await generateWorkflowTypings(orgId(c), {
     metrics: (wf.metricDefs ?? []) as MetricDef[],
-    interactive: trigger.kind === "manual",
-    sshKeyNames,
+    triggerKind: (wf.trigger as WorkflowTrigger).kind,
   });
   return c.json({ dts });
+});
+
+// Headless type check of a candidate source (editorless clients).
+app.post("/:id/check", async (c) => {
+  requirePermission(c, "dashboards:read");
+  const wf = await load(c, c.req.param("id"));
+  if (!wf) return c.json({ error: "Not found" }, 404);
+  const body = (await c.req.json().catch(() => ({}))) as { source?: string };
+  const result = await checkWorkflowSource(orgId(c), body.source ?? wf.source, {
+    metrics: (wf.metricDefs ?? []) as MetricDef[],
+    triggerKind: (wf.trigger as WorkflowTrigger).kind,
+  });
+  return c.json(result);
 });
 
 // Manual run
 app.post("/:id/run", async (c) => {
   requirePermission(c, "dashboards:write");
-  const wf = await loadWorkflow(c, c.req.param("id"));
+  const wf = await load(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
   const { runId, result } = await runWorkflowById({
     organizationId: orgId(c),
@@ -232,27 +142,17 @@ app.post("/:id/run", async (c) => {
 // Run history
 app.get("/:id/runs", async (c) => {
   requirePermission(c, "dashboards:read");
-  const wf = await loadWorkflow(c, c.req.param("id"));
+  const wf = await load(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
-  const rows = await db
-    .select()
-    .from(workflowRuns)
-    .where(eq(workflowRuns.workflowId, wf.id))
-    .orderBy(desc(workflowRuns.createdAt))
-    .limit(50);
-  return c.json(rows);
+  return c.json(await listWorkflowRuns(wf.id));
 });
 
 // Current metric values
 app.get("/:id/metrics", async (c) => {
   requirePermission(c, "dashboards:read");
-  const wf = await loadWorkflow(c, c.req.param("id"));
+  const wf = await load(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
-  const rows = await db
-    .select()
-    .from(workflowMetrics)
-    .where(and(eq(workflowMetrics.workflowId, wf.id), isNull(workflowMetrics.deletedAt)));
-  return c.json(rows);
+  return c.json(await listWorkflowMetrics(wf.id));
 });
 
 export default app;
