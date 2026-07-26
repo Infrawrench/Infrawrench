@@ -144,9 +144,19 @@ jobs:
       - run: npm install -g npm@latest
       - name: Publish
         working-directory: sdk/typescript
-        # Scoped packages default to restricted. Provenance is automatic under
-        # trusted publishing, so no --provenance flag.
-        run: npm publish --access public
+        env:
+          VERSION: ${{ needs.generate.outputs.version }}
+        # Skip-if-present, not fail-if-present: a re-run after a partial failure
+        # has to get the stragglers out without tripping over what already
+        # shipped. Scoped packages default to restricted, and provenance is
+        # automatic under trusted publishing, so no --provenance flag.
+        run: |
+          set -euo pipefail
+          if npm view "@infrawrench/sdk@$VERSION" version >/dev/null 2>&1; then
+            echo "::notice::@infrawrench/sdk@$VERSION is already published; skipping."
+            exit 0
+          fi
+          npm publish --access public
 
   pypi:
     name: "PyPI — infrawrench-sdk"
@@ -168,6 +178,8 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: sdk/python/dist
+          # Lets a re-run finish the registries that failed the first time.
+          skip-existing: true
 
   rubygems:
     name: "RubyGems — infrawrench-sdk"
@@ -186,13 +198,19 @@ jobs:
       # `rubygems/release-gem` assumes bundler's rake release tasks, which a
       # generated gem has no reason to carry — configure credentials from OIDC
       # and drive gem build/push directly instead.
-      - uses: rubygems/configure-rubygems-credentials@v1
+      - uses: rubygems/configure-rubygems-credentials@v2.1.0
       - name: Build and push
         working-directory: sdk/ruby
+        env:
+          VERSION: ${{ needs.generate.outputs.version }}
         run: |
           set -euo pipefail
+          if curl -sfo /dev/null "https://rubygems.org/api/v2/rubygems/infrawrench-sdk/versions/$VERSION.json"; then
+            echo "::notice::infrawrench-sdk $VERSION is already published; skipping."
+            exit 0
+          fi
           gem build infrawrench-sdk.gemspec
-          gem push "infrawrench-sdk-${{ needs.generate.outputs.version }}.gem"
+          gem push "infrawrench-sdk-$VERSION.gem"
 
   crates:
     name: "crates.io — infrawrench-sdk"
@@ -216,7 +234,16 @@ jobs:
         id: auth
       - name: Publish
         working-directory: sdk/rust
-        run: cargo publish --token "${{ steps.auth.outputs.token }}"
+        env:
+          VERSION: ${{ needs.generate.outputs.version }}
+        run: |
+          set -euo pipefail
+          if curl -sfo /dev/null -H "User-Agent: infrawrench-ci" \
+               "https://crates.io/api/v1/crates/infrawrench-sdk/$VERSION"; then
+            echo "::notice::infrawrench-sdk $VERSION is already published; skipping."
+            exit 0
+          fi
+          cargo publish --token "${{ steps.auth.outputs.token }}"
 
   nuget:
     name: "NuGet — Infrawrench.Sdk"
@@ -278,9 +305,18 @@ jobs:
       - name: Deploy
         working-directory: sdk/java
         # `-Prelease` adds the sources/javadoc/GPG/publishing plugins that
-        # Central requires and that a local build has no use for.
-        run: mvn --batch-mode --no-transfer-progress -Prelease deploy
+        # Central requires and that a local build has no use for. Central
+        # rejects a duplicate version outright, so check the repository first.
+        run: |
+          set -euo pipefail
+          if curl -sfo /dev/null \
+               "https://repo1.maven.org/maven2/com/infrawrench/infrawrench-sdk/$VERSION/"; then
+            echo "::notice::com.infrawrench:infrawrench-sdk:$VERSION is already on Central; skipping."
+            exit 0
+          fi
+          mvn --batch-mode --no-transfer-progress -Prelease deploy
         env:
+          VERSION: ${{ needs.generate.outputs.version }}
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}

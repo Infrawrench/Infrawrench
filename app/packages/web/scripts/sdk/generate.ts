@@ -34,7 +34,7 @@ import { SDK_TARGETS, findTarget } from "./targets/index";
 import type { SdkTarget } from "./target";
 
 /** Bump when the emitter changes shape, so existing outputs refresh themselves. */
-const GENERATOR_REVISION = 4;
+const GENERATOR_REVISION = 5;
 
 const STAMP_FILE = ".sdk-stamp.json";
 

@@ -1308,7 +1308,13 @@ ${noDependencies}
           <plugin>
             <groupId>org.sonatype.central</groupId>
             <artifactId>central-publishing-maven-plugin</artifactId>
-            <version>0.7.0</version>
+            <!--
+              Keep this current with the Central API. 0.7.0 uploaded fine and
+              then threw UnrecognizedPropertyException on a "warnings" field the
+              server had started returning, so a successful publish was reported
+              as a build failure.
+            -->
+            <version>0.11.0</version>
             <extensions>true</extensions>
             <configuration>
               <publishingServerId>central</publishingServerId>
