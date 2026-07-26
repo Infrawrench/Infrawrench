@@ -359,6 +359,25 @@ export interface WorkflowCreateFieldInfo {
   description?: string;
 }
 
+/**
+ * A peer plugin reachable *through* a parent resource rather than through an
+ * account of its own: a managed Kubernetes cluster (DOKS, EKS, GKE, …) exposes
+ * the `kubernetes` plugin via its kubeconfig, and a managed database exposes
+ * `postgres` / `mysql` / `redis` / `mongodb` via its connection string. Built
+ * from the parent resource type's `peerIntegrations`, and surfaced on the
+ * resource itself as `resource.<pluginId>.<group>` — e.g.
+ * `cluster.kubernetes.pods.list()`.
+ */
+export interface WorkflowSidecarInfo {
+  /** The peer plugin's id. Also the property name on the parent resource. */
+  pluginId: string;
+  displayName: string;
+  /** Label the resource-detail UI gives this integration's tab ("Kubernetes"). */
+  tabLabel: string;
+  /** The peer plugin's resource types, as reached inside this parent. */
+  resourceTypes: WorkflowResourceTypeInfo[];
+}
+
 /** A resource type descriptor (subset of plugin-base ResourceTypeDefinition). */
 export interface WorkflowResourceTypeInfo {
   id: string;
@@ -370,6 +389,12 @@ export interface WorkflowResourceTypeInfo {
   supportsDelete: boolean;
   /** True when the owning plugin implements storage object listing. */
   storage?: boolean;
+  /**
+   * Peer plugins reachable through a resource of this type. Empty/absent for
+   * the overwhelming majority of types; only managed clusters and managed
+   * databases carry one. Never nested — a sidecar's own types have none.
+   */
+  sidecars?: WorkflowSidecarInfo[];
   /**
    * Distilled create-form fields (best-effort; populated by the host via
    * `getCreateConfig`). Absent → codegen falls back to `Record<string, string>`.

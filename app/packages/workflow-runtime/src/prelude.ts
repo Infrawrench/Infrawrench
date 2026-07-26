@@ -201,21 +201,24 @@ export const PRELUDE = String.raw`
   // Extended per-resource capabilities (plugin-client passthroughs): SQL query,
   // KV browser, NoSQL commands, k8s logs/describe, manifest, pub/sub, metrics.
   // Each throws a clear error at runtime if the owning plugin doesn't support it.
-  const makeResourceCaps = (accountId, typeId, resourceId) => ({
-    query: (sql) => rpc("resource.query", { accountId, resourceId, sql }),
+  // The optional "sidecar" routes every call through a peer plugin reached via
+  // a parent resource — see makeSidecars. It rides along on each RPC; the host
+  // builds the peer client from the parent's outputs.
+  const makeResourceCaps = (accountId, typeId, resourceId, sidecar) => ({
+    query: (sql) => rpc("resource.query", { accountId, resourceId, sql, sidecar }),
     kv: {
-      list: (params) => rpc("kv.list", { accountId, typeId, resourceId, params: params || {} }),
-      get: (key) => rpc("kv.get", { accountId, typeId, resourceId, key }),
-      set: (key, value) => rpc("kv.put", { accountId, typeId, resourceId, key, value: typeof value === "string" ? value : JSON.stringify(value) }),
-      delete: (key) => rpc("kv.delete", { accountId, typeId, resourceId, key }),
+      list: (params) => rpc("kv.list", { accountId, typeId, resourceId, params: params || {}, sidecar }),
+      get: (key) => rpc("kv.get", { accountId, typeId, resourceId, key, sidecar }),
+      set: (key, value) => rpc("kv.put", { accountId, typeId, resourceId, key, value: typeof value === "string" ? value : JSON.stringify(value), sidecar }),
+      delete: (key) => rpc("kv.delete", { accountId, typeId, resourceId, key, sidecar }),
     },
-    nosql: (command, args) => rpc("resource.nosql", { accountId, typeId, resourceId, command, args: args || [] }),
-    logs: (params) => rpc("resource.logs", { accountId, typeId, resourceId, params: params || {} }),
-    describe: () => rpc("resource.describe", { accountId, typeId, resourceId }),
-    getManifest: () => rpc("resource.getManifest", { accountId, resourceId }),
-    applyManifest: (manifest) => rpc("resource.applyManifest", { accountId, resourceId, manifest }),
-    publish: (payload) => rpc("resource.publish", { accountId, typeId, resourceId, payload: typeof payload === "string" ? { body: payload } : payload }),
-    metrics: (timeRange) => rpc("resource.metrics", { accountId, typeId, resourceId, timeRange }),
+    nosql: (command, args) => rpc("resource.nosql", { accountId, typeId, resourceId, command, args: args || [], sidecar }),
+    logs: (params) => rpc("resource.logs", { accountId, typeId, resourceId, params: params || {}, sidecar }),
+    describe: () => rpc("resource.describe", { accountId, typeId, resourceId, sidecar }),
+    getManifest: () => rpc("resource.getManifest", { accountId, resourceId, sidecar }),
+    applyManifest: (manifest) => rpc("resource.applyManifest", { accountId, resourceId, manifest, sidecar }),
+    publish: (payload) => rpc("resource.publish", { accountId, typeId, resourceId, payload: typeof payload === "string" ? { body: payload } : payload, sidecar }),
+    metrics: (timeRange) => rpc("resource.metrics", { accountId, typeId, resourceId, timeRange, sidecar }),
   });
 
   // Object-read ops bound to one bucket, mixed onto a storage-capable
@@ -234,14 +237,14 @@ export const PRELUDE = String.raw`
     },
   });
 
-  const makeResourceHandle = (accountId, typeId) => ({
-    list: () => rpc("resource.list", { accountId, typeId }),
-    get: (externalId) => rpc("resource.get", { accountId, typeId, externalId }),
+  const makeResourceHandle = (accountId, typeId, sidecar) => ({
+    list: () => rpc("resource.list", { accountId, typeId, sidecar }),
+    get: (externalId) => rpc("resource.get", { accountId, typeId, externalId, sidecar }),
     create: (fields, parentResourceId) =>
-      rpc("resource.create", { accountId, typeId, fields: fields || {}, parentResourceId }),
+      rpc("resource.create", { accountId, typeId, fields: fields || {}, parentResourceId, sidecar }),
     update: (resourceId, fields) =>
-      rpc("resource.update", { accountId, typeId, resourceId, fields: fields || {} }),
-    delete: (resourceId) => rpc("resource.delete", { accountId, typeId, resourceId }),
+      rpc("resource.update", { accountId, typeId, resourceId, fields: fields || {}, sidecar }),
+    delete: (resourceId) => rpc("resource.delete", { accountId, typeId, resourceId, sidecar }),
   });
 
   // camelCase: first word fully lowercased (leading acronyms read naturally:
@@ -257,6 +260,78 @@ export const PRELUDE = String.raw`
     return words[0].toLowerCase() + tail;
   };
 
+  // One resource-type group — { list, get, create?, update?, delete? } — bound
+  // to an account, and optionally reached through a sidecar (see below).
+  const makeGroup = (accountId, rt, sidecar) => {
+    const h = makeResourceHandle(accountId, rt.id, sidecar);
+    // Every resource gets ssh()/waitUntilReachable(); storage-capable types
+    // additionally get bucket-read ops. The resource's canonical id (r.id) is
+    // what the host resolves outputs (e.g. the SSH host) against.
+    //
+    // Sidecar resources get the plugin-client capabilities (logs, describe,
+    // manifest, …) but NOT ssh/sftp or bucket ops: both of those resolve
+    // against the account's own plugin — an SSH endpoint, a bucket name — which
+    // something living inside somebody else's cluster doesn't have.
+    const wrap = (r) => {
+      if (!r) return r;
+      const augmented = Object.assign(
+        {},
+        r,
+        sidecar ? {} : makeSshOps(accountId, rt.id, r.id, r.sshKeyRef),
+        makeResourceCaps(accountId, rt.id, r.id, sidecar),
+        {
+          // Delete this very resource (by its own id). The host rejects if the
+          // owning plugin doesn't support deletion.
+          delete: () => h.delete(r.id),
+        },
+      );
+      if (rt.storage && !sidecar) Object.assign(augmented, makeStorageOps(accountId, bucketOf(r)));
+      if (!sidecar) {
+        // Peer plugins reachable through this resource. Never overwrite a field
+        // the provider already returned under the same name.
+        const peers = makeSidecars(accountId, rt, r.id);
+        for (const key of Object.keys(peers)) {
+          if (!(key in augmented)) augmented[key] = peers[key];
+        }
+      }
+      return augmented;
+    };
+    const g = {
+      list: async () => (await h.list()).map(wrap),
+      get: async (externalId) => wrap(await h.get(externalId)),
+    };
+    if (rt.supportsCreate)
+      g.create = async (fields, parentResourceId) => wrap(await h.create(fields, parentResourceId));
+    if (rt.supportsUpdate)
+      g.update = async (resourceId, fields) => wrap(await h.update(resourceId, fields));
+    if (rt.supportsDelete) g.delete = (resourceId) => h.delete(resourceId);
+    return g;
+  };
+
+  // Peer plugins reached *through* a resource rather than through an account of
+  // their own: a managed cluster exposes kubernetes via its kubeconfig, a
+  // managed database exposes postgres/mysql/redis/mongodb via its connection
+  // string. Keyed by plugin id, so this reads
+  //   cluster.kubernetes.pods.list()
+  // Sidecars never nest — a peer's own types carry none — so this terminates.
+  const makeSidecars = (accountId, rt, parentResourceId) => {
+    const out = {};
+    for (const sc of rt.sidecars || []) {
+      if (!sc.pluginId || sc.pluginId in out) continue;
+      const groups = {};
+      for (const srt of sc.resourceTypes || []) {
+        const group = camel(srt.pluralDisplayName);
+        if (!group || group in groups) continue;
+        groups[group] = makeGroup(accountId, srt, {
+          pluginId: sc.pluginId,
+          parentResourceId,
+        });
+      }
+      out[sc.pluginId] = groups;
+    }
+    return out;
+  };
+
   const makeAccountHandle = (acc, resourceTypes) => {
     const handle = {
       id: acc.id,
@@ -270,36 +345,7 @@ export const PRELUDE = String.raw`
     for (const rt of resourceTypes) {
       const group = camel(rt.pluralDisplayName);
       if (!group || group in handle) continue;
-      const h = makeResourceHandle(acc.id, rt.id);
-      // Every resource gets ssh()/waitUntilReachable(); storage-capable types
-      // additionally get bucket-read ops. The resource's canonical id (r.id) is
-      // what the host resolves outputs (e.g. the SSH host) against.
-      const wrap = (r) => {
-        if (!r) return r;
-        const augmented = Object.assign(
-          {},
-          r,
-          makeSshOps(acc.id, rt.id, r.id, r.sshKeyRef),
-          makeResourceCaps(acc.id, rt.id, r.id),
-          {
-            // Delete this very resource (by its own id). The host rejects if the
-            // owning plugin doesn't support deletion.
-            delete: () => h.delete(r.id),
-          },
-        );
-        if (rt.storage) Object.assign(augmented, makeStorageOps(acc.id, bucketOf(r)));
-        return augmented;
-      };
-      const g = {
-        list: async () => (await h.list()).map(wrap),
-        get: async (externalId) => wrap(await h.get(externalId)),
-      };
-      if (rt.supportsCreate)
-        g.create = async (fields, parentResourceId) => wrap(await h.create(fields, parentResourceId));
-      if (rt.supportsUpdate)
-        g.update = async (resourceId, fields) => wrap(await h.update(resourceId, fields));
-      if (rt.supportsDelete) g.delete = (resourceId) => h.delete(resourceId);
-      handle[group] = g;
+      handle[group] = makeGroup(acc.id, rt);
     }
     return handle;
   };

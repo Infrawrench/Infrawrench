@@ -15,6 +15,7 @@ import type {
   ResourceInstanceLite,
   SftpEntryLite,
   SftpParamsLite,
+  SidecarRef,
   SshExecParamsLite,
   SshExecResultLite,
   SshProbeParamsLite,
@@ -37,8 +38,16 @@ import type {
 export interface ClientHostDeps {
   /** Accounts grouped by plugin (drives `infra.accounts`). */
   listPlugins(): Promise<WorkflowPluginInfo[]>;
-  /** Resolve a live plugin client for an account in the current trust scope. */
-  getClient(accountId: string): Promise<PluginClient>;
+  /**
+   * Resolve a live plugin client for an account in the current trust scope.
+   *
+   * With a {@link SidecarRef} the caller wants the *peer* plugin's client
+   * instead — credentials resolved from the named parent resource's outputs, so
+   * a workflow can reach into a managed cluster or database. Platforms that
+   * can't build peer clients should throw; the sidecar surface then simply
+   * fails at the call rather than returning the wrong account's client.
+   */
+  getClient(accountId: string, sidecar?: SidecarRef): Promise<PluginClient>;
   /** Read a storage object's raw bytes (platform wires its StorageNodeDriver). */
   readStorageObject(accountId: string, bucket: string, key: string): Promise<Uint8Array>;
   getMetric(key: string): Promise<MetricValue>;
@@ -137,14 +146,14 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
   return {
     listPlugins: () => deps.listPlugins(),
 
-    async listResources(accountId, typeId) {
-      const client = await deps.getClient(accountId);
+    async listResources(accountId, typeId, sidecar) {
+      const client = await deps.getClient(accountId, sidecar);
       const list = await client.listResources(typeId, accountId);
       return list.map(toLite);
     },
 
-    async getResource(accountId, typeId, externalId) {
-      const client = await deps.getClient(accountId);
+    async getResource(accountId, typeId, externalId, sidecar) {
+      const client = await deps.getClient(accountId, sidecar);
       const instance = await client.getResource(
         typeId,
         resourceId(accountId, typeId, externalId),
@@ -153,13 +162,13 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
       return toLite(instance);
     },
 
-    async resolveOutput(accountId, typeId, rid, outputKey) {
-      const client = await deps.getClient(accountId);
+    async resolveOutput(accountId, typeId, rid, outputKey, sidecar) {
+      const client = await deps.getClient(accountId, sidecar);
       return client.resolveOutput(typeId, rid, outputKey, accountId);
     },
 
-    async createResource(accountId, typeId, fields, parentResourceId) {
-      const client = await deps.getClient(accountId);
+    async createResource(accountId, typeId, fields, parentResourceId, sidecar) {
+      const client = await deps.getClient(accountId, sidecar);
       if (!client.createResource) {
         throw new Error(`Plugin for account ${accountId} cannot create ${typeId}.`);
       }
@@ -170,6 +179,9 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
         typeId,
         accountId,
         transformed.fields,
+        // A sidecar's own resources are already scoped by the peer client, so
+        // the parent that supplied its credentials is not also its container —
+        // only an explicit argument becomes the create-time parent.
         parentResourceId,
       );
       // `createResource` returns `ResourceCreateReturn`: either a bare
@@ -182,8 +194,8 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
       return lite;
     },
 
-    async updateResource(accountId, typeId, rid, fields) {
-      const client = await deps.getClient(accountId);
+    async updateResource(accountId, typeId, rid, fields, sidecar) {
+      const client = await deps.getClient(accountId, sidecar);
       if (!client.updateResource) {
         throw new Error(`Plugin for account ${accountId} cannot update ${typeId}.`);
       }
@@ -194,8 +206,8 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
       return toLite(instance);
     },
 
-    async deleteResource(accountId, typeId, rid) {
-      const client = await deps.getClient(accountId);
+    async deleteResource(accountId, typeId, rid, sidecar) {
+      const client = await deps.getClient(accountId, sidecar);
       if (!client.deleteResource) {
         throw new Error(`Plugin for account ${accountId} cannot delete ${typeId}.`);
       }
@@ -228,15 +240,15 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
     listMetrics: () => deps.listMetrics(),
 
     // --- extended capabilities (plugin-client passthroughs) ----------------
-    async query(accountId, resourceId, sql) {
-      const client = await deps.getClient(accountId);
+    async query(accountId, resourceId, sql, sidecar) {
+      const client = await deps.getClient(accountId, sidecar);
       if (!client.executeQuery) {
         throw new Error(`This resource does not support query() (no REST query engine).`);
       }
       return client.executeQuery(resourceId, accountId, sql);
     },
-    async kvList(accountId, typeId, resourceId, params) {
-      const client = await deps.getClient(accountId);
+    async kvList(accountId, typeId, resourceId, params, sidecar) {
+      const client = await deps.getClient(accountId, sidecar);
       if (!client.listKvKeys)
         throw new Error(`This resource does not support a key-value browser.`);
       const r = await client.listKvKeys(typeId, resourceId, accountId, params);
@@ -245,45 +257,45 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
         ...(r.nextCursor ? { nextCursor: r.nextCursor } : {}),
       };
     },
-    async kvGet(accountId, typeId, resourceId, key) {
-      const client = await deps.getClient(accountId);
+    async kvGet(accountId, typeId, resourceId, key, sidecar) {
+      const client = await deps.getClient(accountId, sidecar);
       if (!client.getKvValue)
         throw new Error(`This resource does not support a key-value browser.`);
       return client.getKvValue(typeId, resourceId, accountId, key);
     },
-    async kvPut(accountId, typeId, resourceId, key, value) {
-      const client = await deps.getClient(accountId);
+    async kvPut(accountId, typeId, resourceId, key, value, sidecar) {
+      const client = await deps.getClient(accountId, sidecar);
       if (!client.putKvValue) throw new Error(`This resource does not support key-value writes.`);
       await client.putKvValue(typeId, resourceId, accountId, key, value);
     },
-    async kvDelete(accountId, typeId, resourceId, key) {
-      const client = await deps.getClient(accountId);
+    async kvDelete(accountId, typeId, resourceId, key, sidecar) {
+      const client = await deps.getClient(accountId, sidecar);
       if (!client.deleteKvKey) throw new Error(`This resource does not support key-value deletes.`);
       await client.deleteKvKey(typeId, resourceId, accountId, key);
     },
-    async nosql(accountId, typeId, resourceId, command, args) {
-      const client = await deps.getClient(accountId);
+    async nosql(accountId, typeId, resourceId, command, args, sidecar) {
+      const client = await deps.getClient(accountId, sidecar);
       if (!client.executeNoSqlCommand)
         throw new Error(`This resource does not support NoSQL commands.`);
       return client.executeNoSqlCommand(typeId, resourceId, accountId, command, args);
     },
-    async getLogs(accountId, typeId, resourceId, params) {
-      const client = await deps.getClient(accountId);
+    async getLogs(accountId, typeId, resourceId, params, sidecar) {
+      const client = await deps.getClient(accountId, sidecar);
       if (!client.getLogs) throw new Error(`This resource does not expose logs.`);
       return client.getLogs(typeId, resourceId, accountId, params);
     },
-    async describe(accountId, typeId, resourceId) {
-      const client = await deps.getClient(accountId);
+    async describe(accountId, typeId, resourceId, sidecar) {
+      const client = await deps.getClient(accountId, sidecar);
       if (!client.describeResource) throw new Error(`This resource does not support describe().`);
       return client.describeResource(typeId, resourceId, accountId);
     },
-    async getManifest(accountId, resourceId) {
-      const client = await deps.getClient(accountId);
+    async getManifest(accountId, resourceId, sidecar) {
+      const client = await deps.getClient(accountId, sidecar);
       if (!client.getManifest) throw new Error(`This resource does not expose a manifest.`);
       return client.getManifest(resourceId, accountId);
     },
-    async applyManifest(accountId, resourceId, manifest) {
-      const client = await deps.getClient(accountId);
+    async applyManifest(accountId, resourceId, manifest, sidecar) {
+      const client = await deps.getClient(accountId, sidecar);
       if (!client.applyManifest) throw new Error(`This resource does not support applyManifest().`);
       await client.applyManifest(resourceId, accountId, manifest);
     },
@@ -292,16 +304,16 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
       if (!client.importYaml) throw new Error(`This account does not support importYaml().`);
       return client.importYaml(accountId, yaml);
     },
-    async publish(accountId, typeId, resourceId, payload) {
-      const client = await deps.getClient(accountId);
+    async publish(accountId, typeId, resourceId, payload, sidecar) {
+      const client = await deps.getClient(accountId, sidecar);
       if (!client.publishMessage) throw new Error(`This resource is not a pub/sub target.`);
       return client.publishMessage(typeId, resourceId, accountId, {
         body: payload.body,
         extras: payload.extras ?? {},
       });
     },
-    async metricSeries(accountId, typeId, resourceId, timeRange) {
-      const client = await deps.getClient(accountId);
+    async metricSeries(accountId, typeId, resourceId, timeRange, sidecar) {
+      const client = await deps.getClient(accountId, sidecar);
       if (!client.fetchMetricSeries) throw new Error(`This resource does not expose metrics.`);
       return client.fetchMetricSeries(typeId, resourceId, accountId, timeRange);
     },

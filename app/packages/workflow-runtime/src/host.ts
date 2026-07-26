@@ -36,6 +36,24 @@ import type {
   WorkflowPluginInfo,
 } from "./types.js";
 
+/**
+ * Identifies a peer plugin reached *through* a parent resource, rather than
+ * through an account of its own — the `kubernetes` plugin inside a managed
+ * cluster, `postgres` inside a managed database. The sandbox attaches one to
+ * every RPC it makes against a sidecar resource so the host knows to build the
+ * peer plugin's client (credentials resolved from the parent resource's
+ * outputs) instead of the account's own client.
+ *
+ * `accountId` stays the parent's account throughout: a sidecar borrows its
+ * parent's account for credentials and permissions, it is not an account.
+ */
+export interface SidecarRef {
+  /** The peer plugin's id, e.g. "kubernetes". */
+  pluginId: string;
+  /** Resource id of the parent supplying the peer plugin's credentials. */
+  parentResourceId: string;
+}
+
 /** Transport-friendly subset of plugin-base's ResourceInstance. */
 export interface ResourceInstanceLite {
   id: string;
@@ -148,13 +166,30 @@ export interface WorkflowHost {
   /** Accounts grouped by plugin, used to build `infra.accounts` at runtime. */
   listPlugins(): Promise<WorkflowPluginInfo[]>;
 
-  listResources(accountId: string, typeId: string): Promise<ResourceInstanceLite[]>;
-  getResource(accountId: string, typeId: string, externalId: string): Promise<ResourceInstanceLite>;
+  /**
+   * Every resource operation takes an optional trailing {@link SidecarRef}.
+   * When present the operation targets a peer plugin reached through a parent
+   * resource (see {@link SidecarRef}) rather than the account's own plugin;
+   * hosts that can't resolve peer clients may ignore it, and the peer surface
+   * simply won't work for them.
+   */
+  listResources(
+    accountId: string,
+    typeId: string,
+    sidecar?: SidecarRef,
+  ): Promise<ResourceInstanceLite[]>;
+  getResource(
+    accountId: string,
+    typeId: string,
+    externalId: string,
+    sidecar?: SidecarRef,
+  ): Promise<ResourceInstanceLite>;
   resolveOutput(
     accountId: string,
     typeId: string,
     resourceId: string,
     outputKey: string,
+    sidecar?: SidecarRef,
   ): Promise<string>;
 
   createResource?(
@@ -162,14 +197,21 @@ export interface WorkflowHost {
     typeId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
+    sidecar?: SidecarRef,
   ): Promise<ResourceInstanceLite>;
   updateResource?(
     accountId: string,
     typeId: string,
     resourceId: string,
     fields: Record<string, string>,
+    sidecar?: SidecarRef,
   ): Promise<ResourceInstanceLite>;
-  deleteResource?(accountId: string, typeId: string, resourceId: string): Promise<void>;
+  deleteResource?(
+    accountId: string,
+    typeId: string,
+    resourceId: string,
+    sidecar?: SidecarRef,
+  ): Promise<void>;
 
   listStorageObjects(
     accountId: string,
@@ -260,6 +302,7 @@ export interface WorkflowHost {
     accountId: string,
     resourceId: string,
     sql: string,
+    sidecar?: SidecarRef,
   ): Promise<{ rows: Record<string, unknown>[]; durationMs?: number }>;
   /** List keys in a KV/Redis namespace resource. */
   kvList?(
@@ -267,9 +310,16 @@ export interface WorkflowHost {
     typeId: string,
     resourceId: string,
     params: { prefix?: string; cursor?: string; limit?: number },
+    sidecar?: SidecarRef,
   ): Promise<{ items: { key: string }[]; nextCursor?: string }>;
   /** Read a single KV value. */
-  kvGet?(accountId: string, typeId: string, resourceId: string, key: string): Promise<string>;
+  kvGet?(
+    accountId: string,
+    typeId: string,
+    resourceId: string,
+    key: string,
+    sidecar?: SidecarRef,
+  ): Promise<string>;
   /** Write a single KV value. */
   kvPut?(
     accountId: string,
@@ -277,9 +327,16 @@ export interface WorkflowHost {
     resourceId: string,
     key: string,
     value: string,
+    sidecar?: SidecarRef,
   ): Promise<void>;
   /** Delete a single KV key. */
-  kvDelete?(accountId: string, typeId: string, resourceId: string, key: string): Promise<void>;
+  kvDelete?(
+    accountId: string,
+    typeId: string,
+    resourceId: string,
+    key: string,
+    sidecar?: SidecarRef,
+  ): Promise<void>;
   /** Run a document-store command (Firestore/Mongo/DynamoDB). */
   nosql?(
     accountId: string,
@@ -287,6 +344,7 @@ export interface WorkflowHost {
     resourceId: string,
     command: string,
     args: (string | number)[],
+    sidecar?: SidecarRef,
   ): Promise<unknown>;
   /** Fetch a resource's recent logs (k8s-style). */
   getLogs?(
@@ -294,13 +352,24 @@ export interface WorkflowHost {
     typeId: string,
     resourceId: string,
     params: { tailLines?: number; container?: string; previous?: boolean },
+    sidecar?: SidecarRef,
   ): Promise<{ text: string; containers: string[]; activeContainer: string }>;
   /** Plain-text "describe" of a resource (k8s-style). */
-  describe?(accountId: string, typeId: string, resourceId: string): Promise<string>;
+  describe?(
+    accountId: string,
+    typeId: string,
+    resourceId: string,
+    sidecar?: SidecarRef,
+  ): Promise<string>;
   /** Fetch a resource's full manifest (JSON/YAML text). */
-  getManifest?(accountId: string, resourceId: string): Promise<string>;
+  getManifest?(accountId: string, resourceId: string, sidecar?: SidecarRef): Promise<string>;
   /** Apply an updated manifest to a resource. */
-  applyManifest?(accountId: string, resourceId: string, manifest: string): Promise<void>;
+  applyManifest?(
+    accountId: string,
+    resourceId: string,
+    manifest: string,
+    sidecar?: SidecarRef,
+  ): Promise<void>;
   /** Apply arbitrary (multi-doc) YAML to an account (kubectl apply -f). */
   importYaml?(accountId: string, yaml: string): Promise<{ applied: number }>;
   /** Publish a message to a pub/sub resource. */
@@ -309,6 +378,7 @@ export interface WorkflowHost {
     typeId: string,
     resourceId: string,
     payload: { body: string; extras?: Record<string, string | Record<string, string>> },
+    sidecar?: SidecarRef,
   ): Promise<{ id?: string; summary?: string }>;
   /** Fetch a resource's provider metric series. */
   metricSeries?(
@@ -316,6 +386,7 @@ export interface WorkflowHost {
     typeId: string,
     resourceId: string,
     timeRange?: { startMs: number; endMs: number },
+    sidecar?: SidecarRef,
   ): Promise<{ label: string; unit?: string; points: { timestamp: number; value: number }[] }[]>;
 }
 
@@ -332,6 +403,20 @@ function requireMethod<T>(fn: T | undefined, name: string): T {
     throw new WorkflowCapabilityError(`This workflow host does not support "${name}".`);
   }
   return fn;
+}
+
+/**
+ * Marshal the optional `sidecar` RPC arg. Absent (the common case) or missing
+ * either half means "the account's own plugin" — a half-specified ref would be
+ * unresolvable, so it's treated as absent rather than passed on to fail deeper.
+ */
+function sidecarRef(raw: unknown): SidecarRef | undefined {
+  const spec = raw as Record<string, unknown> | null | undefined;
+  if (!spec) return undefined;
+  const pluginId = String(spec["pluginId"] ?? "");
+  const parentResourceId = String(spec["parentResourceId"] ?? "");
+  if (!pluginId || !parentResourceId) return undefined;
+  return { pluginId, parentResourceId };
 }
 
 /** Marshal the common SFTP RPC args into {@link SftpParamsLite}. */
@@ -485,18 +570,23 @@ export async function dispatch(
   method: string,
   args: Record<string, unknown>,
 ): Promise<unknown> {
+  // Present only on operations against a sidecar resource (see SidecarRef);
+  // every other RPC leaves it undefined and targets the account's own plugin.
+  const sidecar = sidecarRef(args["sidecar"]);
+
   switch (method) {
     case "accounts.list":
       return host.listPlugins();
 
     case "resource.list":
-      return host.listResources(String(args["accountId"]), String(args["typeId"]));
+      return host.listResources(String(args["accountId"]), String(args["typeId"]), sidecar);
 
     case "resource.get":
       return host.getResource(
         String(args["accountId"]),
         String(args["typeId"]),
         String(args["externalId"]),
+        sidecar,
       );
 
     case "resource.resolveOutput":
@@ -505,6 +595,7 @@ export async function dispatch(
         String(args["typeId"]),
         String(args["resourceId"]),
         String(args["outputKey"]),
+        sidecar,
       );
 
     case "resource.create":
@@ -514,6 +605,7 @@ export async function dispatch(
         String(args["typeId"]),
         (args["fields"] as Record<string, string>) ?? {},
         args["parentResourceId"] ? String(args["parentResourceId"]) : undefined,
+        sidecar,
       );
 
     case "resource.update":
@@ -523,6 +615,7 @@ export async function dispatch(
         String(args["typeId"]),
         String(args["resourceId"]),
         (args["fields"] as Record<string, string>) ?? {},
+        sidecar,
       );
 
     case "resource.delete":
@@ -531,6 +624,7 @@ export async function dispatch(
         String(args["accountId"]),
         String(args["typeId"]),
         String(args["resourceId"]),
+        sidecar,
       );
       return null;
 
@@ -635,6 +729,7 @@ export async function dispatch(
         String(args["accountId"]),
         String(args["resourceId"]),
         String(args["sql"]),
+        sidecar,
       );
 
     case "kv.list":
@@ -644,6 +739,7 @@ export async function dispatch(
         String(args["typeId"]),
         String(args["resourceId"]),
         (args["params"] as { prefix?: string; cursor?: string; limit?: number }) ?? {},
+        sidecar,
       );
 
     case "kv.get":
@@ -653,6 +749,7 @@ export async function dispatch(
         String(args["typeId"]),
         String(args["resourceId"]),
         String(args["key"]),
+        sidecar,
       );
 
     case "kv.put":
@@ -663,6 +760,7 @@ export async function dispatch(
         String(args["resourceId"]),
         String(args["key"]),
         String(args["value"]),
+        sidecar,
       );
       return null;
 
@@ -673,6 +771,7 @@ export async function dispatch(
         String(args["typeId"]),
         String(args["resourceId"]),
         String(args["key"]),
+        sidecar,
       );
       return null;
 
@@ -684,6 +783,7 @@ export async function dispatch(
         String(args["resourceId"]),
         String(args["command"]),
         (args["args"] as (string | number)[]) ?? [],
+        sidecar,
       );
 
     case "resource.logs":
@@ -693,6 +793,7 @@ export async function dispatch(
         String(args["typeId"]),
         String(args["resourceId"]),
         (args["params"] as { tailLines?: number; container?: string; previous?: boolean }) ?? {},
+        sidecar,
       );
 
     case "resource.describe":
@@ -701,6 +802,7 @@ export async function dispatch(
         String(args["accountId"]),
         String(args["typeId"]),
         String(args["resourceId"]),
+        sidecar,
       );
 
     case "resource.getManifest":
@@ -708,6 +810,7 @@ export async function dispatch(
         host,
         String(args["accountId"]),
         String(args["resourceId"]),
+        sidecar,
       );
 
     case "resource.applyManifest":
@@ -716,6 +819,7 @@ export async function dispatch(
         String(args["accountId"]),
         String(args["resourceId"]),
         String(args["manifest"]),
+        sidecar,
       );
       return null;
 
@@ -736,6 +840,7 @@ export async function dispatch(
           body: string;
           extras?: Record<string, string | Record<string, string>>;
         },
+        sidecar,
       );
 
     case "resource.metrics":
@@ -745,6 +850,7 @@ export async function dispatch(
         String(args["typeId"]),
         String(args["resourceId"]),
         args["timeRange"] as { startMs: number; endMs: number } | undefined,
+        sidecar,
       );
 
     case "costs.write":

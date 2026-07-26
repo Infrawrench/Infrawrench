@@ -2,15 +2,15 @@ import { describe, it, expect, vi } from "vitest";
 
 // Mocked only to keep the module import side-effect free (the real db client
 // throws without DATABASE_URL; the plugin loader loads every plugin).
-vi.mock("@/db/client", () => ({ db: {} }));
-vi.mock("@/plugins/loader", () => ({ getPlugin: vi.fn() }));
-vi.mock("@/services/host-services", () => ({ buildPluginHostServices: vi.fn() }));
-vi.mock("@/services/credential-rewriters", () => ({ applyCredentialRewriters: vi.fn() }));
-vi.mock("@infrawrench/server-core/org-accounts", () => ({ getOrgAccountClient: vi.fn() }));
+vi.mock("../db/client", () => ({ db: {} }));
+vi.mock("../plugin-loader", () => ({ getPlugin: vi.fn() }));
+vi.mock("../host-services", () => ({ buildPluginHostServices: vi.fn() }));
+vi.mock("../credential-rewriters", () => ({ applyCredentialRewriters: vi.fn() }));
+vi.mock("../org-accounts", () => ({ getOrgAccountClient: vi.fn() }));
 
-// getClientForAccount is a re-export of server-core's getOrgAccountClient;
-// its unit tests live in server-core (src/__tests__/org-accounts.test.ts).
-const { filterVisiblePeerIntegrations } = await import("@/services/plugin-clients");
+// getClientForResource's own behaviour needs a live account + plugin loader;
+// what's unit-testable here is the declarative visibility gating.
+const { filterVisiblePeerIntegrations } = await import("../peer-clients");
 
 describe("filterVisiblePeerIntegrations", () => {
   it("keeps integrations with no gates", () => {

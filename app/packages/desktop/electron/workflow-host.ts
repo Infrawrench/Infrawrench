@@ -85,18 +85,33 @@ function createBridgedHost(sender: WebContents, runToken: string): WorkflowHost 
 
   return {
     listPlugins: () => call<WorkflowPluginInfo[]>("listPlugins", []),
-    listResources: (accountId, typeId) =>
-      call<ResourceInstanceLite[]>("listResources", [accountId, typeId]),
-    getResource: (accountId, typeId, externalId) =>
-      call<ResourceInstanceLite>("getResource", [accountId, typeId, externalId]),
-    resolveOutput: (accountId, typeId, resourceId, outputKey) =>
-      call<string>("resolveOutput", [accountId, typeId, resourceId, outputKey]),
-    createResource: (accountId, typeId, fields, parentResourceId) =>
-      call<ResourceInstanceLite>("createResource", [accountId, typeId, fields, parentResourceId]),
-    updateResource: (accountId, typeId, resourceId, fields) =>
-      call<ResourceInstanceLite>("updateResource", [accountId, typeId, resourceId, fields]),
-    deleteResource: (accountId, typeId, resourceId) =>
-      call<void>("deleteResource", [accountId, typeId, resourceId]),
+    // Every resource op forwards its trailing SidecarRef (undefined for all but
+    // operations inside a peer plugin) — the renderer needs it to pick which
+    // client to build, and dropping it here would silently target the wrong one.
+    listResources: (accountId, typeId, sidecar) =>
+      call<ResourceInstanceLite[]>("listResources", [accountId, typeId, sidecar]),
+    getResource: (accountId, typeId, externalId, sidecar) =>
+      call<ResourceInstanceLite>("getResource", [accountId, typeId, externalId, sidecar]),
+    resolveOutput: (accountId, typeId, resourceId, outputKey, sidecar) =>
+      call<string>("resolveOutput", [accountId, typeId, resourceId, outputKey, sidecar]),
+    createResource: (accountId, typeId, fields, parentResourceId, sidecar) =>
+      call<ResourceInstanceLite>("createResource", [
+        accountId,
+        typeId,
+        fields,
+        parentResourceId,
+        sidecar,
+      ]),
+    updateResource: (accountId, typeId, resourceId, fields, sidecar) =>
+      call<ResourceInstanceLite>("updateResource", [
+        accountId,
+        typeId,
+        resourceId,
+        fields,
+        sidecar,
+      ]),
+    deleteResource: (accountId, typeId, resourceId, sidecar) =>
+      call<void>("deleteResource", [accountId, typeId, resourceId, sidecar]),
     listStorageObjects: (accountId, bucket, prefix) =>
       call<StorageObjectLite[]>("listStorageObjects", [accountId, bucket, prefix]),
     readStorageObject: (accountId, bucket, key) =>
@@ -128,46 +143,56 @@ function createBridgedHost(sender: WebContents, runToken: string): WorkflowHost 
     sftpDelete: (params: SftpParamsLite, path: string, isDir: boolean) =>
       call<void>("sftpDelete", [params, path, isDir]),
     // Extended resource capabilities (plugin-client passthroughs).
-    query: (accountId, resourceId, sql) =>
+    query: (accountId, resourceId, sql, sidecar) =>
       call<{ rows: Record<string, unknown>[]; durationMs?: number }>("query", [
         accountId,
         resourceId,
         sql,
+        sidecar,
       ]),
-    kvList: (accountId, typeId, resourceId, params) =>
+    kvList: (accountId, typeId, resourceId, params, sidecar) =>
       call<{ items: { key: string }[]; nextCursor?: string }>("kvList", [
         accountId,
         typeId,
         resourceId,
         params,
+        sidecar,
       ]),
-    kvGet: (accountId, typeId, resourceId, key) =>
-      call<string>("kvGet", [accountId, typeId, resourceId, key]),
-    kvPut: (accountId, typeId, resourceId, key, value) =>
-      call<void>("kvPut", [accountId, typeId, resourceId, key, value]),
-    kvDelete: (accountId, typeId, resourceId, key) =>
-      call<void>("kvDelete", [accountId, typeId, resourceId, key]),
-    nosql: (accountId, typeId, resourceId, command, args) =>
-      call<unknown>("nosql", [accountId, typeId, resourceId, command, args]),
-    getLogs: (accountId, typeId, resourceId, params) =>
+    kvGet: (accountId, typeId, resourceId, key, sidecar) =>
+      call<string>("kvGet", [accountId, typeId, resourceId, key, sidecar]),
+    kvPut: (accountId, typeId, resourceId, key, value, sidecar) =>
+      call<void>("kvPut", [accountId, typeId, resourceId, key, value, sidecar]),
+    kvDelete: (accountId, typeId, resourceId, key, sidecar) =>
+      call<void>("kvDelete", [accountId, typeId, resourceId, key, sidecar]),
+    nosql: (accountId, typeId, resourceId, command, args, sidecar) =>
+      call<unknown>("nosql", [accountId, typeId, resourceId, command, args, sidecar]),
+    getLogs: (accountId, typeId, resourceId, params, sidecar) =>
       call<{ text: string; containers: string[]; activeContainer: string }>("getLogs", [
         accountId,
         typeId,
         resourceId,
         params,
+        sidecar,
       ]),
-    describe: (accountId, typeId, resourceId) =>
-      call<string>("describe", [accountId, typeId, resourceId]),
-    getManifest: (accountId, resourceId) => call<string>("getManifest", [accountId, resourceId]),
-    applyManifest: (accountId, resourceId, manifest) =>
-      call<void>("applyManifest", [accountId, resourceId, manifest]),
+    describe: (accountId, typeId, resourceId, sidecar) =>
+      call<string>("describe", [accountId, typeId, resourceId, sidecar]),
+    getManifest: (accountId, resourceId, sidecar) =>
+      call<string>("getManifest", [accountId, resourceId, sidecar]),
+    applyManifest: (accountId, resourceId, manifest, sidecar) =>
+      call<void>("applyManifest", [accountId, resourceId, manifest, sidecar]),
     importYaml: (accountId, yaml) => call<{ applied: number }>("importYaml", [accountId, yaml]),
-    publish: (accountId, typeId, resourceId, payload) =>
-      call<{ id?: string; summary?: string }>("publish", [accountId, typeId, resourceId, payload]),
-    metricSeries: (accountId, typeId, resourceId, timeRange) =>
+    publish: (accountId, typeId, resourceId, payload, sidecar) =>
+      call<{ id?: string; summary?: string }>("publish", [
+        accountId,
+        typeId,
+        resourceId,
+        payload,
+        sidecar,
+      ]),
+    metricSeries: (accountId, typeId, resourceId, timeRange, sidecar) =>
       call<{ label: string; unit?: string; points: { timestamp: number; value: number }[] }[]>(
         "metricSeries",
-        [accountId, typeId, resourceId, timeRange],
+        [accountId, typeId, resourceId, timeRange, sidecar],
       ),
   };
 }

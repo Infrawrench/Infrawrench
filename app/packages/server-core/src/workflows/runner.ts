@@ -14,7 +14,9 @@
  * {@link RunOrgWorkflowOptions}.
  */
 import {
+  attachSidecarInfo,
   buildWorkflowHost,
+  enrichSidecarCapabilities,
   runWorkflow,
   type MetricDef,
   type MetricValue,
@@ -22,6 +24,7 @@ import {
   type RunLogEntry,
   type RunResult,
   type RunTriggerSource,
+  type SidecarRef,
   type WorkflowEvent,
   type WorkflowHost,
   type WorkflowPluginInfo,
@@ -31,8 +34,9 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts, workflowMetrics, workflowRuns, workflows } from "../db/schema";
 import { writeWorkflowCostRows } from "../cost/workflow-costs";
-import { loadPlugins } from "../plugin-loader";
+import { getPlugin, loadPlugins } from "../plugin-loader";
 import { getOrgAccountClient } from "../org-accounts";
+import { getClientForResource } from "../peer-clients";
 import { buildWorkflowSshDeps } from "./ssh-host";
 import { buildWorkflowFetch } from "./fetch";
 import { enrichPlugin } from "./create-fields-cache";
@@ -93,11 +97,38 @@ export interface RunOrgWorkflowResult {
 }
 
 /**
+ * Resolve the plugin client a workflow operation should run against: the
+ * account's own, or — for an operation on a sidecar resource — the peer
+ * plugin's, built from the parent resource's outputs.
+ */
+async function clientForWorkflow(organizationId: string, accountId: string, sidecar?: SidecarRef) {
+  if (!sidecar) {
+    const ctx = await getOrgAccountClient(accountId, organizationId);
+    if (!ctx) throw new Error(`Account ${accountId} not found in this organization.`);
+    return ctx.client;
+  }
+  const ctx = await getClientForResource(
+    sidecar.pluginId,
+    accountId,
+    organizationId,
+    sidecar.parentResourceId,
+  );
+  if (!ctx) {
+    throw new Error(
+      `Could not reach the ${sidecar.pluginId} sidecar of ${sidecar.parentResourceId} — ` +
+        `is that resource still around, and does it expose ${sidecar.pluginId}?`,
+    );
+  }
+  return ctx.client;
+}
+
+/**
  * Enumerate the org's accounts grouped by plugin, with resource-type metadata.
  *
  * `enrichCreateFields` (typings path only) additionally fetches each createable
- * type's live create config so `create({...})` is typed — it hits provider APIs,
- * so the runtime path (every run) leaves it off and uses the generic signature.
+ * type's live create config so `create({...})` is typed, and probes each
+ * sidecar's capability flags — both hit provider APIs, so the runtime path
+ * (every run) leaves them off and uses the generic signatures.
  */
 export async function listOrgPlugins(
   organizationId: string,
@@ -110,11 +141,14 @@ export async function listOrgPlugins(
   const plugins = await loadPlugins();
 
   const byPlugin = new Map<string, WorkflowPluginInfo>();
+  /** Plugin definitions for the entries we build, so sidecars can be attached. */
+  const defsFor = new Map<string, (typeof plugins)[number]>();
   for (const row of rows) {
     let entry = byPlugin.get(row.pluginId);
     if (!entry) {
       const lp = plugins.find((p) => p.plugin.manifest.id === row.pluginId);
       if (!lp) continue;
+      defsFor.set(row.pluginId, lp);
       entry = {
         pluginId: row.pluginId,
         displayName: lp.plugin.manifest.displayName,
@@ -137,18 +171,51 @@ export async function listOrgPlugins(
     entry.accounts.push({ id: row.id, pluginId: row.pluginId, displayName: row.displayName });
   }
 
+  // The peer plugins each resource type exposes (a cluster's `kubernetes`, a
+  // managed database's `postgres`). Needed on the runtime path too — the
+  // prelude builds `cluster.kubernetes` from this — so it is not gated behind
+  // `enrichCreateFields`; it reads loaded plugin definitions, no API calls.
+  await Promise.all(
+    Array.from(byPlugin.values()).map((entry) => {
+      const lp = defsFor.get(entry.pluginId);
+      if (!lp) return Promise.resolve();
+      return attachSidecarInfo(
+        entry.resourceTypes,
+        lp.plugin.resourceTypes,
+        async (id) => (await getPlugin(id))?.plugin,
+      );
+    }),
+  );
+
   // Best-effort (typings path): merge per-resource-type capability flags and
   // type each createable resource's fields from the live create config.
   if (opts.enrichCreateFields) {
     await Promise.all(
-      Array.from(byPlugin.values()).map((entry) => {
+      Array.from(byPlugin.values()).map(async (entry) => {
         const first = entry.accounts[0];
-        if (!first) return Promise.resolve();
-        return enrichPlugin(entry, first.id, async () => {
+        if (!first) return;
+        await enrichPlugin(entry, first.id, async () => {
           const ctx = await getOrgAccountClient(first.id, organizationId);
           if (!ctx) throw new Error(`Account ${first.id} not found.`);
           return ctx.client;
         });
+        // Type what lives inside each sidecar (pod.logs(), pod.describe(), …)
+        // by probing the peer plugin through one real parent resource.
+        await Promise.all(
+          entry.resourceTypes
+            .filter((rt) => rt.sidecars?.length)
+            .map((rt) =>
+              enrichSidecarCapabilities(rt, first.id, {
+                listParents: async (typeId) => {
+                  const ctx = await getOrgAccountClient(first.id, organizationId);
+                  if (!ctx) return [];
+                  return ctx.client.listResources(typeId, first.id);
+                },
+                peerClient: (pluginId, parentResourceId) =>
+                  clientForWorkflow(organizationId, first.id, { pluginId, parentResourceId }),
+              }),
+            ),
+        );
       }),
     );
   }
@@ -225,11 +292,8 @@ export function buildOrgWorkflowHost(
   let costRowsWritten = 0;
   return buildWorkflowHost({
     listPlugins: () => listOrgPlugins(organizationId),
-    getClient: async (accountId: string) => {
-      const ctx = await getOrgAccountClient(accountId, organizationId);
-      if (!ctx) throw new Error(`Account ${accountId} not found in this organization.`);
-      return ctx.client;
-    },
+    getClient: (accountId: string, sidecar?: SidecarRef) =>
+      clientForWorkflow(organizationId, accountId, sidecar),
     readStorageObject:
       extras.readStorageObject ??
       (async () => {

@@ -13,6 +13,7 @@ import type {
   WorkflowCreateFieldInfo,
   WorkflowPluginInfo,
   WorkflowResourceTypeInfo,
+  WorkflowSidecarInfo,
   WorkflowTriggerKind,
 } from "./types.js";
 
@@ -273,11 +274,16 @@ function resourceTypeInterfaceName(pluginId: string, typeId: string): string {
   return `Resource_${ident(pluginId)}_${ident(typeId)}`;
 }
 
+/** The interface holding a peer plugin's grouped accessors on a resource. */
+function sidecarInterfaceName(pluginId: string): string {
+  return `Sidecar_${ident(pluginId)}`;
+}
+
 /** The resource types that get a group (de-duped by camelCased plural name). */
-function dedupedResourceTypes(plugin: WorkflowPluginInfo): WorkflowResourceTypeInfo[] {
+function dedupedResourceTypes(types: WorkflowResourceTypeInfo[]): WorkflowResourceTypeInfo[] {
   const used = new Set<string>();
   const out: WorkflowResourceTypeInfo[] = [];
-  for (const rt of plugin.resourceTypes) {
+  for (const rt of types) {
     const group = camelCase(rt.pluralDisplayName);
     if (!group || used.has(group)) continue;
     used.add(group);
@@ -290,11 +296,12 @@ function dedupedResourceTypes(plugin: WorkflowPluginInfo): WorkflowResourceTypeI
  * Per-type resource interface: the common data (WorkflowResourceBase) plus ONLY
  * the capability methods this resource type actually supports, so a Cloudflare
  * DNS record doesn't advertise `.ssh()` or `.kv`.
+ *
+ * Types that expose peer plugins (a managed cluster, a managed database) also
+ * get one property per peer — `cluster.kubernetes` — so what lives *inside* the
+ * resource is reachable from the resource itself rather than only guessable.
  */
-function renderResourceTypeInterface(
-  plugin: WorkflowPluginInfo,
-  rt: WorkflowResourceTypeInfo,
-): string {
+function renderResourceTypeInterface(pluginId: string, rt: WorkflowResourceTypeInfo): string {
   const caps = rt.capabilities ?? {};
   const members: string[] = [];
   if (caps.ssh) members.push(CAP_MEMBERS.ssh);
@@ -309,24 +316,42 @@ function renderResourceTypeInterface(
   if (caps.publish) members.push(CAP_MEMBERS.publish);
   if (caps.metrics) members.push(CAP_MEMBERS.metrics);
   if (rt.supportsDelete) members.push(CAP_MEMBERS.delete);
-  const name = resourceTypeInterfaceName(plugin.pluginId, rt.id);
+  for (const sc of rt.sidecars ?? []) {
+    if (sc.resourceTypes.length === 0) continue;
+    // Keyed by plugin id, exactly as the prelude builds it.
+    const prop = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(sc.pluginId) ? sc.pluginId : strLit(sc.pluginId);
+    members.push(
+      `  /** ${sc.displayName} running inside this ${rt.displayName} (the "${sc.tabLabel}" tab). */\n  readonly ${prop}: ${sidecarInterfaceName(sc.pluginId)};`,
+    );
+  }
+  const name = resourceTypeInterfaceName(pluginId, rt.id);
   return `interface ${name} extends WorkflowResourceBase {${members.length ? `\n${members.join("\n")}\n` : ""}}`;
 }
 
-/** All per-type resource interfaces for a plugin (one per deduped group). */
-function renderResourceTypeInterfaces(plugin: WorkflowPluginInfo): string {
-  return dedupedResourceTypes(plugin)
-    .map((rt) => renderResourceTypeInterface(plugin, rt))
-    .join("\n\n");
+/**
+ * A peer plugin's grouped accessors, as reached through a parent resource.
+ * Shape-identical to an account's resource groups — the difference is only
+ * where the credentials came from, which the runtime handles.
+ */
+function renderSidecarInterface(sc: WorkflowSidecarInfo, sshKeyNames: string[]): string {
+  const groups = renderResourceGroups(sc.pluginId, sc.resourceTypes, sshKeyNames);
+  return `/** ${sc.displayName} inside a parent resource. */
+interface ${sidecarInterfaceName(sc.pluginId)} {
+${groups}
+}`;
 }
 
-function renderResourceGroups(plugin: WorkflowPluginInfo, sshKeyNames: string[]): string {
+function renderResourceGroups(
+  pluginId: string,
+  types: WorkflowResourceTypeInfo[],
+  sshKeyNames: string[],
+): string {
   const blocks: string[] = [];
-  for (const rt of dedupedResourceTypes(plugin)) {
+  for (const rt of dedupedResourceTypes(types)) {
     const group = camelCase(rt.pluralDisplayName);
     const prop = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(group) ? group : strLit(group);
     // Each type's accessors return its own per-type interface.
-    const ret = resourceTypeInterfaceName(plugin.pluginId, rt.id);
+    const ret = resourceTypeInterfaceName(pluginId, rt.id);
     const ops: string[] = [];
     ops.push(`    /** List all ${rt.pluralDisplayName}. */\n    list(): Promise<${ret}[]>;`);
     ops.push(
@@ -352,7 +377,7 @@ function renderResourceGroups(plugin: WorkflowPluginInfo, sshKeyNames: string[])
 }
 
 function renderAccountInterface(plugin: WorkflowPluginInfo, sshKeyNames: string[]): string {
-  const resourceGroups = renderResourceGroups(plugin, sshKeyNames);
+  const resourceGroups = renderResourceGroups(plugin.pluginId, plugin.resourceTypes, sshKeyNames);
   const importYaml = plugin.supportsImportYaml
     ? `\n  /** Apply arbitrary (multi-document) YAML to this account (kubectl apply -f). */\n  importYaml(yaml: string): Promise<{ applied: number }>;`
     : "";
@@ -619,13 +644,61 @@ export interface GenerateInfraDtsInput {
   sshKeyNames?: string[];
 }
 
+/**
+ * Collect the per-type interfaces for a plugin's resource types, recursing into
+ * each type's sidecars.
+ *
+ * Deduped by interface name because the same peer plugin is reachable from
+ * several parents (every managed-cluster type exposes `kubernetes`) and may
+ * additionally have an account of its own — and TypeScript rejects a duplicated
+ * interface declaration. The declarations are identical when the names collide:
+ * both are derived from the same plugin id and type id.
+ */
+function collectResourceInterfaces(
+  pluginId: string,
+  types: WorkflowResourceTypeInfo[],
+  resourceOut: Map<string, string>,
+  sidecarOut: Map<string, string>,
+  sshKeyNames: string[],
+): void {
+  for (const rt of dedupedResourceTypes(types)) {
+    const name = resourceTypeInterfaceName(pluginId, rt.id);
+    if (!resourceOut.has(name)) resourceOut.set(name, renderResourceTypeInterface(pluginId, rt));
+    for (const sc of rt.sidecars ?? []) {
+      if (sc.resourceTypes.length === 0) continue;
+      const scName = sidecarInterfaceName(sc.pluginId);
+      if (!sidecarOut.has(scName)) {
+        sidecarOut.set(scName, renderSidecarInterface(sc, sshKeyNames));
+      }
+      collectResourceInterfaces(
+        sc.pluginId,
+        sc.resourceTypes,
+        resourceOut,
+        sidecarOut,
+        sshKeyNames,
+      );
+    }
+  }
+}
+
 /** Build the full `infra.d.ts` source string. */
 export function generateInfraDts(input: GenerateInfraDtsInput): string {
   const plugins = input.plugins;
   const interactive = input.interactive ?? true;
   const sshKeyNames = input.sshKeyNames ?? [];
 
-  const resourceInterfaces = plugins.map(renderResourceTypeInterfaces).filter(Boolean).join("\n\n");
+  const resourceByName = new Map<string, string>();
+  const sidecarByName = new Map<string, string>();
+  for (const plugin of plugins) {
+    collectResourceInterfaces(
+      plugin.pluginId,
+      plugin.resourceTypes,
+      resourceByName,
+      sidecarByName,
+      sshKeyNames,
+    );
+  }
+  const resourceInterfaces = [...resourceByName.values(), ...sidecarByName.values()].join("\n\n");
   const accountInterfaces = plugins.map((p) => renderAccountInterface(p, sshKeyNames)).join("\n\n");
   const groupInterfaces = plugins.map(renderGroupInterface).join("\n\n");
 

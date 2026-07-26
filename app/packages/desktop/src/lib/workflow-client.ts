@@ -11,10 +11,12 @@
  * triggers are not supported on desktop (cloud/proxy only).
  */
 import {
+  attachSidecarInfo,
   buildWorkflowHost,
   detailResourceCapabilities,
   clientSupportsImportYaml,
   createFieldsFromConfig,
+  enrichSidecarCapabilities,
   generateInfraDts,
   mergeCapabilities,
   staticResourceCapabilities,
@@ -25,6 +27,7 @@ import {
   type PageResult,
   type PageSpec,
   type PromptSpec,
+  type SidecarRef,
   type WorkflowCreateFieldInfo,
   type WorkflowPluginInfo,
 } from "@infrawrench/workflow-runtime/client";
@@ -46,7 +49,7 @@ import { useUIStore } from "@infrawrench/ui";
 
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
-import { createPluginClient } from "./plugin-client";
+import { createPeerPluginClient, createPluginClient } from "./plugin-client";
 import { invoke } from "./invoke";
 
 /** Fired after a local workflow is created/updated/deleted, so the cron runner re-syncs. */
@@ -189,6 +192,20 @@ async function enrichLocalPlugin(entry: WorkflowPluginInfo, firstAccountId: stri
         const value = await getLocalCreateFields(entry.pluginId, rt.id, getClient);
         if (value && value.length > 0) rt.createFields = value;
       }),
+  );
+
+  // Type what lives inside each sidecar (pod.logs(), pod.describe(), …) by
+  // probing the peer plugin through one real parent resource.
+  await Promise.all(
+    entry.resourceTypes
+      .filter((rt) => rt.sidecars?.length)
+      .map((rt) =>
+        enrichSidecarCapabilities(rt, firstAccountId, {
+          listParents: async (typeId) => (await getClient()).listResources(typeId, firstAccountId),
+          peerClient: (pluginId, parentResourceId) =>
+            createPeerPluginClient(firstAccountId, entry.pluginId, parentResourceId, pluginId),
+        }),
+      ),
   );
 }
 
@@ -349,6 +366,21 @@ async function listLocalPlugins(
     }
     entry.accounts.push({ id: acc.id, pluginId: acc.plugin_id, displayName: acc.display_name });
   }
+
+  // The peer plugins each resource type exposes (a cluster's `kubernetes`, a
+  // managed database's `postgres`), so `cluster.kubernetes.pods` exists at
+  // runtime as well as in the typings. Reads loaded definitions — no API calls.
+  await Promise.all(
+    Array.from(byPlugin.values()).map(async (entry) => {
+      const lp = await getPlugin(entry.pluginId);
+      if (!lp) return;
+      await attachSidecarInfo(
+        entry.resourceTypes,
+        lp.plugin.resourceTypes,
+        async (id) => (await getPlugin(id))?.plugin,
+      );
+    }),
+  );
 
   if (opts.enrichCreateFields) {
     await Promise.all(
@@ -773,8 +805,14 @@ export async function runWorkflowById(
 
   const host = buildWorkflowHost({
     listPlugins: listLocalPlugins,
-    getClient: async (accountId: string) =>
-      createPluginClient(accountId, await pluginIdForAccount(accountId)),
+    getClient: async (accountId: string, sidecar?: SidecarRef) => {
+      const pluginId = await pluginIdForAccount(accountId);
+      // A sidecar operation wants the peer plugin driven with credentials the
+      // parent resource hands out, not the account's own client.
+      return sidecar
+        ? createPeerPluginClient(accountId, pluginId, sidecar.parentResourceId, sidecar.pluginId)
+        : createPluginClient(accountId, pluginId);
+    },
     readStorageObject: async () => {
       throw new Error("Storage object reads from desktop workflows are not yet supported.");
     },

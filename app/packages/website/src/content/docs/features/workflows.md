@@ -88,6 +88,38 @@ Options come from the provider's live catalog, so any other string still type-ch
 
 **SSH-key fields reference your Infrawrench keys.** A provider's SSH-key field (and the `sshKey` option on `resource.ssh(...)`, below) autocompletes the **names of the SSH keys you manage in Infrawrench** — the same list shown by the SSH-key picker, refreshed each time the editor loads types, so a key you just added appears immediately. You can give it a key **name** (Infrawrench resolves it to that key's public key before the provider sees it) or paste a raw public key directly — both work.
 
+### Inside a cluster or managed database
+
+Some resources are containers for other resources. A managed Kubernetes cluster (DOKS, EKS, GKE, AKS, Kapsule) hands out a kubeconfig, so everything the Kubernetes plugin can do works inside it; a managed database hands out a connection string, so the `postgres` / `mysql` / `redis` / `mongodb` plugins work inside it. These are the same **sidecars** you see as extra tabs on the resource's detail page.
+
+In a workflow they appear as a property on the parent resource, named after the peer plugin:
+
+```ts
+const gcp = infra.accounts.gcp.getByName("production");
+
+for (const cluster of await gcp.gkeClusters.list()) {
+  for (const pod of await cluster.kubernetes.pods.list()) {
+    if (Number(pod.fields.restarts) > 3) {
+      await infra.page(`${pod.displayName} has restarted ${pod.fields.restarts} times`, {
+        key: `pod-restarts-${pod.id}`,
+      });
+    }
+  }
+}
+
+// Managed databases work the same way
+const instance = await gcp.cloudSQLInstances.get(instanceId);
+const databases = await instance.postgres.postgresqlDatabases.list();
+```
+
+Inside the sidecar everything reads exactly like an account's own resources — `list()`, `get(id)`, `create/update/delete(...)` where the peer supports them, and the extended capabilities each type has, so `pod.logs()` and `pod.describe()` are right there. The parent's credentials are resolved for you at each call; you never handle the kubeconfig or connection string yourself.
+
+A resource type declares every peer it _can_ expose, so a Cloud SQL instance offers both `.postgres` and `.mysql` in the editor even though any given instance runs one engine. Reaching for the wrong one fails at the call with a clear error, the same way an unsupported capability does.
+
+Two things a sidecar's resources don't get, because both are properties of the account rather than of the peer: `ssh()`/`sftp` (which need an SSH endpoint on the resource type) and bucket reads. The editor won't offer them.
+
+Sidecars don't nest — the things inside a cluster don't have clusters of their own.
+
 ### Reading storage objects
 
 Storage-capable resources (e.g. buckets) come back with object read methods on them — fetch the bucket, then read its objects:
@@ -444,7 +476,9 @@ The [AI chat](./ai-chat.md) and [MCP](./mcp.md) surfaces can author workflows fo
 
 Asking for a recurring check is a single request too — "check my Kubernetes clusters' pods every hour and page me if any restart count goes above 5" builds the cron workflow above, `infra.page` and all. The typings tell the model that paging exists and that it is throttled per key, so it writes the check to page unconditionally rather than inventing its own bookkeeping.
 
-`get_workflow_typings` is the important one. The `infra` API is generated per organization — account names, which resource groups exist, which fields `create()` takes — so a model that writes from memory guesses wrong. Handing it the real declaration file first is what makes the generated code compile against _your_ setup. It also reflects the trigger: a budget-triggered workflow gets `infra.event` typed as the crossing payload, and only manual workflows get `infra.prompt`.
+`get_workflow_typings` is the important one. The `infra` API is generated per organization — account names, which resource groups exist, which fields `create()` takes, which peers a cluster or database exposes — so a model that writes from memory guesses wrong. Handing it the real declaration file first is what makes the generated code compile against _your_ setup. It also reflects the trigger: a budget-triggered workflow gets `infra.event` typed as the crossing payload, and only manual workflows get `infra.prompt`.
+
+The typings are the whole truth about `infra`: what isn't declared there doesn't exist at run time either. That makes `check_workflow_source` the right way to test a guess. Probing by saving a draft and running it is slower and can mislead — reading a property that doesn't exist yields `undefined` rather than throwing, so a run that quietly did nothing looks like a run that succeeded.
 
 `write_workflow` then runs the same type check the editor runs and returns the diagnostics (`line:column`, TypeScript error code, message) instead of saving a broken workflow — so the model can fix its own mistakes before anything is persisted. Pass `skipTypecheck` to override that deliberately.
 

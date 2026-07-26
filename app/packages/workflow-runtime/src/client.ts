@@ -24,3 +24,8 @@ export {
   clientSupportsImportYaml,
   mergeCapabilities,
 } from "./capabilities.js";
+export {
+  attachSidecarInfo,
+  enrichSidecarCapabilities,
+  type SidecarCapabilityProbe,
+} from "./sidecars.js";
