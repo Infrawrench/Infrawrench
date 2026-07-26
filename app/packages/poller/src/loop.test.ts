@@ -16,8 +16,13 @@ vi.mock("@infrawrench/server-core/db/client", () => ({
   db: { update: (t: unknown) => update(t) },
 }));
 
+// The loop itself only touches `workflows`, but running a workflow can page,
+// and paging reaches Slack — so the schema mock has to cover what that import
+// chain reads, not just what the loop reads.
 vi.mock("@infrawrench/server-core/db/schema", () => ({
   workflows: { id: "id" },
+  slackChannels: { id: "id" },
+  slackInstallations: { id: "id" },
 }));
 
 vi.mock("drizzle-orm", () => ({

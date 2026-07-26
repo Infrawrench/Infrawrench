@@ -29,7 +29,7 @@
     "node-driver.d.cts"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "rm -rf dist && tsup",
     "dev": "tsup --watch",
     "typecheck": "tsgo --noEmit",
     "test": "vitest run",
