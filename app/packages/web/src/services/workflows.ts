@@ -276,6 +276,8 @@ export async function generateWorkflowTypings(
     metrics: opts.metrics ?? [],
     interactive: triggerKind === "manual",
     triggerKind,
+    // Cloud runs have the cost store, so `infra.costs.write` is available.
+    costs: true,
     sshKeyNames,
   });
 }

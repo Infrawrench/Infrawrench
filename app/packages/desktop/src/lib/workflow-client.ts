@@ -572,6 +572,9 @@ export function createDesktopWorkflowClient(): WorkflowClient {
         metrics: wf ? safeParse<MetricDef[]>(wf.metric_defs, []) : [],
         interactive: trigger.kind === "manual",
         triggerKind: trigger.kind,
+        // Local workflows have no cost store (costs are cloud-only), so
+        // `infra.costs` types as unavailable rather than failing at run time.
+        costs: false,
         sshKeyNames,
       });
     },

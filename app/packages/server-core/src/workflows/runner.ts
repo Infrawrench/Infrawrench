@@ -30,6 +30,7 @@ import { and, eq, isNull } from "drizzle-orm";
 
 import { db } from "../db/client";
 import { accounts, workflowMetrics, workflowRuns, workflows } from "../db/schema";
+import { writeWorkflowCostRows } from "../cost/workflow-costs";
 import { loadPlugins } from "../plugin-loader";
 import { getOrgAccountClient } from "../org-accounts";
 import { buildWorkflowSshDeps } from "./ssh-host";
@@ -212,6 +213,9 @@ export function buildOrgWorkflowHost(
   workflowId: string,
   extras: OrgWorkflowHostExtras = {},
 ): WorkflowHost {
+  // Per-run row budget for infra.costs.write, closed over so the cap applies
+  // across every call the workflow makes rather than per call.
+  let costRowsWritten = 0;
   return buildWorkflowHost({
     listPlugins: () => listOrgPlugins(organizationId),
     getClient: async (accountId: string) => {
@@ -235,6 +239,16 @@ export function buildOrgWorkflowHost(
       (async () => {
         throw new Error("This run is not interactive; infra.prompt() is unavailable.");
       }),
+    writeCosts: async (rows) => {
+      const result = await writeWorkflowCostRows({
+        organizationId,
+        workflowId,
+        rows,
+        writtenSoFar: costRowsWritten,
+      });
+      costRowsWritten += result.written;
+      return result;
+    },
     transformCreateFields: buildSshKeyFieldResolver(organizationId, async (accountId) => {
       const ctx = await getOrgAccountClient(accountId, organizationId);
       return ctx ? { client: ctx.client, pluginId: ctx.account.pluginId } : null;

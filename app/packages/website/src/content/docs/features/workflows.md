@@ -206,6 +206,48 @@ infra.log("starting reconcile");
 await infra.output({ updated: 3 }); // shown in the run result
 ```
 
+### Reporting your own cost data
+
+Infrawrench collects spend from every provider that has a billing API, but plenty of money doesn't come from one — a SaaS invoice, an internal chargeback, a colo bill, a provider with no plugin yet. A workflow can report those numbers itself, and they land in exactly the same place provider-collected spend does: [cost graphs](./cloud-costs.md), dimension filters, and budgets.
+
+```ts
+// A nightly cron that pulls yesterday's Snowflake spend and reports it.
+const day = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+const warehouse = infra.accounts.snowflakeish.getByName("analytics");
+const { rows } = await warehouse.query(`SELECT ... WHERE usage_date = '${day}'`);
+
+await infra.costs.write(
+  rows.map((r) => ({
+    date: day,
+    currency: "USD",
+    amount: Number(r.credits_used) * 2.5,
+    service: String(r.warehouse_name),
+    tags: { team: String(r.team) },
+  })),
+);
+```
+
+Each row needs a `date` (`YYYY-MM-DD`, UTC), a 3-letter `currency`, and an `amount`. Everything else is optional and becomes a group/filter dimension: `service`, `region`, `resourceId`, `tags`, plus `usageAmount`/`usageUnit` for unit-cost reporting. A negative `amount` is a credit. You can pass a single row or an array.
+
+**Re-running is safe.** A row is keyed by its day + service + region + resource + tags + currency, so re-writing the same combination **replaces** the previous value rather than adding to it. That means a cron can re-report a trailing week every night to pick up late-arriving charges — the same restatement behaviour provider collectors get — without double-counting.
+
+**Where it shows up.** Workflow-reported rows report **Workflow** as their provider, and by default appear in the account dimension as "&lt;workflow name&gt; (workflow)". Pass `accountId` on a row to attribute it to one of your connected accounts instead (useful for chargebacks or discounts that belong to a real account):
+
+```ts
+const aws = infra.accounts.aws.getByName("production");
+await infra.costs.write({
+  date: day,
+  currency: "USD",
+  amount: -1200,
+  service: "Negotiated discount",
+  accountId: aws.id,
+});
+```
+
+Even then the row stays distinguishable — every workflow-written row carries an `infrawrench:workflow` tag naming the workflow that wrote it, which is also what guarantees it can never overwrite spend collected from the provider's own billing API. Because the provider dimension stays "Workflow", a budget or graph filtered to a specific _provider_ won't include these rows; filter by account, service, or tag instead.
+
+Limits: 1,000 rows per call (larger arrays are chunked for you) and 50,000 rows per run. Keys beginning `infrawrench:` are reserved and rejected. Cost storage is cloud-only, so `infra.costs` is unavailable in the desktop app's local workflows — the generated types mark it as such so you catch it while editing.
+
 ## Metrics
 
 When you create a workflow you can declare **metrics** in the UI (a key, label, type, and optional unit). Each metric you declare becomes a **typed property** on `infra.metrics`, named after its key — read it like a variable and assign to it to persist a new value:

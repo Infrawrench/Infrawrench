@@ -3,7 +3,7 @@
  * (api/routes/costs.ts) and the tool registry (tools/costs.ts) so the graph
  * API and the MCP/chat surface stay behaviourally identical.
  */
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import {
   OTHER_GROUP_KEY,
   type CostQueryRequest,
@@ -19,8 +19,14 @@ import {
   type CostSeriesGroup,
 } from "@infrawrench/server-core/clickhouse/cost-readers";
 import { forecastDaily } from "@infrawrench/server-core/cost/forecast";
+// The db-free id module, not the writer — importing the writer here would drag
+// its db/ClickHouse imports into every cost read path (and its tests).
+import {
+  WORKFLOW_COST_PLUGIN_ID,
+  workflowIdFromCostAccountId,
+} from "@infrawrench/server-core/cost/workflow-cost-ids";
 import { db } from "../db/client";
-import { accounts } from "../db/schema";
+import { accounts, workflows } from "../db/schema";
 import { getPlugin, loadPlugins } from "../plugins/loader";
 
 /** Invalid caller input — routes map this to a 400, tools to an error result. */
@@ -241,6 +247,8 @@ export async function listCostDimensionValues(
   if (dimension === "provider") {
     const loaded = await loadPlugins();
     const names = new Map(loaded.map((l) => [l.plugin.manifest.id, l.plugin.manifest.displayName]));
+    // Workflow-reported spend has no plugin behind it (see cost/workflow-costs).
+    names.set(WORKFLOW_COST_PLUGIN_ID, "Workflow");
     return values.map((v) => ({ value: v, label: names.get(v) ?? v }));
   }
   if (dimension === "account") {
@@ -249,9 +257,47 @@ export async function listCostDimensionValues(
       .from(accounts)
       .where(eq(accounts.organizationId, organizationId));
     const names = new Map(rows.map((r) => [r.id, r.displayName]));
+    for (const [id, name] of await workflowCostAccountLabels(organizationId, values)) {
+      names.set(id, name);
+    }
     return values.map((v) => ({ value: v, label: names.get(v) ?? v }));
   }
   return values.map((v) => ({ value: v, label: v }));
+}
+
+/**
+ * Labels for the synthetic `workflow:<id>` cost accounts a workflow writes to
+ * when it doesn't attribute its rows to a real account. Without this the
+ * account picker shows an opaque uuid.
+ */
+async function workflowCostAccountLabels(
+  organizationId: string,
+  values: string[],
+): Promise<Map<string, string>> {
+  const byAccountId = new Map<string, string>();
+  const workflowIds = new Map<string, string>();
+  for (const value of values) {
+    const workflowId = workflowIdFromCostAccountId(value);
+    if (workflowId) workflowIds.set(workflowId, value);
+  }
+  if (workflowIds.size === 0) return byAccountId;
+
+  const rows = await db
+    .select({ id: workflows.id, name: workflows.name })
+    .from(workflows)
+    .where(
+      and(
+        eq(workflows.organizationId, organizationId),
+        inArray(workflows.id, [...workflowIds.keys()]),
+      ),
+    );
+  for (const row of rows) {
+    const accountId = workflowIds.get(row.id);
+    // Deleted workflows keep their rows (spend history outlives the script), so
+    // fall back to the raw value rather than dropping the series.
+    if (accountId) byAccountId.set(accountId, `${row.name} (workflow)`);
+  }
+  return byAccountId;
 }
 
 /**

@@ -60,6 +60,10 @@ Each provider plugin that supports cost reporting fetches spend from that provid
 
 Some providers only publish monthly invoice totals rather than daily costs. Their spend appears on period boundaries, and daily-binned graphs will show it as month steps — the graph notes this when such a provider is in scope.
 
+### Spend from somewhere else
+
+For anything with no provider plugin — a SaaS invoice, an internal chargeback, a colo bill — a [workflow](./workflows.md#reporting-your-own-cost-data) can report the numbers itself with `infra.costs.write(...)`. Those rows land in the same store the collectors write to, so they show up in graphs, dimension filters, and budgets like any other spend. They report **Workflow** as their provider and, unless the workflow attributes them to one of your accounts, appear in the account dimension as "&lt;workflow name&gt; (workflow)".
+
 ## When collection fails
 
 Collection runs unattended and retries with a growing backoff, so a provider that needs setup would otherwise just look like an account with no spend. Instead, the last failure is kept against the account and shown as a banner above the cost widgets on the dashboard — on web, desktop, and above **Budgets** on mobile:

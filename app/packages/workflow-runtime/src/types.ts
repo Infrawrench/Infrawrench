@@ -162,6 +162,43 @@ export interface PromptSpec {
   defaultValue?: string;
 }
 
+/**
+ * One day of spend a workflow reports via `infra.costs.write(...)`. Mirrors
+ * plugin-base's `CostRow` (the shape provider plugins return from
+ * `fetchCostData`) so custom sources land in exactly the same `cost_daily`
+ * table the graphs, filters, and budgets already read — plus an optional
+ * `accountId` to attribute the spend to one of the org's connected accounts.
+ */
+export interface WorkflowCostRow {
+  /** UTC day the spend belongs to, `YYYY-MM-DD`. */
+  date: string;
+  /** ISO-4217 currency code, e.g. "USD". */
+  currency: string;
+  /** Money for this day/dimension combination. Negative for credits. */
+  amount: number;
+  /** Free-form service name, e.g. "Snowflake Compute". Becomes a group/filter value. */
+  service?: string;
+  region?: string;
+  /** Opaque id of the thing being billed; groups the "resource" dimension. */
+  resourceId?: string;
+  /** Cost-allocation tags. Keys starting with `infrawrench:` are reserved. */
+  tags?: Record<string, string>;
+  /** Units consumed (for unit-cost reporting), if meaningful. */
+  usageAmount?: number;
+  usageUnit?: string;
+  /**
+   * Attribute this row to a connected account. Must belong to the caller's
+   * organization. Omit to attribute it to the workflow itself.
+   */
+  accountId?: string;
+}
+
+/** Outcome of a `infra.costs.write(...)` call. */
+export interface WorkflowCostWriteResult {
+  /** How many rows were written. */
+  written: number;
+}
+
 /** Lightweight account descriptor exposed to the bridge + codegen. */
 export interface WorkflowAccountInfo {
   id: string;

@@ -13,6 +13,8 @@ import type {
   MetricValue,
   PromptSpec,
   RunLogEntry,
+  WorkflowCostRow,
+  WorkflowCostWriteResult,
   WorkflowPluginInfo,
 } from "./types.js";
 
@@ -195,6 +197,13 @@ export interface WorkflowHost {
   sftpMkdir?(params: SftpParamsLite, path: string): Promise<void>;
   /** Delete a file or directory over SFTP. */
   sftpDelete?(params: SftpParamsLite, path: string, isDir: boolean): Promise<void>;
+
+  /**
+   * Report daily spend into the org's cost store (powers `infra.costs.write`).
+   * Cloud-only — the desktop host omits it and the call surfaces a
+   * {@link WorkflowCapabilityError}, since cost data lives in ClickHouse.
+   */
+  writeCosts?(rows: WorkflowCostRow[]): Promise<WorkflowCostWriteResult>;
 
   /**
    * Debugger hook: reports the 1-based source line about to execute (instrumented
@@ -579,6 +588,12 @@ export async function dispatch(
         String(args["typeId"]),
         String(args["resourceId"]),
         args["timeRange"] as { startMs: number; endMs: number } | undefined,
+      );
+
+    case "costs.write":
+      return requireMethod(host.writeCosts, "writeCosts").call(
+        host,
+        (args["rows"] as WorkflowCostRow[]) ?? [],
       );
 
     case "metric.get":

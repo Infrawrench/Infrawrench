@@ -111,6 +111,48 @@ describe("typecheckWorkflow", () => {
     );
   });
 
+  it("types infra.costs.write when the host can store cost data", () => {
+    const cloudDts = generateInfraDts({
+      plugins: PLUGINS,
+      metrics: [],
+      interactive: false,
+      triggerKind: "cron",
+      costs: true,
+    });
+    const source = [
+      "const { written } = await infra.costs.write([",
+      '  { date: "2026-07-01", currency: "USD", amount: 12.5, service: "Snowflake Compute" },',
+      "]);",
+      // A single row, not an array, is accepted too.
+      'await infra.costs.write({ date: "2026-07-02", currency: "USD", amount: 1 });',
+      "await infra.log(written);",
+    ].join("\n");
+    expect(typecheckWorkflow({ source, dts: cloudDts }).diagnostics).toEqual([]);
+    // A wrongly-typed field is caught before the workflow is ever saved.
+    expect(
+      typecheckWorkflow({
+        source: 'await infra.costs.write({ date: 20260701, currency: "USD", amount: 1 });',
+        dts: cloudDts,
+      }).hasErrors,
+    ).toBe(true);
+  });
+
+  it("types infra.costs as unavailable when the host has no cost store", () => {
+    const localDts = generateInfraDts({
+      plugins: PLUGINS,
+      metrics: [],
+      interactive: false,
+      triggerKind: "cron",
+      costs: false,
+    });
+    expect(
+      typecheckWorkflow({
+        source: 'await infra.costs.write({ date: "2026-07-01", currency: "USD", amount: 1 });',
+        dts: localDts,
+      }).hasErrors,
+    ).toBe(true);
+  });
+
   it("caps the number of returned diagnostics", () => {
     const source = Array.from({ length: 30 }, () => "infra.nope();").join("\n");
     expect(typecheckWorkflow({ source, dts, limit: 5 }).diagnostics).toHaveLength(5);

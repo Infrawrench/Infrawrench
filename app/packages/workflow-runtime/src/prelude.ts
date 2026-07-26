@@ -383,11 +383,28 @@ export const PRELUDE = String.raw`
     try { return JSON.parse(__event || '{"kind":"manual"}'); } catch (e) { return { kind: "manual" }; }
   })());
 
+  // Report spend from a source Infrawrench has no plugin for. Accepts one row
+  // or an array so a single-row write reads naturally; chunked so a workflow
+  // backfilling a year doesn't build one enormous RPC payload.
+  const COST_CHUNK = 1000;
+  const costs = {
+    write: async (rows) => {
+      const all = Array.isArray(rows) ? rows : [rows];
+      let written = 0;
+      for (let i = 0; i < all.length; i += COST_CHUNK) {
+        const res = await rpc("costs.write", { rows: all.slice(i, i + COST_CHUNK) });
+        written += (res && res.written) || 0;
+      }
+      return { written };
+    },
+  };
+
   globalThis.infra = {
     accounts,
     prompt: (spec) => rpc("prompt", { spec: typeof spec === "string" ? { message: spec } : spec }),
     metrics,
     event,
+    costs,
     output: (value) => rpc("output", { value }),
     log: infraLog,
   };

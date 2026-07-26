@@ -435,6 +435,49 @@ interface WorkflowEvent {
 }`;
 }
 
+/**
+ * `infra.costs` — reporting spend from sources that have no provider plugin
+ * (a SaaS invoice, an internal chargeback, a colo bill). Rows land in the same
+ * store the provider collectors write to, so they show up in cost graphs,
+ * dimension filters, and budgets alongside everything else. Mirrors
+ * `WorkflowCostRow` in types.ts.
+ */
+const COSTS_INTERFACE = `interface CostRowInput {
+  /** UTC day the spend belongs to, \`YYYY-MM-DD\`. */
+  date: string;
+  /** ISO-4217 currency code, e.g. "USD". Rows are never merged across currencies. */
+  currency: string;
+  /** Money for this day/dimension combination. Negative for credits. */
+  amount: number;
+  /** Free-form service name, e.g. "Snowflake Compute" — a group/filter value. */
+  service?: string;
+  region?: string;
+  /** Opaque id of the thing being billed; groups the "resource" dimension. */
+  resourceId?: string;
+  /** Cost-allocation tags. Keys starting with \`infrawrench:\` are reserved. */
+  tags?: Record<string, string>;
+  /** Units consumed, for unit-cost reporting. */
+  usageAmount?: number;
+  usageUnit?: string;
+  /**
+   * Attribute this row to one of your connected accounts (an account id from
+   * \`infra.accounts\`). Omit to attribute it to this workflow.
+   */
+  accountId?: string;
+}
+
+interface InfraCosts {
+  /**
+   * Write daily spend rows. Re-writing the same day + service + region +
+   * resource + tags + currency **replaces** the previous value rather than
+   * adding to it, so a cron that re-reports a trailing window is safe to run
+   * repeatedly. Rows always carry this workflow's id as a reserved tag and
+   * report "Workflow" as their provider, so they can never overwrite spend
+   * collected from a provider's billing API.
+   */
+  write(rows: CostRowInput | CostRowInput[]): Promise<{ written: number }>;
+}`;
+
 export interface GenerateInfraDtsInput {
   plugins: WorkflowPluginInfo[];
   metrics: MetricDef[];
@@ -446,6 +489,12 @@ export interface GenerateInfraDtsInput {
    * bare `{ kind }` discriminant.
    */
   triggerKind?: WorkflowTriggerKind;
+  /**
+   * Whether this host can store cost data (cloud only — costs live in
+   * ClickHouse). When false, `infra.costs` is typed `never` so a desktop
+   * author sees it's unavailable while editing instead of at run time.
+   */
+  costs?: boolean;
   /**
    * Names of the caller's Infrawrench-managed SSH keys. Surfaced as autocomplete
    * for `ssh-key-picker` create fields and `resource.ssh`'s `sshKey` option.
@@ -475,9 +524,16 @@ export function generateInfraDts(input: GenerateInfraDtsInput): string {
     ? `  /** Prompt the user for input. Only available for manual runs. */\n  prompt(spec: string | PromptSpec): Promise<string | number | boolean | null>;`
     : `  /** Unavailable for automated triggers. */\n  prompt: never;`;
 
+  const costsDecl =
+    input.costs === false
+      ? `  /** Unavailable here — cost reporting needs the cloud's cost store. */\n  costs: never;`
+      : `  /** Report spend from a source Infrawrench has no plugin for. */\n  readonly costs: InfraCosts;`;
+
   return `${STATIC_PREAMBLE}
 
 ${renderEventType(input.triggerKind ?? "manual")}
+
+${input.costs === false ? "" : COSTS_INTERFACE}
 
 ${renderSshExecOptions(sshKeyNames)}
 
@@ -501,6 +557,7 @@ ${promptDecl}
   readonly metrics: InfraMetrics;
   /** What started this run. Frozen. */
   readonly event: WorkflowEvent;
+${costsDecl}
   /** Record a JSON-serializable result for this run. */
   output(value: JsonValue): Promise<void>;
   /** Stream an SSH \`{ stdout, stderr }\` object to the run log live (stderr in red). */

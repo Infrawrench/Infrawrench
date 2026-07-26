@@ -33,6 +33,8 @@
     "./cost/collect": "./src/cost/collect.ts",
     "./cost/forecast": "./src/cost/forecast.ts",
     "./cost/budget-eval": "./src/cost/budget-eval.ts",
+    "./cost/workflow-costs": "./src/cost/workflow-costs.ts",
+    "./cost/workflow-cost-ids": "./src/cost/workflow-cost-ids.ts",
     "./push/dispatch": "./src/push/dispatch.ts"
   },
   "scripts": {

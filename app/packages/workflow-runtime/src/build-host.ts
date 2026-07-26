@@ -22,7 +22,13 @@ import type {
   StorageObjectBody,
   WorkflowHost,
 } from "./host.js";
-import type { MetricValue, PromptSpec, WorkflowPluginInfo } from "./types.js";
+import type {
+  MetricValue,
+  PromptSpec,
+  WorkflowCostRow,
+  WorkflowCostWriteResult,
+  WorkflowPluginInfo,
+} from "./types.js";
 
 export interface ClientHostDeps {
   /** Accounts grouped by plugin (drives `infra.accounts`). */
@@ -69,6 +75,9 @@ export interface ClientHostDeps {
   sftpPut?(params: SftpParamsLite, path: string, base64: string): Promise<void>;
   sftpMkdir?(params: SftpParamsLite, path: string): Promise<void>;
   sftpDelete?(params: SftpParamsLite, path: string, isDir: boolean): Promise<void>;
+
+  /** Write daily spend into the org's cost store (cloud-only). */
+  writeCosts?(rows: WorkflowCostRow[]): Promise<WorkflowCostWriteResult>;
 
   /** Debugger line hook (instrumented runs); may block to pause at a breakpoint. */
   line?(line: number): Promise<void>;
@@ -293,6 +302,7 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
     ...(deps.sftpPut ? { sftpPut: deps.sftpPut } : {}),
     ...(deps.sftpMkdir ? { sftpMkdir: deps.sftpMkdir } : {}),
     ...(deps.sftpDelete ? { sftpDelete: deps.sftpDelete } : {}),
+    ...(deps.writeCosts ? { writeCosts: deps.writeCosts } : {}),
     ...(deps.line ? { line: deps.line } : {}),
   };
 }
