@@ -10,7 +10,7 @@
     "android": "node scripts/build-terminal-html.mjs && expo run:android",
     "ios": "node scripts/build-terminal-html.mjs && expo run:ios",
     "prebuild:terminal": "node scripts/build-terminal-html.mjs",
-    "eas-build-post-install": "node scripts/build-terminal-html.mjs",
+    "eas-build-post-install": "pnpm -w exec turbo build --filter='@infrawrench/mobile^...' && node scripts/build-terminal-html.mjs",
     "typecheck": "node scripts/build-terminal-html.mjs && tsgo --noEmit",
     "test": "vitest run",
     "clean": "rm -rf .expo dist assets/generated"
