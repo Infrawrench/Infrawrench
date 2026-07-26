@@ -1,13 +1,17 @@
 import { Tabs, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect } from "react";
-import { Pressable, Text } from "react-native";
+import { Pressable } from "react-native";
+import {
+  ChatIcon,
+  HomeIcon,
+  ResourcesIcon,
+  SearchIcon,
+  SettingsIcon,
+  SwitchIcon,
+} from "@/components/icons";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { registerForPush, watchPushTokenRotation } from "@/lib/push";
 import { colors } from "@/lib/theme";
-
-function TabIcon({ glyph, color }: { glyph: string; color: string }) {
-  return <Text style={{ color, fontSize: 20 }}>{glyph}</Text>;
-}
 
 export default function OrgLayout() {
   const router = useRouter();
@@ -48,38 +52,44 @@ export default function OrgLayout() {
             onPress={() => router.push("/select-org")}
             style={{ paddingHorizontal: 16 }}
           >
-            <Text style={{ color: colors.textMuted, fontSize: 18 }}>⇄</Text>
+            <SwitchIcon color={colors.textMuted} size={20} />
           </Pressable>
         ),
       }}
     >
       <Tabs.Screen
         name="index"
-        options={{ title: "Home", tabBarIcon: ({ color }) => <TabIcon glyph="⌂" color={color} /> }}
+        options={{
+          title: "Home",
+          tabBarIcon: ({ color, size }) => <HomeIcon color={color} size={size} />,
+        }}
       />
       <Tabs.Screen
         name="accounts"
         options={{
           title: "Resources",
-          tabBarIcon: ({ color }) => <TabIcon glyph="▤" color={color} />,
+          tabBarIcon: ({ color, size }) => <ResourcesIcon color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="chat"
-        options={{ title: "Chat", tabBarIcon: ({ color }) => <TabIcon glyph="✦" color={color} /> }}
+        options={{
+          title: "Chat",
+          tabBarIcon: ({ color, size }) => <ChatIcon color={color} size={size} />,
+        }}
       />
       <Tabs.Screen
         name="search"
         options={{
           title: "Search",
-          tabBarIcon: ({ color }) => <TabIcon glyph="⌕" color={color} />,
+          tabBarIcon: ({ color, size }) => <SearchIcon color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: "Settings",
-          tabBarIcon: ({ color }) => <TabIcon glyph="⚙" color={color} />,
+          tabBarIcon: ({ color, size }) => <SettingsIcon color={color} size={size} />,
         }}
       />
       {/* Non-tab screens within the org group */}
