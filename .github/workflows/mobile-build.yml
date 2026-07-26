@@ -29,8 +29,26 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # iOS ad-hoc profiles are rebuilt against the registered device list on
+      # every run, so a device added via `eas device:create` since the last
+      # build can still install the artifact. Needs an ASC API key on disk.
+      - name: Write App Store Connect API key
+        env:
+          EXPO_ASC_API_KEY_BASE64: ${{ secrets.EXPO_ASC_API_KEY_BASE64 }}
+        run: |
+          set -eo pipefail
+          install -m 600 /dev/null "${RUNNER_TEMP}/asc-api-key.p8"
+          echo "$EXPO_ASC_API_KEY_BASE64" | base64 --decode > "${RUNNER_TEMP}/asc-api-key.p8"
+
       - name: EAS build (preview)
         working-directory: app/packages/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: npx eas-cli build --platform all --profile preview --non-interactive
+          EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc-api-key.p8
+          EXPO_ASC_KEY_ID: ${{ secrets.EXPO_ASC_KEY_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.EXPO_ASC_ISSUER_ID }}
+          EXPO_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          EXPO_APPLE_TEAM_TYPE: ${{ vars.APPLE_TEAM_TYPE }}
+        run: |
+          npx eas-cli build --platform all --profile preview --non-interactive \
+            --refresh-ad-hoc-provisioning-profile
