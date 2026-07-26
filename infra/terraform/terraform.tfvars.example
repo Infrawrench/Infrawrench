@@ -52,6 +52,19 @@ app_env = {
   # (grant/revoke complimentary orgs). Omit to disable the admin surface.
   INFRAWRENCH_PLATFORM_ADMIN_EMAILS = "you@example.com"
 
+  # Optional: Slack alerts (Settings → Notifications → Add to Slack). From the
+  # Slack app's Basic Information → App Credentials. Without both, the settings
+  # UI says Slack isn't set up on this server and the button is hidden — the
+  # same shape as the GitHub App.
+  #
+  # The Slack app needs: redirect URL <APP_URL>/api/slack/oauth/callback, bot
+  # scopes chat:write / chat:write.public / channels:read / groups:read, public
+  # distribution ON (each org installs into its own workspace), and token
+  # rotation OFF — the bot token is stored once and never refreshed. No signing
+  # secret is needed; there are no events, slash commands, or interactivity.
+  SLACK_CLIENT_ID     = "1234567890.1234567890"
+  SLACK_CLIENT_SECRET = "..."
+
   # Workflow outbound HTTP. `fetch()` inside a workflow is performed by the
   # egress proxy Worker (app/packages/egress-proxy), which runs on Cloudflare —
   # outside this cluster — so a workflow can't reach pods, the kubelet, or the
