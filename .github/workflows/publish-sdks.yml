@@ -26,7 +26,10 @@ on:
     paths:
       - "app/packages/web/src/api/openapi/**"
       - "app/packages/web/openapi.json"
-      - "app/packages/web/scripts/sdk/**"
+      # The whole scripts directory, not just scripts/sdk: the CLI entry point
+      # and the shared server list live alongside it, and a fix to either is
+      # exactly the kind of change that needs to reach a run.
+      - "app/packages/web/scripts/**"
       - ".github/workflows/publish-sdks.yml"
   workflow_dispatch:
     inputs:
