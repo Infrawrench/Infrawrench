@@ -134,6 +134,24 @@ async function noteTickets(devices: TargetDevice[], tickets: ExpoTicket[]): Prom
   return ok.length;
 }
 
+/**
+ * Every push we send is an alert — a sync incident, a budget breach, a workflow
+ * page, or the test that proves those will arrive. So all of them go out at the
+ * top delivery tier on both platforms:
+ *
+ * - `priority: "high"` is APNs 10 / FCM high: delivered immediately instead of
+ *   being throttled and batched for battery. iOS already defaults to high, but
+ *   Android defaults to normal and an inherited default is not a guarantee.
+ * - `interruptionLevel: "time-sensitive"` (iOS 15+) lights the screen and
+ *   breaks through Focus and Do Not Disturb. This is the setting that decides
+ *   whether a 3am page wakes anyone. It needs the time-sensitive entitlement,
+ *   declared in mobile's `app.config.ts`; without it iOS quietly downgrades to
+ *   `active`. The Android equivalent is the `incidents` channel, already
+ *   created at `AndroidImportance.HIGH`.
+ *
+ * The user still has the last word — iOS exposes a per-app "Time Sensitive
+ * Notifications" toggle — which is the right place for that decision to live.
+ */
 function toExpoMessage(device: TargetDevice, msg: PushMessage): ExpoPushMessage {
   return {
     to: device.expoPushToken,
@@ -142,6 +160,8 @@ function toExpoMessage(device: TargetDevice, msg: PushMessage): ExpoPushMessage 
     data: msg.data,
     sound: "default",
     channelId: "incidents",
+    priority: "high",
+    interruptionLevel: "time-sensitive",
   };
 }
 

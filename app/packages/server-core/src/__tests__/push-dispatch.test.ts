@@ -121,6 +121,19 @@ describe("sendPushToOrg", () => {
     );
   });
 
+  it("sends every notification at the top delivery tier on both platforms", async () => {
+    targets = [device(1)];
+    fetchSpy.mockResolvedValue(expoResponse([{ status: "ok" }]));
+    await dispatch.sendPushToOrg("org1", "syncIncidents", msg);
+    const body = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body));
+    // APNs 10 / FCM high, and the level that breaks through iOS Focus. Losing
+    // either is invisible in testing — the push still arrives, just late or
+    // silently — so pin them.
+    expect(body[0].priority).toBe("high");
+    expect(body[0].interruptionLevel).toBe("time-sensitive");
+    expect(body[0].channelId).toBe("incidents");
+  });
+
   it("chunks requests at 100 messages", async () => {
     targets = Array.from({ length: 150 }, (_, i) => device(i));
     fetchSpy.mockImplementation(async (_url, init) => {

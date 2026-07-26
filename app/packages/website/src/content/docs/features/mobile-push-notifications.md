@@ -14,6 +14,16 @@ There is no enrollment flow to speak of: **sign in on the phone and allow notifi
 
 Devices take care of themselves: a token the push service reports as no longer registered is pruned automatically, and a device that fails five sends in a row is disabled until it re-registers (which happens the next time you open the app and sign in).
 
+## Delivery urgency
+
+Every notification Infrawrench sends is an alert, so all of them go out at the highest delivery tier rather than the batched, battery-saving one — they should arrive within seconds of the condition being detected, not whenever your phone next wakes up.
+
+On **iOS** they are also sent as **Time Sensitive**, which lights the screen and breaks through Focus and Do Not Disturb. That is deliberate: an alert you have configured to fire at 3am is one you presumably want to hear at 3am. You keep the final say — iOS exposes a per-app **Time Sensitive Notifications** switch under **Settings → Notifications → Infrawrench**, and turning it off makes Infrawrench alerts respect your Focus modes like any other app.
+
+On **Android** the same alerts land on a high-importance **Incidents & alerts** channel, which you can retune (or silence) in the system notification settings for the app.
+
+If you want some alerts to be loud and others not, use the per-organization trigger toggles below rather than the system switch — they are per user, per org, so you can leave sync incidents on for production and turn budget alerts off everywhere.
+
 ## Per-organization preferences
 
 Notification triggers are toggled per user, per organization, in **Settings → Notifications** — on the web app or in the mobile app's settings. Everything defaults to **on**; each member manages their own toggles. The v1 triggers:

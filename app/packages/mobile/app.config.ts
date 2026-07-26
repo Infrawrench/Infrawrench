@@ -32,6 +32,16 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
     },
+    // Everything we push is an alert, so the server sends every notification at
+    // `interruptionLevel: "time-sensitive"` (see server-core `push/dispatch.ts`).
+    // Without this entitlement iOS accepts the payload and silently downgrades
+    // it to `active`, which Focus and Do Not Disturb will swallow. It must stay
+    // a static literal: eas-cli reads the introspected config to sync the
+    // matching capability onto the Apple provisioning profile, and anything
+    // computed in a modifier is invisible to it.
+    entitlements: {
+      "com.apple.developer.usernotifications.time-sensitive": true,
+    },
   },
   android: {
     package: "com.infrawrench.mobile",
