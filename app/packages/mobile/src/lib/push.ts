@@ -39,8 +39,11 @@ let warnedNoProjectId = false;
 export async function registerForPush(api: CloudFetch): Promise<boolean> {
   if (!Device.isDevice) return false; // simulators have no push tokens
 
+  // `expoConfig` is absent in some build contexts (bare/standalone), where the
+  // id comes through `easConfig` instead — check both before giving up.
   const projectId: string | undefined =
     (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId ||
+    Constants.easConfig?.projectId ||
     undefined;
   if (!projectId) {
     // Dev builds without EAS config: getExpoPushTokenAsync would throw.
