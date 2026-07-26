@@ -30,7 +30,18 @@ import { SDK_TARGETS } from "./sdk/targets/index";
 const here = dirname(fileURLToPath(import.meta.url));
 const specPath = resolve(here, "..", "openapi.json");
 
+/**
+ * `pnpm run <script> -- --force` forwards the `--` separator itself rather than
+ * consuming it. `parseArgs` reads `--` as "everything after this is
+ * positional", so the flags arrive as positionals and it throws. This script
+ * takes no positionals at all, so dropping every bare `--` is unambiguous and
+ * makes the command work the same whether it is invoked through pnpm, npm, or
+ * tsx directly.
+ */
+const args = process.argv.slice(2).filter((arg) => arg !== "--");
+
 const { values } = parseArgs({
+  args,
   options: {
     force: { type: "boolean", default: false },
     rebuild: { type: "boolean", default: false },
