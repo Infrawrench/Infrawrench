@@ -51,9 +51,10 @@ Workflow pages deliver over both channels — mobile push, and SMS to the Twilio
 
 The org settings page formerly titled **Paging** is now **Notifications** (the nav label changed too). It gathers every delivery channel in one place:
 
-- **SMS & voice** — one card holding the whole Twilio setup: account SID, auth token, from-number, the threshold/window/cooldown knobs, the on-call recipient roster, and a **Send test page** button. Optional, as above.
+- **Slack** — the workspace connection and the channels each kind of alert is routed to.
 - **Your mobile push setup** — your per-org trigger toggles, your registered devices (with a remove button), and a **Send test push** button that delivers a test notification to your own devices.
 - **Members receiving push** — an admin-only roster (requires the `org:settings:write` permission) of org members who have at least one active device, so you can see at a glance who would actually hear an incident.
+- **SMS & voice** — last on the page, since it is opt-in: one card holding the whole Twilio setup — account SID, auth token, from-number, the threshold/window/cooldown knobs, the on-call recipient roster, and a **Send test page** button.
 
 ## Test it
 

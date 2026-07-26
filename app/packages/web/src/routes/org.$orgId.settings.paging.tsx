@@ -65,18 +65,18 @@ function PagingPage() {
         </p>
       </div>
 
+      <SlackSection orgId={orgId} />
+
+      <PushPreferencesSection orgId={orgId} />
+
+      <PushRosterSection orgId={orgId} />
+
       <TwilioSection
         orgId={orgId}
         settings={settings}
         recipients={recipients}
         onChanged={() => void load()}
       />
-
-      <SlackSection orgId={orgId} />
-
-      <PushPreferencesSection orgId={orgId} />
-
-      <PushRosterSection orgId={orgId} />
     </div>
   );
 }
