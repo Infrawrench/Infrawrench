@@ -58,7 +58,7 @@ export default function AuditLogScreen() {
 
   return (
     <Screen onRefresh={() => void logs.refetch()} refreshing={logs.isRefetching}>
-      <Card>
+      <Card list>
         {entries.map((e) => (
           <Row
             key={e.id}

@@ -7,6 +7,7 @@ import {
   ErrorView,
   LoadingView,
   Row,
+  RowGroup,
   Screen,
   SectionTitle,
 } from "@/components/ui";
@@ -75,26 +76,28 @@ export default function AgentsScreen() {
     <Screen onRefresh={() => void sessions.refetch()} refreshing={sessions.isRefetching}>
       <Card>
         <SectionTitle>Agent sessions</SectionTitle>
-        {rows.map((session) => (
-          <Row
-            key={session.id}
-            title={session.projectName || session.repo}
-            subtitle={`${toolLabel(session.tool)} · ${session.branchName} · ${new Date(session.createdAt).toLocaleString()}`}
-            right={
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <View
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    backgroundColor: statusColor(session.status),
-                  }}
-                />
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{session.status}</Text>
-              </View>
-            }
-          />
-        ))}
+        <RowGroup>
+          {rows.map((session) => (
+            <Row
+              key={session.id}
+              title={session.projectName || session.repo}
+              subtitle={`${toolLabel(session.tool)} · ${session.branchName} · ${new Date(session.createdAt).toLocaleString()}`}
+              right={
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <View
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: statusColor(session.status),
+                    }}
+                  />
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>{session.status}</Text>
+                </View>
+              }
+            />
+          ))}
+        </RowGroup>
       </Card>
       <Text style={{ color: colors.textFaint, fontSize: 12 }}>
         Interactive agent control (opening terminals, creating and deleting sessions) is available

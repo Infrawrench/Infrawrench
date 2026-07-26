@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Children, Fragment, isValidElement, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -39,8 +39,71 @@ export function Screen({
   );
 }
 
-export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
-  return <View style={[styles.card, style]}>{children}</View>;
+/**
+ * Flatten children to the list a separator run cares about.
+ *
+ * `Children.toArray` already flattens mapped arrays and drops the `null`s and
+ * `false`s that conditional children render, but it treats a Fragment as a
+ * single child — and a row list assembled inside a ternary is usually wrapped
+ * in one. Recursing means call sites don't have to know that.
+ */
+function flattenChildren(children: ReactNode): ReactNode[] {
+  return Children.toArray(children).flatMap((child) =>
+    isValidElement(child) && child.type === Fragment
+      ? flattenChildren((child.props as { children?: ReactNode }).children)
+      : [child],
+  );
+}
+
+/** Interleave hairlines between siblings — between only, never trailing. */
+function withSeparators(children: ReactNode): ReactNode[] {
+  return flattenChildren(children).map((child, i) => (
+    <Fragment key={i}>
+      {i > 0 && <View style={styles.separator} />}
+      {child}
+    </Fragment>
+  ));
+}
+
+/**
+ * Surface container. Pass `list` when the card holds nothing but a run of
+ * `Row`s: it then drops its vertical padding and inter-child gap and draws the
+ * separators itself.
+ *
+ * Separators belong to the container because only the container knows which
+ * row is last — when `Row` drew its own bottom border every list ended with a
+ * hairline dangling above the card's border. Dropping the vertical padding
+ * matters for the same reason: card padding *plus* the first row's own padding
+ * stacked into a conspicuous gap above the first row, and the gap between rows
+ * left the separator sitting closer to the row above it than the row below.
+ */
+export function Card({
+  children,
+  list = false,
+  style,
+}: {
+  children: ReactNode;
+  list?: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
+  if (!list) return <View style={[styles.card, style]}>{children}</View>;
+  return <View style={[styles.card, styles.cardList, style]}>{withSeparators(children)}</View>;
+}
+
+/**
+ * A run of `Row`s with separators between them, for cards that hold other
+ * content too (a `SectionTitle`, a trailing `Button`) and so can't be `list`.
+ */
+export function RowGroup({ children }: { children: ReactNode }) {
+  return <View>{withSeparators(children)}</View>;
+}
+
+/**
+ * A standalone hairline, for the cards that use a single `Row` as a header
+ * above other content and want a rule under it.
+ */
+export function Separator() {
+  return <View style={styles.separator} />;
 }
 
 export function SectionTitle({ children }: { children: ReactNode }) {
@@ -158,13 +221,13 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
+  cardList: { paddingVertical: 0, gap: 0 },
+  separator: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
   row: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
     paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
   },
   rowPressed: { backgroundColor: colors.surfaceOverlay },
   rowTitle: { color: colors.text, fontSize: 15, fontWeight: "500" },

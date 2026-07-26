@@ -49,7 +49,7 @@ export default function SshKeysScreen() {
 
   return (
     <Screen onRefresh={() => void keys.refetch()} refreshing={keys.isRefetching}>
-      <Card>
+      <Card list>
         {list.map((k) => (
           <Pressable key={k.id} onLongPress={() => copyKey(k)}>
             <Row

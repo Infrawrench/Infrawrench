@@ -24,7 +24,16 @@ import {
   type TotpEnrollment,
 } from "@infrawrench/client-core";
 import { useAuth } from "@/lib/auth/AuthProvider";
-import { Button, Card, ErrorView, LoadingView, Row, Screen, SectionTitle } from "@/components/ui";
+import {
+  Button,
+  Card,
+  ErrorView,
+  LoadingView,
+  Row,
+  RowGroup,
+  Screen,
+  SectionTitle,
+} from "@/components/ui";
 import { colors, radii, spacing } from "@/lib/theme";
 
 /**
@@ -334,32 +343,34 @@ export default function AccountScreen() {
                 No authenticator apps yet. Add one for a second step when you sign in.
               </Text>
             ) : (
-              (factors.data ?? []).map((factor) => (
-                <Row
-                  key={factor.id}
-                  title={factor.totpUser ?? "Authenticator app"}
-                  subtitle={`${factor.type.toUpperCase()} · added ${new Date(
-                    factor.createdAt,
-                  ).toLocaleDateString()}`}
-                  right={
-                    <Button
-                      label="Remove"
-                      variant="secondary"
-                      disabled={removeFactor.isPending}
-                      onPress={() =>
-                        Alert.alert("Remove authenticator", "Remove this second factor?", [
-                          { text: "Cancel", style: "cancel" },
-                          {
-                            text: "Remove",
-                            style: "destructive",
-                            onPress: () => removeFactor.mutate(factor.id),
-                          },
-                        ])
-                      }
-                    />
-                  }
-                />
-              ))
+              <RowGroup>
+                {(factors.data ?? []).map((factor) => (
+                  <Row
+                    key={factor.id}
+                    title={factor.totpUser ?? "Authenticator app"}
+                    subtitle={`${factor.type.toUpperCase()} · added ${new Date(
+                      factor.createdAt,
+                    ).toLocaleDateString()}`}
+                    right={
+                      <Button
+                        label="Remove"
+                        variant="secondary"
+                        disabled={removeFactor.isPending}
+                        onPress={() =>
+                          Alert.alert("Remove authenticator", "Remove this second factor?", [
+                            { text: "Cancel", style: "cancel" },
+                            {
+                              text: "Remove",
+                              style: "destructive",
+                              onPress: () => removeFactor.mutate(factor.id),
+                            },
+                          ])
+                        }
+                      />
+                    }
+                  />
+                ))}
+              </RowGroup>
             )}
             <Button
               label={startEnrollment.isPending ? "Preparing…" : "Add authenticator app"}
@@ -375,25 +386,27 @@ export default function AccountScreen() {
         {(sessions.data ?? []).length === 0 ? (
           <Text style={styles.hint}>No active sessions.</Text>
         ) : (
-          (sessions.data ?? []).map((session) => (
-            <Row
-              key={session.id}
-              title={`${describeUserAgent(session.userAgent)}${session.current ? " · this device" : ""}`}
-              subtitle={`${session.ipAddress ?? "Unknown IP"} · ${formatAuthMethod(
-                session.authMethod,
-              )} · ${new Date(session.createdAt).toLocaleDateString()}`}
-              right={
-                session.current ? undefined : (
-                  <Button
-                    label="Sign out"
-                    variant="secondary"
-                    disabled={revokeOne.isPending}
-                    onPress={() => revokeOne.mutate(session.id)}
-                  />
-                )
-              }
-            />
-          ))
+          <RowGroup>
+            {(sessions.data ?? []).map((session) => (
+              <Row
+                key={session.id}
+                title={`${describeUserAgent(session.userAgent)}${session.current ? " · this device" : ""}`}
+                subtitle={`${session.ipAddress ?? "Unknown IP"} · ${formatAuthMethod(
+                  session.authMethod,
+                )} · ${new Date(session.createdAt).toLocaleDateString()}`}
+                right={
+                  session.current ? undefined : (
+                    <Button
+                      label="Sign out"
+                      variant="secondary"
+                      disabled={revokeOne.isPending}
+                      onPress={() => revokeOne.mutate(session.id)}
+                    />
+                  )
+                }
+              />
+            ))}
+          </RowGroup>
         )}
         {otherSessions.length > 0 && (
           <Button

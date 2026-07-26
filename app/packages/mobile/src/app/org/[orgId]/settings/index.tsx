@@ -12,7 +12,7 @@ export default function SettingsScreen() {
   return (
     <Screen>
       <SectionTitle>Organization</SectionTitle>
-      <Card>
+      <Card list>
         <Row title="Team" subtitle="Members and pending invitations" onPress={go("team")} />
         <Row title="API keys" subtitle="View and revoke API keys" onPress={go("api-keys")} />
         <Row title="Audit log" subtitle="Recent activity in this org" onPress={go("audit-log")} />
@@ -26,7 +26,7 @@ export default function SettingsScreen() {
       </Card>
 
       <SectionTitle>Account</SectionTitle>
-      <Card>
+      <Card list>
         <Row
           title={email ?? "Signed in"}
           subtitle="Profile, password, two-factor, sessions"

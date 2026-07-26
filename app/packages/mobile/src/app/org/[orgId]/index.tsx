@@ -84,7 +84,7 @@ export default function OrgHome() {
       refreshing={dashboards.isRefetching}
     >
       <SectionTitle>Dashboards</SectionTitle>
-      <Card>
+      <Card list>
         {dashboardList.length === 0 ? (
           <EmptyView message="No dashboards yet. Create one on the web or desktop app." />
         ) : (

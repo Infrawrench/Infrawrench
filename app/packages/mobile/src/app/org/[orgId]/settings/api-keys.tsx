@@ -57,7 +57,7 @@ export default function ApiKeysScreen() {
       {list.length === 0 ? (
         <EmptyView message="No API keys yet." />
       ) : (
-        <Card>
+        <Card list>
           {list.map((k) => (
             <Row
               key={k.id}

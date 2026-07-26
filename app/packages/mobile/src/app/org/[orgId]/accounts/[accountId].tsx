@@ -9,6 +9,7 @@ import {
   ErrorView,
   LoadingView,
   Row,
+  RowGroup,
   Screen,
   SectionTitle,
 } from "@/components/ui";
@@ -79,18 +80,20 @@ export default function AccountResources() {
         grouped.map(([typeId, rows]) => (
           <Card key={typeId}>
             <SectionTitle>{typeId}</SectionTitle>
-            {rows.map((r) => (
-              <Row
-                key={r.id}
-                title={r.displayName}
-                subtitle={r.externalId ?? undefined}
-                onPress={() =>
-                  router.push(
-                    `/org/${orgId}/resources/${encodeURIComponent(r.pluginId)}/${encodeURIComponent(r.resourceTypeId)}/${encodeURIComponent(r.id)}`,
-                  )
-                }
-              />
-            ))}
+            <RowGroup>
+              {rows.map((r) => (
+                <Row
+                  key={r.id}
+                  title={r.displayName}
+                  subtitle={r.externalId ?? undefined}
+                  onPress={() =>
+                    router.push(
+                      `/org/${orgId}/resources/${encodeURIComponent(r.pluginId)}/${encodeURIComponent(r.resourceTypeId)}/${encodeURIComponent(r.id)}`,
+                    )
+                  }
+                />
+              ))}
+            </RowGroup>
           </Card>
         ))
       )}

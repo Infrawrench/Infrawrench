@@ -1,7 +1,15 @@
 import { Text } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
-import { Card, ErrorView, LoadingView, Row, Screen, SectionTitle } from "@/components/ui";
+import {
+  Card,
+  EmptyView,
+  ErrorView,
+  LoadingView,
+  Row,
+  Screen,
+  SectionTitle,
+} from "@/components/ui";
 import { colors } from "@/lib/theme";
 
 /** Shape of GET /api/org/:orgId/billing/status (web api/routes/billing.ts); null when unsubscribed. */
@@ -35,7 +43,7 @@ export default function BillingScreen() {
   return (
     <Screen onRefresh={() => void billing.refetch()} refreshing={billing.isRefetching}>
       <SectionTitle>Current plan</SectionTitle>
-      <Card>
+      <Card list>
         {sub ? (
           <>
             <Row title="Status" right={<Text style={{ color: colors.text }}>{sub.status}</Text>} />
@@ -55,9 +63,7 @@ export default function BillingScreen() {
             ) : null}
           </>
         ) : (
-          <Text style={{ color: colors.textMuted, fontSize: 13 }}>
-            This organization has no subscription.
-          </Text>
+          <EmptyView message="This organization has no subscription." />
         )}
       </Card>
       <Text style={{ color: colors.textMuted, fontSize: 12 }}>Manage billing on the web app.</Text>

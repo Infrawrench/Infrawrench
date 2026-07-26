@@ -86,7 +86,7 @@ export default function ChatListScreen() {
       {list.length === 0 ? (
         <EmptyView message="No conversations yet. Start a new chat to ask about your infrastructure." />
       ) : (
-        <Card>
+        <Card list>
           {list.map((c) => (
             <Row
               key={c.id}

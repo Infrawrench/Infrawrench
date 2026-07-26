@@ -59,7 +59,7 @@ export default function SearchScreen() {
         <EmptyView message="No matches." />
       ) : (
         list.length > 0 && (
-          <Card>
+          <Card list>
             {list.map((r) => (
               <Row
                 key={r.id}

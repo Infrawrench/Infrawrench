@@ -4,7 +4,16 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DetailViewSchema, SchemaNode } from "@infrawrench/plugin-base";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
-import { Button, Card, ErrorView, LoadingView, Row, Screen, SectionTitle } from "@/components/ui";
+import {
+  Button,
+  Card,
+  ErrorView,
+  LoadingView,
+  Row,
+  RowGroup,
+  Screen,
+  SectionTitle,
+} from "@/components/ui";
 import { SchemaNodeView } from "@/schema/SchemaRenderer";
 import { ActionDispatchProvider, type ActionHandlers } from "@/schema/ActionDispatchContext";
 import { colors } from "@/lib/theme";
@@ -197,18 +206,20 @@ export default function ResourceDetailScreen() {
         {data.childResources.length > 0 && (
           <Card>
             <SectionTitle>Related resources</SectionTitle>
-            {data.childResources.map((child) => (
-              <Row
-                key={child.id}
-                title={child.displayName}
-                subtitle={child.resourceTypeId}
-                onPress={() =>
-                  router.push(
-                    `/org/${orgId}/resources/${encodeURIComponent(child.pluginId)}/${encodeURIComponent(child.resourceTypeId)}/${encodeURIComponent(child.id)}`,
-                  )
-                }
-              />
-            ))}
+            <RowGroup>
+              {data.childResources.map((child) => (
+                <Row
+                  key={child.id}
+                  title={child.displayName}
+                  subtitle={child.resourceTypeId}
+                  onPress={() =>
+                    router.push(
+                      `/org/${orgId}/resources/${encodeURIComponent(child.pluginId)}/${encodeURIComponent(child.resourceTypeId)}/${encodeURIComponent(child.id)}`,
+                    )
+                  }
+                />
+              ))}
+            </RowGroup>
           </Card>
         )}
       </Screen>

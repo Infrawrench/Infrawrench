@@ -38,7 +38,7 @@ export default function AccountsScreen() {
 
   return (
     <Screen onRefresh={() => void accounts.refetch()} refreshing={accounts.isRefetching}>
-      <Card>
+      <Card list>
         {list.map((a) => (
           <Row
             key={a.id}

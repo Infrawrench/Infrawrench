@@ -8,6 +8,7 @@ import {
   ErrorView,
   LoadingView,
   Row,
+  RowGroup,
   Screen,
   SectionTitle,
 } from "@/components/ui";
@@ -68,29 +69,31 @@ export default function WorkflowsScreen() {
     <Screen onRefresh={() => void list.refetch()} refreshing={list.isRefetching}>
       <Card>
         <SectionTitle>Workflows</SectionTitle>
-        {workflows.map((wf) => (
-          <Row
-            key={wf.id}
-            title={wf.name}
-            subtitle={`${triggerLabel(wf.trigger)} trigger${wf.description ? ` · ${wf.description}` : ""}`}
-            right={
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <View
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    backgroundColor: wf.enabled ? colors.success : colors.textFaint,
-                  }}
-                />
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                  {wf.enabled ? "Enabled" : "Disabled"}
-                </Text>
-              </View>
-            }
-            onPress={() => router.push(`/org/${orgId}/workflows/${wf.id}`)}
-          />
-        ))}
+        <RowGroup>
+          {workflows.map((wf) => (
+            <Row
+              key={wf.id}
+              title={wf.name}
+              subtitle={`${triggerLabel(wf.trigger)} trigger${wf.description ? ` · ${wf.description}` : ""}`}
+              right={
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <View
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: wf.enabled ? colors.success : colors.textFaint,
+                    }}
+                  />
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                    {wf.enabled ? "Enabled" : "Disabled"}
+                  </Text>
+                </View>
+              }
+              onPress={() => router.push(`/org/${orgId}/workflows/${wf.id}`)}
+            />
+          ))}
+        </RowGroup>
       </Card>
       <Text style={{ color: colors.textFaint, fontSize: 12 }}>
         Workflows are read-only on mobile. Edit them from the web or desktop app.

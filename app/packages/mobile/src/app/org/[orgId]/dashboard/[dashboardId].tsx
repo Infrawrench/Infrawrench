@@ -8,6 +8,7 @@ import {
   ErrorView,
   LoadingView,
   Row,
+  Separator,
   Screen,
   SectionTitle,
 } from "@/components/ui";
@@ -132,6 +133,7 @@ export default function DashboardScreen() {
                       }
                     : {})}
                 />
+                <Separator />
                 {pin.status.phase === "error" && pin.status.error ? (
                   <Text style={{ color: colors.danger, fontSize: 12 }}>{pin.status.error}</Text>
                 ) : null}
@@ -172,6 +174,7 @@ export default function DashboardScreen() {
                     : "Never run"
                 }
               />
+              <Separator />
               {wp.metrics.map((m) => (
                 <View key={m.key} style={{ flexDirection: "row", justifyContent: "space-between" }}>
                   <Text style={{ color: colors.textMuted, fontSize: 13 }}>{m.label}</Text>
@@ -188,7 +191,7 @@ export default function DashboardScreen() {
       {widgets.length > 0 && (
         <>
           <SectionTitle>Widgets</SectionTitle>
-          <Card>
+          <Card list>
             {widgets.map((w) => (
               <Row
                 key={w.id}

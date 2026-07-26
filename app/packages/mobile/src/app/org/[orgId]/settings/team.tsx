@@ -68,7 +68,7 @@ export default function TeamScreen() {
       refreshing={members.isRefetching}
     >
       <SectionTitle>Members</SectionTitle>
-      <Card>
+      <Card list>
         {memberList.length === 0 ? (
           <EmptyView message="No members found." />
         ) : (
@@ -85,7 +85,7 @@ export default function TeamScreen() {
       {pendingInvites.length > 0 && (
         <>
           <SectionTitle>Pending invitations</SectionTitle>
-          <Card>
+          <Card list>
             {pendingInvites.map((i) => (
               <Row
                 key={i.id}
