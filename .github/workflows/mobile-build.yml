@@ -4,11 +4,11 @@ on:
   push:
     branches: [main]
     paths:
-      - 'app/packages/mobile/**'
-      - 'app/packages/client-core/**'
-      - 'plugin-architecture/packages/plugin-base/**'
-      - 'pnpm-lock.yaml'
-      - '.github/workflows/mobile-build.yml'
+      - "app/packages/mobile/**"
+      - "app/packages/client-core/**"
+      - "plugin-architecture/packages/plugin-base/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/mobile-build.yml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
