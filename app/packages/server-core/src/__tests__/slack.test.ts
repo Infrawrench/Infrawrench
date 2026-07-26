@@ -259,3 +259,78 @@ describe("sendSlackToOrg", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("listSlackChannels", () => {
+  beforeEach(() => {
+    installationRows = [installation()];
+  });
+
+  /**
+   * Slack's reference says `conversations.list` accepts `application/json`, but
+   * it does not honour arguments sent that way: it answers `ok: true` with
+   * `types` defaulted to public channels only. That is invisible from the
+   * response — the bug looked like a missing scope or a missing invite — so the
+   * encoding is pinned here rather than left to whoever edits slackCall next.
+   */
+  it("asks for private channels form-encoded, because JSON is silently ignored", async () => {
+    fetchSpy.mockImplementation(async () =>
+      jsonResponse({
+        ok: true,
+        channels: [
+          { id: "C1", name: "general", is_private: false },
+          { id: "C2", name: "alerting", is_private: true },
+        ],
+      }),
+    );
+
+    const { listSlackChannels } = await import("../slack");
+    const channels = await listSlackChannels(ORG, "inst1");
+
+    const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toContain("conversations.list");
+    expect((init.headers as Record<string, string>)["Content-Type"]).toMatch(
+      /application\/x-www-form-urlencoded/,
+    );
+    const sent = new URLSearchParams(String(init.body));
+    expect(sent.get("types")).toBe("public_channel,private_channel");
+    expect(sent.get("exclude_archived")).toBe("true");
+
+    expect(channels).toEqual([
+      { id: "C2", name: "alerting", isPrivate: true },
+      { id: "C1", name: "general", isPrivate: false },
+    ]);
+  });
+
+  it("drops archived channels and follows the cursor", async () => {
+    let call = 0;
+    fetchSpy.mockImplementation(async () => {
+      call += 1;
+      return call === 1
+        ? jsonResponse({
+            ok: true,
+            channels: [
+              { id: "C1", name: "keep", is_private: false },
+              { id: "C2", name: "gone", is_archived: true },
+            ],
+            response_metadata: { next_cursor: "page2" },
+          })
+        : jsonResponse({ ok: true, channels: [{ id: "C3", name: "second-page" }] });
+    });
+
+    const { listSlackChannels } = await import("../slack");
+    const channels = await listSlackChannels(ORG, "inst1");
+    expect(channels.map((c) => c.name)).toEqual(["keep", "second-page"]);
+    const [, secondInit] = fetchSpy.mock.calls[1] as unknown as [string, RequestInit];
+    expect(new URLSearchParams(String(secondInit.body)).get("cursor")).toBe("page2");
+  });
+
+  it("still posts messages as JSON, which chat.postMessage does honour", async () => {
+    channelRows = [
+      { channelId: "C1", channelName: "alerts", installationId: "inst1", workflowPages: true },
+    ];
+    const { sendSlackToOrg } = await import("../slack");
+    await sendSlackToOrg(ORG, "workflowPages", { title: "t", body: "b" });
+    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>)["Content-Type"]).toMatch(/application\/json/);
+  });
+});

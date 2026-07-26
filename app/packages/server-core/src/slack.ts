@@ -110,24 +110,53 @@ interface SlackEnvelope {
   error?: string;
 }
 
+/** How a method's arguments go up. See {@link slackCall}. */
+type SlackEncoding = "json" | "form";
+
+/**
+ * Slack's form encoding: scalars as-is, anything structured as JSON text
+ * (which is how Slack expects nested arguments in a form body).
+ */
+function formEncode(body: Record<string, unknown>): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(body)) {
+    if (value === undefined || value === null) continue;
+    params.set(key, typeof value === "object" ? JSON.stringify(value) : String(value));
+  }
+  return params.toString();
+}
+
 /**
  * Call a Slack Web API method with a bot token. Slack answers 200 with
  * `{ok: false, error}` for most failures, so the envelope matters more than the
  * HTTP status.
+ *
+ * `encoding` is not a style choice. Slack's reference lists
+ * `application/json` as an accepted content type for read methods like
+ * `conversations.list`, but it does not actually *honour* arguments sent that
+ * way: the call returns `ok: true` with the arguments silently defaulted. Sent
+ * as JSON, `types: "public_channel,private_channel"` came back byte-identical
+ * to sending no `types` at all — i.e. public channels only, with no error to
+ * notice. So reads go up form-encoded. `chat.postMessage` genuinely needs JSON
+ * (its `blocks` are a structured array), and it honours it.
  */
 async function slackCall<T extends SlackEnvelope>(
   method: string,
   token: string,
   body: Record<string, unknown>,
+  encoding: SlackEncoding = "json",
 ): Promise<T> {
   const res = await fetch(`${SLACK_API}/${method}`, {
     method: "POST",
     signal: AbortSignal.timeout(SLACK_REQUEST_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json; charset=utf-8",
+      "Content-Type":
+        encoding === "form"
+          ? "application/x-www-form-urlencoded; charset=utf-8"
+          : "application/json; charset=utf-8",
     },
-    body: JSON.stringify(body),
+    body: encoding === "form" ? formEncode(body) : JSON.stringify(body),
   });
   if (!res.ok) {
     throw new Error(`Slack ${method} HTTP ${res.status}`);
@@ -312,7 +341,14 @@ export async function listSlackChannels(
       limit: 200,
     };
     if (cursor) body["cursor"] = cursor;
-    const res = await slackCall<ConversationsListResponse>("conversations.list", token, body);
+    // Form-encoded, not JSON: sent as JSON, Slack ignores `types` and returns
+    // public channels only — silently, with ok: true. See slackCall.
+    const res = await slackCall<ConversationsListResponse>(
+      "conversations.list",
+      token,
+      body,
+      "form",
+    );
     for (const ch of res.channels ?? []) {
       if (!ch.id || !ch.name || ch.is_archived) continue;
       out.push({ id: ch.id, name: ch.name, isPrivate: Boolean(ch.is_private) });
