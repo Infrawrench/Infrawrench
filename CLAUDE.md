@@ -20,6 +20,17 @@ Nothing publishes until that number changes. `.github/workflows/publish-sdks.yml
 
 After bumping, run `pnpm --filter @infrawrench/web generate:openapi` and commit the regenerated `openapi.json` — that command also refreshes the SDKs locally.
 
+## Server environment variables
+
+Every server-side variable read through `process.env` (web, poller, github-watcher) must be added to **both** places in the same change:
+
+- `app/packages/web/.env.example` — local development.
+- the `app_env` map in `infra/terraform/terraform.tfvars.example` — production.
+
+There is no per-variable Terraform to write. `app_env` is a `map(string)` (`infra/terraform/variables.tf`) written wholesale into the `infrawrench-env` k8s secret that all three deployments `envFrom` (`infra/terraform/kubernetes.tf`), so a key added to the map is a key in the pods. The flip side is that nothing fails at plan time: a variable missing from the tfvars map is simply `undefined` in production, and the feature silently no-ops.
+
+`terraform.tfvars` itself is gitignored — the example file is the only checked-in record of what the deployment expects, so treat it as documentation. Above each key say whether it is required or optional, what the value looks like or where to create it, and what degrades without it. Group related keys under one comment the way Slack, ClickHouse, and the GitHub App already are.
+
 ## Documentation
 
 User-facing docs live in `app/packages/website/src/content/docs/`, organized by section:
