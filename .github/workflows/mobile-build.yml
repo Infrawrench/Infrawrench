@@ -6,7 +6,7 @@ on:
 jobs:
   eas-preview:
     name: EAS preview build
-    runs-on: blacksmith-4vcpu-ubuntu-2404-arm
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v6
 
