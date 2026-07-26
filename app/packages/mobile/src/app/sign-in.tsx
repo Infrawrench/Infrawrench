@@ -59,7 +59,8 @@ export default function SignIn() {
         <Text style={styles.buttonText}>{busy ? "Signing in…" : "Sign in"}</Text>
       </Pressable>
       {error && <Text style={styles.error}>{error}</Text>}
-      <Text style={styles.hint}>Redirects to {redirectUri} after WorkOS sign-in.</Text>
+      {/* Callback URI is a debugging aid — not something a released build should surface. */}
+      {__DEV__ && <Text style={styles.hint}>Redirects to {redirectUri} after WorkOS sign-in.</Text>}
     </View>
   );
 }
