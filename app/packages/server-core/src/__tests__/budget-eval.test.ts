@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Budget threshold evaluation tests, focused on the notification fan-out:
- * Twilio page + mobile push, and `notifiedAt` accounting when either channel
- * succeeds. Cost data is mocked at the queryCosts boundary.
+ * Twilio page + mobile push + Slack, and `notifiedAt` accounting when any one
+ * channel succeeds. Cost data is mocked at the queryCosts boundary.
  */
 
 const sendBudgetAlertPage = vi.fn(async () => false);
@@ -11,6 +11,9 @@ vi.mock("../twilio-pager", () => ({ sendBudgetAlertPage }));
 
 const sendPushToOrg = vi.fn(async () => ({ attempted: 0, succeeded: 0 }));
 vi.mock("../push/dispatch", () => ({ sendPushToOrg }));
+
+const sendSlackToOrg = vi.fn(async () => ({ attempted: 0, succeeded: 0, failed: 0 }));
+vi.mock("../slack", () => ({ sendSlackToOrg }));
 
 // A single cost group: $500 spent this month, in one bucket.
 const queryCosts = vi.fn();
@@ -120,7 +123,19 @@ describe("evaluateBudgetsForOrg — notification fan-out", () => {
     expect(updates.some((u) => u.table === "budgetAlertEvents")).toBe(true);
   });
 
-  it("does not set notifiedAt when both channels fail", async () => {
+  it("sets notifiedAt when only Slack succeeds", async () => {
+    budgetRows = [budget()];
+    insertReturning = [{ id: "evt1" }];
+    sendBudgetAlertPage.mockResolvedValueOnce(false);
+    sendPushToOrg.mockResolvedValueOnce({ attempted: 0, succeeded: 0 });
+    sendSlackToOrg.mockResolvedValueOnce({ attempted: 1, succeeded: 1, failed: 0 });
+    await budgetEval.evaluateBudgetsForOrg("org1", NOW);
+    expect(updates.some((u) => u.table === "budgetAlertEvents" && "notifiedAt" in u.set)).toBe(
+      true,
+    );
+  });
+
+  it("does not set notifiedAt when every channel fails", async () => {
     budgetRows = [budget()];
     insertReturning = [{ id: "evt1" }];
     await budgetEval.evaluateBudgetsForOrg("org1", NOW);

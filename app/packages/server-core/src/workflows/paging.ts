@@ -3,8 +3,8 @@
  *
  * A workflow raises an alert; this module decides whether it is still in
  * cooldown and, if not, fans it out over the same transports the sync-failure
- * pager and budget alerts already use — Twilio SMS (plus voice on request) and
- * mobile push.
+ * pager and budget alerts already use — Twilio SMS (plus voice on request),
+ * mobile push, and any Slack channel opted into workflow pages.
  *
  * The cooldown is a row in `workflow_pages` keyed by (workflow, page key), and
  * the claim is a single conditional upsert: whoever wins the statement sends,
@@ -26,6 +26,7 @@ import {
 import { db } from "../db/client";
 import { workflowPages } from "../db/schema";
 import { sendPushToOrg } from "../push/dispatch";
+import { sendSlackToOrg } from "../slack";
 import { sendOneShotPage } from "../twilio-pager";
 
 /** Which workflow (and run) is raising the alert. */
@@ -128,6 +129,7 @@ export async function pageFromWorkflow(
       suppressed: true,
       sms: 0,
       push: 0,
+      slack: 0,
       retryAt: new Date(since.getTime() + cooldownMinutes * 60_000).toISOString(),
     };
   }
@@ -145,8 +147,15 @@ export async function pageFromWorkflow(
       ...(ctx.runId ? { runId: ctx.runId } : {}),
     },
   });
+  const url = workflowUrl(ctx);
+  const slack = await sendSlackToOrg(ctx.organizationId, "workflowPages", {
+    title: spec.title ?? ctx.workflowName,
+    body: spec.message,
+    context: `Workflow: ${ctx.workflowName}`,
+    ...(url ? { url } : {}),
+  });
 
-  const delivered = twilio.succeeded + push.succeeded > 0;
+  const delivered = twilio.succeeded + push.succeeded + slack.succeeded > 0;
   if (!delivered) {
     await releaseSlot(ctx.workflowId, key, prior);
   }
@@ -155,7 +164,15 @@ export async function pageFromWorkflow(
     suppressed: false,
     sms: twilio.succeeded,
     push: push.succeeded,
+    slack: slack.succeeded,
   };
+}
+
+/** Deep link to the workflow, for the Slack message's button. */
+function workflowUrl(ctx: WorkflowPageContext): string | null {
+  const base = process.env["APP_URL"] ?? process.env["NEXT_PUBLIC_APP_URL"];
+  if (!base) return null;
+  return `${base.replace(/\/$/, "")}/org/${ctx.organizationId}/workflows/${ctx.workflowId}`;
 }
 
 /**

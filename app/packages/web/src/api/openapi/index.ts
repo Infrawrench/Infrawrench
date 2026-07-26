@@ -34,6 +34,7 @@ import { registerSyncPaths } from "./paths/sync";
 import { registerWebhookPaths } from "./paths/webhooks";
 import { registerAdminPaths } from "./paths/admin";
 import { registerPushPaths } from "./paths/push";
+import { registerSlackPaths } from "./paths/slack";
 
 interface BuildOptions {
   /** Server URL(s) to advertise in the spec. */
@@ -102,6 +103,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerWebhookPaths(ctx);
   registerAdminPaths(ctx);
   registerPushPaths(ctx);
+  registerSlackPaths(ctx);
 
   const generator = new OpenApiGeneratorV31(registry.definitions);
 
@@ -161,6 +163,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
           "Platform-operator surface (INFRAWRENCH_PLATFORM_ADMIN_EMAILS allowlist), e.g. complimentary orgs.",
       },
       { name: "Push", description: "Mobile push notification devices and preferences." },
+      { name: "Slack", description: "Slack workspace connection and per-channel alert routing." },
     ],
   });
 

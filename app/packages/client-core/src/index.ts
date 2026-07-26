@@ -20,6 +20,23 @@ export {
   type PushPreferences,
 } from "./push";
 export {
+  getSlackStatus,
+  getSlackInstallUrl,
+  listAvailableSlackChannels,
+  addSlackChannel,
+  updateSlackChannel,
+  removeSlackChannel,
+  disconnectSlackWorkspace,
+  sendSlackTestMessage,
+  type SlackStatus,
+  type SlackInstallation,
+  type SlackChannel,
+  type SlackChannelTriggers,
+  type SlackAvailableChannel,
+  type SlackTestResult,
+  type AddSlackChannelArgs,
+} from "./slack";
+export {
   fetchProfile,
   updateProfile,
   createPasswordResetLink,

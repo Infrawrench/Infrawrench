@@ -541,6 +541,84 @@ export const twilioRecipients = pgTable(
 );
 
 /**
+ * A Slack workspace an org has installed the Infrawrench app into, via the
+ * "Add to Slack" OAuth flow. Holds the bot token we post as; the token is
+ * long-lived (Slack only rotates it when the workspace enables token rotation,
+ * which this install does not request).
+ *
+ * An org may install into more than one workspace, so this is keyed by
+ * (org, teamId) rather than by org alone. Uninstalling sets `deletedAt` so the
+ * channel rows and their trigger opt-ins survive a re-install.
+ */
+export const slackInstallations = pgTable(
+  "slack_installations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Slack workspace id (`T…`). */
+    teamId: text("team_id").notNull(),
+    /** Workspace name at install time, for display. */
+    teamName: text("team_name"),
+    /** The bot user we post as (`U…`), returned by oauth.v2.access. */
+    botUserId: text("bot_user_id"),
+    /** Space-separated scopes the install was granted, for diagnosing failures. */
+    scopes: text("scopes"),
+    /** AES-256-GCM encrypted bot token (`xoxb-…`). AAD: `slack:<orgId>:botToken`. */
+    encryptedBotToken: text("encrypted_bot_token").notNull(),
+    botTokenIv: text("bot_token_iv").notNull(),
+    installedByUserId: text("installed_by_user_id"),
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("slack_installations_org_idx").on(t.organizationId),
+    orgTeamUnique: uniqueIndex("slack_installations_org_team_unique").on(
+      t.organizationId,
+      t.teamId,
+    ),
+  }),
+);
+
+/**
+ * A Slack channel an org routes alerts to, with one opt-in per trigger. The
+ * three flags mirror `pushPreferences` so a channel can take budget alerts
+ * without also taking every sync incident.
+ */
+export const slackChannels = pgTable(
+  "slack_channels",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    installationId: text("installation_id")
+      .notNull()
+      .references(() => slackInstallations.id, { onDelete: "cascade" }),
+    /** Slack channel id (`C…`/`G…`). Stable across renames, unlike the name. */
+    channelId: text("channel_id").notNull(),
+    /** Channel name at the time it was added, refreshed when we list channels. */
+    channelName: text("channel_name").notNull(),
+    isPrivate: boolean("is_private").notNull().default(false),
+    syncIncidents: boolean("sync_incidents").notNull().default(true),
+    budgetAlerts: boolean("budget_alerts").notNull().default(true),
+    /** Alerts raised by a workflow calling `infra.page(...)`. */
+    workflowPages: boolean("workflow_pages").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("slack_channels_org_idx").on(t.organizationId),
+    installChannelUnique: uniqueIndex("slack_channels_install_channel_unique").on(
+      t.installationId,
+      t.channelId,
+    ),
+  }),
+);
+
+/**
  * Rolling-window record of poller sync failures, used by the Twilio pager to
  * decide whether a (account, resourceType) has crossed its threshold. Rows
  * older than the org's `windowMinutes` are deleted on each tick.

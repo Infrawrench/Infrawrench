@@ -8,21 +8,22 @@ Infrawrench ships as a desktop app, a hosted web app, and a [mobile app](../feat
 
 ## At a glance
 
-| Feature                           | Desktop                                                   | Web                              | Mobile                                                     |
-| --------------------------------- | --------------------------------------------------------- | -------------------------------- | ---------------------------------------------------------- |
-| Works offline                     | Yes                                                       | No                               | No                                                         |
-| Credential storage                | Local SQLite, AES-256-GCM                                 | Server-side, encrypted           | None (uses your cloud org)                                 |
-| Auth                              | None required                                             | WorkOS (email / Google / MS)     | WorkOS (same, OAuth PKCE)                                  |
-| SSH terminal                      | Native, direct connection                                 | WebSocket proxied through server | WebSocket proxied through server                           |
-| SQL / KV console                  | Native drivers                                            | Proxied                          | Proxied, no SQL autocomplete                               |
-| File browsers                     | GCS, S3, R2, Azure Blob, + SFTP                           | GCS, S3, R2, Azure Blob          | SFTP (proxied through the cloud)                           |
-| Docker                            | Native socket / TCP                                       | Remote TCP only                  | Remote TCP only                                            |
-| Team / billing                    | n/a                                                       | Full multi-user, Stripe billing  | View team; billing read-only                               |
-| Audit log, API keys               | n/a                                                       | Paid plan                        | Paid plan (keys view/revoke only)                          |
-| SSH agent                         | System keys + Pageant (Windows)                           | System keys server-side          | Org SSH keys server-side                                   |
-| Cloud sync                        | Optional, OAuth PKCE, push-only                           | n/a (you are the cloud)          | n/a (always talks to the cloud)                            |
-| [AI chat](../features/ai-chat.md) | When signed in to cloud (proxied through the web backend) | Yes                              | Yes                                                        |
-| Push notifications                | n/a                                                       | Configured in settings           | [Delivered here](../features/mobile-push-notifications.md) |
+| Feature                                     | Desktop                                                   | Web                                 | Mobile                                                     |
+| ------------------------------------------- | --------------------------------------------------------- | ----------------------------------- | ---------------------------------------------------------- |
+| Works offline                               | Yes                                                       | No                                  | No                                                         |
+| Credential storage                          | Local SQLite, AES-256-GCM                                 | Server-side, encrypted              | None (uses your cloud org)                                 |
+| Auth                                        | None required                                             | WorkOS (email / Google / MS)        | WorkOS (same, OAuth PKCE)                                  |
+| SSH terminal                                | Native, direct connection                                 | WebSocket proxied through server    | WebSocket proxied through server                           |
+| SQL / KV console                            | Native drivers                                            | Proxied                             | Proxied, no SQL autocomplete                               |
+| File browsers                               | GCS, S3, R2, Azure Blob, + SFTP                           | GCS, S3, R2, Azure Blob             | SFTP (proxied through the cloud)                           |
+| Docker                                      | Native socket / TCP                                       | Remote TCP only                     | Remote TCP only                                            |
+| Team / billing                              | n/a                                                       | Full multi-user, Stripe billing     | View team; billing read-only                               |
+| Audit log, API keys                         | n/a                                                       | Paid plan                           | Paid plan (keys view/revoke only)                          |
+| SSH agent                                   | System keys + Pageant (Windows)                           | System keys server-side             | Org SSH keys server-side                                   |
+| Cloud sync                                  | Optional, OAuth PKCE, push-only                           | n/a (you are the cloud)             | n/a (always talks to the cloud)                            |
+| [AI chat](../features/ai-chat.md)           | When signed in to cloud (proxied through the web backend) | Yes                                 | Yes                                                        |
+| Push notifications                          | n/a                                                       | Configured in settings              | [Delivered here](../features/mobile-push-notifications.md) |
+| [Slack alerts](../features/slack-alerts.md) | n/a (pages become OS notifications)                       | Connect a workspace, route channels | Connect and route channels                                 |
 
 ## Which should you use
 

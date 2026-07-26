@@ -1,6 +1,6 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useState, useEffect, useId, isValidElement, cloneElement } from "react";
-import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from "@/lib/api";
 import type { Recipient } from "@infrawrench/ui";
 
 interface PagingSettings {
@@ -60,14 +60,16 @@ function PagingPage() {
           Alert your team when a resource type fails to sync repeatedly, a budget threshold is
           crossed, or a workflow calls <code>infra.page()</code>. Incidents are triggered by the
           background poller; manual syncs from the UI never page. Delivery goes to mobile push (the
-          Infrawrench app) and, when Twilio credentials are configured, SMS and voice calls — the
-          recipients below receive all three kinds.
+          Infrawrench app), any Slack channels you connect below, and — when Twilio credentials are
+          configured — SMS and voice calls.
         </p>
       </div>
 
       <SettingsForm orgId={orgId} initial={settings} onSaved={() => void load()} />
 
       <RecipientsSection orgId={orgId} recipients={recipients} onChanged={() => void load()} />
+
+      <SlackSection orgId={orgId} />
 
       <TestSection orgId={orgId} settings={settings} recipientCount={recipients.length} />
 
@@ -338,6 +340,429 @@ function RecipientsSection({
         </button>
       </div>
     </section>
+  );
+}
+
+interface SlackInstallation {
+  id: string;
+  teamId: string;
+  teamName: string | null;
+}
+
+interface SlackChannel {
+  id: string;
+  installationId: string;
+  channelId: string;
+  channelName: string;
+  isPrivate: boolean;
+  syncIncidents: boolean;
+  budgetAlerts: boolean;
+  workflowPages: boolean;
+}
+
+interface SlackStatus {
+  configured: boolean;
+  installations: SlackInstallation[];
+  channels: SlackChannel[];
+}
+
+interface AvailableChannel {
+  id: string;
+  name: string;
+  isPrivate: boolean;
+}
+
+/** The Slack mark, from Slack's brand assets. */
+function SlackMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 127 127" className={className} aria-hidden="true" focusable="false">
+      <path
+        d="M27.2 80c0 7.3-5.9 13.2-13.2 13.2C6.7 93.2.8 87.3.8 80c0-7.3 5.9-13.2 13.2-13.2h13.2V80zm6.6 0c0-7.3 5.9-13.2 13.2-13.2 7.3 0 13.2 5.9 13.2 13.2v33c0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V80z"
+        fill="#E01E5A"
+      />
+      <path
+        d="M47 27c-7.3 0-13.2-5.9-13.2-13.2C33.8 6.5 39.7.6 47 .6c7.3 0 13.2 5.9 13.2 13.2V27H47zm0 6.7c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H13.9C6.6 60.1.7 54.2.7 46.9c0-7.3 5.9-13.2 13.2-13.2H47z"
+        fill="#36C5F0"
+      />
+      <path
+        d="M99.9 46.9c0-7.3 5.9-13.2 13.2-13.2 7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H99.9V46.9zm-6.6 0c0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V13.8C66.9 6.5 72.8.6 80.1.6c7.3 0 13.2 5.9 13.2 13.2v33.1z"
+        fill="#2EB67D"
+      />
+      <path
+        d="M80.1 99.8c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V99.8h13.2zm0-6.6c-7.3 0-13.2-5.9-13.2-13.2 0-7.3 5.9-13.2 13.2-13.2h33.1c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H80.1z"
+        fill="#ECB22E"
+      />
+    </svg>
+  );
+}
+
+const SLACK_TRIGGERS = [
+  { key: "syncIncidents", label: "Sync failures" },
+  { key: "budgetAlerts", label: "Budgets" },
+  { key: "workflowPages", label: "Workflow pages" },
+] as const;
+
+/**
+ * Slack connection + per-channel alert routing. The install is a normal
+ * "Add to Slack" OAuth round-trip; the callback lands back on this page with
+ * `?slack=connected`, which the banner below reports.
+ */
+function SlackSection({ orgId }: { orgId: string }) {
+  const [status, setStatus] = useState<SlackStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [testMessage, setTestMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(
+    null,
+  );
+
+  // The OAuth callback redirects here with a result; show it, then drop the
+  // param so a refresh doesn't repeat the banner.
+  const [installResult, setInstallResult] = useState<string | null>(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get("slack");
+    if (!result) return;
+    setInstallResult(result);
+    params.delete("slack");
+    const query = params.toString();
+    window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+  }, []);
+
+  async function load() {
+    try {
+      setStatus(await apiGet<SlackStatus>(`/api/org/${orgId}/slack/status`));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load Slack settings");
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId]);
+
+  async function handleConnect() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { url } = await apiGet<{ url: string }>(`/api/org/${orgId}/slack/install-url`);
+      window.location.href = url;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to start the Slack install");
+      setBusy(false);
+    }
+  }
+
+  async function handleDisconnect(installationId: string) {
+    await apiDelete(`/api/org/${orgId}/slack/installations/${installationId}`);
+    void load();
+  }
+
+  async function handleToggle(channel: SlackChannel, patch: Partial<SlackChannel>) {
+    // Optimistic — the checkbox should not lag a round-trip.
+    setStatus((prev) =>
+      prev
+        ? {
+            ...prev,
+            channels: prev.channels.map((c) => (c.id === channel.id ? { ...c, ...patch } : c)),
+          }
+        : prev,
+    );
+    try {
+      await apiPatch(`/api/org/${orgId}/slack/channels/${channel.id}`, patch);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update the channel");
+      void load();
+    }
+  }
+
+  async function handleRemoveChannel(id: string) {
+    await apiDelete(`/api/org/${orgId}/slack/channels/${id}`);
+    void load();
+  }
+
+  async function handleTest() {
+    setBusy(true);
+    setTestMessage(null);
+    try {
+      const r = await apiPost<{ channelCount: number; succeeded: number }>(
+        `/api/org/${orgId}/slack/test`,
+      );
+      setTestMessage({
+        kind: "ok",
+        text: `Posted to ${r.succeeded}/${r.channelCount} channel(s).`,
+      });
+    } catch (e) {
+      setTestMessage({ kind: "error", text: e instanceof Error ? e.message : "Test failed" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!status) {
+    return (
+      <section className="border border-border rounded-xl p-5 space-y-2">
+        <h2 className="text-sm font-semibold text-on-surface-secondary">Slack</h2>
+        {error ? (
+          <p className="text-xs text-red-400">{error}</p>
+        ) : (
+          <p className="text-sm text-on-surface-faint">Loading…</p>
+        )}
+      </section>
+    );
+  }
+
+  const install = status.installations[0] ?? null;
+
+  return (
+    <section className="border border-border rounded-xl p-5 space-y-4">
+      <div className="flex items-center gap-2">
+        <SlackMark className="w-4 h-4" />
+        <h2 className="text-sm font-semibold text-on-surface-secondary">Slack</h2>
+      </div>
+
+      {installResult === "connected" && (
+        <p className="text-xs text-green-400">Slack workspace connected.</p>
+      )}
+      {installResult === "cancelled" && (
+        <p className="text-xs text-on-surface-muted">Slack install was cancelled.</p>
+      )}
+      {installResult === "error" && (
+        <p className="text-xs text-red-400">
+          The Slack install didn&apos;t complete. Try connecting again.
+        </p>
+      )}
+
+      {!status.configured ? (
+        <p className="text-sm text-on-surface-muted">
+          Slack isn&apos;t set up on this server. An administrator needs to register a Slack app and
+          set <code>SLACK_CLIENT_ID</code> and <code>SLACK_CLIENT_SECRET</code>.
+        </p>
+      ) : !install ? (
+        <>
+          <p className="text-xs text-on-surface-muted">
+            Connect a workspace, then pick the channels each kind of alert should go to.
+          </p>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => void handleConnect()}
+              disabled={busy}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium border border-border-strong hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
+            >
+              <SlackMark className="w-4 h-4" />
+              {busy ? "Opening Slack…" : "Add to Slack"}
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="flex items-center justify-between text-sm">
+            <p className="text-on-surface-secondary">
+              Connected to <span className="font-medium">{install.teamName ?? install.teamId}</span>
+            </p>
+            <button
+              type="button"
+              onClick={() => void handleDisconnect(install.id)}
+              className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+            >
+              Disconnect
+            </button>
+          </div>
+
+          {status.channels.length === 0 ? (
+            <p className="text-sm text-on-surface-muted">
+              No channels yet. Add one below to start receiving alerts.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border/50">
+              {status.channels.map((ch) => (
+                <li
+                  key={ch.id}
+                  className="flex flex-wrap items-center justify-between gap-3 py-2 text-sm"
+                >
+                  <p className="text-on-surface-secondary font-mono">
+                    #{ch.channelName}
+                    {ch.isPrivate && (
+                      <span className="ml-2 text-xs font-sans text-on-surface-tertiary">
+                        private
+                      </span>
+                    )}
+                  </p>
+                  <div className="flex items-center gap-4 text-xs text-on-surface-tertiary">
+                    {SLACK_TRIGGERS.map((t) => (
+                      <label key={t.key} className="flex items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          checked={ch[t.key]}
+                          onChange={(e) => void handleToggle(ch, { [t.key]: e.target.checked })}
+                        />
+                        <span>{t.label}</span>
+                      </label>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => void handleRemoveChannel(ch.id)}
+                      className="text-red-400 hover:text-red-500 dark:text-red-300"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <AddSlackChannel
+            orgId={orgId}
+            installationId={install.id}
+            existing={status.channels.map((c) => c.channelId)}
+            onAdded={() => void load()}
+          />
+
+          <p className="text-xs text-on-surface-faint">
+            Public channels work as soon as you add them. For a private channel, invite the
+            Infrawrench app to it in Slack first — otherwise posting fails with{" "}
+            <code>not_in_channel</code>.
+          </p>
+
+          {error && <p className="text-xs text-red-400">{error}</p>}
+          {testMessage && (
+            <p
+              className={`text-xs ${testMessage.kind === "ok" ? "text-green-400" : "text-red-400"}`}
+            >
+              {testMessage.text}
+            </p>
+          )}
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => void handleTest()}
+              disabled={busy || status.channels.length === 0}
+              title={status.channels.length === 0 ? "Add a channel first" : undefined}
+              className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
+            >
+              {busy ? "Posting…" : "Send test message"}
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Channel picker. Channels come from Slack's conversations.list, so nobody has
+ * to know a channel id — the list is fetched lazily on first open because a
+ * large workspace makes it a slow call.
+ */
+function AddSlackChannel({
+  orgId,
+  installationId,
+  existing,
+  onAdded,
+}: {
+  orgId: string;
+  installationId: string;
+  existing: string[];
+  onAdded: () => void;
+}) {
+  const [available, setAvailable] = useState<AvailableChannel[] | null>(null);
+  const [selected, setSelected] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function loadChannels() {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await apiGet<{ channels: AvailableChannel[] }>(
+        `/api/org/${orgId}/slack/installations/${installationId}/available-channels`,
+      );
+      setAvailable(r.channels);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to list Slack channels");
+      setAvailable([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleAdd() {
+    const channel = available?.find((c) => c.id === selected);
+    if (!channel) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await apiPost(`/api/org/${orgId}/slack/channels`, {
+        installationId,
+        channelId: channel.id,
+        channelName: channel.name,
+        isPrivate: channel.isPrivate,
+      });
+      setSelected("");
+      onAdded();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to add the channel");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (available === null) {
+    return (
+      <div className="pt-2 border-t border-border/50">
+        <button
+          type="button"
+          onClick={() => void loadChannels()}
+          disabled={loading}
+          className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
+        >
+          {loading ? "Loading channels…" : "Add a channel"}
+        </button>
+        {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+      </div>
+    );
+  }
+
+  const options = available.filter((c) => !existing.includes(c.id));
+
+  return (
+    <div className="pt-2 border-t border-border/50 space-y-2">
+      <Field label="Channel">
+        <select
+          aria-label="Channel"
+          value={selected}
+          onChange={(e) => setSelected(e.target.value)}
+          className={inputClass}
+        >
+          <option value="">Select a channel…</option>
+          {options.map((c) => (
+            <option key={c.id} value={c.id}>
+              #{c.name}
+              {c.isPrivate ? " (private)" : ""}
+            </option>
+          ))}
+        </select>
+      </Field>
+      {options.length === 0 && (
+        <p className="text-xs text-on-surface-faint">
+          Every channel the app can see is already routed here.
+        </p>
+      )}
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => void handleAdd()}
+          disabled={saving || !selected}
+          className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+        >
+          {saving ? "Adding…" : "Add channel"}
+        </button>
+      </div>
+    </div>
   );
 }
 

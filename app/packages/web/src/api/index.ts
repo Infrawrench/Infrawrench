@@ -43,6 +43,7 @@ import { connectRoutes } from "./routes/connect";
 import { sshTunnelRoutes } from "./routes/ssh-tunnels";
 import { bastionRoutes } from "./routes/bastions";
 import { twilioRoutes } from "./routes/twilio";
+import { slackRoutes, slackOauthRoute } from "./routes/slack";
 import { pushDeviceRoutes, pushOrgRoutes } from "./routes/push-devices";
 
 // API-key-authed; handles its own auth.
@@ -71,6 +72,8 @@ api.route("/api/v1/webhooks/stripe", stripeWebhookRoutes);
 api.route("/api", workflowGitWebhook);
 // Public GitHub App setup callback (no session; signed `state` binds the org).
 api.route("/api", githubSetupRoute);
+// Public Slack OAuth callback (no session; signed `state` binds the org).
+api.route("/api", slackOauthRoute);
 api.route("/.well-known", wellKnownRoutes);
 
 /**
@@ -207,6 +210,7 @@ orgScoped.route("/connect", connectRoutes);
 orgScoped.route("/ssh-tunnels", sshTunnelRoutes);
 orgScoped.route("/bastions", bastionRoutes);
 orgScoped.route("/twilio", twilioRoutes);
+orgScoped.route("/slack", slackRoutes);
 orgScoped.route("/push", pushOrgRoutes);
 
 api.route("/api/org/:orgId", orgScoped);

@@ -15,6 +15,7 @@ import { queryCosts, type CostFilter } from "../clickhouse/cost-readers";
 import { forecastMonthTotal, type DailyPoint } from "./forecast";
 import { sendBudgetAlertPage } from "../twilio-pager";
 import { sendPushToOrg } from "../push/dispatch";
+import { sendSlackToOrg } from "../slack";
 import {
   fireBudgetTriggerWorkflows,
   listBudgetTriggerWorkflows,
@@ -24,6 +25,13 @@ import { isoDay, addDays } from "./dates";
 interface BudgetThreshold {
   type: "actual" | "forecast";
   percent: number;
+}
+
+/** Deep link to the budget, for the Slack message's button. */
+function budgetUrl(organizationId: string, budgetId: string): string | null {
+  const base = process.env["APP_URL"] ?? process.env["NEXT_PUBLIC_APP_URL"];
+  if (!base) return null;
+  return `${base.replace(/\/$/, "")}/org/${organizationId}/budgets/${budgetId}`;
 }
 
 function formatCents(cents: number, currency: string): string {
@@ -171,7 +179,15 @@ export async function evaluateBudgetsForOrg(
             thresholdPercent: threshold.percent,
           },
         });
-        if (paged || pushed.succeeded > 0) {
+        // Slack, like push, is independent of the org's Twilio settings.
+        const url = budgetUrl(organizationId, budget.id);
+        const slacked = await sendSlackToOrg(organizationId, "budgetAlerts", {
+          title: `Budget "${budget.name}" at ${threshold.percent}%`,
+          body: alertBody,
+          context: `${status.month} · ${kind}`,
+          ...(url ? { url } : {}),
+        });
+        if (paged || pushed.succeeded > 0 || slacked.succeeded > 0) {
           await db
             .update(budgetAlertEvents)
             .set({ notifiedAt: new Date() })

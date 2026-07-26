@@ -19,6 +19,7 @@
     "./sync-resources": "./src/sync-resources.ts",
     "./org-accounts": "./src/org-accounts.ts",
     "./twilio-pager": "./src/twilio-pager.ts",
+    "./slack": "./src/slack.ts",
     "./plugin-loader": "./src/plugin-loader.ts",
     "./workflows/runner": "./src/workflows/runner.ts",
     "./github/app": "./src/github/app.ts",

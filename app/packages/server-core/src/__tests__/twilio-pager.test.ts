@@ -72,6 +72,11 @@ vi.mock("../db/schema", () => tables);
 const sendPushToOrg = vi.fn(async () => ({ attempted: 0, succeeded: 0 }));
 vi.mock("../push/dispatch", () => ({ sendPushToOrg }));
 
+// Slack is a sibling transport with its own tests; stub it out so the schema
+// mock below doesn't have to satisfy slack.ts's module-level column lookups.
+const sendSlackToOrg = vi.fn(async () => ({ attempted: 0, succeeded: 0, failed: 0 }));
+vi.mock("../slack", () => ({ sendSlackToOrg }));
+
 // select() needs to know which logical query is running. We infer from the
 // selected projection columns and the from() table.
 let pendingSelectProjection: Record<string, unknown> | undefined;

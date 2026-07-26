@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -131,6 +131,10 @@
     {
       "name": "Push",
       "description": "Mobile push notification devices and preferences."
+    },
+    {
+      "name": "Slack",
+      "description": "Slack workspace connection and per-channel alert routing."
     }
   ],
   "components": {
@@ -5868,6 +5872,149 @@
           "workflowPages",
           "devices"
         ],
+        "additionalProperties": false
+      },
+      "SlackInstallation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Infrawrench id for this workspace connection"
+          },
+          "teamId": {
+            "type": "string",
+            "description": "Slack workspace id (T…)"
+          },
+          "teamName": {
+            "type": ["string", "null"]
+          }
+        },
+        "required": ["id", "teamId", "teamName"],
+        "additionalProperties": false
+      },
+      "SlackChannel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "installationId": {
+            "type": "string"
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Slack channel id (C…/G…)"
+          },
+          "channelName": {
+            "type": "string",
+            "description": "Channel name without the leading #"
+          },
+          "isPrivate": {
+            "type": "boolean"
+          },
+          "syncIncidents": {
+            "type": "boolean"
+          },
+          "budgetAlerts": {
+            "type": "boolean"
+          },
+          "workflowPages": {
+            "type": "boolean",
+            "description": "Alerts raised by a workflow calling infra.page(...)"
+          }
+        },
+        "required": [
+          "id",
+          "installationId",
+          "channelId",
+          "channelName",
+          "isPrivate",
+          "syncIncidents",
+          "budgetAlerts",
+          "workflowPages"
+        ],
+        "additionalProperties": false
+      },
+      "SlackStatus": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "description": "True when this deployment has a Slack app registered"
+          },
+          "installations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SlackInstallation"
+            }
+          },
+          "channels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SlackChannel"
+            }
+          }
+        },
+        "required": ["configured", "installations", "channels"],
+        "additionalProperties": false
+      },
+      "SlackAvailableChannel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isPrivate": {
+            "type": "boolean"
+          }
+        },
+        "required": ["id", "name", "isPrivate"],
+        "additionalProperties": false
+      },
+      "SlackChannelCreate": {
+        "type": "object",
+        "properties": {
+          "installationId": {
+            "type": "string"
+          },
+          "channelId": {
+            "type": "string"
+          },
+          "channelName": {
+            "type": "string"
+          },
+          "isPrivate": {
+            "type": "boolean"
+          },
+          "syncIncidents": {
+            "type": "boolean"
+          },
+          "budgetAlerts": {
+            "type": "boolean"
+          },
+          "workflowPages": {
+            "type": "boolean"
+          }
+        },
+        "required": ["installationId", "channelId", "channelName"],
+        "additionalProperties": false
+      },
+      "SlackChannelUpdate": {
+        "type": "object",
+        "properties": {
+          "syncIncidents": {
+            "type": "boolean"
+          },
+          "budgetAlerts": {
+            "type": "boolean"
+          },
+          "workflowPages": {
+            "type": "boolean"
+          }
+        },
         "additionalProperties": false
       }
     },
@@ -14901,6 +15048,430 @@
         },
         "operationId": "postOrgOrgIdPushTest",
         "x-internal": true
+      }
+    },
+    "/api/org/{orgId}/slack/status": {
+      "get": {
+        "tags": ["Slack"],
+        "summary": "Get the organization's Slack connection",
+        "description": "Reports whether the server has a Slack app registered, which workspaces this organization has connected, and which channels alerts are routed to.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connection status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlackStatus"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSlackStatus"
+      }
+    },
+    "/api/org/{orgId}/slack/install-url": {
+      "get": {
+        "tags": ["Slack"],
+        "summary": "Get the Add to Slack URL",
+        "description": "Returns a slack.com/oauth/v2/authorize URL carrying a signed `state` that binds the resulting install to this organization. Send the user's browser there; Slack redirects back to /api/slack/oauth/callback.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authorize URL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "format": "uri"
+                    }
+                  },
+                  "required": ["url"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSlackInstallUrl"
+      }
+    },
+    "/api/org/{orgId}/slack/installations/{installationId}/available-channels": {
+      "get": {
+        "tags": ["Slack"],
+        "summary": "List channels the connected workspace can see",
+        "description": "Live call to Slack's conversations.list, for populating a channel picker. Returns non-archived public and private channels visible to the bot.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "installationId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Channels",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "channels": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SlackAvailableChannel"
+                      }
+                    }
+                  },
+                  "required": ["channels"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSlackInstallationsInstallationIdAvailableChannels"
+      }
+    },
+    "/api/org/{orgId}/slack/installations/{installationId}": {
+      "delete": {
+        "tags": ["Slack"],
+        "summary": "Disconnect a Slack workspace",
+        "description": "Stops all delivery to this workspace. The channel routing is retained, so re-installing restores it.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "installationId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Disconnected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdSlackInstallationsInstallationId"
+      }
+    },
+    "/api/org/{orgId}/slack/channels": {
+      "post": {
+        "tags": ["Slack"],
+        "summary": "Route alerts to a Slack channel",
+        "description": "Adds a channel, or updates the trigger opt-ins of one already added. Each trigger defaults to enabled.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SlackChannelCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The channel routing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlackChannel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSlackChannels"
+      }
+    },
+    "/api/org/{orgId}/slack/channels/{id}": {
+      "patch": {
+        "tags": ["Slack"],
+        "summary": "Change which alerts a channel receives",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SlackChannelUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated channel routing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlackChannel"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "patchOrgOrgIdSlackChannelsId"
+      },
+      "delete": {
+        "tags": ["Slack"],
+        "summary": "Stop routing alerts to a channel",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdSlackChannelsId"
+      }
+    },
+    "/api/org/{orgId}/slack/test": {
+      "post": {
+        "tags": ["Slack"],
+        "summary": "Post a test message to every configured channel",
+        "description": "Ignores trigger opt-ins — every channel gets the test. Fails with the Slack error when nothing could be delivered (`not_in_channel` means the bot needs inviting to a private channel).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Delivery summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "channelCount": {
+                      "type": "integer"
+                    },
+                    "attempted": {
+                      "type": "integer"
+                    },
+                    "succeeded": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["ok", "channelCount", "attempted", "succeeded"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSlackTest"
       }
     }
   },

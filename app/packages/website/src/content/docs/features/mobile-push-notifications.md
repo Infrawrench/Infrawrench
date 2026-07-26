@@ -4,7 +4,7 @@ description: Incident and budget alerts delivered to the Infrawrench mobile app,
 sidebar_order: 15
 ---
 
-Infrawrench Cloud can page you on your phone. Push notifications are delivered to the [mobile app](./mobile-app.md) and sit alongside Twilio SMS/voice as a second delivery channel — same incidents, same thresholds, no phone number required.
+Infrawrench Cloud can page you on your phone. Push notifications are delivered to the [mobile app](./mobile-app.md) and sit alongside Twilio SMS/voice and [Slack](./slack-alerts.md) as another delivery channel — same incidents, same thresholds, no phone number required.
 
 > **Cloud only.** Notifications are dispatched by the cloud's background poller and cost evaluation; there is nothing to configure on desktop.
 

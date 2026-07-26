@@ -244,6 +244,8 @@ export interface PageResult {
   sms: number;
   /** Push notifications accepted by Expo. */
   push: number;
+  /** Slack channel posts Slack accepted. */
+  slack: number;
   /** When suppressed, the ISO timestamp at which this key can page again. */
   retryAt?: string;
 }

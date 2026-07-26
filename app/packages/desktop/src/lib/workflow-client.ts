@@ -383,8 +383,9 @@ async function pluginIdForAccount(accountId: string): Promise<string> {
 /**
  * Deliver `infra.page(...)` locally as a native OS notification.
  *
- * The cloud fans a page out to Twilio + mobile push; desktop has no recipients
- * to fan out to, so the machine running the workflow is the pager. The per-key
+ * The cloud fans a page out to Twilio, mobile push, and Slack; desktop has no
+ * recipients to fan out to — and no server to hold a Slack app's client secret
+ * — so the machine running the workflow is the pager. The per-key
  * cooldown still applies — that is what makes a cron that finds the same
  * problem every tick notify once instead of every tick — and it lives in the
  * local `workflow_pages` table so it survives restarts. Single process, so a
@@ -411,6 +412,7 @@ async function pageFromLocalWorkflow(
       suppressed: true,
       sms: 0,
       push: 0,
+      slack: 0,
       retryAt: new Date(last + cooldownMs).toISOString(),
     };
   }
@@ -426,7 +428,7 @@ async function pageFromLocalWorkflow(
      ON CONFLICT(workflow_id, key) DO UPDATE SET last_paged_at = excluded.last_paged_at, last_message = excluded.last_message`,
     [crypto.randomUUID(), workflowId, key, now, spec.message],
   );
-  return { delivered: true, suppressed: false, sms: 0, push: 0 };
+  return { delivered: true, suppressed: false, sms: 0, push: 0, slack: 0 };
 }
 
 /** Drop a key's cooldown so its next page notifies immediately. */

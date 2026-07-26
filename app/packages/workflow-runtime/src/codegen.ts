@@ -519,6 +519,8 @@ interface PageResult {
   readonly sms: number;
   /** Push notifications accepted by Expo. */
   readonly push: number;
+  /** Slack channel posts Slack accepted. */
+  readonly slack: number;
   /** When suppressed, the ISO timestamp at which this key can page again. */
   readonly retryAt?: string;
 }
