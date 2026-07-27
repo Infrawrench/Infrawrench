@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useDraggable, useDndContext, useDndMonitor, useDroppable } from "@dnd-kit/core";
-import type {
-  PeerPaneResource,
-  PeerPaneResourceGroup,
-  ResourceStatus,
-} from "@infrawrench/plugin-base";
+import type { PeerPaneResource, PeerPaneResourceGroup } from "@infrawrench/plugin-base";
 import type { DraggableResource } from "../../dnd/types.js";
 import { ErrorNotice } from "../ErrorNotice.js";
 import { ImportYamlModal } from "../ImportYamlModal.js";
 import type { PeerPaneData } from "./detail-types.js";
+import { statusDotClass } from "../schema-tokens.js";
 import { dispatchPromptNoSqlCommand } from "../../utils.js";
 
 export interface PeerPanePortForwardEntry {
@@ -497,7 +494,7 @@ function NamespaceGrid({
               <span
                 role="img"
                 aria-label={`Status: ${ns.status}`}
-                className={`ml-1.5 inline-block size-1.5 rounded-full ${statusClassName(ns.status)}`}
+                className={`ml-1.5 inline-block size-1.5 rounded-full ${statusDotClass(ns.status)}`}
               />
             )}
           </button>
@@ -623,7 +620,7 @@ function PeerResourcePill({
               <span
                 role="img"
                 aria-label={`Status: ${resource.status}`}
-                className={`size-2 rounded-full flex-shrink-0 ${statusClassName(resource.status)}`}
+                className={`size-2 rounded-full flex-shrink-0 ${statusDotClass(resource.status)}`}
               />
             )}
           </div>
@@ -697,20 +694,4 @@ function getCreateLabel(title: string): string {
     .replace(/\(\d+\)$/, "")
     .trim()
     .replace(/s$/i, "");
-}
-
-function statusClassName(status: ResourceStatus): string {
-  switch (status) {
-    case "healthy":
-      return "bg-emerald-400";
-    case "degraded":
-      return "bg-amber-400";
-    case "error":
-      return "bg-red-400";
-    case "provisioning":
-      return "bg-blue-400";
-    case "unknown":
-    default:
-      return "bg-surface-sunken";
-  }
 }

@@ -23,7 +23,6 @@
     "app/packages/web": {
       "entry": [
         "server.ts",
-        "env-loader.mjs",
         "drizzle.config.ts",
         "vite.config.ts",
         "vitest.config.ts",
@@ -70,7 +69,7 @@
       "ignoreDependencies": ["expo-crypto", "babel-preset-expo"]
     },
     "app/packages/server-core": {
-      "entry": ["src/**/*.ts"],
+      "entry": ["src/**/*.ts", "env-loader.mjs"],
       "project": ["src/**/*.ts"]
     },
     "app/packages/poller": {

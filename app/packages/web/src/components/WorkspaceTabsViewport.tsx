@@ -4,8 +4,8 @@ import { useRouterState } from "@tanstack/react-router";
 import {
   WorkspaceTabsViewport as BaseViewport,
   useUIStore,
+  workspaceTabTargetsEqual,
   type WorkspaceTab,
-  type WorkspaceTabTarget,
 } from "@infrawrench/ui";
 import { DashboardPanel } from "@/routes/org.$orgId.dashboard.$dashboardId";
 import { AccountPanel } from "@/routes/org.$orgId.accounts.$accountId";
@@ -48,7 +48,7 @@ export function WebWorkspaceTabsViewport({ orgId }: WebWorkspaceTabsViewportProp
     const target = syncWorkspaceRouteFromPath(pathname, hash);
     if (!target) return;
     const { workspaceTabs: latestTabs } = useUIStore.getState();
-    if (latestTabs.some((tab) => targetsMatch(tab.target, target))) return;
+    if (latestTabs.some((tab) => workspaceTabTargetsEqual(tab.target, target))) return;
     useUIStore.getState().syncWorkspaceRoute(target);
   }, [tabsHydrated, pathname, hash]);
 
@@ -124,24 +124,4 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
         />
       );
   }
-}
-
-function targetsMatch(a: WorkspaceTabTarget, b: WorkspaceTabTarget): boolean {
-  if (a.kind !== b.kind) return false;
-  if (a.kind === "workflows" && b.kind === "workflows") return a.workflowId === b.workflowId;
-  if (a.kind === "agents" && b.kind === "agents") return true;
-  if (a.kind === "chat" && b.kind === "chat") return a.conversationId === b.conversationId;
-  if (a.kind === "dashboard" && b.kind === "dashboard") return a.dashboardId === b.dashboardId;
-  if (a.kind === "account" && b.kind === "account") return a.accountId === b.accountId;
-  if (a.kind === "resource" && b.kind === "resource") {
-    return (
-      a.accountId === b.accountId &&
-      a.resourceId === b.resourceId &&
-      (a.view ?? "details") === (b.view ?? "details") &&
-      a.agentSessionId === b.agentSessionId &&
-      a.sshKeyId === b.sshKeyId &&
-      a.sshKeyName === b.sshKeyName
-    );
-  }
-  return false;
 }

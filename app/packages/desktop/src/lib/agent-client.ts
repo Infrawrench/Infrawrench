@@ -11,10 +11,12 @@ import {
   AGENT_ENV_REMOTE_PATH,
   AGENT_SETUP_FAILED_LOG_PREFIX,
   AGENT_SETUP_STEP_PREFIX,
+  agentToolLabel,
   buildAgentBootstrapCommand,
   buildAgentEnvFile,
   buildAgentLaunchCommand,
   buildAgentRepoSetupCommand,
+  isCloneableGitRepo,
   resolveAgentEnvTemplate,
 } from "@infrawrench/ui/agents";
 import { dispatchResourcesChanged } from "@infrawrench/ui";
@@ -561,7 +563,7 @@ async function createAgentSetupPlan(
           version: "latest",
           versionSource: "latest",
           source: "mise latest resolver at setup time",
-          reasons: [`${toolLabel(tool)} requires Node for its CLI package`],
+          reasons: [`${agentToolLabel(tool)} requires Node for its CLI package`],
         },
       ],
       packageManagers: [],
@@ -733,7 +735,7 @@ async function ensureAgentVmSetup(
     await appendAgentSessionLog(
       db,
       row.id,
-      `Synced ${syncResult.configFiles} ${toolLabel(row.tool)} config file${syncResult.configFiles === 1 ? "" : "s"}.`,
+      `Synced ${syncResult.configFiles} ${agentToolLabel(row.tool)} config file${syncResult.configFiles === 1 ? "" : "s"}.`,
       "setting-up",
     );
   }
@@ -1231,7 +1233,7 @@ function defaultAgentSetupPlan(row: SessionRow): AgentSetupPlan {
         version: "latest",
         versionSource: "latest",
         source: "mise latest resolver at setup time",
-        reasons: [`${toolLabel(row.tool)} requires Node for its CLI package`],
+        reasons: [`${agentToolLabel(row.tool)} requires Node for its CLI package`],
       },
     ],
     packageManagers: [],
@@ -1323,11 +1325,6 @@ function hasAgentSetupComplete(row: SessionRow): boolean {
   return parseJson<string[]>(row.logs_json, []).includes(AGENT_SETUP_COMPLETE_LOG);
 }
 
-function isCloneableGitRepo(repo: string): boolean {
-  const value = repo.trim();
-  return /^(?:https?|ssh|git):\/\//i.test(value) || /^git@[^:]+:.+/.test(value);
-}
-
 function workspaceNameForRow(
   row: Pick<SessionRow, "repo" | "workspace_name" | "project_name">,
 ): string {
@@ -1381,10 +1378,6 @@ function shellQuote(value: string): string {
 
 function shellDoubleQuoteContent(value: string): string {
   return value.replace(/(["\\$`])/g, "\\$1").replace(/\n/g, "\\n");
-}
-
-function toolLabel(tool: "codex" | "claude-code"): string {
-  return tool === "claude-code" ? "Claude Code" : "Codex";
 }
 
 function decodeBase64(value: string): string {

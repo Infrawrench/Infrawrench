@@ -1,34 +1,47 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const mockSelect = vi.fn();
-const mockInsert = vi.fn();
-vi.mock("../../db/client", () => ({
-  db: {
-    select: (...a: unknown[]) => mockSelect(...a),
-    insert: (...a: unknown[]) => mockInsert(...a),
-  },
-}));
-vi.mock("../../db/schema", () => ({
-  accounts: {
-    id: "id",
-    organizationId: "org",
-    deletedAt: "del",
-    pluginId: "pid",
-    displayName: "dn",
-    createdAt: "ts",
-  },
-  resources: {
-    id: "id",
-    organizationId: "org",
-    deletedAt: "del",
-    pluginId: "pid",
-    resourceTypeId: "rt",
-    accountId: "aid",
-    displayName: "dn",
-    fieldsJson: "fields",
-  },
-  secretFieldStates: { resourceId: "rid", fieldKey: "fk" },
-}));
+const { mockSelect, mockInsert, mockDb, mockSchema, mockEncryption } = vi.hoisted(() => {
+  const select = vi.fn();
+  const insert = vi.fn();
+  return {
+    mockSelect: select,
+    mockInsert: insert,
+    mockDb: () => ({ db: { select, insert } }),
+    mockSchema: () => ({
+      accounts: {
+        id: "id",
+        organizationId: "org",
+        deletedAt: "del",
+        pluginId: "pid",
+        displayName: "dn",
+        createdAt: "ts",
+      },
+      resources: {
+        id: "id",
+        organizationId: "org",
+        deletedAt: "del",
+        pluginId: "pid",
+        resourceTypeId: "rt",
+        accountId: "aid",
+        displayName: "dn",
+        fieldsJson: "fields",
+      },
+      secretFieldStates: { resourceId: "rid", fieldKey: "fk" },
+    }),
+    mockEncryption: () => ({
+      encrypt: vi.fn().mockResolvedValue({ ciphertext: "ct", iv: "iv" }),
+      buildAad: vi.fn().mockReturnValue("aad"),
+    }),
+  };
+});
+vi.mock("../../db/client", mockDb);
+vi.mock("../../db/schema", mockSchema);
+// The create path writes through server-core's shared upsert helpers, which
+// reach for server-core's own copies of these modules — the web re-export
+// shims aren't on that import path, so both spellings need the same stubs.
+vi.mock("@infrawrench/server-core/db/client", mockDb);
+vi.mock("@infrawrench/server-core/db/schema", mockSchema);
+vi.mock("@infrawrench/server-core/encryption", mockEncryption);
 
 const mockLoadPlugins = vi.fn();
 const mockGetPlugin = vi.fn();
@@ -46,10 +59,7 @@ vi.mock("../../services/plugin-clients", () => ({
   filterVisiblePeerIntegrations: (integrations: unknown[]) => integrations,
 }));
 
-vi.mock("../../services/encryption", () => ({
-  encrypt: vi.fn().mockResolvedValue({ ciphertext: "ct", iv: "iv" }),
-  buildAad: vi.fn().mockReturnValue("aad"),
-}));
+vi.mock("../../services/encryption", mockEncryption);
 vi.mock("../../services/audit", () => ({ logAudit: vi.fn() }));
 vi.mock("@infrawrench/plugin-base", () => ({
   normalizeResourceCreateResult: (r: unknown) => ({ resource: r, warnings: [] }),

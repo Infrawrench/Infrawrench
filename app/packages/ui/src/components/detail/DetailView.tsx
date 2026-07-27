@@ -2,6 +2,8 @@ import React, { useId, useRef, useState, type KeyboardEvent } from "react";
 import type {
   ChatMessage,
   ChatStreamEvent,
+  ChildGroupSchema,
+  DashboardCardSchema,
   DetailViewSchema,
   KvListResult,
   LogsFetchParams,
@@ -32,6 +34,7 @@ import {
   type ArtifactListResult,
 } from "./ArtifactRegistryView.js";
 import { KvBrowserView, type KvBrowserListParams } from "./KvBrowserView.js";
+import { statusDotClass } from "../schema-tokens.js";
 import { useUIStore } from "../../store/ui.store.js";
 import {
   dispatchInvokePluginAction,
@@ -574,90 +577,14 @@ export function DetailView({
               </h3>
               <div className="flex flex-wrap gap-2">
                 {schema.children.map((child) => (
-                  <ChildResourcePill
-                    key={child.resourceId}
-                    child={{
-                      id: child.resourceId,
-                      displayName: child.displayName,
-                      pluginId: child.pluginId,
-                      resourceTypeId: child.resourceTypeId,
-                      accountId: "",
-                      ...(child.status ? { status: child.status } : {}),
-                      ...(child.badges && child.badges[0]
-                        ? { subtitle: child.badges[0].label }
-                        : {}),
-                    }}
-                    nonInteractive={child.nonInteractive}
-                    onClick={() => {
-                      if (child.onClickAction) {
-                        dispatchPillAction(child.onClickAction);
-                      } else {
-                        dispatchNavigateToResource({
-                          pluginId: child.pluginId,
-                          resourceTypeId: child.resourceTypeId,
-                          resourceId: child.resourceId,
-                        });
-                      }
-                    }}
-                  />
+                  <SchemaChildPill key={child.resourceId} child={child} />
                 ))}
               </div>
             </div>
           )}
 
           {schema.childGroups?.map((group, gi) => (
-            <div key={gi}>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-muted">
-                  {group.title}
-                </h3>
-                {group.createAction && (
-                  <button
-                    type="button"
-                    onClick={() => dispatchPillAction(group.createAction!)}
-                    className="text-xs text-on-surface-faint hover:text-accent transition-colors"
-                  >
-                    {group.createLabel ?? "+ Create"}
-                  </button>
-                )}
-              </div>
-              {group.items.length === 0 ? (
-                <p className="text-xs text-on-surface-faint">
-                  {group.emptyText ?? "No items yet."}
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {group.items.map((child) => (
-                    <ChildResourcePill
-                      key={child.resourceId}
-                      child={{
-                        id: child.resourceId,
-                        displayName: child.displayName,
-                        pluginId: child.pluginId,
-                        resourceTypeId: child.resourceTypeId,
-                        accountId: "",
-                        ...(child.status ? { status: child.status } : {}),
-                        ...(child.badges && child.badges[0]
-                          ? { subtitle: child.badges[0].label }
-                          : {}),
-                      }}
-                      nonInteractive={child.nonInteractive}
-                      onClick={() => {
-                        if (child.onClickAction) {
-                          dispatchPillAction(child.onClickAction);
-                        } else {
-                          dispatchNavigateToResource({
-                            pluginId: child.pluginId,
-                            resourceTypeId: child.resourceTypeId,
-                            resourceId: child.resourceId,
-                          });
-                        }
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
+            <SchemaChildGroup key={gi} group={group} />
           ))}
 
           {renderChildArea((typeId) => !tabClaimedTypeIds.has(typeId))}
@@ -894,58 +821,7 @@ export function DetailView({
               ? renderChildArea((typeId) => tab.childResourceTypeIds!.includes(typeId))
               : null}
             {tab.childGroups?.map((group, gi) => (
-              <div key={gi}>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-muted">
-                    {group.title}
-                  </h3>
-                  {group.createAction && (
-                    <button
-                      type="button"
-                      onClick={() => dispatchPillAction(group.createAction!)}
-                      className="text-xs text-on-surface-faint hover:text-accent transition-colors"
-                    >
-                      {group.createLabel ?? "+ Create"}
-                    </button>
-                  )}
-                </div>
-                {group.items.length === 0 ? (
-                  <p className="text-xs text-on-surface-faint">
-                    {group.emptyText ?? "No items yet."}
-                  </p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {group.items.map((child) => (
-                      <ChildResourcePill
-                        key={child.resourceId}
-                        child={{
-                          id: child.resourceId,
-                          displayName: child.displayName,
-                          pluginId: child.pluginId,
-                          resourceTypeId: child.resourceTypeId,
-                          accountId: "",
-                          ...(child.status ? { status: child.status } : {}),
-                          ...(child.badges && child.badges[0]
-                            ? { subtitle: child.badges[0].label }
-                            : {}),
-                        }}
-                        nonInteractive={child.nonInteractive}
-                        onClick={() => {
-                          if (child.onClickAction) {
-                            dispatchPillAction(child.onClickAction);
-                          } else {
-                            dispatchNavigateToResource({
-                              pluginId: child.pluginId,
-                              resourceTypeId: child.resourceTypeId,
-                              resourceId: child.resourceId,
-                            });
-                          }
-                        }}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
+              <SchemaChildGroup key={gi} group={group} />
             ))}
           </div>
         ) : null,
@@ -1087,6 +963,74 @@ function dispatchPillAction(action: HostAction): void {
   }
 }
 
+/**
+ * A plugin-declared child pill.
+ *
+ * Schema items (`DetailViewSchema.children` and every `childGroups` entry, on
+ * Overview and inside tabs alike) carry a resource id, a badge list and an
+ * optional click action, none of which line up with the `ChildResource` shape
+ * `ChildResourcePill` renders. This is that mapping, in one place — including
+ * the fallback of navigating to the child when it declares no action.
+ */
+function SchemaChildPill({ child }: { child: DashboardCardSchema }) {
+  return (
+    <ChildResourcePill
+      child={{
+        id: child.resourceId,
+        displayName: child.displayName,
+        pluginId: child.pluginId,
+        resourceTypeId: child.resourceTypeId,
+        accountId: "",
+        ...(child.status ? { status: child.status } : {}),
+        ...(child.badges && child.badges[0] ? { subtitle: child.badges[0].label } : {}),
+      }}
+      nonInteractive={child.nonInteractive}
+      onClick={() => {
+        if (child.onClickAction) {
+          dispatchPillAction(child.onClickAction);
+        } else {
+          dispatchNavigateToResource({
+            pluginId: child.pluginId,
+            resourceTypeId: child.resourceTypeId,
+            resourceId: child.resourceId,
+          });
+        }
+      }}
+    />
+  );
+}
+
+/** One `childGroups` entry: heading, optional create button, and its pills. */
+function SchemaChildGroup({ group }: { group: ChildGroupSchema }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-muted">
+          {group.title}
+        </h3>
+        {group.createAction && (
+          <button
+            type="button"
+            onClick={() => dispatchPillAction(group.createAction!)}
+            className="text-xs text-on-surface-faint hover:text-accent transition-colors"
+          >
+            {group.createLabel ?? "+ Create"}
+          </button>
+        )}
+      </div>
+      {group.items.length === 0 ? (
+        <p className="text-xs text-on-surface-faint">{group.emptyText ?? "No items yet."}</p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {group.items.map((child) => (
+            <SchemaChildPill key={child.resourceId} child={child} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Fallback child pill — used when no custom renderChildResource is provided */
 function ChildResourcePill({
   child,
@@ -1099,17 +1043,7 @@ function ChildResourcePill({
 }) {
   const statusDot = child.status && (
     <span
-      className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-        child.status.status === "healthy"
-          ? "bg-emerald-400"
-          : child.status.status === "error"
-            ? "bg-red-400"
-            : child.status.status === "degraded"
-              ? "bg-yellow-400"
-              : child.status.status === "provisioning"
-                ? "bg-blue-400 animate-pulse"
-                : "bg-surface-sunken"
-      }`}
+      className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusDotClass(child.status.status)}`}
     />
   );
   if (nonInteractive) {

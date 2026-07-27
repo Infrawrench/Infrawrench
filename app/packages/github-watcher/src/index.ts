@@ -1,5 +1,6 @@
 import { loadPlugins } from "@infrawrench/server-core/plugin-loader";
 import { isGithubAppConfigured } from "@infrawrench/server-core/github/app";
+import { installShutdownHandlers, runService } from "@infrawrench/server-core/tick-loop";
 import { GithubWatcher } from "./loop";
 
 async function main(): Promise<void> {
@@ -17,17 +18,7 @@ async function main(): Promise<void> {
   watcher.start();
   console.log("[github-watcher] started (30s tick)");
 
-  const shutdown = async (signal: string) => {
-    console.log(`[github-watcher] received ${signal}, draining...`);
-    await watcher.stop();
-    console.log("[github-watcher] shutdown complete");
-    process.exit(0);
-  };
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
-  process.on("SIGINT", () => void shutdown("SIGINT"));
+  installShutdownHandlers("github-watcher", watcher);
 }
 
-main().catch((e) => {
-  console.error("[github-watcher] fatal:", e);
-  process.exit(1);
-});
+runService("github-watcher", main);

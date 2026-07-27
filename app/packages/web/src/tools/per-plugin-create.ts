@@ -1,8 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
-import { v4 as uuidv4 } from "uuid";
-import { db } from "../db/client";
-import { resources, secretFieldStates } from "../db/schema";
-import { encrypt, buildAad } from "../services/encryption";
+import { setLiteralSecretState } from "@infrawrench/server-core/secret-states";
+import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
 import { logAudit } from "../services/audit";
 import { loadPlugins } from "../plugins/loader";
 import { getClientForResource } from "../services/plugin-clients";
@@ -142,64 +140,16 @@ export async function perPluginCreateTools(): Promise<ToolDefinition[]> {
 
           if (ctx.account.pluginId === pluginId) {
             try {
-              await db
-                .insert(resources)
-                .values({
-                  id: created.id,
-                  organizationId: orgId,
-                  pluginId,
-                  resourceTypeId: typeId,
-                  accountId,
-                  displayName: created.displayName,
-                  externalId: created.externalId ?? null,
-                  fieldsJson: created.fields ?? {},
-                  outputsJson: created.resolvedOutputs ?? {},
-                  parentResourceId: created.parentResourceId ?? null,
-                })
-                .onConflictDoUpdate({
-                  target: resources.id,
-                  set: {
-                    displayName: created.displayName,
-                    fieldsJson: created.fields ?? {},
-                    outputsJson: created.resolvedOutputs ?? {},
-                    deletedAt: null,
-                    updatedAt: new Date(),
-                  },
-                });
-
+              await upsertCreatedResource({
+                organizationId: orgId,
+                pluginId,
+                resourceTypeId: typeId,
+                accountId,
+                resource: created,
+              });
               for (const state of created.secretStates ?? []) {
                 if (state.resolution.kind !== "plaintext") continue;
-                const { ciphertext, iv } = await encrypt(
-                  state.resolution.value,
-                  buildAad("secretField", `${created.id}:${state.fieldKey}`, "value"),
-                );
-                await db
-                  .insert(secretFieldStates)
-                  .values({
-                    id: uuidv4(),
-                    resourceId: created.id,
-                    fieldKey: state.fieldKey,
-                    resolutionKind: "literal",
-                    encryptedValue: ciphertext,
-                    valueIv: iv,
-                  })
-                  .onConflictDoUpdate({
-                    target: [secretFieldStates.resourceId, secretFieldStates.fieldKey],
-                    set: {
-                      resolutionKind: "literal",
-                      encryptedValue: ciphertext,
-                      valueIv: iv,
-                      sourcePluginId: null,
-                      sourceResourceTypeId: null,
-                      sourceResourceId: null,
-                      sourceAccountId: null,
-                      sourceOutputKey: null,
-                      cachedEncryptedValue: null,
-                      cachedValueIv: null,
-                      cachedAt: null,
-                      updatedAt: new Date(),
-                    },
-                  });
+                await setLiteralSecretState(created.id, state.fieldKey, state.resolution.value);
               }
             } catch (persistErr) {
               console.error("[tools/per-plugin-create] Failed to persist resource:", persistErr);

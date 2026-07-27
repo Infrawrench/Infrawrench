@@ -11,29 +11,10 @@ import type {
   WorkflowSaveBody,
   WorkflowSummary,
 } from "@infrawrench/ui/workflows";
-
-async function json<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    let detail = "";
-    try {
-      const body = (await res.json()) as { error?: string };
-      detail = body.error ? `: ${body.error}` : "";
-    } catch {
-      // ignore
-    }
-    throw new Error(`Request failed (${res.status})${detail}`);
-  }
-  return (await res.json()) as T;
-}
+import { jsonInit, jsonOrThrow } from "./cookie-json";
 
 export function createWebWorkflowClient(orgId: string): WorkflowClient {
   const base = `/api/org/${orgId}/workflows`;
-  const opts = (method: string, body?: unknown): RequestInit => ({
-    method,
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
 
   /**
    * Debug run over the websocket: the browser owns breakpoints + stepping, the
@@ -43,8 +24,8 @@ export function createWebWorkflowClient(orgId: string): WorkflowClient {
     id: string,
     debug: DebugSession,
   ): Promise<{ runId: string; result: WorkflowRunResult }> {
-    const { token } = await fetch(`/api/org/${orgId}/ws-token`, opts("POST")).then((r) =>
-      json<{ token: string }>(r),
+    const { token } = await fetch(`/api/org/${orgId}/ws-token`, jsonInit("POST")).then((r) =>
+      jsonOrThrow<{ token: string }>(r),
     );
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(
@@ -129,28 +110,30 @@ export function createWebWorkflowClient(orgId: string): WorkflowClient {
   }
 
   return {
-    list: () => fetch(base, opts("GET")).then((r) => json<WorkflowSummary[]>(r)),
+    list: () => fetch(base, jsonInit("GET")).then((r) => jsonOrThrow<WorkflowSummary[]>(r)),
     create: (b: WorkflowSaveBody) =>
-      fetch(base, opts("POST", b)).then((r) => json<WorkflowSummary>(r)),
+      fetch(base, jsonInit("POST", b)).then((r) => jsonOrThrow<WorkflowSummary>(r)),
     update: (id: string, b: WorkflowSaveBody) =>
-      fetch(`${base}/${id}`, opts("PUT", b)).then((r) => json<WorkflowSummary>(r)),
+      fetch(`${base}/${id}`, jsonInit("PUT", b)).then((r) => jsonOrThrow<WorkflowSummary>(r)),
     remove: (id: string) =>
-      fetch(`${base}/${id}`, opts("DELETE"))
-        .then((r) => json<{ ok: boolean }>(r))
+      fetch(`${base}/${id}`, jsonInit("DELETE"))
+        .then((r) => jsonOrThrow<{ ok: boolean }>(r))
         .then(() => undefined),
     getTypings: (id: string) =>
-      fetch(`${base}/${id}/typings`, opts("GET"))
-        .then((r) => json<{ dts: string }>(r))
+      fetch(`${base}/${id}/typings`, jsonInit("GET"))
+        .then((r) => jsonOrThrow<{ dts: string }>(r))
         .then((d) => d.dts),
     run: (id: string, debug?: DebugSession) =>
       debug
         ? runDebug(id, debug)
-        : fetch(`${base}/${id}/run`, opts("POST")).then((r) =>
-            json<{ runId: string; result: WorkflowRunResult }>(r),
+        : fetch(`${base}/${id}/run`, jsonInit("POST")).then((r) =>
+            jsonOrThrow<{ runId: string; result: WorkflowRunResult }>(r),
           ),
     listRuns: (id: string) =>
-      fetch(`${base}/${id}/runs`, opts("GET")).then((r) => json<WorkflowRunRow[]>(r)),
+      fetch(`${base}/${id}/runs`, jsonInit("GET")).then((r) => jsonOrThrow<WorkflowRunRow[]>(r)),
     listMetrics: (id: string) =>
-      fetch(`${base}/${id}/metrics`, opts("GET")).then((r) => json<WorkflowMetricRow[]>(r)),
+      fetch(`${base}/${id}/metrics`, jsonInit("GET")).then((r) =>
+        jsonOrThrow<WorkflowMetricRow[]>(r),
+      ),
   };
 }

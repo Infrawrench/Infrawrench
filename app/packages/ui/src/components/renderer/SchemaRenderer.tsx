@@ -14,6 +14,7 @@ import type {
   HostAction,
 } from "@infrawrench/plugin-base";
 import { MetricChart } from "../charts/MetricChart.js";
+import { badgeClass, statusDotClass } from "../schema-tokens.js";
 import { useUIStore } from "../../store/ui.store.js";
 import {
   dispatchInvokePluginAction,
@@ -160,18 +161,8 @@ function TextNodeRenderer({ node }: { node: TextNode }) {
   return <p className={cls}>{node.content}</p>;
 }
 
-const BADGE_COLORS: Record<string, string> = {
-  green:
-    "bg-green-100 text-green-800 border border-green-300 dark:bg-green-900 dark:text-green-300 dark:border-green-700",
-  yellow:
-    "bg-yellow-100 text-yellow-800 border border-yellow-300 dark:bg-yellow-900 dark:text-yellow-300 dark:border-yellow-700",
-  red: "bg-red-100 text-red-800 border border-red-300 dark:bg-red-900 dark:text-red-300 dark:border-red-700",
-  blue: "bg-accent-muted text-accent-on-muted border border-accent-muted-border",
-  gray: "bg-surface-overlay text-on-surface-tertiary border border-border-strong",
-};
-
 function BadgeNodeRenderer({ node }: { node: BadgeNode }) {
-  const cls = BADGE_COLORS[node.color] ?? BADGE_COLORS["gray"];
+  const cls = badgeClass(node.color);
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cls}`}>
       {node.label}
@@ -179,17 +170,8 @@ function BadgeNodeRenderer({ node }: { node: BadgeNode }) {
   );
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  healthy: "bg-emerald-400",
-  degraded: "bg-yellow-400",
-  error: "bg-red-400",
-  unknown: "bg-surface-sunken",
-  provisioning: "bg-blue-400 animate-pulse",
-  info: "bg-blue-400",
-};
-
 export function StatusDotNodeRenderer({ node }: { node: StatusDotNode }) {
-  const dot = STATUS_COLORS[node.status] ?? STATUS_COLORS["unknown"];
+  const dot = statusDotClass(node.status);
   return (
     <span className="inline-flex items-center gap-1.5">
       <span className={`size-2 rounded-full flex-shrink-0 ${dot}`} />

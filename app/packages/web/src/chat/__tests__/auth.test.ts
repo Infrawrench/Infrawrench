@@ -1,10 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const mockSelect = vi.fn();
 const mockInsert = vi.fn();
 vi.mock("@/db/client", () => ({
   db: {
-    select: (...a: unknown[]) => mockSelect(...a),
     insert: (...a: unknown[]) => mockInsert(...a),
   },
 }));
@@ -26,8 +24,10 @@ vi.mock("@/auth/api-auth", () => ({
 }));
 
 const mockEnsureUser = vi.fn();
+const mockHasMembership = vi.fn();
 vi.mock("@/api/auth-middleware", () => ({
   ensureUserFromClaims: (...a: unknown[]) => mockEnsureUser(...a),
+  hasMembership: (...a: unknown[]) => mockHasMembership(...a),
 }));
 
 // The real module reaches the permissions resolver, which imports db/client
@@ -58,11 +58,9 @@ function makeCtx(opts: { authorization?: string; cookie?: string }) {
   } as never;
 }
 
+/** Stub the org-membership lookup — `rows` non-empty means "is a member". */
 function membershipReturns(rows: unknown[]) {
-  const limit = vi.fn().mockResolvedValue(rows);
-  const where = vi.fn().mockReturnValue({ limit });
-  const from = vi.fn().mockReturnValue({ where });
-  mockSelect.mockReturnValue({ from });
+  mockHasMembership.mockResolvedValue(rows.length > 0);
 }
 
 describe("authenticateChat", () => {

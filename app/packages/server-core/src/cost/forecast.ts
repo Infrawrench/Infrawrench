@@ -3,6 +3,7 @@
  * least-squares linear fit over the trailing window, clamped at zero. The UI
  * and docs present forecasts as trend estimates, not billing predictions.
  */
+import { addDays } from "./dates";
 
 export interface DailyPoint {
   /** YYYY-MM-DD */
@@ -40,16 +41,6 @@ function fit(points: DailyPoint[]): LinearFit | null {
   const slope = (n * sumXY - sumX * sumY) / denom;
   const intercept = (sumY - slope * sumX) / n;
   return { slope, intercept, lastX: n - 1 };
-}
-
-function isoDay(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-function addDays(day: string, delta: number): string {
-  const d = new Date(`${day}T00:00:00.000Z`);
-  d.setUTCDate(d.getUTCDate() + delta);
-  return isoDay(d);
 }
 
 /**

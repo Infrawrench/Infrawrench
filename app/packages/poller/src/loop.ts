@@ -4,6 +4,7 @@ import { db } from "@infrawrench/server-core/db/client";
 import { workflows } from "@infrawrench/server-core/db/schema";
 import { runOrgWorkflow } from "@infrawrench/server-core/workflows/runner";
 import { loadPlugins } from "@infrawrench/server-core/plugin-loader";
+import { TickLoop } from "@infrawrench/server-core/tick-loop";
 import { pollAccount, type PollAccountRow } from "./poll-account";
 import { pollAccountCosts } from "./cost-poll";
 import {
@@ -55,68 +56,30 @@ interface LoopOptions {
  * `claim.ts`), so any number of poller instances can run concurrently against
  * the same database — scale out by adding replicas, no shard configuration.
  */
-export class PollerLoop {
+export class PollerLoop extends TickLoop {
   private buckets = new TokenBucketRegistry();
-  private stopping = false;
-  private timer: NodeJS.Timeout | null = null;
-  private running = false;
-  private readonly tickMs: number;
   private readonly concurrency: number;
   /** Plugin IDs whose manifest declares a `costs` capability; resolved lazily on first tick. */
   private costCapablePluginIds: string[] | null = null;
 
   constructor(options: LoopOptions = {}) {
-    this.tickMs = options.tickMs ?? DEFAULT_TICK_MS;
+    super("poller", options.tickMs ?? DEFAULT_TICK_MS);
     this.concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
   }
 
-  start(): void {
-    if (this.timer) return;
-    const scheduleNext = () => {
-      if (this.stopping) return;
-      this.timer = setTimeout(async () => {
-        await this.tick();
-        scheduleNext();
-      }, this.tickMs);
-    };
-    // Fire first tick immediately, then schedule on interval.
-    void this.tick().then(scheduleNext);
-  }
-
-  async stop(): Promise<void> {
-    this.stopping = true;
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = null;
+  protected async runTick(): Promise<void> {
+    const claimed = await claimDueAccounts(this.concurrency);
+    if (claimed.length > 0) {
+      await Promise.allSettled(claimed.map((row) => this.runOne(row)));
     }
-    // Wait briefly for any in-flight tick to drain.
-    const deadline = Date.now() + 30_000;
-    while (this.running && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
 
-  private async tick(): Promise<void> {
-    if (this.running) return;
-    this.running = true;
-    try {
-      const claimed = await claimDueAccounts(this.concurrency);
-      if (claimed.length > 0) {
-        await Promise.allSettled(claimed.map((row) => this.runOne(row)));
-      }
+    // Second pass: due cron workflows. Kept separate and defensive so a bad
+    // workflow never affects account polling.
+    await this.tickWorkflows();
 
-      // Second pass: due cron workflows. Kept separate and defensive so a bad
-      // workflow never affects account polling.
-      await this.tickWorkflows();
-
-      // Third pass: cost collection (daily cadence per account). Also
-      // defensive — billing-API problems never affect resource polling.
-      await this.tickCosts();
-    } catch (e) {
-      console.error("[poller] tick failed:", e);
-    } finally {
-      this.running = false;
-    }
+    // Third pass: cost collection (daily cadence per account). Also
+    // defensive — billing-API problems never affect resource polling.
+    await this.tickCosts();
   }
 
   private async runOne(row: PollAccountRow): Promise<void> {

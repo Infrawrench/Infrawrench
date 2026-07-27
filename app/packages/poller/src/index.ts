@@ -1,5 +1,6 @@
 import { hostname } from "node:os";
 import { loadPlugins } from "@infrawrench/server-core/plugin-loader";
+import { installShutdownHandlers, runService } from "@infrawrench/server-core/tick-loop";
 import { PollerLoop, DEFAULT_TICK_MS, DEFAULT_CONCURRENCY } from "./loop";
 
 /** Parse a positive-integer env var, falling back when unset or invalid. */
@@ -21,17 +22,7 @@ async function main(): Promise<void> {
     `[poller] loop started (tick ${tickMs}ms, concurrency ${concurrency}, instance ${hostname()}#${process.pid})`,
   );
 
-  const shutdown = async (signal: string) => {
-    console.log(`[poller] received ${signal}, draining...`);
-    await loop.stop();
-    console.log("[poller] shutdown complete");
-    process.exit(0);
-  };
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
-  process.on("SIGINT", () => void shutdown("SIGINT"));
+  installShutdownHandlers("poller", loop);
 }
 
-main().catch((e) => {
-  console.error("[poller] fatal:", e);
-  process.exit(1);
-});
+runService("poller", main);

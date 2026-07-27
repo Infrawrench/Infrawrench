@@ -3,6 +3,7 @@ import { db } from "@infrawrench/server-core/db/client";
 import { workflows } from "@infrawrench/server-core/db/schema";
 import { runOrgWorkflow } from "@infrawrench/server-core/workflows/runner";
 import { getBranchHeadSha, isGithubAppConfigured } from "@infrawrench/server-core/github/app";
+import { TickLoop } from "@infrawrench/server-core/tick-loop";
 
 const TICK_MS = 30_000;
 
@@ -39,71 +40,34 @@ interface LoopOptions {
  * workflow when the head SHA changes. First sight of a SHA is recorded without
  * running, so connecting a repo doesn't fire immediately.
  */
-export class GithubWatcher {
-  private timer: ReturnType<typeof setTimeout> | null = null;
-  private stopping = false;
-  private running = false;
-  private readonly tickMs: number;
-
+export class GithubWatcher extends TickLoop {
   constructor(options: LoopOptions = {}) {
-    this.tickMs = options.tickMs ?? TICK_MS;
+    super("github-watcher", options.tickMs ?? TICK_MS);
   }
 
-  start(): void {
-    if (this.timer) return;
-    const scheduleNext = () => {
-      if (this.stopping) return;
-      this.timer = setTimeout(async () => {
-        await this.tick();
-        scheduleNext();
-      }, this.tickMs);
-    };
-    void this.tick().then(scheduleNext);
-  }
+  protected async runTick(): Promise<void> {
+    if (!isGithubAppConfigured()) return;
 
-  async stop(): Promise<void> {
-    this.stopping = true;
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = null;
-    }
-    const deadline = Date.now() + 30_000;
-    while (this.running && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
+    const rows: WatchedRow[] = await db
+      .select({
+        id: workflows.id,
+        organizationId: workflows.organizationId,
+        trigger: workflows.trigger,
+        gitLastSha: workflows.gitLastSha,
+      })
+      .from(workflows)
+      .where(and(eq(workflows.enabled, true), isNull(workflows.deletedAt)));
 
-  async tick(): Promise<void> {
-    if (this.running) return;
-    this.running = true;
-    try {
-      if (!isGithubAppConfigured()) return;
+    const watches: Watch[] = rows.flatMap((row) => {
+      const t = row.trigger as GitTrigger | null;
+      if (!t || t.kind !== "git" || !t.repo || !t.installationId || !t.branch) return [];
+      const [owner, repo] = t.repo.split("/");
+      if (!owner || !repo) return [];
+      return [{ row, installationId: t.installationId, owner, repo, branch: t.branch }];
+    });
 
-      const rows: WatchedRow[] = await db
-        .select({
-          id: workflows.id,
-          organizationId: workflows.organizationId,
-          trigger: workflows.trigger,
-          gitLastSha: workflows.gitLastSha,
-        })
-        .from(workflows)
-        .where(and(eq(workflows.enabled, true), isNull(workflows.deletedAt)));
-
-      const watches: Watch[] = rows.flatMap((row) => {
-        const t = row.trigger as GitTrigger | null;
-        if (!t || t.kind !== "git" || !t.repo || !t.installationId || !t.branch) return [];
-        const [owner, repo] = t.repo.split("/");
-        if (!owner || !repo) return [];
-        return [{ row, installationId: t.installationId, owner, repo, branch: t.branch }];
-      });
-
-      for (const w of watches) {
-        await this.checkOne(w);
-      }
-    } catch (e) {
-      console.error("[github-watcher] tick failed:", e);
-    } finally {
-      this.running = false;
+    for (const w of watches) {
+      await this.checkOne(w);
     }
   }
 

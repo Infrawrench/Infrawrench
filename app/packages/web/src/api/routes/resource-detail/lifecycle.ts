@@ -2,9 +2,14 @@ import type { Hono } from "hono";
 import { v4 as uuidv4 } from "uuid";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../../../db/client";
-import { accounts, associations, resources, secretFieldStates } from "../../../db/schema";
+import { accounts, associations, resources } from "../../../db/schema";
 import { getClientForAccount, getClientForResource } from "../../../services/plugin-clients";
 import { encrypt, decrypt, buildAad } from "../../../services/encryption";
+import {
+  setLiteralSecretState,
+  setOutputRefSecretState,
+} from "@infrawrench/server-core/secret-states";
+import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
 import { normalizeResourceCreateResult, parseOutputRef } from "@infrawrench/plugin-base";
 import type { OutputRefValue } from "@infrawrench/plugin-base";
 import { requirePermission } from "../../../auth/permissions";
@@ -141,30 +146,13 @@ export function registerLifecycleRoutes(app: Hono): void {
       // detail page falls back to listResources. Log so regressions are
       // visible.
       try {
-        await db
-          .insert(resources)
-          .values({
-            id: created.id,
-            organizationId,
-            pluginId: input.pluginId,
-            resourceTypeId: input.resourceTypeId,
-            accountId: input.accountId,
-            displayName: created.displayName,
-            externalId: created.externalId ?? null,
-            fieldsJson: created.fields ?? {},
-            outputsJson: created.resolvedOutputs ?? {},
-            parentResourceId: created.parentResourceId ?? null,
-          })
-          .onConflictDoUpdate({
-            target: resources.id,
-            set: {
-              displayName: created.displayName,
-              fieldsJson: created.fields ?? {},
-              outputsJson: created.resolvedOutputs ?? {},
-              deletedAt: null,
-              updatedAt: new Date(),
-            },
-          });
+        await upsertCreatedResource({
+          organizationId,
+          pluginId: input.pluginId,
+          resourceTypeId: input.resourceTypeId,
+          accountId: input.accountId,
+          resource: created,
+        });
       } catch (err) {
         console.error("[resource-detail] Failed to persist newly created resource:", err);
       }
@@ -176,37 +164,7 @@ export function registerLifecycleRoutes(app: Hono): void {
       try {
         for (const state of created.secretStates ?? []) {
           if (state.resolution.kind !== "plaintext") continue;
-          const { ciphertext, iv } = await encrypt(
-            state.resolution.value,
-            buildAad("secretField", `${created.id}:${state.fieldKey}`, "value"),
-          );
-          await db
-            .insert(secretFieldStates)
-            .values({
-              id: uuidv4(),
-              resourceId: created.id,
-              fieldKey: state.fieldKey,
-              resolutionKind: "literal",
-              encryptedValue: ciphertext,
-              valueIv: iv,
-            })
-            .onConflictDoUpdate({
-              target: [secretFieldStates.resourceId, secretFieldStates.fieldKey],
-              set: {
-                resolutionKind: "literal",
-                encryptedValue: ciphertext,
-                valueIv: iv,
-                sourcePluginId: null,
-                sourceResourceTypeId: null,
-                sourceResourceId: null,
-                sourceAccountId: null,
-                sourceOutputKey: null,
-                cachedEncryptedValue: null,
-                cachedValueIv: null,
-                cachedAt: null,
-                updatedAt: new Date(),
-              },
-            });
+          await setLiteralSecretState(created.id, state.fieldKey, state.resolution.value);
         }
       } catch (err) {
         console.error(
@@ -230,43 +188,18 @@ export function registerLifecycleRoutes(app: Hono): void {
       // if the source resource hasn't been synced into this org yet).
       for (const { fieldKey, ref } of refFields) {
         try {
-          const cache = await encrypt(
+          await setOutputRefSecretState(
+            created.id,
+            fieldKey,
+            {
+              pluginId: ref.pluginId,
+              resourceTypeId: ref.resourceTypeId,
+              resourceId: ref.resourceId,
+              accountId: ref.accountId,
+              outputKey: ref.outputKey,
+            },
             ref.value,
-            buildAad("secretField", `${created.id}:${fieldKey}`, "cache"),
           );
-          await db
-            .insert(secretFieldStates)
-            .values({
-              id: uuidv4(),
-              resourceId: created.id,
-              fieldKey,
-              resolutionKind: "output-ref",
-              sourcePluginId: ref.pluginId,
-              sourceResourceTypeId: ref.resourceTypeId,
-              sourceResourceId: ref.resourceId,
-              sourceAccountId: ref.accountId,
-              sourceOutputKey: ref.outputKey,
-              cachedEncryptedValue: cache.ciphertext,
-              cachedValueIv: cache.iv,
-              cachedAt: new Date(),
-            })
-            .onConflictDoUpdate({
-              target: [secretFieldStates.resourceId, secretFieldStates.fieldKey],
-              set: {
-                resolutionKind: "output-ref",
-                encryptedValue: null,
-                valueIv: null,
-                sourcePluginId: ref.pluginId,
-                sourceResourceTypeId: ref.resourceTypeId,
-                sourceResourceId: ref.resourceId,
-                sourceAccountId: ref.accountId,
-                sourceOutputKey: ref.outputKey,
-                cachedEncryptedValue: cache.ciphertext,
-                cachedValueIv: cache.iv,
-                cachedAt: new Date(),
-                updatedAt: new Date(),
-              },
-            });
           // Best-effort topology row — provider FK may not exist yet.
           try {
             await db

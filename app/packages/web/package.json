@@ -5,15 +5,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --import ./env-loader.mjs server.ts",
+    "dev": "tsx watch --import @infrawrench/server-core/env-loader server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/server.mjs --external:ssh2 --external:cpu-features --external:dockerode --external:@kubernetes/client-node --external:cloudflare --external:@libsql/client --external:libsql --external:vite --external:bufferutil --external:utf-8-validate --banner:js=\"import{createRequire as __bannerCreateRequire}from'node:module';import{fileURLToPath as __bannerFileURLToPath}from'node:url';import{dirname as __bannerDirname}from'node:path';const require=__bannerCreateRequire(import.meta.url);const __filename=__bannerFileURLToPath(import.meta.url);const __dirname=__bannerDirname(__filename);\" && node ../workflow-runtime/scripts/copy-wasm.mjs dist && node ../workflow-runtime/scripts/copy-ts-libs.mjs dist",
     "start": "node dist/server.mjs",
     "typecheck": "tsgo --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "generate:openapi": "tsx --import ./env-loader.mjs scripts/generate-openapi.ts",
-    "generate:sdk": "tsx --import ./env-loader.mjs scripts/generate-sdk.ts",
+    "generate:openapi": "tsx --import @infrawrench/server-core/env-loader scripts/generate-openapi.ts",
+    "generate:sdk": "tsx --import @infrawrench/server-core/env-loader scripts/generate-sdk.ts",
     "test": "vitest run"
   },
   "dependencies": {

@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --import ./env-loader.mjs src/index.ts",
+    "dev": "tsx watch --import @infrawrench/server-core/env-loader src/index.ts",
     "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs --external:ssh2 --external:cpu-features --external:dockerode --external:@kubernetes/client-node --external:cloudflare --external:@libsql/client --external:libsql --banner:js=\"import{createRequire as __bannerCreateRequire}from'node:module';import{fileURLToPath as __bannerFileURLToPath}from'node:url';import{dirname as __bannerDirname}from'node:path';const require=__bannerCreateRequire(import.meta.url);const __filename=__bannerFileURLToPath(import.meta.url);const __dirname=__bannerDirname(__filename);\" && node ../workflow-runtime/scripts/copy-wasm.mjs dist",
     "start": "node dist/index.mjs",
     "typecheck": "tsgo --noEmit",

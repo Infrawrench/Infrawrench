@@ -11,14 +11,13 @@
  */
 import type { Context } from "hono";
 import { getCookie } from "hono/cookie";
-import { eq, and } from "drizzle-orm";
 import { workos } from "../auth/workos";
 import { effectivePermissions } from "../auth/effective-permissions";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { authenticateApiRequest, requireScope, verifyWorkosAccessToken } from "../auth/api-auth";
 import { db } from "../db/client";
-import { users, organizationMembers } from "../db/schema";
-import { ensureUserFromClaims } from "../api/auth-middleware";
+import { users } from "../db/schema";
+import { ensureUserFromClaims, hasMembership } from "../api/auth-middleware";
 
 interface ChatAuthResult {
   userId: string;
@@ -56,20 +55,6 @@ async function denyUnlessPermitted(
     return c.json({ error: `Missing required permission: ${requiredScope}` }, 403);
   }
   return null;
-}
-
-async function hasMembership(userId: string, organizationId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ id: organizationMembers.id })
-    .from(organizationMembers)
-    .where(
-      and(
-        eq(organizationMembers.userId, userId),
-        eq(organizationMembers.organizationId, organizationId),
-      ),
-    )
-    .limit(1);
-  return !!row;
 }
 
 /**

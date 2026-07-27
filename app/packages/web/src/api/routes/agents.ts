@@ -22,6 +22,7 @@ import { loadPlugins } from "../../plugins/loader";
 import { requirePermission } from "../../auth/permissions";
 import { getClientForAccount } from "../../services/plugin-clients";
 import { buildAad, decrypt, encrypt } from "../../services/encryption";
+import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
 import {
   createAgentSetupPlanForRepo,
   ensureAgentVmSetupForSession,
@@ -259,32 +260,13 @@ app.post("/sessions", async (c) => {
     return c.json({ error: `VM provisioning failed: ${message}` }, 400);
   }
 
-  await db
-    .insert(resources)
-    .values({
-      id: resource.id,
-      organizationId,
-      pluginId: resource.pluginId,
-      resourceTypeId: resource.resourceTypeId,
-      accountId: resource.accountId,
-      displayName: resource.displayName,
-      externalId: resource.externalId ?? null,
-      fieldsJson: resource.fields ?? {},
-      outputsJson: resource.resolvedOutputs ?? {},
-      parentResourceId: resource.parentResourceId ?? null,
-    })
-    .onConflictDoUpdate({
-      target: resources.id,
-      set: {
-        displayName: resource.displayName,
-        externalId: resource.externalId ?? null,
-        fieldsJson: resource.fields ?? {},
-        outputsJson: resource.resolvedOutputs ?? {},
-        parentResourceId: resource.parentResourceId ?? null,
-        deletedAt: null,
-        updatedAt: new Date(),
-      },
-    });
+  await upsertCreatedResource({
+    organizationId,
+    pluginId: resource.pluginId,
+    resourceTypeId: resource.resourceTypeId,
+    accountId: resource.accountId,
+    resource,
+  });
   const updatedLogs = [
     ...logs,
     `VM created: ${resource.displayName} (${resource.id}).`,

@@ -6,101 +6,19 @@
  * resource groups (no provider segment) and SQL databases (three-part
  * externalId rg/server/database) — are handled explicitly.
  *
- * The delete map differs from the read/manifest map in `shared.ts`: SQL
- * database is special-cased here, and a couple of api-versions are tuned for
- * the delete operation.
+ * The provider/api-version pairs come from `AZURE_ARM_SPECS` in `shared.ts` so
+ * an api-version bump lands on read and delete at once; the only delete-side
+ * addition is the SQL database entry, which `shared.ts` has no use for.
  */
 import type { Client as GraphClient } from "@microsoft/microsoft-graph-client";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { ARM, type ArmResourceSpec, type AzureHttpContext } from "./shared.js";
+import { ARM, AZURE_ARM_SPECS, type ArmResourceSpec, type AzureHttpContext } from "./shared.js";
 
 const DELETE_SPECS: Record<string, ArmResourceSpec> = {
-  "azure-resource-group": { provider: "", apiVersion: "2022-09-01" },
-  "azure-vm": { provider: "Microsoft.Compute/virtualMachines", apiVersion: "2024-03-01" },
-  "azure-disk": { provider: "Microsoft.Compute/disks", apiVersion: "2023-10-02" },
-  "azure-vnet": { provider: "Microsoft.Network/virtualNetworks", apiVersion: "2023-09-01" },
-  "azure-route-table": {
-    provider: "Microsoft.Network/routeTables",
-    apiVersion: "2023-09-01",
-  },
-  "azure-nat-gateway": {
-    provider: "Microsoft.Network/natGateways",
-    apiVersion: "2023-09-01",
-  },
-  "azure-aks-cluster": {
-    provider: "Microsoft.ContainerService/managedClusters",
-    apiVersion: "2024-01-01",
-  },
-  "azure-sql-database": { provider: "", apiVersion: "" }, // Special handling
-  "azure-cosmos-db": {
-    provider: "Microsoft.DocumentDB/databaseAccounts",
-    apiVersion: "2023-11-15",
-  },
-  "azure-storage-account": {
-    provider: "Microsoft.Storage/storageAccounts",
-    apiVersion: "2023-01-01",
-  },
-  "azure-function-app": { provider: "Microsoft.Web/sites", apiVersion: "2023-01-01" },
-  "azure-app-service": { provider: "Microsoft.Web/sites", apiVersion: "2023-01-01" },
-  "azure-container-instance": {
-    provider: "Microsoft.ContainerInstance/containerGroups",
-    apiVersion: "2023-05-01",
-  },
-  "azure-key-vault": { provider: "Microsoft.KeyVault/vaults", apiVersion: "2023-07-01" },
-  "azure-redis-cache": { provider: "Microsoft.Cache/redis", apiVersion: "2023-08-01" },
-  "azure-service-bus": {
-    provider: "Microsoft.ServiceBus/namespaces",
-    apiVersion: "2022-10-01-preview",
-  },
-  "azure-container-registry": {
-    provider: "Microsoft.ContainerRegistry/registries",
-    apiVersion: "2023-07-01",
-  },
-  "azure-load-balancer": {
-    provider: "Microsoft.Network/loadBalancers",
-    apiVersion: "2023-09-01",
-  },
-  "azure-dns-zone": {
-    provider: "Microsoft.Network/dnszones",
-    apiVersion: "2023-07-01-preview",
-  },
-  "azure-private-dns-zone": {
-    provider: "Microsoft.Network/privateDnsZones",
-    apiVersion: "2020-06-01",
-  },
-  "azure-nsg": {
-    provider: "Microsoft.Network/networkSecurityGroups",
-    apiVersion: "2023-09-01",
-  },
-  "azure-public-ip": {
-    provider: "Microsoft.Network/publicIPAddresses",
-    apiVersion: "2023-09-01",
-  },
-  "azure-postgres-flexible": {
-    provider: "Microsoft.DBforPostgreSQL/flexibleServers",
-    apiVersion: "2023-06-01-preview",
-  },
-  "azure-mysql-flexible": {
-    provider: "Microsoft.DBforMySQL/flexibleServers",
-    apiVersion: "2023-06-30",
-  },
-  "azure-event-hub": {
-    provider: "Microsoft.EventHub/namespaces",
-    apiVersion: "2022-10-01-preview",
-  },
-  "azure-app-gateway": {
-    provider: "Microsoft.Network/applicationGateways",
-    apiVersion: "2023-09-01",
-  },
-  "azure-log-analytics": {
-    provider: "Microsoft.OperationalInsights/workspaces",
-    apiVersion: "2022-10-01",
-  },
-  "azure-managed-identity": {
-    provider: "Microsoft.ManagedIdentity/userAssignedIdentities",
-    apiVersion: "2023-01-31",
-  },
-  "azure-firewall": { provider: "Microsoft.Network/azureFirewalls", apiVersion: "2023-09-01" },
+  ...AZURE_ARM_SPECS,
+  // Deleting a SQL database needs the three-part rg/server/database externalId,
+  // so it is built by hand below rather than from a provider/api-version pair.
+  "azure-sql-database": { provider: "", apiVersion: "" },
 };
 
 interface DeleteContext extends AzureHttpContext {

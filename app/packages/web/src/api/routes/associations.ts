@@ -2,8 +2,11 @@ import { Hono } from "hono";
 import { eq, and } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { db } from "../../db/client";
-import { associations, secretFieldStates, resources } from "../../db/schema";
-import { encrypt, buildAad } from "../../services/encryption";
+import { associations, resources } from "../../db/schema";
+import {
+  setLiteralSecretState,
+  setOutputRefSecretState,
+} from "@infrawrench/server-core/secret-states";
 import { requirePermission } from "../../auth/permissions";
 import { nextAssociationSyncVersion } from "../../services/sync-versions";
 import type { AuthSession } from "../auth-middleware";
@@ -77,34 +80,15 @@ app.post("/", async (c) => {
       },
     });
 
-  await db
-    .insert(secretFieldStates)
-    .values({
-      id: uuidv4(),
-      resourceId: input.consumerResourceId,
-      fieldKey: input.consumerFieldKey,
-      resolutionKind: "output-ref",
-      sourcePluginId: input.providerPluginId,
-      sourceResourceTypeId: input.providerResourceTypeId,
-      sourceResourceId: input.providerResourceId,
-      sourceAccountId: input.providerAccountId,
-      sourceOutputKey: input.providerOutputKey,
-    })
-    .onConflictDoUpdate({
-      target: [secretFieldStates.resourceId, secretFieldStates.fieldKey],
-      set: {
-        resolutionKind: "output-ref",
-        sourcePluginId: input.providerPluginId,
-        sourceResourceTypeId: input.providerResourceTypeId,
-        sourceResourceId: input.providerResourceId,
-        sourceAccountId: input.providerAccountId,
-        sourceOutputKey: input.providerOutputKey,
-        cachedEncryptedValue: null,
-        cachedValueIv: null,
-        cachedAt: null,
-        updatedAt: now,
-      },
-    });
+  // No cached value: this route sets the reference blind, and the reconciler
+  // fills the cache on its next pass.
+  await setOutputRefSecretState(input.consumerResourceId, input.consumerFieldKey, {
+    pluginId: input.providerPluginId,
+    resourceTypeId: input.providerResourceTypeId,
+    resourceId: input.providerResourceId,
+    accountId: input.providerAccountId,
+    outputKey: input.providerOutputKey,
+  });
 
   return c.json({ ok: true });
 });
@@ -126,38 +110,7 @@ app.post("/literal", async (c) => {
     .limit(1);
   if (!resource) return c.json({ error: "Resource not found" }, 404);
 
-  const { ciphertext, iv } = await encrypt(
-    input.plaintextValue,
-    buildAad("secretField", `${input.resourceId}:${input.fieldKey}`, "value"),
-  );
-
-  await db
-    .insert(secretFieldStates)
-    .values({
-      id: uuidv4(),
-      resourceId: input.resourceId,
-      fieldKey: input.fieldKey,
-      resolutionKind: "literal",
-      encryptedValue: ciphertext,
-      valueIv: iv,
-    })
-    .onConflictDoUpdate({
-      target: [secretFieldStates.resourceId, secretFieldStates.fieldKey],
-      set: {
-        resolutionKind: "literal",
-        encryptedValue: ciphertext,
-        valueIv: iv,
-        sourcePluginId: null,
-        sourceResourceTypeId: null,
-        sourceResourceId: null,
-        sourceAccountId: null,
-        sourceOutputKey: null,
-        cachedEncryptedValue: null,
-        cachedValueIv: null,
-        cachedAt: null,
-        updatedAt: new Date(),
-      },
-    });
+  await setLiteralSecretState(input.resourceId, input.fieldKey, input.plaintextValue);
 
   await db
     .delete(associations)

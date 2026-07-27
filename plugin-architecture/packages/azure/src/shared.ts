@@ -28,9 +28,10 @@ export interface ArmResourceSpec {
 }
 
 /**
- * Map of plugin type-id → ARM spec, used by both `deleteResource` and the
- * generic ARM manifest URL builder (get/applyManifest). Two entries differ
- * between the two (delete vs. read) and are overridden per-callsite.
+ * Map of plugin type-id → ARM spec. The single source of provider paths and
+ * api-versions for the generic ARM URL builders: metrics, the manifest
+ * get/apply path, and `delete-handlers.ts` (which spreads this map and adds
+ * the one delete-only entry it needs).
  */
 export const AZURE_ARM_SPECS: Record<string, ArmResourceSpec> = {
   "azure-resource-group": { provider: "", apiVersion: "2022-09-01" },

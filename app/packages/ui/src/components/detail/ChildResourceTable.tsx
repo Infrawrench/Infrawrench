@@ -3,16 +3,7 @@ import type { ChildTableColumn, ChildTableSchema } from "@infrawrench/plugin-bas
 import { dnsRecordBadgeColor, formatDnsTtl } from "@infrawrench/plugin-base";
 import type { ChildResource, ChildResourceGroup } from "./detail-types.js";
 import { EditResourceModal } from "../EditResourceModal.js";
-
-const BADGE_COLORS: Record<string, string> = {
-  green:
-    "bg-green-100 text-green-800 border border-green-300 dark:bg-green-900 dark:text-green-300 dark:border-green-700",
-  yellow:
-    "bg-yellow-100 text-yellow-800 border border-yellow-300 dark:bg-yellow-900 dark:text-yellow-300 dark:border-yellow-700",
-  red: "bg-red-100 text-red-800 border border-red-300 dark:bg-red-900 dark:text-red-300 dark:border-red-700",
-  blue: "bg-accent-muted text-accent-on-muted border border-accent-muted-border",
-  gray: "bg-surface-overlay text-on-surface-tertiary border border-border-strong",
-};
+import { badgeClass } from "../schema-tokens.js";
 
 /**
  * Fixed pixel widths per column preset. `wide` returns undefined so the column
@@ -94,7 +85,7 @@ function CellContent({ col, child }: { col: ChildTableColumn; child: ChildResour
 
   switch (col.format) {
     case "type-badge": {
-      const cls = BADGE_COLORS[dnsRecordBadgeColor(value)] ?? BADGE_COLORS["gray"];
+      const cls = badgeClass(dnsRecordBadgeColor(value));
       return (
         <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold ${cls}`}>
           {value}

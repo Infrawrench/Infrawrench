@@ -1,6 +1,63 @@
 import type { MetricSeries } from "@infrawrench/plugin-base";
 import { asRecord, type CloudflareApi } from "./clients/shared.js";
 
+/**
+ * Resolve the analytics window for a metric fetch.
+ *
+ * Every GraphQL dataset below is queried the same way — an ISO `from`/`to`
+ * pair defaulting to the last 24 hours, and a bucket-granularity choice. Each
+ * dataset offers an hourly bucket plus a finer one (1m, 15m); windows of six
+ * hours or more take the hourly bucket so the query stays inside Cloudflare's
+ * row limits. Callers map `useHourly` onto their own dataset's dimension name.
+ */
+function analyticsWindow(timeRange?: { startMs: number; endMs: number }): {
+  from: string;
+  to: string;
+  useHourly: boolean;
+} {
+  const now = Date.now();
+  const startMs = timeRange?.startMs ?? now - 24 * 3_600_000;
+  const endMs = timeRange?.endMs ?? now;
+  return {
+    from: new Date(startMs).toISOString(),
+    to: new Date(endMs).toISOString(),
+    useHourly: endMs - startMs >= 6 * 3_600_000,
+  };
+}
+
+/** Timestamp-keyed accumulator → a chronologically ordered `MetricSeries`. */
+function toSeries(m: Map<number, number>, label: string, unit: string): MetricSeries {
+  return {
+    label,
+    unit,
+    points: [...m.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([timestamp, value]) => ({ timestamp, value })),
+  };
+}
+
+/**
+ * As `toSeries`, but for datasets that report a sum and a sample count per
+ * bucket (latency, for instance) and must be averaged rather than totalled.
+ */
+function avgSeries(
+  sums: Map<number, number>,
+  counts: Map<number, number>,
+  label: string,
+  unit: string,
+): MetricSeries {
+  return {
+    label,
+    unit,
+    points: [...sums.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([timestamp, total]) => {
+        const n = counts.get(timestamp) ?? 0;
+        return { timestamp, value: n > 0 ? total / n : 0 };
+      }),
+  };
+}
+
 export async function fetchMetricSeries(
   api: CloudflareApi,
   resourceTypeId: string,
@@ -49,13 +106,7 @@ export async function fetchMetricSeries(
   const zoneId = resourceId.split(":").pop();
   if (!zoneId) return [];
 
-  const now = Date.now();
-  const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
-  const to = new Date(timeRange?.endMs ?? now).toISOString();
-
-  // Pick aggregation granularity: hour buckets for windows ≥6h, minute for shorter.
-  const windowMs = (timeRange?.endMs ?? now) - (timeRange?.startMs ?? now - 24 * 3_600_000);
-  const useHourly = windowMs >= 6 * 3_600_000;
+  const { from, to, useHourly } = analyticsWindow(timeRange);
   const groupName = useHourly ? "httpRequests1hGroups" : "httpRequests1mGroups";
   const dimKey = useHourly ? "datetime" : "datetimeMinute";
 
@@ -179,14 +230,10 @@ async function fetchWorkerMetricSeries(
     return [];
   }
 
-  const now = Date.now();
-  const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
-  const to = new Date(timeRange?.endMs ?? now).toISOString();
-  const windowMs = (timeRange?.endMs ?? now) - (timeRange?.startMs ?? now - 24 * 3_600_000);
+  const { from, to, useHourly } = analyticsWindow(timeRange);
   // Workers GraphQL exposes 15-minute and 1-hour buckets; the 1m schema is
   // gated behind paid plans, so always pick 15m for short windows and 1h
   // for windows ≥6h.
-  const useHourly = windowMs >= 6 * 3_600_000;
   const groupName = useHourly
     ? "workersInvocationsAdaptiveGroups"
     : "workersInvocationsAdaptiveGroups";
@@ -299,9 +346,7 @@ async function fetchR2MetricSeries(
     return [];
   }
 
-  const now = Date.now();
-  const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
-  const to = new Date(timeRange?.endMs ?? now).toISOString();
+  const { from, to } = analyticsWindow(timeRange);
 
   const query = `query R($account: String!, $bucket: String!, $from: Time!, $to: Time!) {
       viewer {
@@ -401,14 +446,6 @@ async function fetchR2MetricSeries(
     target.set(t, (target.get(t) ?? 0) + v);
   }
 
-  const toSeries = (m: Map<number, number>, label: string, unit: string): MetricSeries => ({
-    label,
-    unit,
-    points: [...m.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([timestamp, value]) => ({ timestamp, value })),
-  });
-
   const series: MetricSeries[] = [
     toSeries(classA, "Class A Operations", "requests"),
     toSeries(classB, "Class B Operations", "requests"),
@@ -454,9 +491,7 @@ async function fetchDurableObjectMetricSeries(
     return [];
   }
 
-  const now = Date.now();
-  const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
-  const to = new Date(timeRange?.endMs ?? now).toISOString();
+  const { from, to } = analyticsWindow(timeRange);
 
   // Pull from three DO datasets in one query: invocations (requests +
   // response bytes), periodic (CPU time), and storage (stored bytes — the
@@ -595,9 +630,7 @@ async function fetchTurnstileMetricSeries(
     return [];
   }
 
-  const now = Date.now();
-  const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
-  const to = new Date(timeRange?.endMs ?? now).toISOString();
+  const { from, to } = analyticsWindow(timeRange);
 
   const query = `query T($account: String!, $site: String!, $from: Time!, $to: Time!) {
       viewer {
@@ -675,9 +708,7 @@ async function fetchSpectrumMetricSeries(
   const appId = lastSegment.slice(slashIdx + 1);
   if (!zoneId || !appId) return [];
 
-  const now = Date.now();
-  const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
-  const to = new Date(timeRange?.endMs ?? now).toISOString();
+  const { from, to } = analyticsWindow(timeRange);
 
   const query = `query S($zone: String!, $app: String!, $from: Time!, $to: Time!) {
       viewer {
@@ -1051,11 +1082,7 @@ async function fetchQueueMetricSeries(
     return [];
   }
 
-  const now = Date.now();
-  const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
-  const to = new Date(timeRange?.endMs ?? now).toISOString();
-  const windowMs = (timeRange?.endMs ?? now) - (timeRange?.startMs ?? now - 24 * 3_600_000);
-  const useHourly = windowMs >= 6 * 3_600_000;
+  const { from, to, useHourly } = analyticsWindow(timeRange);
   const timeDim = useHourly ? "datetimeHour" : "datetimeMinute";
 
   const query = `query Q($account: String!, $queue: string, $from: Time!, $to: Time!) {
@@ -1162,14 +1189,6 @@ async function fetchQueueMetricSeries(
     bytes.set(t, (bytes.get(t) ?? 0) + b);
   }
 
-  const toSeries = (m: Map<number, number>, label: string, unit: string): MetricSeries => ({
-    label,
-    unit,
-    points: [...m.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([timestamp, value]) => ({ timestamp, value })),
-  });
-
   const series: MetricSeries[] = [
     toSeries(produce, "Messages Produced", "messages"),
     toSeries(consume, "Messages Consumed", "messages"),
@@ -1221,11 +1240,7 @@ async function fetchHyperdriveMetricSeries(
     return [];
   }
 
-  const now = Date.now();
-  const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
-  const to = new Date(timeRange?.endMs ?? now).toISOString();
-  const windowMs = (timeRange?.endMs ?? now) - (timeRange?.startMs ?? now - 24 * 3_600_000);
-  const useHourly = windowMs >= 6 * 3_600_000;
+  const { from, to, useHourly } = analyticsWindow(timeRange);
   const timeDim = useHourly ? "datetimeHour" : "datetimeMinute";
 
   const query = `query H($account: String!, $config: string, $from: Time!, $to: Time!) {
@@ -1325,30 +1340,6 @@ async function fetchHyperdriveMetricSeries(
     }
   }
 
-  const toSeries = (m: Map<number, number>, label: string, unit: string): MetricSeries => ({
-    label,
-    unit,
-    points: [...m.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([timestamp, value]) => ({ timestamp, value })),
-  });
-
-  const avgSeries = (
-    sums: Map<number, number>,
-    counts: Map<number, number>,
-    label: string,
-    unit: string,
-  ): MetricSeries => ({
-    label,
-    unit,
-    points: [...sums.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([timestamp, total]) => {
-        const n = counts.get(timestamp) ?? 0;
-        return { timestamp, value: n > 0 ? total / n : 0 };
-      }),
-  });
-
   const series: MetricSeries[] = [
     toSeries(totalQueries, "Queries", "queries"),
     toSeries(cacheHits, "Cache Hits", "queries"),
@@ -1383,9 +1374,7 @@ async function fetchAiGatewayMetricSeries(
     return [];
   }
 
-  const now = Date.now();
-  const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
-  const to = new Date(timeRange?.endMs ?? now).toISOString();
+  const { from, to } = analyticsWindow(timeRange);
 
   // The dataset's only documented time dimension is `datetimeHour`.
   const query = `query AIG($account: String!, $gateway: string, $from: Time!, $to: Time!) {
@@ -1478,14 +1467,6 @@ async function fetchAiGatewayMetricSeries(
     cacheHits.set(t, (cacheHits.get(t) ?? 0) + Number(g.sum.cachedRequests ?? 0));
   }
 
-  const toSeries = (m: Map<number, number>, label: string, unit: string): MetricSeries => ({
-    label,
-    unit,
-    points: [...m.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([timestamp, value]) => ({ timestamp, value })),
-  });
-
   const series: MetricSeries[] = [
     toSeries(requests, "Requests", "requests"),
     toSeries(tokensIn, "Tokens In", "tokens"),
@@ -1532,9 +1513,7 @@ async function fetchLoadBalancerMetricSeries(
   }
   if (!lbName) return [];
 
-  const now = Date.now();
-  const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
-  const to = new Date(timeRange?.endMs ?? now).toISOString();
+  const { from, to } = analyticsWindow(timeRange);
   // LB analytics is sampled in fifteen-minute buckets; coarser windows roll
   // up via the same dimension since it is the finest granularity exposed.
   const timeDim = "datetimeFifteenMinutes";
@@ -1607,14 +1586,6 @@ async function fetchLoadBalancerMetricSeries(
     m.set(t, (m.get(t) ?? 0) + c);
   }
 
-  const toSeries = (m: Map<number, number>, label: string, unit: string): MetricSeries => ({
-    label,
-    unit,
-    points: [...m.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([timestamp, value]) => ({ timestamp, value })),
-  });
-
   const series: MetricSeries[] = [toSeries(totalReqs, "Requests", "requests")];
   for (const [pool, m] of perPool) {
     series.push(toSeries(m, `Pool: ${pool}`, "requests"));
@@ -1640,12 +1611,8 @@ async function fetchWaitingRoomMetricSeries(
   const roomId = lastSegment.slice(slashIdx + 1);
   if (!zoneId || !roomId) return [];
 
-  const now = Date.now();
-  const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
-  const to = new Date(timeRange?.endMs ?? now).toISOString();
-  const windowMs = (timeRange?.endMs ?? now) - (timeRange?.startMs ?? now - 24 * 3_600_000);
+  const { from, to, useHourly } = analyticsWindow(timeRange);
   // Waiting Room analytics exposes 15-minute and 1-hour buckets.
-  const useHourly = windowMs >= 6 * 3_600_000;
   const timeDim = useHourly ? "datetimeHour" : "datetimeFifteenMinutes";
 
   const query = `query W($zone: String!, $room: string, $from: Time!, $to: Time!) {

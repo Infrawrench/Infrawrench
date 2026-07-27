@@ -1,21 +1,28 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildTestApp } from "./test-utils";
 
-const mockSelect = vi.fn();
-const mockInsert = vi.fn();
-const mockDelete = vi.fn();
-vi.mock("@/db/client", () => ({
-  db: {
-    select: (...a: unknown[]) => mockSelect(...a),
-    insert: (...a: unknown[]) => mockInsert(...a),
-    delete: (...a: unknown[]) => mockDelete(...a),
-  },
-}));
-
-vi.mock("@/services/encryption", () => ({
-  encrypt: vi.fn().mockResolvedValue({ ciphertext: "enc", iv: "iv" }),
-  buildAad: vi.fn().mockReturnValue("aad"),
-}));
+const { mockSelect, mockInsert, mockDelete, mockDb, mockEncryption } = vi.hoisted(() => {
+  const select = vi.fn();
+  const insert = vi.fn();
+  const del = vi.fn();
+  return {
+    mockSelect: select,
+    mockInsert: insert,
+    mockDelete: del,
+    mockDb: () => ({ db: { select, insert, delete: del } }),
+    mockEncryption: () => ({
+      encrypt: vi.fn().mockResolvedValue({ ciphertext: "enc", iv: "iv" }),
+      buildAad: vi.fn().mockReturnValue("aad"),
+    }),
+  };
+});
+vi.mock("@/db/client", mockDb);
+vi.mock("@/services/encryption", mockEncryption);
+// The secret-field upserts live in server-core and import its own db /
+// encryption modules directly, not the web re-export shims — stub both
+// spellings so the two paths share one mock.
+vi.mock("@infrawrench/server-core/db/client", mockDb);
+vi.mock("@infrawrench/server-core/encryption", mockEncryption);
 
 vi.mock("uuid", () => ({ v4: () => "assoc-uuid-1" }));
 

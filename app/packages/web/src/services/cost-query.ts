@@ -19,6 +19,7 @@ import {
   type CostSeriesGroup,
 } from "@infrawrench/server-core/clickhouse/cost-readers";
 import { forecastDaily } from "@infrawrench/server-core/cost/forecast";
+import { addDays, isoDay } from "@infrawrench/server-core/cost/dates";
 // The db-free id module, not the writer — importing the writer here would drag
 // its db/ClickHouse imports into every cost read path (and its tests).
 import {
@@ -31,16 +32,6 @@ import { getPlugin, loadPlugins } from "../plugins/loader";
 
 /** Invalid caller input — routes map this to a 400, tools to an error result. */
 export class CostQueryError extends Error {}
-
-function isoDay(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-function addDays(day: string, delta: number): string {
-  const d = new Date(`${day}T00:00:00.000Z`);
-  d.setUTCDate(d.getUTCDate() + delta);
-  return isoDay(d);
-}
 
 function daySpan(from: string, to: string): number {
   return (
