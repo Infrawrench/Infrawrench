@@ -2,6 +2,7 @@ import { Tabs, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect } from "react";
 import { Pressable } from "react-native";
 import {
+  BackIcon,
   ChatIcon,
   CostsIcon,
   HomeIcon,
@@ -105,7 +106,27 @@ export default function OrgLayout() {
         name="resources/[pluginId]/[resourceTypeId]/[resourceId]"
         options={{ href: null, title: "Resource" }}
       />
-      <Tabs.Screen name="dashboard/[dashboardId]" options={{ href: null, title: "Dashboard" }} />
+      <Tabs.Screen
+        name="dashboard/[dashboardId]"
+        options={{
+          href: null,
+          // Replaced with the dashboard's name once the screen has it.
+          title: "Dashboard",
+          // A screen pushed over a tab gets no back affordance of its own, and
+          // the tab bar's Dashboards button would land on the list without
+          // reading as "back" — so draw one.
+          headerLeft: () => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back to dashboards"
+              onPress={() => router.navigate(`/org/${orgId}`)}
+              style={{ paddingHorizontal: 12 }}
+            >
+              <BackIcon color={colors.text} size={22} />
+            </Pressable>
+          ),
+        }}
+      />
       <Tabs.Screen name="terminal/[kind]" options={{ href: null, title: "Terminal" }} />
       <Tabs.Screen name="files/[accountId]" options={{ href: null, title: "Files" }} />
       <Tabs.Screen name="tools/[tool]" options={{ href: null, title: "Tools" }} />

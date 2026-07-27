@@ -155,10 +155,11 @@ export async function unregisterCurrentDevice(api: CloudFetch): Promise<void> {
 /**
  * Map a notification payload to an expo-router path. Sync incidents land on
  * the failing account; workflow pages land on the workflow that raised them
- * (its run list is the first thing you want); budget breaches land on the org
- * home, which renders the default dashboard's budget cards — if the breached
- * budget's widget lives on another dashboard, open that one from the list at
- * the bottom; tests land on the org home.
+ * (its run list is the first thing you want); budget breaches land on the
+ * Costs tab, which lists every budget in the org whether or not a dashboard
+ * shows it — the alert has to open something that contains the budget it is
+ * about, and the Dashboards tab is a list of dashboards, not of budgets.
+ * Tests and API pages land on the org root.
  */
 export function pushDataToPath(data: PushNotificationData): string {
   switch (data.type) {
@@ -171,7 +172,7 @@ export function pushDataToPath(data: PushNotificationData): string {
     case "api_page":
       return `/org/${data.orgId}`;
     case "budget_breach":
-      return `/org/${data.orgId}`;
+      return `/org/${data.orgId}/costs`;
     case "test":
       return `/org/${data.orgId}`;
     default:

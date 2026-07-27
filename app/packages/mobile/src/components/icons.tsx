@@ -41,6 +41,15 @@ export function HomeIcon(props: IconProps) {
   );
 }
 
+/** Back chevron for screens pushed over a tab (they get no back button of their own). */
+export function BackIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <Path d="M15 5l-7 7 7 7" />
+    </Icon>
+  );
+}
+
 export function ResourcesIcon(props: IconProps) {
   return (
     <Icon {...props}>
