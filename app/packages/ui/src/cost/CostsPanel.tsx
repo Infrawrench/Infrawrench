@@ -162,7 +162,17 @@ export function CostsPanel({ client, onOpenDashboard }: CostsPanelProps) {
               </select>
             </div>
           </div>
-          <CostGraphCard title="Month to date" config={overview} api={client} />
+          {/*
+            The card draws into a `height: 100%` ResponsiveContainer, so it
+            needs a parent with a real height. On a dashboard the grid row
+            supplies one; here the page is a plain flex column, and the card's
+            `min-h` alone leaves the container measuring zero — the chart
+            renders nothing at all. Give it the height, same `[&>*]:h-full`
+            trick the dashboard's grid item uses.
+          */}
+          <div className="h-80 [&>*]:h-full">
+            <CostGraphCard title="Month to date" config={overview} api={client} />
+          </div>
         </section>
 
         <section className="flex flex-col gap-3">
