@@ -9,34 +9,21 @@
  * action.
  */
 
-export interface HostKeyTrustPayload {
-  error: "ssh_host_key_trust_required";
-  message: string;
-  kind: "unknown" | "mismatch";
-  host: string;
-  port: number;
-  presentedFingerprint: string;
-  storedFingerprint: string | null;
-}
+// The payload shape, its guard, and the request-body builder are shared with
+// mobile through client-core; only the `fetch`-shaped helpers below are
+// web-specific. Re-exported so existing web imports keep working.
+import {
+  hostKeyTrustRequestBody,
+  isHostKeyTrustResponse,
+  type HostKeyTrustPayload,
+} from "@infrawrench/ui";
 
-/**
- * Structural type guard. Accepts any object whose `error` discriminant
- * matches the trust-required string and which carries the fields the dialog
- * needs to render.
- */
-export function isHostKeyTrustResponse(body: unknown): body is HostKeyTrustPayload {
-  if (typeof body !== "object" || body === null) return false;
-  const b = body as Record<string, unknown>;
-  if (b.error !== "ssh_host_key_trust_required") return false;
-  if (b.kind !== "unknown" && b.kind !== "mismatch") return false;
-  if (typeof b.host !== "string" || b.host.length === 0) return false;
-  if (typeof b.port !== "number") return false;
-  if (typeof b.presentedFingerprint !== "string" || b.presentedFingerprint.length === 0) {
-    return false;
-  }
-  if (b.storedFingerprint !== null && typeof b.storedFingerprint !== "string") return false;
-  return true;
-}
+export {
+  isHostKeyTrustResponse,
+  trustPayloadFromFrame,
+  hostKeyLabel,
+  type HostKeyTrustPayload,
+} from "@infrawrench/ui";
 
 /**
  * Try to parse a `fetch` Response as a host-key-trust 409. Returns the
@@ -65,14 +52,7 @@ export async function tryParseHostKeyTrustResponse(
  * change again. Other failures throw a plain Error.
  */
 export async function trustHostKey(orgId: string, payload: HostKeyTrustPayload): Promise<void> {
-  const body: Record<string, unknown> = {
-    host: payload.host,
-    port: payload.port,
-    fingerprint: payload.presentedFingerprint,
-  };
-  if (payload.storedFingerprint) {
-    body.previousFingerprint = payload.storedFingerprint;
-  }
+  const body = hostKeyTrustRequestBody(payload);
 
   const res = await fetch(`/api/org/${orgId}/ssh-host-keys/trust`, {
     method: "POST",

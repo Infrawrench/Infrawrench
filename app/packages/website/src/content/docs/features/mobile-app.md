@@ -48,6 +48,10 @@ Tap **SSH terminal** on any SSH-capable resource and the app opens a full termin
 
 Virtual machines — DigitalOcean droplets, EC2 instances, Hetzner servers and the like — authenticate with one of your org's [SSH keys](../team-and-billing/ssh-keys.md) rather than the account's own credentials, so the app shows a quick-connect step first: it fills in the host and the resource type's default username, you pick the key, and **Connect** opens the pty. This is the same choice the web app's quick-connect panel offers. Accounts whose plugin carries its own SSH credentials (the SSH plugin, Fly) skip the step and connect straight away. The **Files** browser asks the same question for the same resources.
 
+Connecting to a host for the first time — or to one whose key has changed — brings up the [host-key trust prompt](./ssh-terminal.md#security-notes) with the presented fingerprint, and the previously pinned one when it changed. Accepting pins the fingerprint for the whole organization and reconnects; declining leaves the session closed. The prompt covers the file browser too, so anything that dials SSH asks before it connects.
+
+<insert [Mobile host-key trust prompt for an unknown host: the fingerprint block with its Copy control and the "Trust key and continue" button] here>
+
 <insert [Mobile SSH quick-connect step for a droplet: host line, username field pre-filled with root, and the org SSH key list with one key selected] here>
 
 ## Integrations and Kubernetes shells

@@ -18,6 +18,7 @@ import {
   type CloudOrg,
 } from "@infrawrench/client-core";
 import { CLIENT_ID, CLOUD_URL, WORKOS_API_URL } from "../../../env";
+import { handleHostKeyTrustConflict } from "../ssh/host-key-trust";
 import { secureStoreStorage } from "./secure-store-storage";
 import { unregisterCurrentDevice } from "../push";
 
@@ -69,6 +70,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         tokens,
         baseUrl: CLOUD_URL,
         fetch: expoFetch as unknown as typeof fetch,
+        // SSH-backed routes (SFTP, tunnels) answer 409 when the host key is
+        // unknown or changed. Prompt, pin, and let the request replay.
+        on409: handleHostKeyTrustConflict,
       }),
     [tokens],
   );

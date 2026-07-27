@@ -5,6 +5,7 @@ import * as Notifications from "expo-notifications";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/lib/auth/AuthProvider";
+import { HostKeyTrustHost } from "@/components/HostKeyTrustHost";
 import { configureNotificationHandler, parsePushData, pushDataToPath } from "@/lib/push";
 import { colors } from "@/lib/theme";
 
@@ -60,6 +61,9 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <NotificationRouter />
+          {/* Mounted once above the router: an SSH host-key refusal can come
+              from any screen, and from the 409 interceptor below the tree. */}
+          <HostKeyTrustHost />
           <StatusBar style="light" />
           <Stack
             screenOptions={{

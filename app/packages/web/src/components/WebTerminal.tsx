@@ -9,7 +9,7 @@ import {
   pastedImageFilename,
 } from "@infrawrench/ui";
 import { apiPost } from "@/lib/api";
-import { isHostKeyTrustResponse, type HostKeyTrustPayload } from "@/lib/host-key-trust";
+import { trustPayloadFromFrame, type HostKeyTrustPayload } from "@/lib/host-key-trust";
 import { useHostKeyTrust } from "@/lib/useHostKeyTrust";
 
 interface WebTerminalProps {
@@ -196,20 +196,8 @@ export function WebTerminal({
               }
               break;
             case "ssh:error": {
-              const trustPayload = {
-                error: "ssh_host_key_trust_required",
-                message: msg.error ?? "SSH host key requires trust",
-                kind: msg.kind,
-                host: msg.host,
-                port: msg.port,
-                presentedFingerprint: msg.presentedFingerprint,
-                storedFingerprint: msg.storedFingerprint ?? null,
-              };
-              if (
-                msg.code === "ssh_host_key_trust_required" &&
-                orgId &&
-                isHostKeyTrustResponse(trustPayload)
-              ) {
+              const trustPayload = trustPayloadFromFrame(msg);
+              if (trustPayload && orgId) {
                 void handleTrustRequired(trustPayload);
               } else {
                 term?.write(`\r\n\x1b[31m${msg.error ?? "Connection error"}\x1b[0m\r\n`);

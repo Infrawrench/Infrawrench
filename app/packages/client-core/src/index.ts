@@ -129,6 +129,13 @@ export {
 } from "./account-sections";
 export { deriveSSHUsername, pickQuickConnectKeyId } from "./ssh-quick-connect";
 export {
+  isHostKeyTrustResponse,
+  trustPayloadFromFrame,
+  hostKeyTrustRequestBody,
+  hostKeyLabel,
+  type HostKeyTrustPayload,
+} from "./ssh-host-keys";
+export {
   tokenize,
   formatRedisResult,
   parseKvCommand,

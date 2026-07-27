@@ -384,6 +384,19 @@ export type {
 } from "@infrawrench/client-core";
 
 /**
+ * SSH host-key trust handshake. Shared with mobile through client-core because
+ * all three hosts have to agree on the payload the proxy and the HTTP routes
+ * send, and on how the trust POST is shaped.
+ */
+export {
+  isHostKeyTrustResponse,
+  trustPayloadFromFrame,
+  hostKeyTrustRequestBody,
+  hostKeyLabel,
+  type HostKeyTrustPayload,
+} from "@infrawrench/client-core";
+
+/**
  * Personal-account contract. The definitions live in `@infrawrench/client-core`
  * so mobile can share them; re-exported here because the web and desktop apps
  * depend on `@infrawrench/ui`, not on client-core directly.

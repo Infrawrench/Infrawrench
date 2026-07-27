@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import type { ServerFrame } from "@infrawrench/client-core";
+import { trustPayloadFromFrame, type ServerFrame } from "@infrawrench/client-core";
+import { requestHostKeyTrust } from "@/lib/ssh/host-key-trust";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { WsSession } from "@/lib/ws/WsSession";
 import {
@@ -197,11 +198,18 @@ function PtyTerminal({
   const [webviewReady, setWebviewReady] = useState(false);
   const [connecting, setConnecting] = useState(true);
   const [overlay, setOverlay] = useState<{ title: string; message?: string } | null>(null);
+  // Bumped after the operator pins a host key: ws tokens are single-use and
+  // the proxy tears the session down when the verifier rejects, so continuing
+  // means a brand new socket rather than a retry on this one.
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    // Re-entry (api/orgId change) builds a fresh session — reset the handshake
-    // state so the new socket sends its own open frame.
+    // Re-entry (api/orgId change, or a reconnect after trusting a host key)
+    // builds a fresh session — reset the handshake state so the new socket
+    // sends its own open frame.
     setWsConnected(false);
+    setConnecting(true);
+    setOverlay(null);
     openSentRef.current = false;
     const session = new WsSession({ api, orgId });
     sessionRef.current = session;
@@ -222,6 +230,19 @@ function PtyTerminal({
         case `${protocol}:error`: {
           const message =
             "error" in frame && typeof frame.error === "string" ? frame.error : undefined;
+          // An untrusted or changed host key isn't a failure yet — it's a
+          // question. Ask it, and reconnect if the operator pins the key.
+          const trust = trustPayloadFromFrame(frame);
+          if (trust) {
+            setConnecting(false);
+            setOverlay({ title: "Verifying host key…" });
+            void requestHostKeyTrust(trust).then((accepted) => {
+              if (disposed) return;
+              if (accepted) setAttempt((n) => n + 1);
+              else setOverlay({ title: "Connection error", message: trust.message });
+            });
+            break;
+          }
           setConnecting(false);
           setOverlay({ title: "Connection error", ...(message ? { message } : {}) });
           break;
@@ -236,6 +257,8 @@ function PtyTerminal({
       if (disposed) return;
       setConnecting(false);
       // A dead pty can't resume — surface the close instead of reconnecting.
+      // The exception is the host-key handshake: the proxy drops the socket
+      // right after refusing, and that overlay is already on screen.
       setOverlay((current) => current ?? { title: "Connection closed" });
     });
     const offError = session.onError(() => {
@@ -264,7 +287,7 @@ function PtyTerminal({
       session.close();
       sessionRef.current = null;
     };
-  }, [api, orgId, protocol]);
+  }, [api, orgId, protocol, attempt]);
 
   // Open the pty once both the socket and the xterm page are up.
   useEffect(() => {
