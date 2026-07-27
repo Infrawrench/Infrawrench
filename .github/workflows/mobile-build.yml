@@ -40,6 +40,16 @@ jobs:
           install -m 600 /dev/null "${RUNNER_TEMP}/asc-api-key.p8"
           echo "$EXPO_ASC_API_KEY_BASE64" | base64 --decode > "${RUNNER_TEMP}/asc-api-key.p8"
 
+      # `--non-interactive` also disables eas-cli's capability syncing: it only
+      # syncs when an Apple auth context already exists, and the best-effort
+      # authenticate bails out on non-interactive before it can use the ASC key
+      # here. Apple auth happens later, when the profile is minted — so CI can
+      # rebuild a profile but never registers new capabilities on the App ID.
+      # Adding an entitlement to `ios.entitlements` therefore needs a one-time
+      # manual enable at developer.apple.com -> Identifiers, or an interactive
+      # `eas build` from a workstation; this job then picks it up on the next
+      # run. Removing the flag is not an option: the interactive ad-hoc path
+      # prompts for device selection.
       - name: EAS build (preview)
         working-directory: app/packages/mobile
         env:
