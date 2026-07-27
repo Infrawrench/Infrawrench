@@ -4,12 +4,7 @@ export const CLOUD_URL = "https://app.infrawrench.com";
 export const TELEMETRY_URL = "https://telemetry.infrawrench.com";
 export const WORKOS_API_URL = "https://api.workos.com";
 export const SHOW_SIGN_IN_BUTTON = true;
-export const BANNERS: { message: string; variant?: "info" | "warning" }[] = [
-  {
-    message: "Infrawrench is in alpha. Expect some errors and missing functionality.",
-    variant: "warning",
-  },
-];
+export const BANNERS: { message: string; variant?: "info" | "warning" }[] = [];
 
 export const DISABLED_PLUGINS: string[] = [];
 
