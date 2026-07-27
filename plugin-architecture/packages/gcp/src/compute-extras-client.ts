@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { formatGcpError } from "./utils.js";
+import { gcpApiError } from "./api-error.js";
 import type { GcpClientContext } from "./shared.js";
 
 interface ManagedInstanceSummary {
@@ -36,7 +37,7 @@ export async function listManagedInstances(
     body: "{}",
   });
   if (!res.ok) {
-    throw new Error(`GCP API ${res.status} for ${base}/listManagedInstances: ${await res.text()}`);
+    throw gcpApiError(res.status, `${base}/listManagedInstances`, await res.text(), p);
   }
   const data = (await res.json()) as {
     managedInstances?: Array<{

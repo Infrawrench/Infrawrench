@@ -22,6 +22,16 @@ You can optionally set a **Project ID** to override the project embedded in the 
 
 <insert [GCP Add-account form with service account JSON textarea and optional project ID field] here>
 
+### Each service's API has to be enabled
+
+GCP ships every API switched off per project, and asking about a service that has never been turned on returns a permission error rather than an empty list. So a project using only Compute Engine will show sync errors for Cloud SQL, Spanner, Cloud Run, Secret Manager and the rest until those APIs are enabled — even though there is nothing there to list.
+
+Infrawrench reports these as, for example:
+
+> The Cloud SQL Admin API (sqladmin.googleapis.com) is not enabled for project my-project. Enable it at https://console.cloud.google.com/apis/library/sqladmin.googleapis.com?project=my-project — it can take a few minutes to take effect.
+
+Follow the link and click **Enable** for each service you want listed, or leave the rest disabled and ignore the warnings. Enabling an API you do not use costs nothing on its own.
+
 ## Notable flows
 
 - **SSH terminal** on Compute Engine VMs — infrawrench injects your chosen SSH key via the instance metadata API.

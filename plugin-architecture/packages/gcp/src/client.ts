@@ -34,6 +34,7 @@ import {
 } from "./auth.js";
 import { detectMyPublicIp } from "./cloudsql-create-handlers.js";
 import { gcpStatus } from "./utils.js";
+import { gcpApiError } from "./api-error.js";
 import {
   type PricingCacheEntry,
   type PricingRates,
@@ -150,7 +151,7 @@ export class GcpClient implements PluginClient {
       res = await fetch(url, { headers: { Authorization: `Bearer ${tok}` } });
     }
     if (!res.ok) {
-      throw new Error(`GCP API ${res.status} for ${url}: ${await res.text()}`);
+      throw gcpApiError(res.status, url, await res.text(), this.project);
     }
     return res.json() as Promise<T>;
   }

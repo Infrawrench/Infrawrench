@@ -1,4 +1,5 @@
 import type { ResourceStatus } from "@infrawrench/plugin-base";
+import { describeDisabledApi } from "./api-error.js";
 
 /**
  * Authenticated fetch against a GCP REST endpoint. Adds the OAuth token from
@@ -27,14 +28,26 @@ export async function gcpFetch(
  * Prefers `error.message` from the standard Google API error shape, falling back
  * to raw text truncated so it doesn't dominate the UI. Activation URLs in the
  * message are preserved so the UI's link parser can turn them into buttons.
+ *
+ * A disabled-API 403 is rewritten by {@link describeDisabledApi} — that case is
+ * common enough on a fresh project, and specific enough about what to do, to be
+ * worth saying plainly rather than relaying Google's paragraph. Pass `project`
+ * where the caller knows the account's project id; without it the message falls
+ * back to the project number from the error body.
  */
-export async function formatGcpError(operation: string, res: Response): Promise<string> {
+export async function formatGcpError(
+  operation: string,
+  res: Response,
+  project?: string,
+): Promise<string> {
   let body = "";
   try {
     body = await res.text();
   } catch {
     return `${operation} failed: ${res.status}`;
   }
+  const disabled = describeDisabledApi(res.status, body, project);
+  if (disabled) return disabled;
   try {
     const parsed = JSON.parse(body) as { error?: { message?: unknown; status?: unknown } };
     const message = typeof parsed?.error?.message === "string" ? parsed.error.message : undefined;
