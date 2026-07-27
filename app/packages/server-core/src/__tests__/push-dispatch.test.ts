@@ -24,6 +24,7 @@ const tables = {
     organizationId: "o",
     syncIncidents: "s",
     budgetAlerts: "b",
+    workflowPages: "w",
   },
 };
 vi.mock("../db/schema", () => tables);
@@ -95,6 +96,9 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  // restoreAllMocks does not cover stubEnv, and vitest.config.ts does not set
+  // unstubEnvs — without this PUSH_CRITICAL_ALERTS leaks into later tests.
+  vi.unstubAllEnvs();
 });
 
 describe("sendPushToOrg", () => {
@@ -132,6 +136,39 @@ describe("sendPushToOrg", () => {
     expect(body[0].priority).toBe("high");
     expect(body[0].interruptionLevel).toBe("time-sensitive");
     expect(body[0].channelId).toBe("incidents");
+  });
+
+  // `critical` is the only iOS level above time-sensitive, and an unentitled
+  // build may treat it as *less* urgent — so the flag guards a regression, not
+  // just a feature, and both of its states are worth pinning.
+  it("leaves workflow pages at time-sensitive while PUSH_CRITICAL_ALERTS is unset", async () => {
+    vi.stubEnv("PUSH_CRITICAL_ALERTS", "");
+    targets = [device(1)];
+    fetchSpy.mockResolvedValue(expoResponse([{ status: "ok" }]));
+    await dispatch.sendPushToOrg("org1", "workflowPages", msg);
+    const body = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body));
+    expect(body[0].interruptionLevel).toBe("time-sensitive");
+  });
+
+  it("sends workflow pages as critical when PUSH_CRITICAL_ALERTS=1", async () => {
+    vi.stubEnv("PUSH_CRITICAL_ALERTS", "1");
+    targets = [device(1)];
+    fetchSpy.mockResolvedValue(expoResponse([{ status: "ok" }]));
+    await dispatch.sendPushToOrg("org1", "workflowPages", msg);
+    const body = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body));
+    expect(body[0].interruptionLevel).toBe("critical");
+  });
+
+  it("keeps non-page triggers at time-sensitive even with PUSH_CRITICAL_ALERTS=1", async () => {
+    vi.stubEnv("PUSH_CRITICAL_ALERTS", "1");
+    targets = [device(1)];
+    fetchSpy.mockResolvedValue(expoResponse([{ status: "ok" }, { status: "ok" }]));
+    await dispatch.sendPushToOrg("org1", "syncIncidents", msg);
+    await dispatch.sendPushToOrg("org1", "budgetAlerts", msg);
+    const levels = fetchSpy.mock.calls.map(
+      (c) => JSON.parse(String((c[1] as RequestInit).body))[0].interruptionLevel,
+    );
+    expect(levels).toEqual(["time-sensitive", "time-sensitive"]);
   });
 
   it("chunks requests at 100 messages", async () => {

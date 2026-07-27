@@ -39,6 +39,23 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // a static literal: eas-cli reads the introspected config to sync the
     // matching capability onto the Apple provisioning profile, and anything
     // computed in a modifier is invisible to it.
+    //
+    // Critical Alerts — the one level above time-sensitive, and the level
+    // workflow pages want: it bypasses the ringer switch too, and the user
+    // cannot pre-emptively silence it per app. Deliberately NOT declared:
+    //
+    //   1. `com.apple.developer.usernotifications.critical-alerts` is granted
+    //      case by case by Apple, via developer.apple.com/contact/request/
+    //      notifications-critical-alerts-entitlement — unlike time-sensitive
+    //      above, we cannot grant it to ourselves.
+    //   2. Declaring an entitlement the provisioning profile lacks fails the
+    //      Xcode build outright, so adding this line before approval lands
+    //      breaks every iOS build.
+    //
+    // Once approved, the rollout is: add the key here, enable the capability on
+    // the App ID (`--non-interactive` CI builds do not sync it — see
+    // KNOWLEDGE.md), flip `CRITICAL_ALERTS` in env.ts so the app asks for the
+    // permission, then set PUSH_CRITICAL_ALERTS=1 so the server sends the level.
     entitlements: {
       "com.apple.developer.usernotifications.time-sensitive": true,
     },

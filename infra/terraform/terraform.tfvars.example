@@ -81,6 +81,13 @@ app_env = {
   # recommended in production. Create under expo.dev → Access tokens.
   EXPO_ACCESS_TOKEN = "..."
 
+  # Optional: send workflow pages at the iOS `critical` interruption level
+  # rather than `time-sensitive`, bypassing the ringer switch as well as Do
+  # Not Disturb. Off unless set to exactly "1". Requires Apple's approved
+  # critical-alerts entitlement in a shipped build first — see mobile's
+  # app.config.ts. Setting it early degrades pages silently.
+  PUSH_CRITICAL_ALERTS = "1"
+
   # Chat models. The default model (Gemini 3.6 Flash) needs no key at all —
   # it's served through Vertex AI, and the web pods authenticate with Workload
   # Identity (infra/terraform/vertex.tf). GOOGLE_CLOUD_PROJECT and

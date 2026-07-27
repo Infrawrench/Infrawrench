@@ -9,6 +9,7 @@ import {
   type CloudFetch,
   type PushNotificationData,
 } from "@infrawrench/client-core";
+import { CRITICAL_ALERTS } from "../../env";
 
 /**
  * Push registration lifecycle. Registration runs after sign-in (and again on
@@ -34,6 +35,35 @@ export function configureNotificationHandler(): void {
 
 let registering = false;
 let warnedNoProjectId = false;
+
+/**
+ * iOS grants only the options present in the app's *first* authorization
+ * prompt and never asks again, so `allowCriticalAlerts` has to ride along with
+ * the initial request — it cannot be added once the user has answered.
+ *
+ * A build whose entitlements don't include critical alerts can't be granted it;
+ * rather than rely on that being a silent no-op, fall back to the plain request
+ * so a rejected option can't cost us ordinary notifications as well. Naming the
+ * other three options is required once `ios` is passed — omitting them would
+ * request *less* than the argument-free call does.
+ */
+async function requestPermissions(): Promise<Notifications.NotificationPermissionsStatus> {
+  if (CRITICAL_ALERTS && Platform.OS === "ios") {
+    try {
+      return await Notifications.requestPermissionsAsync({
+        ios: {
+          allowAlert: true,
+          allowBadge: true,
+          allowSound: true,
+          allowCriticalAlerts: true,
+        },
+      });
+    } catch (err) {
+      console.warn("[push] critical-alert permission request failed, asking without it:", err);
+    }
+  }
+  return Notifications.requestPermissionsAsync();
+}
 
 export async function registerForPush(api: CloudFetch): Promise<boolean> {
   if (!Device.isDevice) return false; // simulators have no push tokens
@@ -63,7 +93,7 @@ export async function registerForPush(api: CloudFetch): Promise<boolean> {
     const existing = await Notifications.getPermissionsAsync();
     let status = existing.status;
     if (status !== "granted") {
-      status = (await Notifications.requestPermissionsAsync()).status;
+      status = (await requestPermissions()).status;
     }
     if (status !== "granted") return false;
 

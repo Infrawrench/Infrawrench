@@ -101,6 +101,8 @@ async function noteTickets(devices: TargetDevice[], tickets: ExpoTicket[]): Prom
   return ok.length;
 }
 
+type IosInterruptionLevel = NonNullable<ExpoPushMessage["interruptionLevel"]>;
+
 /**
  * Every push we send is an alert — a sync incident, a budget breach, a workflow
  * page, or the test that proves those will arrive. So all of them go out at the
@@ -109,17 +111,22 @@ async function noteTickets(devices: TargetDevice[], tickets: ExpoTicket[]): Prom
  * - `priority: "high"` is APNs 10 / FCM high: delivered immediately instead of
  *   being throttled and batched for battery. iOS already defaults to high, but
  *   Android defaults to normal and an inherited default is not a guarantee.
- * - `interruptionLevel: "time-sensitive"` (iOS 15+) lights the screen and
- *   breaks through Focus and Do Not Disturb. This is the setting that decides
- *   whether a 3am page wakes anyone. It needs the time-sensitive entitlement,
- *   declared in mobile's `app.config.ts`; without it iOS quietly downgrades to
- *   `active`. The Android equivalent is the `incidents` channel, already
- *   created at `AndroidImportance.HIGH`.
+ * - `interruptionLevel` is `time-sensitive` for everything, with pages the one
+ *   trigger that can go higher (see `interruptionLevelFor`). Time-sensitive
+ *   (iOS 15+) lights the screen and breaks through Focus and Do Not Disturb —
+ *   the setting that decides whether a 3am page wakes anyone. It needs the
+ *   time-sensitive entitlement, declared in mobile's `app.config.ts`; without
+ *   it iOS quietly downgrades to `active`. The Android equivalent is the
+ *   `incidents` channel, already created at `AndroidImportance.HIGH`.
  *
  * The user still has the last word — iOS exposes a per-app "Time Sensitive
  * Notifications" toggle — which is the right place for that decision to live.
  */
-function toExpoMessage(device: TargetDevice, msg: PushMessage): ExpoPushMessage {
+function toExpoMessage(
+  device: TargetDevice,
+  msg: PushMessage,
+  interruptionLevel: IosInterruptionLevel,
+): ExpoPushMessage {
   return {
     to: device.expoPushToken,
     title: msg.title,
@@ -128,8 +135,35 @@ function toExpoMessage(device: TargetDevice, msg: PushMessage): ExpoPushMessage 
     sound: "default",
     channelId: "incidents",
     priority: "high",
-    interruptionLevel: "time-sensitive",
+    interruptionLevel,
   };
+}
+
+/**
+ * A workflow page is the one trigger that means "a human needs to act now", so
+ * it is the one allowed above `time-sensitive`. `critical` is the only higher
+ * iOS level: it bypasses Do Not Disturb *and* the ringer switch, and unlike
+ * time-sensitive the user cannot pre-emptively turn it off per app.
+ *
+ * It is off unless `PUSH_CRITICAL_ALERTS` is set, because sending it before iOS
+ * will honour it is a regression rather than a no-op, and the failure is silent
+ * in both directions:
+ *
+ * - `critical` needs `com.apple.developer.usernotifications.critical-alerts`,
+ *   which Apple grants case by case via a request form — not an entitlement we
+ *   can grant ourselves the way time-sensitive is. Apple documents the entitled
+ *   behaviour only; what an unentitled `critical` degrades to is unspecified,
+ *   and "quietly treated as `active`" would make pages *quieter* than the
+ *   time-sensitive they get today.
+ * - The user must also grant `allowCriticalAlerts` separately, and iOS only
+ *   offers it in the app's first authorization prompt (mobile `lib/push.ts`).
+ *
+ * So the flag stays off until the entitlement is approved, declared in mobile's
+ * `app.config.ts`, and enabled on the App ID. See KNOWLEDGE.md for the rollout.
+ */
+function interruptionLevelFor(trigger: PushTrigger | "test"): IosInterruptionLevel {
+  const enabled = process.env.PUSH_CRITICAL_ALERTS === "1";
+  return trigger === "workflowPages" && enabled ? "critical" : "time-sensitive";
 }
 
 /**
@@ -144,7 +178,8 @@ export async function sendPushToOrg(
   try {
     const devices = await resolveTargets(organizationId, trigger);
     if (devices.length === 0) return { attempted: 0, succeeded: 0 };
-    const tickets = await sendExpoPush(devices.map((d) => toExpoMessage(d, msg)));
+    const level = interruptionLevelFor(trigger);
+    const tickets = await sendExpoPush(devices.map((d) => toExpoMessage(d, msg, level)));
     const succeeded = await noteTickets(devices, tickets);
     return { attempted: devices.length, succeeded };
   } catch (err) {
@@ -171,7 +206,9 @@ export async function sendTestPushToUser(userId: string, orgId: string): Promise
     body: "Your Infrawrench push configuration is working.",
     data: { type: "test", orgId },
   };
-  const tickets = await sendExpoPush(devices.map((d) => toExpoMessage(d, msg)));
+  const tickets = await sendExpoPush(
+    devices.map((d) => toExpoMessage(d, msg, interruptionLevelFor("test"))),
+  );
   const succeeded = await noteTickets(devices, tickets);
   if (succeeded === 0) {
     throw new Error(`Test push failed: 0/${devices.length} deliveries succeeded`);

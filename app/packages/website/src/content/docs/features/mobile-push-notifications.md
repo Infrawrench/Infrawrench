@@ -22,6 +22,8 @@ On **iOS** they are also sent as **Time Sensitive**, which lights the screen and
 
 On **Android** the same alerts land on a high-importance **Incidents & alerts** channel, which you can retune (or silence) in the system notification settings for the app.
 
+**Time Sensitive is the ceiling on iOS today**, including for workflow pages. iOS has one level above it — **Critical Alerts**, which also overrides the ringer switch and cannot be turned off per app — but Apple grants that entitlement to an app case by case, and Infrawrench does not carry it. In practice: a page will break through Focus and Do Not Disturb, but a phone set to silent stays silent. If you are on call, rely on the SMS and voice channels for the ringer, not on push alone.
+
 If you want some alerts to be loud and others not, use the per-organization trigger toggles below rather than the system switch — they are per user, per org, so you can leave sync incidents on for production and turn budget alerts off everywhere.
 
 ## Per-organization preferences
