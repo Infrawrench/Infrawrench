@@ -321,63 +321,67 @@ function PlacementModal({
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel={`Dashboards showing ${budget.name}`} className="max-w-md">
-      <h2 className="text-base font-semibold text-on-surface mb-1">Show on a dashboard</h2>
-      <p className="text-xs text-on-surface-faint mb-4">
-        A card is a view onto this budget. Removing one leaves the budget and its alerts intact.
-      </p>
-
-      {error !== null && (
-        <div role="alert" className="mb-3 text-sm text-red-500">
-          {error}
-        </div>
-      )}
-      {dashboards === null && error === null && (
-        <p role="status" className="text-sm text-on-surface-faint">
-          Loading dashboards…
+    <Modal onClose={onClose} ariaLabel={`Dashboards showing ${budget.name}`}>
+      <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[420px] p-6">
+        <h2 className="text-base font-semibold text-on-surface mb-1">Show on a dashboard</h2>
+        <p className="text-xs text-on-surface-faint mb-4">
+          A card is a view onto this budget. Removing one leaves the budget and its alerts intact.
         </p>
-      )}
 
-      <ul className="flex flex-col gap-1">
-        {(dashboards ?? []).map((d) => {
-          const placement = budget.placements.find((p) => p.dashboardId === d.id);
-          return (
-            <li key={d.id} className="flex items-center justify-between gap-3 py-1">
-              <span className="truncate text-sm text-on-surface">{d.name}</span>
-              {placement ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void run(() => client.removeBudgetPlacement!(placement.widgetId))}
-                  className="text-xs text-on-surface-faint hover:text-red-500 underline disabled:opacity-50"
-                >
-                  Remove
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(() => client.addBudgetToDashboard!(d.id, budget.id, budget.name))
-                  }
-                  className="text-xs text-on-surface-secondary hover:text-on-surface underline disabled:opacity-50"
-                >
-                  Add
-                </button>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+        {error !== null && (
+          <div role="alert" className="mb-3 text-sm text-red-500">
+            {error}
+          </div>
+        )}
+        {dashboards === null && error === null && (
+          <p role="status" className="text-sm text-on-surface-faint">
+            Loading dashboards…
+          </p>
+        )}
 
-      <div className="mt-5 flex justify-end">
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-lg border border-border px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
-        >
-          Done
-        </button>
+        <ul className="flex flex-col gap-1">
+          {(dashboards ?? []).map((d) => {
+            const placement = budget.placements.find((p) => p.dashboardId === d.id);
+            return (
+              <li key={d.id} className="flex items-center justify-between gap-3 py-1">
+                <span className="truncate text-sm text-on-surface">{d.name}</span>
+                {placement ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(() => client.removeBudgetPlacement!(placement.widgetId))
+                    }
+                    className="text-xs text-on-surface-faint hover:text-red-500 underline disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(() => client.addBudgetToDashboard!(d.id, budget.id, budget.name))
+                    }
+                    className="text-xs text-on-surface-secondary hover:text-on-surface underline disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+
+        <div className="mt-5 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
+          >
+            Done
+          </button>
+        </div>
       </div>
     </Modal>
   );

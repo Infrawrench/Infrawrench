@@ -379,7 +379,7 @@ export function KvBrowserView({
       {/* Add-key modal */}
       {showAdd && (
         <Modal onClose={() => (adding ? undefined : setShowAdd(false))} ariaLabel="Add KV pair">
-          <div className="p-5 w-[480px] max-w-[90vw]">
+          <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl p-5 w-[480px] max-w-[90vw]">
             <h2 className="text-base font-semibold text-on-surface mb-3">Add KV pair</h2>
             <label
               className="block text-xs font-medium text-on-surface-muted mb-1"
@@ -443,7 +443,7 @@ export function KvBrowserView({
           onClose={() => (deleting ? undefined : setConfirmDelete(null))}
           ariaLabel="Delete key"
         >
-          <div className="p-5 w-[420px] max-w-[90vw]">
+          <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl p-5 w-[420px] max-w-[90vw]">
             <h2 className="text-base font-semibold text-on-surface mb-2">Delete key?</h2>
             <p className="text-sm text-on-surface-secondary mb-4">
               <code className="font-mono text-xs">{confirmDelete}</code> will be permanently removed
