@@ -4,42 +4,16 @@ import type {
   ResourceInstance,
   DetailViewSchema,
   FieldDefinition,
-  LogsFetchParams,
-  LogsFetchResult,
   MetricSeries,
   ResourceTypeDefinition,
-  ArtifactEntry,
-  QueryCostEstimate,
   CredentialFormat,
-  SecretVersionMutation,
 } from "@infrawrench/plugin-base";
+import { evaluatePeerIntegrationUnreachable } from "@infrawrench/plugin-base";
 import {
-  queryResultSchema,
-  queryExecuteResultSchema,
-  queryCostEstimateSchema,
-  evaluatePeerIntegrationUnreachable,
-} from "@infrawrench/plugin-base";
-import {
-  getCloudManifest,
-  applyCloudManifest,
   invokeCloudAction,
   runCloudNoSqlCommand,
-  getCloudDescribe,
-  getCloudLogs,
   deleteCloudResource,
   fetchCloudPeerPanes,
-  cloudSqlQuery,
-  cloudSqlExecute,
-  cloudSqlEstimate,
-  cloudListArtifacts,
-  cloudKvBrowserList,
-  cloudKvBrowserGet,
-  cloudKvBrowserPut,
-  cloudKvBrowserDelete,
-  listCloudSecretVersions,
-  accessCloudSecretVersion,
-  addCloudSecretVersion,
-  modifyCloudSecretVersion,
 } from "../lib/cloud-api";
 import {
   REFRESH_RESOURCE_EVENT,
@@ -53,7 +27,6 @@ import {
   resourceTabTitle,
   formatErrorMessage,
   toast,
-  type QueryResult,
   type ChildResourceGroup,
   type NavigateToResourceDetail,
   type InvokePluginActionDetail,
@@ -67,24 +40,11 @@ import {
 import { getDb } from "../db/client";
 import type { AccountRow } from "../db/rows";
 import { getPlugin } from "../plugins/loader";
-import {
-  sqlQuery,
-  sqlExecute,
-  buildPluginHostServices,
-  persistPlaintextSecret,
-} from "../lib/sql-drivers";
+import { buildPluginHostServices, persistPlaintextSecret } from "../lib/sql-drivers";
 import { createPluginClient } from "../lib/plugin-client";
 import { applyCredentialRewriters } from "../lib/credential-rewriters";
 import { invoke } from "../lib/invoke";
-import type {
-  PluginClient,
-  PeerPaneContext,
-  AssociationSource,
-  ChatMessage,
-  ChatStreamEvent,
-  PublishMessagePayload,
-  PublishMessageResult,
-} from "@infrawrench/plugin-base";
+import type { PluginClient, PeerPaneContext, AssociationSource } from "@infrawrench/plugin-base";
 import type { AgentLaunchDefaults, PeerPaneData } from "@infrawrench/ui";
 import {
   accountTabTarget,
@@ -112,15 +72,7 @@ import {
   type LoaderSetters,
 } from "./_resource-detail/-loader";
 import type { CloudCtx, QuickSshConnection, SshConfig } from "./_resource-detail/-types";
-
-/** A one-event async iterable that yields a chat-stream `error` and stops. */
-function errorChatIterable(message: string): AsyncIterable<ChatStreamEvent> {
-  return {
-    async *[Symbol.asyncIterator]() {
-      yield { kind: "error", message };
-    },
-  };
-}
+import { useResourceOperations } from "./_resource-detail/-useResourceOperations";
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
   // Rendering is handled by WorkspaceTabsViewport in __root.tsx, which mounts
@@ -681,434 +633,34 @@ export function ResourcePanel({
     return () => window.removeEventListener(PROMPT_NOSQL_COMMAND_EVENT, handler);
   }, [decodedResourceId]);
 
-  const handleRunQuery = useCallback(
-    async (sql: string): Promise<QueryResult> => {
-      const cloud = cloudCtxRef.current;
-      if (cloud) {
-        const raw = await cloudSqlQuery(cloud.orgId, {
-          accountId,
-          resourceId: decodedResourceId,
-          resourceTypeId: cloud.resourceTypeId,
-          sql,
-        });
-        return queryResultSchema.parse(raw);
-      }
-      const client = clientRef.current;
-      if (client?.executeQuery) {
-        return client.executeQuery(decodedResourceId, accountId, sql);
-      }
-      const cs = connectionStringRef.current;
-      const driverId = sqlDriverIdRef.current;
-      if (!cs) throw new Error("No active SQL connection");
-      const start = performance.now();
-      const rows = await sqlQuery(driverId, cs, sql);
-      return { rows, durationMs: Math.round(performance.now() - start) };
-    },
-    [decodedResourceId, accountId],
-  );
-
-  const handleExecute = useCallback(
-    async (sql: string, params: unknown[]): Promise<number> => {
-      const cloud = cloudCtxRef.current;
-      if (cloud) {
-        const result = queryExecuteResultSchema.parse(
-          await cloudSqlExecute(cloud.orgId, {
-            accountId,
-            resourceId: decodedResourceId,
-            resourceTypeId: cloud.resourceTypeId,
-            sql,
-            params,
-          }),
-        );
-        return result.affectedRows ?? 0;
-      }
-      const client = clientRef.current;
-      if (client?.executeQuery) {
-        await client.executeQuery(decodedResourceId, accountId, sql);
-        return 0;
-      }
-      const cs = connectionStringRef.current;
-      const driverId = sqlDriverIdRef.current;
-      if (!cs) throw new Error("No active SQL connection");
-      return sqlExecute(driverId, cs, sql, params);
-    },
-    [decodedResourceId, accountId],
-  );
-
-  const handleListKvKeys = useCallback(
-    async (params: { prefix?: string; cursor?: string; limit?: number }) => {
-      const cloud = cloudCtxRef.current;
-      const res = resource;
-      if (!res) throw new Error("Resource not loaded");
-      if (cloud) {
-        return (await cloudKvBrowserList(cloud.orgId, {
-          accountId,
-          resourceTypeId: res.resourceTypeId,
-          resourceId: decodedResourceId,
-          ...params,
-        })) as Awaited<ReturnType<NonNullable<PluginClient["listKvKeys"]>>>;
-      }
-      const client = clientRef.current;
-      if (!client?.listKvKeys) throw new Error("Plugin does not support KV listing");
-      return client.listKvKeys(res.resourceTypeId, decodedResourceId, accountId, params);
-    },
-    [accountId, decodedResourceId, resource],
-  );
-
-  const handleGetKvValue = useCallback(
-    async (key: string): Promise<string> => {
-      const cloud = cloudCtxRef.current;
-      const res = resource;
-      if (!res) throw new Error("Resource not loaded");
-      if (cloud) {
-        const r = (await cloudKvBrowserGet(cloud.orgId, {
-          accountId,
-          resourceTypeId: res.resourceTypeId,
-          resourceId: decodedResourceId,
-          key,
-        })) as { value: string };
-        return r.value;
-      }
-      const client = clientRef.current;
-      if (!client?.getKvValue) throw new Error("Plugin does not support KV reads");
-      return client.getKvValue(res.resourceTypeId, decodedResourceId, accountId, key);
-    },
-    [accountId, decodedResourceId, resource],
-  );
-
-  const handlePutKvValue = useCallback(
-    async (key: string, value: string): Promise<void> => {
-      const cloud = cloudCtxRef.current;
-      const res = resource;
-      if (!res) throw new Error("Resource not loaded");
-      if (cloud) {
-        await cloudKvBrowserPut(cloud.orgId, {
-          accountId,
-          resourceTypeId: res.resourceTypeId,
-          resourceId: decodedResourceId,
-          key,
-          value,
-        });
-        return;
-      }
-      const client = clientRef.current;
-      if (!client?.putKvValue) throw new Error("Plugin does not support KV writes");
-      return client.putKvValue(res.resourceTypeId, decodedResourceId, accountId, key, value);
-    },
-    [accountId, decodedResourceId, resource],
-  );
-
-  const handleDeleteKvKey = useCallback(
-    async (key: string): Promise<void> => {
-      const cloud = cloudCtxRef.current;
-      const res = resource;
-      if (!res) throw new Error("Resource not loaded");
-      if (cloud) {
-        await cloudKvBrowserDelete(cloud.orgId, {
-          accountId,
-          resourceTypeId: res.resourceTypeId,
-          resourceId: decodedResourceId,
-          key,
-        });
-        return;
-      }
-      const client = clientRef.current;
-      if (!client?.deleteKvKey) throw new Error("Plugin does not support KV deletes");
-      return client.deleteKvKey(res.resourceTypeId, decodedResourceId, accountId, key);
-    },
-    [accountId, decodedResourceId, resource],
-  );
-
-  const handleEstimateQueryCost = useCallback(
-    async (sql: string): Promise<QueryCostEstimate> => {
-      const cloud = cloudCtxRef.current;
-      if (cloud) {
-        return queryCostEstimateSchema.parse(
-          await cloudSqlEstimate(cloud.orgId, {
-            accountId,
-            resourceId: decodedResourceId,
-            sql,
-          }),
-        ) as QueryCostEstimate;
-      }
-      const client = clientRef.current;
-      if (!client?.estimateQueryCost) {
-        throw new Error("Query cost estimation is not supported for this resource");
-      }
-      return client.estimateQueryCost(decodedResourceId, accountId, sql);
-    },
-    [decodedResourceId, accountId],
-  );
-
-  const handleGetManifest = useCallback(async (): Promise<string> => {
-    const cloud = cloudCtxRef.current;
-    if (cloud) {
-      const r = await getCloudManifest(
-        cloud.orgId,
-        cloud.pluginId,
-        cloud.resourceTypeId,
-        decodedResourceId,
-        accountId,
-        cloud.parentResourceId,
-      );
-      return r.manifest;
-    }
-    const client = clientRef.current;
-    if (!client?.getManifest) throw new Error("Plugin does not support manifest viewing");
-    return client.getManifest(decodedResourceId, accountId);
-  }, [decodedResourceId, accountId]);
-
-  const handleApplyManifest = useCallback(
-    async (manifest: string): Promise<void> => {
-      const cloud = cloudCtxRef.current;
-      if (cloud) {
-        await applyCloudManifest(cloud.orgId, cloud.pluginId, cloud.resourceTypeId, {
-          accountId,
-          resourceId: decodedResourceId,
-          manifest,
-          ...(cloud.parentResourceId ? { parentResourceId: cloud.parentResourceId } : {}),
-        });
-        dispatchRefreshResource();
-        return;
-      }
-      const client = clientRef.current;
-      if (!client?.applyManifest) throw new Error("Plugin does not support manifest editing");
-      await client.applyManifest(decodedResourceId, accountId, manifest);
-      dispatchRefreshResource();
-    },
-    [decodedResourceId, accountId],
-  );
-
-  const handleGetDescribe = useCallback(async (): Promise<string> => {
-    const cloud = cloudCtxRef.current;
-    if (cloud) {
-      const r = await getCloudDescribe(
-        cloud.orgId,
-        cloud.pluginId,
-        cloud.resourceTypeId,
-        decodedResourceId,
-        accountId,
-        cloud.parentResourceId,
-      );
-      return r.text;
-    }
-    const client = clientRef.current;
-    if (!client?.describeResource) throw new Error("Plugin does not support describe");
-    return client.describeResource(resource?.resourceTypeId ?? "", decodedResourceId, accountId);
-  }, [decodedResourceId, accountId, resource]);
-
-  // Bridge the plugin's `streamChatMessage` async iterable into the
-  // ChatPanel's `onStream` callback. Local plugin clients run in-process so
-  // we just forward the iterable. Cloud-routed accounts route through the
-  // Infrawrench server's NDJSON chat stream endpoint.
-  const handleChatStream = useCallback(
-    (
-      messages: ChatMessage[],
-      signal: AbortSignal,
-      options?: { model?: string },
-    ): AsyncIterable<ChatStreamEvent> => {
-      const cloud = cloudCtxRef.current;
-      const res = resource;
-      if (!res) {
-        return errorChatIterable("Resource not loaded");
-      }
-      if (cloud) {
-        // Cloud-synced chat streaming is not wired through the desktop
-        // → cloud bridge yet. Locally-added DO accounts work as-is.
-        return errorChatIterable(
-          "Chat over a cloud-synced account isn't supported yet from the desktop app. Run this agent against a locally-added DigitalOcean account.",
-        );
-      }
-      const client = clientRef.current;
-      if (!client?.streamChatMessage) {
-        return errorChatIterable("Plugin does not support chat.");
-      }
-      void signal; // local plugin clients ignore aborts for now
-      return client.streamChatMessage(
-        res.resourceTypeId,
-        decodedResourceId,
-        accountId,
-        messages,
-        options,
-      );
-    },
-    [accountId, decodedResourceId, resource],
-  );
-
-  // Forward the Publish tab's send to the plugin's publishMessage. Cloud-
-  // synced accounts aren't bridged yet (no `cloud_publish_message` Tauri
-  // command) — same constraint as chat, with a clear error.
-  const handlePublishMessage = useCallback(
-    async (payload: PublishMessagePayload): Promise<PublishMessageResult> => {
-      const cloud = cloudCtxRef.current;
-      const res = resource;
-      if (!res) throw new Error("Resource not loaded");
-      if (cloud) {
-        throw new Error(
-          "Publishing over a cloud-synced account isn't supported yet from the desktop app. Run this against a locally-added account.",
-        );
-      }
-      const client = clientRef.current;
-      if (!client?.publishMessage) throw new Error("Plugin does not support publishing.");
-      return client.publishMessage(res.resourceTypeId, decodedResourceId, accountId, payload);
-    },
-    [accountId, decodedResourceId, resource],
-  );
-
-  const handleGetLogs = useCallback(
-    async (params: LogsFetchParams): Promise<LogsFetchResult> => {
-      const cloud = cloudCtxRef.current;
-      if (cloud) {
-        return getCloudLogs(
-          cloud.orgId,
-          cloud.pluginId,
-          cloud.resourceTypeId,
-          decodedResourceId,
-          accountId,
-          {
-            ...params,
-            ...(cloud.parentResourceId ? { parentResourceId: cloud.parentResourceId } : {}),
-          },
-        );
-      }
-      const client = clientRef.current;
-      if (!client?.getLogs) throw new Error("Plugin does not support logs");
-      return client.getLogs(resource?.resourceTypeId ?? "", decodedResourceId, accountId, params);
-    },
-    [decodedResourceId, accountId, resource],
-  );
-
-  const handleListArtifacts = useCallback(
-    async (params: {
-      pageToken?: string;
-      prefix?: string;
-    }): Promise<{ items: ArtifactEntry[]; nextPageToken?: string }> => {
-      const cloud = cloudCtxRef.current;
-      if (cloud) {
-        return (await cloudListArtifacts(cloud.orgId, {
-          accountId,
-          resourceId: decodedResourceId,
-          resourceTypeId: cloud.resourceTypeId,
-          ...params,
-        })) as { items: ArtifactEntry[]; nextPageToken?: string };
-      }
-      const client = clientRef.current;
-      if (!client?.listArtifacts) throw new Error("Plugin does not support listing artifacts");
-      return client.listArtifacts(
-        resource?.resourceTypeId ?? "",
-        decodedResourceId,
-        accountId,
-        params,
-      );
-    },
-    [decodedResourceId, accountId, resource],
-  );
-
-  const handleListSecretVersions = useCallback(async () => {
-    const cloud = cloudCtxRef.current;
-    if (cloud) {
-      const r = await listCloudSecretVersions(
-        cloud.orgId,
-        cloud.pluginId,
-        cloud.resourceTypeId,
-        decodedResourceId,
-        accountId,
-        cloud.parentResourceId,
-      );
-      return r.versions;
-    }
-    const client = clientRef.current;
-    if (!client?.listSecretVersions) throw new Error("Plugin does not support secret versions");
-    return client.listSecretVersions(resource?.resourceTypeId ?? "", decodedResourceId, accountId);
-  }, [decodedResourceId, accountId, resource]);
-
-  const handleAccessSecretVersion = useCallback(
-    async (versionId: string) => {
-      const cloud = cloudCtxRef.current;
-      if (cloud) {
-        const r = await accessCloudSecretVersion(
-          cloud.orgId,
-          cloud.pluginId,
-          cloud.resourceTypeId,
-          {
-            accountId,
-            resourceId: decodedResourceId,
-            versionId,
-            ...(cloud.parentResourceId ? { parentResourceId: cloud.parentResourceId } : {}),
-          },
-        );
-        return r.value;
-      }
-      const client = clientRef.current;
-      if (!client?.accessSecretVersion) throw new Error("Plugin does not support secret versions");
-      return client.accessSecretVersion(
-        resource?.resourceTypeId ?? "",
-        decodedResourceId,
-        accountId,
-        versionId,
-      );
-    },
-    [decodedResourceId, accountId, resource],
-  );
-
-  const handleAddSecretVersion = useCallback(
-    async (value: string) => {
-      const cloud = cloudCtxRef.current;
-      if (cloud) {
-        const r = await addCloudSecretVersion(cloud.orgId, cloud.pluginId, cloud.resourceTypeId, {
-          accountId,
-          resourceId: decodedResourceId,
-          value,
-          ...(cloud.parentResourceId ? { parentResourceId: cloud.parentResourceId } : {}),
-        });
-        dispatchRefreshResource();
-        return r.version;
-      }
-      const client = clientRef.current;
-      if (!client?.addSecretVersion) throw new Error("Plugin does not support secret versions");
-      const v = await client.addSecretVersion(
-        resource?.resourceTypeId ?? "",
-        decodedResourceId,
-        accountId,
-        value,
-      );
-      dispatchRefreshResource();
-      return v;
-    },
-    [decodedResourceId, accountId, resource],
-  );
-
-  const handleModifySecretVersion = useCallback(
-    async (versionId: string, action: SecretVersionMutation) => {
-      const cloud = cloudCtxRef.current;
-      if (cloud) {
-        const r = await modifyCloudSecretVersion(
-          cloud.orgId,
-          cloud.pluginId,
-          cloud.resourceTypeId,
-          {
-            accountId,
-            resourceId: decodedResourceId,
-            versionId,
-            action,
-            ...(cloud.parentResourceId ? { parentResourceId: cloud.parentResourceId } : {}),
-          },
-        );
-        return r.version;
-      }
-      const client = clientRef.current;
-      if (!client?.modifySecretVersion) throw new Error("Plugin does not support secret versions");
-      return client.modifySecretVersion(
-        resource?.resourceTypeId ?? "",
-        decodedResourceId,
-        accountId,
-        versionId,
-        action,
-      );
-    },
-    [decodedResourceId, accountId, resource],
-  );
-
+  const {
+    handleRunQuery,
+    handleExecute,
+    handleListKvKeys,
+    handleGetKvValue,
+    handlePutKvValue,
+    handleDeleteKvKey,
+    handleEstimateQueryCost,
+    handleGetManifest,
+    handleApplyManifest,
+    handleGetDescribe,
+    handleChatStream,
+    handlePublishMessage,
+    handleGetLogs,
+    handleListArtifacts,
+    handleListSecretVersions,
+    handleAccessSecretVersion,
+    handleAddSecretVersion,
+    handleModifySecretVersion,
+  } = useResourceOperations({
+    accountId,
+    decodedResourceId,
+    resource,
+    cloudCtxRef,
+    clientRef,
+    connectionStringRef,
+    sqlDriverIdRef,
+  });
   const handlePeerPaneOpen = useCallback(() => {
     if (peerPanesHydratingRef.current) return;
     const cloud = cloudCtxRef.current;
