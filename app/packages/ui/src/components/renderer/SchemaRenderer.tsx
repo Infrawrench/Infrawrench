@@ -93,7 +93,10 @@ function useActionDispatch() {
         window.open(action.url, "_blank", "noopener,noreferrer");
         break;
       case "copy-to-clipboard":
-        // The value lookup is handled by the parent — this fires the copy
+        // Inert: nothing resolves the field value on web/desktop yet. No
+        // plugin emits this action today, so no shipped path reaches it — a
+        // plugin that starts emitting it would render a button that does
+        // nothing until this case is wired up.
         break;
       case "navigate-to-resource":
         dispatchNavigateToResource({

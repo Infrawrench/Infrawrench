@@ -1038,7 +1038,6 @@ export class CloudflareClient implements PluginClient {
           totalSize += obj.size;
         }
       }
-      // Format size
       const units = ["B", "KB", "MB", "GB", "TB"];
       let size = totalSize;
       let unitIdx = 0;

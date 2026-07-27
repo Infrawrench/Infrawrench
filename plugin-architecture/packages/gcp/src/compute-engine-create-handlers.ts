@@ -54,7 +54,6 @@ export const computeEngineCreateConfigHandlers: Record<
         .catch(() => ({ items: {} })),
     ]);
 
-    // Zones
     const zones = (zonesData.items ?? [])
       .filter((z) => z.status === "UP")
       .map((z) => {

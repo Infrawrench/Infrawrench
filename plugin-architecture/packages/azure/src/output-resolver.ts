@@ -38,7 +38,6 @@ export async function resolveAzureOutput(
     return atob(encoded);
   }
 
-  // For Cosmos DB keys
   if (
     typeId === "azure-cosmos-db" &&
     (outputKey === "primaryKey" || outputKey === "connectionString")
@@ -61,7 +60,6 @@ export async function resolveAzureOutput(
     return connStrings.connectionStrings?.[0]?.connectionString ?? "";
   }
 
-  // For Storage Account keys
   if (
     typeId === "azure-storage-account" &&
     (outputKey === "primaryKey" || outputKey === "connectionString")
@@ -77,7 +75,6 @@ export async function resolveAzureOutput(
     return `DefaultEndpointsProtocol=https;AccountName=${name};AccountKey=${primaryKey};EndpointSuffix=core.windows.net`;
   }
 
-  // For Redis Cache keys
   if (
     typeId === "azure-redis-cache" &&
     (outputKey === "primaryKey" || outputKey === "connectionString")
@@ -94,7 +91,6 @@ export async function resolveAzureOutput(
     return `${hostName}.redis.cache.windows.net:6380,password=${pk},ssl=True,abortConnect=False`;
   }
 
-  // For Service Bus connection strings
   if (typeId === "azure-service-bus" && outputKey === "primaryConnectionString") {
     const resource = await getResource(typeId, resourceId, accountId);
     const [rg, name] = (resource.externalId ?? "").split("/");
@@ -105,7 +101,6 @@ export async function resolveAzureOutput(
     return keys.primaryConnectionString ?? "";
   }
 
-  // For Event Hub connection strings
   if (typeId === "azure-event-hub" && outputKey === "primaryConnectionString") {
     const resource = await getResource(typeId, resourceId, accountId);
     const [rg, name] = (resource.externalId ?? "").split("/");
@@ -116,7 +111,6 @@ export async function resolveAzureOutput(
     return keys.primaryConnectionString ?? "";
   }
 
-  // For SQL Database connection string
   if (typeId === "azure-sql-database" && outputKey === "connectionString") {
     const resource = await getResource(typeId, resourceId, accountId);
     const serverName = String(resource.fields["serverName"] ?? "");
@@ -124,7 +118,6 @@ export async function resolveAzureOutput(
     return `Server=tcp:${serverName}.database.windows.net,1433;Initial Catalog=${dbName};Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;Authentication=Active Directory Default;`;
   }
 
-  // For Log Analytics shared keys
   if (typeId === "azure-log-analytics" && outputKey === "primarySharedKey") {
     const resource = await getResource(typeId, resourceId, accountId);
     const [rg, name] = (resource.externalId ?? "").split("/");
@@ -135,7 +128,6 @@ export async function resolveAzureOutput(
     return keys.primarySharedKey ?? "";
   }
 
-  // For PostgreSQL Flexible Server connection string
   if (typeId === "azure-postgres-flexible" && outputKey === "connectionString") {
     const resource = await getResource(typeId, resourceId, accountId);
     const fqdn = String(resource.resolvedOutputs["fqdn"] ?? "");
@@ -143,7 +135,6 @@ export async function resolveAzureOutput(
     return `postgresql://${adminLogin}:{your_password}@${fqdn}:5432/postgres?sslmode=require`;
   }
 
-  // For MySQL Flexible Server connection string
   if (typeId === "azure-mysql-flexible" && outputKey === "connectionString") {
     const resource = await getResource(typeId, resourceId, accountId);
     const fqdn = String(resource.resolvedOutputs["fqdn"] ?? "");

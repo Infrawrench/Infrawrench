@@ -3,11 +3,10 @@
  * existing token cache (`fetchGraphAccessToken` via the AzureClient's
  * `graphToken()` helper) into the SDK's `AuthenticationProvider` contract.
  *
- * We construct a fresh `Client` per call — the SDK is cheap to instantiate
- * and stateless apart from the auth provider, which matches the lifecycle of
- * the previous hand-rolled `graphRequest` helper. Callers can either share a
- * single `Client` for a sequence of requests, or call `makeGraphClient(...)`
- * once per call site.
+ * We construct a fresh `Client` per call — the SDK is cheap to instantiate and
+ * stateless apart from the auth provider. Callers can either share a single
+ * `Client` for a sequence of requests, or call `makeGraphClient(...)` once per
+ * call site.
  */
 import { Client } from "@microsoft/microsoft-graph-client";
 

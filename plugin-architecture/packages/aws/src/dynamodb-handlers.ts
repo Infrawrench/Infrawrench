@@ -149,8 +149,8 @@ export async function executeDynamoDbCommand(
     }
     case "countDocuments": {
       const { itemCount } = await describeTable(creds, tableName);
-      // DescribeTable returns an estimate updated roughly every 6 hours. The
-      // Firestore browser displays "~N items" which is honest given the lag.
+      // DescribeTable returns an estimate updated roughly every 6 hours; the
+      // NoSQL browser renders it as "~N items", which is honest given the lag.
       return { count: itemCount };
     }
     case "find": {

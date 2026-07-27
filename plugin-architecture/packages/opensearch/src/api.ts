@@ -196,7 +196,6 @@ export async function osRequest<T = unknown>(
     headers["content-type"] = opts.contentType ?? "application/json";
   }
 
-  // Apply auth
   switch (config.auth.mode) {
     case "basic": {
       if (!config.auth.username) {

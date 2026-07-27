@@ -107,7 +107,6 @@ export async function introspectD1Database(
   const externalId = resourceId.split(":").slice(2).join(":");
   const account_id = await api.getAccountId();
 
-  // Query sqlite_master for tables.
   const tables: Record<string, unknown>[] = [];
   for await (const item of api.cf.d1.database.query(externalId, {
     account_id,

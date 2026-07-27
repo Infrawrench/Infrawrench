@@ -124,7 +124,8 @@ export function FieldRenderer({
         showCloudSection: activeCloudOrgId !== null,
         onCloudSignIn: () => {
           void invoke("cloud_auth_start").then(() => {
-            // Poll until authenticated, then flip the flag
+            // Sign-in happens in a separate browser tab, so there's no
+            // callback to await — poll the token store until it lands.
             const poll = setInterval(async () => {
               try {
                 const token = await invoke<string | null>("cloud_auth_get_token");
@@ -136,7 +137,6 @@ export function FieldRenderer({
                 /* keep polling */
               }
             }, 1500);
-            // Stop polling after 2 minutes
             setTimeout(() => clearInterval(poll), 120_000);
           });
         },

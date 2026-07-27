@@ -202,15 +202,12 @@ export async function listJobs(ctx: ListerContext, accountId: string): Promise<R
     const settings = (j["settings"] as Record<string, unknown>) ?? {};
     const name = String(settings["name"] ?? `Job ${jobId}`);
 
-    // Schedule info
     const schedule = settings["schedule"] as Record<string, unknown> | undefined;
     const scheduleStr = schedule ? String(schedule["quartz_cron_expression"] ?? "") : "";
 
-    // Task count
     const tasks = settings["tasks"] as unknown[] | undefined;
     const taskCount = tasks?.length ?? 0;
 
-    // Last run info from the run_as/recent_runs
     const lastRun = j["last_run"] as Record<string, unknown> | undefined;
     const lastRunState = lastRun
       ? String(

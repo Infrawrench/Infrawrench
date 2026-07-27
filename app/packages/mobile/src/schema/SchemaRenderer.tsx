@@ -151,8 +151,9 @@ function KeyValueRow({ item }: { item: KeyValueListNode["items"][number] }) {
       <Pressable
         style={{ flex: 1 }}
         accessibilityRole={item.copyable || secret ? "button" : "text"}
-        // Secrets resolve through the host (resolveFieldValue) and land on
-        // the clipboard — the value is never rendered on screen.
+        // Inert: this dispatches `copy-to-clipboard`, which needs a
+        // `resolveFieldValue` handler to fetch the secret. No screen supplies
+        // one, so the tap silently does nothing despite the "Tap to copy" hint.
         onPress={
           secret
             ? () => dispatch({ type: "copy-to-clipboard", fieldKey: secret.fieldKey })

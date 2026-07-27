@@ -144,13 +144,11 @@ export async function listEC2Instances(
         (inst["instanceState"] as Record<string, unknown> | undefined)?.["name"] ?? "",
       );
 
-      // Extract Name tag
       const tagSet = inst["tagSet"] as Record<string, unknown> | undefined;
       const tags = ensureArray(tagSet?.["item"]) as Record<string, unknown>[];
       const nameTag = tags.find((t) => t["key"] === "Name");
       const name = nameTag ? String(nameTag["value"] ?? "") : "";
 
-      // Network info
       const publicIp = String(inst["ipAddress"] ?? "");
       const privateIp = String(inst["privateIpAddress"] ?? "");
       const publicDns = String(inst["dnsName"] ?? "");
@@ -229,7 +227,6 @@ export async function listEBSVolumes(
     ) as Record<string, unknown>[];
     const attachedTo = attachments[0] ? String(attachments[0]["instanceId"] ?? "") : "";
 
-    // Extract Name tag
     const tagSet = vol["tagSet"] as Record<string, unknown> | undefined;
     const tags = ensureArray(tagSet?.["item"]) as Record<string, unknown>[];
     const nameTag = tags.find((t) => t["key"] === "Name");

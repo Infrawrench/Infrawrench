@@ -149,7 +149,6 @@ export async function createFlexibleDB(
   const adminUsername = fields["adminUsername"] ?? "adminuser";
   const adminPassword = fields["adminPassword"] ?? "";
 
-  // Determine tier from SKU name
   const tier = sku.startsWith("Standard_B")
     ? "Burstable"
     : sku.startsWith("Standard_E")

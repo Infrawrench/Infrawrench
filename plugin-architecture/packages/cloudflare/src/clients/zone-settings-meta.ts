@@ -21,7 +21,6 @@ const onOff = (label: string, group: string, description?: string): SettingMeta 
 });
 
 const SETTING_META: Record<string, SettingMeta> = {
-  // SSL/TLS
   ssl: {
     label: "SSL/TLS encryption mode",
     control: "select",
@@ -43,7 +42,6 @@ const SETTING_META: Record<string, SettingMeta> = {
   automatic_https_rewrites: onOff("Automatic HTTPS Rewrites", "SSL/TLS"),
   opportunistic_encryption: onOff("Opportunistic Encryption", "SSL/TLS"),
   tls_1_3: onOff("TLS 1.3", "SSL/TLS"),
-  // Security
   security_level: {
     label: "Security level",
     control: "select",
@@ -61,14 +59,12 @@ const SETTING_META: Record<string, SettingMeta> = {
   browser_check: onOff("Browser Integrity Check", "Security"),
   email_obfuscation: onOff("Email Address Obfuscation", "Security"),
   hotlink_protection: onOff("Hotlink Protection", "Security"),
-  // Performance
   brotli: onOff("Brotli compression", "Performance"),
   http2: onOff("HTTP/2", "Performance"),
   http3: onOff("HTTP/3 (QUIC)", "Performance"),
   "0rtt": onOff("0-RTT Connection Resumption", "Performance"),
   early_hints: onOff("Early Hints", "Performance"),
   rocket_loader: onOff("Rocket Loader", "Performance"),
-  // Caching
   cache_level: {
     label: "Caching level",
     control: "select",
@@ -82,7 +78,6 @@ const SETTING_META: Record<string, SettingMeta> = {
   browser_cache_ttl: { label: "Browser Cache TTL (seconds)", control: "number", group: "Caching" },
   development_mode: onOff("Development Mode", "Caching"),
   always_online: onOff("Always Online", "Caching"),
-  // Network
   ipv6: onOff("IPv6 Compatibility", "Network"),
   websockets: onOff("WebSockets", "Network"),
   ip_geolocation: onOff("IP Geolocation", "Network"),

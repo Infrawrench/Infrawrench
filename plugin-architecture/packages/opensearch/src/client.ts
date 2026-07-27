@@ -108,10 +108,6 @@ export class OpenSearchClient implements PluginClient {
     this.services = services;
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Resource listing
-  // ─────────────────────────────────────────────────────────────────────────
-
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     if (typeId !== "opensearch-cluster") {
       throw new Error(`OpenSearch plugin: unknown resource type "${typeId}"`);
@@ -186,10 +182,6 @@ export class OpenSearchClient implements PluginClient {
         throw new Error(`OpenSearch plugin: cannot resolve output "${outputKey}"`);
     }
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Detail view
-  // ─────────────────────────────────────────────────────────────────────────
 
   async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
     const http = this.services?.http;
@@ -483,10 +475,6 @@ export class OpenSearchClient implements PluginClient {
       ],
     };
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Dashboard + metrics
-  // ─────────────────────────────────────────────────────────────────────────
 
   async fetchDashboardStats(): Promise<DashboardStat[]> {
     try {
@@ -794,10 +782,6 @@ export class OpenSearchClient implements PluginClient {
         throw new Error(`OpenSearch plugin: unknown command "${command}"`);
     }
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // helpers
-  // ─────────────────────────────────────────────────────────────────────────
 
   private endpointHost(): string {
     try {

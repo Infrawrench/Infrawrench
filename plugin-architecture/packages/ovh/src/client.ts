@@ -353,7 +353,6 @@ export class OvhClient implements PluginClient {
         case "port":
           return String(endpoint?.port ?? "");
         case "username": {
-          // Fetch users for this service
           const users = await this.ovhFetch<Array<{ username: string }>>(
             this.cloudPath(`/database/service/${externalId}/user`),
           );
@@ -433,7 +432,6 @@ export class OvhClient implements PluginClient {
       // Only show active, non-deprecated images
       for (const img of imagesData) {
         if (img.status !== "active") continue;
-        // Group by OS type
         const osCat = img.type ?? "linux";
         const groupLabel = osCat.charAt(0).toUpperCase() + osCat.slice(1);
         if (!imageMap.has(groupLabel)) imageMap.set(groupLabel, []);

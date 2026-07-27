@@ -1,8 +1,7 @@
 /**
  * SigV4-signed HTTP request via `@smithy/signature-v4` + global `fetch`.
  *
- * Replaces the hand-rolled SigV4 implementation that used to live in
- * `auth.ts`. The signer is the same one bundled inside every
+ * The signer is the same one bundled inside every
  * `@aws-sdk/client-*` package, so we're not duplicating signing logic —
  * we're just exposing it for the few call sites that still build their
  * own URL/path/body rather than going through a typed SDK Command.

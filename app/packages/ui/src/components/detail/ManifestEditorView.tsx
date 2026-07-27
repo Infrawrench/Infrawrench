@@ -81,7 +81,6 @@ export function ManifestEditorView({ capability, onGetManifest, onApplyManifest 
       setApplySuccess(true);
       originalRef.current = value;
       setDirty(false);
-      // Clear success message after 3s
       setTimeout(() => setApplySuccess(false), 3000);
     } catch (e) {
       setApplyError(String(e));

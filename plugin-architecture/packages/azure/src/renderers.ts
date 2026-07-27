@@ -114,7 +114,6 @@ export function renderAzureDetail(
     headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
   };
 
-  // Add storage browser for storage accounts
   if (resource.resourceTypeId === "azure-storage-account") {
     detail.storageBrowser = { bucketName: String(resource.fields["name"] ?? "") };
   }

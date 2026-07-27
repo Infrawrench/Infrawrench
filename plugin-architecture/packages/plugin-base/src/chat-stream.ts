@@ -5,8 +5,7 @@
  * Databricks serving endpoints, GCP Vertex AI) stream chat completions in
  * the OpenAI wire format: `data: {json}\n\n` messages until `data: [DONE]`,
  * with token deltas at `choices[0].delta.content` and an optional trailing
- * `usage` block. Each plugin used to carry an identical hand-rolled copy of
- * this loop; they now `yield*` this helper after performing their own
+ * `usage` block. Plugins `yield*` this helper after performing their own
  * request and response-status handling.
  */
 import type { ChatStreamEvent } from "./schema.js";

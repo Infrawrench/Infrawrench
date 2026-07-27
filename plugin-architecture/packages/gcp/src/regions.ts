@@ -135,7 +135,6 @@ export const GCP_REGIONS: RegionOption[] = [
   },
 ];
 
-// Region slug → {location, flag}
 export const REGION_INFO: Record<string, { location: string; flag: string }> = {
   "us-central1": { location: "Iowa, USA", flag: "🇺🇸" },
   "us-east1": { location: "South Carolina, USA", flag: "🇺🇸" },

@@ -12,7 +12,6 @@ import type {
 import { jsonRestFetch } from "@infrawrench/plugin-base";
 import { fetchPlanetScaleCostData } from "./cost-data.js";
 
-// PlanetScale API response types
 interface PsRegion {
   slug: string;
   display_name: string;
@@ -95,7 +94,6 @@ interface PsBackup {
   expires_at?: string;
 }
 
-// PlanetScale regions
 const PS_REGIONS: Record<string, { location: string; flag: string }> = {
   "us-east": { location: "AWS us-east-1 (N. Virginia)", flag: "\u{1F1FA}\u{1F1F8}" },
   "us-west": { location: "AWS us-west-2 (Oregon)", flag: "\u{1F1FA}\u{1F1F8}" },

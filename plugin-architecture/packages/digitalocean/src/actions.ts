@@ -9,7 +9,7 @@ import { decodePromptArgs } from "@infrawrench/plugin-base";
  * Parameterless actions go through `invokeDropletAction` / `invokeVolumeAction`
  * — the host calls them from a `plugin-action` host action with a confirmation
  * dialog. Parameterised actions (snapshot name, resize size, rebuild image…)
- * arrive via `executeDoCommand`, dispatched from `prompt-nosql-command` actions
+ * arrive via `executeNoSqlCommand`, dispatched from `prompt-nosql-command` actions
  * whose modal collects the user's input first.
  *
  * The host wraps the prompt-modal form values as `args = [JSON.stringify(record)]`

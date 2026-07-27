@@ -7,14 +7,12 @@ import type { KVItem } from "./schema.js";
  * "ec2-instance" → "EC2 Instance"
  */
 export function camelToTitle(key: string): string {
-  // Handle kebab-case first
   if (key.includes("-")) {
     return key
       .split("-")
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
       .join(" ");
   }
-  // Handle camelCase
   return key
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")

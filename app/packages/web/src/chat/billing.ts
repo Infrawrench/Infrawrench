@@ -5,8 +5,11 @@
  * micro-dollar cost from token counts (see ./pricing.ts), then push a billing
  * meter event (event name from `INFRAWRENCH_STRIPE_CHAT_METER_EVENT`) keyed by
  * the org's Stripe customer id. Best-effort — a Stripe outage doesn't fail the
- * user's request; we leave the usage row unreported and a periodic reconciler
- * can replay it later.
+ * user's request; the row is simply left with a null `stripeUsageRecordId`.
+ *
+ * Nothing replays those rows — usage dropped by a Stripe outage is never
+ * billed. `chat_usage_unreported_idx` exists to support a replay job, but that
+ * job has not been written.
  */
 import { v4 as uuidv4 } from "uuid";
 import { eq, and, gte, sql } from "drizzle-orm";
@@ -182,8 +185,7 @@ async function reportUsageToStripe(
   if (!meterEventName) return;
 
   // Complimentary orgs are never billed — keep the chat_usage row for internal
-  // cost tracking but don't emit a meter event (the reconciler also skips
-  // rows whose org is complimentary at replay time via this same path).
+  // cost tracking but don't emit a meter event.
   const [org] = await db
     .select({ complimentary: organizations.complimentary })
     .from(organizations)

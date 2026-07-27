@@ -198,7 +198,6 @@ class NetlifyAPI {
     return `?${sp.toString()}`;
   }
 
-  // Sites
   getSite(p: { siteId: string }): Promise<NetlifySite> {
     return this.call("GET", `/sites/${encodeURIComponent(p.siteId)}`);
   }
@@ -218,7 +217,6 @@ class NetlifyAPI {
     return this.call("DELETE", `/sites/${encodeURIComponent(p.siteId)}`);
   }
 
-  // Deploys
   listSiteDeploys(p: {
     siteId: string;
     page?: number;
@@ -237,7 +235,6 @@ class NetlifyAPI {
     );
   }
 
-  // Forms
   listSiteForms(p: { siteId: string }): Promise<NetlifyForm[]> {
     return this.call("GET", `/sites/${encodeURIComponent(p.siteId)}/forms`);
   }
@@ -248,7 +245,6 @@ class NetlifyAPI {
     );
   }
 
-  // DNS
   getDnsZones(): Promise<NetlifyDnsZone[]> {
     return this.call("GET", `/dns_zones`);
   }
@@ -274,7 +270,6 @@ class NetlifyAPI {
     );
   }
 
-  // Build hooks
   listSiteBuildHooks(p: { siteId: string }): Promise<NetlifyBuildHook[]> {
     return this.call("GET", `/sites/${encodeURIComponent(p.siteId)}/build_hooks`);
   }
@@ -1358,7 +1353,6 @@ export class NetlifyClient implements PluginClient {
       },
     ];
 
-    // Build settings section
     if (f["repoUrl"] || f["buildCommand"]) {
       sections.push({
         kind: "section",
@@ -1386,7 +1380,6 @@ export class NetlifyClient implements PluginClient {
       });
     }
 
-    // SSL section
     sections.push({
       kind: "section",
       title: "Security",
@@ -1402,7 +1395,6 @@ export class NetlifyClient implements PluginClient {
       ],
     });
 
-    // Timestamps
     sections.push({
       kind: "section",
       title: "Timestamps",

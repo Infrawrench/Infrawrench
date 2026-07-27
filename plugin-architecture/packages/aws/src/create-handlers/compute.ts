@@ -1288,7 +1288,6 @@ export async function computeCreateResource(
     zipBuffer.set(centralDir, centralDirOffset);
     zipBuffer.set(eocd, centralDirOffset + centralDir.length);
 
-    // Base64 encode
     let binary = "";
     for (let i = 0; i < zipBuffer.length; i++) {
       binary += String.fromCharCode(zipBuffer[i]!);

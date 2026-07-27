@@ -7,7 +7,6 @@ export async function getSQLDatabaseCreateConfig(
 ): Promise<CreateResourceConfig> {
   const rgOptions = await fetchResourceGroups(ctx);
 
-  // List existing SQL servers
   const servers = await ctx.get<{ value: Array<{ name: string; id: string }> }>(
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Sql/servers?api-version=2023-05-01-preview`,
   );
@@ -141,7 +140,6 @@ export async function createSQLDatabase(
     );
   }
 
-  // Determine tier
   const isVCoreBased =
     skuName.startsWith("GP_") || skuName.startsWith("BC_") || skuName.startsWith("HS_");
   const tier =

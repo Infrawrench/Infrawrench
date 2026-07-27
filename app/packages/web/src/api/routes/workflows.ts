@@ -50,14 +50,12 @@ async function load(c: Context, id: string) {
   return wf ?? null;
 }
 
-// List
 app.get("/", async (c) => {
   requirePermission(c, "dashboards:read");
   const rows = await listWorkflows(orgId(c));
   return c.json(rows.map(redactWorkflow));
 });
 
-// Create
 app.post("/", async (c) => {
   requirePermission(c, "dashboards:write");
   const body = (await c.req.json()) as WorkflowBody;
@@ -69,7 +67,6 @@ app.post("/", async (c) => {
   }
 });
 
-// Get one
 app.get("/:id", async (c) => {
   requirePermission(c, "dashboards:read");
   const wf = await load(c, c.req.param("id"));
@@ -77,7 +74,6 @@ app.get("/:id", async (c) => {
   return c.json(redactWorkflow(wf));
 });
 
-// Update
 app.put("/:id", async (c) => {
   requirePermission(c, "dashboards:write");
   const body = (await c.req.json()) as WorkflowBody;
@@ -88,7 +84,6 @@ app.put("/:id", async (c) => {
   }
 });
 
-// Soft delete
 app.delete("/:id", async (c) => {
   requirePermission(c, "dashboards:write");
   try {
