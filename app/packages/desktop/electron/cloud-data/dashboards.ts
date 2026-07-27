@@ -74,8 +74,37 @@ ipcMain.handle(
   },
 );
 
-// `cards` is the whole grid in its new order — resource pins and widgets share
-// one drag sequence, so the reorder can't be expressed as resource ids alone.
+ipcMain.handle(
+  "cloud_pin_workflow",
+  async (
+    _e,
+    { orgId, dashboardId, workflowId }: { orgId: string; dashboardId: string; workflowId: string },
+  ) => {
+    await cloudFetch(orgId, `/dashboards/workflow-pin`, {
+      method: "POST",
+      body: JSON.stringify({ dashboardId, workflowId }),
+    });
+    return { ok: true };
+  },
+);
+
+ipcMain.handle(
+  "cloud_unpin_workflow",
+  async (
+    _e,
+    { orgId, dashboardId, workflowId }: { orgId: string; dashboardId: string; workflowId: string },
+  ) => {
+    await cloudFetch(orgId, `/dashboards/workflow-unpin`, {
+      method: "POST",
+      body: JSON.stringify({ dashboardId, workflowId }),
+    });
+    return { ok: true };
+  },
+);
+
+// `cards` is the whole grid in its new order — resource pins, workflow pins,
+// and widgets share one drag sequence, so the reorder can't be expressed as
+// resource ids alone.
 ipcMain.handle(
   "cloud_reorder_pins",
   async (

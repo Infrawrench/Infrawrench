@@ -12,9 +12,26 @@ interface CloudDashboardPin {
   gridH: number;
 }
 
+/**
+ * A workflow pinned onto a cloud dashboard. Unlike resource pins (which need a
+ * live provider probe, hence the separate `cloud_get_pin` enrich call), the
+ * card's whole contents are DB-only server-side, so they arrive inline with the
+ * dashboard.
+ */
+export interface CloudDashboardWorkflowPin {
+  pinId: string;
+  workflowId: string;
+  gridX: number;
+  name: string;
+  lastRunAt: string | null;
+  lastStatus: string | null;
+  metrics: Array<{ key: string; label: string; unit: string | null; value: unknown }>;
+}
+
 interface CloudDashboardFull {
   dashboard: Dashboard & { organizationId: string; createdAt?: string };
   pins: CloudDashboardPin[];
+  workflowPins?: CloudDashboardWorkflowPin[];
   widgets?: DashboardWidget[];
 }
 

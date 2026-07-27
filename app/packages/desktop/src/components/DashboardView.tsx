@@ -53,8 +53,10 @@ import {
   createCloudWidget,
   updateCloudWidget,
   deleteCloudWidget,
+  unpinCloudWorkflow,
   type CloudProbeItem,
 } from "../lib/cloud-api";
+import type { WorkflowDashboardCardData } from "@infrawrench/ui/workflows";
 import {
   BudgetConfigModal,
   BudgetPickerModal,
@@ -74,6 +76,17 @@ import {
 import { ResourceCard } from "./DashboardView/ResourceCard";
 import type { CardStatus, PinnedRow, PluginMeta } from "./DashboardView/types";
 
+/**
+ * A pinned workflow. Cloud pins arrive with the card's contents already joined
+ * server-side (`data`); local ones are read from SQLite by the card itself.
+ */
+interface WorkflowPin {
+  pinId: string;
+  workflowId: string;
+  gridX: number;
+  data?: WorkflowDashboardCardData;
+}
+
 /** One card in the dashboard grid, whichever table it came from. */
 type DashboardCard =
   | { kind: "resource"; id: string; gridX: number; row: PinnedRow }
@@ -81,7 +94,7 @@ type DashboardCard =
       kind: "workflow";
       id: string;
       gridX: number;
-      workflowPin: { pinId: string; workflowId: string; gridX: number };
+      workflowPin: WorkflowPin;
     }
   | { kind: "widget"; id: string; gridX: number; widget: DashboardWidget };
 
@@ -92,9 +105,7 @@ interface DashboardViewProps {
 export function DashboardView({ dashboardId }: DashboardViewProps) {
   const navigate = useNavigate();
   const [pinned, setPinned] = useState<PinnedRow[]>([]);
-  const [workflowPins, setWorkflowPins] = useState<
-    { pinId: string; workflowId: string; gridX: number }[]
-  >([]);
+  const [workflowPins, setWorkflowPins] = useState<WorkflowPin[]>([]);
   const [pluginMeta, setPluginMeta] = useState<Record<string, PluginMeta>>({});
   const [loading, setLoading] = useState(true);
   const [dashboardName, setDashboardName] = useState("");
@@ -126,8 +137,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
 
   /**
    * One card per grid slot, whichever table it came from — the three kinds are
-   * dragged as a single sequence. Cloud dashboards carry resource pins and
-   * widgets; local ones carry resource pins and workflow pins.
+   * dragged as a single sequence. Cloud dashboards carry all three; local ones
+   * carry resource pins and workflow pins (cost widgets are cloud-only).
    */
   const cards = useMemo(
     () =>
@@ -310,8 +321,27 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           };
         }
         setCardStatus((prev) => ({ ...prev, ...initialStatus }));
-        // Workflow pins are local-only; cloud dashboards don't carry them.
-        setWorkflowPins([]);
+        // Workflow pins come back fully joined (name, last run, metric values),
+        // so unlike resource pins they need no follow-up enrich call.
+        setWorkflowPins(
+          (full.workflowPins ?? []).map((p) => ({
+            pinId: p.pinId,
+            workflowId: p.workflowId,
+            gridX: p.gridX,
+            data: {
+              workflowId: p.workflowId,
+              name: p.name,
+              lastRunAt: p.lastRunAt,
+              lastStatus: p.lastStatus as WorkflowDashboardCardData["lastStatus"],
+              metrics: p.metrics.map((m) => ({
+                key: m.key,
+                label: m.label,
+                unit: m.unit,
+                value: m.value as WorkflowDashboardCardData["metrics"][number]["value"],
+              })),
+            },
+          })),
+        );
       } else {
         // Cost widgets are cloud-only; local dashboards never carry them.
         setWidgets([]);
@@ -706,8 +736,12 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   }
 
   async function unpinPinnedWorkflow(workflowId: string) {
-    const db = await getDb();
-    await unpinWorkflow(workflowId, dashboardId, db);
+    if (activeCloudOrgId) {
+      await unpinCloudWorkflow(activeCloudOrgId, dashboardId, workflowId);
+    } else {
+      const db = await getDb();
+      await unpinWorkflow(workflowId, dashboardId, db);
+    }
     setWorkflowPins((prev) => prev.filter((w) => w.workflowId !== workflowId));
   }
 
@@ -1009,6 +1043,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                   ) : card.kind === "workflow" ? (
                     <WorkflowPinCard
                       workflowId={card.workflowPin.workflowId}
+                      orgId={activeCloudOrgId}
+                      initialData={card.workflowPin.data}
                       onOpen={() =>
                         void navigateToWorkspaceTarget(navigate, workflowsTabTarget(), {
                           label: "Workflows",

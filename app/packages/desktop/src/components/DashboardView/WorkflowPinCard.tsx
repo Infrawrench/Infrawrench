@@ -2,36 +2,86 @@ import { useCallback, useEffect, useState } from "react";
 import {
   WorkflowDashboardCard,
   type StoredWorkflowMetricDef as MetricDef,
+  type WorkflowClient,
   type WorkflowDashboardCardData,
 } from "@infrawrench/ui/workflows";
 import { getDb } from "../../db/client";
 import { createDesktopWorkflowClient } from "../../lib/workflow-client";
+import { createCloudWorkflowClient } from "../../lib/cloud-workflows";
 
-// One client for all dashboard workflow runs — building it is cheap, but a
-// singleton keeps run state tidy.
-let sharedClient: ReturnType<typeof createDesktopWorkflowClient> | null = null;
-function client() {
-  if (!sharedClient) sharedClient = createDesktopWorkflowClient();
-  return sharedClient;
+// One client per source for all dashboard workflow runs — building them is
+// cheap, but stable instances keep run state tidy.
+let localClient: WorkflowClient | null = null;
+const cloudClients = new Map<string, WorkflowClient>();
+function clientFor(orgId: string | null): WorkflowClient {
+  if (!orgId) return (localClient ??= createDesktopWorkflowClient());
+  let client = cloudClients.get(orgId);
+  if (!client) {
+    client = createCloudWorkflowClient(orgId);
+    cloudClients.set(orgId, client);
+  }
+  return client;
 }
 
 /**
- * A pinned (local) workflow on the desktop dashboard. Loads the workflow's
- * declared metrics + current values + last-run status from the local DB, and
- * runs it via the desktop workflow client (re-reading metrics afterwards).
+ * A pinned workflow on the desktop dashboard.
+ *
+ * Local dashboards read the card straight out of SQLite. Cloud dashboards get
+ * it inline with the dashboard payload (`initialData`) — the server already
+ * joined the metrics and last run — and only re-read after a run, since that is
+ * the one moment the values here go stale.
  */
 export function WorkflowPinCard({
   workflowId,
+  orgId,
+  initialData,
   onOpen,
   onUnpin,
 }: {
   workflowId: string;
+  /** The active cloud org, or null for a local dashboard. */
+  orgId?: string | null;
+  /** Card contents for cloud pins (the dashboard response carries them). */
+  initialData?: WorkflowDashboardCardData | undefined;
   onOpen: () => void;
   onUnpin: () => void;
 }) {
-  const [data, setData] = useState<WorkflowDashboardCardData | null>(null);
+  const [data, setData] = useState<WorkflowDashboardCardData | null>(initialData ?? null);
+
+  // Keep the card in step with a dashboard reload (e.g. after a reorder).
+  useEffect(() => {
+    if (initialData) setData(initialData);
+  }, [initialData]);
 
   const load = useCallback(async () => {
+    if (orgId) {
+      // Re-read the two things a run changes; name/pin identity are stable.
+      const client = clientFor(orgId);
+      const [metrics, runs] = await Promise.all([
+        client.listMetrics(workflowId).catch(() => []),
+        client.listRuns(workflowId).catch(() => []),
+      ]);
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              lastRunAt: runs[0]?.finishedAt ?? runs[0]?.startedAt ?? prev.lastRunAt,
+              lastStatus: (runs[0]?.status ?? null) as WorkflowDashboardCardData["lastStatus"],
+              metrics: prev.metrics.map((m) => {
+                const row = metrics.find((r) => r.key === m.key);
+                return row
+                  ? {
+                      ...m,
+                      value: row.value as WorkflowDashboardCardData["metrics"][number]["value"],
+                    }
+                  : m;
+              }),
+            }
+          : prev,
+      );
+      return;
+    }
+
     const db = await getDb();
     const wfRows = await db.select<
       { name: string; metric_defs: string; last_run_at: string | null }[]
@@ -77,11 +127,12 @@ export function WorkflowPinCard({
         value: (valueByKey.get(d.key) ?? null) as number | string | boolean | null,
       })),
     });
-  }, [workflowId]);
+  }, [workflowId, orgId]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    // Cloud pins arrive pre-loaded; only the local path has to fetch.
+    if (!orgId) void load();
+  }, [load, orgId]);
 
   if (!data) {
     return (
@@ -99,7 +150,7 @@ export function WorkflowPinCard({
       onOpen={onOpen}
       onUnpin={onUnpin}
       onRun={async () => {
-        await client().run(workflowId);
+        await clientFor(orgId ?? null).run(workflowId);
         await load();
       }}
     />

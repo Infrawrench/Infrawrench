@@ -8,6 +8,7 @@ import "./resources";
 import "./secrets";
 import "./metrics";
 import "./sql-kv-docker";
+import "./workflows";
 import "./sftp";
 import "./ssh-tunnels";
 import "./host-key-trust";

@@ -15,3 +15,4 @@ export * from "./cloud-resources";
 export * from "./cloud-secrets";
 export * from "./cloud-sql";
 export * from "./cloud-sftp";
+export * from "./cloud-workflows";

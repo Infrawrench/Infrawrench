@@ -50,6 +50,7 @@ import {
   getCloudAuthStatus,
   startCloudAuth,
   pinCloudResource,
+  pinCloudWorkflow,
   listCloudDashboards,
   type CloudOrg,
 } from "../lib/cloud-api";
@@ -387,15 +388,15 @@ function RootLayout() {
   }
 
   async function handlePinWorkflowToDashboard(workflow: DraggableWorkflow, dashboardId: string) {
-    // Workflows live in the local DB; a cloud dashboard can't reference them.
-    if (useUIStore.getState().activeCloudOrgId) {
-      toast.error("Switch to Local to pin workflows", {
-        description: "Workflows are stored locally and can only be pinned to local dashboards.",
-      });
-      return;
+    // Both the dashboard and the workflow come from whichever side is active,
+    // so a pin never crosses the local/cloud boundary.
+    const orgId = useUIStore.getState().activeCloudOrgId;
+    if (orgId) {
+      await pinCloudWorkflow(orgId, dashboardId, workflow.id);
+    } else {
+      const db = await getDb();
+      await pinWorkflow(workflow.id, dashboardId, db);
     }
-    const db = await getDb();
-    await pinWorkflow(workflow.id, dashboardId, db);
     bumpDashboardPins();
   }
 

@@ -45,3 +45,4 @@ The [mobile app](../features/mobile-app.md) signs into a cloud org and covers: d
 - **Pageant** is Windows desktop only.
 - **Ephemeral Kubernetes scratch pods** work in both, but the launch button opens a [terminal](../features/ssh-terminal.md) which on web is proxied.
 - **[AI chat](../features/ai-chat.md)** requires a cloud org — the agent loop, billing, and conversation history live in the web backend. On desktop it appears once you sign in to Infrawrench Cloud and select an organization; in local-only mode there is no chat.
+- **[Workflows](../features/workflows.md)** follow the org switcher on desktop: in local mode you get local workflows that run on your machine, and with an organization selected you get the org's workflows — the same ones the web app shows, with git and budget triggers available. The two sets are separate; nothing is copied between them.

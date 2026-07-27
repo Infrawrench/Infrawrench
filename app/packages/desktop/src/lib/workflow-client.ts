@@ -7,8 +7,12 @@
  * and metrics are all handled locally. The one exception is the QuickJS/WASM
  * isolate itself: it needs Node's `Buffer` (Chromium doesn't have it), so it
  * runs in the Electron main process and calls back into the host we build here
- * (see ./workflow-runner and electron/workflow-host.ts). Automated cron/git
- * triggers are not supported on desktop (cloud/proxy only).
+ * (see ./workflow-runner and electron/workflow-host.ts). Cron triggers are run
+ * by the renderer's own ticker (./cron-runner); git and budget triggers need an
+ * always-on host, so they are only offered for an org's workflows.
+ *
+ * This is the LOCAL client. With an org selected the Workflows tab uses
+ * ./cloud-workflows instead — see DesktopWorkflowsPanel for the switch.
  */
 import {
   attachSidecarInfo,

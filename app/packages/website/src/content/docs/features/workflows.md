@@ -274,7 +274,7 @@ fetch() failed: 169.254.169.254 is a private address and is not proxied.
 
 To reach something on a private network, give the workflow a path to it that you control — an SSH command on a resource that can see it ([`resource.ssh`](#ssh-into-a-resource)), or a tunnel — rather than expecting `fetch` to route there.
 
-In the **desktop app** there's no cluster and no proxy: the request is made directly from your own machine, so your LAN and localhost are reachable. A workflow that hits `http://192.168.1.10:9200/` works on desktop and is refused in the cloud, which is worth remembering if you move one there.
+In a **local** desktop workflow there's no cluster and no proxy: the request is made directly from your own machine, so your LAN and localhost are reachable. A workflow that hits `http://192.168.1.10:9200/` works locally and is refused in the cloud — worth remembering if you recreate it in an organization, since organization workflows run on the cloud host even when you edit them from the desktop app.
 
 A run can make up to 250 requests, and time spent in `fetch` counts against the run's execution budget (unlike SSH waits, which are excluded) — so a loop that polls an API can't outlive the run.
 
@@ -321,7 +321,7 @@ if (result.suppressed) infra.log(`already paged; quiet until ${result.retryAt}`)
 
 A server that runs outside Infrawrench can raise the same page over HTTP — see [Push from your own servers](./server-push.md). Keys and cooldowns are scoped per source there, so an API caller and a workflow never throttle each other.
 
-In the **desktop app** there are no Twilio, push, Slack, or Teams recipients — those connections are org-level things the cloud holds — so a page becomes a native OS notification on the machine running the workflow. The key and cooldown behave exactly the same.
+In a **local** desktop workflow there are no Twilio, push, Slack, or Teams recipients — those connections are org-level things the cloud holds — so a page becomes a native OS notification on the machine running the workflow. The key and cooldown behave exactly the same. An organization's workflows page the full set of transports whether you run them from the web or the desktop app.
 
 ### Reporting your own cost data
 
@@ -381,11 +381,22 @@ Reads come from a snapshot taken when the run starts, so they're synchronous (no
 
 <insert [Screenshot of the workflow create form showing the metrics section with a key, label, type and unit] here>
 
+## Where your workflows live
+
+A workflow belongs either to your machine or to an organization, and the **desktop app follows the org switcher** to decide which set it shows — the same way accounts, dashboards, and costs do.
+
+- **Local mode** — workflows are stored in the desktop app's local database and run in an isolate on your machine, against the accounts you've added locally. Nobody else sees them.
+- **An organization selected** — the Workflows tab shows that organization's workflows, shared with your teammates and identical to what the web app shows. They run on the cloud host, against the org's accounts.
+
+Switching orgs swaps the list; nothing is copied between the two. A workflow written locally stays local until you recreate it in the org (copy the source across — the `infra` object is the same shape on both sides, as long as the org has accounts for the providers it names).
+
+Two things follow from where a workflow lives. Its **capabilities** differ slightly: local workflows have no cost store, so `infra.costs` is unavailable, and `infra.page` becomes a native OS notification instead of fanning out to SMS, push, Slack, and Teams. And its **automated triggers** differ — see the trigger table below.
+
 ## Pinning a workflow to a dashboard
 
 Drag a workflow from the list on the left of the **Workflows** tab onto any dashboard (or onto a dashboard in the sidebar) to pin it. Use the search box above the list to filter by name when you have a lot of workflows. The workflow shows up as a card listing its declared metrics with their current values, when it last ran, and a **Run** button that triggers it and refreshes the values in place — so a dashboard can double as a live readout of whatever your workflows track.
 
-On the **desktop app** workflows are stored locally, so workflow cards are available on local dashboards; switch to Local mode to pin them. On the **web app** workflow pins are scoped to your organization like the workflows themselves.
+A pin never crosses the local/cloud boundary: in Local mode you pin local workflows onto local dashboards, and with an organization selected you pin the org's workflows onto the org's dashboards. Because the two lists follow the same switch, whichever workflows you can see are the ones you can pin.
 
 <insert [Screenshot of a dashboard with a pinned workflow card showing metric values, a last-run line, and a Run button] here>
 
@@ -395,19 +406,19 @@ Open the trigger settings to choose how a workflow runs:
 
 - **Manual** — run on demand from the UI. The only mode that allows `infra.prompt`. Available everywhere (desktop, web, proxy).
 - **Cron** — run on a schedule. Pick a preset (every 15 minutes, daily at 9am, weekly…) or type a raw 5-field cron expression; the editor shows a plain-English summary of what you entered.
-- **Git** — run on each new commit to a branch. **Connect GitHub**, choose a repository from the picker, and set the branch — the Infrawrench GitHub App watches that repo as a bot and runs the workflow when the branch head changes. Web/proxy only; the desktop app doesn't offer git triggers (its workflows are local with no always-on host to watch a repo).
-- **Budget** — run when a [cost budget](./cloud-costs.md) crosses a threshold. Pick a budget, a percentage of its monthly amount, and whether to compare **spend so far** or the **forecast** month-end total. Web/proxy only (budgets are a cloud feature).
+- **Git** — run on each new commit to a branch. **Connect GitHub**, choose a repository from the picker, and set the branch — the Infrawrench GitHub App watches that repo as a bot and runs the workflow when the branch head changes. Needs an organization: a local workflow has no always-on host to watch a repo.
+- **Budget** — run when a [cost budget](./cloud-costs.md) crosses a threshold. Pick a budget, a percentage of its monthly amount, and whether to compare **spend so far** or the **forecast** month-end total. Needs an organization (budgets are a cloud feature).
 
-**Platform support for automated triggers:**
+**Which triggers you can pick depends on where the workflow lives**, not on which app you're using — a desktop app with an org selected offers the same four triggers the web app does:
 
-| Trigger | Desktop           | Web | Web proxy |
-| ------- | ----------------- | --- | --------- |
-| Manual  | ✅                | ✅  | ✅        |
-| Cron    | ✅ (while open\*) | ✅  | ✅        |
-| Git     | —                 | ✅  | ✅        |
-| Budget  | —                 | ✅  | ✅        |
+| Trigger | Desktop (local)   | Desktop (org) | Web | Web proxy |
+| ------- | ----------------- | ------------- | --- | --------- |
+| Manual  | ✅                | ✅            | ✅  | ✅        |
+| Cron    | ✅ (while open\*) | ✅            | ✅  | ✅        |
+| Git     | —                 | ✅            | ✅  | ✅        |
+| Budget  | —                 | ✅            | ✅  | ✅        |
 
-The web app runs cron and git triggers on an always-on cloud host. The **desktop app** runs your local cron workflows itself: while at least one cron workflow is enabled, Infrawrench keeps running in the background after you close the window (just like active metric-ping alerts) so the schedule keeps firing. \*It can't fire while the app is fully quit — quit it and the local schedule pauses until you reopen. For schedules that must run 24/7 regardless, use the cloud or the [web proxy](../core-concepts/desktop-vs-web.md).
+Organization workflows run their cron and git triggers on an always-on cloud host, whichever app created them. **Local** workflows are run by the desktop app itself: while at least one local cron workflow is enabled, Infrawrench keeps running in the background after you close the window (just like active metric-ping alerts) so the schedule keeps firing. \*It can't fire while the app is fully quit — quit it and the local schedule pauses until you reopen. For schedules that must run 24/7 regardless, put the workflow in an organization or use the [web proxy](../core-concepts/desktop-vs-web.md).
 
 ### Connecting GitHub
 

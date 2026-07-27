@@ -12,23 +12,12 @@ import { DashboardPanel } from "@/routes/dashboard.$dashboardId";
 import { AccountPanel } from "@/routes/accounts.$accountId";
 import { ResourcePanel } from "@/routes/resource.$accountId.$resourceId";
 import { getWorkspaceNavigateArgs, syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
-import { WorkflowsPanel, type WorkflowClient } from "@infrawrench/ui/workflows";
 import { AgentsPanel, type AgentClient } from "@infrawrench/ui/agents";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
 import { createDesktopCostsClient } from "@/lib/costs-client";
-import { createDesktopWorkflowClient } from "@/lib/workflow-client";
 import { createDesktopAgentClient } from "@/lib/agent-client";
 import { CloudChatPanel } from "@/components/CloudChatPanel";
-
-// Stable singleton WorkflowClient so the panel's effects don't refire each
-// render. The desktop client runs workflows in-renderer (isolate + plugin
-// clients) and persists via db_select/db_execute; infra.prompt uses
-// window.prompt for now (a richer modal is a follow-up).
-let workflowClient: WorkflowClient | null = null;
-function getWorkflowClient(): WorkflowClient {
-  if (!workflowClient) workflowClient = createDesktopWorkflowClient();
-  return workflowClient;
-}
+import { DesktopWorkflowsPanel } from "@/components/DesktopWorkflowsPanel";
 
 let agentClient: AgentClient | null = null;
 function getAgentClient(): AgentClient {
@@ -90,7 +79,7 @@ function renderPanel(tab: WorkspaceTab, navigate: ReturnType<typeof useNavigate>
         />
       );
     case "workflows":
-      return <WorkflowsPanel client={getWorkflowClient()} />;
+      return <DesktopWorkflowsPanel />;
     case "costs":
       return (
         <CostsPanel
