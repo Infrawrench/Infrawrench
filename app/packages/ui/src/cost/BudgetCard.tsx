@@ -1,4 +1,4 @@
-import { formatMoney } from "./transform.js";
+import { formatBudgetMonth, formatMoney } from "./transform.js";
 import type { BudgetWithStatus } from "./types.js";
 
 export interface BudgetCardProps {
@@ -24,11 +24,7 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
 
   const barColor =
     actualPct >= 100 ? "bg-red-500" : actualPct >= 80 ? "bg-amber-500" : "bg-emerald-500";
-  const monthLabel = new Date(`${budget.month}-01T00:00:00Z`).toLocaleDateString(undefined, {
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  });
+  const monthLabel = formatBudgetMonth(budget.month);
 
   return (
     <div className="group relative rounded-2xl border border-border bg-surface-raised hover:border-border-strong transition-colors flex flex-col overflow-hidden">

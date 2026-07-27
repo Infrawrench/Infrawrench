@@ -16,12 +16,7 @@ import {
 } from "recharts";
 import { useChartTheme } from "../chart-theme.js";
 import { niceAxis, rowsExtent } from "../components/charts/nice-axis.js";
-import {
-  resolveCostDateRange,
-  type CostGraphConfig,
-  type CostQueryRequest,
-  type CostQueryResponse,
-} from "./config.js";
+import { costQueryForConfig, type CostGraphConfig, type CostQueryResponse } from "./config.js";
 import {
   alignComparison,
   COMPARISON_KEY,
@@ -56,21 +51,6 @@ interface LoadedState {
   pivot: PivotedChart;
 }
 
-function buildRequest(config: CostGraphConfig): CostQueryRequest {
-  const { from, to } = resolveCostDateRange(config.dateRange);
-  return {
-    from,
-    to,
-    binning: config.binning,
-    groupBy: config.groupBy,
-    ...(config.groupByTagKey ? { groupByTagKey: config.groupByTagKey } : {}),
-    filters: config.filters,
-    topN: config.topN,
-    comparePreviousPeriod: config.comparePreviousPeriod,
-    forecast: config.showForecast,
-  };
-}
-
 export function CostGraphCard({
   title,
   config,
@@ -84,7 +64,7 @@ export function CostGraphCard({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const request = useMemo(() => buildRequest(config), [config]);
+  const request = useMemo(() => costQueryForConfig(config), [config]);
 
   useEffect(() => {
     let cancelled = false;

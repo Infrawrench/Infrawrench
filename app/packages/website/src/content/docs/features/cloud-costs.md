@@ -50,6 +50,10 @@ Every threshold fires at most once per calendar month. Alerts show up as a badge
 
 <insert [Budget card showing a progress bar at 72% with threshold ticks, a forecast marker, and an alert badge] here>
 
+## On your phone
+
+Cost graphs and budgets render on the [mobile app](./mobile-app.md) too — the same query, the same series colors, the same thresholds and forecast marker, drawn natively. They appear as cards on the dashboard they were added to, so tapping a budget push notification lands you on the budget it is about. Configuring them (the **+** tile, the graph and budget editors) stays on web and desktop.
+
 ## Ask the model instead
 
 The same cost data is exposed through the [MCP server](./mcp.md) and the [AI chat](./ai-chat.md) as `query_costs`, `list_cost_dimension_values`, `get_cost_status`, and the budget tools — so "what did we spend on AWS last month, grouped by service?" works from Claude Desktop or the in-app chat without building a graph first. Cost and budget tools respect the caller's `costs:read` / `budgets:*` [role permissions](../team-and-billing/roles-and-permissions.md).
@@ -66,7 +70,7 @@ For anything with no provider plugin — a SaaS invoice, an internal chargeback,
 
 ## When collection fails
 
-Collection runs unattended and retries with a growing backoff, so a provider that needs setup would otherwise just look like an account with no spend. Instead, the last failure is kept against the account and shown as a banner above the cost widgets on the dashboard — on web, desktop, and above **Budgets** on mobile:
+Collection runs unattended and retries with a growing backoff, so a provider that needs setup would otherwise just look like an account with no spend. Instead, the last failure is kept against the account and shown as a banner above the cost widgets on the dashboard — on web, desktop, and mobile alike:
 
 <insert [Dashboard with an amber "Cost collection is failing for Infrawrench GCP" banner above the cost widgets, showing the billing-export message and its link] here>
 

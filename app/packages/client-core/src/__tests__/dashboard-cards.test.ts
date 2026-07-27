@@ -6,7 +6,7 @@ import {
   orderDashboardCards,
   parseDashboardCardId,
   type OrderableDashboardCard,
-} from "../../dnd/card-order.js";
+} from "../dashboard-cards";
 
 const card = (kind: OrderableDashboardCard["kind"], id: string, gridX: number) => ({
   kind,

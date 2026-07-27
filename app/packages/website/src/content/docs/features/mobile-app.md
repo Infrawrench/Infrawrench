@@ -22,7 +22,7 @@ You can switch organizations at any time from the org switcher; everything you s
 
 ## What you can do
 
-- **Home** — your org's [dashboards](./dashboard.md) and [budgets](./cloud-costs.md) at a glance. Dashboards are render-only on mobile: pinned tiles, metric charts, and cost graphs display live, but you arrange and configure them on web or desktop.
+- **Home** — your org's default [dashboard](./dashboard.md), exactly as the web app's home page shows it: pinned resource tiles, workflow tiles, [cost graphs](./cloud-costs.md), and [budgets](./cloud-costs.md#budgets--alerts), in the order you arranged them. Cost graphs are drawn natively — every chart type, the previous-period and forecast overlays, and per-series totals in the legend — and budgets show month-to-date spend against the amount with their thresholds and forecast marker. Any budget that isn't already on the home dashboard is listed under it — a budget alert's push opens this screen — and your other dashboards are at the bottom. Dashboards are render-only on mobile: you arrange and configure them on web or desktop.
 - **Accounts & resources** — browse every connected account and drill into its resources. An account page lists every resource type the plugin exposes, nested ones like DNS records and database users included, with a search box that narrows those sections exactly as it does on web and desktop. Resource detail pages are rendered from the same plugin schemas as web and desktop, so a droplet, a bucket, or a Kubernetes deployment looks like itself — including plugin actions, a Logs tab, and metrics charts.
 - **Search** — global search across your org's resources, same as [spotlight search](./spotlight-search.md).
 - **SFTP files** — browse, download (to the share sheet), and upload files on SSH-capable hosts, proxied through the cloud. Object-storage browsers (GCS, S3, R2, Azure Blob) remain on web and desktop.
@@ -30,6 +30,8 @@ You can switch organizations at any time from the org switcher; everything you s
 - **SSH terminal** — a real terminal on your phone; see below.
 - **Workflows & agents** — read-only views of your [workflows](./workflows.md) (definitions and run history) and [agent sessions](./agents.md).
 - **Settings** — team members, [API keys](../team-and-billing/api-keys.md) (view and revoke), the [audit log](../team-and-billing/audit-log.md), [SSH keys](../team-and-billing/ssh-keys.md), billing (read-only), your [push notification](./mobile-push-notifications.md) preferences, devices, and test push, and your [account settings](./account-settings.md) — name, password reset, two-factor enrolment, and active sessions.
+
+<insert [Mobile home tab showing the default dashboard: a pinned resource card, a stacked-bar cost graph with its legend totals, and a budget card with its progress bar] here>
 
 <insert [Mobile resource detail page for a droplet showing the schema-rendered overview, action buttons, and a metrics chart] here>
 
@@ -44,7 +46,7 @@ The mobile app is deliberately a read-and-respond surface. Some things are demot
 - **Billing is read-only** — you can see your plan and seats, but plan changes and payment details are managed on the web (App Store rules).
 - **Code editors are absent** — manifest editing, the [bucket policy editor](./bucket-policy-editor.md), and [workflow](./workflows.md) editing all use Monaco, which stays on web and desktop.
 - **[Secret reroll](../core-concepts/secret-rerolls.md) wizard** and NoSQL command prompts are web/desktop-only.
-- **Dashboards are render-only** — no adding, arranging, or configuring tiles.
+- **Dashboards are render-only** — every card renders live, but adding, arranging, and configuring tiles (including cost graphs and budgets) happens on web or desktop.
 - **k9s and Kubernetes port-forward** are not yet supported on mobile.
 - **[SQL editor](./sql-editor.md) autocomplete** is absent (queries still run).
 

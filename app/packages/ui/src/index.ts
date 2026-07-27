@@ -201,18 +201,20 @@ export { DroppableDashboardItem } from "./dnd/DroppableDashboardItem.js";
 export type { DroppableDashboardItemProps } from "./dnd/DroppableDashboardItem.js";
 export { DroppableDashboardArea } from "./dnd/DroppableDashboardArea.js";
 export type { DroppableDashboardAreaProps } from "./dnd/DroppableDashboardArea.js";
+// Card ordering is pure and mobile renders the same dashboards, so it lives in
+// client-core; re-exported here because web and desktop import it from `ui`.
 export {
   dashboardCardId,
   parseDashboardCardId,
   orderDashboardCards,
   moveDashboardCard,
   cardOrderIndex,
-} from "./dnd/card-order.js";
+} from "@infrawrench/client-core";
 export type {
   DashboardCardKind,
   DashboardCardRef,
   OrderableDashboardCard,
-} from "./dnd/card-order.js";
+} from "@infrawrench/client-core";
 export { SortableDashboardCard } from "./dnd/SortableDashboardCard.js";
 export type { SortableDashboardCardProps } from "./dnd/SortableDashboardCard.js";
 export { SortableContext, rectSortingStrategy, arrayMove } from "@dnd-kit/sortable";

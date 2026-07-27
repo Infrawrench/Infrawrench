@@ -1,15 +1,22 @@
 /**
- * Pure data-shaping helpers for cost charts: pivot grouped series into
- * recharts rows, align previous-period comparisons onto the current axis,
- * bin daily forecast points, and format money. No React, no fetching —
- * unit-test target.
+ * Recharts-shaped data helpers for cost charts: pivot grouped series into
+ * rows, align previous-period comparisons onto the current axis, and splice
+ * forecast rows onto the end. No React, no fetching — unit-test target.
+ *
+ * The binning and formatting helpers these build on are platform-neutral and
+ * live in `@infrawrench/client-core` (mobile draws the same charts with SVG);
+ * they are re-exported here so recharts callers still import one module.
  */
-import type {
-  CostBinningId,
-  CostQueryResponse,
-  CostQuerySeries,
-  CostSeriesPoint,
-} from "./config.js";
+import { binForecast, totalPerBucket } from "@infrawrench/client-core";
+import type { CostBinningId, CostQueryResponse, CostQuerySeries } from "./config.js";
+
+export {
+  binForecast,
+  totalPerBucket,
+  formatMoney,
+  formatBucketLabel,
+  formatBudgetMonth,
+} from "@infrawrench/client-core";
 
 export interface ChartSeriesDef {
   /** recharts dataKey — group key made collision-safe. */
@@ -60,17 +67,6 @@ export function pivotSeries(series: CostQuerySeries[]): PivotedChart {
   return { rows, series: defs };
 }
 
-/** Sum every series in a response bucket-wise into one total-per-bucket list. */
-export function totalPerBucket(series: CostQuerySeries[]): CostSeriesPoint[] {
-  const totals = new Map<string, number>();
-  for (const s of series) {
-    for (const p of s.points) totals.set(p.bucket, (totals.get(p.bucket) ?? 0) + p.amount);
-  }
-  return [...totals.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([bucket, amount]) => ({ bucket, amount }));
-}
-
 /**
  * Overlay the previous period's bucket totals onto the current rows by
  * position: previous bucket #n lands on current bucket #n, rendered as one
@@ -84,36 +80,6 @@ export function alignComparison(
   rows.forEach((row, i) => {
     row[COMPARISON_KEY] = prev[i]?.amount ?? null;
   });
-}
-
-/** Bucket daily forecast points to match the chart binning. */
-export function binForecast(
-  forecast: CostSeriesPoint[],
-  binning: CostBinningId,
-  lastActualCumulative?: number,
-): CostSeriesPoint[] {
-  if (binning === "daily") return forecast;
-  if (binning === "cumulative") {
-    let running = lastActualCumulative ?? 0;
-    return forecast.map((p) => {
-      running += p.amount;
-      return { bucket: p.bucket, amount: running };
-    });
-  }
-  const bucketOf = (day: string): string => {
-    if (binning === "monthly") return `${day.slice(0, 7)}-01`;
-    // Weekly, Monday-start — matches toStartOfWeek(day, 1) server-side.
-    const d = new Date(`${day}T00:00:00.000Z`);
-    const dow = (d.getUTCDay() + 6) % 7;
-    d.setUTCDate(d.getUTCDate() - dow);
-    return d.toISOString().slice(0, 10);
-  };
-  const map = new Map<string, number>();
-  for (const p of forecast)
-    map.set(bucketOf(p.bucket), (map.get(bucketOf(p.bucket)) ?? 0) + p.amount);
-  return [...map.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([bucket, amount]) => ({ bucket, amount }));
 }
 
 /**
@@ -148,34 +114,4 @@ export function spliceForecast(
       pivot.rows.push({ bucket: p.bucket, [FORECAST_KEY]: p.amount });
     }
   }
-}
-
-const formatterCache = new Map<string, Intl.NumberFormat>();
-
-export function formatMoney(amount: number, currency: string): string {
-  const key = `${currency}:${Math.abs(amount) < 10 ? 2 : 0}`;
-  let fmt = formatterCache.get(key);
-  if (!fmt) {
-    try {
-      fmt = new Intl.NumberFormat(undefined, {
-        style: "currency",
-        currency: currency || "USD",
-        maximumFractionDigits: Math.abs(amount) < 10 ? 2 : 0,
-      });
-    } catch {
-      fmt = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
-    }
-    formatterCache.set(key, fmt);
-  }
-  return fmt.format(amount);
-}
-
-/** Short bucket label for axes: "Jul 5", "Jul 2026" for monthly bins. */
-export function formatBucketLabel(bucket: string, binning: CostBinningId): string {
-  const d = new Date(`${bucket}T00:00:00.000Z`);
-  if (Number.isNaN(d.getTime())) return bucket;
-  if (binning === "monthly") {
-    return d.toLocaleDateString(undefined, { month: "short", year: "numeric", timeZone: "UTC" });
-  }
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
 }

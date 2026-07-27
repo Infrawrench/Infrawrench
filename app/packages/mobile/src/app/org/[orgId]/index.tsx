@@ -1,19 +1,15 @@
-import { Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
-import type { CostAccountStatus } from "@infrawrench/client-core";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { BudgetWidgetConfig } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
-import { CostCollectionNotice } from "@/components/CostCollectionNotice";
 import {
-  Card,
-  EmptyView,
-  ErrorView,
-  LoadingView,
-  Row,
-  Screen,
-  SectionTitle,
-} from "@/components/ui";
-import { colors } from "@/lib/theme";
+  DashboardBody,
+  invalidateDashboardQueries,
+  type DashboardData,
+} from "@/features/dashboard/DashboardBody";
+import { BudgetCard } from "@/features/dashboard/BudgetCard";
+import { useBudgets } from "@/features/dashboard/useBudgets";
+import { Card, ErrorView, LoadingView, Row, Screen, SectionTitle } from "@/components/ui";
 
 interface DashboardSummary {
   id: string;
@@ -21,128 +17,87 @@ interface DashboardSummary {
   isDefault: boolean;
 }
 
-interface Budget {
-  id: string;
-  name: string;
-  amountCents: number;
-  currency: string;
-  status?: { month: string; actualCents: number; forecastCents: number | null };
-}
-
-function formatCents(cents: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      maximumFractionDigits: 0,
-    }).format(cents / 100);
-  } catch {
-    return `${(cents / 100).toFixed(0)} ${currency}`;
-  }
-}
-
+/**
+ * The home tab is the org's default dashboard, the same as the web app's home
+ * route — pinned resources, workflow tiles, cost graphs, and budgets in one
+ * ordered list. A budget is a card on the dashboard it belongs to, not a
+ * separate list bolted to the top of the screen.
+ *
+ * Below that: the budgets this dashboard doesn't already show (a budget push
+ * opens this screen, so none of them may be unreachable from it), then the
+ * org's other dashboards.
+ */
 export default function OrgHome() {
   const router = useRouter();
   const { api, orgId } = useOrgApi();
+  const queryClient = useQueryClient();
 
+  const home = useQuery({
+    queryKey: ["dashboard-default", orgId],
+    queryFn: () => api.org<DashboardData>(orgId, "/dashboards/default/full"),
+  });
   const dashboards = useQuery({
     queryKey: ["dashboards", orgId],
     queryFn: () => api.org<DashboardSummary[]>(orgId, "/dashboards"),
   });
-  const budgets = useQuery({
-    queryKey: ["budgets", orgId],
-    queryFn: () => api.org<Budget[]>(orgId, "/budgets"),
-  });
-  // Budgets read from the same collected spend, so a failing account makes
-  // them silently understate — surface the reason next to them.
-  const costStatus = useQuery({
-    queryKey: ["cost-status", orgId],
-    queryFn: async () =>
-      (await api.org<{ accounts: CostAccountStatus[] }>(orgId, "/costs/status"))?.accounts ?? [],
-  });
+  // A budget alert's push opens this screen, so a budget whose widget lives on
+  // another dashboard (or on none, after its widget was removed) still has to
+  // be reachable here.
+  const budgets = useBudgets();
 
-  if (dashboards.isLoading) return <LoadingView />;
-  if (dashboards.isError) {
+  if (home.isLoading) return <LoadingView />;
+  if (home.isError) {
     return (
       <ErrorView
-        message={dashboards.error instanceof Error ? dashboards.error.message : "Failed to load"}
-        onRetry={() => void dashboards.refetch()}
+        message={home.error instanceof Error ? home.error.message : "Failed to load"}
+        onRetry={() => void home.refetch()}
       />
     );
   }
 
-  const dashboardList = dashboards.data ?? [];
-  const budgetList = budgets.data ?? [];
+  const others = (dashboards.data ?? []).filter((d) => d.id !== home.data?.dashboard.id);
+
+  const shownBudgetIds = new Set(
+    (home.data?.widgets ?? [])
+      .filter((w) => w.kind === "budget")
+      .map((w) => (w.config as BudgetWidgetConfig).budgetId),
+  );
+  const elsewhere = [...(budgets.data?.values() ?? [])].filter((b) => !shownBudgetIds.has(b.id));
 
   return (
     <Screen
       onRefresh={() => {
+        void home.refetch();
         void dashboards.refetch();
-        void budgets.refetch();
-        void costStatus.refetch();
+        invalidateDashboardQueries(queryClient);
       }}
-      refreshing={dashboards.isRefetching}
+      refreshing={home.isRefetching}
     >
-      <SectionTitle>Dashboards</SectionTitle>
-      <Card list>
-        {dashboardList.length === 0 ? (
-          <EmptyView message="No dashboards yet. Create one on the web or desktop app." />
-        ) : (
-          dashboardList.map((d) => (
-            <Row
-              key={d.id}
-              title={d.name}
-              subtitle={d.isDefault ? "Default" : undefined}
-              onPress={() => router.push(`/org/${orgId}/dashboard/${d.id}`)}
-            />
-          ))
-        )}
-      </Card>
+      {home.data && <DashboardBody data={home.data} />}
 
-      <SectionTitle>Budgets</SectionTitle>
-      <CostCollectionNotice statuses={costStatus.data ?? []} />
-      <Card>
-        {budgetList.length === 0 ? (
-          <Text style={{ color: colors.textMuted, fontSize: 13 }}>
-            No budgets configured. Budgets alert by push when a threshold is crossed.
-          </Text>
-        ) : (
-          budgetList.map((b) => {
-            const actual = b.status?.actualCents ?? 0;
-            const pct = b.amountCents > 0 ? Math.round((actual / b.amountCents) * 100) : 0;
-            return (
-              <View key={b.id} style={{ paddingVertical: 8, gap: 4 }}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: "500" }}>
-                    {b.name}
-                  </Text>
-                  <Text
-                    style={{
-                      color: pct >= 100 ? colors.danger : colors.textSecondary,
-                      fontSize: 13,
-                    }}
-                  >
-                    {formatCents(actual, b.currency)} / {formatCents(b.amountCents, b.currency)}
-                  </Text>
-                </View>
-                <View
-                  style={{ height: 6, backgroundColor: colors.surfaceOverlay, borderRadius: 3 }}
-                >
-                  <View
-                    style={{
-                      height: 6,
-                      width: `${Math.min(100, pct)}%`,
-                      backgroundColor:
-                        pct >= 100 ? colors.danger : pct >= 80 ? colors.warning : colors.accent,
-                      borderRadius: 3,
-                    }}
-                  />
-                </View>
-              </View>
-            );
-          })
-        )}
-      </Card>
+      {elsewhere.length > 0 && (
+        <>
+          <SectionTitle>Other budgets</SectionTitle>
+          {elsewhere.map((b) => (
+            <BudgetCard key={b.id} budget={b} />
+          ))}
+        </>
+      )}
+
+      {others.length > 0 && (
+        <>
+          <SectionTitle>Other dashboards</SectionTitle>
+          <Card list>
+            {others.map((d) => (
+              <Row
+                key={d.id}
+                title={d.name}
+                onPress={() => router.push(`/org/${orgId}/dashboard/${d.id}`)}
+              />
+            ))}
+          </Card>
+        </>
+      )}
     </Screen>
   );
 }

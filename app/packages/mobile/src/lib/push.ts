@@ -129,7 +129,8 @@ export { listPushDevices };
  * Map a notification payload to an expo-router path. Sync incidents land on
  * the failing account; workflow pages land on the workflow that raised them
  * (its run list is the first thing you want); budget breaches land on the org
- * home (budgets live on the home surface); tests land on the org home.
+ * home, which renders the default dashboard's budget cards and lists any
+ * budget that dashboard doesn't cover; tests land on the org home.
  */
 export function pushDataToPath(data: PushNotificationData): string {
   switch (data.type) {
