@@ -1,19 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import type { ServerFrame } from "@infrawrench/client-core";
+import { CloudApiError } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
-import { WsSession } from "@/lib/ws/WsSession";
 import { Button, Card, SectionTitle } from "@/components/ui";
 import { KeyboardAvoider } from "@/components/KeyboardAvoider";
 import { colors, radii, spacing } from "@/lib/theme";
 
 /**
- * SQL console over the WS gateway: sends `sql:query` frames and renders the
- * `sql:result` / `sql:error` responses (see app/packages/web/server.ts and
- * src/services/sql-proxy.ts — results are { rows, durationMs }).
+ * SQL console over `POST /sql/query`, the same endpoint web and desktop use.
  *
- * The socket is dialed lazily per query and reused while it stays open; unlike
- * a pty, a SQL session has no state to lose, so reconnecting is safe.
+ * It has to be this route rather than the WS gateway's `sql:query` frame: the
+ * frame carries no resource, so the proxy can only reach plugins that expose
+ * `executeQuery` — and it passes the account id where a resource id belongs.
+ * The HTTP route also handles per-resource SQL drivers (Turso, D1, ClickHouse
+ * services) and account-level ones (Postgres, MySQL, SQL Server), which is
+ * most of what has a SQL editor at all. Hence `resourceId`/`resourceTypeId`.
  */
 
 const MAX_RENDERED_ROWS = 200;
@@ -23,36 +24,43 @@ interface SqlResult {
   durationMs?: number;
 }
 
+/**
+ * A failed query is usually the database talking — a syntax error, a missing
+ * table. Dig the server's `{ error }` out of the response body so the console
+ * shows that instead of "Cloud request failed: 500 https://…".
+ */
+function queryErrorMessage(e: unknown): string {
+  if (e instanceof CloudApiError) {
+    try {
+      const parsed = JSON.parse(e.body) as { error?: unknown };
+      if (typeof parsed.error === "string" && parsed.error) return parsed.error;
+    } catch {
+      /* not JSON — fall through to the raw message */
+    }
+  }
+  return e instanceof Error ? e.message : "Query failed";
+}
+
 function formatCell(value: unknown): string {
   if (value === null || value === undefined) return "NULL";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }
 
-export function SqlConsole({ accountId }: { accountId: string }) {
+export function SqlConsole({
+  accountId,
+  resourceId,
+  resourceTypeId,
+}: {
+  accountId: string;
+  resourceId?: string | undefined;
+  resourceTypeId?: string | undefined;
+}) {
   const { api, orgId } = useOrgApi();
   const [sql, setSql] = useState("");
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<SqlResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const sessionRef = useRef<WsSession | null>(null);
-
-  useEffect(() => {
-    return () => {
-      sessionRef.current?.close();
-      sessionRef.current = null;
-    };
-  }, []);
-
-  const ensureSession = useCallback(async (): Promise<WsSession> => {
-    const existing = sessionRef.current;
-    if (existing?.isOpen) return existing;
-    existing?.close();
-    const session = new WsSession({ api, orgId });
-    sessionRef.current = session;
-    await session.connect();
-    return session;
-  }, [api, orgId]);
 
   const runQuery = useCallback(async () => {
     const trimmed = sql.trim();
@@ -60,53 +68,29 @@ export function SqlConsole({ accountId }: { accountId: string }) {
     setRunning(true);
     setError(null);
     try {
-      const session = await ensureSession();
-      const outcome = await new Promise<ServerFrame>((resolve, reject) => {
-        const offFrame = session.onFrame((frame) => {
-          if (frame.type === "sql:result" || frame.type === "sql:error") {
-            cleanup();
-            resolve(frame);
-          }
-        });
-        const offClose = session.onClose(() => {
-          cleanup();
-          reject(new Error("Connection closed before the query finished"));
-        });
-        // A gateway that never answers would leave the console stuck on
-        // "Running…" forever. Generous — legitimate queries can be slow.
-        const timeout = setTimeout(() => {
-          cleanup();
-          reject(new Error("Query timed out after 120 seconds"));
-        }, 120_000);
-        const cleanup = () => {
-          clearTimeout(timeout);
-          offFrame();
-          offClose();
-        };
-        session.send({ type: "sql:query", accountId, sql: trimmed });
+      const outcome = await api.org<{ rows?: unknown; durationMs?: unknown }>(orgId, "/sql/query", {
+        method: "POST",
+        body: JSON.stringify({
+          accountId,
+          ...(resourceId ? { resourceId } : {}),
+          ...(resourceTypeId ? { resourceTypeId } : {}),
+          sql: trimmed,
+        }),
       });
-
-      if (outcome.type === "sql:error") {
-        const message =
-          "error" in outcome && typeof outcome.error === "string" ? outcome.error : "Query failed";
-        setError(message);
-        setResult(null);
-      } else {
-        const rawRows = (outcome as { rows?: unknown }).rows;
-        const rows = Array.isArray(rawRows) ? (rawRows as Array<Record<string, unknown>>) : [];
-        const durationMs = (outcome as { durationMs?: unknown }).durationMs;
-        setResult({
-          rows,
-          ...(typeof durationMs === "number" ? { durationMs } : {}),
-        });
-      }
+      const rows = Array.isArray(outcome?.rows)
+        ? (outcome.rows as Array<Record<string, unknown>>)
+        : [];
+      setResult({
+        rows,
+        ...(typeof outcome?.durationMs === "number" ? { durationMs: outcome.durationMs } : {}),
+      });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Query failed");
+      setError(queryErrorMessage(e));
       setResult(null);
     } finally {
       setRunning(false);
     }
-  }, [sql, running, ensureSession, accountId]);
+  }, [sql, running, api, orgId, accountId, resourceId, resourceTypeId]);
 
   const rows = result?.rows ?? [];
   const firstRow = rows[0];

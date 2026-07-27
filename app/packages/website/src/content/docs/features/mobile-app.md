@@ -29,6 +29,12 @@ You can switch organizations at any time from the org switcher; everything you s
 - **SFTP files** — browse, download (to the share sheet), and upload files on SSH-capable hosts, proxied through the cloud. Object-storage browsers (GCS, S3, R2, Azure Blob) remain on web and desktop.
 - **[AI chat](./ai-chat.md)** — the full org chat with streamed markdown responses, the per-conversation model picker, the spend meter, and approve/reject buttons for pending actions. Approving a risky action from the couch works the same as from the desk.
 - **SSH terminal** — a real terminal on your phone; see below.
+- **[SQL editor](./sql-editor.md)** — run a query against any resource with a SQL surface and page through the rows. Autocomplete stays on web and desktop; the queries themselves run the same way.
+- **[KV console](./kv-console.md) and document browser** — a Redis, Valkey, Memcached or Kafka console with per-driver command hints, and a MongoDB document browser with collections, a JSON filter, paging, and insert/edit/delete. Tap an echoed command to put it back in the input — there are no arrow keys to recall history with.
+- **Key-value namespaces** — for provider KV stores (Cloudflare Workers KV and friends), list keys with a prefix filter, reveal a value, write it back, or delete it.
+- **Container actions** — start, stop, and restart a Docker container from its resource page.
+- **Integrations** — the peer panes a resource picks up from its plugin integrations; see below.
+- **Logs** — the same controls as the web Logs tab: container picker, tail length, previous-instance, follow, and copy.
 - **Workflows & agents** — read-only views of your [workflows](./workflows.md) (definitions and run history) and [agent sessions](./agents.md).
 - **Settings** — team members, [API keys](../team-and-billing/api-keys.md) (view and revoke), the [audit log](../team-and-billing/audit-log.md), [SSH keys](../team-and-billing/ssh-keys.md), billing (read-only), your [push notification](./mobile-push-notifications.md) preferences, devices, and test push, and your [account settings](./account-settings.md) — name, password reset, two-factor enrolment, and active sessions.
 
@@ -38,7 +44,19 @@ You can switch organizations at any time from the org switcher; everything you s
 
 ## The SSH terminal
 
-Tap **Connect via SSH** on any SSH-capable resource and the app opens a full terminal — the same xterm.js terminal the web app uses, speaking the same WebSocket proxy protocol against the cloud, with your org's [SSH keys](../team-and-billing/ssh-keys.md). Host key verification, jumpbox routing, and the [audit log](../team-and-billing/audit-log.md) all behave exactly as they do in the [web SSH terminal](./ssh-terminal.md), because it is the same server-side session underneath.
+Tap **SSH terminal** on any SSH-capable resource and the app opens a full terminal — the same xterm.js terminal the web app uses, speaking the same WebSocket proxy protocol against the cloud, with your org's [SSH keys](../team-and-billing/ssh-keys.md). Host key verification, jumpbox routing, and the [audit log](../team-and-billing/audit-log.md) all behave exactly as they do in the [web SSH terminal](./ssh-terminal.md), because it is the same server-side session underneath.
+
+Virtual machines — DigitalOcean droplets, EC2 instances, Hetzner servers and the like — authenticate with one of your org's [SSH keys](../team-and-billing/ssh-keys.md) rather than the account's own credentials, so the app shows a quick-connect step first: it fills in the host and the resource type's default username, you pick the key, and **Connect** opens the pty. This is the same choice the web app's quick-connect panel offers. Accounts whose plugin carries its own SSH credentials (the SSH plugin, Fly) skip the step and connect straight away. The **Files** browser asks the same question for the same resources.
+
+<insert [Mobile SSH quick-connect step for a droplet: host line, username field pre-filled with root, and the org SSH key list with one key selected] here>
+
+## Integrations and Kubernetes shells
+
+When a resource has peer integrations — a managed Kubernetes cluster carrying its workloads, a managed database carrying its tables — they appear under **Integrations** on the resource page. Opening one builds the pane on demand, the same call the web app makes when you click a peer tab, and lists the same grouped resources. Tapping one opens its own resource page; if the integration needs setting up first (a managed database with no connection user yet, say), the pane shows the provider's guidance and its fix-it button, which runs the command against the parent resource exactly as on web.
+
+Pods listed by a Kubernetes integration have a **Shell** button that opens a `kubectl exec` terminal, and a pod's own page has the same button when you reached it through its cluster. It is the same server-side session and the same terminal as the [SSH terminal](#the-ssh-terminal).
+
+<insert [Mobile Kubernetes integration pane for a DOKS cluster: grouped workloads with a pod row showing its Shell button] here>
 
 ## What stays on web and desktop
 
@@ -46,9 +64,9 @@ The mobile app is deliberately a read-and-respond surface. Some things are demot
 
 - **Billing is read-only** — you can see your plan and seats, but plan changes and payment details are managed on the web (App Store rules).
 - **Code editors are absent** — manifest editing, the [bucket policy editor](./bucket-policy-editor.md), and [workflow](./workflows.md) editing all use Monaco, which stays on web and desktop.
-- **[Secret reroll](../core-concepts/secret-rerolls.md) wizard** and NoSQL command prompts are web/desktop-only.
+- **[Secret reroll](../core-concepts/secret-rerolls.md) wizard** is web/desktop-only. Plugin command prompts do work — the form renders natively, though the richer pickers (region, size, machine image) fall back to a plain text field.
 - **Dashboards are render-only** — every card renders live, but adding, arranging, and configuring tiles (including cost graphs and budgets) happens on web or desktop.
-- **k9s and Kubernetes port-forward** are not yet supported on mobile.
+- **k9s and Kubernetes port-forward** are not yet supported on mobile. Pod shells are — see above.
 - **[SQL editor](./sql-editor.md) autocomplete** is absent (queries still run).
 
 If you try to do one of these, the app points you at the web app rather than offering a worse version of the same flow.

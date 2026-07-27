@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Alert, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { DetailViewSchema, SchemaNode } from "@infrawrench/plugin-base";
+import type { DetailViewSchema, HostAction, SchemaNode } from "@infrawrench/plugin-base";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import {
   Button,
@@ -16,15 +16,24 @@ import {
 } from "@/components/ui";
 import { SchemaNodeView } from "@/schema/SchemaRenderer";
 import { ActionDispatchProvider, type ActionHandlers } from "@/schema/ActionDispatchContext";
+import { PromptCommandSheet } from "@/components/PromptCommandSheet";
+import { DockerActionsCard } from "@/features/tools/DockerActionsCard";
 import { colors } from "@/lib/theme";
 
 /**
  * The mobile counterpart of the web's ResourceDetailClient: fetches the
  * server-rendered DetailViewSchema and wires schema actions to the org API.
- * Interactive capabilities (SSH terminal, SQL, KV, logs) open their own
- * screens; editor-style capabilities (manifest, bucket policy) and the
- * reroll wizard stay on web/desktop for v1.
+ * Interactive capabilities (SSH, SQL, logs, KV, Mongo, peer panes) open their
+ * own screens; editor-style capabilities (manifest, bucket policy) and the
+ * reroll wizard stay on web/desktop.
+ *
+ * `accountId` and `parentResourceId` ride in the query string. Child and peer
+ * resources aren't always rows in our database, so the server can't always
+ * resolve their account from the id alone — and a peer resource's client can
+ * only be built from its parent.
  */
+
+type PromptAction = Extract<HostAction, { type: "prompt-nosql-command" }>;
 
 interface DetailResponse {
   detailSchema: DetailViewSchema & { sections?: SchemaNode[] };
@@ -33,6 +42,7 @@ interface DetailResponse {
     pluginId: string;
     resourceTypeId: string;
     displayName: string;
+    accountId: string;
   }>;
   accountId: string;
   resourceDisplayName: string;
@@ -43,8 +53,18 @@ interface DetailResponse {
   hasKvBrowser: boolean;
   hasSftpBrowser: boolean;
   hasDockerActions: boolean;
+  kvDriverName?: string | null;
+  isMongoDb?: boolean;
+  databaseName?: string | null;
+  containerId?: string | null;
   sshHost?: string | null;
   defaultSshUsername?: string | null;
+  resourceFields?: Record<string, unknown>;
+  peerIntegrationStubs?: Array<{
+    tabLabel: string;
+    pluginLogoSvg: string;
+    peerPluginId: string;
+  }>;
 }
 
 export default function ResourceDetailScreen() {
@@ -53,24 +73,37 @@ export default function ResourceDetailScreen() {
     pluginId: string;
     resourceTypeId: string;
     resourceId: string;
+    accountId?: string;
+    parentResourceId?: string;
   }>();
   const { api, orgId } = useOrgApi();
   const queryClient = useQueryClient();
-  const [logsText, setLogsText] = useState<string | null>(null);
-  const [logsLoading, setLogsLoading] = useState(false);
+  const [prompt, setPrompt] = useState<PromptAction | null>(null);
 
   const pluginId = params.pluginId;
   const resourceTypeId = params.resourceTypeId;
   const resourceId = params.resourceId;
-  const queryKey = ["resource-detail", orgId, pluginId, resourceTypeId, resourceId];
+  const parentResourceId = params.parentResourceId;
+  const queryKey = [
+    "resource-detail",
+    orgId,
+    pluginId,
+    resourceTypeId,
+    resourceId,
+    parentResourceId ?? null,
+  ];
 
   const detail = useQuery({
     queryKey,
-    queryFn: () =>
-      api.org<DetailResponse>(
+    queryFn: () => {
+      const search = new URLSearchParams({ resourceId, includePeerPanes: "false" });
+      if (params.accountId) search.set("accountId", params.accountId);
+      if (parentResourceId) search.set("parentResourceId", parentResourceId);
+      return api.org<DetailResponse>(
         orgId,
-        `/resources/${encodeURIComponent(pluginId)}/${encodeURIComponent(resourceTypeId)}/detail?resourceId=${encodeURIComponent(resourceId)}&includePeerPanes=false`,
-      ),
+        `/resources/${encodeURIComponent(pluginId)}/${encodeURIComponent(resourceTypeId)}/detail?${search.toString()}`,
+      );
+    },
   });
 
   const data = detail.data;
@@ -92,6 +125,7 @@ export default function ResourceDetailScreen() {
             resourceId,
             accountId: data.accountId,
             actionId,
+            ...(parentResourceId ? { parentResourceId } : {}),
           }),
         });
         await queryClient.invalidateQueries({ queryKey });
@@ -103,12 +137,10 @@ export default function ResourceDetailScreen() {
       rerollParentOutput: async () => {
         Alert.alert("Not available on mobile", "Reroll secrets from the web or desktop app.");
       },
-      promptNoSqlCommand: () => {
-        Alert.alert("Not available on mobile", "Run NoSQL commands from the web or desktop app.");
-      },
+      promptNoSqlCommand: (action) => setPrompt(action),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data, orgId, pluginId, resourceTypeId, resourceId, router, queryClient, api],
+    [data, orgId, pluginId, resourceTypeId, resourceId, parentResourceId, router, queryClient, api],
   );
 
   if (detail.isLoading) return <LoadingView />;
@@ -124,27 +156,60 @@ export default function ResourceDetailScreen() {
   const schemaSections: SchemaNode[] =
     (data.detailSchema as { sections?: SchemaNode[] }).sections ?? [];
 
-  async function loadLogs() {
-    setLogsLoading(true);
-    try {
-      const res = await api.org<{ text?: string; lines?: string[] }>(
-        orgId,
-        `/resources/${encodeURIComponent(pluginId)}/${encodeURIComponent(resourceTypeId)}/logs`,
-        {
-          method: "POST",
-          body: JSON.stringify({ accountId: data!.accountId, resourceId }),
-        },
-      );
-      setLogsText(res?.text ?? res?.lines?.join("\n") ?? "No logs returned.");
-    } catch (e) {
-      setLogsText(e instanceof Error ? e.message : "Failed to fetch logs");
-    } finally {
-      setLogsLoading(false);
-    }
-  }
+  /** Query string shared by every tool screen — identifies the resource. */
+  const toolParams = (extra: Record<string, string> = {}) => {
+    const search = new URLSearchParams({
+      accountId: data.accountId,
+      resourceId,
+      resourceTypeId,
+      pluginId,
+      ...extra,
+    });
+    if (parentResourceId) search.set("parentResourceId", parentResourceId);
+    return search.toString();
+  };
 
-  const terminalHref = (kind: "ssh" | "k8s-exec" | "sql") =>
-    `/org/${orgId}/terminal/${kind}--${encodeURIComponent(data.accountId)}--${encodeURIComponent(resourceId)}--${encodeURIComponent(pluginId)}`;
+  const toolHref = (tool: string, extra?: Record<string, string>) =>
+    `/org/${orgId}/tools/${tool}?${toolParams(extra)}`;
+
+  const terminalHref = (kind: "ssh" | "k8s-exec" | "sql") => {
+    const extra: Record<string, string> = {};
+    // SSH needs the endpoint so it can offer the quick-connect step; the SQL
+    // route needs the resource type to find a per-resource driver.
+    if (kind === "ssh" && data.sshHost) {
+      extra["sshHost"] = data.sshHost;
+      if (data.defaultSshUsername) extra["sshUsername"] = data.defaultSshUsername;
+    }
+    return `/org/${orgId}/terminal/${kind}?${toolParams(extra)}`;
+  };
+
+  const filesHref = () => {
+    const search = new URLSearchParams({ accountId: data.accountId });
+    if (data.sshHost) {
+      search.set("sshHost", data.sshHost);
+      if (data.defaultSshUsername) search.set("sshUsername", data.defaultSshUsername);
+    }
+    return `/org/${orgId}/files/${encodeURIComponent(data.accountId)}?${search.toString()}`;
+  };
+
+  const logs = data.detailSchema.logs;
+
+  // A pod's shell runs through its cluster, so exec is only offered when we
+  // arrived with the parent in hand — same condition web uses.
+  const canExec = pluginId === "kubernetes" && resourceTypeId === "k8s-pod" && !!parentResourceId;
+  const execHref = () => {
+    const fields = data.resourceFields ?? {};
+    const search = new URLSearchParams({
+      accountId: data.accountId,
+      resourceId: parentResourceId!,
+      peerPluginId: pluginId,
+      podName: data.resourceDisplayName,
+      namespace: String(fields["namespace"] ?? "default"),
+    });
+    const container = fields["containerName"];
+    if (typeof container === "string" && container) search.set("containerName", container);
+    return `/org/${orgId}/terminal/k8s-exec?${search.toString()}`;
+  };
 
   return (
     <ActionDispatchProvider value={handlers}>
@@ -164,6 +229,7 @@ export default function ResourceDetailScreen() {
           {data.hasSshTerminal && (
             <Button label="SSH terminal" onPress={() => router.push(terminalHref("ssh"))} />
           )}
+          {canExec && <Button label="Shell" onPress={() => router.push(execHref())} />}
           {data.hasSqlEditor && (
             <Button
               label="SQL"
@@ -172,36 +238,80 @@ export default function ResourceDetailScreen() {
             />
           )}
           {data.hasSftpBrowser && (
+            <Button label="Files" variant="secondary" onPress={() => router.push(filesHref())} />
+          )}
+          {data.hasKvConsole && !data.isMongoDb && (
             <Button
-              label="Files"
+              label={`${data.kvDriverName === "kafka" ? "Kafka" : "KV"} console`}
               variant="secondary"
               onPress={() =>
-                router.push(`/org/${orgId}/files/${encodeURIComponent(data.accountId)}`)
+                router.push(toolHref("kv-console", { driver: data.kvDriverName ?? "redis" }))
               }
             />
           )}
-          <Button
-            label={logsLoading ? "Loading logs…" : "Logs"}
-            variant="secondary"
-            disabled={logsLoading}
-            onPress={() => void loadLogs()}
-          />
+          {data.hasKvConsole && data.isMongoDb && (
+            <Button
+              label="Documents"
+              variant="secondary"
+              onPress={() =>
+                router.push(toolHref("mongo", { database: data.databaseName ?? "test" }))
+              }
+            />
+          )}
+          {data.hasKvBrowser && (
+            <Button
+              label="Keys"
+              variant="secondary"
+              onPress={() => router.push(toolHref("kv-browser"))}
+            />
+          )}
+          {logs && (
+            <Button
+              label="Logs"
+              variant="secondary"
+              onPress={() =>
+                router.push(
+                  toolHref("logs", {
+                    ...(logs.defaultTailLines ? { tailLines: String(logs.defaultTailLines) } : {}),
+                    ...(logs.supportsPrevious ? { supportsPrevious: "true" } : {}),
+                  }),
+                )
+              }
+            />
+          )}
         </View>
 
-        {logsText !== null && (
-          <Card>
-            <SectionTitle>Logs</SectionTitle>
-            <Text style={{ color: colors.textSecondary, fontFamily: "monospace", fontSize: 11 }}>
-              {logsText.slice(-8000)}
-            </Text>
-          </Card>
-        )}
+        {data.hasDockerActions && data.containerId ? (
+          <DockerActionsCard
+            accountId={data.accountId}
+            containerId={data.containerId}
+            onDone={() => void detail.refetch()}
+          />
+        ) : null}
 
         <Card>
           {schemaSections.map((node, i) => (
             <SchemaNodeView key={i} node={node} />
           ))}
         </Card>
+
+        {(data.peerIntegrationStubs ?? []).length > 0 && (
+          <Card>
+            <SectionTitle>Integrations</SectionTitle>
+            <RowGroup>
+              {(data.peerIntegrationStubs ?? []).map((stub) => (
+                <Row
+                  key={stub.peerPluginId}
+                  title={stub.tabLabel}
+                  subtitle={stub.peerPluginId}
+                  onPress={() =>
+                    router.push(toolHref("peer-pane", { peerPluginId: stub.peerPluginId }))
+                  }
+                />
+              ))}
+            </RowGroup>
+          </Card>
+        )}
 
         {data.childResources.length > 0 && (
           <Card>
@@ -214,7 +324,7 @@ export default function ResourceDetailScreen() {
                   subtitle={child.resourceTypeId}
                   onPress={() =>
                     router.push(
-                      `/org/${orgId}/resources/${encodeURIComponent(child.pluginId)}/${encodeURIComponent(child.resourceTypeId)}/${encodeURIComponent(child.id)}`,
+                      `/org/${orgId}/resources/${encodeURIComponent(child.pluginId)}/${encodeURIComponent(child.resourceTypeId)}/${encodeURIComponent(child.id)}?accountId=${encodeURIComponent(child.accountId || data.accountId)}&parentResourceId=${encodeURIComponent(resourceId)}`,
                     )
                   }
                 />
@@ -223,6 +333,35 @@ export default function ResourceDetailScreen() {
           </Card>
         )}
       </Screen>
+
+      {prompt && (
+        <PromptCommandSheet
+          visible
+          title={prompt.title ?? prompt.command}
+          description={prompt.description}
+          descriptionVariant={prompt.descriptionVariant ?? "info"}
+          blocked={prompt.blocked === true}
+          fields={prompt.fields}
+          submitLabel={prompt.submitLabel ?? "Submit"}
+          onCancel={() => setPrompt(null)}
+          onSubmit={async (values) => {
+            await api.org(orgId, "/resources/nosql-command", {
+              method: "POST",
+              body: JSON.stringify({
+                pluginId,
+                accountId: data.accountId,
+                resourceTypeId,
+                resourceId,
+                command: prompt.command,
+                args: [JSON.stringify(values)],
+                ...(parentResourceId ? { parentResourceId } : {}),
+              }),
+            });
+            setPrompt(null);
+            await detail.refetch();
+          }}
+        />
+      )}
     </ActionDispatchProvider>
   );
 }

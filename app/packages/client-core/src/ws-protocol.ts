@@ -145,15 +145,18 @@ export interface ServerDataFrame {
  * /ssh-host-keys/trust on accept, and reconnect on a fresh socket + token.
  */
 export interface ServerStatusFrame {
+  // Transcribed from the proxies themselves (ssh-proxy, k8s-exec-proxy,
+  // k9s-proxy, k8s-pf-proxy) — the pty protocols say "connected"/"closed"
+  // while port-forward says "ready"/"close", and a client that listens for
+  // the wrong spelling simply never hears the session open or end.
   type:
-    | "ssh:ready"
-    | "ssh:close"
+    | "ssh:connected"
+    | "ssh:closed"
     | "ssh:error"
-    | "k8s:exec:ready"
-    | "k8s:exec:close"
+    | "k8s:exec:connected"
+    | "k8s:exec:closed"
     | "k8s:exec:error"
-    | "k9s:ready"
-    | "k9s:close"
+    | "k9s:closed"
     | "k9s:error"
     | "k8s:pf:ready"
     | "k8s:pf:close"

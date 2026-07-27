@@ -35,7 +35,7 @@ Infrawrench ships as a desktop app, a hosted web app, and a [mobile app](../feat
 
 ## The mobile app in brief
 
-The [mobile app](../features/mobile-app.md) signs into a cloud org and covers: dashboards and budgets (render-only), the account/resource browser with plugin-rendered detail pages (actions, logs, metrics), global search, AI chat with action approvals, the SSH terminal, read-only workflows and agent sessions, and org settings. Billing is read-only, code editors (manifests, bucket policies, workflows) stay on web/desktop, and dashboards cannot be edited from the phone — see the [mobile app page](../features/mobile-app.md) for the full list.
+The [mobile app](../features/mobile-app.md) signs into a cloud org and covers: dashboards and budgets (render-only), the account/resource browser with plugin-rendered detail pages (actions, logs, metrics), global search, AI chat with action approvals, the SSH terminal and Kubernetes pod shells, the SQL editor, the KV console and document browsers, container actions, peer-plugin integration panes, read-only workflows and agent sessions, and org settings. Billing is read-only, code editors (manifests, bucket policies, workflows) stay on web/desktop, and dashboards cannot be edited from the phone — see the [mobile app page](../features/mobile-app.md) for the full list.
 
 ## Feature-parity gaps to know about
 

@@ -1,4 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  formatMongoPreview,
+  formatMongoValue,
+  mongoCommands,
+  stripMongoId,
+  MONGO_PAGE_SIZE,
+  type MongoCollectionStats,
+} from "@infrawrench/client-core";
 import { formatErrorMessage } from "../utils.js";
 
 export interface MongoDocumentBrowserProps {
@@ -7,14 +15,9 @@ export interface MongoDocumentBrowserProps {
   onCommand: (command: string, args: (string | number)[]) => Promise<unknown>;
 }
 
-interface CollectionStats {
-  count: number;
-  size: number;
-  avgObjSize: number;
-  nindexes: number;
-}
+type CollectionStats = MongoCollectionStats;
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = MONGO_PAGE_SIZE;
 
 export function MongoDocumentBrowser({
   databaseName,
@@ -45,7 +48,8 @@ export function MongoDocumentBrowser({
   const refreshCollections = useCallback(async () => {
     setCollectionsLoading(true);
     try {
-      const cols = (await onCommand("listCollections", [databaseName])) as string[];
+      const list = mongoCommands.listCollections(databaseName);
+      const cols = (await onCommand(list.command, list.args)) as string[];
       setCollections(cols);
       if (cols.length > 0) {
         setActiveCollection((prev) => prev ?? cols[0] ?? null);
@@ -67,20 +71,19 @@ export function MongoDocumentBrowser({
     setLoading(true);
     setError(null);
     try {
+      const findCmd = mongoCommands.find(
+        databaseName,
+        activeCollection,
+        appliedFilter,
+        page * PAGE_SIZE,
+        PAGE_SIZE,
+      );
+      const countCmd = mongoCommands.countDocuments(databaseName, activeCollection, appliedFilter);
+      const statsCmd = mongoCommands.collectionStats(databaseName, activeCollection);
       const [docs, count, stats] = await Promise.all([
-        onCommand("find", [
-          databaseName,
-          activeCollection,
-          appliedFilter,
-          page * PAGE_SIZE,
-          PAGE_SIZE,
-        ]) as Promise<Record<string, unknown>[]>,
-        onCommand("countDocuments", [
-          databaseName,
-          activeCollection,
-          appliedFilter,
-        ]) as Promise<number>,
-        onCommand("collectionStats", [databaseName, activeCollection]) as Promise<CollectionStats>,
+        onCommand(findCmd.command, findCmd.args) as Promise<Record<string, unknown>[]>,
+        onCommand(countCmd.command, countCmd.args) as Promise<number>,
+        onCommand(statsCmd.command, statsCmd.args) as Promise<CollectionStats>,
       ]);
       setDocuments(docs);
       setTotalCount(count);
@@ -134,7 +137,8 @@ export function MongoDocumentBrowser({
     const name = newCollectionName.trim();
     if (!name) return;
     try {
-      await onCommand("createCollection", [databaseName, name]);
+      const cmd = mongoCommands.createCollection(databaseName, name);
+      await onCommand(cmd.command, cmd.args);
       setNewCollectionName("");
       setShowNewCollection(false);
       await refreshCollections();
@@ -149,7 +153,8 @@ export function MongoDocumentBrowser({
 
   async function handleDropCollection(name: string) {
     try {
-      await onCommand("dropCollection", [databaseName, name]);
+      const cmd = mongoCommands.dropCollection(databaseName, name);
+      await onCommand(cmd.command, cmd.args);
       setDroppingCollection(null);
       if (activeCollection === name) {
         setActiveCollection(null);
@@ -175,7 +180,8 @@ export function MongoDocumentBrowser({
       return;
     }
     try {
-      await onCommand("insertOne", [databaseName, activeCollection, JSON.stringify(doc)]);
+      const cmd = mongoCommands.insertOne(databaseName, activeCollection, JSON.stringify(doc));
+      await onCommand(cmd.command, cmd.args);
       setShowInsertDoc(false);
       setInsertDocText("{\n  \n}");
       void fetchDocuments();
@@ -189,7 +195,12 @@ export function MongoDocumentBrowser({
     const id = doc["_id"];
     if (id == null) return;
     try {
-      await onCommand("deleteOne", [databaseName, activeCollection, JSON.stringify({ _id: id })]);
+      const cmd = mongoCommands.deleteOne(
+        databaseName,
+        activeCollection,
+        JSON.stringify({ _id: id }),
+      );
+      await onCommand(cmd.command, cmd.args);
       void fetchDocuments();
     } catch (e) {
       setError(formatErrorMessage(e));
@@ -200,13 +211,13 @@ export function MongoDocumentBrowser({
     if (!activeCollection) return;
     const id = doc["_id"];
     if (id == null) return;
-    const { _id: _removed, ...replacement } = JSON.parse(newDocJson) as Record<string, unknown>;
-    await onCommand("replaceOne", [
+    const cmd = mongoCommands.replaceOne(
       databaseName,
       activeCollection,
       JSON.stringify({ _id: id }),
-      JSON.stringify(replacement),
-    ]);
+      stripMongoId(newDocJson),
+    );
+    await onCommand(cmd.command, cmd.args);
     void fetchDocuments();
   }
 
@@ -644,31 +655,5 @@ function DocumentRow({
   );
 }
 
-function formatValue(val: unknown): string {
-  if (val === null) return "null";
-  if (val === undefined) return "undefined";
-  if (typeof val === "object") {
-    const oid = (val as Record<string, unknown>)["$oid"];
-    if (typeof oid === "string") return oid;
-    return JSON.stringify(val);
-  }
-  return String(val);
-}
-
-function formatPreview(val: unknown): string {
-  if (val === null) return "null";
-  if (val === undefined) return "—";
-  if (typeof val === "string") {
-    return val.length > 40 ? `"${val.slice(0, 37)}..."` : `"${val}"`;
-  }
-  if (typeof val === "number" || typeof val === "boolean") return String(val);
-  if (Array.isArray(val)) return `[${val.length}]`;
-  if (typeof val === "object") {
-    const keys = Object.keys(val as object);
-    if (keys.length === 1 && keys[0] === "$oid") return formatValue(val);
-    if (keys.length === 1 && keys[0] === "$date")
-      return String((val as Record<string, unknown>)["$date"]);
-    return `{${keys.length}}`;
-  }
-  return String(val);
-}
+const formatValue = formatMongoValue;
+const formatPreview = formatMongoPreview;

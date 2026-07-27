@@ -275,6 +275,7 @@ export {
   evaluateShowWhen,
   buildDefaultFields,
   deriveSSHUsername,
+  pickQuickConnectKeyId,
   RESOURCES_CHANGED_EVENT,
   REFRESH_RESOURCE_EVENT,
   NAVIGATE_TO_RESOURCE_EVENT,

@@ -1,34 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
-import { deriveSSHUsername, formatErrorMessage, toast, SshKeyRadioGroup } from "@infrawrench/ui";
+import {
+  deriveSSHUsername,
+  formatErrorMessage,
+  pickQuickConnectKeyId,
+  toast,
+  SshKeyRadioGroup,
+} from "@infrawrench/ui";
 import { apiGet } from "@/lib/api";
 import type { SshKey } from "@/lib/api-types";
 import { useOrgId } from "@/lib/useOrgId";
-
-/**
- * Pick which SSH key should be selected after the key list loads.
- * Mirrors the desktop panel's semantics: a preferred agent key always wins,
- * otherwise a previous manual selection is preserved, then a key whose name
- * matches the username, then the first key.
- */
-export function pickQuickConnectKeyId(options: {
-  keys: Array<{ id: string; name: string }>;
-  previousId: string | null;
-  effectiveUsername: string;
-  preferredSshKeyId?: string | undefined;
-  preferredSshKeyName?: string | undefined;
-}): string | null {
-  const { keys, previousId, effectiveUsername, preferredSshKeyId, preferredSshKeyName } = options;
-  if (keys.length === 0) return previousId;
-  const preferredKey =
-    (preferredSshKeyId ? keys.find((k) => k.id === preferredSshKeyId) : undefined) ??
-    (preferredSshKeyName ? keys.find((k) => k.name === preferredSshKeyName) : undefined);
-  if (preferredKey) return preferredKey.id;
-  if (previousId) return previousId;
-  const matchByUsername = keys.find(
-    (k) => k.name.toLowerCase() === effectiveUsername.toLowerCase(),
-  );
-  return (matchByUsername ?? keys[0]!).id;
-}
 
 interface SshQuickConnectPanelProps {
   host: string;

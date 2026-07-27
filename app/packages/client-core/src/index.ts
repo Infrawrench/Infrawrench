@@ -127,6 +127,24 @@ export {
   type SectionResource,
   type SectionCategoryState,
 } from "./account-sections";
+export { deriveSSHUsername, pickQuickConnectKeyId } from "./ssh-quick-connect";
+export {
+  tokenize,
+  formatRedisResult,
+  parseKvCommand,
+  kvConsoleProfile,
+  type KvConsoleProfile,
+} from "./kv-console";
+export { evaluateShowWhen, buildDefaultFields, type ShowWhenRuleLike } from "./create-fields";
+export {
+  MONGO_PAGE_SIZE,
+  mongoCommands,
+  formatMongoValue,
+  formatMongoPreview,
+  stripMongoId,
+  type MongoCollectionStats,
+  type MongoCommand,
+} from "./mongo-browser";
 export * from "./api-types";
 export * from "./chat/types";
 export { createBearerChatClient } from "./chat/bearer-client";

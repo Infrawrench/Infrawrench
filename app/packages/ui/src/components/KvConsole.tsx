@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import { formatRedisResult, kvConsoleProfile, parseKvCommand } from "@infrawrench/client-core";
 import { formatErrorMessage } from "../utils.js";
-import { tokenize, formatRedisResult } from "./KvConsole.utils.js";
 
 interface ConsoleLine {
   kind: "input" | "output" | "error";
@@ -11,47 +11,6 @@ export interface KvConsoleProps {
   driverName: string;
   connected?: boolean;
   onCommand: (command: string, args: (string | number)[]) => Promise<unknown>;
-}
-
-interface ConsoleProfile {
-  /** Title shown in the console header, e.g. "Redis Console". */
-  label: string;
-  /** Example commands shown in the empty state. */
-  examples: string;
-  /** Greyed-out input placeholder when idle. */
-  placeholder: string;
-}
-
-// Per-driver console copy so the panel reflects the actual datastore instead of
-// always saying "Redis". The command set differs per driver (the Kafka driver
-// takes Admin ops, Mongo takes operation names), so the examples differ too.
-const CONSOLE_PROFILES: Record<string, ConsoleProfile> = {
-  redis: { label: "Redis", examples: "PING, KEYS *, GET mykey", placeholder: "PING" },
-  memcached: {
-    label: "Memcached",
-    examples: "STATS, get key, set key 0 0 3",
-    placeholder: "STATS",
-  },
-  mongodb: {
-    label: "MongoDB",
-    examples: "listDatabases, dbStats, serverVersion",
-    placeholder: "listDatabases",
-  },
-  kafka: {
-    label: "Kafka",
-    examples: "listTopics, describeCluster, describeTopic <name>",
-    placeholder: "listTopics",
-  },
-};
-
-function consoleProfile(driverName: string): ConsoleProfile {
-  return (
-    CONSOLE_PROFILES[driverName] ?? {
-      label: driverName ? driverName.charAt(0).toUpperCase() + driverName.slice(1) : "Console",
-      examples: "type a command and press Enter",
-      placeholder: "command",
-    }
-  );
 }
 
 export function KvConsole({ driverName, connected = true, onCommand }: KvConsoleProps) {
@@ -78,10 +37,8 @@ export function KvConsole({ driverName, connected = true, onCommand }: KvConsole
     setRunning(true);
 
     try {
-      const tokens = tokenize(trimmed);
-      const [cmd, ...args] = tokens;
-      const processedArgs = args.map((a) => (isNaN(Number(a)) ? a : Number(a)));
-      const result = await onCommand(cmd ?? "", processedArgs);
+      const { command, args } = parseKvCommand(trimmed);
+      const result = await onCommand(command, args);
       const formatted = formatRedisResult(result);
       setLines((prev) => [...prev, { kind: "output", text: formatted }]);
     } catch (e) {
@@ -115,7 +72,7 @@ export function KvConsole({ driverName, connected = true, onCommand }: KvConsole
     }
   }
 
-  const profile = consoleProfile(driverName);
+  const profile = kvConsoleProfile(driverName);
 
   return (
     <div

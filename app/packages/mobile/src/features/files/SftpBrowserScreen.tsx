@@ -6,12 +6,18 @@ import * as Sharing from "expo-sharing";
 import * as DocumentPicker from "expo-document-picker";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { Button, Card, EmptyView, ErrorView, LoadingView, Row, Screen } from "@/components/ui";
+import { SshQuickConnect } from "@/components/terminal/SshQuickConnect";
 import { colors } from "@/lib/theme";
 
 /**
  * SFTP file browser over the cloud HTTP endpoints (`/sftp/list` via
  * connection-features, `/v1/sftp/download|upload`). Downloads land in the
  * app cache and open the share sheet; uploads go through the document picker.
+ *
+ * Resources that expose an `sshEndpoint` rather than plugin-native SSH
+ * credentials (droplets, EC2, Hetzner servers …) go through the same
+ * quick-connect step as the terminal: every request carries the chosen org key
+ * plus host/username, since `resolveSshConfig` otherwise has nothing to dial.
  */
 
 interface SftpEntry {
@@ -28,17 +34,36 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function SftpBrowserScreen({ accountId }: { accountId: string }) {
+/** Managed-key parameters for an `sshEndpoint` resource, once the key is chosen. */
+interface DirectSsh {
+  sshKeyId: string;
+  sshHost: string;
+  sshUsername: string;
+}
+
+export function SftpBrowserScreen({
+  accountId,
+  sshHost,
+  defaultSshUsername,
+}: {
+  accountId: string;
+  sshHost?: string | undefined;
+  defaultSshUsername?: string | undefined;
+}) {
   const { api, orgId } = useOrgApi();
   const [path, setPath] = useState("/");
   const [busy, setBusy] = useState<string | null>(null);
+  const [directSsh, setDirectSsh] = useState<DirectSsh | null>(null);
+
+  const needsKey = !!sshHost && !directSsh;
 
   const listing = useQuery({
-    queryKey: ["sftp", orgId, accountId, path],
+    queryKey: ["sftp", orgId, accountId, path, directSsh?.sshKeyId ?? null],
+    enabled: !needsKey,
     queryFn: () =>
       api.org<SftpEntry[]>(orgId, "/sftp/list", {
         method: "POST",
-        body: JSON.stringify({ accountId, path }),
+        body: JSON.stringify({ accountId, path, ...(directSsh ?? {}) }),
       }),
   });
 
@@ -48,6 +73,7 @@ export function SftpBrowserScreen({ accountId }: { accountId: string }) {
       const params = new URLSearchParams({
         accountId,
         paths: JSON.stringify([entry.key]),
+        ...(directSsh ?? {}),
       });
       const res = await api.raw(
         `/api/org/${encodeURIComponent(orgId)}/v1/sftp/download?${params.toString()}`,
@@ -78,6 +104,11 @@ export function SftpBrowserScreen({ accountId }: { accountId: string }) {
       const form = new FormData();
       form.append("accountId", accountId);
       form.append("path", path.endsWith("/") ? `${path}${asset.name}` : `${path}/${asset.name}`);
+      if (directSsh) {
+        form.append("sshKeyId", directSsh.sshKeyId);
+        form.append("sshHost", directSsh.sshHost);
+        form.append("sshUsername", directSsh.sshUsername);
+      }
       form.append("file", {
         uri: asset.uri,
         name: asset.name,
@@ -94,6 +125,18 @@ export function SftpBrowserScreen({ accountId }: { accountId: string }) {
     } finally {
       setBusy(null);
     }
+  }
+
+  if (sshHost && !directSsh) {
+    return (
+      <SshQuickConnect
+        host={sshHost}
+        defaultUsername={defaultSshUsername}
+        onConnect={({ sshKeyId, username }) =>
+          setDirectSsh({ sshKeyId, sshHost, sshUsername: username })
+        }
+      />
+    );
   }
 
   if (listing.isLoading) return <LoadingView />;

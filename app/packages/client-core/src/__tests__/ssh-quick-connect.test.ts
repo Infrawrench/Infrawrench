@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pickQuickConnectKeyId } from "../SshQuickConnectPanel";
+import { pickQuickConnectKeyId } from "../ssh-quick-connect";
 
 const keys = [
   { id: "agent-key-1", name: "infrawrench-agent" },
