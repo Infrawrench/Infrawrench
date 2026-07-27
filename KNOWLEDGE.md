@@ -1468,3 +1468,214 @@ Established during the July 2026 a11y sweep (react-doctor Accessibility findings
 - **Menus** — context menus and dropdowns use `role="menu"`/`menuitem`, `aria-expanded`/`aria-haspopup` on triggers, Escape-to-close with focus restore, ArrowUp/Down roving focus, and Shift+F10/ContextMenu-key as the keyboard right-click (reference: `ui/src/components/OrgSwitcher.tsx`, `desktop/src/components/SidebarAccounts.tsx`).
 - **Async status** — loading/error/result-count changes go through `role="status"`/`role="alert"` (sr-only where there's no visible text); terminals mirror connection state into an sr-only status div; charts get `role="img"` + a summary `aria-label` (or `aria-hidden` when purely duplicative).
 - **Theme** — `theme.css` on-surface text tokens are tuned to WCAG AA (4.5:1) against surface/raised/overlay in both schemes — recheck contrast before changing them. Global `:focus-visible` outline and a `prefers-reduced-motion` kill-switch live at the bottom of `theme.css`.
+
+## Code conventions from the July 2026 quality sweep
+
+Nine parallel passes over the whole repo (deduplication, shared types, dead code, circular
+imports, weak types, defensive code, legacy paths, comments, godfiles). The rules below are what
+those passes established or discovered; the reasoning is preserved because in several places the
+obvious-looking cleanup is the wrong one.
+
+### Where a shared type lives
+
+There is no `shared-types` package — do not create one. Types go in exactly one of four places,
+chosen by who must agree:
+
+- **`@infrawrench/plugin-base`** — the plugin↔host contract. Zero internal dependencies; nothing
+  may make it depend on an app package.
+- **`@infrawrench/client-core`** — every HTTP wire shape, plus the pure client logic that operates
+  on it (cost contract, dashboard cards, chat, WS frames, push payloads, account-section rules).
+  Depends only on `plugin-base`. This is the home for anything the _server produces and a client
+  consumes_: `web`, `desktop`, `mobile`, `server-core` and the CLI all reach it.
+- **`@infrawrench/ui`** — React-facing types (component props, editor state) plus a re-export shim
+  over client-core, because web and desktop depend on `ui` rather than client-core directly.
+  `ui/src/api-types.ts` is that shim: add new wire types to `client-core/src/api-types.ts`.
+- **the owning package** — anything genuinely local.
+
+`server-core` depends on `client-core`, never the reverse, so a wire contract is declared once and
+the producer is typechecked against it. Annotate a route's service function with the client-core
+type rather than letting the object literal float — `getOrgCostStatus` went unannotated while three
+separate declarations claimed to describe its output.
+
+Prefer deriving over restating: `z.infer`, `$inferSelect`, `Extract<Union, {…}>`, `Omit<…>`. Where
+a zod schema and a hand-written type must match, pin them with the `Exact<A, B>` assertion pattern
+in `ui/src/cost/config.ts` — it fails the build on drift and costs nothing at runtime.
+
+**Mobile is the tell.** If a type lives in `ui` and mobile needs it, mobile _cannot_ import it and
+will silently hand-write a second copy. That is how the mobile billing screen came to read
+`GET /billing/status` as a bare subscription when the server returns a
+`{ complimentary, subscription }` envelope — every org rendered blank plan rows for as long as both
+copies existed.
+
+### Module layering and circular imports
+
+The workspace package graph is a DAG and should stay one: `plugin-base` and `client-core` are
+leaves, `ui` depends on `client-core` and never the reverse, `server-core` depends on the plugins,
+and `web`/`desktop`/`mobile`/`poller` sit on top. Adding an `@infrawrench/*` dependency that points
+back down the stack is the one thing that turns a clean graph into a tangled one.
+
+Check with `npx madge --circular --extensions ts,tsx --ts-config tsconfig.json src` from inside a
+package (its own tsconfig, so `@/…` aliases resolve), or
+`npx dpdm --no-warning --no-tree --exit-code circular:1 'src/**/*.ts'`, which additionally follows
+pnpm workspace links. Neither is a devDependency; run them with `npx`.
+
+Where a module has both a contract (types describing a payload) and machinery (DB queries, network
+transport), put the contract in its own import-free leaf. `server-core/src/push/` is the pattern:
+`types.ts` (leaf) ← `expo-client.ts` (transport) ← `dispatch.ts` (DB fan-out), with `dispatch.ts`
+re-exporting the types so the published `push/dispatch` subpath stays stable. This matters more
+than the cycle itself — `db/client` opens a connection as an import side effect, so a type living
+beside it is a connection waiting to be opened by a consumer who only wanted a string union.
+
+### Error handling
+
+Errors must reach a place a human sees: an HTTP response, a WS error frame, a toast or React error
+state, a structured log in a long-running process, or a non-zero CLI exit. A `catch` that returns
+`[]`, `null` or `0` turns a backend outage into an empty UI, which is worse than a 500 because
+nobody can tell it apart from "you have no data".
+
+- **`isXConfigured()` and "X is broken" are different states.** ClickHouse readers
+  (`server-core/src/clickhouse/readers.ts`) return `[]` when ClickHouse is not configured — that
+  deployment genuinely has no metric history. A configured-but-failing ClickHouse throws.
+- **`Promise.allSettled` is for isolation, not for ignoring.** Wherever it keeps one failure from
+  killing a batch (poller type listings, pin probes, notification fan-out), the rejected `reason`
+  must still be logged with enough context to identify which item failed.
+- Fan-out helpers (`sendSlackToOrg`, `sendMsTeamsToOrg`, `sendPushToOrg`) deliberately return
+  delivery counts instead of throwing, and each has a `…Test` counterpart that _does_ throw so the
+  settings UI can show the real transport error. Keep that pairing when adding a transport.
+
+### Shared write helpers in `server-core`
+
+Three invariants that used to be copy-pasted now live in one place each:
+
+- **`secret-states`** — `setLiteralSecretState` / `setOutputRefSecretState`. A
+  `secret_field_states` row is either a literal or an output-ref, and writing one kind must clear
+  the other kind's columns. Adding a column to that table means updating the clear-list in
+  `src/secret-states.ts` and nowhere else. (The seven inlined copies had drifted: one flipped
+  `resolution_kind` to `output-ref` while leaving `encrypted_value` populated, retaining secret
+  material the user believed they had replaced.)
+- **`created-resource`** — `upsertCreatedResource`, for the four flows that create a resource and
+  need its `resources` row before the next sync. Deliberately distinct from `sync-resources`'s
+  `upsertResource`, which merges JSON columns and bumps `sync_version` because a lister's view is
+  partial; a create response is authoritative and overwrites.
+- **`tick-loop`** — the `TickLoop` base class behind the poller and github-watcher, plus
+  `runService` / `installShutdownHandlers`. Ticks are scheduled after the previous one settles,
+  never on a fixed interval; an overrunning tick is skipped rather than run concurrently; `stop()`
+  allows 30s of drain to match Kubernetes' `terminationGracePeriodSeconds`.
+
+`server-core/env-loader.mjs` is the single dev-time `.env` preloader for web, poller and
+github-watcher. It searches `app/packages/web/` first (that package owns the canonical `.env`),
+then the cwd, and never overwrites an existing `process.env` entry.
+
+`@infrawrench/ui`'s `src/components/schema-tokens.ts` owns the mapping from a plugin's
+`BadgeNode.color` / `StatusDotNode.status` to Tailwind classes. Renderers must not inline their own
+ladder — the peer pane and the detail view previously drew `degraded` in two different yellows.
+
+### Typing vendor SDK request bodies
+
+Plugin clients assemble create/update bodies from a `Record<string, string>` of form fields.
+Annotate the body with the SDK's own params type (`const body: XCreateParams = {…}`) — never build
+a `Record<string, unknown>` and cast. The cast is not free: it hides the case where a free-text
+form field is posted against a closed string-literal union, which is a silent API 400. Removing 36
+such casts from the Cloudflare plugin surfaced 17 live wire-format bugs. When a form value must
+become a literal union, narrow it with a membership guard and a documented default:
+
+```ts
+const METRICS = ["cosine", "euclidean", "dot-product"] as const;
+type Metric = (typeof METRICS)[number];
+const isMetric = (v: string): v is Metric => (METRICS as readonly string[]).includes(v);
+```
+
+A second cast is not a fix. If the params type is a discriminated union the body genuinely cannot
+satisfy (Cloudflare DNS records, Page Rules actions), keep the cast and name the union and the
+`.d.ts` line in a comment.
+
+- **Hand-written ambient module declarations are unverified.** `.d.ts` files we author for untyped
+  dependencies (e.g. `memcached/src/memjs.d.ts`) are asserted, not checked — a wrong signature
+  there is worse than no types, because call sites work around it with casts instead of fixing it.
+  That file promised a `stats(): Promise<…>` that memjs does not have. Read the dependency's source
+  before declaring a method.
+- **`tsgo` does not surface mixin-provided members** (`class X extends Mixin(Base) {}`). mysql2's
+  `query`/`execute` are the live example, so those casts are load-bearing — build the local
+  interface out of the library's own exported packet types so a breaking upgrade still shows up.
+- **`exactOptionalPropertyTypes`** is inherited by every package including `ui`. Widen the
+  _declaration_ to `prop?: T | undefined` when the type is ours; use a conditional spread
+  `{...(v !== undefined ? { k: v } : {})}` when the receiving type is a third party's.
+
+### Dead-code tooling
+
+`knip.json` drives the sweep (`npx knip`). Two things about it are load-bearing:
+
+- **Entry points must match the real build inputs, not the obvious file.** The desktop main-process
+  entry is `electron/index.ts` (the `--cli` dispatcher), _not_ `electron/main.ts`. Pointing knip at
+  `main.ts` makes it report the entire `electron/cli/` tree — the shipped CLI — as dead code.
+- **`@kubernetes/client-node`, `cloudflare`, `dockerode` and `ssh2` are deliberately direct
+  dependencies** of `web`, `poller` and `github-watcher` even though no source file imports them.
+  Each esbuild `build` script marks them `--external:`, so they must resolve from `node_modules` at
+  runtime, reached through the plugin node drivers. They sit in `ignoreDependencies` — do not
+  "clean them up".
+
+Knip's `exports` and `types` buckets are noisy here: a type referenced only by an exported
+signature in its own module still counts as unused. Treat that bucket as informational.
+
+**`noUnusedLocals` is not enabled in any tsconfig**, so dead imports and locals are invisible to
+`pnpm typecheck`. A periodic `tsgo --noEmit --noUnusedLocals -p <pkg>/tsconfig.json` sweep is the
+only thing that catches them; it found 123 where knip found one unused file in ~1,830.
+
+### Decomposing big plugin clients
+
+Split by vendor domain, not by line count. The established shape (AWS, and now DigitalOcean) is a
+thin `PluginClient` class owning auth, caches and dispatch, delegating to ctx-object modules beside
+it: `create-handlers.ts` (dispatcher) + `create-handlers/<domain>.ts`, `detail-renderers.ts`
+(barrel) + `detail-renderers/<domain>.ts`, `resource-listers.ts`, `metric-series.ts`,
+`enrich-detail.ts`, `status-dots.ts`, `nosql-console.ts`. Each extracted module takes a narrow
+context interface holding just the `fetch` wrapper and the caches it needs, so modules stay
+leaf-ward of the client and unit-test with a fake `fetch`. The original module path always keeps
+exporting the same names, so a split is never a breaking change.
+
+`create-handlers/` modules return `null` for a `typeId` they do not handle; the dispatcher takes
+the first non-null result and throws if every module declines. Arms are mutually exclusive, so
+module order is not significant.
+
+A big file is not automatically a godfile. `cloudflare/src/metric-series.ts` is ~1,750 lines of one
+export over 12 homogeneous per-product fetchers — splitting it buys a 13-import barrel and nothing
+else. `desktop/src/lib/agent-client.ts` is multi-responsibility but knitted together by six
+module-level singleton maps, where a wrong split is a silent duplicate-VM-provision bug.
+
+### Legacy paths deliberately kept
+
+- **`organization_members.role` / `invitations.role` text fallback.** Migration `0009` added
+  `role_id` with no backfill; it is populated lazily by `backfillMembershipRole()`, so production
+  still has `role_id IS NULL` rows where the text fallback is the only thing resolving permissions.
+- **API-key legacy SHA-256 lookup / `legacyHashSunsetAt`** — an active self-terminating sunset, not
+  stale compat. Removing it locks out keys still sitting in customers' CI.
+- **The `{ role }` body param and the `resourceIds` reorder form** — superseded for first-party
+  clients but published in `openapi.json` and all nine SDKs, so removal is a major bump.
+- **v1 ciphertext reads, desktop `master.key`, GCP legacy Cloud Run ids, AWS `legacyHost()`** — all
+  read data at rest or are the only implementation of a live path.
+
+`APP_URL` is now the only app-origin env var; the `NEXT_PUBLIC_APP_URL` fallback (a leftover from
+the pre-Hono Next.js shell) is gone. `PUBLIC_BASE_URL` still takes precedence for the OpenAPI
+server URL and the MCP well-known documents only. `invitations.token` was dropped in migration
+`0035_concerned_mesmero` — invitations are hash-only at rest, the raw token existing only in the
+one-time `POST /team/invitations` response. `decrypt()` now always takes an AAD; desktop's
+`main-utils.ts` keeps `aad` optional because it still writes v1 for cloud tokens.
+
+### Known-broken, recorded rather than fixed
+
+- **Chat metered billing has no replay path.** `web/src/chat/billing.ts` reports each `chat_usage`
+  row to Stripe best-effort. If Stripe is unreachable the row keeps a null `stripeUsageRecordId`
+  and is never retried — that usage is not billed. `chat_usage_unreported_idx` exists to support a
+  replay job that has not been written. Do not assume unreported rows are eventually reconciled.
+- **Fallback rows must not invent field values.** When a lister's `Describe*` enrichment fails,
+  push empty strings for the fields you could not read (see the ACM fallback in
+  `aws/src/resource-listers-extended/security.ts`), never a plausible default. The WAF, Cognito and
+  Step Function fallbacks in that file violate this and will display `defaultAction: ALLOW` /
+  `mfaConfiguration: OFF` for resources whose real posture is unknown.
+- **Create-form cost estimates should come from the provider's pricing API**, per region — see
+  `azure/src/pricing.ts` and `gcp/src/pricing.ts`. `aws/src/cost-estimate.ts` is a static us-east-1
+  table covering instance generations the size picker no longer offers; treat it as known-broken
+  rather than the pattern to copy.
+- **Mobile secret fields render a "Tap to copy" affordance wired to nothing** — the
+  `resolveFieldValue` handler it dispatches to is supplied by no screen, so it silently no-ops.
+- **`FilestoreInstanceResourceType`** is fully implemented in the GCP plugin — lister, create
+  config, create, delete, resolve-output, tests — and simply never registered in the manifest.
