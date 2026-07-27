@@ -253,6 +253,13 @@
       "when": 1785118215020,
       "tag": "0035_concerned_mesmero",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1785157153748,
+      "tag": "0036_fresh_enchantress",
+      "breakpoints": true
     }
   ]
 }

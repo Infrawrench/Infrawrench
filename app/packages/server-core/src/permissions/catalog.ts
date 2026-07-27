@@ -21,6 +21,7 @@ export const ALL_PERMISSIONS = [
   "dashboards:read",
   "dashboards:write",
   "costs:read",
+  "costs:write",
   "budgets:read",
   "budgets:write",
   "audit:read",
@@ -38,6 +39,7 @@ export const ALL_PERMISSIONS = [
   "bastions:write",
   "chat:read",
   "chat:write",
+  "pages:write",
   "org:settings:write",
 ] as const;
 

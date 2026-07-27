@@ -82,6 +82,25 @@ infrawrench costs --group-by account --json
 
 Accounts whose daily cost collection is failing are called out above the chart, with the provider link that fixes the cause; `--json` carries them as `collectionFailures`. See [when collection fails](./cloud-costs.md#when-collection-fails).
 
+## Pushing back up
+
+The CLI is often already installed on the machine that has the news, so it wraps both [push endpoints](./server-push.md) — an on-call page, and cost rows for spend Infrawrench has no plugin for:
+
+```bash
+# Wake somebody up. Repeats under the same key are throttled server-side,
+# so a monitor can call this on every tick.
+infrawrench page "backup did not complete" --source backups --key nightly
+
+# Recovered — re-arm the key so the next failure pages immediately.
+infrawrench page clear --source backups --key nightly
+
+# Report spend, from a file or a pipeline.
+infrawrench costs push --source colo --file rows.json
+parse-invoice --json | infrawrench costs push --source colo
+```
+
+`--source` names the system doing the pushing and is required by both. `page` also takes `--title`, `--key`, `--cooldown <minutes>`, and `--voice`; a suppressed page still exits zero and prints when the key can fire again. Both need a session (or role) carrying `pages:write` / `costs:write` — see [push from your own servers](./server-push.md) for the endpoints and their limits.
+
 ## The TUI
 
 `infrawrench` (or `infrawrench tui`) opens the interactive dashboard:
@@ -117,6 +136,6 @@ infrawrench costs --org acme --json | jq '.totals'
 
 ## Notes and limits
 
-- Metric history and cost data are cloud features — `--local` resources have neither.
+- Metric history, cost data, and paging are cloud features — `--local` has neither.
 - The CLI reads the local workspace from the desktop app's database; it does not call provider APIs directly, so a resource created outside Infrawrench appears after the app next syncs.
 - On Windows, run the command from a fresh terminal after installing so the `PATH` change is picked up.

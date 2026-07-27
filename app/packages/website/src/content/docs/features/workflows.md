@@ -280,7 +280,7 @@ A run can make up to 250 requests, and time spent in `fetch` counts against the 
 
 ### Paging a human
 
-A workflow that finds a problem can wake someone up. `infra.page(...)` delivers to the same recipients as [sync-failure incidents and budget alerts](./mobile-push-notifications.md): SMS (and optionally a voice call) through your org's Twilio credentials, mobile push to everyone who has the app installed, and any [Slack](./slack-alerts.md) or [Microsoft Teams](./teams-alerts.md) channels opted into workflow pages. Configure who receives them under **Settings → Notifications**.
+A workflow that finds a problem can wake someone up. `infra.page(...)` delivers to the same recipients as [sync-failure incidents and budget alerts](./mobile-push-notifications.md): SMS (and optionally a voice call) through your org's Twilio credentials, mobile push to everyone who has the app installed, and any [Slack](./slack-alerts.md) or [Microsoft Teams](./teams-alerts.md) channels opted into pages. Configure who receives them under **Settings → Notifications**.
 
 ```ts
 // Cron: hourly. Page when a pod's restart count runs away.
@@ -318,6 +318,8 @@ if (result.suppressed) infra.log(`already paged; quiet until ${result.retryAt}`)
 ```
 
 `infra.page.clear(key)` drops a key's cooldown. Call it when the condition recovers so the next occurrence pages immediately instead of waiting out a stale timer. A cooldown is only started by a page that actually reached somebody — if every transport fails, the next run tries again rather than going quiet.
+
+A server that runs outside Infrawrench can raise the same page over HTTP — see [Push from your own servers](./server-push.md). Keys and cooldowns are scoped per source there, so an API caller and a workflow never throttle each other.
 
 In the **desktop app** there are no Twilio, push, Slack, or Teams recipients — those connections are org-level things the cloud holds — so a page becomes a native OS notification on the machine running the workflow. The key and cooldown behave exactly the same.
 

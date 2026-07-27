@@ -24,6 +24,7 @@
     "./org-accounts": "./src/org-accounts.ts",
     "./peer-clients": "./src/peer-clients.ts",
     "./twilio-pager": "./src/twilio-pager.ts",
+    "./source-name": "./src/source-name.ts",
     "./slack": "./src/slack.ts",
     "./msteams": "./src/msteams.ts",
     "./plugin-loader": "./src/plugin-loader.ts",
@@ -44,6 +45,9 @@
     "./cost/budget-eval": "./src/cost/budget-eval.ts",
     "./cost/workflow-costs": "./src/cost/workflow-costs.ts",
     "./cost/workflow-cost-ids": "./src/cost/workflow-cost-ids.ts",
+    "./cost/external-costs": "./src/cost/external-costs.ts",
+    "./cost/external-cost-ids": "./src/cost/external-cost-ids.ts",
+    "./paging/external-pages": "./src/paging/external-pages.ts",
     "./push/dispatch": "./src/push/dispatch.ts",
     "./push/types": "./src/push/types.ts"
   },

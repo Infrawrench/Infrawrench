@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.5.0",
+    "version": "0.6.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -127,6 +127,10 @@
     {
       "name": "Admin",
       "description": "Platform-operator surface (INFRAWRENCH_PLATFORM_ADMIN_EMAILS allowlist), e.g. complimentary orgs."
+    },
+    {
+      "name": "Pages",
+      "description": "On-call alerts raised by your own systems, fanned out over the org's SMS, push, Slack, and Teams transports."
     },
     {
       "name": "Push",
@@ -1930,6 +1934,94 @@
         "required": ["items"],
         "additionalProperties": false
       },
+      "CostPushResponse": {
+        "type": "object",
+        "properties": {
+          "written": {
+            "type": "integer"
+          }
+        },
+        "required": ["written"],
+        "additionalProperties": false
+      },
+      "PushedCostRow": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "UTC day the spend belongs to.",
+            "example": "2026-07-01"
+          },
+          "currency": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 3,
+            "example": "USD"
+          },
+          "amount": {
+            "type": "number",
+            "description": "Money for this day/dimension combination. Negative for credits."
+          },
+          "service": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Becomes a group/filter value.",
+            "example": "Snowflake Compute"
+          },
+          "region": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "resourceId": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Opaque id of the thing being billed; groups the `resource` dimension."
+          },
+          "tags": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Cost-allocation tags, at most 32. Keys starting with `infrawrench:` are reserved and rejected."
+          },
+          "usageAmount": {
+            "type": "number"
+          },
+          "usageUnit": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Attribute this row to a connected account. Must belong to the calling organization. Omit to attribute it to the source itself.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "required": ["date", "currency", "amount"],
+        "additionalProperties": false
+      },
+      "CostPushRequest": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Stable slug naming the system that owns these rows: letters, digits, `.`, `_` and `-`. It groups the rows under an `External` provider and an `external:<source>` account, and re-pushing the same source over the same days restates only its own rows.",
+            "example": "snowflake-invoices"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PushedCostRow"
+            },
+            "maxItems": 5000
+          }
+        },
+        "required": ["source", "rows"],
+        "additionalProperties": false
+      },
       "CostSeriesPoint": {
         "type": "object",
         "properties": {
@@ -2494,6 +2586,95 @@
           "forecastAmountCents",
           "triggeredAt"
         ],
+        "additionalProperties": false
+      },
+      "PageResponse": {
+        "type": "object",
+        "properties": {
+          "delivered": {
+            "type": "boolean",
+            "description": "True when at least one recipient was reached on any transport."
+          },
+          "suppressed": {
+            "type": "boolean",
+            "description": "True when the key was still in cooldown, so nothing was sent."
+          },
+          "sms": {
+            "type": "integer",
+            "description": "Twilio deliveries (SMS + voice) that Twilio accepted."
+          },
+          "push": {
+            "type": "integer",
+            "description": "Push notifications accepted by Expo."
+          },
+          "slack": {
+            "type": "integer",
+            "description": "Slack channel posts Slack accepted."
+          },
+          "msTeams": {
+            "type": "integer",
+            "description": "Microsoft Teams webhook posts Teams accepted."
+          },
+          "retryAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When suppressed, the time at which this key can page again."
+          }
+        },
+        "required": ["delivered", "suppressed", "sms", "push", "slack", "msTeams"],
+        "additionalProperties": false
+      },
+      "PageRequest": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Stable name for the system raising the page: letters, digits, `.`, `_` and `-`. It is the notification's sender, and it scopes the cooldown — two services paging under the same key never throttle each other.",
+            "example": "checkout-api"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "The alert text. Becomes the SMS and notification body."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Short headline for the notification. Defaults to `source`."
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Throttle key, `default` when unset. Pages sharing a key are suppressed while that key is in cooldown, so a per-object key (a host, a cluster id) alerts per object while the default key alerts once for the whole source.",
+            "example": "db-replica-lag"
+          },
+          "cooldownMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1440,
+            "description": "Minutes to suppress repeat pages under the same key. Defaults to 60; `0` sends every time."
+          },
+          "voice": {
+            "type": "boolean",
+            "description": "Also place a voice call to recipients who opted into voice. Off by default — reserve it for things worth waking someone up for."
+          }
+        },
+        "required": ["source", "message"],
+        "additionalProperties": false
+      },
+      "PageClearResponse": {
+        "type": "object",
+        "properties": {
+          "cleared": {
+            "type": "boolean",
+            "description": "False when the key had no cooldown to clear."
+          }
+        },
+        "required": ["cleared"],
         "additionalProperties": false
       },
       "ResourceStatus": {
@@ -4909,6 +5090,7 @@
           "dashboards:read",
           "dashboards:write",
           "costs:read",
+          "costs:write",
           "budgets:read",
           "budgets:write",
           "audit:read",
@@ -4926,6 +5108,7 @@
           "bastions:write",
           "chat:read",
           "chat:write",
+          "pages:write",
           "org:settings:write"
         ],
         "description": "A permission string. Roles may grant exact permissions like the entries in this enum, or wildcards (e.g. `resources:*:read`, `*`)."
@@ -8774,11 +8957,65 @@
         "description": "_Requires permission: `dashboards:read`._"
       }
     },
+    "/api/org/{orgId}/costs/rows": {
+      "post": {
+        "tags": ["Costs"],
+        "summary": "Push cost rows from your own systems",
+        "description": "Reports spend Infrawrench has no provider plugin for — a parsed SaaS invoice, an internal chargeback, a colo bill — into the same store the provider collectors write to, so it appears in cost graphs, dimension filters, and budgets alongside everything else.\n\nRows are grouped under a caller-chosen `source`. Writes are idempotent per `(source, day, service, region, resourceId, tags, currency)`: pushing the same day again restates that day rather than adding to it, so a nightly job can safely re-push a trailing window. Rows pushed under a source can never overwrite rows a provider collector wrote.\n\nThe whole batch is validated before anything is stored, so a 400 means nothing was written.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostPushRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rows written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostPushResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostsRows",
+        "x-required-permission": "costs:write"
+      }
+    },
     "/api/org/{orgId}/costs/query": {
       "post": {
         "tags": ["Costs"],
         "summary": "Query aggregated cost series",
-        "description": "Aggregates collected provider spend into per-bucket, per-group series for cost graphs. Currencies are never merged; mixed-currency orgs get one series per currency. Optionally returns a previous-period comparison and a trend forecast.",
+        "description": "Aggregates collected provider spend into per-bucket, per-group series for cost graphs. Currencies are never merged; mixed-currency orgs get one series per currency. Optionally returns a previous-period comparison and a trend forecast.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -8824,14 +9061,15 @@
             }
           }
         },
-        "operationId": "postOrgOrgIdCostsQuery"
+        "operationId": "postOrgOrgIdCostsQuery",
+        "x-required-permission": "costs:read"
       }
     },
     "/api/org/{orgId}/costs/dimensions": {
       "get": {
         "tags": ["Costs"],
         "summary": "List distinct values for a cost dimension",
-        "description": "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys; dimension=tag requires tagKey.",
+        "description": "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys; dimension=tag requires tagKey.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -8884,14 +9122,15 @@
             }
           }
         },
-        "operationId": "getOrgOrgIdCostsDimensions"
+        "operationId": "getOrgOrgIdCostsDimensions",
+        "x-required-permission": "costs:read"
       }
     },
     "/api/org/{orgId}/costs/status": {
       "get": {
         "tags": ["Costs"],
         "summary": "Per-account cost collection status",
-        "description": "Which accounts support cost collection, whether their history backfill has completed, and the ingested date coverage.",
+        "description": "Which accounts support cost collection, whether their history backfill has completed, and the ingested date coverage.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -8927,7 +9166,8 @@
             }
           }
         },
-        "operationId": "getOrgOrgIdCostsStatus"
+        "operationId": "getOrgOrgIdCostsStatus",
+        "x-required-permission": "costs:read"
       }
     },
     "/api/org/{orgId}/budgets": {
@@ -9240,6 +9480,124 @@
           }
         },
         "operationId": "getOrgOrgIdBudgetsIdEvents"
+      }
+    },
+    "/api/org/{orgId}/pages": {
+      "post": {
+        "tags": ["Pages"],
+        "summary": "Raise an alert to the organization's on-call transports",
+        "description": "Fans an alert out over whatever the org has configured — Twilio SMS (and voice on request), mobile push, Slack channels, and Microsoft Teams webhooks — honouring each recipient's opt-ins. This is the same alert a workflow raises with `infra.page(...)`, for code that runs somewhere Infrawrench does not: a health check, a deploy script, a cron on a box.\n\nRepeat pages under the same `(source, key)` are **suppressed, not rejected**: a monitor that fires every minute pages once and then gets `200` with `suppressed: true` and the `retryAt` at which the key can page again. A page that reached nobody does not start a cooldown, so the next call tries again.\n\nRecipients opt in per channel under the same setting that covers workflow pages.\n\n_Requires permission: `pages:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Delivery outcome — check `suppressed` and `delivered`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdPages",
+        "x-required-permission": "pages:write"
+      },
+      "delete": {
+        "tags": ["Pages"],
+        "summary": "Clear a page key's cooldown",
+        "description": "Drops the cooldown for one `(source, key)` so the next page under it delivers immediately. Call it when the condition you alerted on recovers — the workflow equivalent is `infra.page.clear(key)`. Clearing a key that was never paged is not an error.\n\n_Requires permission: `pages:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "description": "Stable name for the system raising the page: letters, digits, `.`, `_` and `-`. It is the notification's sender, and it scopes the cooldown — two services paging under the same key never throttle each other.",
+              "example": "checkout-api"
+            },
+            "required": true,
+            "name": "source",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "description": "Defaults to `default`."
+            },
+            "required": false,
+            "description": "Defaults to `default`.",
+            "name": "key",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Whether a cooldown was cleared",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageClearResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdPages",
+        "x-required-permission": "pages:write"
       }
     },
     "/api/org/{orgId}/resources/{pluginId}/{typeId}/detail": {

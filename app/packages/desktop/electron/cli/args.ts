@@ -12,9 +12,24 @@ export interface RangeFlags {
   type?: string | undefined;
 }
 
+/** Flags for the push-up commands (`page`, `costs push`). */
+export interface PushFlags {
+  /** Name of the system raising the page / owning the cost rows. */
+  source?: string | undefined;
+  /** Paging throttle key; the server defaults it to "default". */
+  key?: string | undefined;
+  title?: string | undefined;
+  /** Minutes to suppress repeat pages under the same key. */
+  cooldown?: number | undefined;
+  voice: boolean;
+  /** JSON file of cost rows; stdin when absent. */
+  file?: string | undefined;
+}
+
 export interface ParsedCli {
   flags: CliFlags;
   range: RangeFlags;
+  push: PushFlags;
   positionals: string[];
   version: boolean;
 }
@@ -43,6 +58,13 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         "group-by": { type: "string" },
         series: { type: "string" },
         type: { type: "string" },
+        // Push-up flags (`page`, `costs push`).
+        source: { type: "string" },
+        key: { type: "string" },
+        title: { type: "string" },
+        cooldown: { type: "string" },
+        voice: { type: "boolean", default: false },
+        file: { type: "string", short: "f" },
       },
     });
   } catch (e) {
@@ -71,6 +93,15 @@ export function parseCliArgs(argv: string[]): ParsedCli {
   const str = (key: string): string | undefined =>
     typeof values[key] === "string" ? (values[key] as string) : undefined;
 
+  const cooldownText = str("cooldown");
+  let cooldown: number | undefined;
+  if (cooldownText !== undefined) {
+    cooldown = Number(cooldownText);
+    if (!Number.isInteger(cooldown) || cooldown < 0) {
+      throw new CliError(`--cooldown must be a whole number of minutes, got "${cooldownText}"`, 2);
+    }
+  }
+
   return {
     flags: {
       output,
@@ -87,6 +118,14 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       groupBy: str("group-by"),
       series: str("series"),
       type: str("type"),
+    },
+    push: {
+      source: str("source"),
+      key: str("key"),
+      title: str("title"),
+      cooldown,
+      voice: values.voice === true,
+      file: str("file"),
     },
     positionals: parsed.positionals,
     version: values.version === true,

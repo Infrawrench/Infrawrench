@@ -27,6 +27,10 @@ import {
   WORKFLOW_COST_PLUGIN_ID,
   workflowIdFromCostAccountId,
 } from "@infrawrench/server-core/cost/workflow-cost-ids";
+import {
+  EXTERNAL_COST_PLUGIN_ID,
+  sourceFromCostAccountId,
+} from "@infrawrench/server-core/cost/external-cost-ids";
 import { db } from "../db/client";
 import { accounts, workflows } from "../db/schema";
 import { getPlugin, loadPlugins } from "../plugins/loader";
@@ -80,6 +84,19 @@ function foldTopN(groups: CostSeriesGroup[], topN: number): CostSeriesGroup[] {
   return result;
 }
 
+/**
+ * Plugin id → display name, plus the two synthetic providers that have no
+ * plugin behind them: rows a workflow reported (`cost/workflow-costs`) and rows
+ * a server pushed over the API (`cost/external-costs`).
+ */
+async function providerNames(): Promise<Map<string, string>> {
+  const loaded = await loadPlugins();
+  const names = new Map(loaded.map((l) => [l.plugin.manifest.id, l.plugin.manifest.displayName]));
+  names.set(WORKFLOW_COST_PLUGIN_ID, "Workflow");
+  names.set(EXTERNAL_COST_PLUGIN_ID, "External");
+  return names;
+}
+
 /** Resolve display labels for group keys (providers → plugin names, accounts → display names). */
 async function labelSeries(
   organizationId: string,
@@ -88,8 +105,7 @@ async function labelSeries(
 ): Promise<CostQuerySeries[]> {
   let labelFor = (key: string): string => key || "Total";
   if (groupBy === "provider") {
-    const loaded = await loadPlugins();
-    const names = new Map(loaded.map((l) => [l.plugin.manifest.id, l.plugin.manifest.displayName]));
+    const names = await providerNames();
     labelFor = (key) => names.get(key) ?? key;
   } else if (groupBy === "account") {
     const rows = await db
@@ -97,6 +113,15 @@ async function labelSeries(
       .from(accounts)
       .where(eq(accounts.organizationId, organizationId));
     const names = new Map(rows.map((r) => [r.id, r.displayName]));
+    for (const [id, name] of await workflowCostAccountLabels(
+      organizationId,
+      groups.map((g) => g.key),
+    )) {
+      names.set(id, name);
+    }
+    for (const [id, name] of externalCostAccountLabels(groups.map((g) => g.key))) {
+      names.set(id, name);
+    }
     labelFor = (key) => names.get(key) ?? key;
   }
   return groups.map((g) => ({
@@ -237,10 +262,7 @@ export async function listCostDimensionValues(
 
   // Attach display labels where the raw value is an internal id.
   if (dimension === "provider") {
-    const loaded = await loadPlugins();
-    const names = new Map(loaded.map((l) => [l.plugin.manifest.id, l.plugin.manifest.displayName]));
-    // Workflow-reported spend has no plugin behind it (see cost/workflow-costs).
-    names.set(WORKFLOW_COST_PLUGIN_ID, "Workflow");
+    const names = await providerNames();
     return values.map((v) => ({ value: v, label: names.get(v) ?? v }));
   }
   if (dimension === "account") {
@@ -250,6 +272,9 @@ export async function listCostDimensionValues(
       .where(eq(accounts.organizationId, organizationId));
     const names = new Map(rows.map((r) => [r.id, r.displayName]));
     for (const [id, name] of await workflowCostAccountLabels(organizationId, values)) {
+      names.set(id, name);
+    }
+    for (const [id, name] of externalCostAccountLabels(values)) {
       names.set(id, name);
     }
     return values.map((v) => ({ value: v, label: names.get(v) ?? v }));
@@ -290,6 +315,20 @@ async function workflowCostAccountLabels(
     if (accountId) byAccountId.set(accountId, `${row.name} (workflow)`);
   }
   return byAccountId;
+}
+
+/**
+ * Labels for the synthetic `external:<source>` cost accounts a server writes to
+ * when it pushes rows without naming a real account. Unlike workflows there is
+ * no row to look up — the source name IS the label — so this is purely local.
+ */
+function externalCostAccountLabels(values: string[]): Map<string, string> {
+  const labels = new Map<string, string>();
+  for (const value of values) {
+    const source = sourceFromCostAccountId(value);
+    if (source) labels.set(value, `${source} (external)`);
+  }
+  return labels;
 }
 
 /**

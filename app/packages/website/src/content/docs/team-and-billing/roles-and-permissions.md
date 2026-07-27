@@ -36,6 +36,13 @@ Every organization has three pre-seeded system roles. They cannot be edited or d
 
 System role permissions are computed in code, so upgrades extend them automatically when new permissions are added.
 
+Two permissions are deliberately not in any system role, because they let unattended code write into the org:
+
+- `costs:write` — [push cost rows](../features/server-push.md#cost-rows) from your own systems.
+- `pages:write` — [raise an on-call page](../features/server-push.md#paging) from your own systems.
+
+Grant them with a scoped [API key](./api-keys.md), or add them to a custom role. Admin and Owner hold them through their wildcards.
+
 ## Custom roles
 
 Owners and anyone with `team:role:write` can define their own roles in **Settings → Roles → New role**. Pick permissions from the categorised list, or paste wildcard patterns (e.g. `resources:postgres:*`) into the advanced field.

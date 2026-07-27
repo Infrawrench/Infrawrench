@@ -166,6 +166,10 @@ export function pushDataToPath(data: PushNotificationData): string {
       return `/org/${data.orgId}/accounts/${data.accountId}`;
     case "workflow_page":
       return `/org/${data.orgId}/workflows/${data.workflowId}`;
+    // API pages name a source Infrawrench has no page for, so the org home is
+    // the closest thing to "where this alert came from".
+    case "api_page":
+      return `/org/${data.orgId}`;
     case "budget_breach":
       return `/org/${data.orgId}`;
     case "test":
@@ -228,6 +232,12 @@ export function parsePushData(raw: unknown): PushNotificationData | null {
         workflowId,
         ...(typeof runId === "string" ? { runId } : {}),
       };
+    }
+    case "api_page": {
+      const source = data["source"];
+      const key = data["key"];
+      if (typeof source !== "string" || typeof key !== "string") return null;
+      return { type: "api_page", orgId, source, key };
     }
     case "test":
       return { type: "test", orgId };

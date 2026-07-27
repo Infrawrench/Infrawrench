@@ -49,6 +49,8 @@ Wildcard scopes are honored: `resources:*:read`, `resources:postgres:*`, or just
 
 The `chat:read` and `chat:write` scopes gate the [AI chat](../features/ai-chat.md) API: list/inspect conversations vs. send messages and approve destructive tool calls. Calls authed by a `chat:write` key still meter tokens to the org and respect the org-level monthly spend cap.
 
+The `costs:write` and `pages:write` scopes gate the [push endpoints](../features/server-push.md): reporting your own cost rows, and raising an on-call page from a server. Neither is in a system role, so a key carrying one must be held by an Admin or Owner, or by a member whose custom role grants it — the intersection rule below still applies.
+
 `chat:write` lets a key hold a conversation — it does not widen what that conversation can do. Every tool the assistant runs is checked against the key's own scopes, so a chat-only key can talk about your infrastructure but cannot read a secret or delete a resource unless you also granted `secrets:read` or `resources:delete`.
 
 Older keys created with the deprecated `sync:read` / `sync:write` scopes are migrated automatically the next time they authenticate.

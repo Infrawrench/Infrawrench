@@ -1,6 +1,6 @@
 ---
 title: Microsoft Teams alerts
-description: Route sync-failure incidents, budget alerts, and workflow pages to Microsoft Teams channels, with a per-channel opt-in for each.
+description: Route sync-failure incidents, budget alerts, and pages to Microsoft Teams channels, with a per-channel opt-in for each.
 sidebar_order: 17
 ---
 
@@ -54,11 +54,11 @@ To change a channel's URL, remove the row and add it again.
 
 Each channel opts into the three alert triggers independently, so a `#finance` channel can take budget crossings without also getting every sync failure:
 
-| Trigger            | When it fires                                                                     |
-| ------------------ | --------------------------------------------------------------------------------- |
-| **Sync failures**  | An account's background sync keeps failing and crosses the org's paging threshold |
-| **Budgets**        | A [budget threshold](./cloud-costs.md) is crossed                                 |
-| **Workflow pages** | A [workflow](./workflows.md) calls `infra.page(...)`                              |
+| Trigger           | When it fires                                                                                                                                 |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Sync failures** | An account's background sync keeps failing and crosses the org's paging threshold                                                             |
+| **Budgets**       | A [budget threshold](./cloud-costs.md) is crossed                                                                                             |
+| **Pages**         | Your own code raises an alert — a [workflow](./workflows.md) calling `infra.page(...)`, or a [server calling `POST /pages`](./server-push.md) |
 
 All three default to on for a newly added channel. Unlike the mobile push toggles, which each member sets for themselves, Teams routing is org-wide — it takes the **Organization settings** permission to change.
 
@@ -66,7 +66,7 @@ Use **Send test message** to post to every channel you've added, ignoring the tr
 
 ## What the messages look like
 
-Each alert is an Adaptive Card: the headline in bold, the alert text below it, a small context line, and — for budget alerts and workflow pages — a **View in Infrawrench** button that deep-links to the budget or the workflow.
+Each alert is an Adaptive Card: the headline in bold, the alert text below it, a small context line, and — for budget alerts and pages — a **View in Infrawrench** button that deep-links to the budget, the workflow, or the org.
 
 ## Legacy Office 365 connectors
 
@@ -78,4 +78,4 @@ Removing a channel stops delivery to it and leaves the rest alone. Infrawrench d
 
 ## Interaction with the paging switch
 
-Sync-failure incidents respect the org's master **Paging enabled** switch on the same settings page — turning it off silences incidents on every transport, Teams included. Budget alerts and workflow pages are independent of it, exactly as they are for mobile push and Slack.
+Sync-failure incidents respect the org's master **Paging enabled** switch on the same settings page — turning it off silences incidents on every transport, Teams included. Budget alerts and pages are independent of it, exactly as they are for mobile push and Slack.

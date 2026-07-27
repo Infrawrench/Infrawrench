@@ -78,8 +78,82 @@ const CostAccountStatus = strict({
   coverage: strict({ firstDay: IsoDate, lastDay: IsoDate }).nullable(),
 }).openapi("CostAccountStatus");
 
+const PushedCostRow = strict({
+  date: IsoDate.describe("UTC day the spend belongs to."),
+  currency: z.string().length(3).openapi({ example: "USD" }),
+  amount: z.number().describe("Money for this day/dimension combination. Negative for credits."),
+  service: z
+    .string()
+    .max(256)
+    .optional()
+    .openapi({ example: "Snowflake Compute", description: "Becomes a group/filter value." }),
+  region: z.string().max(256).optional(),
+  resourceId: z
+    .string()
+    .max(256)
+    .optional()
+    .describe("Opaque id of the thing being billed; groups the `resource` dimension."),
+  tags: z
+    .record(z.string())
+    .optional()
+    .describe(
+      "Cost-allocation tags, at most 32. Keys starting with `infrawrench:` are reserved and rejected.",
+    ),
+  usageAmount: z.number().optional(),
+  usageUnit: z.string().max(256).optional(),
+  accountId: Uuid.optional().describe(
+    "Attribute this row to a connected account. Must belong to the calling organization. " +
+      "Omit to attribute it to the source itself.",
+  ),
+}).openapi("PushedCostRow");
+
+const CostPushRequest = strict({
+  source: z
+    .string()
+    .max(64)
+    .openapi({
+      example: "snowflake-invoices",
+      description:
+        "Stable slug naming the system that owns these rows: letters, digits, `.`, `_` and `-`. " +
+        "It groups the rows under an `External` provider and an `external:<source>` account, " +
+        "and re-pushing the same source over the same days restates only its own rows.",
+    }),
+  rows: z.array(PushedCostRow).max(5000),
+}).openapi("CostPushRequest");
+
+const CostPushResponse = strict({
+  written: z.number().int(),
+}).openapi("CostPushResponse");
+
 export function registerCostPaths(ctx: BuildContext) {
   const { registry } = ctx;
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/costs/rows",
+    tags: ["Costs"],
+    summary: "Push cost rows from your own systems",
+    description:
+      "Reports spend Infrawrench has no provider plugin for — a parsed SaaS invoice, an internal " +
+      "chargeback, a colo bill — into the same store the provider collectors write to, so it " +
+      "appears in cost graphs, dimension filters, and budgets alongside everything else.\n\n" +
+      "Rows are grouped under a caller-chosen `source`. Writes are idempotent per " +
+      "`(source, day, service, region, resourceId, tags, currency)`: pushing the same day again " +
+      "restates that day rather than adding to it, so a nightly job can safely re-push a trailing " +
+      "window. Rows pushed under a source can never overwrite rows a provider collector wrote.\n\n" +
+      "The whole batch is validated before anything is stored, so a 400 means nothing was written.",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: CostPushRequest } }, required: true },
+    },
+    responses: {
+      200: {
+        description: "Rows written",
+        content: { "application/json": { schema: CostPushResponse } },
+      },
+      400: ErrorResponses[400],
+    },
+  });
 
   registry.registerPath({
     method: "post",

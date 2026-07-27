@@ -1473,6 +1473,22 @@ The dashboard `+` menu offers **New budget** and **Existing budget** for the sam
 
 Desktop gates the sidebar entry on `activeCloudOrgId` (spend is collected server-side, so local mode has nothing to show) and `createDesktopCostsClient` resolves the org per call rather than closing over it, matching the dashboard's cost API. Mobile omits the mutating half of `CostsClient` and `CostsPanel` renders read-only rather than showing controls that would fail on click.
 
+## Pushing in from outside (pages & cost rows over the API)
+
+Two endpoints let a server that isn't Infrawrench push _into_ it — the mirror image of everything else, which pulls. Both are the HTTP twin of a workflow primitive, and in both cases the workflow path was refactored to share the mechanism rather than being copied.
+
+**Routing/auth.** `POST /api/org/:orgId/costs/rows` (`web/src/api/routes/cost-ingest.ts`) and `POST|DELETE /api/org/:orgId/pages` (`routes/pages.ts`) are registered on `api` **before** the `orgScoped` mount, exactly like chat, because `sessionMiddleware` 401s an `iwk_` key and an unattended caller has nothing else. They authenticate through `web/src/auth/org-request-auth.ts` `authenticateOrgRequest(c, pathOrgId, scope)` — session cookie / WorkOS bearer / API key, pinned to the path org, permission enforced on **every** path via `effectivePermissions` (so a key never exceeds its owner's role). That module is chat's old `chat/auth.ts` generalized; `authenticateChat` is now a four-line wrapper that only narrows the scope type. New permissions: `costs:write`, `pages:write` — deliberately **not** in the member system role.
+
+**Cost push.** `server-core/src/cost/cost-ingest.ts` holds the validator/mapper/writer for every non-collected cost row; `cost/workflow-costs.ts` (`infra.costs.write`) and `cost/external-costs.ts` (the endpoint) are thin callers differing only in their `CostIngestSource` — plugin id, reserved tag, fallback account id, error prefix, per-call cap. The reserved tag is the whole invariant: `cost_daily`'s ORDER BY doesn't include `plugin_id` and is frozen, so pushed rows carry `infrawrench:workflow=<id>` or `infrawrench:source=<name>` to keep their key space disjoint from the pollers' and from each other. Ids live in db-free `cost/workflow-cost-ids.ts` / `cost/external-cost-ids.ts`; API rows report provider `external` and, absent an `accountId`, account `external:<source>`. `web/src/services/cost-query.ts` labels both synthetic providers in one `providerNames()` helper and now labels synthetic accounts in `labelSeries` too, not just in the dimension list.
+
+**Paging.** `server-core/src/paging/deliver.ts` owns the protocol — resolve key/cooldown, claim, fan out over Twilio/push/Slack/Teams, roll the claim back when every transport reached nobody — behind a `PageCooldownStore` interface, because the cooldown row differs per caller but nothing else does. `workflows/paging.ts` backs it with `workflow_pages` (keyed by workflow); `paging/external-pages.ts` backs it with the new `external_pages` table (keyed by org+source+key, migration `0036`). Both claims are a single conditional upsert whose `setWhere` reads the existing row, which is what stops two replicas double-paging. API pages reuse the **`workflowPages` notification trigger** rather than adding a fourth column to three tables — the user-facing label across web/mobile is now just "Pages". Push payload gains an `api_page` variant (`client-core/src/push.ts` + `mobile/src/lib/push.ts` parse/route, deep-links to the org home).
+
+`source` is one idea across both surfaces, so its rule lives once in `server-core/src/source-name.ts` (`isValidSourceName`, `SOURCE_NAME_HELP`).
+
+**CLI.** `infrawrench page <message> --source …`, `infrawrench page clear`, and `infrawrench costs push --source … [--file|stdin]` (`desktop/electron/cli/commands/push.ts`) wrap both endpoints — the CLI is usually already on the box that has the news. Suppressed pages exit zero and print the retry time.
+
+Docs: `website/src/content/docs/features/server-push.md` (+ cloud-costs, workflows, cli, push/Slack/Teams alert triggers, roles, api-keys).
+
 ## Accessibility conventions
 
 Established during the July 2026 a11y sweep (react-doctor Accessibility findings: 78 → 0). Keep new code within these patterns:

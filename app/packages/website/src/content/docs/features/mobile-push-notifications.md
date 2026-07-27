@@ -22,7 +22,7 @@ On **iOS** they are also sent as **Time Sensitive**, which lights the screen and
 
 On **Android** the same alerts land on a high-importance **Incidents & alerts** channel, which you can retune (or silence) in the system notification settings for the app.
 
-**Time Sensitive is the ceiling on iOS today**, including for workflow pages. iOS has one level above it — **Critical Alerts**, which also overrides the ringer switch and cannot be turned off per app — but Apple grants that entitlement to an app case by case, and Infrawrench does not carry it. In practice: a page will break through Focus and Do Not Disturb, but a phone set to silent stays silent. If you are on call, rely on the SMS and voice channels for the ringer, not on push alone.
+**Time Sensitive is the ceiling on iOS today**, including for pages. iOS has one level above it — **Critical Alerts**, which also overrides the ringer switch and cannot be turned off per app — but Apple grants that entitlement to an app case by case, and Infrawrench does not carry it. In practice: a page will break through Focus and Do Not Disturb, but a phone set to silent stays silent. If you are on call, rely on the SMS and voice channels for the ringer, not on push alone.
 
 If you want some alerts to be loud and others not, use the per-organization trigger toggles below rather than the system switch — they are per user, per org, so you can leave sync incidents on for production and turn budget alerts off everywhere.
 
@@ -30,11 +30,11 @@ If you want some alerts to be loud and others not, use the per-organization trig
 
 Notification triggers are toggled per user, per organization, in **Settings → Notifications** — on the web app or in the mobile app's settings. Everything defaults to **on**; each member manages their own toggles. The v1 triggers:
 
-| Trigger            | When it fires                                                                     |
-| ------------------ | --------------------------------------------------------------------------------- |
-| **Sync incidents** | An account's background sync keeps failing and crosses the org's paging threshold |
-| **Budget alerts**  | A [budget threshold](./cloud-costs.md) is crossed                                 |
-| **Workflow pages** | A [workflow](./workflows.md) calls `infra.page(...)`                              |
+| Trigger            | When it fires                                                                                                                                 |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Sync incidents** | An account's background sync keeps failing and crosses the org's paging threshold                                                             |
+| **Budget alerts**  | A [budget threshold](./cloud-costs.md) is crossed                                                                                             |
+| **Pages**          | Your own code raises an alert — a [workflow](./workflows.md) calling `infra.page(...)`, or a [server calling `POST /pages`](./server-push.md) |
 
 <insert [Web Settings → Notifications page showing the push trigger toggles, a registered device row, and the Send test push button] here>
 
@@ -53,11 +53,11 @@ Tapping a sync-incident notification deep-links straight to the failing account'
 
 Budget threshold breaches notify **at most once per budget, per threshold, per calendar month** — the same dedupe as the budget badge and SMS. Budget pushes are independent of the org's Twilio settings: they deliver even if paging/SMS is not set up at all. Tapping one opens the org home screen, where the budget card shows its alert badge. If no dashboard shows that budget, the **Costs** tab lists every budget in the org.
 
-### Workflow pages
+### Pages
 
-A [workflow](./workflows.md) that finds a problem can raise an alert itself by calling `infra.page(...)` — "page me if any pod's restart count goes above 5" is a cron workflow that does exactly this. Unlike the two triggers above, the condition is whatever the workflow's author wrote, so the dedupe is author-controlled: every page carries a **key** and repeats under the same key are suppressed for a cooldown (**default: 60 minutes**) that the workflow can set per call or clear when the condition recovers.
+Your own code can raise an alert — a [workflow](./workflows.md) calling `infra.page(...)` ("page me if any pod's restart count goes above 5" is a cron workflow that does exactly this), or a server outside Infrawrench [calling `POST /pages`](./server-push.md). Unlike the two triggers above, the condition is whatever its author wrote, so the dedupe is author-controlled: every page carries a **key** and repeats under the same key are suppressed for a cooldown (**default: 60 minutes**) the caller can set per call or clear when the condition recovers.
 
-Workflow pages deliver over both channels — mobile push, and SMS to the Twilio recipient list when credentials are configured. A workflow can additionally request a **voice call** for something genuinely worth waking up for. Tapping a workflow page opens that workflow in the app, where its recent runs and logs show what tripped it.
+Pages deliver over both channels — mobile push, and SMS to the Twilio recipient list when credentials are configured. The caller can additionally request a **voice call** for something genuinely worth waking up for. Tapping a workflow's page opens that workflow in the app, where its recent runs and logs show what tripped it; a page pushed over the API opens the org home.
 
 ## The Notifications settings page
 

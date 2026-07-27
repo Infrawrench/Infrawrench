@@ -24,6 +24,8 @@ import { adminRoutes } from "./routes/admin";
 
 import { dashboardRoutes } from "./routes/dashboards";
 import { costRoutes } from "./routes/costs";
+import { costIngestRoutes } from "./routes/cost-ingest";
+import { pageRoutes } from "./routes/pages";
 import { budgetRoutes } from "./routes/budgets";
 import { accountRoutes } from "./routes/accounts";
 import { apiKeyRoutes } from "./routes/api-keys";
@@ -166,6 +168,14 @@ api.route("/api/v1/sync", syncRoutes);
 // Chat handles its own auth so it can serve both session-cookie UI clients
 // and `iwk_` API-key holders with the `chat:write` scope.
 api.route("/api/org/:orgId/chat", chatRoutes);
+
+// Push-up surfaces for servers outside Infrawrench. Same reason as chat: the
+// org tree's session middleware 401s `iwk_` keys, so these authenticate
+// themselves (see auth/org-request-auth.ts). Registered before the org tree so
+// `POST /costs/rows` resolves here; every other `/costs/*` path falls through
+// to the session-authed router below.
+api.route("/api/org/:orgId/costs", costIngestRoutes);
+api.route("/api/org/:orgId/pages", pageRoutes);
 
 const authed = new Hono();
 authed.use("*", sessionMiddleware);

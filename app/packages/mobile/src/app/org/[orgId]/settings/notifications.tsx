@@ -167,11 +167,9 @@ export default function NotificationsScreen() {
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
           <View style={{ flex: 1, gap: 2 }}>
-            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
-              Workflow pages
-            </Text>
+            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>Pages</Text>
             <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              A workflow raises an alert with infra.page().
+              Your code raises an alert — infra.page() or POST /pages.
             </Text>
           </View>
           <Switch
@@ -222,7 +220,7 @@ export default function NotificationsScreen() {
 const SLACK_TRIGGERS = [
   { key: "syncIncidents", label: "Sync failures" },
   { key: "budgetAlerts", label: "Budgets" },
-  { key: "workflowPages", label: "Workflow pages" },
+  { key: "workflowPages", label: "Pages" },
 ] as const satisfies ReadonlyArray<{ key: keyof SlackChannelTriggers; label: string }>;
 
 /**
@@ -503,7 +501,7 @@ function SlackChannelRow({
 const MSTEAMS_TRIGGERS = [
   { key: "syncIncidents", label: "Sync failures" },
   { key: "budgetAlerts", label: "Budgets" },
-  { key: "workflowPages", label: "Workflow pages" },
+  { key: "workflowPages", label: "Pages" },
 ] as const satisfies ReadonlyArray<{ key: keyof MsTeamsWebhookTriggers; label: string }>;
 
 /**

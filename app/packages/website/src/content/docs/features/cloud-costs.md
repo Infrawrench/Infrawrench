@@ -102,7 +102,12 @@ Some providers only publish monthly invoice totals rather than daily costs. Thei
 
 ### Spend from somewhere else
 
-For anything with no provider plugin — a SaaS invoice, an internal chargeback, a colo bill — a [workflow](./workflows.md#reporting-your-own-cost-data) can report the numbers itself with `infra.costs.write(...)`. Those rows land in the same store the collectors write to, so they show up in graphs, dimension filters, and budgets like any other spend. They report **Workflow** as their provider and, unless the workflow attributes them to one of your accounts, appear in the account dimension as "&lt;workflow name&gt; (workflow)".
+For anything with no provider plugin — a SaaS invoice, an internal chargeback, a colo bill — you can report the numbers yourself, and they land in the same store the collectors write to, so they show up in graphs, dimension filters, and budgets like any other spend. Two ways in:
+
+- A [workflow](./workflows.md#reporting-your-own-cost-data) calling `infra.costs.write(...)`, when the numbers are reachable from Infrawrench. These report **Workflow** as their provider and, unless the workflow attributes them to one of your accounts, appear in the account dimension as "&lt;workflow name&gt; (workflow)".
+- A server of your own [pushing rows over the API](./server-push.md#cost-rows) to `POST /costs/rows`, when they aren't. These report **External** as their provider and appear as "&lt;source&gt; (external)".
+
+Either way, re-reporting a day restates it rather than adding to it, and neither can overwrite a row a provider collector wrote.
 
 ## When collection fails
 

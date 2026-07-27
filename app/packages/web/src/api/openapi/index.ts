@@ -14,6 +14,7 @@ import { registerAccountPaths } from "./paths/accounts";
 import { registerDashboardPaths } from "./paths/dashboards";
 import { registerCostPaths } from "./paths/costs";
 import { registerBudgetPaths } from "./paths/budgets";
+import { registerPagePaths } from "./paths/pages";
 import { registerResourcePaths } from "./paths/resources";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
 import { registerAssociationPaths } from "./paths/associations";
@@ -84,6 +85,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerDashboardPaths(ctx);
   registerCostPaths(ctx);
   registerBudgetPaths(ctx);
+  registerPagePaths(ctx);
   registerResourcePaths(ctx);
   registerConnectionFeaturePaths(ctx);
   registerAssociationPaths(ctx);
@@ -163,6 +165,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Admin",
         description:
           "Platform-operator surface (INFRAWRENCH_PLATFORM_ADMIN_EMAILS allowlist), e.g. complimentary orgs.",
+      },
+      {
+        name: "Pages",
+        description:
+          "On-call alerts raised by your own systems, fanned out over the org's SMS, push, Slack, and Teams transports.",
       },
       { name: "Push", description: "Mobile push notification devices and preferences." },
       { name: "Slack", description: "Slack workspace connection and per-channel alert routing." },
@@ -262,6 +269,14 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /resources/create-cost-estimate": "resources:read",
   "POST /resources/{pluginId}/{typeId}/peer-panes": "resources:read",
   "POST /resources/{pluginId}/{typeId}/metrics": "resources:read",
+  // costs
+  "POST /costs/query": "costs:read",
+  "GET /costs/dimensions": "costs:read",
+  "GET /costs/status": "costs:read",
+  "POST /costs/rows": "costs:write",
+  // pages
+  "POST /pages": "pages:write",
+  "DELETE /pages": "pages:write",
   // associations
   "POST /associations": "secrets:write",
   "POST /associations/literal": "secrets:write",

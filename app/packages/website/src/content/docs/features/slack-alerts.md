@@ -1,6 +1,6 @@
 ---
 title: Slack alerts
-description: Route sync-failure incidents, budget alerts, and workflow pages to Slack channels, with a per-channel opt-in for each.
+description: Route sync-failure incidents, budget alerts, and pages to Slack channels, with a per-channel opt-in for each.
 sidebar_order: 16
 ---
 
@@ -33,11 +33,11 @@ Press **Add a channel** and pick from the list — it's fetched live from your w
 
 Each channel opts into the three alert triggers independently, so a `#finance` channel can take budget crossings without also getting every sync failure:
 
-| Trigger            | When it fires                                                                     |
-| ------------------ | --------------------------------------------------------------------------------- |
-| **Sync failures**  | An account's background sync keeps failing and crosses the org's paging threshold |
-| **Budgets**        | A [budget threshold](./cloud-costs.md) is crossed                                 |
-| **Workflow pages** | A [workflow](./workflows.md) calls `infra.page(...)`                              |
+| Trigger           | When it fires                                                                                                                                 |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Sync failures** | An account's background sync keeps failing and crosses the org's paging threshold                                                             |
+| **Budgets**       | A [budget threshold](./cloud-costs.md) is crossed                                                                                             |
+| **Pages**         | Your own code raises an alert — a [workflow](./workflows.md) calling `infra.page(...)`, or a [server calling `POST /pages`](./server-push.md) |
 
 All three default to on for a newly added channel. Unlike the mobile push toggles, which each member sets for themselves, Slack routing is org-wide — it takes the **Organization settings** permission to change.
 
@@ -47,7 +47,7 @@ All three default to on for a newly added channel. Unlike the mobile push toggle
 
 ## What the messages look like
 
-Each alert is a short block: the headline in bold, the alert text below it, and — for budget alerts and workflow pages — a **View in Infrawrench** button that deep-links to the budget or the workflow. Link previews are suppressed so an alert about a URL doesn't drag an unfurled card into the channel.
+Each alert is a short block: the headline in bold, the alert text below it, and — for budget alerts and pages — a **View in Infrawrench** button that deep-links to the budget, the workflow, or the org. Link previews are suppressed so an alert about a URL doesn't drag an unfurled card into the channel.
 
 ## Turning it off
 
@@ -57,4 +57,4 @@ Disconnecting here does not uninstall the app from Slack. To remove it on the Sl
 
 ## Interaction with the paging switch
 
-Sync-failure incidents respect the org's master **Paging enabled** switch on the same settings page — turning it off silences incidents on every transport, Slack included. Budget alerts and workflow pages are independent of it, exactly as they are for mobile push.
+Sync-failure incidents respect the org's master **Paging enabled** switch on the same settings page — turning it off silences incidents on every transport, Slack included. Budget alerts and pages are independent of it, exactly as they are for mobile push.

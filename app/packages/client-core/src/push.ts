@@ -45,6 +45,15 @@ export type PushNotificationData =
       /** The run that raised the page, so the app can open its logs. */
       runId?: string;
     }
+  | {
+      /** A page a server outside Infrawrench raised over `POST /pages`. */
+      type: "api_page";
+      orgId: string;
+      /** The caller's name for the system that paged. */
+      source: string;
+      /** The throttle key it paged under. */
+      key: string;
+    }
   | { type: "test"; orgId: string };
 
 export async function registerPushToken(
@@ -68,7 +77,10 @@ export async function unregisterPushDevice(api: CloudFetch, deviceId: string): P
 export interface PushPreferences {
   syncIncidents: boolean;
   budgetAlerts: boolean;
-  /** Alerts raised by a workflow calling `infra.page(...)`. */
+  /**
+   * Alerts raised by your own code — a workflow calling `infra.page(...)` or a
+   * server calling `POST /api/org/{orgId}/pages`.
+   */
   workflowPages: boolean;
 }
 

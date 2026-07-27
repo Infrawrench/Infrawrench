@@ -397,7 +397,7 @@ function RecipientsPanel({
 const ALERT_TRIGGERS = [
   { key: "syncIncidents", label: "Sync failures" },
   { key: "budgetAlerts", label: "Budgets" },
-  { key: "workflowPages", label: "Workflow pages" },
+  { key: "workflowPages", label: "Pages" },
 ] as const;
 
 /** The Microsoft Teams glyph, in the Teams brand purple. */
@@ -1198,7 +1198,7 @@ function PushPreferencesSection({ orgId }: { orgId: string }) {
             checked={prefs.workflowPages}
             onChange={(e) => void updatePref({ workflowPages: e.target.checked })}
           />
-          <span>Workflow pages</span>
+          <span>Pages</span>
         </label>
       </div>
 
@@ -1292,7 +1292,7 @@ function PushRosterSection({ orgId }: { orgId: string }) {
                 {[
                   r.syncIncidents && "incidents",
                   r.budgetAlerts && "budgets",
-                  r.workflowPages && "workflow pages",
+                  r.workflowPages && "pages",
                 ]
                   .filter(Boolean)
                   .join(", ") || "all triggers off"}

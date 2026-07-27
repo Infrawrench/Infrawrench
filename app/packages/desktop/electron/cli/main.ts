@@ -13,6 +13,7 @@ import { cmdLogin, cmdLogout, cmdWhoami } from "./commands/auth";
 import { cmdOrgs, cmdAccounts, cmdResources, cmdResource } from "./commands/listing";
 import { cmdMetrics } from "./commands/metrics";
 import { cmdCosts } from "./commands/costs";
+import { cmdPage, cmdCostsPush } from "./commands/push";
 import { cmdCli } from "./commands/cli-install";
 import { runTui } from "./tui";
 
@@ -32,6 +33,9 @@ COMMANDS
   resource <id>       show one resource's fields & outputs
   metrics <id>        metric charts for a cloud resource   [--last 6h] [--series cpu]
   costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource]
+  costs push          push your own cost rows   --source <name> [--file rows.json | stdin]
+  page <message>      alert the org's on-call transports   --source <name> [--key k] [--voice]
+  page clear          drop a page key's cooldown after a recovery   --source <name> [--key k]
   cli install         install this shell command (also: uninstall, status)
   help                show this help
 
@@ -42,6 +46,9 @@ FLAGS
   --json / --text     output mode (default: text)
   --last / --from / --to   time range for metrics & costs
   --type <typeId>     filter resources by resource type
+  --source <name>     who is pushing (required by page and costs push)
+  --key <k>           page throttle key   --title <t>   --cooldown <min>   --voice
+  -f, --file <path>   JSON rows for costs push (stdin when omitted)
   --no-color          disable ANSI colors
   -v, --version       app version
 
@@ -128,7 +135,14 @@ export async function runCli(): Promise<void> {
         await cmdMetrics(ctx, rest[0] ?? "", parsed.range);
         break;
       case "costs":
+        if (rest[0] === "push") {
+          await cmdCostsPush(ctx, parsed.push);
+          break;
+        }
         await cmdCosts(ctx, parsed.range);
+        break;
+      case "page":
+        await cmdPage(ctx, rest, parsed.push);
         break;
       case "cli":
         await cmdCli(ctx, rest[0]);

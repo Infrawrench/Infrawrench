@@ -937,6 +937,39 @@ export const chatUsage = pgTable(
   }),
 );
 
+/**
+ * Cooldown rows for pages a server outside Infrawrench raised over
+ * `POST /api/org/{orgId}/pages`. The workflow equivalent is `workflow_pages`;
+ * these are keyed by a caller-chosen `source` instead of a workflow id, since
+ * there is no row in this database to hang them off.
+ */
+export const externalPages = pgTable(
+  "external_pages",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Caller-chosen name for the system raising pages, e.g. "checkout-api". */
+    source: text("source").notNull(),
+    /** The caller-chosen throttle key; "default" when unspecified. */
+    key: text("key").notNull(),
+    /** When this key last delivered a page — the start of its cooldown. */
+    lastPagedAt: timestamp("last_paged_at").notNull().defaultNow(),
+    /** The message that was sent, for the settings UI. */
+    lastMessage: text("last_message"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgSourceKeyUnique: uniqueIndex("external_pages_org_source_key_unique").on(
+      t.organizationId,
+      t.source,
+      t.key,
+    ),
+    orgIdx: index("external_pages_org_idx").on(t.organizationId),
+  }),
+);
+
 export * from "./core-schema.js";
 export * from "./workflow-schema.js";
 export * from "./agent-schema.js";
