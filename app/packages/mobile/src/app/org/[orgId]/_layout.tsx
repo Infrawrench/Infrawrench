@@ -5,7 +5,7 @@ import {
   BackIcon,
   ChatIcon,
   CostsIcon,
-  HomeIcon,
+  DashboardsIcon,
   ResourcesIcon,
   SearchIcon,
   SettingsIcon,
@@ -63,7 +63,7 @@ export default function OrgLayout() {
         name="index"
         options={{
           title: "Dashboards",
-          tabBarIcon: ({ color, size }) => <HomeIcon color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => <DashboardsIcon color={color} size={size} />,
         }}
       />
       <Tabs.Screen

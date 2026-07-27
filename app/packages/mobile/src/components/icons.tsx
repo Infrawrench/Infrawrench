@@ -1,4 +1,4 @@
-import Svg, { Circle, Path } from "react-native-svg";
+import Svg, { Circle, Path, Rect } from "react-native-svg";
 
 /**
  * Line icons for the tab bar and navigation chrome.
@@ -31,12 +31,14 @@ function Icon({ color, size = 24, children }: IconProps & { children: React.Reac
   );
 }
 
-export function HomeIcon(props: IconProps) {
+/** Panels of a dashboard grid — the tab lists dashboards, so a house would lie. */
+export function DashboardsIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <Path d="M3 10.5 12 3l9 7.5" />
-      <Path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5" />
-      <Path d="M9.5 21v-6.5h5V21" />
+      <Rect x="3" y="3" width="7" height="9" rx="1" />
+      <Rect x="14" y="3" width="7" height="5" rx="1" />
+      <Rect x="14" y="12" width="7" height="9" rx="1" />
+      <Rect x="3" y="16" width="7" height="5" rx="1" />
     </Icon>
   );
 }
