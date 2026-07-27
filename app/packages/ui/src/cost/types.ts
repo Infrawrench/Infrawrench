@@ -1,11 +1,9 @@
-import type { BudgetWithStatus, CostAccountStatus } from "@infrawrench/client-core";
+import type {
+  BudgetWithStatus,
+  CostAccountStatus,
+  CostDimensionOption,
+} from "@infrawrench/client-core";
 import type { BudgetInput, CostQueryRequest, CostQueryResponse } from "./config.js";
-
-/** One selectable value in a dimension picker. */
-export interface CostDimensionOption {
-  value: string;
-  label: string;
-}
 
 /**
  * The cost contract lives in client-core so mobile (which doesn't depend on
@@ -16,6 +14,8 @@ export type {
   CostPollError,
   BudgetWithStatus,
   BudgetPlacement,
+  /** One selectable value in a dimension picker. */
+  CostDimensionOption,
 } from "@infrawrench/client-core";
 
 /**

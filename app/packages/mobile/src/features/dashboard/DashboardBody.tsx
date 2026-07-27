@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery, type QueryClient } from "@tanstack/react-query";
@@ -5,12 +6,13 @@ import {
   orderDashboardCards,
   type BudgetWidgetConfig,
   type CostGraphConfig,
+  type DashboardCardRef,
   type DashboardWidget,
 } from "@infrawrench/client-core";
 import { CostCollectionNotice } from "@/components/CostCollectionNotice";
-import { Card, EmptyView, LoadingView, Row, Separator } from "@/components/ui";
+import { Button, Card, EmptyView, LoadingView, Row, Separator } from "@/components/ui";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
-import { colors } from "@/lib/theme";
+import { colors, spacing } from "@/lib/theme";
 import { BudgetCard } from "./BudgetCard";
 import { CostGraphCard } from "./CostGraphCard";
 import { useBudgets } from "./useBudgets";
@@ -80,6 +82,19 @@ export function invalidateDashboardQueries(client: QueryClient): void {
   }
 }
 
+/**
+ * What the screen hands down to turn the read-only body into an editable one.
+ * `null` (the default) renders exactly what it always did.
+ */
+export interface DashboardEditing {
+  /** The whole grid in its new order — resource, workflow, and widget cards. */
+  onReorder: (order: DashboardCardRef[]) => void;
+  onRemove: (card: DashboardCardRef) => void;
+  /** Only widgets are configurable; a pin has nothing to edit. */
+  onEditWidget: (widget: DashboardWidget) => void;
+  busy: boolean;
+}
+
 function formatMetricValue(value: unknown, unit: string | null): string {
   if (value === null || value === undefined) return "—";
   const text = typeof value === "object" ? JSON.stringify(value) : String(value);
@@ -95,7 +110,13 @@ function formatMetricValue(value: unknown, unit: string | null): string {
  * app: a budget alert arrives as a push, and the thing it is about has to be
  * on the screen the notification opens.
  */
-export function DashboardBody({ data }: { data: DashboardData }) {
+export function DashboardBody({
+  data,
+  editing = null,
+}: {
+  data: DashboardData;
+  editing?: DashboardEditing | null;
+}) {
   const router = useRouter();
   const { api, orgId } = useOrgApi();
   const { pins, workflowPins, widgets } = data;
@@ -147,22 +168,81 @@ export function DashboardBody({ data }: { data: DashboardData }) {
 
   if (cards.length === 0) {
     return (
-      <EmptyView message="Nothing pinned to this dashboard yet. Pin resources and add cost widgets from the web or desktop app." />
+      <EmptyView
+        message={
+          editing
+            ? "Nothing on this dashboard yet. Add a card to get started."
+            : "Nothing pinned to this dashboard yet. Tap Edit to pin a resource or add a cost card."
+        }
+      />
     );
   }
 
   const detailFor = (pinId: string) => (pinDetails.data ?? []).find((d) => d.pinId === pinId);
 
+  /**
+   * Wrap a card in its edit strip. The order the strip moves cards through is
+   * the rendered order, so an arrow always swaps with the neighbour above or
+   * below on screen — the three tables' own `gridX` values never surface here.
+   */
+  const withControls = (index: number, ref: DashboardCardRef, node: ReactNode): ReactNode => {
+    if (!editing) return node;
+    const move = (delta: -1 | 1) => {
+      const next: DashboardCardRef[] = cards.map((c) => ({ kind: c.kind, id: c.id }));
+      const [moved] = next.splice(index, 1);
+      next.splice(index + delta, 0, moved!);
+      editing.onReorder(next);
+    };
+    return (
+      <View key={`${ref.kind}:${ref.id}`} style={{ gap: spacing.sm }}>
+        {node}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
+          <Button
+            label="Move up"
+            variant="secondary"
+            disabled={index === 0 || editing.busy}
+            onPress={() => move(-1)}
+          />
+          <Button
+            label="Move down"
+            variant="secondary"
+            disabled={index === cards.length - 1 || editing.busy}
+            onPress={() => move(1)}
+          />
+          {ref.kind === "widget" ? (
+            <Button
+              label="Configure"
+              variant="secondary"
+              disabled={editing.busy}
+              onPress={() => {
+                const target = widgets.find((w) => w.id === ref.id);
+                if (target) editing.onEditWidget(target);
+              }}
+            />
+          ) : null}
+          <Button
+            label="Remove"
+            variant="danger"
+            disabled={editing.busy}
+            onPress={() => editing.onRemove(ref)}
+          />
+        </View>
+      </View>
+    );
+  };
+
   return (
     <>
       <CostCollectionNotice statuses={costStatus.data ?? []} />
-      {cards.map((card) => {
+      {cards.map((card, index) => {
         if (card.kind === "resource") {
           const pin = detailFor(card.pin.pinId);
           if (!pin) {
             return pinDetails.isLoading ? <LoadingView key={card.pin.pinId} /> : null;
           }
-          return (
+          return withControls(
+            index,
+            { kind: "resource", id: card.pin.resourceId },
             <Card key={card.pin.pinId}>
               <Row
                 title={pin.displayName}
@@ -186,13 +266,15 @@ export function DashboardBody({ data }: { data: DashboardData }) {
               {(pin.status.resourceCounts ?? []).map((rc) => (
                 <StatRow key={rc.typeLabel} label={rc.typeLabel} value={String(rc.count)} />
               ))}
-            </Card>
+            </Card>,
           );
         }
 
         if (card.kind === "workflow") {
           const wp = card.workflowPin;
-          return (
+          return withControls(
+            index,
+            { kind: "workflow", id: wp.workflowId },
             <Card key={wp.pinId}>
               <Row
                 title={wp.name}
@@ -206,32 +288,37 @@ export function DashboardBody({ data }: { data: DashboardData }) {
               {wp.metrics.map((m) => (
                 <StatRow key={m.key} label={m.label} value={formatMetricValue(m.value, m.unit)} />
               ))}
-            </Card>
+            </Card>,
           );
         }
 
         const widget = card.widget;
+        const widgetRef: DashboardCardRef = { kind: "widget", id: widget.id };
         if (widget.kind === "cost_graph") {
-          return (
+          return withControls(
+            index,
+            widgetRef,
             <CostGraphCard
               key={widget.id}
               title={widget.title}
               config={widget.config as CostGraphConfig}
-            />
+            />,
           );
         }
 
         const budget = budgets.data?.get((widget.config as BudgetWidgetConfig).budgetId);
         if (!budget) {
-          return (
+          return withControls(
+            index,
+            widgetRef,
             <Card key={widget.id}>
               <Text style={{ color: colors.textFaint, fontSize: 13 }}>
                 {budgets.isLoading ? "Loading budget…" : `${widget.title} — budget unavailable`}
               </Text>
-            </Card>
+            </Card>,
           );
         }
-        return <BudgetCard key={widget.id} budget={budget} />;
+        return withControls(index, widgetRef, <BudgetCard key={widget.id} budget={budget} />);
       })}
     </>
   );

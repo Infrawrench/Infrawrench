@@ -22,9 +22,9 @@ You can switch organizations at any time from the org switcher; everything you s
 
 ## What you can do
 
-- **Dashboards** — every [dashboard](./dashboard.md) in the org, the default one first. Tap one to open it, with its name in the header and a back button to the list. A dashboard renders exactly what the web app shows: pinned resource tiles, workflow tiles, [cost graphs](./cloud-costs.md), and [budgets](./cloud-costs.md#budgets--alerts), in the order you arranged them. Cost graphs are drawn natively — every chart type, the previous-period and forecast overlays, and per-series totals in the legend — and budgets show month-to-date spend against the amount with their thresholds and forecast marker. A budget appears on the dashboard its card was added to, the same as on web and desktop; the **Costs** tab lists all of them regardless. Dashboards are render-only on mobile: you arrange and configure them on web or desktop.
+- **Dashboards** — every [dashboard](./dashboard.md) in the org, the default one first. Tap one to open it, with its name in the header and a back button to the list. A dashboard renders exactly what the web app shows: pinned resource tiles, workflow tiles, [cost graphs](./cloud-costs.md), and [budgets](./cloud-costs.md#budgets--alerts), in the order you arranged them. Cost graphs are drawn natively — every chart type, the previous-period and forecast overlays, and per-series totals in the legend — and budgets show month-to-date spend against the amount with their thresholds and forecast marker. A budget appears on the dashboard its card was added to, the same as on web and desktop; the **Costs** tab lists all of them regardless. You can also build one from scratch here — **New dashboard** on the list, then **Edit** on the dashboard itself to add cards, reorder them, configure a cost graph or budget, and rename or delete the dashboard. See [building a dashboard on the phone](#building-a-dashboard-on-the-phone).
 - **Accounts & resources** — browse every connected account and drill into its resources. An account page lists every resource type the plugin exposes, nested ones like DNS records and database users included, with a search box that narrows those sections exactly as it does on web and desktop. Resource detail pages are rendered from the same plugin schemas as web and desktop, so a droplet, a bucket, or a Kubernetes deployment looks like itself — including plugin actions, a Logs tab, and metrics charts.
-- **Costs** — month-to-date spend for the org and every budget in it, the same as the [**Costs** panel](./cloud-costs.md#the-costs-panel) on web and desktop. Budgets are listed here whether or not a dashboard shows them, so a budget alert push always has somewhere to land. Read-only: create and edit budgets on web or desktop.
+- **Costs** — month-to-date spend for the org and every budget in it, the same as the [**Costs** panel](./cloud-costs.md#the-costs-panel) on web and desktop. Budgets are listed here whether or not a dashboard shows them, so a budget alert push always has somewhere to land. Read-only, as on web: budgets are created and edited from a dashboard card.
 - **Search** — global search across your org's resources, same as [spotlight search](./spotlight-search.md).
 - **SFTP files** — browse, download (to the share sheet), and upload files on SSH-capable hosts, proxied through the cloud. Object-storage browsers (GCS, S3, R2, Azure Blob) remain on web and desktop.
 - **[AI chat](./ai-chat.md)** — the full org chat with streamed markdown responses, the per-conversation model picker, the spend meter, and approve/reject buttons for pending actions. Approving a risky action from the couch works the same as from the desk.
@@ -41,6 +41,23 @@ You can switch organizations at any time from the org switcher; everything you s
 <insert [Mobile Dashboards tab listing the org's dashboards with the default one marked, next to an opened dashboard showing a pinned resource card, a stacked-bar cost graph with its legend totals, and a budget card with its progress bar] here>
 
 <insert [Mobile resource detail page for a droplet showing the schema-rendered overview, action buttons, and a metrics chart] here>
+
+## Building a dashboard on the phone
+
+**New dashboard** at the bottom of the Dashboards tab asks for a name and drops you straight into the empty dashboard it just made.
+
+Every dashboard has an **Edit** button at the top. In edit mode:
+
+- **Add a card** offers the same four choices as the **+** tile on web — pin a resource (searched the same way as the Search tab), a **Cost graph**, a **New budget**, or an **Existing budget** the org already has.
+- Each card grows **Move up** / **Move down** buttons. There is no drag-and-drop on a phone, but the order is the same single sequence web drags through, so a cost graph can sit between two resource cards.
+- **Configure** on a cost graph opens the same options web's config dialog has — chart type, binning, date range, group-by (including by tag key), filters, top-N, previous-period comparison, and the forecast overlay — rendered as tappable chips rather than dropdowns. Custom absolute date ranges are the one thing left to web and desktop; a graph that already has one keeps it.
+- **Configure** on a budget edits the budget itself, so the change follows it to every dashboard it sits on and to the alerts it fires.
+- **Remove** takes a card off the dashboard. Removing a budget card leaves the budget tracking and alerting, exactly as on web.
+- **Rename** and **Delete** act on the dashboard. The default dashboard cannot be deleted.
+
+Everything here writes through the same API the web app uses, so a dashboard built on a phone opens unchanged on the desktop.
+
+<insert [Mobile dashboard in edit mode showing the Add a card / Rename / Delete / Done buttons, a card with its Move up, Move down, Configure and Remove strip, and the Add a card sheet open] here>
 
 ## The SSH terminal
 
@@ -69,7 +86,7 @@ The mobile app is deliberately a read-and-respond surface. Some things are demot
 - **Billing is read-only** — you can see your plan and seats, but plan changes and payment details are managed on the web (App Store rules).
 - **Code editors are absent** — manifest editing, the [bucket policy editor](./bucket-policy-editor.md), and [workflow](./workflows.md) editing all use Monaco, which stays on web and desktop.
 - **[Secret reroll](../core-concepts/secret-rerolls.md) wizard** is web/desktop-only. Plugin command prompts do work — the form renders natively, though the richer pickers (region, size, machine image) fall back to a plain text field.
-- **Dashboards are render-only** — every card renders live, but adding, arranging, and configuring tiles (including cost graphs and budgets) happens on web or desktop.
+- **Dashboard drag-and-drop and custom date ranges** — dashboards are fully editable on mobile (see [above](#building-a-dashboard-on-the-phone)), but cards are reordered with **Move up** / **Move down** rather than dragged, and a cost graph's custom absolute date range is set on web or desktop.
 - **k9s and Kubernetes port-forward** are not yet supported on mobile. Pod shells are — see above.
 - **[SQL editor](./sql-editor.md) autocomplete** is absent (queries still run).
 

@@ -50,6 +50,10 @@ Budget cards are views onto a budget, not the budget itself: removing one leaves
 
 You can create additional dashboards from **Dashboards → New**. Useful for splitting by environment (prod, staging) or by responsibility (mine vs team).
 
+## On mobile
+
+The [mobile app](./mobile-app.md) builds and edits dashboards too: **New dashboard** on the Dashboards tab, then **Edit** on a dashboard to add cards, reorder them, configure a cost graph or budget, and rename or delete the dashboard. Cards move with **Move up** / **Move down** instead of being dragged, and a cost graph's custom absolute date range stays on web and desktop — everything else is the same options over the same API, so a dashboard built on a phone opens unchanged here. See [building a dashboard on the phone](./mobile-app.md#building-a-dashboard-on-the-phone).
+
 ## When the dashboard is worth using
 
 - You manage five or more accounts and do not want to hunt through the sidebar.

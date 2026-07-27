@@ -120,6 +120,87 @@ export interface BudgetThreshold {
   percent: number;
 }
 
+/**
+ * Create/update payload for a budget (POST/PUT /budgets). `ui/src/cost/config.ts`
+ * asserts `budgetInputSchema` still parses to exactly this.
+ */
+export interface BudgetInput {
+  name: string;
+  amountCents: number;
+  currency: string;
+  filters: CostFilter[];
+  thresholds: BudgetThreshold[];
+}
+
+/** One selectable value in a dimension picker (GET /costs/dimensions). */
+export interface CostDimensionOption {
+  value: string;
+  label: string;
+}
+
+/* ------------------------------------------------------------------ *
+ * Editor defaults and labels — every host that can author a cost card
+ * offers the same starting point and calls each option the same thing.
+ * ------------------------------------------------------------------ */
+
+export const DEFAULT_COST_GRAPH_CONFIG: CostGraphConfig = {
+  version: 1,
+  chartType: "stacked_bar",
+  binning: "daily",
+  dateRange: { kind: "relative", preset: "30d" },
+  groupBy: "provider",
+  filters: [],
+  topN: 5,
+  comparePreviousPeriod: false,
+  showForecast: false,
+};
+
+export const DEFAULT_BUDGET_INPUT: BudgetInput = {
+  name: "",
+  amountCents: 100000,
+  currency: "USD",
+  filters: [],
+  thresholds: [
+    { type: "actual", percent: 80 },
+    { type: "actual", percent: 100 },
+  ],
+};
+
+export const COST_CHART_TYPE_LABELS: Record<CostChartType, string> = {
+  stacked_bar: "Stacked bar",
+  multi_bar: "Multi bar",
+  line: "Line",
+  area: "Area",
+  pie: "Pie",
+};
+
+export const COST_BINNING_LABELS: Record<CostBinningId, string> = {
+  daily: "Daily",
+  weekly: "Weekly",
+  monthly: "Monthly",
+  cumulative: "Cumulative",
+};
+
+export const COST_RANGE_PRESET_LABELS: Record<CostRangePreset, string> = {
+  "7d": "Last 7 days",
+  "30d": "Last 30 days",
+  "90d": "Last 90 days",
+  mtd: "Month to date",
+  last_month: "Last month",
+  qtd: "Quarter to date",
+  ytd: "Year to date",
+  "12m": "Last 12 months",
+};
+
+export const COST_DIMENSION_LABELS: Record<CostDimensionId, string> = {
+  provider: "Provider",
+  account: "Account",
+  service: "Service",
+  region: "Region",
+  resource: "Resource",
+  tag: "Tag",
+};
+
 export const DASHBOARD_WIDGET_KINDS = ["cost_graph", "budget"] as const;
 export type DashboardWidgetKind = (typeof DASHBOARD_WIDGET_KINDS)[number];
 

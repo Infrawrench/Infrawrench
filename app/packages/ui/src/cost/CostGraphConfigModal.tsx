@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
+  COST_BINNING_LABELS as BINNING_LABELS,
   COST_BINNINGS,
+  COST_CHART_TYPE_LABELS as CHART_TYPE_LABELS,
   COST_CHART_TYPES,
+  COST_DIMENSION_LABELS,
   COST_DIMENSIONS,
+  COST_RANGE_PRESET_LABELS as PRESET_LABELS,
   COST_RANGE_PRESETS,
   costGraphConfigSchema,
   type CostFilter,
@@ -11,52 +15,10 @@ import {
 import type { CostApi, CostDimensionOption } from "./types.js";
 import { MultiSelect, type MultiSelectStatus } from "../components/MultiSelect.js";
 
-const CHART_TYPE_LABELS: Record<(typeof COST_CHART_TYPES)[number], string> = {
-  stacked_bar: "Stacked bar",
-  multi_bar: "Multi bar",
-  line: "Line",
-  area: "Area",
-  pie: "Pie",
-};
-
-const BINNING_LABELS: Record<(typeof COST_BINNINGS)[number], string> = {
-  daily: "Daily",
-  weekly: "Weekly",
-  monthly: "Monthly",
-  cumulative: "Cumulative",
-};
-
-const PRESET_LABELS: Record<(typeof COST_RANGE_PRESETS)[number], string> = {
-  "7d": "Last 7 days",
-  "30d": "Last 30 days",
-  "90d": "Last 90 days",
-  mtd: "Month to date",
-  last_month: "Last month",
-  qtd: "Quarter to date",
-  ytd: "Year to date",
-  "12m": "Last 12 months",
-};
-
-export const DIMENSION_LABELS: Record<(typeof COST_DIMENSIONS)[number], string> = {
-  provider: "Provider",
-  account: "Account",
-  service: "Service",
-  region: "Region",
-  resource: "Resource",
-  tag: "Tag",
-};
-
-export const DEFAULT_COST_GRAPH_CONFIG: CostGraphConfig = {
-  version: 1,
-  chartType: "stacked_bar",
-  binning: "daily",
-  dateRange: { kind: "relative", preset: "30d" },
-  groupBy: "provider",
-  filters: [],
-  topN: 5,
-  comparePreviousPeriod: false,
-  showForecast: false,
-};
+// The labels and the new-widget defaults live in client-core: mobile authors
+// the same widgets and can't import this package.
+export { DEFAULT_COST_GRAPH_CONFIG } from "./config.js";
+export const DIMENSION_LABELS = COST_DIMENSION_LABELS;
 
 const selectBaseClass =
   "rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";

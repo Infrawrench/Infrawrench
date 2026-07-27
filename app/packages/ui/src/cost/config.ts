@@ -13,6 +13,7 @@ import {
   COST_CHART_TYPES,
   COST_DIMENSIONS,
   COST_RANGE_PRESETS,
+  type BudgetInput,
   type BudgetThreshold,
   type BudgetWidgetConfig,
   type CostFilter,
@@ -28,8 +29,16 @@ export {
   COST_BINNINGS,
   DASHBOARD_WIDGET_KINDS,
   OTHER_GROUP_KEY,
+  DEFAULT_COST_GRAPH_CONFIG,
+  DEFAULT_BUDGET_INPUT,
+  COST_CHART_TYPE_LABELS,
+  COST_BINNING_LABELS,
+  COST_RANGE_PRESET_LABELS,
+  COST_DIMENSION_LABELS,
   resolveCostDateRange,
   costQueryForConfig,
+  type BudgetInput,
+  type CostDimensionOption,
   type CostAccountStatus,
   type CostPollError,
   type CostDimensionId,
@@ -98,8 +107,6 @@ export const budgetInputSchema = z.object({
   filters: z.array(costFilterSchema).default([]),
   thresholds: z.array(budgetThresholdSchema).min(1).max(10),
 });
-/** Create/update payload for a budget — web and desktop only; mobile reads. */
-export type BudgetInput = z.infer<typeof budgetInputSchema>;
 
 export function widgetConfigSchemaFor(kind: DashboardWidgetKind) {
   return kind === "cost_graph" ? costGraphConfigSchema : budgetWidgetConfigSchema;
@@ -129,5 +136,6 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof costGraphConfigSchema>, CostGraphConfig>,
   Exact<z.infer<typeof budgetWidgetConfigSchema>, BudgetWidgetConfig>,
   Exact<z.infer<typeof budgetThresholdSchema>, BudgetThreshold>,
+  Exact<z.infer<typeof budgetInputSchema>, BudgetInput>,
   Exact<z.infer<typeof costQueryRequestSchema>, CostQueryRequest>,
 ];

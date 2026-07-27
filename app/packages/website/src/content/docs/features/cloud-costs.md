@@ -88,7 +88,7 @@ The same budget can appear on as many dashboards as you like — one budget, man
 
 ## On your phone
 
-Cost graphs and budgets render on the [mobile app](./mobile-app.md) too — the same query, the same series colors, the same thresholds and forecast marker, drawn natively. The **Costs** tab mirrors the panel: month-to-date spend and every budget in the org, so a budget push always has somewhere to land even when no dashboard shows that budget. Cost cards also appear on whichever dashboards carry them. Creating and editing (the **+** tile, the graph and budget editors, adding and removing cards) stays on web and desktop.
+Cost graphs and budgets render on the [mobile app](./mobile-app.md) too — the same query, the same series colors, the same thresholds and forecast marker, drawn natively. The **Costs** tab mirrors the panel: month-to-date spend and every budget in the org, so a budget push always has somewhere to land even when no dashboard shows that budget. Cost cards also appear on whichever dashboards carry them. Creating and editing works there too: **Edit** on a dashboard offers the same **Add a card** choices and the same graph and budget editors, rendered as chips rather than dropdowns. Only a cost graph's custom absolute date range stays on web and desktop.
 
 ## Ask the model instead
 

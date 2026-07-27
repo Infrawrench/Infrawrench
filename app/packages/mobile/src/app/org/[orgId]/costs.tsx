@@ -13,9 +13,9 @@ import { useCostStatus } from "@/features/dashboard/useCostStatus";
  *
  * This is where a budget lives, independent of any dashboard: it keeps
  * evaluating and alerting whether or not a dashboard shows it, so a budget push
- * always has somewhere to land even when its card has been removed. Read-only,
- * like every other cloud-configured surface on mobile — creating and editing
- * budgets stays on web and desktop.
+ * always has somewhere to land even when its card has been removed. Read-only
+ * here, as on web: a budget is created and edited from a dashboard card, and
+ * this panel is the org-wide list of what exists.
  */
 const OVERVIEW_CONFIG: CostGraphConfig = {
   version: 1,
@@ -62,7 +62,7 @@ export default function CostsScreen() {
 
       <SectionTitle>Budgets</SectionTitle>
       {rows.length === 0 ? (
-        <EmptyView message="No budgets yet. Add one from the web or desktop app to track a monthly amount and get alerted before the bill does." />
+        <EmptyView message="No budgets yet. Add one from a dashboard — edit it, add a card, and pick New budget — to track a monthly amount and get alerted before the bill does." />
       ) : (
         rows.map((b) => <BudgetCard key={b.id} budget={b} />)
       )}

@@ -7,16 +7,8 @@ const inputClass =
   "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
 const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 
-export const DEFAULT_BUDGET_INPUT: BudgetInput = {
-  name: "",
-  amountCents: 100000,
-  currency: "USD",
-  filters: [],
-  thresholds: [
-    { type: "actual", percent: 80 },
-    { type: "actual", percent: 100 },
-  ],
-};
+// Shared with mobile, which authors the same budgets without this package.
+export { DEFAULT_BUDGET_INPUT } from "./config.js";
 
 export interface BudgetConfigModalProps {
   initialInput: BudgetInput;
