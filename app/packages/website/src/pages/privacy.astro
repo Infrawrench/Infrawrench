@@ -1,0 +1,447 @@
+---
+import "../styles/global.css";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+
+export const prerender = true;
+
+const lastUpdated = "July 27, 2026";
+const contactEmail = "astrid@infrawrench.com";
+
+const title = "Privacy Policy";
+const description =
+  "What Infrawrench collects, what stays on your machine, who processes it, and how to get it deleted.";
+
+const subprocessors = [
+  {
+    name: "WorkOS",
+    purpose: "Authentication, SSO, MFA, session management",
+    data: "Email, name, password or SSO identity, MFA factors, session and device metadata",
+  },
+  {
+    name: "Google (Sign in with Google)",
+    purpose: "Optional sign-in method, used only if you choose it",
+    data: "Google shares your email address, name and profile picture with us; we record that Google is your linked sign-in provider",
+  },
+  {
+    name: "Neon",
+    purpose: "Managed PostgreSQL — the primary application database",
+    data: "Everything described under “Cloud account data” below",
+  },
+  {
+    name: "Google Cloud",
+    purpose: "Application hosting (GKE) and the default chat model (Vertex AI)",
+    data: "Server traffic and logs; chat messages sent to the model",
+  },
+  {
+    name: "ClickHouse Cloud",
+    purpose: "Time-series store for resource metrics and cost history",
+    data: "Metric and cost datapoints keyed to your organization and resources",
+  },
+  {
+    name: "Stripe",
+    purpose: "Subscription billing",
+    data: "Billing email, subscription and seat counts, payment details (collected by Stripe directly — card numbers never reach our servers)",
+  },
+  {
+    name: "Cloudflare",
+    purpose: "This website, desktop app downloads and update checks, and the outbound egress proxy",
+    data: "IP address, user agent, requested URL in edge logs",
+  },
+  {
+    name: "GitHub",
+    purpose: "Desktop release hosting; workflow triggers if you install our GitHub App",
+    data: "Download requests; repository and commit metadata for triggered workflows",
+  },
+  {
+    name: "Expo",
+    purpose: "Push notification delivery to the mobile app",
+    data: "Device push tokens and notification contents",
+  },
+  {
+    name: "Anthropic / OpenAI",
+    purpose: "Optional alternative chat models, used only when you pick one",
+    data: "Chat messages and the resource context attached to them",
+  },
+  {
+    name: "Slack, Microsoft Teams, Twilio",
+    purpose: "Alert delivery — only if you connect them",
+    data: "Alert contents; for Twilio, the phone numbers you enter and your own Twilio credentials",
+  },
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title} | Infrawrench</title>
+    <meta name="description" content={description} />
+    <link rel="icon" href="/icon.png" type="image/png" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Infrawrench" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+  </head>
+  <body>
+    <Nav />
+
+    <main class="legal-shell">
+      <article class="docs-article legal-article">
+        <header class="docs-article-header">
+          <h1 class="docs-article-title">{title}</h1>
+          <p class="docs-article-lede">{description}</p>
+          <p class="legal-meta">Last updated: {lastUpdated}</p>
+        </header>
+
+        <div class="docs-prose">
+          <p>
+            Infrawrench is made by Infrawrench LLC (“Infrawrench”, “we”, “us”). This policy explains
+            what personal data we handle, why, and what control you have over it. It covers the
+            Infrawrench desktop app, the web app at <code>app.infrawrench.com</code>, the mobile
+            app, the <code>infrawrench</code> CLI, and this website.
+          </p>
+
+          <h2 id="the-short-version">The short version</h2>
+          <ul>
+            <li>
+              <strong>We never sell or share your personal data</strong>, and we do not run
+              advertising or allow ad networks anywhere near our apps or this site.
+            </li>
+            <li>
+              <strong>No third-party analytics today.</strong> There is no analytics SDK, tracking
+              pixel or session recorder in any of our apps or on this site. The desktop app does send
+              one small <a href="#telemetry">telemetry ping</a> when it starts. We may add product
+              analytics in future — if we do, this page will describe it first.
+            </li>
+            <li>
+              <strong>The desktop app is local-first.</strong> Used without signing in, it keeps your
+              credentials and infrastructure data on your own machine.
+            </li>
+            <li>
+              <strong>Cloud credentials are encrypted at rest</strong> and are only ever decrypted to
+              make the API call to your provider that you asked for.
+            </li>
+          </ul>
+
+          <h2 id="desktop">The desktop app and CLI</h2>
+          <p>
+            When you use the desktop app in local mode, your accounts, credentials, resources,
+            dashboards, workflows and agent sessions are stored in a SQLite database in your
+            operating system's application-data directory. Credentials are encrypted there with a
+            master key that is itself protected by your OS keychain (Keychain on macOS, DPAPI on
+            Windows). The CLI reads that same local database. None of it is transmitted to us.
+          </p>
+          <p>The only data that leaves your machine without you asking is:</p>
+          <ul>
+            <li>
+              <strong>Update checks.</strong> The app asks <code>infrawrench.com/api/updates</code> for
+              the current release on launch and every four hours. That request carries your IP address,
+              app version and platform, which appear in our edge logs.
+            </li>
+            <li>
+              <strong>A telemetry ping</strong> when the app starts, described in full under <a
+                href="#telemetry">Analytics and telemetry</a
+              >.
+            </li>
+            <li>
+              <strong>Calls to your own providers.</strong> Every AWS, GCP, Kubernetes, SSH or database
+              connection is made directly from your machine to that provider. We are not in the path,
+              and those requests are subject to the provider's own privacy policy — not this one.
+            </li>
+          </ul>
+          <p>
+            If you sign in to sync with the cloud, the data you choose to sync is covered by the next
+            section.
+          </p>
+
+          <h2 id="cloud">Cloud account data</h2>
+          <p>
+            When you use the web app, the mobile app, or desktop cloud sync, we store the following
+            on our servers:
+          </p>
+          <ul>
+            <li>
+              <strong>Identity and organization.</strong> Your email address, display name, the
+              organizations you belong to and your role in each. Authentication itself — passwords,
+              SSO, MFA factors, sessions — is handled by WorkOS; we never see or store your password.
+              If you sign in with Google, Google passes us your email address, name and profile
+              picture, and we record Google as your linked sign-in provider so you can see it on your
+              profile page. Your profile picture stays hosted by Google — your browser or phone loads
+              it from there, so Google sees that request.
+            </li>
+            <li>
+              <strong>Provider credentials.</strong> The API tokens, keys, kubeconfigs and passwords you
+              add for your cloud accounts. These are encrypted with AES-256-GCM before they are written
+              to the database and decrypted in memory only to perform an operation you requested.
+            </li>
+            <li>
+              <strong>Infrastructure metadata.</strong> Resource names, identifiers, configuration
+              fields, outputs, relationships and the dashboards you build from them.
+            </li>
+            <li>
+              <strong>Metrics and costs.</strong> Time-series datapoints pulled from your providers,
+              plus any budgets and alert history.
+            </li>
+            <li>
+              <strong>Audit log.</strong> For each action taken in your organization we record who did
+              it, what they did, when, and the IP address the request came from. This exists so
+              account owners can review activity in their own organization.
+            </li>
+            <li>
+              <strong>Access credentials you create with us.</strong> API keys (stored only as a hash
+              plus a short display prefix), SSH keys, and trusted SSH host keys.
+            </li>
+            <li>
+              <strong>AI chat.</strong> Your conversations and messages, and per-message token counts
+              used for billing.
+            </li>
+            <li>
+              <strong>Notification settings.</strong> Slack and Microsoft Teams connections, mobile push
+              device tokens, and — if you set up voice paging — the phone numbers and Twilio
+              credentials you supply.
+            </li>
+            <li>
+              <strong>Billing.</strong> Your Stripe customer and subscription identifiers and seat
+              count. Payment card details are collected and held by Stripe; they do not pass through
+              our servers.
+            </li>
+            <li>
+              <strong>Operational logs.</strong> Ordinary server and edge logs containing IP addresses,
+              timestamps, request paths and error traces, kept for debugging and abuse prevention.
+            </li>
+          </ul>
+
+          <h2 id="why">Why we process it</h2>
+          <p>
+            We process this data to provide the service you signed up for — connecting to your
+            providers on your behalf, showing you your infrastructure, running the workflows and
+            alerts you configure, and billing you. We also use it to keep the service secure and to
+            diagnose failures. Under GDPR, our legal bases are performance of a contract with you and
+            our legitimate interest in operating and securing the service. We do not use your
+            infrastructure data, credentials or chat content to train any model, and we do not use it
+            for advertising.
+          </p>
+
+          <h2 id="ai">AI chat and web search</h2>
+          <p>
+            When you use the chat assistant, your messages and the resource context relevant to them
+            are sent to a model provider to generate a reply. The default model runs on Google Vertex
+            AI; Anthropic or OpenAI models are used only if the server is configured for them and you
+            select one. Under the API terms we use, these providers process the content to return a
+            response and do not use it to train their models.
+          </p>
+          <p>
+            If you use the assistant's web search or fetch tools, your query or the URL is sent to the
+            search provider and the fetch goes out through our egress proxy, which refuses private and
+            internal addresses.
+          </p>
+
+          <h2 id="subprocessors">Sub-processors</h2>
+          <p>
+            These are the third parties involved in handling your data. Several are engaged only if
+            you choose the sign-in method or turn on the feature they support, as noted below.
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Provider</th>
+                <th>Purpose</th>
+                <th>Data involved</th>
+              </tr>
+            </thead>
+            <tbody>
+              {
+                subprocessors.map((p) => (
+                  <tr>
+                    <td>{p.name}</td>
+                    <td>{p.purpose}</td>
+                    <td>{p.data}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+
+          <h2 id="telemetry">Analytics and telemetry</h2>
+          <p>
+            Each time the desktop app starts, it sends a single ping to <code
+              >telemetry.infrawrench.com</code
+            >. This tells us how many people are running the app and on what, which is how we decide
+            which platforms and hardware to support. The ping contains:
+          </p>
+          <ul>
+            <li>
+              A random identifier generated the first time the app runs and stored in a file in the
+              app's data directory. It exists so that one machine launching the app repeatedly counts
+              once rather than many times. It is not derived from your hardware, is not linked to
+              your Infrawrench account, and is not used to build any profile of you — but it is
+              stable, so it does distinguish a returning install from a new one.
+            </li>
+            <li>Your operating system and version, and CPU architecture.</li>
+            <li>Your CPU model, core count, and total system memory.</li>
+            <li>
+              Your IP address and the time of the request, which the receiving server sees like any
+              other web request.
+            </li>
+          </ul>
+          <p>
+            It contains no account information, no credentials, no resource or provider data, and
+            nothing about what you do in the app. It is sent once per launch and never again while
+            the app is running. If you would rather not send it, block <code
+              >telemetry.infrawrench.com</code
+            > on your network; deleting the <code>telemetry-token</code> file in the app's data directory
+            resets the identifier to a fresh one. We keep these records for as long as they are useful
+            for understanding install and version trends.
+          </p>
+          <p>
+            Beyond that ping, we do not currently run analytics of any kind. We may in future add
+            product analytics inside the apps, crash and error reporting, or measurement on this
+            website, to understand which features are used and where things break. If we do:
+          </p>
+          <ul>
+            <li>
+              We will update this page to name the tool and describe what it collects, before it is
+              switched on.
+            </li>
+            <li>
+              We will limit it to product and diagnostic purposes. We will not use it for
+              advertising, will not sell or share what it collects, and will not add third-party ad
+              or cross-site tracking networks.
+            </li>
+            <li>
+              We will not feed your infrastructure data, credentials or chat content into it.
+            </li>
+            <li>
+              Where the law requires your consent — for example analytics cookies or similar
+              on-device storage under EU and UK rules — we will ask for it before collecting
+              anything, and honour a refusal.
+            </li>
+          </ul>
+
+          <h2 id="cookies">Cookies</h2>
+          <p>
+            The web app sets one encrypted session cookie, issued by WorkOS, which keeps you signed
+            in. It is strictly necessary for the app to function. At present that is the only cookie
+            we set anywhere — this marketing site sets none at all. We never set advertising or
+            cross-site tracking cookies. If we later add analytics cookies, we will ask for your
+            consent first where the law requires it, as described under <a href="#telemetry"
+              >Analytics and telemetry</a
+            >.
+          </p>
+
+          <h2 id="retention">How long we keep it</h2>
+          <ul>
+            <li>
+              Account, resource, credential and dashboard data is kept for as long as your
+              organization exists.
+            </li>
+            <li>
+              Deleting a resource deletes its stored configuration and secrets. Deleting an
+              organization deletes its records, including audit logs, chat history and credentials.
+            </li>
+            <li>
+              Deleted data can persist in encrypted database backups for up to 30 days before those
+              backups roll off.
+            </li>
+            <li>Operational logs are kept for a short period for debugging and abuse prevention.</li>
+            <li>
+              Desktop telemetry pings are kept for as long as they remain useful for understanding
+              install and version trends. They are not tied to your account, so we cannot link them
+              back to you on request.
+            </li>
+            <li>
+              Billing records are retained as long as tax and accounting law requires, independently of
+              account deletion.
+            </li>
+          </ul>
+
+          <h2 id="security">Security</h2>
+          <p>
+            All traffic to our services runs over TLS. Provider credentials and secret fields are
+            encrypted at rest with AES-256-GCM. API keys are stored hashed, never in plaintext. Data
+            is scoped per organization and access is governed by roles you assign. Outbound HTTP from
+            workflows and the chat agent is forced through a proxy running outside our cluster so it
+            cannot reach internal services or cloud metadata endpoints. No system is perfectly
+            secure, but if a breach affects your personal data we will notify you and any relevant
+            regulator as the law requires.
+          </p>
+
+          <h2 id="rights">Your rights</h2>
+          <p>
+            Depending on where you live you may have the right to access, correct, export, or delete
+            your personal data, to object to or restrict processing, and to withdraw consent. You can
+            edit your profile and delete resources, chats and organizations directly in the app. For
+            anything else — including a full export or account deletion — email <a
+              href={`mailto:${contactEmail}`}>{contactEmail}</a
+            > and we will respond within 30 days.
+          </p>
+          <p>
+            If you are in the EU or UK you also have the right to lodge a complaint with your data
+            protection authority. If you are a California resident: we do not sell or share personal
+            information as those terms are defined by the CCPA, and we will not discriminate against
+            you for exercising your rights.
+          </p>
+          <p>
+            If you are using Infrawrench as a member of someone else's organization, that organization
+            controls the data in it. We will refer requests about that data to them.
+          </p>
+
+          <h2 id="transfers">International transfers</h2>
+          <p>
+            We are based in the United States and our infrastructure and sub-processors process data
+            there. If you are in the EEA, UK or Switzerland, your data is transferred to the US under
+            Standard Contractual Clauses or another approved transfer mechanism with each
+            sub-processor.
+          </p>
+
+          <h2 id="children">Children</h2>
+          <p>
+            Infrawrench is a tool for professional use and is not directed at children. We do not
+            knowingly collect personal data from anyone under 16. If you believe a child has given us
+            data, email us and we will delete it.
+          </p>
+
+          <h2 id="changes">Changes to this policy</h2>
+          <p>
+            We will update this page when our practices change and revise the date at the top. For
+            material changes affecting how we handle your personal data, we will notify account
+            owners by email before the change takes effect.
+          </p>
+
+          <h2 id="contact">Contact</h2>
+          <p>
+            Infrawrench LLC<br />
+            <a href={`mailto:${contactEmail}`}>{contactEmail}</a>
+          </p>
+          <p>This policy is governed by the laws of the State of Delaware, USA.</p>
+        </div>
+      </article>
+    </main>
+
+    <Footer />
+  </body>
+</html>
+
+<style>
+  .legal-shell {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 48px 28px 96px;
+  }
+
+  .legal-article {
+    max-width: 100%;
+  }
+
+  .legal-meta {
+    margin: 16px 0 0;
+    font-size: 14px;
+    color: #6b7280;
+  }
+</style>
