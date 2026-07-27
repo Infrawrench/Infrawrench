@@ -184,7 +184,9 @@ export function MultiSelect({
             </button>
           </span>
         ))}
-        {overflow > 0 && <span className="text-xs text-on-surface-secondary">+{overflow} more</span>}
+        {overflow > 0 && (
+          <span className="text-xs text-on-surface-secondary">+{overflow} more</span>
+        )}
         <button
           ref={buttonRef}
           type="button"
