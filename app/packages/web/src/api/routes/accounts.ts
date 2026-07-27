@@ -265,7 +265,24 @@ app.put("/:id/credentials", async (c) => {
   );
   await db
     .update(accounts)
-    .set({ encryptedCredentials: ciphertext, credentialsIv: iv })
+    .set({
+      encryptedCredentials: ciphertext,
+      credentialsIv: iv,
+      updatedAt: new Date(),
+      // A credential edit is usually the fix for whatever the last poll
+      // complained about — a blank billing-export table, a rotated key, a
+      // missing role. Leaving the backoff in place means the account sits out
+      // up to a day still showing the stale error telling the user to do the
+      // thing they just did, so clear the failure state and make both passes
+      // due now.
+      nextPollAt: new Date(),
+      pollFailureCount: 0,
+      costNextPollAt: new Date(),
+      costPollFailureCount: 0,
+      costPollError: null,
+      costPollErrorHelpLabel: null,
+      costPollErrorHelpUrl: null,
+    })
     .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)));
   return c.json({ ok: true });
 });
