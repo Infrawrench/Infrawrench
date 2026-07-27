@@ -27,6 +27,9 @@ import {
 } from "../../../lib/cloud-api";
 import type { LoaderParams } from "./types";
 
+/** `POST /resources/:pluginId/:typeId/metrics` answers `{ series: [...] }`. */
+const metricsResponseSchema = z.object({ series: z.array(metricSeriesSchema) });
+
 export async function loadCloudResource(orgId: string, params: LoaderParams): Promise<void> {
   const {
     accountId,
@@ -247,9 +250,9 @@ export async function loadCloudResource(orgId: string, params: LoaderParams): Pr
       accountId,
       resourceId: decodedResourceId,
     })
-      .then((series) => {
+      .then((res) => {
         if (!isCancelled())
-          setters.setMetricSeries(z.array(metricSeriesSchema).parse(series) as MetricSeries[]);
+          setters.setMetricSeries(metricsResponseSchema.parse(res).series as MetricSeries[]);
       })
       .catch((err) => {
         if (!isCancelled()) toast.error(`Couldn't load metrics: ${formatErrorMessage(err)}`);

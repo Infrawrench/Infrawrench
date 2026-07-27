@@ -276,6 +276,11 @@ export async function getCloudLogs(
   });
 }
 
+/**
+ * `POST /resources/:pluginId/:typeId/metrics`. The route answers with a
+ * `{ series }` envelope, not a bare array — callers validate the payload, so
+ * the series itself stays `unknown`.
+ */
 export async function fetchCloudMetrics(
   orgId: string,
   pluginId: string,
@@ -287,7 +292,7 @@ export async function fetchCloudMetrics(
     endMs?: number;
     parentResourceId?: string;
   },
-): Promise<unknown> {
+): Promise<{ series: unknown }> {
   return invoke("cloud_fetch_metrics", { orgId, pluginId, resourceTypeId, body });
 }
 

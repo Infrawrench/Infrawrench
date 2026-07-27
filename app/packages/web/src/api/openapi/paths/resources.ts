@@ -22,6 +22,8 @@ const ChildTypeRef = strict({
   displayName: z.string(),
   pluralDisplayName: z.string().optional(),
   supportsCreate: z.boolean(),
+  /** Field schema, shipped only for child types that support update. */
+  fields: z.array(JsonObject).optional(),
 }).openapi("ChildTypeRef");
 
 const ChildResourceRef = strict({
@@ -31,6 +33,8 @@ const ChildResourceRef = strict({
   pluginId: z.string(),
   accountId: Uuid,
   status: StatusDot.optional(),
+  /** Field bag, shipped only for types the detail view renders as a child table. */
+  fields: JsonObject.optional(),
 }).openapi("ChildResourceRef");
 
 const PeerPaneStub = strict({
@@ -42,11 +46,16 @@ const PeerPaneStub = strict({
 const PeerPane = PeerPaneStub.extend({ schema: JsonObject }).openapi("PeerPane");
 
 const CredentialFormat = strict({
-  id: z.string(),
+  id: z.string().openapi({ description: "Passed back as `formatId` on export." }),
   label: z.string(),
   description: z.string().optional(),
-  fileExtension: z.string().optional(),
-  mimeType: z.string().optional(),
+  mediaType: z.enum(["json", "text", "ini", "binary-base64"]).openapi({
+    description:
+      "How the credential body should be presented. `binary-base64` means `content` is base64.",
+  }),
+  filenameTemplate: z.string().optional().openapi({
+    description: "Suggested filename; `{resource}` is replaced with the resource's external id.",
+  }),
 }).openapi("CredentialFormat");
 
 const EditableField = strict({
@@ -132,15 +141,19 @@ const LogsRequest = strict({
 }).openapi("LogsRequest");
 
 const LogsResponse = strict({
-  lines: z.array(z.string()),
-  nextPageToken: z.string().optional(),
-  truncated: z.boolean().optional(),
+  text: z.string().openapi({ description: "Raw log text; each entry keeps its trailing newline." }),
+  containers: z.array(z.string()).openapi({
+    description: "Container names available for this resource — drives the container picker.",
+  }),
+  activeContainer: z.string().openapi({ description: "Container `text` was read from." }),
 }).openapi("LogsResponse");
 
 const SecretVersion = strict({
   id: z.string(),
-  state: z.enum(["ENABLED", "DISABLED", "DESTROYED"]),
-  createdAt: z.string(),
+  state: z.enum(["enabled", "disabled", "destroyed"]),
+  createdAt: z.string().openapi({ description: "ISO-8601." }),
+  destroyedAt: z.string().optional().openapi({ description: "Set only when destroyed." }),
+  isLatest: z.boolean().optional(),
 }).openapi("SecretVersion");
 
 const SecretVersionsResponse = strict({ versions: z.array(SecretVersion) }).openapi(
@@ -212,7 +225,17 @@ const CredentialExport = strict({
   content: z.string(),
   filename: z.string(),
   mimeType: z.string(),
-  fields: z.record(z.string()).optional(),
+  /** Structured parts rendered as a key/value table (e.g. key id + secret). */
+  fields: z
+    .array(
+      strict({
+        label: z.string(),
+        value: z.string(),
+        sensitive: z.boolean().optional(),
+        hint: z.string().optional(),
+      }),
+    )
+    .optional(),
   warning: z.string().optional(),
 }).openapi("CredentialExport");
 
@@ -263,6 +286,13 @@ const PickerResourcesRequest = strict({
    * avoid loading resources from every region for a region-locked field.
    */
   regionHint: z.string().optional(),
+  /**
+   * When true, search every account in the org whose plugin matches a source
+   * instead of only `accountId` — used by reference-mode pickers where the
+   * target usually lives in another account. Labels are suffixed with the
+   * owning account name.
+   */
+  crossAccount: z.boolean().optional(),
 }).openapi("PickerResourcesRequest");
 
 const PickerResource = strict({
@@ -330,7 +360,12 @@ const MetricsRequest = strict({
 const MetricSeries = strict({
   label: z.string(),
   unit: z.string().optional(),
-  points: z.array(strict({ ts: z.number(), value: z.number() })),
+  points: z.array(
+    strict({
+      timestamp: z.number().openapi({ description: "Unix epoch milliseconds." }),
+      value: z.number(),
+    }),
+  ),
 }).openapi("MetricSeries");
 
 const MetricsResponse = strict({ series: z.array(MetricSeries) }).openapi("MetricsResponse");

@@ -115,12 +115,19 @@ const WorkflowPinRequest = strict({
 }).openapi("WorkflowPinRequest");
 
 const ProbeStatus = strict({
-  phase: z.enum(["ok", "loading", "error"]),
+  phase: z.enum(["ok", "error"]),
   error: z.string().optional(),
   stats: z.array(JsonObject).optional(),
-  sparkline: z.array(strict({ ts: z.number(), value: z.number() })).optional(),
+  sparkline: z
+    .array(
+      strict({
+        timestamp: z.number().openapi({ description: "Unix epoch milliseconds." }),
+        value: z.number(),
+      }),
+    )
+    .optional(),
   sparklineLabel: z.string().optional(),
-  resourceCounts: z.array(strict({ typeId: z.string(), count: z.number().int() })).optional(),
+  resourceCounts: z.array(strict({ typeLabel: z.string(), count: z.number().int() })).optional(),
 }).openapi("ProbeStatus");
 
 const PinFullResponse = strict({

@@ -35,7 +35,7 @@ export const Permission = z.enum(ALL_PERMISSIONS as PermissionEnumTuple).openapi
 });
 
 export const ResourceStatus = z
-  .enum(["healthy", "warning", "error", "unknown", "pending", "stopped"])
+  .enum(["healthy", "degraded", "error", "unknown", "provisioning", "info"])
   .openapi("ResourceStatus", {
     description: "Normalized status reported by a plugin's renderSidebarItem/renderDetail.",
   });

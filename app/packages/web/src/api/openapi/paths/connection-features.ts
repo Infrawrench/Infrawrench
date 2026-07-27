@@ -57,10 +57,12 @@ const StorageListRequest = strict({
 }).openapi("StorageListRequest");
 
 const StorageObject = strict({
-  key: z.string(),
-  size: z.number().int().nonnegative().optional(),
-  isFolder: z.boolean().optional(),
-  lastModified: z.string().optional(),
+  key: z.string().openapi({ description: "Full path within the bucket." }),
+  name: z.string().openapi({ description: "Last path segment — what the browser renders." }),
+  size: z.number().nonnegative(),
+  lastModified: z.string(),
+  isDirectory: z.boolean(),
+  contentType: z.string().optional(),
 }).openapi("StorageObject");
 
 const StoragePathRequest = strict({
@@ -85,11 +87,18 @@ const SftpListRequest = strict({
   sshUsername: z.string().optional(),
 }).openapi("SftpListRequest");
 
+/**
+ * Directory listings come back in the same shape as object storage — the SFTP
+ * host aliases its entry type to `StorageObject` so one browser component can
+ * render both. Spelled out here so the generated SDKs keep a named type.
+ */
 const SftpEntry = strict({
+  key: z.string().openapi({ description: "Absolute remote path." }),
   name: z.string(),
-  isDir: z.boolean(),
-  size: z.number().int().optional(),
-  modifiedAt: z.string().optional(),
+  size: z.number().nonnegative(),
+  lastModified: z.string(),
+  isDirectory: z.boolean(),
+  contentType: z.string().optional(),
 }).openapi("SftpEntry");
 
 const SftpPathRequest = SftpListRequest.openapi("SftpPathRequest");

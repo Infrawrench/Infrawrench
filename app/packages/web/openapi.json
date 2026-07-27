@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.6.0",
+    "version": "0.7.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -934,6 +934,53 @@
         "required": ["account", "resourceTypes", "pluginDisplayName", "pluginLogoSvg"],
         "additionalProperties": false
       },
+      "SyncedResource": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": ["string", "null"]
+          },
+          "fieldsJson": {
+            "$ref": "#/components/schemas/JsonObject"
+          },
+          "outputsJson": {
+            "$ref": "#/components/schemas/JsonObject"
+          },
+          "parentResourceId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ResourceId"
+              },
+              {
+                "type": ["string", "null"]
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "pluginId",
+          "resourceTypeId",
+          "displayName",
+          "externalId",
+          "fieldsJson",
+          "outputsJson",
+          "parentResourceId"
+        ],
+        "additionalProperties": false
+      },
       "ResourceTypeId": {
         "type": "string",
         "enum": [
@@ -1739,7 +1786,7 @@
         "properties": {
           "phase": {
             "type": "string",
-            "enum": ["ok", "loading", "error"]
+            "enum": ["ok", "error"]
           },
           "error": {
             "type": "string"
@@ -1755,14 +1802,15 @@
             "items": {
               "type": "object",
               "properties": {
-                "ts": {
-                  "type": "number"
+                "timestamp": {
+                  "type": "number",
+                  "description": "Unix epoch milliseconds."
                 },
                 "value": {
                   "type": "number"
                 }
               },
-              "required": ["ts", "value"],
+              "required": ["timestamp", "value"],
               "additionalProperties": false
             }
           },
@@ -1774,14 +1822,14 @@
             "items": {
               "type": "object",
               "properties": {
-                "typeId": {
+                "typeLabel": {
                   "type": "string"
                 },
                 "count": {
                   "type": "integer"
                 }
               },
-              "required": ["typeId", "count"],
+              "required": ["typeLabel", "count"],
               "additionalProperties": false
             }
           }
@@ -2679,7 +2727,7 @@
       },
       "ResourceStatus": {
         "type": "string",
-        "enum": ["healthy", "warning", "error", "unknown", "pending", "stopped"],
+        "enum": ["healthy", "degraded", "error", "unknown", "provisioning", "info"],
         "description": "Normalized status reported by a plugin's renderSidebarItem/renderDetail."
       },
       "StatusDot": {
@@ -2721,6 +2769,9 @@
           },
           "status": {
             "$ref": "#/components/schemas/StatusDot"
+          },
+          "fields": {
+            "$ref": "#/components/schemas/JsonObject"
           }
         },
         "required": ["id", "displayName", "resourceTypeId", "pluginId", "accountId"],
@@ -2740,6 +2791,12 @@
           },
           "supportsCreate": {
             "type": "boolean"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JsonObject"
+            }
           }
         },
         "required": ["id", "displayName", "supportsCreate"],
@@ -2811,7 +2868,8 @@
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Passed back as `formatId` on export."
           },
           "label": {
             "type": "string"
@@ -2819,14 +2877,17 @@
           "description": {
             "type": "string"
           },
-          "fileExtension": {
-            "type": "string"
+          "mediaType": {
+            "type": "string",
+            "enum": ["json", "text", "ini", "binary-base64"],
+            "description": "How the credential body should be presented. `binary-base64` means `content` is base64."
           },
-          "mimeType": {
-            "type": "string"
+          "filenameTemplate": {
+            "type": "string",
+            "description": "Suggested filename; `{resource}` is replaced with the resource's external id."
           }
         },
-        "required": ["id", "label"],
+        "required": ["id", "label", "mediaType"],
         "additionalProperties": false
       },
       "ResourceDetail": {
@@ -3086,20 +3147,23 @@
       "LogsResponse": {
         "type": "object",
         "properties": {
-          "lines": {
+          "text": {
+            "type": "string",
+            "description": "Raw log text; each entry keeps its trailing newline."
+          },
+          "containers": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Container names available for this resource — drives the container picker."
           },
-          "nextPageToken": {
-            "type": "string"
-          },
-          "truncated": {
-            "type": "boolean"
+          "activeContainer": {
+            "type": "string",
+            "description": "Container `text` was read from."
           }
         },
-        "required": ["lines"],
+        "required": ["text", "containers", "activeContainer"],
         "additionalProperties": false
       },
       "LogsRequest": {
@@ -3138,10 +3202,18 @@
           },
           "state": {
             "type": "string",
-            "enum": ["ENABLED", "DISABLED", "DESTROYED"]
+            "enum": ["enabled", "disabled", "destroyed"]
           },
           "createdAt": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO-8601."
+          },
+          "destroyedAt": {
+            "type": "string",
+            "description": "Set only when destroyed."
+          },
+          "isLatest": {
+            "type": "boolean"
           }
         },
         "required": ["id", "state", "createdAt"],
@@ -3361,9 +3433,25 @@
             "type": "string"
           },
           "fields": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "string"
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "sensitive": {
+                  "type": "boolean"
+                },
+                "hint": {
+                  "type": "string"
+                }
+              },
+              "required": ["label", "value"],
+              "additionalProperties": false
             }
           },
           "warning": {
@@ -3577,6 +3665,9 @@
           },
           "regionHint": {
             "type": "string"
+          },
+          "crossAccount": {
+            "type": "boolean"
           }
         },
         "required": ["sources", "accountId"],
@@ -3746,14 +3837,15 @@
             "items": {
               "type": "object",
               "properties": {
-                "ts": {
-                  "type": "number"
+                "timestamp": {
+                  "type": "number",
+                  "description": "Unix epoch milliseconds."
                 },
                 "value": {
                   "type": "number"
                 }
               },
-              "required": ["ts", "value"],
+              "required": ["timestamp", "value"],
               "additionalProperties": false
             }
           }
@@ -3972,20 +4064,28 @@
         "type": "object",
         "properties": {
           "key": {
-            "type": "string"
+            "type": "string",
+            "description": "Full path within the bucket."
+          },
+          "name": {
+            "type": "string",
+            "description": "Last path segment — what the browser renders."
           },
           "size": {
-            "type": "integer",
+            "type": "number",
             "minimum": 0
-          },
-          "isFolder": {
-            "type": "boolean"
           },
           "lastModified": {
             "type": "string"
+          },
+          "isDirectory": {
+            "type": "boolean"
+          },
+          "contentType": {
+            "type": "string"
           }
         },
-        "required": ["key"],
+        "required": ["key", "name", "size", "lastModified", "isDirectory"],
         "additionalProperties": false
       },
       "StorageListRequest": {
@@ -4051,20 +4151,28 @@
       "SftpEntry": {
         "type": "object",
         "properties": {
+          "key": {
+            "type": "string",
+            "description": "Absolute remote path."
+          },
           "name": {
             "type": "string"
           },
-          "isDir": {
+          "size": {
+            "type": "number",
+            "minimum": 0
+          },
+          "lastModified": {
+            "type": "string"
+          },
+          "isDirectory": {
             "type": "boolean"
           },
-          "size": {
-            "type": "integer"
-          },
-          "modifiedAt": {
+          "contentType": {
             "type": "string"
           }
         },
-        "required": ["name", "isDir"],
+        "required": ["key", "name", "size", "lastModified", "isDirectory"],
         "additionalProperties": false
       },
       "SftpListRequest": {
@@ -5618,73 +5726,6 @@
         ],
         "additionalProperties": false
       },
-      "SyncedResource": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "$ref": "#/components/schemas/ResourceId"
-          },
-          "pluginId": {
-            "type": "string"
-          },
-          "resourceTypeId": {
-            "type": "string"
-          },
-          "accountId": {
-            "type": "string",
-            "format": "uuid",
-            "example": "00000000-0000-0000-0000-000000000000"
-          },
-          "displayName": {
-            "type": "string"
-          },
-          "externalId": {
-            "type": ["string", "null"]
-          },
-          "fieldsJson": {
-            "$ref": "#/components/schemas/JsonObject"
-          },
-          "outputsJson": {
-            "$ref": "#/components/schemas/JsonObject"
-          },
-          "parentResourceId": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/ResourceId"
-              },
-              {
-                "type": ["string", "null"]
-              }
-            ]
-          },
-          "syncVersion": {
-            "type": "integer"
-          },
-          "deletedAt": {
-            "type": ["string", "null"],
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "id",
-          "pluginId",
-          "resourceTypeId",
-          "accountId",
-          "displayName",
-          "externalId",
-          "fieldsJson",
-          "outputsJson",
-          "parentResourceId",
-          "syncVersion",
-          "deletedAt",
-          "updatedAt"
-        ],
-        "additionalProperties": false
-      },
       "SyncedDashboard": {
         "type": "object",
         "properties": {
@@ -5726,7 +5767,76 @@
           "resources": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/SyncedResource"
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/SyncedResource"
+                },
+                {
+                  "properties": {
+                    "id": {
+                      "$ref": "#/components/schemas/ResourceId"
+                    },
+                    "pluginId": {
+                      "type": "string"
+                    },
+                    "resourceTypeId": {
+                      "type": "string"
+                    },
+                    "accountId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "00000000-0000-0000-0000-000000000000"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "externalId": {
+                      "type": ["string", "null"]
+                    },
+                    "fieldsJson": {
+                      "$ref": "#/components/schemas/JsonObject"
+                    },
+                    "outputsJson": {
+                      "$ref": "#/components/schemas/JsonObject"
+                    },
+                    "parentResourceId": {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/ResourceId"
+                        },
+                        {
+                          "type": ["string", "null"]
+                        }
+                      ]
+                    },
+                    "syncVersion": {
+                      "type": "integer"
+                    },
+                    "deletedAt": {
+                      "type": ["string", "null"],
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "pluginId",
+                    "resourceTypeId",
+                    "accountId",
+                    "displayName",
+                    "externalId",
+                    "fieldsJson",
+                    "outputsJson",
+                    "parentResourceId",
+                    "syncVersion",
+                    "deletedAt",
+                    "updatedAt"
+                  ]
+                }
+              ]
             }
           },
           "dashboards": {
@@ -7942,7 +8052,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/Resource"
+                    "$ref": "#/components/schemas/SyncedResource"
                   }
                 }
               }

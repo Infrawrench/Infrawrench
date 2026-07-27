@@ -88,6 +88,12 @@ const Resource = strict({
   parentResourceId: ResourceId.nullable(),
 }).openapi("Resource");
 
+/**
+ * What `sync-type` hands back: the same rows as `Resource`, minus `accountId`
+ * — the caller named the account in the path, so the route doesn't echo it.
+ */
+const SyncedResource = Resource.omit({ accountId: true }).openapi("SyncedResource");
+
 const SyncResponse = strict({ synced: z.number().int().nonnegative() }).openapi("SyncResponse");
 
 const ResourceTypeSummary = strict({
@@ -334,7 +340,7 @@ export function registerAccountPaths(ctx: BuildContext) {
     responses: {
       200: {
         description: "Resources",
-        content: { "application/json": { schema: z.array(Resource) } },
+        content: { "application/json": { schema: z.array(SyncedResource) } },
       },
       404: ErrorResponses[404],
       500: ErrorResponses[500],
