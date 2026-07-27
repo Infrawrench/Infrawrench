@@ -1,5 +1,6 @@
 import {
   app,
+  autoUpdater as nativeUpdater,
   BrowserWindow,
   clipboard,
   ipcMain,
@@ -78,13 +79,40 @@ let quitting = false;
 function hasBackgroundWork(): boolean {
   return activePingCount > 0 || activeCronCount > 0;
 }
-// Set once electron-updater has staged a downloaded update; `before-quit`
-// then calls `quitAndInstall` so the update actually applies on exit.
-// MacUpdater (unlike BaseUpdater on win/linux) does not register a quit hook
-// itself, so `autoInstallOnAppQuit` is effectively a no-op on macOS without this.
+// Set once the update is staged and installable; `before-quit` then calls
+// `quitAndInstall` so the update actually applies on exit. MacUpdater (unlike
+// BaseUpdater on win/linux) does not register a quit hook itself, so
+// `autoInstallOnAppQuit` is effectively a no-op on macOS without this.
 let pendingUpdateInstall: (() => void) | null = null;
 let installingUpdate = false;
 const AGENT_SSH_KEY_NAME = "infrawrench-agent";
+
+/** How long to wait for `quitAndInstall` to actually take the app down. */
+const INSTALL_STALL_TIMEOUT_MS = 20_000;
+
+function broadcastToWindows(channel: string, payload: unknown) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.webContents.isDestroyed()) win.webContents.send(channel, payload);
+  }
+}
+
+/**
+ * Updater failures are otherwise invisible — the renderer only ever sees a
+ * prompt that never resolves. Translate the ones a user can act on.
+ */
+function describeUpdateError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  if (/ENOSPC|No space left|not enough (free )?space|insufficient disk/i.test(message)) {
+    return "There isn't enough free disk space to unpack the update. Free up a few gigabytes and Infrawrench will retry on its next check.";
+  }
+  if (/ENOTFOUND|ETIMEDOUT|ECONNRESET|ECONNREFUSED|net::|socket hang up/i.test(message)) {
+    return "Infrawrench couldn't reach the update server. It'll retry automatically.";
+  }
+  if (/signature|code sign|SQRLUpdater/i.test(message)) {
+    return "The downloaded update failed its signature check and wasn't installed. Download the latest version from infrawrench.com.";
+  }
+  return message;
+}
 
 function startAutoUpdater() {
   if (!app.isPackaged) return;
@@ -95,20 +123,66 @@ function startAutoUpdater() {
     const { autoUpdater } = mod.default ?? mod;
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
-    autoUpdater.on("error", (err) => {
-      console.warn("[updater]", err);
-    });
-    autoUpdater.on("update-downloaded", (info) => {
+
+    // macOS hands the install to Squirrel.Mac, which fetches the downloaded zip
+    // back off electron-updater's own localhost proxy and stages it before
+    // anything is installable. electron-updater fires `update-downloaded` when
+    // *its* download lands — before Squirrel has even started — and until
+    // staging finishes `quitAndInstall()` is a silent no-op that neither quits
+    // nor errors. Prompting on that event hands the user a "Restart now" button
+    // that does nothing, and if staging never succeeds (a full disk is enough)
+    // it never will. Wait for the native updater's own `update-downloaded`,
+    // which fires only once restarting is guaranteed to apply the update.
+    const stagesNatively = process.platform === "darwin";
+    let downloadedVersion: string | null = null;
+    let promptedVersion: string | null = null;
+
+    const promptForInstall = (version: string) => {
+      if (promptedVersion === version) return;
+      promptedVersion = version;
       pendingUpdateInstall = () => {
         installingUpdate = true;
         autoUpdater.quitAndInstall();
+        // If the app is still here well after quitAndInstall, the install did
+        // not take. Hand the user back a working window and fall back to
+        // installing on quit rather than leaving a dead "Restarting…" modal.
+        const stall = setTimeout(() => {
+          installingUpdate = false;
+          broadcastToWindows("update_error", {
+            version,
+            message:
+              "Infrawrench couldn't restart into the new version. It will be installed the next time you quit.",
+          });
+        }, INSTALL_STALL_TIMEOUT_MS);
+        stall.unref();
       };
-      for (const win of BrowserWindow.getAllWindows()) {
-        if (!win.webContents.isDestroyed()) {
-          win.webContents.send("update_available_prompt", { version: info.version });
-        }
-      }
+      broadcastToWindows("update_available_prompt", { version });
+    };
+
+    if (stagesNatively) {
+      nativeUpdater.on("update-downloaded", () => {
+        if (downloadedVersion) promptForInstall(downloadedVersion);
+      });
+    }
+
+    autoUpdater.on("error", (err) => {
+      console.warn("[updater]", err);
+      // Check/download failures retry on their own and aren't worth a modal.
+      // Once a version is downloaded, a failure means staging or installing
+      // broke — the user is either waiting on a prompt that will never arrive
+      // or staring at one that can't complete, so say what went wrong.
+      if (!downloadedVersion) return;
+      broadcastToWindows("update_error", {
+        version: downloadedVersion,
+        message: describeUpdateError(err),
+      });
     });
+
+    autoUpdater.on("update-downloaded", (info) => {
+      downloadedVersion = info.version;
+      if (!stagesNatively) promptForInstall(info.version);
+    });
+
     void autoUpdater.checkForUpdatesAndNotify();
     setInterval(
       () => {
@@ -249,9 +323,15 @@ app.on("before-quit", (event) => {
   // before-quit (fired by electron-updater's own quit) falls through cleanly.
   if (pendingUpdateInstall && !installingUpdate) {
     event.preventDefault();
-    const install = pendingUpdateInstall;
-    pendingUpdateInstall = null;
-    install();
+    pendingUpdateInstall();
+    // Cancelling the quit is only safe because the updater is expected to
+    // re-quit us. If it doesn't, quit for real rather than leaving an app that
+    // can't be closed.
+    const fallback = setTimeout(() => {
+      pendingUpdateInstall = null;
+      app.quit();
+    }, INSTALL_STALL_TIMEOUT_MS);
+    fallback.unref();
     return;
   }
   quitting = true;
@@ -271,11 +351,9 @@ ipcMain.handle("set_crons_active", (_e, { count }: { count: number }) => {
 });
 
 ipcMain.handle("update_install_now", () => {
-  if (pendingUpdateInstall) {
-    const install = pendingUpdateInstall;
-    pendingUpdateInstall = null;
-    install();
-  }
+  // Deliberately kept set: if the install doesn't take, `before-quit` still
+  // has a way to apply it, which clearing it here used to throw away.
+  pendingUpdateInstall?.();
 });
 
 ipcMain.handle("show_notification", (_e, { title, body }: { title: string; body: string }) => {

@@ -42,7 +42,19 @@ On first launch you see a local-only welcome screen. No sign-in, no account.
 
 ### Updating
 
-Auto-update is enabled by default. You can disable it in **Settings → Advanced**.
+The desktop app checks for updates on launch and every four hours, and downloads them in the
+background. Once an update is unpacked and ready to apply, Infrawrench asks whether you want to
+restart:
+
+- **Restart now** — quits and relaunches into the new version.
+- **Later** — the update is applied the next time you quit Infrawrench.
+
+The prompt only appears once restarting is guaranteed to work, so there is a gap between the
+download finishing and the prompt showing up. If preparing an update fails — most often because the
+disk is full — Infrawrench tells you what went wrong instead of failing quietly, and retries on its
+next check.
+
+<insert [Update-ready dialog showing the version number with Later and Restart now buttons] here>
 
 ## Web app
 

@@ -190,6 +190,7 @@ const EVENT_LITERALS = new Set<string>([
   "storage_download_progress",
   "ssh_host_key_prompt",
   "update_available_prompt",
+  "update_error",
   // main asks the renderer to serve a workflow host capability mid-run
   "workflow_host_call",
   // main streams a workflow's log entries to the renderer during a run
