@@ -1242,7 +1242,7 @@ Notes on the shape:
 
 **What has to be done by hand, once, before the first run can succeed:**
 
-1. **Create the App Store Connect app record** for `com.infrawrench.mobile`, then put its numeric Apple ID into `submit.production.ios.ascAppId` in `eas.json`, replacing `REPLACE_WITH_APP_STORE_CONNECT_APP_ID`.
+1. ~~Create the App Store Connect app record.~~ **Done** — `com.infrawrench.mobile`, Apple ID `6795309207`, already in `submit.production.ios.ascAppId`. (That number is the app's public App Store id, not a secret; the SKU is a separate private field and is not used by EAS.) The workflow's placeholder check stays in place for a fork setting this up from scratch.
 2. **Create the Play Console app and upload the first AAB manually.** Google's Publishing API refuses to touch an app that has never had a manual upload — this is the usual first-release surprise, and no amount of CI fixes it.
 3. **Create a Play Console service account**, grant it release permissions, and add its JSON key as the repo secret `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`. This is the only credential gap; the Apple side is already covered by `EXPO_ASC_API_KEY_BASE64` / `EXPO_ASC_KEY_ID` / `EXPO_ASC_ISSUER_ID` / `APPLE_TEAM_ID`.
 4. **Run `eas build --profile production` once interactively per platform** from a workstation. Non-interactive CI can use credentials but cannot create them, and the same `--non-interactive` capability-sync trap documented above applies to production builds too.
