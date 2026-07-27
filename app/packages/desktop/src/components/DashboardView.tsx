@@ -69,8 +69,6 @@ import {
   type CostGraphConfig,
   type DashboardWidget,
 } from "@infrawrench/ui/cost";
-import type { SearchResult } from "./SpotlightSearch";
-
 import { ResourceCard } from "./DashboardView/ResourceCard";
 import type { CardStatus, PinnedRow, PluginMeta } from "./DashboardView/types";
 

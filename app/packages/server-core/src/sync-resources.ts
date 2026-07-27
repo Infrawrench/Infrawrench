@@ -566,16 +566,3 @@ export async function reconcileAccountReferences(
     }
   }
 }
-
-/** Manually refresh a single resource by calling getResource on the provider. */
-async function refreshSingleResource(
-  resourceId: string,
-  accountId: string,
-  organizationId: string,
-  typeId: string,
-): Promise<ResourceInstance> {
-  const { client } = await loadAccountClient(accountId, organizationId);
-  const fresh = await client.getResource(typeId, resourceId, accountId);
-  await upsertResource(organizationId, accountId, fresh);
-  return fresh;
-}

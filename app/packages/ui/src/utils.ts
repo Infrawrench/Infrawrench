@@ -1,5 +1,3 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
-
 /** Minimal shape needed by the account resource type helpers. */
 interface ResourceTypeInfo {
   parentTypeId?: string | undefined;

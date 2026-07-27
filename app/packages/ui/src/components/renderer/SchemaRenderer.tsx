@@ -9,7 +9,6 @@ import type {
   GridNode,
   SectionNode,
   LinkNode,
-  MetricChartNode,
   TableNode,
   KVItem,
   HostAction,

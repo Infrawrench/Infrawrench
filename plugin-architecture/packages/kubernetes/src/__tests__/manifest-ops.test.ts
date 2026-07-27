@@ -1,5 +1,4 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import yaml from "js-yaml";
 import { getManifest, applyManifest, importYaml, describeResource } from "../manifest-ops.js";
 import type { K8sFetch } from "../shared.js";
 

@@ -34,10 +34,6 @@ vi.mock("@/services/tunnel-resolver", () => ({
   rewriteCredentialsThroughTunnel: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("@/services/credential-rewriters", () => ({
-  applyCredentialRewriters: vi.fn().mockResolvedValue(undefined),
-}));
-
 // getClientForAccount is server-core's getOrgAccountClient, which imports
 // server-core's own db/encryption/loader modules (not the web shims mocked
 // above), so mirror the same mocks at the server-core module ids.

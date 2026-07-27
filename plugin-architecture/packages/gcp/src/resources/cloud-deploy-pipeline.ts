@@ -1,4 +1,4 @@
-import { f, o, rt } from "@infrawrench/plugin-base";
+import { f, rt } from "@infrawrench/plugin-base";
 
 export const CloudDeployPipelineResourceType = rt({
   name: "Cloud Deploy Pipeline",

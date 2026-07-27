@@ -37,7 +37,6 @@ import { requestWorkflowPrompt } from "./workflow-prompt";
 import type {
   DebugSession,
   WorkflowClient,
-  WorkflowMetricRow,
   WorkflowRunResult,
   WorkflowRunRow,
   WorkflowSaveBody,

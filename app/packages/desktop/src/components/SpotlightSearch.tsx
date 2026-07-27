@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { SpotlightSearch as SharedSpotlightSearch, type SpotlightResult } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
@@ -8,8 +8,6 @@ import { buildHostServices } from "../lib/sql-drivers";
 import { pinResource, type DraggableResource } from "../lib/pins";
 
 type AccountRow = Pick<FullAccountRow, "id" | "plugin_id" | "display_name">;
-
-export type SearchResult = SpotlightResult;
 
 // Inline workflow glyph for the spotlight group header (matches WorkflowIcon).
 const WORKFLOW_LOGO_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/></svg>`;

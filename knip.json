@@ -33,10 +33,11 @@
         "src/**/*.test.{ts,tsx}"
       ],
       "project": ["src/**/*.{ts,tsx}"],
-      "ignoreDependencies": ["tailwindcss"]
+      "ignoreDependencies": ["tailwindcss", "@kubernetes/client-node", "cloudflare", "dockerode"]
     },
     "app/packages/desktop": {
       "entry": [
+        "electron/index.ts",
         "electron/main.ts",
         "electron/preload.ts",
         "electron.vite.config.ts",
@@ -54,13 +55,28 @@
         "@jitl/quickjs-ng-wasmfile-release-asyncify"
       ]
     },
+    "app/packages/mobile": {
+      "entry": [
+        "index.ts",
+        "app.config.ts",
+        "babel.config.cjs",
+        "env.ts",
+        "scripts/*.mjs",
+        "scripts/terminal-entry.js",
+        "src/app/**/*.{ts,tsx}",
+        "src/**/*.test.{ts,tsx}"
+      ],
+      "project": ["src/**/*.{ts,tsx}", "scripts/*.{js,mjs}"],
+      "ignoreDependencies": ["expo-crypto", "babel-preset-expo"]
+    },
     "app/packages/server-core": {
       "entry": ["src/**/*.ts"],
       "project": ["src/**/*.ts"]
     },
     "app/packages/poller": {
       "entry": ["src/index.ts", "src/**/*.test.ts"],
-      "project": ["src/**/*.ts"]
+      "project": ["src/**/*.ts"],
+      "ignoreDependencies": ["@kubernetes/client-node", "cloudflare", "dockerode", "ssh2"]
     },
     "app/packages/bastion-agent": {
       "entry": ["src/index.ts", "src/**/*.test.ts"],
@@ -68,7 +84,8 @@
     },
     "app/packages/github-watcher": {
       "entry": ["src/index.ts", "src/**/*.test.ts"],
-      "project": ["src/**/*.ts"]
+      "project": ["src/**/*.ts"],
+      "ignoreDependencies": ["@kubernetes/client-node", "cloudflare", "dockerode", "ssh2"]
     },
     "app/packages/telemetry": {
       "entry": ["src/index.ts", "src/**/*.test.ts"],

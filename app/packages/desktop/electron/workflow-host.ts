@@ -40,7 +40,6 @@ import type {
   StorageObjectBody,
   StorageObjectLite,
   WorkflowFetchRequest,
-  WorkflowFetchResponse,
   WorkflowHost,
   WorkflowPluginInfo,
 } from "@infrawrench/workflow-runtime" with { "resolution-mode": "import" };

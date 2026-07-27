@@ -20,7 +20,6 @@ import {
   dockerCommand,
   buildDockerHostServices,
   secretHostServices,
-  persistPlaintextSecret,
   persistOutputRef,
   buildPluginHostServices,
 } from "../sql-drivers";

@@ -1,12 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import type { CreateFieldConfig, AssociationSource } from "@infrawrench/plugin-base";
+import type { CreateFieldConfig } from "@infrawrench/plugin-base";
 import {
   FieldRenderer as SharedFieldRenderer,
   useUIStore,
   type SshKeyEntry,
   type SystemSshKey,
   type AgentSshKey,
-  type ResourcePickerOption,
   type ResourcePickerCallbacks,
   type FieldActionCallbacks,
 } from "@infrawrench/ui";

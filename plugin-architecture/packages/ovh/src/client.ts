@@ -433,7 +433,6 @@ export class OvhClient implements PluginClient {
       // Only show active, non-deprecated images
       for (const img of imagesData) {
         if (img.status !== "active") continue;
-        const cat = img.flavorType ?? "General";
         // Group by OS type
         const osCat = img.type ?? "linux";
         const groupLabel = osCat.charAt(0).toUpperCase() + osCat.slice(1);

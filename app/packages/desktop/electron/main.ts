@@ -9,7 +9,6 @@ import {
   session,
   shell,
 } from "electron";
-import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { generateEd25519OpenSshKeyPair } from "@infrawrench/ssh-tunnel-core";

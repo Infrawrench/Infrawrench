@@ -8,7 +8,7 @@ type StatsCallback = (
 
 // vi.mock is hoisted above all module code, so the mock fns it references must
 // be created via vi.hoisted (which is hoisted too) rather than plain consts.
-const { create, mockStats, mockQuit } = vi.hoisted(() => {
+const { create, mockStats } = vi.hoisted(() => {
   const mockStats = vi.fn();
   const mockQuit = vi.fn();
   const create = vi.fn(() => ({ stats: mockStats, quit: mockQuit }));

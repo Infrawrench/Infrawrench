@@ -354,7 +354,7 @@ export function buildWorkflowSshDeps(organizationId: string, opts: { signal?: Ab
     const config = await resourceConnection(organizationId, params);
     const streamId = crypto.randomUUID();
     await new Promise<void>((resolve, reject) => {
-      const client = connect(
+      connect(
         organizationId,
         config,
         (c) => {

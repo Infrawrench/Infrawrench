@@ -6,7 +6,6 @@ import { Platform } from "react-native";
 import {
   registerPushToken,
   unregisterPushDevice,
-  listPushDevices,
   type CloudFetch,
   type PushNotificationData,
 } from "@infrawrench/client-core";
@@ -122,8 +121,6 @@ export async function unregisterCurrentDevice(api: CloudFetch): Promise<void> {
   await SecureStore.deleteItemAsync(DEVICE_ID_KEY);
   await SecureStore.deleteItemAsync(LAST_TOKEN_KEY);
 }
-
-export { listPushDevices };
 
 /**
  * Map a notification payload to an expo-router path. Sync incidents land on

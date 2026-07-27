@@ -10,7 +10,7 @@ import type {
   HostServices,
   MetricSeries,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch, labeledFieldItems, labeledOutputItems } from "@infrawrench/plugin-base";
+import { jsonRestFetch, labeledFieldItems } from "@infrawrench/plugin-base";
 
 /**
  * Fly.io plugin client.

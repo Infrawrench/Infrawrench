@@ -1,4 +1,4 @@
-import { f, o, rt } from "@infrawrench/plugin-base";
+import { f, rt } from "@infrawrench/plugin-base";
 
 export const ImageResourceType = rt({
   name: "Image",

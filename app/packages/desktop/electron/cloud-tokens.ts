@@ -36,10 +36,6 @@ export function setTokenStoreReadOnly(readOnly: boolean): void {
   readOnlyTokenStore = readOnly;
 }
 
-export function isTokenStoreReadOnly(): boolean {
-  return readOnlyTokenStore;
-}
-
 function notifyAuthError(code: string, message: string): void {
   authErrorNotifier?.(code, message);
 }

@@ -240,10 +240,6 @@ export class AWSClient implements PluginClient {
     return sub;
   }
 
-  private get ctx(): ListerContext {
-    return this.ctxFor(this.creds.region);
-  }
-
   private get createCtx(): AwsCreateContext {
     return this.createCtxFor(this.creds.region);
   }

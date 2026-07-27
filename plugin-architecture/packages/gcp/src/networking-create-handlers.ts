@@ -329,7 +329,6 @@ export const networkingCreateConfigHandlers: Record<
     };
   },
   "forwarding-rule": async (ctx, parentResourceId) => {
-    const p = ctx.project;
     // Fetch target HTTP proxies and target TCP proxies
     const [httpProxiesData, tcpProxiesData] = await Promise.all([
       ctx

@@ -18,10 +18,6 @@ export function setDatabaseReadOnly(readOnly: boolean): void {
   _readOnly = readOnly;
 }
 
-export function isDatabaseReadOnly(): boolean {
-  return _readOnly;
-}
-
 export async function getSqlite(): Promise<SqlJsDb> {
   if (_sqlite) return _sqlite;
 

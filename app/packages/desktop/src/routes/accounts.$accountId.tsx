@@ -19,7 +19,6 @@ import {
 import { getDb } from "../db/client";
 import type { AccountRow } from "../db/rows";
 import { getPlugin } from "../plugins/loader";
-import { pinResource } from "../lib/pins";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { createPluginClient } from "../lib/plugin-client";
 import {

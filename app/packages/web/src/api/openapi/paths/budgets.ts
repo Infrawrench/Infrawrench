@@ -2,11 +2,6 @@ import { z } from "../zod";
 import { strict, ErrorResponses, Ok, OrgIdParam, Uuid, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
 
-const IsoDate = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/)
-  .openapi({ example: "2026-07-01" });
-
 const Month = z
   .string()
   .regex(/^\d{4}-\d{2}$/)

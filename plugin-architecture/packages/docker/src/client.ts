@@ -108,11 +108,9 @@ const resourceTypeIds = new Set([
 ]);
 
 export class DockerClient implements PluginClient {
-  private readonly dockerHost: string;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
-    this.dockerHost = credentials["dockerHost"] ?? "";
+  constructor(_credentials: Record<string, string>, services?: HostServices) {
     this.services = services;
   }
 

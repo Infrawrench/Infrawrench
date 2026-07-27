@@ -100,7 +100,6 @@ app.post("/checkout", async (c) => {
 /** POST /api/billing/portal */
 app.post("/portal", async (c) => {
   requirePermission(c, "billing:write");
-  const session = c.get("session");
   const stripe = getStripe();
 
   const [sub] = await db

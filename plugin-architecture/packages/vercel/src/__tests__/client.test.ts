@@ -10,9 +10,6 @@ interface FetchCall {
 
 let calls: FetchCall[] = [];
 
-/** Queue of responders keyed by URL substring match, evaluated in order. */
-type Responder = (url: string, init?: RequestInit) => unknown | { __status: number };
-
 function jsonResponse(body: unknown, status = 200): Response {
   return {
     ok: status >= 200 && status < 300,

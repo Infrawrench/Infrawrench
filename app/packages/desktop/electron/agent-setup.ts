@@ -18,7 +18,6 @@ import type {
   AgentRepoConfig,
   AgentRuntimeLanguage,
   AgentRuntimePlan,
-  AgentRuntimeVersionSource,
   AgentSetupPlan,
   AgentTool,
 } from "@infrawrench/ui/agents" with { "resolution-mode": "import" };

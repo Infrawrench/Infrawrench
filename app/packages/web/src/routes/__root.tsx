@@ -14,7 +14,6 @@ import {
   type TunnelSshAttachResult,
   type TunnelSshAttachZone,
   type TunnelSshAttachKey,
-  type WorkspaceTab,
 } from "@infrawrench/ui";
 import { WebSidebar } from "@/components/WebSidebar";
 import { SpotlightSearch } from "@/components/SpotlightSearch";

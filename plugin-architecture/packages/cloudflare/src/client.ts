@@ -20,7 +20,6 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   streamOpenAiSseChat,
-  dnsRecordBadgeColor,
   dnsZoneStatus,
   renderDnsRecordDetail,
   renderDnsRecordSidebar,

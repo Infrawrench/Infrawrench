@@ -1,4 +1,4 @@
-import { f, o, rt } from "@infrawrench/plugin-base";
+import { f, rt } from "@infrawrench/plugin-base";
 
 export const Route53RecordSetResourceType = rt({
   name: "Route 53 Record",

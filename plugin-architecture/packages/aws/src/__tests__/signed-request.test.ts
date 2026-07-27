@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
+import { describe, it, expect, vi, afterEach, type Mock } from "vitest";
 import { fetchSigned } from "../signed-request.js";
 
 const baseCreds = { accessKeyId: "AKIAEXAMPLE", secretAccessKey: "secret", region: "us-east-1" };

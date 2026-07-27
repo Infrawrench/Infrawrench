@@ -6,7 +6,6 @@ import type {
   ResourceTypeDefinition,
 } from "@infrawrench/plugin-base";
 import { labeledFieldItems } from "@infrawrench/plugin-base";
-import { deploymentStatus } from "./status.js";
 
 export function renderWorkerDetail(resource: ResourceInstance): DetailViewSchema {
   const fields = resource.fields;

@@ -17,21 +17,6 @@ export function tunnelStatus(status: string): ResourceStatus {
   }
 }
 
-export function deploymentStatus(status: string): ResourceStatus {
-  switch (status) {
-    case "success":
-      return "healthy";
-    case "active":
-      return "healthy";
-    case "failure":
-      return "error";
-    case "idle":
-      return "info";
-    default:
-      return "provisioning";
-  }
-}
-
 export function sslStatus(status: string): ResourceStatus {
   switch (status) {
     case "active":

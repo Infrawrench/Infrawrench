@@ -4,7 +4,6 @@ import {
   toast,
   type AccountReferenceOption,
   type BastionOption,
-  type PluginInfo,
 } from "@infrawrench/ui";
 import { apiGet, apiPost } from "@/lib/api";
 import { fetchPluginCatalog } from "@/lib/plugin-catalog";

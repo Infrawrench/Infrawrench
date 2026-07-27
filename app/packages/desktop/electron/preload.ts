@@ -184,8 +184,6 @@ const INVOKE_CHANNELS = [
   "cloud_chat_stream_abort",
 ] as const;
 
-const INVOKE_SET = new Set<string>(INVOKE_CHANNELS);
-
 const EVENT_LITERALS = new Set<string>([
   "cloud_auth_error",
   "storage_download_progress",

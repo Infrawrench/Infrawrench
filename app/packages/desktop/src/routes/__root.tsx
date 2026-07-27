@@ -19,7 +19,6 @@ import {
   useWorkspaceTabHandlers,
   workspaceTabTargetsEqual,
   OrgSwitcher,
-  type OrgEntry,
   type DraggableResource,
   type DraggableWorkflow,
   type TunnelSshAttachZone,

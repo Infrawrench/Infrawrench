@@ -16,7 +16,6 @@ const app = new Hono();
 /** GET /api/audit-logs */
 app.get("/", async (c) => {
   requirePermission(c, "audit:read");
-  const session = c.get("session");
   const page = parseInt(c.req.query("page") ?? "1", 10);
   const pageSize = parseInt(c.req.query("pageSize") ?? "25", 10);
   const action = c.req.query("action");

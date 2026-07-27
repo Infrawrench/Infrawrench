@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { getPlugin } from "@/plugins/loader";
 import { decrypt } from "@/services/encryption";
 import { buildTestApp } from "./test-utils";
 

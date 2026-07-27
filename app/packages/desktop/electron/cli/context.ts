@@ -40,26 +40,6 @@ export function notSignedInError(): CliError {
   );
 }
 
-/** Authenticated fetch against a non-org cloud path (e.g. /api/auth/orgs). */
-export async function cloudGet<T>(path: string): Promise<T> {
-  let token = await getAccessToken();
-  if (!token) throw notSignedInError();
-  let res = await fetch(`${CLOUD_URL}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (res.status === 401) {
-    const refreshed = await forceRefreshAccessToken();
-    if (!refreshed) throw notSignedInError();
-    token = refreshed;
-    res = await fetch(`${CLOUD_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } });
-  }
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new CliError(`Cloud request failed: ${res.status} ${path} ${text}`);
-  }
-  return (await res.json()) as T;
-}
-
 /** Authenticated fetch against an org-scoped cloud path. */
 export async function orgFetch<T>(orgId: string, path: string, init: RequestInit = {}): Promise<T> {
   let token = await getAccessToken();

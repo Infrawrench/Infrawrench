@@ -1,11 +1,10 @@
-import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { lazy, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 const Editor = lazy(() => import("@monaco-editor/react"));
 import type { BucketPolicyEditorCapability } from "@infrawrench/plugin-base";
 import {
   type BucketPolicyDoc,
   type BucketPolicyStatement,
-  type LintFinding,
   type PolicyPrincipal,
   type PolicyTemplate,
   blankStatement,

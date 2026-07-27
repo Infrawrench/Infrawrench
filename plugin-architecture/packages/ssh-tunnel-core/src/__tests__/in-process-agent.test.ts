@@ -73,11 +73,6 @@ async function roundTrip(agent: InProcessAgent, request: Buffer): Promise<Buffer
 }
 
 // ---- key generation ----
-interface KeyFixture {
-  pem: string;
-  parsed: ReturnType<typeof parseKey> extends Error ? never : any;
-}
-
 let tmpDir: string;
 const fixtures: Record<"ed" | "rsa" | "ec256" | "ec384" | "ec521", string> = {
   ed: "",
