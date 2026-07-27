@@ -24,6 +24,16 @@ import { unregisterCurrentDevice } from "../push";
 
 const SELECTED_ORG_KEY = "cloud_selected_org";
 
+/** Give up on the launch-path orgs fetch rather than spinning on a dead host. */
+const ORG_FETCH_TIMEOUT_MS = 15_000;
+
+/** AbortSignal that fires after `ms`. Hand-rolled: Hermes has no AbortSignal.timeout. */
+function abortAfter(ms: number): AbortSignal {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), ms);
+  return controller.signal;
+}
+
 export type AuthState = "loading" | "signed-out" | "signed-in";
 
 interface AuthContextValue {
@@ -32,6 +42,12 @@ interface AuthContextValue {
   orgs: CloudOrg[];
   /** Set when the last orgs fetch failed — `orgs` may be stale or empty. */
   orgsError: string | null;
+  /**
+   * Set when restoring the session failed outright (rather than resolving to
+   * "signed out"). The sign-in screen shows it so a dead network doesn't look
+   * like a spontaneous sign-out.
+   */
+  sessionError: string | null;
   orgId: string | null;
   tokens: TokenManager;
   api: CloudFetch;
@@ -48,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>("loading");
   const [email, setEmail] = useState<string | null>(null);
   const [orgs, setOrgs] = useState<CloudOrg[]>([]);
+  const [sessionError, setSessionError] = useState<string | null>(null);
   const [orgsError, setOrgsError] = useState<string | null>(null);
   const [orgId, setOrgId] = useState<string | null>(null);
   const authErrorRef = useRef<() => void>(() => {});
@@ -78,27 +95,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const loadSession = useCallback(async () => {
-    const authenticated = await tokens.isAuthenticated();
-    if (!authenticated) {
-      setState("signed-out");
-      return;
-    }
-    setEmail(await tokens.getStoredEmail());
-    const storedOrg = await SecureStore.getItemAsync(SELECTED_ORG_KEY);
+    // Everything here runs while the launch screen shows a bare spinner, so
+    // every path out of this function has to settle `state`. A throw used to
+    // leave it on "loading" forever — no error, no retry, nothing to do but
+    // reinstall.
     try {
-      const orgList = await fetchOrgs(api);
-      setOrgs(orgList);
-      setOrgsError(null);
-      const valid = orgList.find((o) => o.id === storedOrg) ?? orgList[0];
-      setOrgId(valid?.id ?? null);
+      setSessionError(null);
+      const authenticated = await tokens.isAuthenticated();
+      if (!authenticated) {
+        setState("signed-out");
+        return;
+      }
+      setEmail(await tokens.getStoredEmail());
+      const storedOrg = await SecureStore.getItemAsync(SELECTED_ORG_KEY);
+      try {
+        const orgList = await fetchOrgs(api, { signal: abortAfter(ORG_FETCH_TIMEOUT_MS) });
+        setOrgs(orgList);
+        setOrgsError(null);
+        const valid = orgList.find((o) => o.id === storedOrg) ?? orgList[0];
+        setOrgId(valid?.id ?? null);
+      } catch (e) {
+        // Orgs load can fail offline; stay signed in and restore the last
+        // selected org so org-scoped screens (useOrgApi) still have an id.
+        // Record the error so screens can tell "fetch failed" from "no orgs".
+        setOrgsError(e instanceof Error ? e.message : "Failed to load organizations");
+        if (storedOrg) setOrgId(storedOrg);
+      }
+      setState("signed-in");
     } catch (e) {
-      // Orgs load can fail offline; stay signed in and restore the last
-      // selected org so org-scoped screens (useOrgApi) still have an id.
-      // Record the error so screens can tell "fetch failed" from "no orgs".
-      setOrgsError(e instanceof Error ? e.message : "Failed to load organizations");
-      if (storedOrg) setOrgId(storedOrg);
+      // Unreadable secure storage, a wedged token refresh — we can't tell
+      // whether the session is good, so send them to sign-in with the reason
+      // rather than stranding them. Tokens are left alone: if they were fine,
+      // signing in again is a no-op round trip.
+      setSessionError(e instanceof Error ? e.message : "Couldn't restore your session");
+      setState("signed-out");
     }
-    setState("signed-in");
   }, [api, tokens]);
 
   useEffect(() => {
@@ -116,6 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       orgs,
       orgsError,
+      sessionError,
       orgId,
       tokens,
       api,
@@ -145,7 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setOrgId(null);
       },
     }),
-    [state, email, orgs, orgsError, orgId, tokens, api, loadSession],
+    [state, email, orgs, orgsError, sessionError, orgId, tokens, api, loadSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -11,7 +11,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 export default function SignIn() {
   const router = useRouter();
-  const { tokens, api, completeSignIn } = useAuth();
+  const { tokens, api, completeSignIn, sessionError } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,6 +58,11 @@ export default function SignIn() {
       >
         <Text style={styles.buttonText}>{busy ? "Signing in…" : "Sign in"}</Text>
       </Pressable>
+      {/* Landing here because restoring the session failed reads as a random
+          sign-out unless we say what actually went wrong. */}
+      {!error && sessionError && (
+        <Text style={styles.error}>Couldn&apos;t restore your session: {sessionError}</Text>
+      )}
       {error && <Text style={styles.error}>{error}</Text>}
       {/* Callback URI is a debugging aid — not something a released build should surface. */}
       {__DEV__ && <Text style={styles.hint}>Redirects to {redirectUri} after WorkOS sign-in.</Text>}

@@ -33,7 +33,19 @@ export interface TokenManagerOptions {
   fetch?: typeof fetch;
   /** Called on hard auth failures (revoked refresh token) — route to sign-in. */
   onAuthError?: (code: string, message: string) => void;
+  /**
+   * Abort a WorkOS token request after this long. Defaults to 15s.
+   *
+   * These calls sit on the app's launch path — a host that accepts the
+   * connection and then never answers (captive portal, dead VPN, a server
+   * that is up but wedged) would otherwise leave the promise pending
+   * forever, and a launch screen waiting on it spins with no error and no
+   * way out.
+   */
+  requestTimeoutMs?: number;
 }
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 
 const STORAGE_KEYS = {
   accessToken: "cloud_access_token",
@@ -85,6 +97,7 @@ export class TokenManager {
   private readonly workosApiUrl: string;
   private readonly fetchImpl: typeof fetch;
   private readonly onAuthError: ((code: string, message: string) => void) | undefined;
+  private readonly requestTimeoutMs: number;
 
   constructor(opts: TokenManagerOptions) {
     this.storage = opts.storage;
@@ -92,6 +105,21 @@ export class TokenManager {
     this.workosApiUrl = opts.workosApiUrl;
     this.fetchImpl = opts.fetch ?? fetch;
     this.onAuthError = opts.onAuthError;
+    this.requestTimeoutMs = opts.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  }
+
+  /**
+   * `fetch` that gives up rather than hanging. Uses an AbortController rather
+   * than `AbortSignal.timeout` so it behaves the same on Hermes.
+   */
+  private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    try {
+      return await this.fetchImpl(url, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /**
@@ -102,16 +130,19 @@ export class TokenManager {
     code: string,
     codeVerifier: string,
   ): Promise<{ email: string; organizationId?: string | undefined }> {
-    const response = await this.fetchImpl(`${this.workosApiUrl}/user_management/authenticate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        grant_type: "authorization_code",
-        client_id: this.clientId,
-        code,
-        code_verifier: codeVerifier,
-      }),
-    });
+    const response = await this.fetchWithTimeout(
+      `${this.workosApiUrl}/user_management/authenticate`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "authorization_code",
+          client_id: this.clientId,
+          code,
+          code_verifier: codeVerifier,
+        }),
+      },
+    );
     if (!response.ok) {
       throw new Error(`Token exchange failed: ${response.status}`);
     }
@@ -149,7 +180,7 @@ export class TokenManager {
 
     let response: Response;
     try {
-      response = await this.fetchImpl(`${this.workosApiUrl}/user_management/authenticate`, {
+      response = await this.fetchWithTimeout(`${this.workosApiUrl}/user_management/authenticate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -159,7 +190,8 @@ export class TokenManager {
         }),
       });
     } catch {
-      // Network error — keep tokens so a later attempt can succeed.
+      // Network error, or we gave up waiting — keep tokens so a later attempt
+      // can succeed.
       return false;
     }
 

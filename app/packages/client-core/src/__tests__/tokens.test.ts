@@ -154,4 +154,28 @@ describe("TokenManager", () => {
     expect(await tm.getAccessToken()).toBeNull();
     expect(await tm.isAuthenticated()).toBe(false);
   });
+
+  it("gives up on a refresh that never answers", async () => {
+    // A host that accepts the connection and then goes quiet. Without a
+    // timeout this promise never settles, and every caller waiting on
+    // isAuthenticated() — including the mobile launch screen — waits forever.
+    storage.data.set("cloud_access_token", "old");
+    storage.data.set("cloud_refresh_token", "rt1");
+    storage.data.set("cloud_token_expires_at", "0");
+
+    const timed = new TokenManager({
+      storage,
+      clientId: "client_x",
+      workosApiUrl: "https://api.workos.test",
+      fetch: ((_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        })) as unknown as typeof fetch,
+      requestTimeoutMs: 20,
+    });
+
+    expect(await timed.isAuthenticated()).toBe(false);
+    // Transient as far as we know — the refresh token survives for a retry.
+    expect(storage.data.get("cloud_refresh_token")).toBe("rt1");
+  });
 });
