@@ -3,3 +3,8 @@ dist/
 assets/generated/
 ios/
 android/
+
+# Google Play service account key. `eas.json`'s submit profile points at this
+# path; CI writes it from a secret and a local release writes it by hand. It is
+# a credential for publishing to the Play Console — never commit it.
+google-play-key.json

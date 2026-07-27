@@ -1,0 +1,194 @@
+# Build the mobile app for the stores and hand it to TestFlight / Play internal.
+#
+# Shape: the same version-as-trigger idiom the rest of this repo uses. The
+# release version is `version` in `app/packages/mobile/app.config.ts` — the one
+# that actually lands in the binary as CFBundleShortVersionString / versionName
+# — and this workflow does nothing unless the tag `mobile-v<version>` is absent.
+# Bumping that number is the whole release ritual; re-running on an unchanged
+# version is a no-op, and a re-run after a failed submit resumes rather than
+# double-publishing.
+#
+# Build numbers are not part of that: `appVersionSource: "remote"` plus
+# `autoIncrement` on the production profile means EAS owns buildNumber and
+# versionCode, so no release commit is needed and two releases of the same
+# version string can't collide.
+#
+# Where it stops: `--auto-submit` uploads to TestFlight and the Play **internal**
+# track. It deliberately does not push either store's public review — promoting a
+# build to production stays a human decision in App Store Connect and the Play
+# Console. That is also why this never touches the `preview` builds in
+# mobile-build.yml, which keep running per-push for internal distribution.
+name: Mobile Release
+
+on:
+  push:
+    branches: [main]
+    # Only the file the version lives in. Every other mobile change is already
+    # covered by mobile-build.yml's preview build; a release is a deliberate act.
+    paths:
+      - "app/packages/mobile/app.config.ts"
+      - ".github/workflows/mobile-release.yml"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Build and submit even if this version was already released"
+        type: boolean
+        default: false
+
+# Submissions are not cancel-safe: a half-cancelled run can leave a build
+# uploaded but untagged, which the next push would then try to publish again.
+concurrency:
+  group: mobile-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write # to push the mobile-v* tag
+
+jobs:
+  check-if-release:
+    name: Check whether this version is new
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      version: ${{ steps.check.outputs.VERSION }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # tags, for the gate below
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+
+      - name: Read the version and compare against the tags
+        id: check
+        working-directory: app/packages/mobile
+        run: |
+          set -eo pipefail
+          # `expo config` evaluates app.config.ts the same way eas-cli does, so
+          # this is the number that will be in the binary rather than a guess
+          # made by parsing the source.
+          VERSION="$(npx expo config --json --type public | jq -r '.version')"
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Could not read a semver version from app.config.ts (got '${VERSION}')"
+            exit 1
+          fi
+          if [ "${{ inputs.force }}" != "true" ] && git tag -l "mobile-v${VERSION}" | grep -q .; then
+            echo "mobile-v${VERSION} already exists — nothing to release."
+            echo "VERSION=" >> "$GITHUB_OUTPUT"
+          else
+            echo "Releasing ${VERSION}."
+            echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    name: Build and submit ${{ needs.check-if-release.outputs.version }}
+    needs: check-if-release
+    if: needs.check-if-release.outputs.version != ''
+    runs-on: ubuntu-24.04-arm
+    # Two store builds plus their uploads; the default 6h ceiling is generous
+    # but a hung build should not sit there burning the whole budget.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+
+      # Fail in seconds rather than after a 40-minute build. Both of these are
+      # one-time store setup that cannot be done from here — see the mobile
+      # release runbook in KNOWLEDGE.md.
+      - name: Check the store credentials are actually configured
+        working-directory: app/packages/mobile
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -eo pipefail
+          ASC_APP_ID="$(jq -r '.submit.production.ios.ascAppId' eas.json)"
+          if [ "$ASC_APP_ID" = "REPLACE_WITH_APP_STORE_CONNECT_APP_ID" ]; then
+            echo "::error::eas.json still has the placeholder ascAppId. Create the app in App Store Connect, then put its numeric Apple ID in submit.production.ios.ascAppId."
+            exit 1
+          fi
+          if [ -z "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::error::Secret GOOGLE_PLAY_SERVICE_ACCOUNT_JSON is not set. Create a Play Console service account, grant it release permissions, and add its JSON key."
+            exit 1
+          fi
+
+      - name: Write App Store Connect API key
+        env:
+          EXPO_ASC_API_KEY_BASE64: ${{ secrets.EXPO_ASC_API_KEY_BASE64 }}
+        run: |
+          set -eo pipefail
+          install -m 600 /dev/null "${RUNNER_TEMP}/asc-api-key.p8"
+          echo "$EXPO_ASC_API_KEY_BASE64" | base64 --decode > "${RUNNER_TEMP}/asc-api-key.p8"
+
+      # `serviceAccountKeyPath` in eas.json is a static path — submit profiles
+      # have no environment-variable interpolation — so the key is written to
+      # the path the profile names. It is gitignored.
+      - name: Write Google Play service account key
+        working-directory: app/packages/mobile
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -eo pipefail
+          install -m 600 /dev/null google-play-key.json
+          printf '%s' "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > google-play-key.json
+          jq -e '.type == "service_account"' google-play-key.json > /dev/null \
+            || { echo "::error::GOOGLE_PLAY_SERVICE_ACCOUNT_JSON is not a service account key"; exit 1; }
+
+      # `--auto-submit` reuses the submit profile named after the build profile,
+      # so `production` builds go through `submit.production`. It lands in
+      # TestFlight and the Play internal track; neither store's public review is
+      # triggered from here.
+      #
+      # As in mobile-build.yml, `--non-interactive` disables eas-cli's Apple
+      # capability syncing, so a newly added entitlement still needs a one-time
+      # manual enable on the App ID. See KNOWLEDGE.md.
+      - name: EAS build and submit (production)
+        working-directory: app/packages/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc-api-key.p8
+          EXPO_ASC_KEY_ID: ${{ secrets.EXPO_ASC_KEY_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.EXPO_ASC_ISSUER_ID }}
+          EXPO_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          EXPO_APPLE_TEAM_TYPE: ${{ vars.APPLE_TEAM_TYPE }}
+        run: |
+          npx eas-cli build --platform all --profile production --non-interactive --auto-submit
+
+      - name: Remove the Play key
+        if: always()
+        working-directory: app/packages/mobile
+        run: rm -f google-play-key.json
+
+      # Last, so a failed build or submit can simply be re-run: the tag is what
+      # makes the next push a no-op, and writing it early would strand a release
+      # that never actually shipped.
+      - name: Tag the release
+        env:
+          VERSION: ${{ needs.check-if-release.outputs.version }}
+        run: |
+          set -eo pipefail
+          if git tag -l "mobile-v${VERSION}" | grep -q .; then
+            echo "Tag already exists (forced re-run); leaving it alone."
+            exit 0
+          fi
+          git tag "mobile-v${VERSION}"
+          git push origin "mobile-v${VERSION}"
+
+      - name: Summary
+        env:
+          VERSION: ${{ needs.check-if-release.outputs.version }}
+        run: |
+          {
+            echo "### Mobile ${VERSION} submitted"
+            echo
+            echo "- iOS → TestFlight"
+            echo "- Android → Play internal track"
+            echo
+            echo "Promote to public release in App Store Connect and the Play Console when you're ready."
+          } >> "$GITHUB_STEP_SUMMARY"
