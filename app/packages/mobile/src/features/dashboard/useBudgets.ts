@@ -3,9 +3,10 @@ import type { BudgetWithStatus } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 
 /**
- * The org's budgets, keyed by id. Budget widgets each reference a row, and the
- * home screen needs the same rows to catch budgets no widget on it covers, so
- * both share one query rather than two shapes under one key.
+ * The org's budgets, keyed by id, for the budget widgets on a dashboard to
+ * resolve their `budgetId` against. Fetched once per dashboard rather than
+ * per widget; a budget with no widget on the dashboard being viewed is not
+ * rendered, matching web and desktop.
  */
 export function useBudgets(enabled = true) {
   const { api, orgId } = useOrgApi();

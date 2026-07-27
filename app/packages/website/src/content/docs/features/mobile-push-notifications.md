@@ -49,7 +49,7 @@ Tapping a sync-incident notification deep-links straight to the failing account'
 
 ### Budget alerts
 
-Budget threshold breaches notify **at most once per budget, per threshold, per calendar month** — the same dedupe as the budget badge and SMS. Budget pushes are independent of the org's Twilio settings: they deliver even if paging/SMS is not set up at all. Tapping one opens the org home screen, where the budget card shows its alert badge.
+Budget threshold breaches notify **at most once per budget, per threshold, per calendar month** — the same dedupe as the budget badge and SMS. Budget pushes are independent of the org's Twilio settings: they deliver even if paging/SMS is not set up at all. Tapping one opens the org home screen, where the budget card shows its alert badge — if the budget's card lives on another dashboard, open that dashboard from the list at the bottom of the home screen.
 
 ### Workflow pages
 
