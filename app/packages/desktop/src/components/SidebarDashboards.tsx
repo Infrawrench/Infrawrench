@@ -204,81 +204,6 @@ export function SidebarDashboards() {
         </div>
       )}
 
-      {/* Chat sessions — only when signed in to cloud with an active org */}
-      {activeCloudOrgId && (
-        <div className="mb-2">
-          <div className="flex items-center justify-between px-3 py-1">
-            <button
-              type="button"
-              onClick={() =>
-                void navigateToWorkspaceTarget(navigate, chatTabTarget(), { label: "Chat" })
-              }
-              className="text-xs font-medium text-on-surface-muted uppercase tracking-wide hover:text-on-surface-secondary transition-colors"
-            >
-              Chat
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleNewChat()}
-              title="New chat"
-              aria-label="Start new chat"
-              className="text-on-surface-faint hover:text-on-surface-secondary text-sm leading-none size-5 flex items-center justify-center rounded hover:bg-surface-overlay transition-colors"
-            >
-              +
-            </button>
-          </div>
-
-          {chatSessions.slice(0, 8).map((chat) => {
-            const isActive =
-              pathname === "/chat" &&
-              new URLSearchParams(searchStr ?? "").get("conversation") === chat.id;
-            return (
-              <div
-                key={chat.id}
-                className={`group mx-2 flex items-center rounded-lg transition-colors ${
-                  isActive
-                    ? "bg-surface-overlay text-on-surface"
-                    : "text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay"
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() =>
-                    void navigateToWorkspaceTarget(navigate, chatTabTarget(chat.id), {
-                      label: chat.title,
-                    })
-                  }
-                  className="flex-1 min-w-0 text-left px-3 py-1.5 text-xs"
-                >
-                  <span className="block truncate">{chat.title}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleArchiveChat(chat.id)}
-                  title="Archive chat"
-                  aria-label="Archive chat"
-                  className="opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-red-500 text-xs px-2 py-1.5 transition-opacity"
-                >
-                  ×
-                </button>
-              </div>
-            );
-          })}
-
-          {chatSessions.length > 8 && (
-            <button
-              type="button"
-              onClick={() =>
-                void navigateToWorkspaceTarget(navigate, chatTabTarget(), { label: "Chat" })
-              }
-              className="mx-2 px-3 py-1 text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors"
-            >
-              All chats…
-            </button>
-          )}
-        </div>
-      )}
-
       {/* Section header */}
       <div className="flex items-center justify-between px-3 py-1">
         <span className="text-xs font-medium text-on-surface-muted uppercase tracking-wide">
@@ -364,6 +289,81 @@ export function SidebarDashboards() {
             }}
             className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
           />
+        </div>
+      )}
+
+      {/* Chat sessions — only when signed in to cloud with an active org */}
+      {activeCloudOrgId && (
+        <div className="mb-2">
+          <div className="flex items-center justify-between px-3 py-1">
+            <button
+              type="button"
+              onClick={() =>
+                void navigateToWorkspaceTarget(navigate, chatTabTarget(), { label: "Chat" })
+              }
+              className="text-xs font-medium text-on-surface-muted uppercase tracking-wide hover:text-on-surface-secondary transition-colors"
+            >
+              Chat
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleNewChat()}
+              title="New chat"
+              aria-label="Start new chat"
+              className="text-on-surface-faint hover:text-on-surface-secondary text-sm leading-none size-5 flex items-center justify-center rounded hover:bg-surface-overlay transition-colors"
+            >
+              +
+            </button>
+          </div>
+
+          {chatSessions.slice(0, 8).map((chat) => {
+            const isActive =
+              pathname === "/chat" &&
+              new URLSearchParams(searchStr ?? "").get("conversation") === chat.id;
+            return (
+              <div
+                key={chat.id}
+                className={`group mx-2 flex items-center rounded-lg transition-colors ${
+                  isActive
+                    ? "bg-surface-overlay text-on-surface"
+                    : "text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay"
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    void navigateToWorkspaceTarget(navigate, chatTabTarget(chat.id), {
+                      label: chat.title,
+                    })
+                  }
+                  className="flex-1 min-w-0 text-left px-3 py-1.5 text-xs"
+                >
+                  <span className="block truncate">{chat.title}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleArchiveChat(chat.id)}
+                  title="Archive chat"
+                  aria-label="Archive chat"
+                  className="opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-red-500 text-xs px-2 py-1.5 transition-opacity"
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+
+          {chatSessions.length > 8 && (
+            <button
+              type="button"
+              onClick={() =>
+                void navigateToWorkspaceTarget(navigate, chatTabTarget(), { label: "Chat" })
+              }
+              className="mx-2 px-3 py-1 text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors"
+            >
+              All chats…
+            </button>
+          )}
         </div>
       )}
     </div>
