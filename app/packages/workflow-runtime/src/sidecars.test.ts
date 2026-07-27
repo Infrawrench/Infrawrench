@@ -1,8 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateInfraDts } from "./codegen.js";
 import { dispatch, type WorkflowHost, type WorkflowRunContext } from "./host.js";
-import { attachSidecarInfo } from "./sidecars.js";
+import {
+  __resetSidecarCapabilityCache,
+  attachSidecarInfo,
+  enrichSidecarCapabilities,
+} from "./sidecars.js";
 import { typecheckWorkflow } from "./typecheck.js";
 import type { WorkflowPluginInfo, WorkflowResourceTypeInfo } from "./types.js";
 
@@ -259,6 +263,143 @@ describe("attachSidecarInfo", () => {
     const infos = infosFor(["gke-cluster"]);
     await attachSidecarInfo(infos, [gkeDef] as never, async () => undefined);
     expect(infos[0]?.sidecars).toBeUndefined();
+  });
+});
+
+/**
+ * The capability probe reaches a live provider, so it fails for reasons that
+ * say nothing about the plugin: a rate limit, a timeout, a cluster mid-upgrade.
+ * It used to cache that failure as "no capabilities", which deleted
+ * `pod.logs()` from the generated typings for ten minutes and made an
+ * already-working workflow stop type-checking. Worse, several parent types
+ * probed the same peer concurrently, so which answer won was a race — the
+ * method appeared and disappeared between two edits a minute apart.
+ */
+describe("enrichSidecarCapabilities", () => {
+  beforeEach(() => {
+    __resetSidecarCapabilityCache();
+    // Fake timers so the TTL/backoff windows can be crossed deliberately;
+    // microtasks (and so the awaits below) are unaffected.
+    vi.useFakeTimers();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const podType = (): WorkflowResourceTypeInfo => ({
+    id: "k8s-pod",
+    displayName: "Pod",
+    pluralDisplayName: "Pods",
+    outputs: [],
+    supportsCreate: false,
+    supportsUpdate: false,
+    supportsDelete: true,
+    capabilities: {},
+  });
+
+  /** A parent type exposing `kubernetes`, with its own fresh pod info object. */
+  const parentWithK8s = (id: string): WorkflowResourceTypeInfo => ({
+    id,
+    displayName: id,
+    pluralDisplayName: id,
+    outputs: [],
+    supportsCreate: false,
+    supportsUpdate: false,
+    supportsDelete: true,
+    sidecars: [
+      {
+        pluginId: "kubernetes",
+        displayName: "Kubernetes",
+        tabLabel: "Kubernetes",
+        resourceTypes: [podType()],
+      },
+    ],
+  });
+
+  /** A client whose pods declare the logs capability. */
+  const podClient = () =>
+    ({ renderDetail: () => ({ logs: { defaultTailLines: 500 }, describe: {} }) }) as never;
+
+  const logsOf = (parent: WorkflowResourceTypeInfo) =>
+    parent.sidecars?.[0]?.resourceTypes[0]?.capabilities?.logs;
+
+  it("types pod.logs() from the peer plugin's detail schema", async () => {
+    const parent = parentWithK8s("gke-cluster");
+    await enrichSidecarCapabilities([parent], ["acc1"], {
+      listParents: async () => [{ id: "acc1:gke-cluster:prod" }],
+      peerClient: async () => podClient(),
+    });
+    expect(logsOf(parent)).toBe(true);
+  });
+
+  it("keeps the last known capabilities when a later probe fails", async () => {
+    const first = parentWithK8s("gke-cluster");
+    await enrichSidecarCapabilities([first], ["acc1"], {
+      listParents: async () => [{ id: "acc1:gke-cluster:prod" }],
+      peerClient: async () => podClient(),
+    });
+    expect(logsOf(first)).toBe(true);
+
+    // Ten minutes on, the cluster is briefly unreachable. The author's workflow
+    // must not stop compiling because of that.
+    vi.setSystemTime(Date.now() + 11 * 60 * 1000);
+    const later = parentWithK8s("gke-cluster");
+    await enrichSidecarCapabilities([later], ["acc1"], {
+      listParents: async () => [{ id: "acc1:gke-cluster:prod" }],
+      peerClient: async () => {
+        throw new Error("429 Too Many Requests");
+      },
+    });
+    expect(logsOf(later)).toBe(true);
+  });
+
+  it("probes a peer plugin once even when several parent types expose it", async () => {
+    const gke = parentWithK8s("gke-cluster");
+    const doks = parentWithK8s("doks-cluster");
+    const peerClient = vi.fn().mockResolvedValue(podClient());
+
+    await enrichSidecarCapabilities([gke, doks], ["acc1"], {
+      // Only the DOKS account actually has a cluster.
+      listParents: async (typeId) =>
+        typeId === "doks-cluster" ? [{ id: "acc1:doks-cluster:prod" }] : [],
+      peerClient,
+    });
+
+    expect(peerClient).toHaveBeenCalledTimes(1);
+    // Both parents get typed — not just whichever one had the live cluster.
+    expect(logsOf(gke)).toBe(true);
+    expect(logsOf(doks)).toBe(true);
+  });
+
+  it("looks past the first account for one that owns a cluster", async () => {
+    const parent = parentWithK8s("gke-cluster");
+    const seen: string[] = [];
+    await enrichSidecarCapabilities([parent], ["empty-acc", "acc-with-cluster"], {
+      listParents: async (_typeId, accountId) => {
+        seen.push(accountId);
+        return accountId === "acc-with-cluster" ? [{ id: "acc-with-cluster:gke:prod" }] : [];
+      },
+      peerClient: async () => podClient(),
+    });
+    expect(seen).toEqual(["empty-acc", "acc-with-cluster"]);
+    expect(logsOf(parent)).toBe(true);
+  });
+
+  it("retries on the next call when no cluster existed yet", async () => {
+    const before = parentWithK8s("gke-cluster");
+    const peerClient = vi.fn().mockResolvedValue(podClient());
+    await enrichSidecarCapabilities([before], ["acc1"], {
+      listParents: async () => [],
+      peerClient,
+    });
+    expect(peerClient).not.toHaveBeenCalled();
+    expect(logsOf(before)).toBeUndefined();
+
+    // The user creates their first cluster; the next typings request types it.
+    const after = parentWithK8s("gke-cluster");
+    await enrichSidecarCapabilities([after], ["acc1"], {
+      listParents: async () => [{ id: "acc1:gke-cluster:prod" }],
+      peerClient,
+    });
+    expect(logsOf(after)).toBe(true);
   });
 });
 

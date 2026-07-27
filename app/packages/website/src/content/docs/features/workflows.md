@@ -118,6 +118,8 @@ A resource type declares every peer it _can_ expose, so a Cloud SQL instance off
 
 Two things a sidecar's resources don't get, because both are properties of the account rather than of the peer: `ssh()`/`sftp` (which need an SSH endpoint on the resource type) and bucket reads. The editor won't offer them.
 
+**A sidecar's capabilities are discovered by reaching into one real parent**, so they only appear once you actually have a cluster (or database) of that type — create your first one and the next time the editor loads its types, `pod.logs()` is there.
+
 Sidecars don't nest — the things inside a cluster don't have clusters of their own.
 
 ### Reading storage objects

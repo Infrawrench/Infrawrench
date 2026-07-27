@@ -82,11 +82,26 @@ function peerResourceTypeInfo(rt: ResourceTypeDefinition): WorkflowResourceTypeI
 
 /** How long a probed peer plugin's capabilities stay good for. */
 const TTL_MS = 10 * 60 * 1000;
+/** How long to wait after a failed probe before trying the provider again. */
+const RETRY_AFTER_FAILURE_MS = 30 * 1000;
 
 interface CacheEntry {
-  at: number;
-  /** null = the probe failed; don't retype and don't keep retrying hard. */
+  /**
+   * Last capabilities we successfully learned, kept even once stale.
+   *
+   * A probe reaches a live provider (fetch a cluster's kubeconfig, build the
+   * peer client), so it fails for reasons that say nothing about what the
+   * plugin can do: a rate limit, a timeout, a cluster mid-upgrade. Dropping the
+   * flags on such a failure silently deletes `pod.logs()` from `infra.d.ts`, and
+   * the author's already-working workflow stops type-checking with a message
+   * that reads like the method never existed. So a failure never erases a
+   * success — it only schedules a retry.
+   */
   caps: Record<string, WorkflowResourceCapabilities> | null;
+  /** When `caps` was learned (drives {@link TTL_MS}). */
+  at: number;
+  /** When the last probe failed (drives {@link RETRY_AFTER_FAILURE_MS}). */
+  failedAt?: number;
 }
 
 /**
@@ -97,74 +112,115 @@ interface CacheEntry {
  */
 const capsCache = new Map<string, CacheEntry>();
 
+/** Test seam: forget every memoized capability set. */
+export function __resetSidecarCapabilityCache(): void {
+  capsCache.clear();
+}
+
 export interface SidecarCapabilityProbe {
-  /** List resources of the parent type, to find one to reach the peer through. */
-  listParents(parentTypeId: string): Promise<{ id: string }[]>;
+  /** List resources of a parent type in one account, to reach the peer through. */
+  listParents(parentTypeId: string, accountId: string): Promise<{ id: string }[]>;
   /** Build the peer plugin's client using that parent's credentials. */
-  peerClient(pluginId: string, parentResourceId: string): Promise<PluginClient>;
+  peerClient(pluginId: string, parentResourceId: string, accountId: string): Promise<PluginClient>;
 }
 
 /**
- * Fill in a parent type's sidecar capability flags, so `infra.d.ts` types
- * `pod.logs()` / `pod.describe()` rather than leaving a workflow to discover
- * them by runtime trial and error.
+ * Fill in sidecar capability flags across a plugin's parent types, so
+ * `infra.d.ts` types `pod.logs()` / `pod.describe()` rather than leaving a
+ * workflow to discover them by runtime trial and error.
  *
- * This costs one `listResources` on the parent type plus one peer-client build,
- * so it runs on the typings path only (never per run) and caches per peer
- * plugin. Strictly best-effort: an unreachable cluster or a provider hiccup
- * leaves the static flags in place rather than failing the typings.
+ * Takes **every** parent type at once rather than one at a time, because a peer
+ * plugin is usually reachable through several of them (`kubernetes` hangs off
+ * both a GKE and a DOKS cluster) and the answer cannot differ between them. One
+ * grouped pass means exactly one provider round-trip per peer plugin, instead
+ * of N concurrent ones racing each other into a rate limit — and it means the
+ * result no longer depends on which parent type happened to be probed first,
+ * which is what made `pod.logs()` appear and disappear between edits.
+ *
+ * `accountIds` are every account of the plugin, tried in order: the first
+ * account is not necessarily the one that owns a cluster.
+ *
+ * Runs on the typings path only (never per run) and caches per peer plugin.
+ * Best-effort — but see {@link CacheEntry.caps} for why "best-effort" must not
+ * mean "forget what we already knew".
  */
 export async function enrichSidecarCapabilities(
-  parent: WorkflowResourceTypeInfo,
-  accountId: string,
+  parents: readonly WorkflowResourceTypeInfo[],
+  accountIds: readonly string[],
   probe: SidecarCapabilityProbe,
 ): Promise<void> {
-  const sidecars = parent.sidecars ?? [];
-  if (sidecars.length === 0) return;
+  if (accountIds.length === 0) return;
+
+  // Every parent type that exposes a given peer plugin, so one probe's result
+  // lands on all of them.
+  const byPeer = new Map<string, { sidecars: WorkflowSidecarInfo[]; parentTypeIds: string[] }>();
+  for (const parent of parents) {
+    for (const sc of parent.sidecars ?? []) {
+      let group = byPeer.get(sc.pluginId);
+      if (!group) byPeer.set(sc.pluginId, (group = { sidecars: [], parentTypeIds: [] }));
+      group.sidecars.push(sc);
+      group.parentTypeIds.push(parent.id);
+    }
+  }
+  if (byPeer.size === 0) return;
 
   const now = Date.now();
-  const fresh = (pluginId: string): CacheEntry | undefined => {
-    const hit = capsCache.get(pluginId);
-    return hit && now - hit.at <= TTL_MS ? hit : undefined;
-  };
-
-  const apply = (sc: WorkflowSidecarInfo, caps: Record<string, WorkflowResourceCapabilities>) => {
-    for (const rt of sc.resourceTypes) {
-      rt.capabilities = mergeCapabilities(rt.capabilities, caps[rt.id]);
-    }
-  };
-
-  // Serve what's cached (including cached failures) before touching a provider.
-  const unknown: WorkflowSidecarInfo[] = [];
-  for (const sc of sidecars) {
-    const hit = fresh(sc.pluginId);
-    if (!hit) unknown.push(sc);
-    else if (hit.caps) apply(sc, hit.caps);
-  }
-  if (unknown.length === 0) return;
-
-  let parentResourceId: string | undefined;
-  try {
-    parentResourceId = (await probe.listParents(parent.id))[0]?.id;
-  } catch {
-    return;
-  }
-  // No cluster/database of this type exists yet. Not a failure worth caching —
-  // the first one created should get typed capabilities immediately.
-  if (!parentResourceId) return;
-
-  for (const sc of unknown) {
-    let caps: Record<string, WorkflowResourceCapabilities> | null = null;
-    try {
-      const client = await probe.peerClient(sc.pluginId, parentResourceId);
-      caps = {};
+  const apply = (
+    sidecars: WorkflowSidecarInfo[],
+    caps: Record<string, WorkflowResourceCapabilities>,
+  ) => {
+    for (const sc of sidecars) {
       for (const rt of sc.resourceTypes) {
-        caps[rt.id] = detailResourceCapabilities(client, sc.pluginId, rt.id, accountId);
+        rt.capabilities = mergeCapabilities(rt.capabilities, caps[rt.id]);
       }
-    } catch {
-      caps = null;
     }
-    capsCache.set(sc.pluginId, { at: now, caps });
-    if (caps) apply(sc, caps);
-  }
+  };
+
+  await Promise.all(
+    Array.from(byPeer, async ([pluginId, group]) => {
+      const hit = capsCache.get(pluginId);
+      // Apply what we already know first. A stale entry still beats nothing, so
+      // a probe that then fails degrades to slightly-old flags, not no flags.
+      if (hit?.caps) apply(group.sidecars, hit.caps);
+      const usable = hit?.caps && now - hit.at <= TTL_MS;
+      const backingOff = hit?.failedAt !== undefined && now - hit.failedAt < RETRY_AFTER_FAILURE_MS;
+      if (usable || backingOff) return;
+
+      const entry: CacheEntry = hit ?? { caps: null, at: 0 };
+      capsCache.set(pluginId, entry);
+
+      try {
+        // One live parent is enough, wherever it lives.
+        let found: { id: string; accountId: string } | null = null;
+        outer: for (const parentTypeId of group.parentTypeIds) {
+          for (const accountId of accountIds) {
+            const rows = await probe.listParents(parentTypeId, accountId).catch(() => []);
+            if (rows[0]) {
+              found = { id: rows[0].id, accountId };
+              break outer;
+            }
+          }
+        }
+        // No cluster/database exists yet. Not a failure worth backing off from —
+        // the first one created should get typed capabilities immediately.
+        if (!found) return;
+
+        const client = await probe.peerClient(pluginId, found.id, found.accountId);
+        const caps: Record<string, WorkflowResourceCapabilities> = {};
+        for (const sc of group.sidecars) {
+          for (const rt of sc.resourceTypes) {
+            caps[rt.id] = detailResourceCapabilities(client, pluginId, rt.id, found.accountId);
+          }
+        }
+        entry.caps = caps;
+        entry.at = Date.now();
+        delete entry.failedAt;
+        apply(group.sidecars, caps);
+      } catch {
+        // Keep whatever `entry.caps` already held; just don't hammer the
+        // provider again for a little while.
+        entry.failedAt = Date.now();
+      }
+    }),
+  );
 }

@@ -200,21 +200,21 @@ export async function listOrgPlugins(
           return ctx.client;
         });
         // Type what lives inside each sidecar (pod.logs(), pod.describe(), …)
-        // by probing the peer plugin through one real parent resource.
-        await Promise.all(
-          entry.resourceTypes
-            .filter((rt) => rt.sidecars?.length)
-            .map((rt) =>
-              enrichSidecarCapabilities(rt, first.id, {
-                listParents: async (typeId) => {
-                  const ctx = await getOrgAccountClient(first.id, organizationId);
-                  if (!ctx) return [];
-                  return ctx.client.listResources(typeId, first.id);
-                },
-                peerClient: (pluginId, parentResourceId) =>
-                  clientForWorkflow(organizationId, first.id, { pluginId, parentResourceId }),
-              }),
-            ),
+        // by probing the peer plugin through one real parent resource. Passed
+        // every parent type and every account at once so the probe doesn't
+        // depend on which one happens to be tried first.
+        await enrichSidecarCapabilities(
+          entry.resourceTypes.filter((rt) => rt.sidecars?.length),
+          entry.accounts.map((a) => a.id),
+          {
+            listParents: async (typeId, accountId) => {
+              const ctx = await getOrgAccountClient(accountId, organizationId);
+              if (!ctx) return [];
+              return ctx.client.listResources(typeId, accountId);
+            },
+            peerClient: (pluginId, parentResourceId, accountId) =>
+              clientForWorkflow(organizationId, accountId, { pluginId, parentResourceId }),
+          },
         );
       }),
     );

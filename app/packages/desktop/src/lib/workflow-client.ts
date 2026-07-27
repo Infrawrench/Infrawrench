@@ -198,17 +198,18 @@ async function enrichLocalPlugin(entry: WorkflowPluginInfo, firstAccountId: stri
   );
 
   // Type what lives inside each sidecar (pod.logs(), pod.describe(), …) by
-  // probing the peer plugin through one real parent resource.
-  await Promise.all(
-    entry.resourceTypes
-      .filter((rt) => rt.sidecars?.length)
-      .map((rt) =>
-        enrichSidecarCapabilities(rt, firstAccountId, {
-          listParents: async (typeId) => (await getClient()).listResources(typeId, firstAccountId),
-          peerClient: (pluginId, parentResourceId) =>
-            createPeerPluginClient(firstAccountId, entry.pluginId, parentResourceId, pluginId),
-        }),
-      ),
+  // probing the peer plugin through one real parent resource. Passed every
+  // parent type and every account at once so the probe doesn't depend on which
+  // one happens to be tried first.
+  await enrichSidecarCapabilities(
+    entry.resourceTypes.filter((rt) => rt.sidecars?.length),
+    entry.accounts.map((a) => a.id),
+    {
+      listParents: async (typeId, accountId) =>
+        (await createPluginClient(accountId, entry.pluginId)).listResources(typeId, accountId),
+      peerClient: (pluginId, parentResourceId, accountId) =>
+        createPeerPluginClient(accountId, entry.pluginId, parentResourceId, pluginId),
+    },
   );
 }
 
