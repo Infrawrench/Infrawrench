@@ -10,9 +10,9 @@ import {
 import { Card, ErrorView, LoadingView, Row, Screen, SectionTitle } from "@/components/ui";
 
 /**
- * The home tab is the org's default dashboard, the same as the web app's home
- * route — pinned resources, workflow tiles, cost graphs, and budgets in one
- * ordered list, then a link to the org's other dashboards.
+ * The Dashboards tab opens on the org's default dashboard, the same as the web
+ * app's home route — pinned resources, workflow tiles, cost graphs, and budgets
+ * in one ordered list, then a link to the org's other dashboards.
  *
  * A budget appears here only as a card on this dashboard, exactly as on web and
  * desktop: the widget is what puts it on a dashboard, so removing the widget
@@ -20,7 +20,7 @@ import { Card, ErrorView, LoadingView, Row, Screen, SectionTitle } from "@/compo
  * budget no widget here covered, which meant a budget you had just removed came
  * straight back under a different heading.
  */
-export default function OrgHome() {
+export default function OrgDashboards() {
   const router = useRouter();
   const { api, orgId } = useOrgApi();
   const queryClient = useQueryClient();

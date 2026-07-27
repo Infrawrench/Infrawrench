@@ -61,7 +61,7 @@ export default function OrgLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
+          title: "Dashboards",
           tabBarIcon: ({ color, size }) => <HomeIcon color={color} size={size} />,
         }}
       />
