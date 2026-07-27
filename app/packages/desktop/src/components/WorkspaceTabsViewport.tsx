@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useRouterState } from "@tanstack/react-router";
 import {
   WorkspaceTabsViewport as BaseViewport,
+  dashboardTabTarget,
   useUIStore,
   workspaceTabTargetsEqual,
   type WorkspaceTab,
@@ -13,6 +14,8 @@ import { ResourcePanel } from "@/routes/resource.$accountId.$resourceId";
 import { getWorkspaceNavigateArgs, syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
 import { WorkflowsPanel, type WorkflowClient } from "@infrawrench/ui/workflows";
 import { AgentsPanel, type AgentClient } from "@infrawrench/ui/agents";
+import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
+import { createDesktopCostsClient } from "@/lib/costs-client";
 import { createDesktopWorkflowClient } from "@/lib/workflow-client";
 import { createDesktopAgentClient } from "@/lib/agent-client";
 import { CloudChatPanel } from "@/components/CloudChatPanel";
@@ -31,6 +34,12 @@ let agentClient: AgentClient | null = null;
 function getAgentClient(): AgentClient {
   if (!agentClient) agentClient = createDesktopAgentClient();
   return agentClient;
+}
+
+let costsClient: CostsClient | null = null;
+function getCostsClient(): CostsClient {
+  if (!costsClient) costsClient = createDesktopCostsClient();
+  return costsClient;
 }
 
 // Desktop-side glue between WorkspaceTabsViewport (in @infrawrench/ui) and the
@@ -82,6 +91,15 @@ function renderPanel(tab: WorkspaceTab, navigate: ReturnType<typeof useNavigate>
       );
     case "workflows":
       return <WorkflowsPanel client={getWorkflowClient()} />;
+    case "costs":
+      return (
+        <CostsPanel
+          client={getCostsClient()}
+          onOpenDashboard={(dashboardId) =>
+            void navigate(getWorkspaceNavigateArgs(dashboardTabTarget(dashboardId)))
+          }
+        />
+      );
     case "chat":
       return <CloudChatPanel conversationId={t.conversationId} />;
     case "resource":

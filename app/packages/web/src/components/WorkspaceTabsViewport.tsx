@@ -14,10 +14,12 @@ import { getWorkspaceNavigateArgs, syncWorkspaceRouteFromPath } from "@/lib/work
 import { type WorkflowClient } from "@infrawrench/ui/workflows";
 import { type AgentClient } from "@infrawrench/ui/agents";
 import { createWebWorkflowClient } from "@/lib/workflow-client";
+import { createWebCostsClient } from "@/lib/cost-client";
 import { createWebAgentClient } from "@/lib/agent-client";
 import { WebWorkflowsPanel } from "./WebWorkflowsPanel";
 import { WebAgentsPanel } from "./WebAgentsPanel";
 import { WebChatPanel } from "./WebChatPanel";
+import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
 
 interface WebWorkspaceTabsViewportProps {
   orgId: string;
@@ -63,6 +65,7 @@ export function WebWorkspaceTabsViewport({ orgId }: WebWorkspaceTabsViewportProp
 // Stable WorkflowClient per org so the panel's effects don't refire each render.
 const workflowClients = new Map<string, WorkflowClient>();
 const agentClients = new Map<string, AgentClient>();
+const costsClients = new Map<string, CostsClient>();
 function getWorkflowClient(orgId: string): WorkflowClient {
   let client = workflowClients.get(orgId);
   if (!client) {
@@ -77,6 +80,15 @@ function getAgentClient(orgId: string): AgentClient {
   if (!client) {
     client = createWebAgentClient(orgId);
     agentClients.set(orgId, client);
+  }
+  return client;
+}
+
+function getCostsClient(orgId: string): CostsClient {
+  let client = costsClients.get(orgId);
+  if (!client) {
+    client = createWebCostsClient(orgId);
+    costsClients.set(orgId, client);
   }
   return client;
 }
@@ -98,6 +110,15 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
       );
     case "workflows":
       return <WebWorkflowsPanel client={getWorkflowClient(orgId)} orgId={orgId} />;
+    case "costs":
+      return (
+        <CostsPanel
+          client={getCostsClient(orgId)}
+          onOpenDashboard={(dashboardId) =>
+            void navigate(getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId }))
+          }
+        />
+      );
     case "chat":
       return <WebChatPanel orgId={orgId} conversationId={t.conversationId} />;
     case "resource":

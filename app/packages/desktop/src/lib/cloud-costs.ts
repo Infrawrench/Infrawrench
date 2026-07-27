@@ -57,6 +57,10 @@ export async function updateCloudBudget(
   await invoke("cloud_update_budget", { orgId, budgetId, input });
 }
 
+export async function deleteCloudBudget(orgId: string, budgetId: string): Promise<void> {
+  await invoke("cloud_delete_budget", { orgId, budgetId });
+}
+
 export async function createCloudWidget(
   orgId: string,
   request: { dashboardId: string; kind: string; title?: string; config: unknown },

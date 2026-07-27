@@ -295,8 +295,7 @@ export const budgetAlertEvents = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     /** "YYYY-MM" (UTC) the crossing was observed in. */
     month: text("month").notNull(),
-    /** "actual" | "forecast" */
-    thresholdType: text("threshold_type").notNull(),
+    thresholdType: text("threshold_type").$type<"actual" | "forecast">().notNull(),
     thresholdPercent: integer("threshold_percent").notNull(),
     actualAmountCents: integer("actual_amount_cents").notNull(),
     forecastAmountCents: integer("forecast_amount_cents"),

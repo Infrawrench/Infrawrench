@@ -5,6 +5,7 @@ export type WorkspaceTabTarget =
   | { kind: "dashboard"; dashboardId: string }
   | { kind: "account"; accountId: string }
   | { kind: "agents" }
+  | { kind: "costs" }
   | { kind: "workflows"; workflowId?: string }
   | { kind: "chat"; conversationId?: string }
   | {
@@ -46,6 +47,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return `account:${target.accountId}`;
     case "agents":
       return "agents";
+    case "costs":
+      return "costs";
     case "workflows":
       return target.workflowId ? `workflows:${target.workflowId}` : "workflows";
     case "chat":
@@ -69,6 +72,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Account";
     case "agents":
       return "Agents";
+    case "costs":
+      return "Costs";
     case "workflows":
       return "Workflows";
     case "chat":
@@ -88,6 +93,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "account":
       return a.accountId === (b as { accountId: string }).accountId;
     case "agents":
+    case "costs":
       return true;
     case "workflows":
       return a.workflowId === (b as { workflowId?: string }).workflowId;

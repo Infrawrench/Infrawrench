@@ -36,7 +36,7 @@ const PRESET_LABELS: Record<(typeof COST_RANGE_PRESETS)[number], string> = {
   "12m": "Last 12 months",
 };
 
-const DIMENSION_LABELS: Record<(typeof COST_DIMENSIONS)[number], string> = {
+export const DIMENSION_LABELS: Record<(typeof COST_DIMENSIONS)[number], string> = {
   provider: "Provider",
   account: "Account",
   service: "Service",

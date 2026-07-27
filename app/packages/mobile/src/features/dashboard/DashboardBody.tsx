@@ -4,7 +4,6 @@ import { useQuery, type QueryClient } from "@tanstack/react-query";
 import {
   orderDashboardCards,
   type BudgetWidgetConfig,
-  type CostAccountStatus,
   type CostGraphConfig,
   type DashboardWidget,
 } from "@infrawrench/client-core";
@@ -15,6 +14,7 @@ import { colors } from "@/lib/theme";
 import { BudgetCard } from "./BudgetCard";
 import { CostGraphCard } from "./CostGraphCard";
 import { useBudgets } from "./useBudgets";
+import { useCostStatus } from "./useCostStatus";
 
 /** Shapes from GET /api/org/:orgId/dashboards/:id (web api/routes/dashboards.ts). */
 export interface DashboardData {
@@ -120,15 +120,9 @@ export function DashboardBody({ data }: { data: DashboardData }) {
   // Budget widgets reference a budgets row; the rows load once for all of them.
   const budgets = useBudgets(widgets.some((w) => w.kind === "budget"));
 
-  // Any cost surface is only as good as the collection behind it, so pull the
-  // per-account state and let the notice decide whether to say anything. Both
-  // widget kinds read collected spend, so any widget at all is reason enough.
-  const costStatus = useQuery({
-    queryKey: ["cost-status", orgId],
-    enabled: widgets.length > 0,
-    queryFn: async () =>
-      (await api.org<{ accounts: CostAccountStatus[] }>(orgId, "/costs/status"))?.accounts ?? [],
-  });
+  // Both widget kinds read collected spend, so any widget at all is reason
+  // enough to pull the per-account state and let the notice decide.
+  const costStatus = useCostStatus(widgets.length > 0);
 
   const cards = orderDashboardCards([
     ...pins.map((pin) => ({

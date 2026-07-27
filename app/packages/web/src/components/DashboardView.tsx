@@ -20,6 +20,7 @@ import type { ProbeStatus } from "@infrawrench/plugin-base";
 import { WorkflowDashboardCard, type WorkflowDashboardCardData } from "@infrawrench/ui/workflows";
 import {
   BudgetConfigModal,
+  BudgetPickerModal,
   BudgetWidgetCard,
   CostCollectionNotice,
   CostGraphCard,
@@ -113,6 +114,7 @@ export function DashboardView({
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [costModal, setCostModal] = useState<{ widget: DashboardWidget | null } | null>(null);
   const [budgetModal, setBudgetModal] = useState<{ widget: DashboardWidget | null } | null>(null);
+  const [budgetPickerOpen, setBudgetPickerOpen] = useState(false);
   const [budgets, setBudgets] = useState<Map<string, BudgetWithStatus>>(new Map());
   const [costStatus, setCostStatus] = useState<CostAccountStatus[]>([]);
   const [dashboardName, setDashboardName] = useState(initialName);
@@ -268,6 +270,23 @@ export function DashboardView({
       });
       setWidgets((prev) => [...prev, created]);
     }
+    await refetchBudgets();
+  }
+
+  const loadAllBudgets = useCallback(
+    () => apiGet<BudgetWithStatus[]>(`/api/org/${orgId}/budgets`),
+    [orgId],
+  );
+
+  /** Show a budget that already exists on this dashboard. */
+  async function addExistingBudget(budget: BudgetWithStatus) {
+    const created = await apiPost<DashboardWidget>(`/api/org/${orgId}/dashboards/widgets`, {
+      dashboardId,
+      kind: "budget",
+      title: budget.name,
+      config: { version: 1, budgetId: budget.id },
+    });
+    setWidgets((prev) => [...prev, created]);
     await refetchBudgets();
   }
 
@@ -456,6 +475,10 @@ export function DashboardView({
                     setAddMenuOpen(false);
                     setBudgetModal({ widget: null });
                   }}
+                  onPickExistingBudget={() => {
+                    setAddMenuOpen(false);
+                    setBudgetPickerOpen(true);
+                  }}
                   onClose={() => setAddMenuOpen(false)}
                 />
               )}
@@ -548,6 +571,10 @@ export function DashboardView({
                         setAddMenuOpen(false);
                         setBudgetModal({ widget: null });
                       }}
+                      onPickExistingBudget={() => {
+                        setAddMenuOpen(false);
+                        setBudgetPickerOpen(true);
+                      }}
                       onClose={() => setAddMenuOpen(false)}
                     />
                   )}
@@ -597,6 +624,17 @@ export function DashboardView({
             onClose={() => setBudgetModal(null)}
           />
         )}
+
+        {budgetPickerOpen && (
+          <BudgetPickerModal
+            loadBudgets={loadAllBudgets}
+            excludeIds={widgets
+              .filter((w) => w.kind === "budget")
+              .map((w) => (w.config as { budgetId: string }).budgetId)}
+            onPick={addExistingBudget}
+            onClose={() => setBudgetPickerOpen(false)}
+          />
+        )}
       </div>
     </div>
   );
@@ -617,11 +655,13 @@ function AddMenu({
   onPickResource,
   onPickCostGraph,
   onPickBudget,
+  onPickExistingBudget,
   onClose,
 }: {
   onPickResource: () => void;
   onPickCostGraph: () => void;
   onPickBudget: () => void;
+  onPickExistingBudget: () => void;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -639,7 +679,7 @@ function AddMenu({
     <>
       {/* Mouse-only click-away backdrop; keyboard users close the menu with Escape (handled above). */}
       <div aria-hidden="true" className="fixed inset-0 z-20" onClick={onClose} />
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-48 rounded-xl border border-border bg-surface-raised shadow-xl overflow-hidden py-1">
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-52 rounded-xl border border-border bg-surface-raised shadow-xl overflow-hidden py-1">
         <button type="button" onClick={onPickResource} className={itemClass}>
           <span className="text-on-surface-faint">▣</span> Pin a resource
         </button>
@@ -647,7 +687,10 @@ function AddMenu({
           <span className="text-on-surface-faint">▤</span> Cost graph
         </button>
         <button type="button" onClick={onPickBudget} className={itemClass}>
-          <span className="text-on-surface-faint">◔</span> Budget
+          <span className="text-on-surface-faint">◔</span> New budget
+        </button>
+        <button type="button" onClick={onPickExistingBudget} className={itemClass}>
+          <span className="text-on-surface-faint">◕</span> Existing budget
         </button>
       </div>
     </>

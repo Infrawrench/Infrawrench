@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -1683,7 +1683,7 @@
         "properties": {
           "kind": {
             "type": "string",
-            "enum": ["dashboard", "account", "resource", "agents", "workflows", "chat"]
+            "enum": ["dashboard", "account", "resource", "agents", "costs", "workflows", "chat"]
           },
           "dashboardId": {
             "type": "string",
@@ -2314,6 +2314,29 @@
               "required": ["id", "thresholdType", "thresholdPercent", "triggeredAt"],
               "additionalProperties": false
             }
+          },
+          "placements": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "widgetId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "dashboardId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "dashboardName": {
+                  "type": "string"
+                }
+              },
+              "required": ["widgetId", "dashboardId", "dashboardName"],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -2326,7 +2349,8 @@
           "month",
           "actualCents",
           "forecastCents",
-          "currentMonthEvents"
+          "currentMonthEvents",
+          "placements"
         ],
         "additionalProperties": false
       },

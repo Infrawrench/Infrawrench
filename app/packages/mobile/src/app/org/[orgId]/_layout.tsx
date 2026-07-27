@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { Pressable } from "react-native";
 import {
   ChatIcon,
+  CostsIcon,
   HomeIcon,
   ResourcesIcon,
   SearchIcon,
@@ -69,6 +70,13 @@ export default function OrgLayout() {
         options={{
           title: "Resources",
           tabBarIcon: ({ color, size }) => <ResourcesIcon color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="costs"
+        options={{
+          title: "Costs",
+          tabBarIcon: ({ color, size }) => <CostsIcon color={color} size={size} />,
         }}
       />
       <Tabs.Screen

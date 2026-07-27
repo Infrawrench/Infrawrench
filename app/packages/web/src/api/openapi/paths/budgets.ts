@@ -69,6 +69,17 @@ const BudgetWithStatus = strict({
       triggeredAt: IsoDateTime,
     }),
   ),
+  /**
+   * The dashboards carrying a card for this budget. Empty is normal — a budget
+   * evaluates and alerts whether or not any dashboard shows it.
+   */
+  placements: z.array(
+    strict({
+      widgetId: Uuid,
+      dashboardId: Uuid,
+      dashboardName: z.string(),
+    }),
+  ),
 }).openapi("BudgetWithStatus");
 
 export function registerBudgetPaths(ctx: BuildContext) {

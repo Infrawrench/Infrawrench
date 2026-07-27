@@ -154,6 +154,20 @@ export interface BudgetWithStatus {
     thresholdPercent: number;
     triggeredAt: string;
   }>;
+  /**
+   * The dashboards carrying a card for this budget. A budget exists
+   * independently of any dashboard — it keeps evaluating and alerting with no
+   * card anywhere — so the Costs panel is its home and this is where it also
+   * happens to be shown.
+   */
+  placements: BudgetPlacement[];
+}
+
+/** One dashboard card pointing at a budget, as listed on `BudgetWithStatus`. */
+export interface BudgetPlacement {
+  widgetId: string;
+  dashboardId: string;
+  dashboardName: string;
 }
 
 /* ------------------------------------------------------------------ *

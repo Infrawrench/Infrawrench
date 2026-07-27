@@ -49,6 +49,13 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+  "cloud_delete_budget",
+  async (_e, { orgId, budgetId }: { orgId: string; budgetId: string }) => {
+    return cloudFetch(orgId, `/budgets/${encodeURIComponent(budgetId)}`, { method: "DELETE" });
+  },
+);
+
+ipcMain.handle(
   "cloud_create_widget",
   async (_e, { orgId, request }: { orgId: string; request: unknown }) => {
     return cloudFetch(orgId, "/dashboards/widgets", {

@@ -12,6 +12,7 @@ import {
   type OrgEntry,
 } from "@infrawrench/ui";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
+import { CostsIcon } from "@infrawrench/ui/cost";
 import { CHAT_CONVERSATIONS_CHANGED_EVENT, type ConversationSummary } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { chatTabTarget, navigateToWorkspaceTarget } from "@/lib/workspace-tabs";
@@ -462,6 +463,21 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
               >
                 <WorkflowIcon className="opacity-50 flex-shrink-0" />
                 <span className="truncate">Workflows</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="mb-2">
+            <div className="mx-2">
+              <button
+                type="button"
+                onClick={() =>
+                  void navigate({ to: "/org/$orgId/costs", params: { orgId: orgId! } })
+                }
+                className="group w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+              >
+                <CostsIcon className="opacity-50 flex-shrink-0" />
+                <span className="truncate">Costs</span>
               </button>
             </div>
           </div>

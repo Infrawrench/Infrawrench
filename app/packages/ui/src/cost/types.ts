@@ -1,5 +1,5 @@
-import type { CostAccountStatus } from "@infrawrench/client-core";
-import type { CostQueryRequest, CostQueryResponse } from "./config.js";
+import type { BudgetWithStatus, CostAccountStatus } from "@infrawrench/client-core";
+import type { BudgetInput, CostQueryRequest, CostQueryResponse } from "./config.js";
 
 /** One selectable value in a dimension picker. */
 export interface CostDimensionOption {
@@ -11,7 +11,12 @@ export interface CostDimensionOption {
  * The cost contract lives in client-core so mobile (which doesn't depend on
  * this package) shares one definition of it; re-exported for web and desktop.
  */
-export type { CostAccountStatus, CostPollError, BudgetWithStatus } from "@infrawrench/client-core";
+export type {
+  CostAccountStatus,
+  CostPollError,
+  BudgetWithStatus,
+  BudgetPlacement,
+} from "@infrawrench/client-core";
 
 /**
  * Host-injected data access for the cost components. Web wraps `apiFetch`;
@@ -24,4 +29,31 @@ export interface CostApi {
   loadDimensionValues(dimension: string, tagKey?: string): Promise<CostDimensionOption[]>;
   /** Per-account collection state — backs {@link CostAccountStatus} notices. */
   loadCostStatus(): Promise<CostAccountStatus[]>;
+}
+
+/** A dashboard a budget card can be added to, for the Costs panel's picker. */
+export interface CostsPanelDashboard {
+  id: string;
+  name: string;
+}
+
+/**
+ * Everything {@link CostsPanel} needs beyond {@link CostApi}: budget CRUD and
+ * the dashboard-placement calls behind "show on a dashboard".
+ *
+ * Hosts supply this the way they supply `WorkflowClient` / `AgentClient` — web
+ * over `apiFetch`, desktop over its cloud-api helpers. A host that cannot edit
+ * (or a viewer without `budgets:write`) omits the mutating half, and the panel
+ * renders read-only rather than showing controls that fail on click.
+ */
+export interface CostsClient extends CostApi {
+  listBudgets(): Promise<BudgetWithStatus[]>;
+  listDashboards(): Promise<CostsPanelDashboard[]>;
+  createBudget?(input: BudgetInput): Promise<{ id: string }>;
+  updateBudget?(budgetId: string, input: BudgetInput): Promise<void>;
+  deleteBudget?(budgetId: string): Promise<void>;
+  /** Add a budget card for `budgetId` to `dashboardId`. */
+  addBudgetToDashboard?(dashboardId: string, budgetId: string, title: string): Promise<void>;
+  /** Remove one budget card, identified by the widget id from `placements`. */
+  removeBudgetPlacement?(widgetId: string): Promise<void>;
 }

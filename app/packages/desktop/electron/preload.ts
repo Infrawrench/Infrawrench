@@ -139,6 +139,7 @@ const INVOKE_CHANNELS = [
   "cloud_list_budgets",
   "cloud_create_budget",
   "cloud_update_budget",
+  "cloud_delete_budget",
   "cloud_create_widget",
   "cloud_update_widget",
   "cloud_delete_widget",

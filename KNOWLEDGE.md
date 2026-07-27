@@ -1457,6 +1457,21 @@ Spend reporting as dashboard widgets. Pipeline mirrors the metrics path: **plugi
 
 Docs: `website/src/content/docs/features/cloud-costs.md` (+ dashboard.md "+"-menu update, roles doc, per-plugin pages).
 
+### The Costs panel and budget lifecycle
+
+`CostsPanel` (`ui/src/cost/CostsPanel.tsx`) is a workspace tab beside Agents and Workflows — target kind `costs`, sidebar entry, `/costs` route on both hosts, and a read-only `costs` tab on mobile. It shows month-to-date spend (a fixed `mtd` config with only a group-by choice; anything configurable belongs on a dashboard where it can be saved) over the org's budgets.
+
+**A budget is an org object, not a dashboard object.** It evaluates and alerts whether or not any dashboard carries a card for it, and `dashboard_widgets` points at it by `config.budgetId` with no foreign key — so a budget can outlive every card. Before this panel the only way to reach one was to find a dashboard showing it, which meant removing a card made a still-firing budget unreachable. That is what the panel fixes, and why `BudgetWithStatus.placements` exists: each row names the dashboards showing it, or says "On no dashboard".
+
+The two directions are deliberately asymmetric, and both hosts must keep it that way:
+
+- Removing a **card** (`DELETE /dashboards/widgets/:id`) is a display change. The budget is untouched.
+- Deleting a **budget** (`softDeleteBudget`) also soft-deletes every widget pointing at it. Nothing else ever would: a widget resolves its row by `config.budgetId`, so a card left behind renders as a permanent "budget unavailable" tile that no amount of dashboard editing explains.
+
+The dashboard `+` menu offers **New budget** and **Existing budget** for the same reason — one budget, many views. Adding a placement from either side is the same plain widget POST; `BudgetPickerModal` is shared by web and desktop so the two cannot drift.
+
+Desktop gates the sidebar entry on `activeCloudOrgId` (spend is collected server-side, so local mode has nothing to show) and `createDesktopCostsClient` resolves the org per call rather than closing over it, matching the dashboard's cost API. Mobile omits the mutating half of `CostsClient` and `CostsPanel` renders read-only rather than showing controls that would fail on click.
+
 ## Accessibility conventions
 
 Established during the July 2026 a11y sweep (react-doctor Accessibility findings: 78 → 0). Keep new code within these patterns:

@@ -101,6 +101,7 @@ export {
   type BudgetWidgetConfig,
   type BudgetThreshold,
   type BudgetWithStatus,
+  type BudgetPlacement,
   type DashboardWidgetKind,
   type DashboardWidget,
   type CostQueryRequest,

@@ -6,6 +6,8 @@ sidebar_order: 2
 
 Cost graphs turn the billing data from your connected provider accounts into dashboard widgets: spend over time, broken down by provider, account, service, region, resource, or tag — plus monthly budgets that alert you before the bill does.
 
+The **Costs** panel in the sidebar is where your budgets live. Dashboards show cards, but the panel is the list — see [The Costs panel](#the-costs-panel).
+
 > **Cloud only.** Cost collection runs on Infrawrench Cloud's background pollers and time-series store. On the desktop app the widgets appear when you are signed into a cloud org; local-only mode does not collect cost data.
 
 ## Add a cost graph
@@ -14,7 +16,7 @@ Cost graphs turn the billing data from your connected provider accounts into das
 2. Choose **Cost graph**.
 3. Pick a chart type, date range, and grouping, then **Save**.
 
-<insert [Dashboard "+" tile open with the add menu showing Pin a resource / Cost graph / Budget] here>
+<insert [Dashboard "+" tile open with the add menu showing Pin a resource / Cost graph / New budget / Existing budget] here>
 
 <insert [Cost graph config modal with chart type, binning, date range, group-by, and a provider filter row] here>
 
@@ -39,7 +41,7 @@ Currencies are never merged: if your accounts bill in more than one currency the
 
 ## Budgets & alerts
 
-A budget is a monthly amount tracked against a scope — all spend, or a filtered slice (one provider, one account, a tag). Add one from the **+** tile → **Budget**.
+A budget is a monthly amount tracked against a scope — all spend, or a filtered slice (one provider, one account, a tag). Create one from the **Costs** panel, or from a dashboard's **+** tile → **New budget**.
 
 Each budget has one or more thresholds:
 
@@ -50,9 +52,43 @@ Every threshold fires at most once per calendar month. Alerts show up as a badge
 
 <insert [Budget card showing a progress bar at 72% with threshold ticks, a forecast marker, and an alert badge] here>
 
+## The Costs panel
+
+**Costs** in the sidebar opens month-to-date spend for the whole org — broken down by provider, account, or service — and below it every budget you have.
+
+A budget belongs to the org, not to a dashboard. It keeps evaluating and keeps alerting whether or not anything is showing it, which is why the panel exists: it is the one place a budget is always reachable. Each row says which dashboards carry a card for it, or **On no dashboard** when none do.
+
+From a budget's row you can:
+
+- **Edit** it — amount, scope filters, and thresholds.
+- **Dashboards** — add or remove its cards, one per dashboard.
+- **Delete** it — the budget stops evaluating and stops alerting, and its cards are removed from every dashboard at the same time.
+
+### Cards vs the budget itself
+
+The two directions are deliberately not symmetrical:
+
+| You do this                            | What happens                                                            |
+| -------------------------------------- | ----------------------------------------------------------------------- |
+| Remove a budget card from a dashboard  | The card goes. The budget stays, keeps tracking, keeps alerting.        |
+| Delete the budget from the Costs panel | The budget goes, alerts stop, and every card pointing at it is removed. |
+
+So removing a card is a display change, and deleting a budget is the real one.
+
+### Show an existing budget on a dashboard
+
+A dashboard's **+** tile offers both halves:
+
+- **New budget** creates a budget and puts a card for it on this dashboard.
+- **Existing budget** picks one you already have. Budgets already on this dashboard are not listed.
+
+The same budget can appear on as many dashboards as you like — one budget, many views of it.
+
+<insert [Costs panel showing the month-to-date spend chart at the top and two budget cards below, one labelled "On no dashboard"] here>
+
 ## On your phone
 
-Cost graphs and budgets render on the [mobile app](./mobile-app.md) too — the same query, the same series colors, the same thresholds and forecast marker, drawn natively. They appear as cards on the dashboard they were added to, so tapping a budget push notification lands you on the budget it is about. Configuring them (the **+** tile, the graph and budget editors) stays on web and desktop.
+Cost graphs and budgets render on the [mobile app](./mobile-app.md) too — the same query, the same series colors, the same thresholds and forecast marker, drawn natively. The **Costs** tab mirrors the panel: month-to-date spend and every budget in the org, so a budget push always has somewhere to land even when no dashboard shows that budget. Cost cards also appear on whichever dashboards carry them. Creating and editing (the **+** tile, the graph and budget editors, adding and removing cards) stays on web and desktop.
 
 ## Ask the model instead
 

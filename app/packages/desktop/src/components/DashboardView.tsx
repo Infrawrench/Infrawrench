@@ -57,6 +57,7 @@ import {
 } from "../lib/cloud-api";
 import {
   BudgetConfigModal,
+  BudgetPickerModal,
   BudgetWidgetCard,
   CostCollectionNotice,
   CostGraphCard,
@@ -110,6 +111,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [costModal, setCostModal] = useState<{ widget: DashboardWidget | null } | null>(null);
   const [budgetModal, setBudgetModal] = useState<{ widget: DashboardWidget | null } | null>(null);
+  const [budgetPickerOpen, setBudgetPickerOpen] = useState(false);
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
   const bumpDashboardPins = useUIStore((s) => s.bumpDashboardPins);
   const tabId = useTabId();
@@ -840,6 +842,25 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     await refetchBudgets();
   }
 
+  /** Show a budget that already exists on this dashboard. */
+  async function addExistingBudget(budget: BudgetWithStatus) {
+    const orgId = useUIStore.getState().activeCloudOrgId;
+    if (!orgId) return;
+    const created = await createCloudWidget(orgId, {
+      dashboardId,
+      kind: "budget",
+      title: budget.name,
+      config: { version: 1, budgetId: budget.id },
+    });
+    setWidgets((prev) => [...prev, created]);
+    await refetchBudgets();
+  }
+
+  const loadAllBudgets = useCallback(() => {
+    const orgId = useUIStore.getState().activeCloudOrgId;
+    return orgId ? listCloudBudgets(orgId) : Promise.resolve([]);
+  }, []);
+
   function budgetToInput(budget: BudgetWithStatus | undefined): BudgetInput {
     if (!budget) return DEFAULT_BUDGET_INPUT;
     return {
@@ -943,6 +964,10 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                   setAddMenuOpen(false);
                   setBudgetModal({ widget: null });
                 }}
+                onPickExistingBudget={() => {
+                  setAddMenuOpen(false);
+                  setBudgetPickerOpen(true);
+                }}
                 onClose={() => setAddMenuOpen(false)}
               />
             )}
@@ -1034,6 +1059,10 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                       setAddMenuOpen(false);
                       setBudgetModal({ widget: null });
                     }}
+                    onPickExistingBudget={() => {
+                      setAddMenuOpen(false);
+                      setBudgetPickerOpen(true);
+                    }}
                     onClose={() => setAddMenuOpen(false)}
                   />
                 )}
@@ -1071,6 +1100,17 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           />
         )}
 
+        {budgetPickerOpen && (
+          <BudgetPickerModal
+            loadBudgets={loadAllBudgets}
+            excludeIds={widgets
+              .filter((w) => w.kind === "budget")
+              .map((w) => (w.config as { budgetId: string }).budgetId)}
+            onPick={addExistingBudget}
+            onClose={() => setBudgetPickerOpen(false)}
+          />
+        )}
+
         {spotlightMode && (
           <SpotlightSearch
             dashboardId={dashboardId}
@@ -1099,11 +1139,13 @@ function DashboardAddMenu({
   onPickResource,
   onPickCostGraph,
   onPickBudget,
+  onPickExistingBudget,
   onClose,
 }: {
   onPickResource: () => void;
   onPickCostGraph: () => void;
   onPickBudget: () => void;
+  onPickExistingBudget: () => void;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -1121,7 +1163,7 @@ function DashboardAddMenu({
     <>
       {/* Mouse-only click-away backdrop; keyboard users close the menu with Escape (handled above). */}
       <div aria-hidden="true" className="fixed inset-0 z-20" onClick={onClose} />
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-48 rounded-xl border border-border bg-surface-raised shadow-xl overflow-hidden py-1">
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-52 rounded-xl border border-border bg-surface-raised shadow-xl overflow-hidden py-1">
         <button type="button" onClick={onPickResource} className={itemClass}>
           <span className="text-on-surface-faint">▣</span> Pin a resource
         </button>
@@ -1129,7 +1171,10 @@ function DashboardAddMenu({
           <span className="text-on-surface-faint">▤</span> Cost graph
         </button>
         <button type="button" onClick={onPickBudget} className={itemClass}>
-          <span className="text-on-surface-faint">◔</span> Budget
+          <span className="text-on-surface-faint">◔</span> New budget
+        </button>
+        <button type="button" onClick={onPickExistingBudget} className={itemClass}>
+          <span className="text-on-surface-faint">◕</span> Existing budget
         </button>
       </div>
     </>

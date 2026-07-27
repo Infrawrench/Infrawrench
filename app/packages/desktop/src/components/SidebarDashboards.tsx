@@ -11,8 +11,10 @@ import {
   type ConversationSummary,
 } from "@infrawrench/ui";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
+import { CostsIcon } from "@infrawrench/ui/cost";
 import {
   agentsTabTarget,
+  costsTabTarget,
   chatTabTarget,
   dashboardTabTarget,
   workflowsTabTarget,
@@ -185,6 +187,22 @@ export function SidebarDashboards() {
           <span className="truncate">Workflows</span>
         </button>
       </div>
+
+      {/* Costs are collected server-side, so the panel is cloud-only. */}
+      {activeCloudOrgId && (
+        <div className="mx-2 mb-1">
+          <button
+            type="button"
+            onClick={() =>
+              void navigateToWorkspaceTarget(navigate, costsTabTarget(), { label: "Costs" })
+            }
+            className="group w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+          >
+            <CostsIcon className="opacity-50 flex-shrink-0" />
+            <span className="truncate">Costs</span>
+          </button>
+        </div>
+      )}
 
       {/* Chat sessions — only when signed in to cloud with an active org */}
       {activeCloudOrgId && (

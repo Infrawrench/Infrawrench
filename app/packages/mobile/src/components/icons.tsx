@@ -51,6 +51,17 @@ export function ResourcesIcon(props: IconProps) {
   );
 }
 
+/** Matches the web app's `CostsIcon` — same bars, same 24×24 grid. */
+export function CostsIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <Path d="M3 3v16a2 2 0 0 0 2 2h16" />
+      <Path d="M8 11h2a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z" />
+      <Path d="M16 7h2a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z" />
+    </Icon>
+  );
+}
+
 export function ChatIcon(props: IconProps) {
   return (
     <Icon {...props}>

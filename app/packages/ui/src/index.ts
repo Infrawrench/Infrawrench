@@ -226,6 +226,7 @@ export {
   dashboardTabTarget,
   accountTabTarget,
   agentsTabTarget,
+  costsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   resourceTabTarget,

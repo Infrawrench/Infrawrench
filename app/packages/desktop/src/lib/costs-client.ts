@@ -1,0 +1,60 @@
+import { useUIStore } from "@infrawrench/ui";
+import type { BudgetInput, CostsClient, CostsPanelDashboard } from "@infrawrench/ui/cost";
+import {
+  createCloudBudget,
+  createCloudWidget,
+  deleteCloudBudget,
+  deleteCloudWidget,
+  listCloudBudgets,
+  loadCloudCostDimensionValues,
+  loadCloudCostStatus,
+  queryCloudCosts,
+  updateCloudBudget,
+} from "./cloud-costs";
+import { listCloudDashboards } from "./cloud-dashboards";
+
+/**
+ * Costs are cloud-only: spend is collected server-side, so a desktop app in
+ * local mode has nothing to show. Every call resolves the active org at call
+ * time rather than closing over it, matching the dashboard's cost API — the
+ * org can change under a mounted panel when the user switches org.
+ */
+function requireOrgId(): string {
+  const orgId = useUIStore.getState().activeCloudOrgId;
+  if (!orgId) throw new Error("Costs and budgets require cloud mode — sign in to sync.");
+  return orgId;
+}
+
+export function createDesktopCostsClient(): CostsClient {
+  return {
+    queryCosts: (req) => queryCloudCosts(requireOrgId(), req),
+    loadDimensionValues: (dimension, tagKey) => {
+      const orgId = useUIStore.getState().activeCloudOrgId;
+      if (!orgId) return Promise.resolve([]);
+      return loadCloudCostDimensionValues(orgId, dimension, tagKey);
+    },
+    loadCostStatus: () => {
+      const orgId = useUIStore.getState().activeCloudOrgId;
+      if (!orgId) return Promise.resolve([]);
+      return loadCloudCostStatus(orgId);
+    },
+    listBudgets: () => listCloudBudgets(requireOrgId()),
+    listDashboards: async (): Promise<CostsPanelDashboard[]> => {
+      const rows = await listCloudDashboards(requireOrgId());
+      return rows.map((d) => ({ id: d.id, name: d.name }));
+    },
+    createBudget: (input: BudgetInput) => createCloudBudget(requireOrgId(), input),
+    updateBudget: (budgetId: string, input: BudgetInput) =>
+      updateCloudBudget(requireOrgId(), budgetId, input),
+    deleteBudget: (budgetId: string) => deleteCloudBudget(requireOrgId(), budgetId),
+    addBudgetToDashboard: async (dashboardId: string, budgetId: string, title: string) => {
+      await createCloudWidget(requireOrgId(), {
+        dashboardId,
+        kind: "budget",
+        title,
+        config: { version: 1, budgetId },
+      });
+    },
+    removeBudgetPlacement: (widgetId: string) => deleteCloudWidget(requireOrgId(), widgetId),
+  };
+}
