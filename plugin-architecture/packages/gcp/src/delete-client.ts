@@ -81,6 +81,7 @@ export async function deleteResource(
       if (controller.signal.aborted) {
         throw new Error(
           "Cloud SQL DELETE timed out after 30s. The deletion may still complete in Google Cloud — refresh in a minute to confirm.",
+          { cause: err },
         );
       }
       throw err;

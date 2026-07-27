@@ -310,6 +310,15 @@ async function refreshPinnedStats(
         count: (await client.listResources(t.id, accountId)).length,
       })),
     );
+    for (const [i, r] of counts.entries()) {
+      if (r.status === "rejected") {
+        // Otherwise the account card just shows one fewer row than reality.
+        console.error(
+          `[sync] Resource count for ${plugin.manifest.id}/${topLevelTypes[i]?.id} on account ${accountId} failed:`,
+          r.reason,
+        );
+      }
+    }
     const resourceCounts = counts
       .filter(
         (r): r is PromiseFulfilledResult<{ typeLabel: string; count: number }> =>
@@ -353,6 +362,22 @@ async function refreshPinnedStats(
               )
             : Promise.resolve(null),
         ]);
+        // A rejected probe leaves the pin's last snapshot in place, which
+        // renders as stale-but-fine on the dashboard. Log the reason so the
+        // difference between "provider is quiet" and "provider is broken" is
+        // visible in the poller's output.
+        for (const [label, r] of [
+          ["stats", statsResult],
+          ["metrics", metricsResult],
+          ["peer metrics", peerMetricsResult],
+        ] as const) {
+          if (r.status === "rejected") {
+            console.error(
+              `[sync] ${label} probe for ${p.pluginId}/${p.resourceTypeId} ${p.resourceId} failed:`,
+              r.reason,
+            );
+          }
+        }
         if (statsResult.status === "fulfilled") {
           await insertDashboardStats({
             organizationId,
@@ -480,17 +505,27 @@ export async function reconcileAccountReferences(
 
   if (refs.length === 0) return;
 
-  // Cache one client per source account across the batch.
-  const sourceClients = new Map<string, Awaited<ReturnType<typeof loadAccountClient>> | null>();
-  const getSourceClient = async (acctId: string) => {
-    if (!sourceClients.has(acctId)) {
-      try {
-        sourceClients.set(acctId, await loadAccountClient(acctId, organizationId));
-      } catch {
-        sourceClients.set(acctId, null);
-      }
+  // Cache one client per source account across the batch. A failure is cached
+  // as the error itself so we don't re-attempt a broken credential once per
+  // reference — but it is rethrown every time, so the per-reference handler
+  // below logs which references were skipped and why.
+  type SourceClient = Awaited<ReturnType<typeof loadAccountClient>>;
+  const sourceClients = new Map<string, SourceClient | Error>();
+  const getSourceClient = async (acctId: string): Promise<SourceClient> => {
+    const cached = sourceClients.get(acctId);
+    if (cached) {
+      if (cached instanceof Error) throw cached;
+      return cached;
     }
-    return sourceClients.get(acctId) ?? null;
+    try {
+      const client = await loadAccountClient(acctId, organizationId);
+      sourceClients.set(acctId, client);
+      return client;
+    } catch (err) {
+      const failure = err instanceof Error ? err : new Error(String(err));
+      sourceClients.set(acctId, failure);
+      throw failure;
+    }
   };
 
   for (const ref of refs) {
@@ -504,7 +539,6 @@ export async function reconcileAccountReferences(
     }
     try {
       const source = await getSourceClient(ref.sourceAccountId);
-      if (!source) continue;
 
       const newValue = await source.client.resolveOutput(
         ref.sourceTypeId,
@@ -522,7 +556,14 @@ export async function reconcileAccountReferences(
             ref.cachedValueIv,
             buildAad("secretField", `${ref.consumerId}:${ref.fieldKey}`, "cache"),
           );
-        } catch {
+        } catch (err) {
+          // Treat an unreadable cache as "no cache" and re-push, but log it:
+          // a systematic decryption failure (key rotation, AAD mismatch) would
+          // otherwise show up only as an unexplained write every cycle.
+          console.error(
+            `[sync] Failed to decrypt cached value for ${ref.consumerId}.${ref.fieldKey}:`,
+            err,
+          );
           oldValue = null;
         }
       }

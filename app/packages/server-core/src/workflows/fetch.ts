@@ -85,6 +85,7 @@ export async function fetchFromWorkflow(
   } catch (err) {
     throw new Error(
       `fetch() could not reach the egress proxy: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
     );
   }
 

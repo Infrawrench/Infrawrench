@@ -61,7 +61,7 @@ export async function workflowFetch(request: WorkflowFetchRequest): Promise<Work
     });
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    throw new Error(`fetch() failed: ${reason}`);
+    throw new Error(`fetch() failed: ${reason}`, { cause: err });
   }
 
   const bytes = await readCapped(response, request.maxBytes);

@@ -324,7 +324,9 @@ export async function computeCreateResource(args: DoCreateArgs): Promise<Resourc
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        throw new Error(`Failed to attach SSH key to DigitalOcean Droplet: ${message}`);
+        throw new Error(`Failed to attach SSH key to DigitalOcean Droplet: ${message}`, {
+          cause: error,
+        });
       }
     }
 

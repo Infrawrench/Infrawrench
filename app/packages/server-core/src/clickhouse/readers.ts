@@ -6,15 +6,16 @@ export interface ResourceCount {
   count: number;
 }
 
+/**
+ * Deployments without ClickHouse configured genuinely have no metric history,
+ * so the empty result is the truth there. A configured-but-failing ClickHouse
+ * is not: it throws so the caller's request fails loudly instead of rendering
+ * an outage as "this resource has no data".
+ */
 async function query<T>(query: string, query_params: Record<string, unknown>): Promise<T[]> {
   if (!isClickHouseConfigured()) return [];
-  try {
-    const rs = await getClickHouseClient().query({ query, query_params, format: "JSONEachRow" });
-    return await rs.json<T>();
-  } catch (err) {
-    console.error("[clickhouse] query failed:", err);
-    return [];
-  }
+  const rs = await getClickHouseClient().query({ query, query_params, format: "JSONEachRow" });
+  return await rs.json<T>();
 }
 
 /** Latest DashboardStat[] snapshot for one resource. Null if none. */

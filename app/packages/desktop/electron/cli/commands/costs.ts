@@ -23,12 +23,8 @@ const GROUP_DIMENSIONS = ["provider", "account", "service", "region", "resource"
  * the per-account state so the numbers below can be trusted (or explained).
  */
 async function loadFailingAccounts(orgId: string): Promise<CostAccountStatus[]> {
-  try {
-    const res = await orgFetch<{ accounts: CostAccountStatus[] }>(orgId, "/costs/status");
-    return (res.accounts ?? []).filter((a) => a.supportsCosts && a.costPollError);
-  } catch {
-    return [];
-  }
+  const res = await orgFetch<{ accounts: CostAccountStatus[] }>(orgId, "/costs/status");
+  return (res.accounts ?? []).filter((a) => a.supportsCosts && a.costPollError);
 }
 
 function printCollectionWarnings(failing: CostAccountStatus[]): void {

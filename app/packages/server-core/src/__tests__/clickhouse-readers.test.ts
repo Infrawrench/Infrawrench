@@ -47,11 +47,9 @@ describe("getLatestStats", () => {
     expect(await readers.getLatestStats("o", "r")).toBeNull();
   });
 
-  it("returns [] (swallows) when the query throws", async () => {
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("propagates a failing query instead of reading as 'no data'", async () => {
     query.mockRejectedValueOnce(new Error("boom"));
-    expect(await readers.getLatestStats("o", "r")).toBeNull();
-    expect(spy).toHaveBeenCalled();
+    await expect(readers.getLatestStats("o", "r")).rejects.toThrow("boom");
   });
 });
 

@@ -15,6 +15,7 @@ import {
   orderDashboardCards,
   getListableResourceTypes,
   formatErrorMessage,
+  toast,
   type DashboardCardKind,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
@@ -786,8 +787,10 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     try {
       const rows = await listCloudBudgets(orgId);
       setBudgets(new Map(rows.map((b) => [b.id, b])));
-    } catch {
-      /* budget cards keep their loading state on transient failure */
+    } catch (e) {
+      // Without their row a budget card sits on its loading skeleton forever,
+      // which is indistinguishable from a slow network.
+      toast.error("Couldn't load budgets", { description: formatErrorMessage(e) });
     }
   }, []);
 

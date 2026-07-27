@@ -304,7 +304,7 @@ export function createDesktopAgentClient(): AgentClient {
         ({ resource, warnings } = normalizeResourceCreateResult(createReturn));
       } catch (error) {
         const message = error instanceof Error ? error.message : "VM provisioning failed";
-        throw new Error(`VM provisioning failed: ${message}`);
+        throw new Error(`VM provisioning failed: ${message}`, { cause: error });
       }
 
       await db.execute(

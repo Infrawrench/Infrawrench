@@ -187,8 +187,12 @@ export function DashboardView({
     try {
       const rows = await apiGet<BudgetWithStatus[]>(`/api/org/${orgId}/budgets`);
       setBudgets(new Map(rows.map((b) => [b.id, b])));
-    } catch {
-      /* budget cards show their own empty state */
+    } catch (e) {
+      // Budget cards render blank without their row, so a swallow here looks
+      // exactly like "this budget has no data".
+      toast.error("Couldn't load budgets", {
+        description: e instanceof Error ? e.message : String(e),
+      });
     }
   }, [orgId]);
 

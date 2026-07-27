@@ -56,6 +56,19 @@ interface PinDetail {
   };
 }
 
+function failedPinDetail(pinId: string, error: unknown): PinDetail {
+  return {
+    pinId,
+    resourceId: pinId,
+    displayName: "Unavailable",
+    pluginId: "",
+    resourceTypeId: "",
+    accountId: "",
+    pluginDisplayName: "Couldn't load this pin",
+    status: { phase: "error", error: error instanceof Error ? error.message : String(error) },
+  };
+}
+
 /**
  * Refresh what the cards fetch for themselves. A screen's pull-to-refresh
  * refetches its own dashboard query and calls this for everything hanging off
@@ -91,14 +104,17 @@ export function DashboardBody({ data }: { data: DashboardData }) {
   const pinDetails = useQuery({
     queryKey: ["dashboard-pin-details", orgId, data.dashboard.id, pinIds],
     enabled: pinIds.length > 0,
-    queryFn: async () => {
-      const results = await Promise.all(
+    queryFn: async () =>
+      // One unreachable pin must not blank the whole dashboard, but it must
+      // not silently vanish either — a failed fetch becomes an error card.
+      Promise.all(
         pinIds.map((id) =>
-          api.org<PinDetail>(orgId, `/dashboards/pin/${encodeURIComponent(id)}`).catch(() => null),
+          api
+            .org<PinDetail>(orgId, `/dashboards/pin/${encodeURIComponent(id)}`)
+            .then((d) => d ?? failedPinDetail(id, new Error("The pin endpoint returned no body")))
+            .catch((e: unknown) => failedPinDetail(id, e)),
         ),
-      );
-      return results.filter((r): r is PinDetail => r !== null);
-    },
+      ),
   });
 
   // Budget widgets reference a budgets row; the rows load once for all of them.
@@ -157,7 +173,7 @@ export function DashboardBody({ data }: { data: DashboardData }) {
               <Row
                 title={pin.displayName}
                 subtitle={pin.pluginDisplayName}
-                {...(pin.resourceTypeId !== "__account__"
+                {...(pin.pluginId && pin.resourceTypeId !== "__account__"
                   ? {
                       onPress: () =>
                         router.push(

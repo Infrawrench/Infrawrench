@@ -1289,6 +1289,7 @@ export class ScalewayClient implements PluginClient {
         const message = err instanceof Error ? err.message : String(err);
         throw new Error(
           `Scaleway plugin: instance ${server.id} was created but attaching the SSH key failed: ${message}`,
+          { cause: err },
         );
       }
     }

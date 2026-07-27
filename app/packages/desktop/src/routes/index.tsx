@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { getDb } from "../db/client";
 import { useUIStore } from "@infrawrench/ui";
@@ -18,6 +18,7 @@ function IndexPage() {
   const tabsHydrated = useUIStore((s) => s.tabsHydrated);
   const workspaceTabs = useUIStore((s) => s.workspaceTabs);
   const activeWorkspaceTabId = useUIStore((s) => s.activeWorkspaceTabId);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!tabsHydrated) return;
@@ -64,8 +65,10 @@ function IndexPage() {
             replace: true,
           });
         }
-      } catch {
-        // If DB fails, just stay on the loading screen
+      } catch (err) {
+        // Without this the app parks on "Loading…" forever with no clue why.
+        console.error("[home] Failed to resolve the default dashboard:", err);
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       }
     }
     void redirect();
@@ -73,6 +76,15 @@ function IndexPage() {
       cancelled = true;
     };
   }, [activeWorkspaceTabId, navigate, tabsHydrated, workspaceTabs]);
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 h-full text-sm px-6 text-center">
+        <span className="text-red-400 font-medium">Couldn&apos;t open your home dashboard</span>
+        <span className="text-on-surface-faint break-all">{error}</span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
