@@ -5,6 +5,7 @@ import { syncAccountResources } from "@infrawrench/server-core/sync-resources";
 import { getPlugin } from "@infrawrench/server-core/plugin-loader";
 import { notePollOutcome } from "@infrawrench/server-core/twilio-pager";
 import { TokenBucketRegistry, defaultBucketConfig, type BucketConfig } from "./token-bucket";
+import { isRateLimitError, isTransientError } from "./error-classification";
 
 const BASE_INTERVAL_MS = 15_000;
 const MAX_BACKOFF_MS = 10 * 60 * 1000;
@@ -16,22 +17,6 @@ export interface PollAccountRow {
   pluginId: string;
   displayName: string;
   pollFailureCount: number;
-}
-
-function isRateLimitError(err: Error): boolean {
-  const msg = err.message.toLowerCase();
-  return (
-    msg.includes("429") ||
-    msg.includes("rate limit") ||
-    msg.includes("too many requests") ||
-    msg.includes("quota")
-  );
-}
-
-function isTransientError(err: Error): boolean {
-  if (isRateLimitError(err)) return true;
-  const msg = err.message.toLowerCase();
-  return /5\d\d/.test(msg) || msg.includes("timeout") || msg.includes("econnreset");
 }
 
 export async function pollAccount(
@@ -73,6 +58,14 @@ export async function pollAccount(
   if (hardFailure) {
     const failures = account.pollFailureCount + 1;
     const backoff = Math.min(BASE_INTERVAL_MS * Math.pow(2, failures - 1), MAX_BACKOFF_MS);
+    // The only record of *why* an account is failing. `notePollOutcome` stores
+    // per-type errors, but it returns early when the org has no paging set up,
+    // so without this line a backed-off account is undiagnosable from prod.
+    console.error(
+      `[poller] sync for ${account.id} (${account.pluginId}) failed ${failures}x, ` +
+        `retrying in ${Math.round(backoff / 1000)}s:`,
+      result.firstError,
+    );
     await db
       .update(accounts)
       .set({
