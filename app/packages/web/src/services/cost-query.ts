@@ -6,6 +6,7 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import {
   OTHER_GROUP_KEY,
+  type CostAccountStatus,
   type CostQueryRequest,
   type CostQueryResponse,
   type CostQuerySeries,
@@ -294,8 +295,12 @@ async function workflowCostAccountLabels(
 /**
  * Per-account cost capability + collection state. Drives "Backfilling AWS
  * history…" empty states, the config UI, and the get_cost_status tool.
+ *
+ * Annotated with the client-side contract so this producer — not just its
+ * three consumers (web, mobile, the `infrawrench costs` CLI) — is checked
+ * against `CostAccountStatus`.
  */
-export async function getOrgCostStatus(organizationId: string) {
+export async function getOrgCostStatus(organizationId: string): Promise<CostAccountStatus[]> {
   const rows = await db
     .select({
       id: accounts.id,

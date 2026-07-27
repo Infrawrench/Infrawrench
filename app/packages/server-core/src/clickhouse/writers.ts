@@ -1,5 +1,6 @@
 import type { DashboardStat, MetricSeries } from "@infrawrench/plugin-base";
 import { getClickHouseClient, isClickHouseConfigured } from "./client";
+import type { ResourceCount } from "./readers";
 
 export interface MetricPointRow {
   organization_id: string;
@@ -13,10 +14,8 @@ export interface MetricPointRow {
   value: number;
 }
 
-export interface ResourceCountRow {
-  typeLabel: string;
-  count: number;
-}
+/** What `readResourceCounts` reads back — writer and reader are one contract. */
+export type ResourceCountRow = ResourceCount;
 
 /** Flatten MetricSeries[] (one entry per series with N points) into per-point CH rows. */
 export function flattenMetricSeries(

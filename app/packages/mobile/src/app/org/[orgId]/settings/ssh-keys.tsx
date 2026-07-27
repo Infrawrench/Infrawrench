@@ -4,20 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { Card, EmptyView, ErrorView, LoadingView, Row, Screen } from "@/components/ui";
 import { colors } from "@/lib/theme";
-
-/** Shape of GET /api/org/:orgId/ssh-keys (web api/routes/ssh-keys.ts). */
-interface SshKey {
-  id: string;
-  name: string;
-  keyType: string;
-  isImported: boolean;
-  fingerprint: string;
-  publicKey: string;
-  userId: string;
-  ownerEmail: string;
-  ownerName: string;
-  createdAt: string;
-}
+import type { SshKey } from "@infrawrench/client-core";
 
 export default function SshKeysScreen() {
   const { api, orgId } = useOrgApi();
@@ -54,7 +41,16 @@ export default function SshKeysScreen() {
           <Pressable key={k.id} onLongPress={() => copyKey(k)}>
             <Row
               title={k.name}
-              subtitle={`${k.fingerprint} · ${k.keyType}${k.isImported ? " · imported" : ""} · ${k.ownerName}`}
+              subtitle={[
+                // Nullable on the wire: keys stored before fingerprinting
+                // landed have none, and "null · ed25519" reads as a bug.
+                k.fingerprint,
+                k.keyType,
+                ...(k.isImported ? ["imported"] : []),
+                k.ownerName,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             />
           </Pressable>
         ))}

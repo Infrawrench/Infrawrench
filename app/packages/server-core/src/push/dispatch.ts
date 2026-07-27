@@ -1,4 +1,5 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import type { PushNotificationData } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { organizationMembers, pushDevices, pushPreferences } from "../db/schema";
 import { sendExpoPush, type ExpoPushMessage, type ExpoTicket } from "./expo-client";
@@ -15,30 +16,12 @@ import { sendExpoPush, type ExpoPushMessage, type ExpoTicket } from "./expo-clie
 /**
  * The deep-link contract with the mobile app. Notification title/body are
  * display-only; all routing keys live here.
+ *
+ * Defined in `@infrawrench/client-core` because the mobile app parses these
+ * payloads back into routes (`mobile/src/lib/push.ts`); aliased here so the
+ * two ends of the deep link cannot drift apart silently.
  */
-export type PushData =
-  | {
-      type: "sync_incident";
-      orgId: string;
-      accountId: string;
-      resourceTypeId: string;
-      incidentId: string;
-    }
-  | {
-      type: "budget_breach";
-      orgId: string;
-      budgetId: string;
-      month: string;
-      thresholdPercent: number;
-    }
-  | {
-      type: "workflow_page";
-      orgId: string;
-      workflowId: string;
-      /** The run that raised the page, so the app can open its logs. */
-      runId?: string;
-    }
-  | { type: "test"; orgId: string };
+export type PushData = PushNotificationData;
 
 export type PushTrigger = "syncIncidents" | "budgetAlerts" | "workflowPages";
 

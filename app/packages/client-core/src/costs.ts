@@ -15,6 +15,8 @@
  * every surface.
  */
 
+import type { CostCapabilityDeclaration } from "@infrawrench/plugin-base";
+
 /** Why an account's last cost collection failed, as stored by the poller. */
 export interface CostPollError {
   message: string;
@@ -29,7 +31,12 @@ export interface CostAccountStatus {
   displayName: string;
   supportsCosts: boolean;
   periodNative: boolean;
-  dimensions: string[];
+  /**
+   * The finer-grained dimensions this account's plugin can break spend down
+   * by — straight off its cost capability, so the picker can't offer a
+   * dimension the provider has never heard of.
+   */
+  dimensions: CostCapabilityDeclaration["dimensions"];
   costLastPolledAt: string | null;
   costBackfilledAt: string | null;
   costPollFailureCount: number;

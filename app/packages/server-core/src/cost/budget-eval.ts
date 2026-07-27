@@ -9,6 +9,7 @@
  */
 import { and, eq, isNull } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
+import type { BudgetThreshold } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { budgetAlertEvents, budgets } from "../db/schema";
 import { queryCosts, type CostFilter } from "../clickhouse/cost-readers";
@@ -22,11 +23,6 @@ import {
   listBudgetTriggerWorkflows,
 } from "../workflows/budget-triggers";
 import { isoDay, addDays } from "./dates";
-
-interface BudgetThreshold {
-  type: "actual" | "forecast";
-  percent: number;
-}
 
 /** Deep link to the budget, for the Slack message's button. */
 function budgetUrl(organizationId: string, budgetId: string): string | null {

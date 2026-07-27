@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { BudgetWidgetConfig } from "@infrawrench/client-core";
+import type { BudgetWidgetConfig, Dashboard } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import {
   DashboardBody,
@@ -10,12 +10,6 @@ import {
 import { BudgetCard } from "@/features/dashboard/BudgetCard";
 import { useBudgets } from "@/features/dashboard/useBudgets";
 import { Card, ErrorView, LoadingView, Row, Screen, SectionTitle } from "@/components/ui";
-
-interface DashboardSummary {
-  id: string;
-  name: string;
-  isDefault: boolean;
-}
 
 /**
  * The home tab is the org's default dashboard, the same as the web app's home
@@ -38,7 +32,7 @@ export default function OrgHome() {
   });
   const dashboards = useQuery({
     queryKey: ["dashboards", orgId],
-    queryFn: () => api.org<DashboardSummary[]>(orgId, "/dashboards"),
+    queryFn: () => api.org<Dashboard[]>(orgId, "/dashboards"),
   });
   // A budget alert's push opens this screen, so a budget whose widget lives on
   // another dashboard (or on none, after its widget was removed) still has to

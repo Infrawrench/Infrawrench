@@ -1,18 +1,7 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { apiGet, apiPost } from "@/lib/api";
-
-interface SubscriptionStatus {
-  status: string;
-  seatCount: number;
-  currentPeriodEnd: string | null;
-  stripeCustomerId: string;
-}
-
-interface BillingStatus {
-  complimentary: boolean;
-  subscription: SubscriptionStatus | null;
-}
+import type { BillingStatus } from "@infrawrench/ui";
 
 export const Route = createFileRoute("/org/$orgId/settings/billing")({
   component: BillingPage,

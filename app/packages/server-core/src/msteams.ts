@@ -43,6 +43,7 @@
  */
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
+import type { AddMsTeamsWebhookArgs, MsTeamsWebhook } from "@infrawrench/client-core";
 
 import { db } from "./db/client";
 import { msteamsWebhooks } from "./db/schema";
@@ -134,22 +135,13 @@ async function webhookDigest(url: string): Promise<string> {
 
 // --- Storage ---
 
-export interface MsTeamsWebhookRecord {
-  id: string;
-  label: string;
-  urlHint: string;
-  syncIncidents: boolean;
-  budgetAlerts: boolean;
-  workflowPages: boolean;
-}
-
-export interface AddMsTeamsWebhookArgs {
-  label: string;
-  url: string;
-  syncIncidents?: boolean;
-  budgetAlerts?: boolean;
-  workflowPages?: boolean;
-}
+/**
+ * The row handed straight to clients (never the URL itself). Both this and the
+ * add/update args are the wire contract, so they are the definitions in
+ * `@infrawrench/client-core` that mobile already calls these endpoints with.
+ */
+export type MsTeamsWebhookRecord = MsTeamsWebhook;
+export type { AddMsTeamsWebhookArgs };
 
 /**
  * Add a webhook, or update the one already holding this URL. Returns the row

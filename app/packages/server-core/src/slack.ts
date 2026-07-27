@@ -19,6 +19,7 @@
  */
 import { and, eq, isNull } from "drizzle-orm";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import type { SlackAvailableChannel } from "@infrawrench/client-core";
 
 import { db } from "./db/client";
 import { slackChannels, slackInstallations } from "./db/schema";
@@ -307,11 +308,12 @@ async function loadInstallationToken(
 
 // --- Channel listing (powers the picker) ---
 
-export interface SlackChannelInfo {
-  id: string;
-  name: string;
-  isPrivate: boolean;
-}
+/**
+ * What the picker renders. Returned verbatim by
+ * `GET /slack/installations/:id/available-channels`, so the definition is the
+ * client contract in `@infrawrench/client-core`.
+ */
+export type SlackChannelInfo = SlackAvailableChannel;
 
 interface ConversationsListResponse extends SlackEnvelope {
   channels?: Array<{ id?: string; name?: string; is_private?: boolean; is_archived?: boolean }>;

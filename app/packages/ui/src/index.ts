@@ -341,11 +341,39 @@ export type {
   Dashboard,
   SshKey,
   Bastion,
+  BillingStatus,
+  InvitationSummary,
   Resource,
   ResourceTypeSummary,
   AccountDetail,
   Recipient,
+  SubscriptionStatus,
+  TeamMember,
 } from "./api-types.js";
+
+/**
+ * Notification-routing contract (Slack, Microsoft Teams, mobile push). The
+ * definitions live in `@infrawrench/client-core` next to the fetch helpers
+ * mobile calls; web drives the same endpoints through its own cookie-auth
+ * `apiGet`, so it takes the types from here.
+ */
+export type {
+  SlackStatus,
+  SlackInstallation,
+  SlackChannel,
+  SlackChannelTriggers,
+  SlackAvailableChannel,
+  SlackTestResult,
+  AddSlackChannelArgs,
+  MsTeamsStatus,
+  MsTeamsWebhook,
+  MsTeamsWebhookTriggers,
+  MsTeamsTestResult,
+  AddMsTeamsWebhookArgs,
+  PushDeviceSummary,
+  PushPreferences,
+  PushNotificationData,
+} from "@infrawrench/client-core";
 
 /**
  * Personal-account contract. The definitions live in `@infrawrench/client-core`

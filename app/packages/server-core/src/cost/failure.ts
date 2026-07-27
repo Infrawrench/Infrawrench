@@ -6,12 +6,16 @@
  * shows up as a permanently empty graph and the explanation only exists in a
  * poller log line nobody reads.
  */
+import type { CostPollError } from "@infrawrench/client-core";
 
-/** What the host stores (and later renders) for a failed collection. */
-export interface CostFailureDescription {
-  message: string;
-  helpLink: { label: string; url: string } | null;
-}
+/**
+ * What the host stores (and later renders) for a failed collection.
+ *
+ * This is the same object every client reads back off `GET /costs/status`, so
+ * the shape is `CostPollError` in `@infrawrench/client-core` — aliased rather
+ * than restated so a change to either end fails the other's build.
+ */
+export type CostFailureDescription = CostPollError;
 
 /** Long enough for a provider's setup guidance, short enough to render inline. */
 const MAX_ERROR_CHARS = 600;

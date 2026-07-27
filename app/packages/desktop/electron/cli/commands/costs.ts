@@ -1,31 +1,21 @@
 // `infrawrench costs` — org cost graphs in the terminal, backed by the same
 // /costs/query API the web + desktop dashboards use.
+//
+// The request/response shapes come from `@infrawrench/client-core` — the same
+// definitions the web, desktop, and mobile cost views describe the wire with,
+// so a server-side change breaks the CLI's build instead of its output. The
+// import is type-only, so the CLI still ships zero new runtime dependencies.
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
+import type {
+  CostAccountStatus,
+  CostQueryRequest,
+  CostQueryResponse,
+} from "@infrawrench/client-core" with { "resolution-mode": "import" };
 import type { RangeFlags } from "../args";
 import { c, printJson, println, formatMoney, seriesColor } from "../output";
 import { barChart, sparkline } from "../charts";
 
 const GROUP_DIMENSIONS = ["provider", "account", "service", "region", "resource"] as const;
-
-interface CostSeries {
-  key: string;
-  label: string;
-  currency: string;
-  points: Array<{ bucket: string; amount: number }>;
-}
-
-interface CostQueryResponse {
-  series: CostSeries[];
-  currencies: string[];
-  totals: Record<string, number>;
-}
-
-interface CostAccountStatus {
-  accountId: string;
-  displayName: string;
-  supportsCosts: boolean;
-  costPollError: { message: string; helpLink: { label: string; url: string } | null } | null;
-}
 
 /**
  * Collection runs daily in the background and backs off on failure, so a
@@ -73,19 +63,21 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
   const to = range.to ?? isoDay(Date.now());
   const from = range.from ?? isoDay(Date.parse(to) - (days - 1) * 86_400_000);
 
+  const query: CostQueryRequest = {
+    from,
+    to,
+    binning: "daily",
+    groupBy: groupBy as CostQueryRequest["groupBy"],
+    filters: [],
+    topN: 8,
+    comparePreviousPeriod: false,
+    forecast: false,
+  };
+
   const [response, failing] = await Promise.all([
     orgFetch<CostQueryResponse>(org.id, "/costs/query", {
       method: "POST",
-      body: JSON.stringify({
-        from,
-        to,
-        binning: "daily",
-        groupBy,
-        filters: [],
-        topN: 8,
-        comparePreviousPeriod: false,
-        forecast: false,
-      }),
+      body: JSON.stringify(query),
     }),
     loadFailingAccounts(org.id),
   ]);

@@ -2,13 +2,7 @@ import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { Card, EmptyView, ErrorView, LoadingView, Row, Screen } from "@/components/ui";
-
-interface Account {
-  id: string;
-  pluginId: string;
-  displayName: string;
-  createdAt: string;
-}
+import type { Account } from "@infrawrench/client-core";
 
 export default function AccountsScreen() {
   const router = useRouter();

@@ -30,6 +30,8 @@ export {
   OTHER_GROUP_KEY,
   resolveCostDateRange,
   costQueryForConfig,
+  type CostAccountStatus,
+  type CostPollError,
   type CostDimensionId,
   type CostFilter,
   type CostRangePreset,

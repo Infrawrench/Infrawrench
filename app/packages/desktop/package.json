@@ -96,6 +96,7 @@
   },
   "devDependencies": {
     "@dnd-kit/core": "^6.3.1",
+    "@infrawrench/client-core": "workspace:*",
     "@infrawrench/plugin-aws": "workspace:*",
     "@infrawrench/plugin-azure": "workspace:*",
     "@infrawrench/plugin-base": "workspace:*",

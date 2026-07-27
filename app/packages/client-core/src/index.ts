@@ -126,6 +126,7 @@ export {
   type SectionResource,
   type SectionCategoryState,
 } from "./account-sections";
+export * from "./api-types";
 export * from "./chat/types";
 export { createBearerChatClient } from "./chat/bearer-client";
 export * from "./ws-protocol";

@@ -2,28 +2,7 @@ import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useState, useEffect, useCallback } from "react";
 import { apiGet, apiPost, apiDelete, apiPatch } from "@/lib/api";
 import { Can, usePermissions } from "@/auth/permissions-context";
-
-interface TeamMember {
-  id: string;
-  email: string;
-  displayName: string | null;
-  role: string;
-  roleId: string | null;
-  roleName: string | null;
-  roleSystemKey: string | null;
-  createdAt: string;
-}
-
-interface InvitationSummary {
-  id: string;
-  email: string;
-  role: string;
-  roleId: string | null;
-  roleName: string | null;
-  acceptedAt: string | null;
-  expiresAt: string;
-  createdAt: string;
-}
+import type { InvitationSummary, TeamMember } from "@infrawrench/ui";
 
 interface RoleOption {
   id: string;

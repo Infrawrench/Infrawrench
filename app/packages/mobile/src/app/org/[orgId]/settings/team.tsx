@@ -9,30 +9,7 @@ import {
   Screen,
   SectionTitle,
 } from "@/components/ui";
-
-/** Shape of GET /api/org/:orgId/team/members (web api/routes/team.ts). */
-interface TeamMember {
-  id: string;
-  email: string;
-  displayName: string | null;
-  role: string;
-  roleId: string | null;
-  roleName: string | null;
-  roleSystemKey: string | null;
-  createdAt: string;
-}
-
-/** Shape of GET /api/org/:orgId/team/invitations. */
-interface Invitation {
-  id: string;
-  email: string;
-  role: string;
-  roleId: string | null;
-  roleName: string | null;
-  acceptedAt: string | null;
-  expiresAt: string;
-  createdAt: string;
-}
+import type { InvitationSummary, TeamMember } from "@infrawrench/client-core";
 
 export default function TeamScreen() {
   const { api, orgId } = useOrgApi();
@@ -43,7 +20,7 @@ export default function TeamScreen() {
   });
   const invitations = useQuery({
     queryKey: ["team-invitations", orgId],
-    queryFn: () => api.org<Invitation[]>(orgId, "/team/invitations"),
+    queryFn: () => api.org<InvitationSummary[]>(orgId, "/team/invitations"),
   });
 
   if (members.isLoading) return <LoadingView />;

@@ -52,6 +52,7 @@
   },
   "dependencies": {
     "@clickhouse/client": "^1.13.0",
+    "@infrawrench/client-core": "workspace:*",
     "@infrawrench/plugin-aws": "workspace:*",
     "@infrawrench/plugin-azure": "workspace:*",
     "@infrawrench/plugin-base": "workspace:*",

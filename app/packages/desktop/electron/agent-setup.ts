@@ -24,12 +24,10 @@ import type {
 
 export type { AgentTool };
 
-export type WorkflowSshConfig = {
-  sshHost: string;
-  sshPort: number;
-  sshUser: string;
-  privateKey: string;
-};
+// Defined next to the SSH helpers that consume it; re-exported here because
+// ssh-host.ts takes it from this module.
+import type { WorkflowSshConfig } from "./ssh-tunnel";
+export type { WorkflowSshConfig };
 
 export type SftpCfg = { host: string; port: number; username: string; privateKey: string };
 

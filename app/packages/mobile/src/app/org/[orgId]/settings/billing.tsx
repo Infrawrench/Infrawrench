@@ -11,21 +11,14 @@ import {
   SectionTitle,
 } from "@/components/ui";
 import { colors } from "@/lib/theme";
-
-/** Shape of GET /api/org/:orgId/billing/status (web api/routes/billing.ts); null when unsubscribed. */
-interface BillingStatus {
-  status: string;
-  seatCount: number;
-  currentPeriodEnd: string | null;
-  stripeCustomerId: string;
-}
+import type { BillingStatus } from "@infrawrench/client-core";
 
 export default function BillingScreen() {
   const { api, orgId } = useOrgApi();
 
   const billing = useQuery({
     queryKey: ["billing-status", orgId],
-    queryFn: () => api.org<BillingStatus | null>(orgId, "/billing/status"),
+    queryFn: () => api.org<BillingStatus>(orgId, "/billing/status"),
   });
 
   if (billing.isLoading) return <LoadingView />;
@@ -38,13 +31,22 @@ export default function BillingScreen() {
     );
   }
 
-  const sub = billing.data ?? null;
+  // The response is an envelope: a complimentary org has every paid perk with
+  // no Stripe subscription at all, so the flag has to be read separately.
+  const sub = billing.data?.subscription ?? null;
+  const complimentary = billing.data?.complimentary ?? false;
 
   return (
     <Screen onRefresh={() => void billing.refetch()} refreshing={billing.isRefetching}>
       <SectionTitle>Current plan</SectionTitle>
       <Card list>
-        {sub ? (
+        {complimentary ? (
+          <Row
+            title="Plan"
+            right={<Text style={{ color: colors.text }}>Complimentary</Text>}
+            subtitle="All paid features, never billed."
+          />
+        ) : sub ? (
           <>
             <Row title="Status" right={<Text style={{ color: colors.text }}>{sub.status}</Text>} />
             <Row

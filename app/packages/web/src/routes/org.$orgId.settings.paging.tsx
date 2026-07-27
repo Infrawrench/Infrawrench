@@ -1,7 +1,16 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useState, useEffect, useId, isValidElement, cloneElement } from "react";
 import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from "@/lib/api";
-import type { Recipient } from "@infrawrench/ui";
+import type {
+  MsTeamsWebhook,
+  PushDeviceSummary,
+  PushPreferences,
+  Recipient,
+  SlackAvailableChannel,
+  SlackChannel,
+  SlackInstallation,
+  SlackStatus,
+} from "@infrawrench/ui";
 
 interface PagingSettings {
   enabled: boolean;
@@ -381,15 +390,6 @@ function RecipientsPanel({
   );
 }
 
-interface MsTeamsWebhook {
-  id: string;
-  label: string;
-  urlHint: string;
-  syncIncidents: boolean;
-  budgetAlerts: boolean;
-  workflowPages: boolean;
-}
-
 /**
  * The three alert triggers a channel can opt into, shared by the Slack and
  * Teams sections. Same three as mobile push, and the same keys server-side.
@@ -641,35 +641,6 @@ function AddMsTeamsWebhook({ orgId, onAdded }: { orgId: string; onAdded: () => v
       </div>
     </div>
   );
-}
-
-interface SlackInstallation {
-  id: string;
-  teamId: string;
-  teamName: string | null;
-}
-
-interface SlackChannel {
-  id: string;
-  installationId: string;
-  channelId: string;
-  channelName: string;
-  isPrivate: boolean;
-  syncIncidents: boolean;
-  budgetAlerts: boolean;
-  workflowPages: boolean;
-}
-
-interface SlackStatus {
-  configured: boolean;
-  installations: SlackInstallation[];
-  channels: SlackChannel[];
-}
-
-interface AvailableChannel {
-  id: string;
-  name: string;
-  isPrivate: boolean;
 }
 
 /** The Slack mark, from Slack's brand assets. */
@@ -961,7 +932,7 @@ function AddSlackChannel({
   existing: string[];
   onAdded: () => void;
 }) {
-  const [available, setAvailable] = useState<AvailableChannel[] | null>(null);
+  const [available, setAvailable] = useState<SlackAvailableChannel[] | null>(null);
   const [selected, setSelected] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -971,7 +942,7 @@ function AddSlackChannel({
     setLoading(true);
     setError(null);
     try {
-      const r = await apiGet<{ channels: AvailableChannel[] }>(
+      const r = await apiGet<{ channels: SlackAvailableChannel[] }>(
         `/api/org/${orgId}/slack/installations/${installationId}/available-channels`,
       );
       setAvailable(r.channels);
@@ -1117,21 +1088,6 @@ function TestPanel({
   );
 }
 
-interface PushDevice {
-  id: string;
-  platform: "ios" | "android";
-  deviceName: string | null;
-  lastSeenAt: string;
-  disabled: boolean;
-}
-
-interface PushPreferences {
-  syncIncidents: boolean;
-  budgetAlerts: boolean;
-  /** Alerts raised by a workflow calling `infra.page(...)`. */
-  workflowPages: boolean;
-}
-
 /**
  * The caller's own mobile push setup: per-org trigger toggles, registered
  * devices, and a test send. Devices are enrolled by signing in on the mobile
@@ -1139,7 +1095,7 @@ interface PushPreferences {
  */
 function PushPreferencesSection({ orgId }: { orgId: string }) {
   const [prefs, setPrefs] = useState<PushPreferences | null>(null);
-  const [devices, setDevices] = useState<PushDevice[]>([]);
+  const [devices, setDevices] = useState<PushDeviceSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [testMessage, setTestMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(
     null,
@@ -1150,7 +1106,7 @@ function PushPreferencesSection({ orgId }: { orgId: string }) {
     try {
       const [p, d] = await Promise.all([
         apiGet<PushPreferences>(`/api/org/${orgId}/push/preferences`),
-        apiGet<PushDevice[]>(`/api/push/devices`),
+        apiGet<PushDeviceSummary[]>(`/api/push/devices`),
       ]);
       setPrefs(p);
       setDevices(d);

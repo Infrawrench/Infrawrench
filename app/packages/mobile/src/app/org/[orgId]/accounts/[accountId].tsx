@@ -2,7 +2,13 @@ import { useMemo, useState } from "react";
 import { StyleSheet, TextInput } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getVisibleAccountCategories, type SectionCategoryState } from "@infrawrench/client-core";
+import {
+  getVisibleAccountCategories,
+  type AccountDetail,
+  type Resource,
+  type ResourceTypeSummary,
+  type SectionCategoryState,
+} from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { colors, radii, spacing } from "@/lib/theme";
 import {
@@ -17,27 +23,6 @@ import {
   SectionTitle,
 } from "@/components/ui";
 
-interface ResourceRow {
-  id: string;
-  pluginId: string;
-  resourceTypeId: string;
-  accountId: string;
-  displayName: string;
-  externalId: string | null;
-  parentResourceId: string | null;
-  fieldsJson?: Record<string, unknown> | null;
-}
-
-interface ResourceTypeSummary {
-  id: string;
-  displayName: string;
-  pluralDisplayName: string;
-}
-
-interface AccountDetail {
-  resourceTypes: ResourceTypeSummary[];
-}
-
 export default function AccountResources() {
   const router = useRouter();
   const { accountId } = useLocalSearchParams<{ accountId: string }>();
@@ -50,7 +35,7 @@ export default function AccountResources() {
   const resources = useQuery({
     queryKey: ["account-resources", orgId, accountId],
     queryFn: () =>
-      api.org<ResourceRow[]>(orgId, `/accounts/${encodeURIComponent(accountId)}/resources`),
+      api.org<Resource[]>(orgId, `/accounts/${encodeURIComponent(accountId)}/resources`),
   });
 
   // Supplies each section its human-readable plural name.
@@ -68,7 +53,7 @@ export default function AccountResources() {
   });
 
   const sections = useMemo(() => {
-    const byType = new Map<string, ResourceRow[]>();
+    const byType = new Map<string, Resource[]>();
     for (const r of resources.data ?? []) {
       const list = byType.get(r.resourceTypeId) ?? [];
       list.push(r);
@@ -79,9 +64,15 @@ export default function AccountResources() {
     // surfaces; fall back to the ids present in the rows if detail is slow.
     const types: ResourceTypeSummary[] =
       detail.data?.resourceTypes ??
-      [...byType.keys()].map((id) => ({ id, displayName: id, pluralDisplayName: id }));
+      [...byType.keys()].map((id) => ({
+        id,
+        displayName: id,
+        pluralDisplayName: id,
+        parentTypeId: undefined,
+        supportsCreate: false,
+      }));
 
-    const categories: SectionCategoryState<ResourceTypeSummary, ResourceRow>[] = types.map(
+    const categories: SectionCategoryState<ResourceTypeSummary, Resource>[] = types.map(
       (typeDef) => ({
         typeDef,
         loading: false,

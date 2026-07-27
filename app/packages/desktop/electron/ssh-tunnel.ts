@@ -169,7 +169,8 @@ export async function sshExecCommand(
 // sandbox (Electron main) calls these via IPC. Output is base64 so binary
 // command output survives the JSON bridge intact.
 
-type WorkflowSshConfig = {
+/** Connect config for the workflow SSH helpers below. */
+export type WorkflowSshConfig = {
   sshHost: string;
   sshPort: number;
   sshUser: string;
