@@ -406,13 +406,18 @@ export {
   formatAuthMethod,
   describeUserAgent,
   REAUTHENTICATION_REQUIRED,
+  TRANSFER_OWNERSHIP_REQUIRED,
   isReauthenticationRequired,
+  ownershipTransferRequired,
   type Profile,
   type ProfileIdentity,
   type AuthFactor,
   type TotpEnrollment,
   type PendingEmailChange,
   type UserSession,
+  type OrganizationRef,
+  type OwnershipBlocker,
+  type AccountDeletionPreview,
 } from "@infrawrench/client-core";
 
 export * from "./cost/index.js";

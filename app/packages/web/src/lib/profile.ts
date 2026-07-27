@@ -6,6 +6,11 @@
  * mobile app shares exactly the same contract.
  */
 
+// `ownershipTransferRequired` is deliberately not re-exported: it narrows a
+// `CloudApiError`, which only the CloudFetch hosts (mobile) throw. Web's
+// `apiFetch` throws a plain Error carrying the server's message, so the web
+// deletion card reads the blockers from `/api/profile/deletion-preview`
+// up front instead of discovering them from a rejection.
 export {
   formatProvider,
   formatAuthMethod,
@@ -16,4 +21,7 @@ export {
   type TotpEnrollment,
   type PendingEmailChange,
   type UserSession,
+  type OrganizationRef,
+  type OwnershipBlocker,
+  type AccountDeletionPreview,
 } from "@infrawrench/ui";

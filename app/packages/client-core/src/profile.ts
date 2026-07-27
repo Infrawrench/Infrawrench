@@ -156,6 +156,75 @@ export async function revokeOtherUserSessions(api: CloudFetch): Promise<number> 
   return result?.revoked ?? 0;
 }
 
+/* ------------------------------------------------------------------ *
+ * Account deletion.
+ * ------------------------------------------------------------------ */
+
+export interface OrganizationRef {
+  id: string;
+  name: string;
+}
+
+/** An organization that must be handed over before the account can go. */
+export interface OwnershipBlocker extends OrganizationRef {
+  memberCount: number;
+}
+
+export interface AccountDeletionPreview {
+  /** Deleted with the account — the user is their only member. */
+  organizationsToDelete: OrganizationRef[];
+  /** These survive; the user's membership is removed. */
+  organizationsToLeave: OrganizationRef[];
+  /** Non-empty means {@link deleteAccount} will refuse. */
+  blockers: OwnershipBlocker[];
+}
+
+/**
+ * What deleting the account would do, so a confirmation screen can say it out
+ * loud instead of letting the user find out by pressing the button.
+ */
+export async function fetchAccountDeletionPreview(
+  api: CloudFetch,
+): Promise<AccountDeletionPreview> {
+  const result = await api.api<AccountDeletionPreview>("/api/profile/deletion-preview");
+  return result ?? { organizationsToDelete: [], organizationsToLeave: [], blockers: [] };
+}
+
+/**
+ * Delete the account. Irreversible.
+ *
+ * Throws `CloudApiError`; use {@link ownershipTransferRequired} to pick out the
+ * one failure the user can act on, and {@link isReauthenticationRequired} for
+ * the step-up 403 this route shares with the rest of the sensitive ones.
+ *
+ * The caller is responsible for signing out afterwards — every session is
+ * revoked server-side, so anything still holding a token is already dead.
+ */
+export async function deleteAccount(api: CloudFetch): Promise<{ organizationsDeleted: number }> {
+  const result = await api.api<{ organizationsDeleted: number }>("/api/profile", {
+    method: "DELETE",
+  });
+  return { organizationsDeleted: result?.organizationsDeleted ?? 0 };
+}
+
+/** Marker on the 409 returned when the user still solely owns a shared org. */
+export const TRANSFER_OWNERSHIP_REQUIRED = "transfer_ownership_required";
+
+/**
+ * The organizations blocking a deletion, or null when the rejection was
+ * something else. Nothing was deleted when this returns a list.
+ */
+export function ownershipTransferRequired(error: unknown): OwnershipBlocker[] | null {
+  if (!(error instanceof CloudApiError) || error.status !== 409) return null;
+  try {
+    const parsed = JSON.parse(error.body) as { code?: unknown; organizations?: unknown };
+    if (parsed?.code !== TRANSFER_OWNERSHIP_REQUIRED) return null;
+    return Array.isArray(parsed.organizations) ? (parsed.organizations as OwnershipBlocker[]) : [];
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Marker the server puts on a 403 when an operation needs a fresh sign-in.
  * Mirrors `REAUTHENTICATION_REQUIRED` in web `auth/step-up.ts`.

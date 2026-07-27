@@ -12,17 +12,23 @@
  * factors/sessions and refuses ids that aren't in that list.
  *
  * The routes that can convert a borrowed session into permanent control of the
- * account — password-reset links, email changes, MFA enrolment/removal, and
- * revoking every other session — additionally require a recent sign-in via
- * `requireRecentAuthentication`. See `auth/step-up.ts`.
+ * account — password-reset links, email changes, MFA enrolment/removal,
+ * revoking every other session, and deleting the account — additionally require
+ * a recent sign-in via `requireRecentAuthentication`. See `auth/step-up.ts`.
  */
 
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { deleteCookie } from "hono/cookie";
+import { eq, inArray } from "drizzle-orm";
 import { workos } from "../../auth/workos";
 import { db } from "../../db/client";
-import { users } from "../../db/schema";
+import { organizations, users } from "../../db/schema";
 import { requireRecentAuthentication } from "../../auth/step-up";
+import {
+  AccountDeletionError,
+  deleteAccount,
+  planAccountDeletion,
+} from "../../services/account-deletion";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -104,6 +110,72 @@ app.patch("/", async (c) => {
     createdAt: user.createdAt,
   });
 });
+
+/**
+ * GET /api/profile/deletion-preview — what deleting this account would do.
+ *
+ * Lets the confirmation screen say "this also deletes Acme" up front, and name
+ * the organizations that have to be handed over first, instead of the user
+ * discovering either by pressing the irreversible button.
+ */
+app.get("/deletion-preview", async (c) => {
+  const session = c.get("session");
+  const plan = await planAccountDeletion(session.userId);
+
+  const named = await organizationNames([
+    ...plan.organizationIdsToDelete,
+    ...plan.organizationIdsToLeave,
+  ]);
+  return c.json({
+    organizationsToDelete: plan.organizationIdsToDelete.map((id) => ({
+      id,
+      name: named.get(id) ?? id,
+    })),
+    organizationsToLeave: plan.organizationIdsToLeave.map((id) => ({
+      id,
+      name: named.get(id) ?? id,
+    })),
+    blockers: plan.blockers,
+  });
+});
+
+/**
+ * DELETE /api/profile — delete the account and everything personal to it.
+ *
+ * Step-up guarded like the other account-takeover-adjacent routes: a borrowed
+ * session must not be able to destroy the account it borrowed.
+ *
+ * Refuses with 409 `transfer_ownership_required` while the caller is the only
+ * owner of an organization other people are in. See `services/account-deletion.ts`
+ * for what each membership resolves to and why the steps run in the order they do.
+ */
+app.delete("/", async (c) => {
+  await requireRecentAuthentication(c);
+  const session = c.get("session");
+
+  try {
+    const result = await deleteAccount(session.userId);
+    // The browser's cookie now points at a user that no longer exists; clearing
+    // it means the next request is cleanly anonymous rather than a 401 loop.
+    deleteCookie(c, "wos-session", { path: "/" });
+    return c.json({ ok: true, ...result });
+  } catch (err) {
+    if (err instanceof AccountDeletionError) {
+      return c.json({ error: err.message, code: err.code, ...(err.details ?? {}) }, err.status);
+    }
+    throw err;
+  }
+});
+
+/** Display names for a set of organization ids, for the preview above. */
+async function organizationNames(ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({ id: organizations.id, name: organizations.displayName })
+    .from(organizations)
+    .where(inArray(organizations.id, ids));
+  return new Map(rows.map((r) => [r.id, r.name]));
+}
 
 /**
  * POST /api/profile/password-reset — mint a one-time password reset link.

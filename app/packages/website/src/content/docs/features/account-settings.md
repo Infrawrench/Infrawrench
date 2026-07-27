@@ -70,9 +70,25 @@ Every place you're currently signed in: the web app, the [desktop app](../core-c
 
 Signing out a session invalidates it immediately; that device has to sign in again. To end your _current_ session, use the normal sign-out in the app menu.
 
+## Deleting your account
+
+At the bottom of **Settings → General** is **Delete account**. It permanently removes your account, your [SSH keys](../team-and-billing/ssh-keys.md), your [API keys](../team-and-billing/api-keys.md), your push devices, your chat history, and your membership of every organization. It cannot be undone, and it needs a recent sign-in like the other sensitive actions.
+
+What happens to your organizations depends on who else is in them, and the page tells you before you confirm:
+
+- **You're the only member** — the organization is deleted with your account, along with every account, resource, dashboard and workflow in it. An active subscription is cancelled at the same time.
+- **Other people are in it, and another owner exists** — you simply leave. The organization and everything in it carries on.
+- **Other people are in it and you're the only owner** — deletion is refused, and the organizations are named. Promote someone else to owner in [**Settings → Team**](../team-and-billing/roles-and-permissions.md) first. Nothing is deleted in the meantime.
+
+That last case is the only thing standing between one person leaving and a team losing its organization, so there's no override for it.
+
+Your entries in an organization's [audit log](../team-and-billing/audit-log.md) stay, since they're that organization's record rather than yours — they just stop showing a name. The deletion itself is recorded in every organization you were a member of.
+
+<insert [Settings → General Delete account card showing the "you are the only member of Acme, so it will be deleted too" warning above the confirmation field] here>
+
 ## On mobile
 
-The mobile app mirrors all of this under **Settings → (your email)**: profile, password reset, two-factor enrolment, and session management, against the same account.
+The mobile app mirrors all of this under **Settings → (your email)**: profile, password reset, two-factor enrolment, session management, and account deletion, against the same account. Deleting there signs you straight out and returns you to the sign-in screen.
 
 ## API
 

@@ -821,9 +821,20 @@ export const chatConversations = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+    /**
+     * Nullable, and `set null` rather than `cascade`, so deleting an account
+     * retires its conversations instead of destroying them.
+     *
+     * `chat_usage` rows hang off the messages here and are billing records —
+     * `stripe_usage_record_id` stays null until the reporting sweep claims
+     * them. Cascading from the user would take unreported usage with it, so an
+     * account deleted inside the sweep window silently cost the org its charge.
+     *
+     * Every read scopes conversations with `userId === auth.userId`, so a
+     * null-owned row matches nobody and the history stops being reachable —
+     * which is the intent. The usage rows underneath it survive to be billed.
+     */
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
     title: text("title").notNull().default("New chat"),
     /**
      * Must stay in step with `DEFAULT_CHAT_MODEL` in client-core (server-core

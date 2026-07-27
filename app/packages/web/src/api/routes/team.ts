@@ -5,6 +5,7 @@ import { eq, and, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { apiKeys, users, invitations, organizationMembers, roles } from "../../db/schema";
 import { logAudit } from "../../services/audit";
+import { isOwnerRole } from "../../services/org-roles";
 import { requirePermission } from "../../auth/permissions";
 import {
   ALL_PERMISSIONS,
@@ -337,8 +338,7 @@ async function countOwners(organizationId: string): Promise<number> {
     .where(eq(organizationMembers.organizationId, organizationId));
   let count = 0;
   for (const r of rows) {
-    if (r.systemKey === "owner") count++;
-    else if (!r.systemKey && r.legacyRole === "owner") count++;
+    if (isOwnerRole(r.systemKey, r.legacyRole)) count++;
   }
   return count;
 }
@@ -360,9 +360,7 @@ async function isMemberOwner(organizationId: string, userId: string): Promise<bo
     )
     .limit(1);
   if (!row) return false;
-  if (row.systemKey === "owner") return true;
-  if (!row.systemKey && row.legacyRole === "owner") return true;
-  return false;
+  return isOwnerRole(row.systemKey, row.legacyRole);
 }
 
 /** DELETE /api/org/:orgId/team/members/:id */

@@ -36,7 +36,7 @@ You can switch organizations at any time from the org switcher; everything you s
 - **Integrations** — the peer panes a resource picks up from its plugin integrations; see below.
 - **Logs** — the same controls as the web Logs tab: container picker, tail length, previous-instance, follow, and copy.
 - **Workflows & agents** — read-only views of your [workflows](./workflows.md) (definitions and run history) and [agent sessions](./agents.md).
-- **Settings** — team members, [API keys](../team-and-billing/api-keys.md) (view and revoke), the [audit log](../team-and-billing/audit-log.md), [SSH keys](../team-and-billing/ssh-keys.md), billing (read-only), your [push notification](./mobile-push-notifications.md) preferences, devices, and test push, and your [account settings](./account-settings.md) — name, password reset, two-factor enrolment, and active sessions.
+- **Settings** — team members, [API keys](../team-and-billing/api-keys.md) (view and revoke), the [audit log](../team-and-billing/audit-log.md), [SSH keys](../team-and-billing/ssh-keys.md), billing (read-only), your [push notification](./mobile-push-notifications.md) preferences, devices, and test push, and your [account settings](./account-settings.md) — name, password reset, two-factor enrolment, active sessions, and [deleting your account](./account-settings.md#deleting-your-account).
 
 <insert [Mobile Dashboards tab listing the org's dashboards with the default one marked, next to an opened dashboard showing a pinned resource card, a stacked-bar cost graph with its legend totals, and a budget card with its progress bar] here>
 

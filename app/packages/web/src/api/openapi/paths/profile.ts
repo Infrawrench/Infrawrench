@@ -1,5 +1,5 @@
 import { z } from "../zod";
-import { strict, ErrorResponses, Email, Ok } from "../common";
+import { strict, ErrorResponse, ErrorResponses, Email, Ok } from "../common";
 import type { BuildContext } from "../context";
 
 const OAuthProvider = z
@@ -32,6 +32,41 @@ const ProfileSummary = strict({
   lastSignInAt: z.string().nullable(),
   createdAt: z.string(),
 }).openapi("ProfileSummary");
+
+const OrganizationRef = strict({
+  id: z.string(),
+  name: z.string(),
+}).openapi("OrganizationRef");
+
+/** An organization the caller must hand over before the account can be deleted. */
+const OwnershipBlocker = strict({
+  id: z.string(),
+  name: z.string(),
+  memberCount: z.number().int().openapi({ description: "People in the organization" }),
+}).openapi("OwnershipBlocker");
+
+const AccountDeletionPreview = strict({
+  organizationsToDelete: z.array(OrganizationRef).openapi({
+    description: "Deleted with the account — the caller is their only member.",
+  }),
+  organizationsToLeave: z.array(OrganizationRef).openapi({
+    description: "Survive; the caller's membership is removed.",
+  }),
+  blockers: z.array(OwnershipBlocker).openapi({
+    description: "Non-empty means DELETE /api/profile will refuse until another owner is promoted.",
+  }),
+}).openapi("AccountDeletionPreview");
+
+const AccountDeleted = strict({
+  ok: z.literal(true),
+  organizationsDeleted: z.number().int(),
+}).openapi("AccountDeleted");
+
+const OwnershipTransferRequired = strict({
+  error: z.string(),
+  code: z.literal("transfer_ownership_required"),
+  organizations: z.array(OwnershipBlocker),
+}).openapi("OwnershipTransferRequired");
 
 const AuthFactor = strict({
   id: z.string(),
@@ -99,6 +134,47 @@ export function registerProfilePaths(ctx: BuildContext) {
       200: { description: "Updated", content: { "application/json": { schema: ProfileSummary } } },
       400: ErrorResponses[400],
       401: ErrorResponses[401],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/profile/deletion-preview",
+    tags: ["Profile"],
+    summary: "What deleting this account would do",
+    description:
+      "Read-only. Lets a confirmation screen name the organizations that go with the account, and the ones that must be handed over first.",
+    responses: {
+      200: {
+        description: "Preview",
+        content: { "application/json": { schema: AccountDeletionPreview } },
+      },
+      401: ErrorResponses[401],
+    },
+  });
+
+  registry.registerPath({
+    method: "delete",
+    path: "/api/profile",
+    tags: ["Profile"],
+    summary: "Delete the signed-in user's account",
+    description:
+      "Irreversible. Organizations where the caller is the only member are deleted and their subscriptions cancelled; other memberships are simply removed. Refuses with `transfer_ownership_required` while the caller is the only owner of an organization other people belong to.",
+    responses: {
+      200: {
+        description: "Deleted",
+        content: { "application/json": { schema: AccountDeleted } },
+      },
+      401: ErrorResponses[401],
+      403: ErrorResponses.reauth,
+      409: {
+        description: "The caller still solely owns a shared organization; nothing was deleted.",
+        content: { "application/json": { schema: OwnershipTransferRequired } },
+      },
+      502: {
+        description: "A subscription could not be cancelled; nothing was deleted.",
+        content: { "application/json": { schema: ErrorResponse } },
+      },
     },
   });
 

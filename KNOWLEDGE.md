@@ -976,6 +976,21 @@ Things worth knowing before touching it:
 - **`/api/auth/me` reads the email from our `users` row, not `session.email`.** The sealed cookie caches the user WorkOS returned at sign-in, so it reports the pre-change address until the session refreshes.
 - Client contract (types, formatters, and `CloudFetch` helpers) lives in `client-core/src/profile.ts` so mobile shares it; `@infrawrench/ui` re-exports the types for web and desktop.
 
+#### Account deletion (`DELETE /api/profile`, `services/account-deletion.ts`)
+
+Exists because **App Store guideline 5.1.1(v)** requires any app that can create an account to delete one from inside the app — sign-in goes through AuthKit, whose hosted page offers sign-up, so the rule applies and a first iOS submission fails without it. Step-up guarded like the other takeover-adjacent routes.
+
+The user row is the easy half. The hazard is the organizations hanging off it: `organization_members.user_id` **cascades**, so a naive delete walks straight past the `countOwners() <= 1` guards in `routes/team.ts` and can leave an ownerless — or memberless — org with a live Stripe subscription still charging. Nothing in the schema forbids that; there is no partial unique index requiring an owner, and no org-delete route existed before this. So every membership is classified first, by `classifyMemberships` in **`services/account-deletion-plan.ts`** — deliberately a pure function in its own module, importing nothing that touches the database, because that is the part that must not be wrong and the DB-touching module can't be imported in a unit test (`db/client.ts` throws without `DATABASE_URL` at import time). Only member → delete the org and cancel its subscription. Only owner but others present → **409 `transfer_ownership_required`** naming them; promoting another owner is already possible in Settings → Team, so it's a detour, not a dead end. Anything else → just leave.
+
+**The step order in `deleteAccount` is load-bearing, top to bottom:** plan and refuse early → audit the orgs being _left_ (the row is org-scoped and FK-cascades, so it has to be written while the membership still exists; orgs being deleted take their audit log with them) → cancel Stripe (a failure aborts everything: deleting an org while its subscription keeps charging is the one outcome the user can't recover from, and they can cancel in Billing and retry) → **revoke every WorkOS session** → delete local rows in a transaction → delete the WorkOS user last. Two of those deserve their own line:
+
+- **Revoking sessions before the DB delete is not politeness, it's correctness.** `sessionMiddleware` calls `provisionUser` on every authenticated request — an `insert(users).onConflictDoNothing()` (`auth-middleware.ts:196`) — so any request in flight after the delete silently re-creates the row. Cutting the sessions closes the window; deleting the WorkOS user closes it for good.
+- **WorkOS last, not first.** If WorkOS deletion is what fails, the data is already gone and the user can sign in again (getting a fresh empty account) and retry. The reverse order fails into "can't sign in, data still here", which needs an operator. The `deleteUser` call is therefore logged-and-swallowed rather than fatal.
+
+This is also **the first `db.transaction` in the codebase** — `grep db.transaction` had zero hits before it. `chat_conversations.user_id` became **nullable + `set null`** (migration `0037`) in the same change: it used to cascade, which took unreported `chat_usage` rows with it, so an account deleted inside the Stripe reporting window silently cost the org its charge. Every read scopes conversations by `userId === auth.userId`, so a null-owned row matches nobody and the history stops being reachable — which is the intent — while the usage rows underneath survive to be billed. The dual-source owner rule (`roles.systemKey` wins, legacy `organization_members.role` text column is the fallback) moved to `services/org-roles.ts` as `isOwnerRole`; `team.ts` had it inline twice and now calls it.
+
+**Desktop has no account surface at all** — no settings route, no `/api/profile` call, and no sign-out — so deletion lives on web and mobile only. Adding it there means building a settings surface and a token-clearing IPC first.
+
 ### Database
 
 Drizzle ORM + Neon PostgreSQL. Schema at `web/src/db/schema.ts`. 13 tables total:

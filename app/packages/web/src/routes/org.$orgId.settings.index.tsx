@@ -1,11 +1,12 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useState, useEffect, useCallback } from "react";
-import { Modal } from "@infrawrench/ui";
+import { ConfirmDeleteModal, Modal } from "@infrawrench/ui";
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api";
 import {
   describeUserAgent,
   formatAuthMethod,
   formatProvider,
+  type AccountDeletionPreview,
   type AuthFactor,
   type PendingEmailChange,
   type Profile,
@@ -62,6 +63,7 @@ function SettingsGeneralPage() {
           <span className={LABEL}>Organization ID</span>
           <p className="text-sm text-on-surface-secondary font-mono">{orgId}</p>
         </div>
+        <DeleteAccountCard email={profile.email} />
       </div>
     </div>
   );
@@ -758,6 +760,105 @@ function SessionsCard() {
             </li>
           ))}
         </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Deleting the account. Required by App Store guideline 5.1.1(v) — an app that
+ * can create an account has to be able to delete one — but it is the same
+ * account everywhere, so it lives here rather than only on mobile.
+ *
+ * The preview is fetched up front rather than letting the user discover the
+ * consequences from a rejection: it names the organizations that go with the
+ * account, and the ones that have to be handed over first. The server refuses
+ * the same cases again on DELETE, so a stale preview is safe.
+ */
+function DeleteAccountCard({ email }: { email: string }) {
+  const [preview, setPreview] = useState<AccountDeletionPreview | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    apiGet<AccountDeletionPreview>("/api/profile/deletion-preview")
+      .then(setPreview)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load"));
+  }, []);
+
+  async function handleDelete() {
+    await apiDelete("/api/profile");
+    // Every session was revoked server-side and the cookie is cleared, so the
+    // root route bounces to sign-in on its own.
+    window.location.href = "/";
+  }
+
+  const blocked = (preview?.blockers.length ?? 0) > 0;
+
+  return (
+    <div className="border border-red-500/30 rounded-xl p-5">
+      <h2 className="text-sm font-semibold text-on-surface-secondary mb-1">Delete account</h2>
+      <p className="text-xs text-on-surface-tertiary mb-3">
+        Permanently deletes your account, your SSH and API keys, your chat history, and your
+        membership of every organization. This cannot be undone.
+      </p>
+
+      {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+
+      {preview && blocked && (
+        <div className="mb-3 rounded-lg border border-border bg-surface-overlay p-3">
+          <p className="text-xs text-on-surface-secondary mb-2">
+            You are the only owner of{" "}
+            {preview.blockers.length === 1 ? "an organization" : "these organizations"} that other
+            people belong to. Promote another owner in <strong>Settings → Team</strong>, then come
+            back.
+          </p>
+          <ul className="text-xs text-on-surface-tertiary space-y-1">
+            {preview.blockers.map((b) => (
+              <li key={b.id}>
+                <span className="text-on-surface-secondary">{b.name}</span> — {b.memberCount}{" "}
+                members
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {preview && !blocked && preview.organizationsToDelete.length > 0 && (
+        <div className="mb-3 rounded-lg border border-border bg-surface-overlay p-3">
+          <p className="text-xs text-on-surface-secondary mb-2">
+            You are the only member of{" "}
+            {preview.organizationsToDelete.length === 1
+              ? "this organization, so it"
+              : "these organizations, so they"}{" "}
+            will be deleted too, along with everything in{" "}
+            {preview.organizationsToDelete.length === 1 ? "it" : "them"}. Any active subscription is
+            cancelled.
+          </p>
+          <ul className="text-xs text-on-surface-tertiary space-y-1">
+            {preview.organizationsToDelete.map((o) => (
+              <li key={o.id}>{o.name}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        disabled={!preview || blocked}
+        className="px-3 py-1.5 text-sm font-medium bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:hover:bg-red-600 text-white rounded-lg transition-colors"
+      >
+        Delete account
+      </button>
+
+      {confirming && (
+        <ConfirmDeleteModal
+          kind="account"
+          name={email}
+          onConfirm={handleDelete}
+          onClose={() => setConfirming(false)}
+        />
       )}
     </div>
   );

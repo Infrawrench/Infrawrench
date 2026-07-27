@@ -3,17 +3,21 @@ import { Alert, Image, StyleSheet, Text, TextInput, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import * as WebBrowser from "expo-web-browser";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import {
   challengeAuthFactor,
   confirmEmailChange,
   createPasswordResetLink,
+  deleteAccount,
   deleteAuthFactor,
   describeUserAgent,
+  fetchAccountDeletionPreview,
   fetchProfile,
   formatAuthMethod,
   formatProvider,
   listAuthFactors,
   listUserSessions,
+  ownershipTransferRequired,
   revokeOtherUserSessions,
   revokeUserSession,
   startEmailChange,
@@ -417,7 +421,117 @@ export default function AccountScreen() {
           />
         )}
       </Card>
+
+      <SectionTitle>Delete account</SectionTitle>
+      <DeleteAccountCard email={me.email} />
     </Screen>
+  );
+}
+
+/**
+ * Deleting the account, which App Store guideline 5.1.1(v) requires any app
+ * that can create one to offer — in the app, not as a link to the website.
+ *
+ * The preview is loaded before the button is usable so the consequences are on
+ * screen first: which organizations go with the account, and which have to be
+ * handed over before it can go at all. `Alert.alert` has no typed-confirmation
+ * equivalent to the web modal, so the email is typed into a field here and the
+ * Alert is the second step rather than the only one.
+ */
+function DeleteAccountCard({ email }: { email: string }) {
+  const { api, signOut } = useAuth();
+  const router = useRouter();
+  const [typed, setTyped] = useState("");
+
+  const preview = useQuery({
+    queryKey: ["profile", "deletion-preview"],
+    queryFn: () => fetchAccountDeletionPreview(api),
+  });
+
+  const remove = useMutation({
+    mutationFn: () => deleteAccount(api),
+    onSuccess: async () => {
+      await signOut();
+      router.replace("/sign-in");
+    },
+    onError: (e: unknown) => {
+      const blockers = ownershipTransferRequired(e);
+      if (blockers) {
+        Alert.alert(
+          "Transfer ownership first",
+          `You are the only owner of ${blockers
+            .map((b) => b.name)
+            .join(
+              ", ",
+            )}. Promote another owner on the web app, then try again. Nothing was deleted.`,
+        );
+        void preview.refetch();
+        return;
+      }
+      Alert.alert("Couldn't delete", e instanceof Error ? e.message : "Unknown error");
+    },
+  });
+
+  function confirm() {
+    Alert.alert(
+      "Delete your account?",
+      "This permanently deletes your account, your keys, your chat history, and your membership of every organization. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: () => remove.mutate() },
+      ],
+    );
+  }
+
+  if (preview.isLoading) return <LoadingView />;
+
+  const blockers = preview.data?.blockers ?? [];
+  const doomed = preview.data?.organizationsToDelete ?? [];
+
+  return (
+    <Card>
+      <Text style={styles.hint}>
+        Permanently deletes your account, your SSH and API keys, your chat history, and your
+        membership of every organization.
+      </Text>
+
+      {blockers.length > 0 ? (
+        <>
+          <Text style={{ color: colors.warning, fontSize: 12 }}>
+            You are the only owner of {blockers.map((b) => b.name).join(", ")}, which other people
+            belong to. Promote another owner in Settings → Team on the web app, then come back.
+          </Text>
+        </>
+      ) : (
+        <>
+          {doomed.length > 0 ? (
+            <Text style={{ color: colors.warning, fontSize: 12 }}>
+              You are the only member of {doomed.map((o) => o.name).join(", ")}, so{" "}
+              {doomed.length === 1 ? "it goes" : "they go"} too — along with everything in{" "}
+              {doomed.length === 1 ? "it" : "them"}. Any active subscription is cancelled.
+            </Text>
+          ) : null}
+          <Text style={styles.label}>Type {email} to confirm</Text>
+          <TextInput
+            style={styles.input}
+            value={typed}
+            onChangeText={setTyped}
+            placeholder={email}
+            placeholderTextColor={colors.textFaint}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            accessibilityLabel={`Type ${email} to confirm`}
+          />
+          <Button
+            label={remove.isPending ? "Deleting…" : "Delete account"}
+            variant="danger"
+            disabled={typed !== email || remove.isPending}
+            onPress={confirm}
+          />
+        </>
+      )}
+    </Card>
   );
 }
 

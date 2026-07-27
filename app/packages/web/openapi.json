@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.7.0",
+    "version": "0.8.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -312,6 +312,78 @@
         ],
         "additionalProperties": false
       },
+      "OrganizationRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "name"],
+        "additionalProperties": false
+      },
+      "OwnershipBlocker": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "memberCount": {
+            "type": "integer",
+            "description": "People in the organization"
+          }
+        },
+        "required": ["id", "name", "memberCount"],
+        "additionalProperties": false
+      },
+      "AccountDeletionPreview": {
+        "type": "object",
+        "properties": {
+          "organizationsToDelete": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationRef"
+            },
+            "description": "Deleted with the account — the caller is their only member."
+          },
+          "organizationsToLeave": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationRef"
+            },
+            "description": "Survive; the caller's membership is removed."
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OwnershipBlocker"
+            },
+            "description": "Non-empty means DELETE /api/profile will refuse until another owner is promoted."
+          }
+        },
+        "required": ["organizationsToDelete", "organizationsToLeave", "blockers"],
+        "additionalProperties": false
+      },
+      "AccountDeleted": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [true]
+          },
+          "organizationsDeleted": {
+            "type": "integer"
+          }
+        },
+        "required": ["ok", "organizationsDeleted"],
+        "additionalProperties": false
+      },
       "ReauthenticationRequired": {
         "type": "object",
         "properties": {
@@ -325,6 +397,26 @@
           }
         },
         "required": ["error", "code"],
+        "additionalProperties": false
+      },
+      "OwnershipTransferRequired": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "enum": ["transfer_ownership_required"]
+          },
+          "organizations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OwnershipBlocker"
+            }
+          }
+        },
+        "required": ["error", "code", "organizations"],
         "additionalProperties": false
       },
       "Ok": {
@@ -6660,6 +6752,94 @@
           }
         },
         "operationId": "patchProfile"
+      },
+      "delete": {
+        "tags": ["Profile"],
+        "summary": "Delete the signed-in user's account",
+        "description": "Irreversible. Organizations where the caller is the only member are deleted and their subscriptions cancelled; other memberships are simply removed. Refuses with `transfer_ownership_required` while the caller is the only owner of an organization other people belong to.",
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeleted"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The caller still solely owns a shared organization; nothing was deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnershipTransferRequired"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "A subscription could not be cancelled; nothing was deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteProfile"
+      }
+    },
+    "/api/profile/deletion-preview": {
+      "get": {
+        "tags": ["Profile"],
+        "summary": "What deleting this account would do",
+        "description": "Read-only. Lets a confirmation screen name the organizations that go with the account, and the ones that must be handed over first.",
+        "responses": {
+          "200": {
+            "description": "Preview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionPreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getProfileDeletionPreview"
       }
     },
     "/api/profile/password-reset": {
