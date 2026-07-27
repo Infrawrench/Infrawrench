@@ -81,6 +81,12 @@ export { SparklineChart } from "./components/charts/SparklineChart.js";
 
 export { SpotlightSearch } from "./components/SpotlightSearch.js";
 export type { SpotlightSearchProps, SpotlightResult } from "./components/SpotlightSearch.js";
+export { MultiSelect } from "./components/MultiSelect.js";
+export type {
+  MultiSelectProps,
+  MultiSelectOption,
+  MultiSelectStatus,
+} from "./components/MultiSelect.js";
 
 export { GlobalTabBar } from "./components/GlobalTabBar.js";
 export type { GlobalTabBarProps } from "./components/GlobalTabBar.js";

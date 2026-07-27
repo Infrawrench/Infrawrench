@@ -9,6 +9,7 @@ import {
   type CostGraphConfig,
 } from "./config.js";
 import type { CostApi, CostDimensionOption } from "./types.js";
+import { MultiSelect, type MultiSelectStatus } from "../components/MultiSelect.js";
 
 const CHART_TYPE_LABELS: Record<(typeof COST_CHART_TYPES)[number], string> = {
   stacked_bar: "Stacked bar",
@@ -68,6 +69,32 @@ interface FilterRowEditorProps {
   api: CostApi;
 }
 
+/**
+ * Options plus any selected value the load didn't return, so a filter saved
+ * against a service that has since stopped appearing in cost data still shows
+ * its chip (and can still be deselected) instead of disappearing.
+ */
+function mergeSelected(options: CostDimensionOption[], values: string[]): CostDimensionOption[] {
+  const known = new Set(options.map((o) => o.value));
+  const extra = values.filter((v) => !known.has(v)).map((v) => ({ value: v, label: v }));
+  return extra.length === 0 ? options : [...options, ...extra];
+}
+
+/**
+ * Translate the three load states — in flight (`undefined`), failed (`null`),
+ * loaded-but-empty — into what the picker shows in place of a list.
+ */
+function dimensionStatus(
+  state: CostDimensionOption[] | null | undefined,
+  onRetry: () => void,
+): MultiSelectStatus {
+  if (state === undefined) return { kind: "loading" };
+  if (state === null) {
+    return { kind: "error", message: "Couldn’t load values.", onRetry };
+  }
+  return { kind: "empty", message: "No values in cost data yet" };
+}
+
 /** Filter rule rows shared by the graph and budget editors. */
 export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps) {
   // Loaded options per "dimension" / "dimension:tagKey" key. Missing = load
@@ -108,6 +135,15 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
 
   const update = (index: number, patch: Partial<CostFilter>) => {
     onChange(filters.map((f, i) => (i === index ? ({ ...f, ...patch } as CostFilter) : f)));
+  };
+
+  /** Re-request a row's values; a no-op unless the previous load failed. */
+  const retryOptions = (filter: CostFilter) => {
+    if (filter.dimension === "tag") {
+      if (filter.tagKey) loadOptions("tag", filter.tagKey);
+    } else {
+      loadOptions(filter.dimension);
+    }
   };
 
   return (
@@ -157,41 +193,19 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
               <option value="in">is</option>
               <option value="not_in">is not</option>
             </select>
-            <select
-              multiple
-              aria-label="Filter values"
-              className={`${selectBaseClass} min-w-0 flex-1 min-h-[4.5rem]`}
+            <MultiSelect
+              className="flex-1"
+              label="Filter values"
+              placeholder="Any value"
+              // A saved filter can reference values the current load hasn't
+              // returned (or hasn't finished returning); surface them as
+              // options so they stay selectable rather than silently vanishing.
+              options={mergeSelected(options, filter.values)}
               value={filter.values}
-              onFocus={() =>
-                filter.dimension === "tag"
-                  ? filter.tagKey && loadOptions("tag", filter.tagKey)
-                  : loadOptions(filter.dimension)
-              }
-              onChange={(e) =>
-                update(i, { values: [...e.target.selectedOptions].map((o) => o.value) })
-              }
-            >
-              {options.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-              {options.length === 0 &&
-                filter.values.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              {optionsState === undefined && filter.values.length === 0 && (
-                <option disabled>Loading values…</option>
-              )}
-              {optionsState === null && filter.values.length === 0 && (
-                <option disabled>Couldn’t load values — click to retry</option>
-              )}
-              {Array.isArray(optionsState) &&
-                optionsState.length === 0 &&
-                filter.values.length === 0 && <option disabled>No values in cost data yet</option>}
-            </select>
+              onChange={(values) => update(i, { values })}
+              status={dimensionStatus(optionsState, () => retryOptions(filter))}
+              onOpen={() => retryOptions(filter)}
+            />
             <button
               type="button"
               onClick={() => onChange(filters.filter((_, j) => j !== i))}
