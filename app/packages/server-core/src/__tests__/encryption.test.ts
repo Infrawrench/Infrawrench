@@ -67,11 +67,6 @@ describe("encryption", () => {
       await expect(decrypt(ciphertext, iv, "account:id2:credentials")).rejects.toThrow();
     });
 
-    it("throws when v2 AAD is missing", async () => {
-      const { ciphertext, iv } = await encrypt("secret", "a:b:c");
-      await expect(decrypt(ciphertext, iv)).rejects.toThrow(/AAD is required/);
-    });
-
     it("throws when the ciphertext body is tampered", async () => {
       const aad = "a:b:c";
       const { ciphertext, iv } = await encrypt("secret", aad);

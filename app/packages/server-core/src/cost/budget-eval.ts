@@ -26,7 +26,7 @@ import { isoDay, addDays } from "./dates";
 
 /** Deep link to the budget, for the Slack message's button. */
 function budgetUrl(organizationId: string, budgetId: string): string | null {
-  const base = process.env["APP_URL"] ?? process.env["NEXT_PUBLIC_APP_URL"];
+  const base = process.env["APP_URL"];
   if (!base) return null;
   return `${base.replace(/\/$/, "")}/org/${organizationId}/budgets/${budgetId}`;
 }

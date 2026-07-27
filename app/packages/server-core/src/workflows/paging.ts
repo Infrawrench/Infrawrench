@@ -181,7 +181,7 @@ export async function pageFromWorkflow(
 
 /** Deep link to the workflow, for the Slack and Teams message buttons. */
 function workflowUrl(ctx: WorkflowPageContext): string | null {
-  const base = process.env["APP_URL"] ?? process.env["NEXT_PUBLIC_APP_URL"];
+  const base = process.env["APP_URL"];
   if (!base) return null;
   return `${base.replace(/\/$/, "")}/org/${ctx.organizationId}/workflows/${ctx.workflowId}`;
 }

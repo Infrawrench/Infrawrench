@@ -40,12 +40,7 @@ describe("encrypt / decrypt", () => {
     await expect(decrypt(ciphertext, iv, buildAad("test", "row-2", "field"))).rejects.toThrow();
   });
 
-  it("fails to decrypt a v2 ciphertext when AAD is missing", async () => {
-    const { ciphertext, iv } = await encrypt("secret", aad);
-    await expect(decrypt(ciphertext, iv)).rejects.toThrow();
-  });
-
-  it("still decrypts legacy v1 ciphertext without AAD", async () => {
+  it("still decrypts legacy v1 ciphertext, ignoring the supplied AAD", async () => {
     // Build a v1 record by hand using node:crypto so we don't accidentally
     // wire-test the v2 path. v1 = base64(ciphertext || authTag), no AAD.
     const { createCipheriv } = await import("node:crypto");
@@ -56,7 +51,7 @@ describe("encrypt / decrypt", () => {
     const tag = cipher.getAuthTag();
     const v1Ciphertext = Buffer.concat([enc, tag]).toString("base64");
 
-    const plaintext = await decrypt(v1Ciphertext, iv.toString("base64"));
+    const plaintext = await decrypt(v1Ciphertext, iv.toString("base64"), aad);
     expect(plaintext).toBe("legacy");
   });
 });

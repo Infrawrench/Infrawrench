@@ -439,11 +439,6 @@ export const invitations = pgTable(
     invitedByUserId: text("invited_by_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    /**
-     * Legacy plaintext token column. No longer written; retained for backfill
-     * and to keep older migrations valid. Reads use `hashedToken` exclusively.
-     */
-    token: text("token").notNull(),
     /** SHA-256 hash of the invitation token. Lookups are performed on this. */
     hashedToken: text("hashed_token").notNull(),
     acceptedAt: timestamp("accepted_at"),
@@ -451,7 +446,6 @@ export const invitations = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({
-    tokenUnique: uniqueIndex("invitations_token_unique").on(t.token),
     hashedTokenUnique: uniqueIndex("invitations_hashed_token_unique").on(t.hashedToken),
     orgIdx: index("invitations_org_idx").on(t.organizationId),
     emailOrgIdx: index("invitations_email_org_idx").on(t.email, t.organizationId),

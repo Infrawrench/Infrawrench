@@ -308,8 +308,6 @@ app.post("/invitations", async (c) => {
     role: legacyRole,
     roleId: resolvedRoleId,
     invitedByUserId: session.userId,
-    // Legacy `token` column retained for one release; store a non-recoverable placeholder.
-    token: `hashed:${hashedToken}`,
     hashedToken,
     expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
   });

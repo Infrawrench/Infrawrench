@@ -112,14 +112,11 @@ export async function encrypt(plaintext: string, aad: string | Buffer): Promise<
  *     encrypt time; an incorrect or missing AAD causes auth-tag failure.
  *   - bare `<base64>` — legacy v1 record with no AAD. The supplied `aad`
  *     is ignored. New writes never produce this format.
- *
- * `aad` is optional only to ease incremental rollout to callers; for v2
- * data it is required and ignoring it will throw.
  */
 export async function decrypt(
   ciphertext: string,
   ivBase64: string,
-  aad?: string | Buffer,
+  aad: string | Buffer,
 ): Promise<string> {
   const { createDecipheriv } = await import("node:crypto");
   const iv = Buffer.from(ivBase64, "base64");
@@ -138,9 +135,6 @@ export async function decrypt(
   const data = payload.subarray(0, payload.length - 16);
   const decipher = createDecipheriv("aes-256-gcm", getMasterKey(), iv);
   if (isV2) {
-    if (aad == null) {
-      throw new Error("AAD is required to decrypt v2 ciphertext");
-    }
     decipher.setAAD(Buffer.isBuffer(aad) ? aad : Buffer.from(aad, "utf8"));
   }
   decipher.setAuthTag(tag);
