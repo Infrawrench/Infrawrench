@@ -44,7 +44,8 @@
     "./cost/budget-eval": "./src/cost/budget-eval.ts",
     "./cost/workflow-costs": "./src/cost/workflow-costs.ts",
     "./cost/workflow-cost-ids": "./src/cost/workflow-cost-ids.ts",
-    "./push/dispatch": "./src/push/dispatch.ts"
+    "./push/dispatch": "./src/push/dispatch.ts",
+    "./push/types": "./src/push/types.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

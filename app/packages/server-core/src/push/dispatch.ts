@@ -1,8 +1,8 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import type { PushNotificationData } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { organizationMembers, pushDevices, pushPreferences } from "../db/schema";
 import { sendExpoPush, type ExpoPushMessage, type ExpoTicket } from "./expo-client";
+import type { PushMessage, PushResult, PushTrigger } from "./types";
 
 /**
  * Org-level mobile push fan-out. A second delivery transport alongside the
@@ -11,30 +11,14 @@ import { sendExpoPush, type ExpoPushMessage, type ExpoTicket } from "./expo-clie
  *
  * Like the pager, dispatch must never break the poller: every entry point
  * catches and logs instead of throwing.
- */
-
-/**
- * The deep-link contract with the mobile app. Notification title/body are
- * display-only; all routing keys live here.
  *
- * Defined in `@infrawrench/client-core` because the mobile app parses these
- * payloads back into routes (`mobile/src/lib/push.ts`); aliased here so the
- * two ends of the deep link cannot drift apart silently.
+ * The contract types live in `./types` so that the Expo transport can describe
+ * its payload without importing this module (which opens a DB connection at
+ * module scope). They are re-exported here for the existing
+ * `@infrawrench/server-core/push/dispatch` import sites.
  */
-export type PushData = PushNotificationData;
 
-export type PushTrigger = "syncIncidents" | "budgetAlerts" | "workflowPages";
-
-export interface PushMessage {
-  title: string;
-  body: string;
-  data: PushData;
-}
-
-export interface PushResult {
-  attempted: number;
-  succeeded: number;
-}
+export type { PushData, PushMessage, PushResult, PushTrigger } from "./types";
 
 /** Disable a device after this many consecutive failed sends. */
 const MAX_FAILURES = 5;

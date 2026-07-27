@@ -24,7 +24,7 @@ import type { SlackAvailableChannel } from "@infrawrench/client-core";
 import { db } from "./db/client";
 import { slackChannels, slackInstallations } from "./db/schema";
 import { buildAad, decrypt, encrypt } from "./encryption";
-import type { PushTrigger } from "./push/dispatch";
+import type { PushTrigger } from "./push/types";
 
 const SLACK_API = "https://slack.com/api";
 

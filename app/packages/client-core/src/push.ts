@@ -21,7 +21,7 @@ export interface PushDeviceSummary {
 
 /**
  * The notification `data` payload the server sends — the deep-link contract.
- * Mirrors server-core `push/dispatch.ts` PushData.
+ * Mirrors server-core `push/types.ts` PushData.
  */
 export type PushNotificationData =
   | {

@@ -4,7 +4,7 @@
  * bundle dependency-free. https://docs.expo.dev/push-notifications/sending-notifications/
  */
 
-import type { PushData } from "./dispatch";
+import type { PushData } from "./types";
 
 export interface ExpoPushMessage {
   /** `ExponentPushToken[...]` */

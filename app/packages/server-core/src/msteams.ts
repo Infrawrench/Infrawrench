@@ -48,7 +48,7 @@ import type { AddMsTeamsWebhookArgs, MsTeamsWebhook } from "@infrawrench/client-
 import { db } from "./db/client";
 import { msteamsWebhooks } from "./db/schema";
 import { buildAad, decrypt, encrypt, keyedHash } from "./encryption";
-import type { PushTrigger } from "./push/dispatch";
+import type { PushTrigger } from "./push/types";
 
 /** Abort Teams requests after 10s so a hung connection can't stall paging. */
 const MSTEAMS_REQUEST_TIMEOUT_MS = 10_000;
