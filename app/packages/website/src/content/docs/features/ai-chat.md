@@ -43,7 +43,28 @@ Everything the UI exposes. The chat shares the [MCP server](./mcp.md)'s tool reg
 - **Credentials** — `export_credential` to download IAM access keys, service-account JSON, connection strings, etc.
 - **SSH keys** — list, generate (Ed25519), import, and delete the org's [SSH keys](../team-and-billing/ssh-keys.md). Generated private keys stay encrypted server-side and are used by id with `ssh_exec`; deletion goes through the approval flow.
 - **Workflows** — read, write, type-check, and run [workflows](./workflows.md). Ask for "a workflow that scales the dev cluster to zero when the Production budget goes over 90%" and the agent fetches your org's generated `infra` typings, writes the source against them, type-checks it before saving, and can run it once to prove it works. Deleting a workflow goes through the approval flow. See [Writing workflows with an AI client](./workflows.md#writing-workflows-with-an-ai-client).
+- **The web** — `web_search` and `web_fetch`, so the agent can check current documentation instead of relying on training data. Chat-only; see [Reading the web](#reading-the-web).
 - **Costs & budgets** — `query_costs` for spend questions ("what did we spend on AWS last month?"), `list_cost_dimension_values`, `get_cost_status`, and budget CRUD (`list_budgets`, `get_budget`, `create_budget`, `update_budget`, `delete_budget`). These enforce the caller's `costs:read` / `budgets:*` [role permissions](../team-and-billing/roles-and-permissions.md). See [Cloud costs](./cloud-costs.md).
+
+## Reading the web
+
+Two tools let the agent look things up instead of guessing from training data. Like `sleep`, they are chat-only — the [MCP server](./mcp.md) does not expose them, because an MCP client already runs inside a host with its own web access.
+
+- **`web_search`** — asks a question and gets back a summary with source links. Use it for anything that changes: current provider pricing and quotas, a changelog or deprecation notice, an unfamiliar error string, the present shape of a third-party API.
+- **`web_fetch`** — reads one URL as text. HTML is converted to Markdown and JSON is pretty-printed. It is **GET only** and cannot submit anything.
+
+Both are `read`-tier, so they run without an approval prompt. Ask "is the instance type I'm using still current?" and the agent searches, reads the page it finds, and answers with links you can check.
+
+Two limits are deliberate:
+
+- **Only public addresses are reachable.** `web_fetch` goes out through an egress proxy that runs outside the cluster and refuses private, loopback, link-local and cluster-internal addresses, re-checking every redirect hop. The agent cannot be talked into probing your internal network with it. To reach something private, give it an [SSH](./ssh-terminal.md) route or a workflow instead.
+- **Fetched pages are data, never instructions.** Web content arrives fenced and labelled as untrusted, and the agent is told to treat a page that says "run this command" as something to report to you rather than obey. Combined with the approval prompt on every destructive tool, that means a hostile page cannot get infrastructure deleted without you clicking Approve on a card that says so. Read those cards.
+
+Searches cost a small amount per query on top of tokens, and show up in your [chat usage](#billing) like any other spend.
+
+If the deployment has no search backend or no egress proxy configured, the matching tool simply isn't offered and the agent will tell you what it would have looked up. Self-hosters: see `INFRAWRENCH_CHAT_SEARCH_BACKEND` and `WORKFLOW_FETCH_PROXY_URL` in `.env.example`.
+
+<insert [A chat turn where the agent used web_search: the tool card, and the reply below it citing linked sources] here>
 
 ## Destructive-action approval
 
@@ -86,6 +107,8 @@ Caching behaves differently per provider, and you're only ever charged 1.5× wha
 
 - **Claude** — the system prompt and the tool registry are aggressively prompt-cached, so a long working session typically pays the discounted cache-read rate after the first turn. Cache writes carry their own uplifted rate.
 - **Gemini** — caching is implicit and automatic. Cached input bills at a tenth of the input rate and there is no separate cache-write charge. Reasoning tokens bill at the output rate.
+
+[Web search](#reading-the-web) has one extra component. Search providers charge per query rather than per token, so a `web_search` call bills 1.5× the provider's per-query rate — currently $0.021 per query on Google Search grounding, $0.015 on Anthropic web search — plus 1.5× the tokens of the small model that runs the retrieval. One call can issue more than one query when the question needs it, and you're charged for the queries actually run. `web_fetch` has no per-request fee; you pay only for the page text that enters the conversation as tokens.
 
 ### Free tier
 

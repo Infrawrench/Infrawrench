@@ -76,3 +76,16 @@ Don't reuse it for server-side HTTP the app itself makes (provider APIs, Slack,
 Twilio). Those calls are ours, they're already scoped by credentials we control,
 and routing them through a public Worker would add a hop, a shared rate limit,
 and a second place to debug.
+
+The line is who chooses the destination, not who makes the request. There are
+two callers today, and both are here because the URL comes from somewhere we
+don't control:
+
+- workflow `fetch()` — the URL comes from user-authored workflow source
+  (`server-core/src/workflows/fetch.ts`);
+- the chat agent's `web_fetch` tool — the URL is chosen by a language model,
+  from a conversation that may quote a page written by a stranger
+  (`web/src/chat/web/fetch.ts`).
+
+A new caller belongs here if it has that property. A call to a host we hardcode
+does not.

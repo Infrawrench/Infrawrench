@@ -65,11 +65,13 @@ app_env = {
   SLACK_CLIENT_ID     = "1234567890.1234567890"
   SLACK_CLIENT_SECRET = "..."
 
-  # Workflow outbound HTTP. `fetch()` inside a workflow is performed by the
-  # egress proxy Worker (app/packages/egress-proxy), which runs on Cloudflare —
-  # outside this cluster — so a workflow can't reach pods, the kubelet, or the
+  # Workflow and chat outbound HTTP. `fetch()` inside a workflow, and the chat
+  # agent's `web_fetch` tool, are both performed by the egress proxy Worker
+  # (app/packages/egress-proxy), which runs on Cloudflare —
+  # outside this cluster — so neither can reach pods, the kubelet, or the
   # metadata server on 169.254.169.254. Without both of these, fetch() throws
-  # and says it isn't configured; it never falls back to a request from the pod.
+  # and says it isn't configured and `web_fetch` is not offered to the model at
+  # all; neither falls back to a request from the pod.
   # The token is the Worker's PROXY_TOKEN secret.
   WORKFLOW_FETCH_PROXY_URL   = "https://egress.infrawrench.com"
   WORKFLOW_FETCH_PROXY_TOKEN = "<openssl rand -base64 32>"
@@ -91,4 +93,13 @@ app_env = {
   # Optional
   # ANTHROPIC_API_KEY    = "..."
   # OPENAI_API_KEY       = "..."
+
+  # Which backend the chat agent's `web_search` tool uses. Optional: unset picks
+  # the first configured one, preferring "vertex" (Google Search grounding, uses
+  # the GOOGLE_CLOUD_PROJECT the default Gemini setup already has) over
+  # "anthropic" (Anthropic's server-side web search, needs ANTHROPIC_API_KEY).
+  # With neither configured the tool isn't offered and the agent is told to say
+  # what it would have looked up. Searches are billed on to the org per query on
+  # top of tokens, so this also chooses which per-query rate applies.
+  # INFRAWRENCH_CHAT_SEARCH_BACKEND = "vertex"
 }

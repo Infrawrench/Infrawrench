@@ -42,6 +42,41 @@ export interface TokenUsage {
   cacheWriteTokens: number;
 }
 
+/**
+ * Per-search fees, USD per single web search query, before markup. Both search
+ * backends bill per query rather than per request — one call to the search tool
+ * can fan out into several — so the unit here is the query, counted from what
+ * the backend reports it actually ran.
+ *
+ * These are on top of the sub-model's token cost, which prices through
+ * MODEL_RATES like any other call.
+ *
+ * Known imprecision, deliberate: Google gives 5,000 free search queries a month
+ * aggregated across Gemini 3 models, and that allowance belongs to the Google
+ * Cloud project — one pool shared by every organization on the deployment, with
+ * no way to attribute a share of it to the org that used it. Rather than invent
+ * an allocation, we charge from the first query, so early-month searches are
+ * billed at list while the platform is still inside the free allowance. It is
+ * the one place the "always exactly 1.5x what the API bills us" rule above does
+ * not hold exactly, and it errs toward the platform.
+ */
+const SEARCH_RATES: Record<string, number> = {
+  // $14 per 1,000 search queries on Gemini 3 models (billing began 2026-01-05).
+  vertex: 0.014,
+  // $10 per 1,000 searches.
+  anthropic: 0.01,
+};
+
+/** Most expensive backend, so an unknown id never undercharges. */
+const FALLBACK_SEARCH_RATE = Math.max(...Object.values(SEARCH_RATES));
+
+/** Compute the billable per-query search fee in integer micro-dollars. */
+export function computeSearchCostMicros(backend: string, queries: number): number {
+  if (queries <= 0) return 0;
+  const rate = SEARCH_RATES[backend] ?? FALLBACK_SEARCH_RATE;
+  return Math.max(0, Math.round(rate * queries * MARKUP * 1_000_000));
+}
+
 /** Compute billable cost in integer micro-dollars (1 USD = 1_000_000). */
 export function computeCostMicros(model: string, usage: TokenUsage): number {
   const rates = MODEL_RATES[model] ?? FALLBACK_RATES;
