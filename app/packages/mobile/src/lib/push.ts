@@ -144,13 +144,63 @@ export function pushDataToPath(data: PushNotificationData): string {
   }
 }
 
+/**
+ * Validate a notification `data` blob against the server's `PushData` contract.
+ *
+ * This is a trust boundary — the payload arrives from the OS notification
+ * centre, so it starts as `unknown` and every field is checked before it is
+ * used. Each arm rebuilds the variant from validated pieces rather than
+ * asserting the whole object, so an unrecognised `type`, a missing routing key,
+ * or a field of the wrong primitive type yields `null` (the caller then skips
+ * the deep link) instead of a path containing "undefined".
+ */
 export function parsePushData(raw: unknown): PushNotificationData | null {
   if (!raw || typeof raw !== "object") return null;
-  const data = raw as Record<string, unknown>;
-  if (typeof data.type !== "string" || typeof data.orgId !== "string") return null;
-  // Type-specific required fields — a malformed payload must not deep-link
-  // to a path containing "undefined".
-  if (data.type === "sync_incident" && typeof data.accountId !== "string") return null;
-  if (data.type === "workflow_page" && typeof data.workflowId !== "string") return null;
-  return data as unknown as PushNotificationData;
+  const data: Record<string, unknown> = raw as Record<string, unknown>;
+  const orgId = data["orgId"];
+  if (typeof orgId !== "string") return null;
+
+  switch (data["type"]) {
+    case "sync_incident": {
+      const accountId = data["accountId"];
+      const resourceTypeId = data["resourceTypeId"];
+      const incidentId = data["incidentId"];
+      if (
+        typeof accountId !== "string" ||
+        typeof resourceTypeId !== "string" ||
+        typeof incidentId !== "string"
+      ) {
+        return null;
+      }
+      return { type: "sync_incident", orgId, accountId, resourceTypeId, incidentId };
+    }
+    case "budget_breach": {
+      const budgetId = data["budgetId"];
+      const month = data["month"];
+      const thresholdPercent = data["thresholdPercent"];
+      if (
+        typeof budgetId !== "string" ||
+        typeof month !== "string" ||
+        typeof thresholdPercent !== "number"
+      ) {
+        return null;
+      }
+      return { type: "budget_breach", orgId, budgetId, month, thresholdPercent };
+    }
+    case "workflow_page": {
+      const workflowId = data["workflowId"];
+      const runId = data["runId"];
+      if (typeof workflowId !== "string") return null;
+      return {
+        type: "workflow_page",
+        orgId,
+        workflowId,
+        ...(typeof runId === "string" ? { runId } : {}),
+      };
+    }
+    case "test":
+      return { type: "test", orgId };
+    default:
+      return null;
+  }
 }

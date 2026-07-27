@@ -1,7 +1,11 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord, withAuthErrorHint } from "./shared.js";
-import type { PolicyCreateParams } from "cloudflare/resources/alerting/policies";
+import type {
+  MechanismParam,
+  PolicyCreateParams,
+  PolicyUpdateParams,
+} from "cloudflare/resources/alerting/policies";
 
 /**
  * Cloudflare Notification policies (`/accounts/{id}/alerting/v3/policies`) — the
@@ -67,7 +71,7 @@ export async function listNotificationPolicies(
   );
 }
 
-function emailMechanisms(emailCsv: string): Record<string, unknown> {
+function emailMechanisms(emailCsv: string): MechanismParam {
   const emails = emailCsv
     .split(",")
     .map((s) => s.trim())
@@ -76,21 +80,109 @@ function emailMechanisms(emailCsv: string): Record<string, unknown> {
   return { email: emails };
 }
 
+/**
+ * Every `alert_type` the alerting API accepts (`PolicyCreateParams.alert_type`).
+ * The create form only offers a curated subset, but a policy can be created
+ * from a manifest or the HTTP API, so the whole set is listed here rather than
+ * just the form's options — otherwise a legitimate alert type would be silently
+ * rewritten to the fallback below.
+ */
+const ALERT_TYPES = [
+  "abuse_report_alert",
+  "access_custom_certificate_expiration_type",
+  "advanced_ddos_attack_l4_alert",
+  "advanced_ddos_attack_l7_alert",
+  "advanced_http_alert_error",
+  "bgp_hijack_notification",
+  "billing_usage_alert",
+  "block_notification_block_removed",
+  "block_notification_new_block",
+  "block_notification_review_rejected",
+  "bot_traffic_basic_alert",
+  "brand_protection_alert",
+  "brand_protection_digest",
+  "clickhouse_alert_fw_anomaly",
+  "clickhouse_alert_fw_ent_anomaly",
+  "cloudforce_one_request_notification",
+  "cni_maintenance_notification",
+  "custom_analytics",
+  "custom_bot_detection_alert",
+  "custom_ssl_certificate_event_type",
+  "dedicated_ssl_certificate_event_type",
+  "device_connectivity_anomaly_alert",
+  "dos_attack_l4",
+  "dos_attack_l7",
+  "expiring_service_token_alert",
+  "failing_logpush_job_disabled_alert",
+  "fbm_auto_advertisement",
+  "fbm_dosd_attack",
+  "fbm_volumetric_attack",
+  "health_check_status_notification",
+  "hostname_aop_custom_certificate_expiration_type",
+  "http_alert_edge_error",
+  "http_alert_origin_error",
+  "image_notification",
+  "image_resizing_notification",
+  "incident_alert",
+  "load_balancing_health_alert",
+  "load_balancing_pool_enablement_alert",
+  "logo_match_alert",
+  "magic_tunnel_health_check_event",
+  "magic_wan_tunnel_health",
+  "maintenance_event_notification",
+  "mtls_certificate_store_certificate_expiration_type",
+  "pages_event_alert",
+  "radar_notification",
+  "real_origin_monitoring",
+  "scriptmonitor_alert_new_code_change_detections",
+  "scriptmonitor_alert_new_hosts",
+  "scriptmonitor_alert_new_malicious_hosts",
+  "scriptmonitor_alert_new_malicious_scripts",
+  "scriptmonitor_alert_new_malicious_url",
+  "scriptmonitor_alert_new_max_length_resource_url",
+  "scriptmonitor_alert_new_resources",
+  "secondary_dns_all_primaries_failing",
+  "secondary_dns_primaries_failing",
+  "secondary_dns_warning",
+  "secondary_dns_zone_successfully_updated",
+  "secondary_dns_zone_validation_warning",
+  "security_insights_alert",
+  "sentinel_alert",
+  "stream_live_notifications",
+  "synthetic_test_latency_alert",
+  "synthetic_test_low_availability_alert",
+  "traffic_anomalies_alert",
+  "tunnel_health_event",
+  "tunnel_update_event",
+  "universal_ssl_event_type",
+  "web_analytics_metrics_update",
+  "zone_aop_custom_certificate_expiration_type",
+] as const satisfies readonly PolicyCreateParams["alert_type"][];
+type AlertType = (typeof ALERT_TYPES)[number];
+
+/** The create form's default, also used when an unknown alert type arrives. */
+const DEFAULT_ALERT_TYPE: AlertType = "universal_ssl_event_type";
+
+function isAlertType(value: string): value is AlertType {
+  return (ALERT_TYPES as readonly string[]).includes(value);
+}
+
 export async function createNotificationPolicy(
   api: CloudflareApi,
   accountId: string,
   fields: Record<string, string>,
 ): Promise<ResourceInstance> {
   const account_id = await api.getAccountId();
-  const body: Record<string, unknown> = {
+  const alertType = fields["alertType"] ?? "";
+  const params: PolicyCreateParams = {
     account_id,
     name: fields["name"] ?? "",
-    alert_type: fields["alertType"] ?? "universal_ssl_event_type",
+    alert_type: isAlertType(alertType) ? alertType : DEFAULT_ALERT_TYPE,
     enabled: fields["enabled"] !== "false",
     mechanisms: emailMechanisms(fields["email"] ?? ""),
     ...(fields["description"] ? { description: fields["description"] } : {}),
   };
-  const p = await api.cf.alerting.policies.create(body as unknown as PolicyCreateParams);
+  const p = await api.cf.alerting.policies.create(params);
   return mapPolicy(asRecord(p), accountId);
 }
 
@@ -103,15 +195,15 @@ export async function editNotificationPolicy(
   const account_id = await api.getAccountId();
   // Update is a PATCH; only send the editable scalars (name / enabled /
   // description / recipient emails when re-specified).
-  const body: Record<string, unknown> = { account_id };
-  if (fields["name"] !== undefined) body["name"] = fields["name"];
-  if (fields["enabled"] !== undefined) body["enabled"] = fields["enabled"] === "true";
-  if (fields["description"] !== undefined) body["description"] = fields["description"];
-  if (fields["email"]) body["mechanisms"] = emailMechanisms(fields["email"]);
-  const p = await api.cf.alerting.policies.update(
-    externalId,
-    body as unknown as Parameters<typeof api.cf.alerting.policies.update>[1],
-  );
+  const email = fields["email"];
+  const params: PolicyUpdateParams = {
+    account_id,
+    ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
+    ...(fields["enabled"] !== undefined ? { enabled: fields["enabled"] === "true" } : {}),
+    ...(fields["description"] !== undefined ? { description: fields["description"] } : {}),
+    ...(email ? { mechanisms: emailMechanisms(email) } : {}),
+  };
+  const p = await api.cf.alerting.policies.update(externalId, params);
   return mapPolicy(asRecord(p), accountId);
 }
 

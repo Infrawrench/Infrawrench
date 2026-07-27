@@ -14,8 +14,56 @@ export interface BranchRef {
  * on instead of failing the whole listing.
  */
 export function isServiceUnavailable(err: unknown): boolean {
-  const status = (err as { response?: { status?: number } })?.response?.status;
+  const response = readProp(err, "response");
+  const status = readProp(response, "status");
   return status === 403 || status === 404 || status === 501;
+}
+
+/**
+ * Read one property off a value of unknown provenance, without asserting
+ * anything about the value's shape. Returns `undefined` for non-objects.
+ *
+ * The cast is a widening of an already-proven `object`, not an assertion about
+ * its contents: every object satisfies `Record<string, unknown>` at runtime.
+ */
+function readProp(value: unknown, key: string): unknown {
+  if (typeof value !== "object" || value === null) return undefined;
+  return (value as Record<string, unknown>)[key];
+}
+
+/**
+ * Pull an array property off a raw SDK payload, keeping only the elements that
+ * pass `isElement`.
+ *
+ * `@neondatabase/api-client@2.7.3` mistypes several of the beta-service
+ * responses (see `functions.ts` and `snapshots.ts`), so those callers have to
+ * look past the generated types. Validating the payload at runtime — rather
+ * than asserting the documented shape and hoping — means SDK or API drift
+ * degrades to a short listing instead of a `TypeError` inside a mapper.
+ */
+export function validatedArray<T>(
+  payload: unknown,
+  key: string,
+  isElement: (value: unknown) => value is T,
+): T[] {
+  const value = readProp(payload, key);
+  return Array.isArray(value) ? value.filter(isElement) : [];
+}
+
+/** Single-object counterpart to {@link validatedArray}. */
+export function validatedObject<T>(
+  payload: unknown,
+  key: string,
+  isValue: (value: unknown) => value is T,
+): T | undefined {
+  const value = readProp(payload, key);
+  return isValue(value) ? value : undefined;
+}
+
+/** True when every listed key is present on `value` as a string. */
+export function hasStringFields(value: unknown, keys: readonly string[]): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  return keys.every((key) => typeof readProp(value, key) === "string");
 }
 
 /** Enumerate every branch across the given projects, skipping unreadable projects. */

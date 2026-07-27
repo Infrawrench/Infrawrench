@@ -72,11 +72,14 @@ describe("logpush-client", () => {
     );
   });
 
+  // Cloudflare identifies a Logpush job by an integer (`LogpushJob.id?: number`),
+  // and the SDK types `jobs.update`/`jobs.delete` as taking a `number`, so the
+  // fixtures use a numeric id and assert the number reaches the SDK.
   it("editLogpushJob sends PATCH fields", async () => {
     const api = lpApi();
-    await editLogpushJob(api, "acct", "z1/j1", { enabled: "false", frequency: "low" });
+    await editLogpushJob(api, "acct", "z1/42", { enabled: "false", frequency: "low" });
     expect(api.cf.logpush.jobs.update).toHaveBeenCalledWith(
-      "j1",
+      42,
       expect.objectContaining({ zone_id: "z1", enabled: false, frequency: "low" }),
     );
   });
@@ -87,10 +90,20 @@ describe("logpush-client", () => {
     );
   });
 
+  it("editLogpushJob throws on a non-integer job id", async () => {
+    await expect(editLogpushJob(lpApi(), "acct", "z1/j1", {})).rejects.toThrow(
+      /not a valid Logpush job id/,
+    );
+  });
+
   it("deleteLogpushJob calls delete", async () => {
     const api = lpApi();
-    await deleteLogpushJob(api, "z1/j1");
-    expect(api.cf.logpush.jobs.delete).toHaveBeenCalledWith("j1", { zone_id: "z1" });
+    await deleteLogpushJob(api, "z1/42");
+    expect(api.cf.logpush.jobs.delete).toHaveBeenCalledWith(42, { zone_id: "z1" });
+  });
+
+  it("deleteLogpushJob throws on a non-integer job id", async () => {
+    await expect(deleteLogpushJob(lpApi(), "z1/j1")).rejects.toThrow(/not a valid Logpush job id/);
   });
 
   it("deleteLogpushJob throws on a malformed id", async () => {

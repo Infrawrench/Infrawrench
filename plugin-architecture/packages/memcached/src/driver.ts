@@ -8,18 +8,9 @@ function statsAll(
 ): Promise<{ server: string; stats: Record<string, string> }[]> {
   return new Promise((resolve, reject) => {
     const rows: { server: string; stats: Record<string, string> }[] = [];
-    // memjs exposes stats() at runtime but lacks type declarations for it
-    (
-      client as unknown as {
-        stats: (
-          cb: (
-            err: Error | null,
-            server: string | null,
-            stats: Record<string, string> | null,
-          ) => void,
-        ) => void;
-      }
-    ).stats((err: Error | null, server: string | null, stats: Record<string, string> | null) => {
+    // `stats` fires once per server, then once more with a null server to mark
+    // the end of the walk — see the signature in `memjs.d.ts`.
+    client.stats((err, server, stats) => {
       if (err) {
         reject(err);
         return;

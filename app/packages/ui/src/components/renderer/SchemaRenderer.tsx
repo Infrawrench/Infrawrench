@@ -180,7 +180,7 @@ export function StatusDotNodeRenderer({ node }: { node: StatusDotNode }) {
   );
 }
 
-function KVItemRenderer({ item, resourceId }: { item: KVItem; resourceId?: string }) {
+function KVItemRenderer({ item, resourceId }: { item: KVItem; resourceId?: string | undefined }) {
   const dispatch = useActionDispatch();
   const value =
     typeof item.value === "string" ? (
@@ -224,7 +224,7 @@ function KeyValueListNodeRenderer({
   resourceId,
 }: {
   node: KeyValueListNode;
-  resourceId?: string;
+  resourceId?: string | undefined;
 }) {
   return (
     <div className="divide-y divide-border">
@@ -242,7 +242,13 @@ const ACTION_VARIANT_CLASSES: Record<string, string> = {
   ghost: "bg-transparent hover:bg-surface-overlay text-on-surface-tertiary",
 };
 
-function ActionNodeRenderer({ node, resourceId }: { node: ActionNode; resourceId?: string }) {
+function ActionNodeRenderer({
+  node,
+  resourceId,
+}: {
+  node: ActionNode;
+  resourceId?: string | undefined;
+}) {
   const dispatch = useActionDispatch();
   const cls =
     ACTION_VARIANT_CLASSES[node.variant ?? "default"] ?? ACTION_VARIANT_CLASSES["default"];
@@ -264,7 +270,13 @@ const GRID_COL_CLASSES: Record<number, string> = {
   4: "grid-cols-4",
 };
 
-function GridNodeRenderer({ node, resourceId }: { node: GridNode; resourceId?: string }) {
+function GridNodeRenderer({
+  node,
+  resourceId,
+}: {
+  node: GridNode;
+  resourceId?: string | undefined;
+}) {
   const cls = GRID_COL_CLASSES[node.columns] ?? "grid-cols-2";
   return (
     <div className={`grid ${cls} gap-4`}>
@@ -275,7 +287,13 @@ function GridNodeRenderer({ node, resourceId }: { node: GridNode; resourceId?: s
   );
 }
 
-function SectionNodeRenderer({ node, resourceId }: { node: SectionNode; resourceId?: string }) {
+function SectionNodeRenderer({
+  node,
+  resourceId,
+}: {
+  node: SectionNode;
+  resourceId?: string | undefined;
+}) {
   return (
     <div className="space-y-3">
       {node.title && (
@@ -298,7 +316,13 @@ const TABLE_WIDTH_CLASS: Record<string, string> = {
   auto: "",
 };
 
-function TableNodeRenderer({ node, resourceId }: { node: TableNode; resourceId?: string }) {
+function TableNodeRenderer({
+  node,
+  resourceId,
+}: {
+  node: TableNode;
+  resourceId?: string | undefined;
+}) {
   return (
     <div className="overflow-x-auto rounded border border-border bg-surface-overlay/40">
       <table className="w-full text-sm border-collapse">
@@ -381,7 +405,7 @@ function LinkNodeRenderer({ node }: { node: LinkNode }) {
 
 interface SchemaRendererProps {
   node: SchemaNode;
-  resourceId?: string;
+  resourceId?: string | undefined;
 }
 
 export function SchemaRenderer({ node, resourceId }: SchemaRendererProps) {

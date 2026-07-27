@@ -1,7 +1,35 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord, collectPerZone } from "./shared.js";
-import type { RuleCreateParams } from "cloudflare/resources/email-routing/rules/rules";
+import type {
+  ActionParam,
+  MatcherParam,
+  RuleCreateParams,
+  RuleUpdateParams,
+} from "cloudflare/resources/email-routing/rules/rules";
+
+/**
+ * The only actions Cloudflare Email Routing accepts on a rule
+ * (`ActionParam["type"]`). Anything else falls back to `forward`, which is the
+ * create form's default.
+ */
+const ACTION_TYPES = ["drop", "forward", "worker"] as const;
+
+const isActionType = (value: string): value is ActionParam["type"] =>
+  (ACTION_TYPES as readonly string[]).includes(value);
+
+/**
+ * Cloudflare only supports matching an email routing rule on its recipient —
+ * `MatcherParam["field"]` is the single literal `"to"`. There is no sender-side
+ * matcher, so reject anything else with a message the user can act on rather
+ * than letting the API return an opaque 400.
+ */
+function toMatcherField(value: string | undefined): NonNullable<MatcherParam["field"]> {
+  if (value === undefined || value === "" || value === "to") return "to";
+  throw new Error(
+    `Cloudflare plugin: email routing rules can only match on the recipient ("to"), not "${value}"`,
+  );
+}
 
 function mapEmailRoutingRule(
   rule: Record<string, unknown>,
@@ -77,11 +105,12 @@ export async function createEmailRoutingRule(
   const zoneId = fields["zoneId"] || parentExternalId;
   if (!zoneId)
     throw new Error("Cloudflare plugin: zoneId is required to create an email routing rule");
-  const matcherField = fields["matcherField"] ?? "to";
+  const matcherField = toMatcherField(fields["matcherField"]);
   const matcherValue = fields["matcherValue"] ?? "";
-  const actionType = fields["actionType"] ?? "forward";
+  const rawActionType = fields["actionType"] ?? "forward";
+  const actionType = isActionType(rawActionType) ? rawActionType : "forward";
   const actionValue = fields["actionValue"] ?? "";
-  const body: Record<string, unknown> = {
+  const body: RuleCreateParams = {
     zone_id: zoneId,
     name: fields["name"] ?? "",
     enabled: true,
@@ -93,7 +122,7 @@ export async function createEmailRoutingRule(
       },
     ],
   };
-  const rule = await api.cf.emailRouting.rules.create(body as unknown as RuleCreateParams);
+  const rule = await api.cf.emailRouting.rules.create(body);
   return mapEmailRoutingRule(asRecord(rule), accountId, zoneId);
 }
 
@@ -107,22 +136,17 @@ export async function editEmailRoutingRule(
   if (!zoneId || !tag) throw new Error("Invalid email routing rule ID");
   // The update is a full replace, so preserve the current matchers/actions and
   // only override the editable name + enabled flag.
-  const current = asRecord(
-    await api.cf.emailRouting.rules.get(tag, {
-      zone_id: zoneId,
-    }),
-  );
-  const body: Record<string, unknown> = {
+  const current = await api.cf.emailRouting.rules.get(tag, {
     zone_id: zoneId,
-    name: fields["name"] ?? String(current["name"] ?? ""),
+  });
+  const body: RuleUpdateParams = {
+    zone_id: zoneId,
+    name: fields["name"] ?? current.name ?? "",
     enabled:
-      fields["enabled"] !== undefined ? fields["enabled"] === "true" : Boolean(current["enabled"]),
-    matchers: current["matchers"] ?? [],
-    actions: current["actions"] ?? [],
+      fields["enabled"] !== undefined ? fields["enabled"] === "true" : Boolean(current.enabled),
+    matchers: current.matchers ?? [],
+    actions: current.actions ?? [],
   };
-  const rule = await api.cf.emailRouting.rules.update(
-    tag,
-    body as unknown as Parameters<typeof api.cf.emailRouting.rules.update>[1],
-  );
+  const rule = await api.cf.emailRouting.rules.update(tag, body);
   return mapEmailRoutingRule(asRecord(rule), accountId, zoneId);
 }

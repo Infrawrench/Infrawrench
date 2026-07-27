@@ -1,6 +1,87 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord, collectPerZone } from "./shared.js";
+import type { JobCreateParams, JobUpdateParams } from "cloudflare/resources/logpush/jobs";
+
+/**
+ * Cloudflare identifies a Logpush job by an integer (`LogpushJob.id?: number`,
+ * cloudflare/resources/logpush/jobs.d.ts:111), and the SDK types
+ * `jobs.update`/`jobs.delete` as taking a `number`. Our externalId carries
+ * that id as a string (`<zoneId>/<jobId>`), so convert it back rather than
+ * pretending a string is a number.
+ */
+function logpushJobId(jobId: string): number {
+  const parsed = Number(jobId);
+  if (!Number.isInteger(parsed)) {
+    throw new Error(
+      `Cloudflare plugin: "${jobId}" is not a valid Logpush job id — Cloudflare job ids are integers.`,
+    );
+  }
+  return parsed;
+}
+
+/**
+ * Datasets the Logpush API accepts, mirroring `JobCreateParams["dataset"]`
+ * (cloudflare/resources/logpush/jobs.d.ts:371). The `satisfies` clause makes
+ * the compiler reject any entry the SDK stops supporting.
+ *
+ * The create form offers a handful of these; a value that isn't in the list at
+ * all is dropped from the request so Cloudflare answers with its own
+ * validation error instead of us silently substituting a different dataset.
+ */
+const LOGPUSH_DATASETS = [
+  "access_requests",
+  "audit_logs",
+  "audit_logs_v2",
+  "biso_user_actions",
+  "casb_findings",
+  "device_posture_results",
+  "dex_application_tests",
+  "dex_device_state_events",
+  "dlp_forensic_copies",
+  "dns_firewall_logs",
+  "dns_logs",
+  "email_security_alerts",
+  "email_security_post_delivery_events",
+  "firewall_events",
+  "gateway_dns",
+  "gateway_http",
+  "gateway_network",
+  "http_requests",
+  "ipsec_logs",
+  "magic_ids_detections",
+  "mcp_portal_logs",
+  "nel_reports",
+  "network_analytics_logs",
+  "page_shield_events",
+  "sinkhole_http_logs",
+  "spectrum_events",
+  "ssh_logs",
+  "warp_config_changes",
+  "warp_toggle_changes",
+  "workers_trace_events",
+  "zaraz_events",
+  "zero_trust_network_sessions",
+] as const satisfies ReadonlyArray<NonNullable<JobCreateParams["dataset"]>>;
+type LogpushDataset = (typeof LOGPUSH_DATASETS)[number];
+const logpushDataset = (value: string | undefined): LogpushDataset | null => {
+  const isLogpushDataset = (v: string): v is LogpushDataset =>
+    (LOGPUSH_DATASETS as readonly string[]).includes(v);
+  return value !== undefined && isLogpushDataset(value) ? value : null;
+};
+
+/**
+ * The deprecated `frequency` knob only accepts `high` or `low`
+ * (cloudflare/resources/logpush/jobs.d.ts:474). An unrecognized value is
+ * dropped so the PATCH leaves the job's current frequency alone.
+ */
+const LOGPUSH_FREQUENCIES = ["high", "low"] as const;
+type LogpushFrequency = (typeof LOGPUSH_FREQUENCIES)[number];
+const logpushFrequency = (value: string | undefined): LogpushFrequency | null => {
+  const isLogpushFrequency = (v: string): v is LogpushFrequency =>
+    (LOGPUSH_FREQUENCIES as readonly string[]).includes(v);
+  return value !== undefined && isLogpushFrequency(value) ? value : null;
+};
 
 function mapLogpushJob(
   job: Record<string, unknown>,
@@ -65,16 +146,15 @@ export async function createLogpushJob(
 ): Promise<ResourceInstance> {
   const zoneId = fields["zoneId"] || parentExternalId;
   if (!zoneId) throw new Error("Cloudflare plugin: zoneId is required to create a logpush job");
-  const body: Record<string, unknown> = {
+  const dataset = logpushDataset(fields["dataset"]);
+  const body: JobCreateParams = {
     zone_id: zoneId,
     destination_conf: fields["destinationConf"] ?? "",
-    dataset: fields["dataset"] ?? "",
+    ...(dataset ? { dataset } : {}),
     enabled: true,
+    ...(fields["name"] ? { name: fields["name"] } : {}),
   };
-  if (fields["name"]) body["name"] = fields["name"];
-  const job = await api.cf.logpush.jobs.create(
-    body as unknown as Parameters<typeof api.cf.logpush.jobs.create>[0],
-  );
+  const job = await api.cf.logpush.jobs.create(body);
   if (!job) throw new Error("Cloudflare plugin: failed to create logpush job (null response)");
   return mapLogpushJob(asRecord(job), accountId, zoneId);
 }
@@ -88,15 +168,17 @@ export async function editLogpushJob(
   const [zoneId, jobId] = externalId.split("/");
   if (!zoneId || !jobId) throw new Error("Invalid logpush job ID");
   // Logpush update is a PATCH — only send the editable settings.
-  const body: Record<string, unknown> = { zone_id: zoneId };
-  if (fields["enabled"] !== undefined) body["enabled"] = fields["enabled"] === "true";
-  if (fields["frequency"]) body["frequency"] = fields["frequency"];
-  if (fields["logpullOptions"] !== undefined) body["logpull_options"] = fields["logpullOptions"];
-  if (fields["destinationConf"]) body["destination_conf"] = fields["destinationConf"];
-  const job = await api.cf.logpush.jobs.update(
-    jobId as unknown as number,
-    body as unknown as Parameters<typeof api.cf.logpush.jobs.update>[1],
-  );
+  const frequency = logpushFrequency(fields["frequency"]);
+  const body: JobUpdateParams = {
+    zone_id: zoneId,
+    ...(fields["enabled"] !== undefined ? { enabled: fields["enabled"] === "true" } : {}),
+    ...(frequency ? { frequency } : {}),
+    ...(fields["logpullOptions"] !== undefined
+      ? { logpull_options: fields["logpullOptions"] }
+      : {}),
+    ...(fields["destinationConf"] ? { destination_conf: fields["destinationConf"] } : {}),
+  };
+  const job = await api.cf.logpush.jobs.update(logpushJobId(jobId), body);
   if (!job) throw new Error("Cloudflare plugin: failed to update logpush job (null response)");
   return mapLogpushJob(asRecord(job), accountId, zoneId);
 }
@@ -104,7 +186,5 @@ export async function editLogpushJob(
 export async function deleteLogpushJob(api: CloudflareApi, externalId: string): Promise<void> {
   const [zoneId, jobId] = externalId.split("/");
   if (!zoneId || !jobId) throw new Error("Invalid logpush job ID");
-  // The SDK types JobDelete as taking `jobId: number` but the v4 API accepts
-  // both. Cast through unknown to preserve the existing string-id contract.
-  await api.cf.logpush.jobs.delete(jobId as unknown as number, { zone_id: zoneId });
+  await api.cf.logpush.jobs.delete(logpushJobId(jobId), { zone_id: zoneId });
 }

@@ -93,18 +93,20 @@ export function MetricChart({ node }: MetricChartProps) {
               labelFormatter={(ts) => new Date(Number(ts)).toLocaleTimeString()}
               formatter={(value) => [`${value}${unit}`, undefined]}
             />
-            {node.series.map((series, i) => (
-              <Area
-                key={series.label}
-                type="monotone"
-                dataKey={series.label}
-                stroke={COLORS[i % COLORS.length]}
-                fill={COLORS[i % COLORS.length]}
-                fillOpacity={0.1}
-                strokeWidth={1.5}
-                dot={false}
-              />
-            ))}
+            {node.series.map((series, i) => {
+              const color = COLORS[i % COLORS.length];
+              return (
+                <Area
+                  key={series.label}
+                  type="monotone"
+                  dataKey={series.label}
+                  {...(color !== undefined ? { stroke: color, fill: color } : {})}
+                  fillOpacity={0.1}
+                  strokeWidth={1.5}
+                  dot={false}
+                />
+              );
+            })}
           </AreaChart>
         </ResponsiveContainer>
       </div>

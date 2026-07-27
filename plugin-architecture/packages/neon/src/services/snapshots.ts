@@ -1,19 +1,26 @@
 import { formatBytes, type ResourceInstance } from "@infrawrench/plugin-base";
 import type { Api, ProjectListItem, Snapshot } from "@neondatabase/api-client";
-import { isServiceUnavailable, resourceId, type BranchRef } from "./common.js";
+import {
+  hasStringFields,
+  isServiceUnavailable,
+  resourceId,
+  validatedArray,
+  validatedObject,
+  type BranchRef,
+} from "./common.js";
 
 /**
  * `@neondatabase/api-client@2.7.3` mistypes both snapshot reads as
  * `OperationsResponse`. The published OpenAPI spec documents the real payloads
- * as `{ snapshots }` and `{ snapshot, operations }`, so we re-assert the
- * documented shapes rather than trust the generated types. Revisit when the SDK
- * codegen is fixed.
+ * as `{ snapshots }` and `{ snapshot, operations }`, so we have to look past the
+ * generated types — but we validate at runtime rather than assert, so a drifting
+ * SDK or API surfaces as a missing snapshot instead of a `TypeError` inside
+ * `buildSnapshotResource`. Revisit when the SDK codegen is fixed.
  */
-interface SnapshotListPayload {
-  snapshots: Snapshot[];
-}
-interface SnapshotCreatePayload {
-  snapshot: Snapshot;
+const SNAPSHOT_REQUIRED_FIELDS = ["id", "name", "created_at"] as const;
+
+function isSnapshot(value: unknown): value is Snapshot {
+  return hasStringFields(value, SNAPSHOT_REQUIRED_FIELDS);
 }
 
 export function buildSnapshotResource(
@@ -65,8 +72,7 @@ export async function listAllSnapshots(
   for (const p of projects) {
     try {
       const resp = await api.listSnapshots(p.id);
-      const payload = resp.data as unknown as SnapshotListPayload;
-      for (const snap of payload.snapshots ?? []) {
+      for (const snap of validatedArray(resp.data, "snapshots", isSnapshot)) {
         results.push(buildSnapshotResource(accountId, p.id, snap));
       }
     } catch (err) {
@@ -87,8 +93,13 @@ export async function createSnapshot(
     branchId: ref.branchId,
     ...(name ? { name } : {}),
   });
-  const payload = resp.data as unknown as SnapshotCreatePayload;
-  return buildSnapshotResource(accountId, ref.projectId, payload.snapshot);
+  const snapshot = validatedObject(resp.data, "snapshot", isSnapshot);
+  if (!snapshot) {
+    throw new Error(
+      "Neon plugin: createSnapshot did not return a snapshot — the API response shape has changed.",
+    );
+  }
+  return buildSnapshotResource(accountId, ref.projectId, snapshot);
 }
 
 /**

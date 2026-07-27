@@ -1,13 +1,31 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord, withAuthErrorHint } from "./shared.js";
-import type { IndexCreateParams } from "cloudflare/resources/vectorize/indexes/indexes";
+import type {
+  IndexCreateParams,
+  IndexDimensionConfigurationParam,
+} from "cloudflare/resources/vectorize/indexes/indexes";
 
 /**
  * Cloudflare Vectorize indexes (`/accounts/{id}/vectorize/v2/indexes`) — the
  * vector databases backing Workers AI / RAG. The index `name` doubles as the
  * external id (it's what Worker bindings and the query API reference).
  */
+
+/** Distance metrics the API accepts (`IndexDimensionConfigurationParam.metric`). */
+const VECTORIZE_METRICS = [
+  "cosine",
+  "euclidean",
+  "dot-product",
+] as const satisfies readonly IndexDimensionConfigurationParam["metric"][];
+type VectorizeMetric = (typeof VECTORIZE_METRICS)[number];
+
+/** The create form's default, used when no (or an unrecognised) metric is given. */
+const DEFAULT_VECTORIZE_METRIC: VectorizeMetric = "cosine";
+
+function isVectorizeMetric(value: string): value is VectorizeMetric {
+  return (VECTORIZE_METRICS as readonly string[]).includes(value);
+}
 function mapIndex(idx: Record<string, unknown>, accountId: string): ResourceInstance {
   const name = String(idx["name"] ?? "");
   const config = (idx["config"] as Record<string, unknown>) ?? {};
@@ -56,12 +74,16 @@ export async function createVectorizeIndex(
 ): Promise<ResourceInstance> {
   const account_id = await api.getAccountId();
   const dimensions = Number(fields["dimensions"] ?? 768);
-  const params = {
+  const metric = fields["metric"] ?? "";
+  const params: IndexCreateParams = {
     account_id,
     name: fields["name"] ?? "",
-    config: { dimensions, metric: fields["metric"] || "cosine" },
+    config: {
+      dimensions,
+      metric: isVectorizeMetric(metric) ? metric : DEFAULT_VECTORIZE_METRIC,
+    },
     ...(fields["description"] ? { description: fields["description"] } : {}),
-  } as unknown as IndexCreateParams;
+  };
   const idx = await api.cf.vectorize.indexes.create(params);
   return mapIndex(asRecord(idx ?? { name: fields["name"] }), accountId);
 }

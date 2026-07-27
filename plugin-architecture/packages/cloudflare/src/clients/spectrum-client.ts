@@ -1,7 +1,33 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord, collectPerZone } from "./shared.js";
-import type { AppCreateParams } from "cloudflare/resources/spectrum/apps";
+import type { AppCreateParams, AppUpdateParams } from "cloudflare/resources/spectrum/apps";
+
+/**
+ * Values Spectrum accepts for `proxy_protocol` / `tls`
+ * (cloudflare/resources/spectrum/apps.d.ts:441 and :445). Both are
+ * string-literal unions in the SDK, but the resource's fields are free-text,
+ * so narrow before sending.
+ */
+const PROXY_PROTOCOLS = ["off", "v1", "v2", "simple"] as const;
+type ProxyProtocol = (typeof PROXY_PROTOCOLS)[number];
+const proxyProtocol = (value: string | undefined): ProxyProtocol => {
+  const isProxyProtocol = (v: string): v is ProxyProtocol =>
+    (PROXY_PROTOCOLS as readonly string[]).includes(v);
+  // `off` is Cloudflare's own default and what the lister reports for apps
+  // that never set one, so it is the right fallback for an unknown value.
+  return value !== undefined && isProxyProtocol(value) ? value : "off";
+};
+
+const TLS_MODES = ["off", "flexible", "full", "strict"] as const;
+type TLSMode = (typeof TLS_MODES)[number];
+const tlsMode = (value: string | undefined): TLSMode | null => {
+  const isTLSMode = (v: string): v is TLSMode => (TLS_MODES as readonly string[]).includes(v);
+  // Unlike proxy_protocol there is no safe default here — guessing could turn
+  // a `strict` app into a `flexible` one. An unrecognized value is dropped so
+  // Spectrum keeps whatever the application already has.
+  return value !== undefined && isTLSMode(value) ? value : null;
+};
 
 function mapSpectrumApplication(
   app: Record<string, unknown>,
@@ -76,14 +102,19 @@ export async function createSpectrumApplication(
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  const body: Record<string, unknown> = {
+  // `ip_firewall` only exists on the full `SpectrumConfigAppConfig` member of
+  // the create union (apps.d.ts:476), and that member requires `traffic_type`.
+  // `direct` is the Cloudflare default and the only mode valid for the
+  // non-HTTP protocols the picker offers, so state it explicitly.
+  const body: AppCreateParams.SpectrumConfigAppConfig = {
     zone_id: zoneId,
     protocol,
+    traffic_type: "direct",
     dns: { type: "CNAME", name: dns },
     origin_direct: originDirect,
     ip_firewall: fields["ipFirewall"] === "true",
   };
-  const app = await api.cf.spectrum.apps.create(body as unknown as AppCreateParams);
+  const app = await api.cf.spectrum.apps.create(body);
   return mapSpectrumApplication(asRecord(app), accountId, zoneId);
 }
 
@@ -101,19 +132,21 @@ export async function editSpectrumApplication(
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  const body: Record<string, unknown> = {
+  const tls = tlsMode(fields["tls"]);
+  const body: AppUpdateParams.SpectrumConfigAppConfig = {
     zone_id: zoneId,
     protocol: fields["protocol"] || "tcp/22",
+    // The resource type has no traffic_type field, so there is nothing to
+    // merge and a full-replace PUT falls back to Cloudflare's default anyway.
+    // Stating it makes the (pre-existing) reset to "direct" explicit.
+    traffic_type: "direct",
     dns: { type: "CNAME", name: fields["dns"] ?? "" },
     origin_direct: originDirect,
     ip_firewall: fields["ipFirewall"] === "true",
-    proxy_protocol: fields["proxyProtocol"] || "off",
-    ...(fields["tls"] ? { tls: fields["tls"] } : {}),
+    proxy_protocol: proxyProtocol(fields["proxyProtocol"]),
+    ...(tls ? { tls } : {}),
   };
-  const app = await api.cf.spectrum.apps.update(
-    appId,
-    body as unknown as Parameters<typeof api.cf.spectrum.apps.update>[1],
-  );
+  const app = await api.cf.spectrum.apps.update(appId, body);
   return mapSpectrumApplication(asRecord(app), accountId, zoneId);
 }
 

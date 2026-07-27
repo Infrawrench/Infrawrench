@@ -1,7 +1,41 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord, withAuthErrorHint } from "./shared.js";
-import type { ApplicationCreateParams } from "cloudflare/resources/zero-trust/access/applications/applications";
+import type {
+  ApplicationCreateParams,
+  ApplicationTypeParam,
+  ApplicationUpdateParams,
+} from "cloudflare/resources/zero-trust/access/applications/applications";
+
+/**
+ * Application types Access understands (`ApplicationTypeParam`). The create
+ * form only offers a subset, but a stored resource can carry any of them, so
+ * validate against the full set and fall back to `self_hosted` — the form
+ * default and the only type that works with a bare domain.
+ */
+const APPLICATION_TYPES = [
+  "self_hosted",
+  "saas",
+  "ssh",
+  "vnc",
+  "app_launcher",
+  "warp",
+  "biso",
+  "bookmark",
+  "dash_sso",
+  "infrastructure",
+  "rdp",
+  "mcp",
+  "mcp_portal",
+  "proxy_endpoint",
+] as const;
+
+const isApplicationType = (value: string): value is ApplicationTypeParam =>
+  (APPLICATION_TYPES as readonly string[]).includes(value);
+
+function toApplicationType(value: string | undefined): ApplicationTypeParam {
+  return value !== undefined && isApplicationType(value) ? value : "self_hosted";
+}
 
 function mapAccessApplication(app: Record<string, unknown>, accountId: string): ResourceInstance {
   const id = String(app["id"] ?? "");
@@ -55,17 +89,16 @@ export async function createAccessApplication(
   fields: Record<string, string>,
 ): Promise<ResourceInstance> {
   const account_id = await api.getAccountId();
-  // ApplicationCreateParams is a large discriminated union (per app type). Build
-  // a generic payload and cast through unknown to satisfy the SDK signature.
-  const body: Record<string, unknown> = {
+  // `ApplicationCreateParams` is a union of one variant per app type. Every
+  // variant we expose is keyed on `domain` + `type`, which is exactly the
+  // `SelfHostedApplication` shape, so name that variant instead of casting.
+  const body: ApplicationCreateParams.SelfHostedApplication = {
     account_id,
     name: fields["name"] ?? "",
     domain: fields["domain"] ?? "",
-    type: fields["type"] ?? "self_hosted",
+    type: toApplicationType(fields["type"]),
   };
-  const app = await api.cf.zeroTrust.access.applications.create(
-    body as unknown as ApplicationCreateParams,
-  );
+  const app = await api.cf.zeroTrust.access.applications.create(body);
   return mapAccessApplication(asRecord(app), accountId);
 }
 
@@ -78,17 +111,14 @@ export async function editAccessApplication(
   const account_id = await api.getAccountId();
   // The Access app update is a full replace; the dispatcher hands us a merged
   // field set so domain/type are preserved when only name/session change.
-  const body: Record<string, unknown> = {
+  const body: ApplicationUpdateParams.SelfHostedApplication = {
     account_id,
     name: fields["name"] ?? "",
     domain: fields["domain"] ?? "",
-    type: fields["type"] || "self_hosted",
+    type: toApplicationType(fields["type"]),
     ...(fields["sessionDuration"] ? { session_duration: fields["sessionDuration"] } : {}),
   };
-  const app = await api.cf.zeroTrust.access.applications.update(
-    externalId,
-    body as unknown as Parameters<typeof api.cf.zeroTrust.access.applications.update>[1],
-  );
+  const app = await api.cf.zeroTrust.access.applications.update(externalId, body);
   return mapAccessApplication(asRecord(app), accountId);
 }
 

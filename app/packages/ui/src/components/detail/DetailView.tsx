@@ -713,9 +713,11 @@ export function DetailView({
                   kind: "metric-chart",
                   title: series.label,
                   series: [series],
-                  timeRangeLabel: schema.metricsCapability?.defaultTimeRangeMs
-                    ? `Last ${Math.round(schema.metricsCapability.defaultTimeRangeMs / 60000)} min`
-                    : undefined,
+                  ...(schema.metricsCapability?.defaultTimeRangeMs
+                    ? {
+                        timeRangeLabel: `Last ${Math.round(schema.metricsCapability.defaultTimeRangeMs / 60000)} min`,
+                      }
+                    : {}),
                 }}
               />
             ))
@@ -1039,7 +1041,7 @@ function ChildResourcePill({
 }: {
   child: ChildResource;
   onClick: () => void;
-  nonInteractive?: boolean;
+  nonInteractive?: boolean | undefined;
 }) {
   const statusDot = child.status && (
     <span

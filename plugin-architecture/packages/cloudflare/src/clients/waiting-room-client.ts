@@ -1,7 +1,27 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord, collectPerZone } from "./shared.js";
-import type { WaitingRoomCreateParams } from "cloudflare/resources/waiting-rooms/waiting-rooms";
+import type {
+  WaitingRoomCreateParams,
+  WaitingRoomEditParams,
+} from "cloudflare/resources/waiting-rooms/waiting-rooms";
+
+/**
+ * Queueing methods the API accepts (`WaitingRoomEditParams.queueing_method`).
+ * The resource field is free text, so an unrecognised value is dropped from the
+ * write instead of being forwarded — Cloudflare keeps the room's current method.
+ */
+const QUEUEING_METHODS = [
+  "fifo",
+  "random",
+  "passthrough",
+  "reject",
+] as const satisfies readonly NonNullable<WaitingRoomEditParams["queueing_method"]>[];
+type QueueingMethod = (typeof QUEUEING_METHODS)[number];
+
+function isQueueingMethod(value: string): value is QueueingMethod {
+  return (QUEUEING_METHODS as readonly string[]).includes(value);
+}
 
 function mapWaitingRoom(
   room: Record<string, unknown>,
@@ -67,7 +87,7 @@ export async function createWaitingRoom(
     host: fields["host"] ?? "",
     total_active_users: Number(fields["totalActiveUsers"] ?? 200),
     new_users_per_minute: Number(fields["newUsersPerMinute"] ?? 200),
-  } as WaitingRoomCreateParams;
+  };
   const room = await api.cf.waitingRooms.create(params);
   return mapWaitingRoom(asRecord(room), accountId, zoneId);
 }
@@ -82,17 +102,20 @@ export async function editWaitingRoom(
   if (!zoneId || !roomId) throw new Error("Invalid waiting room ID");
   // Cloudflare requires the core fields on every waiting-room write, so the
   // dispatcher passes a merged (current + changed) field set.
-  const params = {
+  const path = fields["path"];
+  const queueingMethod = fields["queueingMethod"] ?? "";
+  const sessionDuration = fields["sessionDuration"];
+  const params: WaitingRoomEditParams = {
     zone_id: zoneId,
     name: fields["name"] ?? "",
     host: fields["host"] ?? "",
     total_active_users: Number(fields["totalActiveUsers"] ?? 200),
     new_users_per_minute: Number(fields["newUsersPerMinute"] ?? 200),
-    ...(fields["path"] ? { path: fields["path"] } : {}),
-    ...(fields["queueingMethod"] ? { queueing_method: fields["queueingMethod"] } : {}),
-    ...(fields["sessionDuration"] ? { session_duration: Number(fields["sessionDuration"]) } : {}),
+    ...(path ? { path } : {}),
+    ...(isQueueingMethod(queueingMethod) ? { queueing_method: queueingMethod } : {}),
+    ...(sessionDuration ? { session_duration: Number(sessionDuration) } : {}),
     ...(fields["suspended"] !== undefined ? { suspended: fields["suspended"] === "true" } : {}),
-  } as unknown as Parameters<typeof api.cf.waitingRooms.edit>[1];
+  };
   const room = await api.cf.waitingRooms.edit(roomId, params);
   return mapWaitingRoom(asRecord(room), accountId, zoneId);
 }

@@ -11,7 +11,7 @@ interface Props {
   /** Fetch the manifest text from the plugin */
   onGetManifest: () => Promise<string>;
   /** Apply the updated manifest text via the plugin */
-  onApplyManifest?: (manifest: string) => Promise<void>;
+  onApplyManifest?: ((manifest: string) => Promise<void>) | undefined;
 }
 
 export function ManifestEditorView({ capability, onGetManifest, onApplyManifest }: Props) {

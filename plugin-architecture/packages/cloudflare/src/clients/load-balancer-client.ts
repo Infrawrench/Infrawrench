@@ -1,7 +1,32 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord, collectPerZone } from "./shared.js";
-import type { LoadBalancerCreateParams } from "cloudflare/resources/load-balancers/load-balancers";
+import type {
+  LoadBalancerCreateParams,
+  LoadBalancerEditParams,
+  SteeringPolicyParam,
+} from "cloudflare/resources/load-balancers/load-balancers";
+
+/**
+ * Steering policies the API accepts (`SteeringPolicyParam`), minus the empty
+ * string. `""` is a legal API value meaning "infer from the configured pools",
+ * but the edit form uses a blank box to mean "leave unchanged", so a blank —
+ * or an unrecognised — policy is dropped from the PATCH rather than sent.
+ */
+const STEERING_POLICIES = [
+  "off",
+  "geo",
+  "random",
+  "dynamic_latency",
+  "proximity",
+  "least_outstanding_requests",
+  "least_connections",
+] as const satisfies readonly SteeringPolicyParam[];
+type SteeringPolicy = (typeof STEERING_POLICIES)[number];
+
+function isSteeringPolicy(value: string): value is SteeringPolicy {
+  return (STEERING_POLICIES as readonly string[]).includes(value);
+}
 
 function mapLoadBalancer(
   lb: Record<string, unknown>,
@@ -74,7 +99,7 @@ export async function createLoadBalancer(
     name: fields["name"] ?? "",
     fallback_pool: fields["fallbackPool"] ?? "",
     default_pools: defaultPoolIds,
-  } as LoadBalancerCreateParams;
+  };
   const lb = await api.cf.loadBalancers.create(params);
   return mapLoadBalancer(asRecord(lb), accountId, zoneId);
 }
@@ -87,23 +112,27 @@ export async function editLoadBalancer(
 ): Promise<ResourceInstance> {
   const [zoneId, lbId] = externalId.split("/");
   if (!zoneId || !lbId) throw new Error("Invalid load balancer ID");
-  const body: Record<string, unknown> = { zone_id: zoneId };
-  if (fields["name"] !== undefined) body["name"] = fields["name"];
-  if (fields["fallbackPool"] !== undefined) body["fallback_pool"] = fields["fallbackPool"];
-  if (fields["defaultPools"] !== undefined) {
-    body["default_pools"] = fields["defaultPools"]
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-  if (fields["enabled"] !== undefined) body["enabled"] = fields["enabled"] === "true";
-  if (fields["proxied"] !== undefined) body["proxied"] = fields["proxied"] === "true";
-  if (fields["ttl"] !== undefined && fields["ttl"] !== "") body["ttl"] = Number(fields["ttl"]);
-  if (fields["steeringPolicy"]) body["steering_policy"] = fields["steeringPolicy"];
-  const lb = await api.cf.loadBalancers.edit(
-    lbId,
-    body as unknown as Parameters<typeof api.cf.loadBalancers.edit>[1],
-  );
+  const defaultPools = fields["defaultPools"];
+  const ttl = fields["ttl"];
+  const steeringPolicy = fields["steeringPolicy"] ?? "";
+  const params: LoadBalancerEditParams = {
+    zone_id: zoneId,
+    ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
+    ...(fields["fallbackPool"] !== undefined ? { fallback_pool: fields["fallbackPool"] } : {}),
+    ...(defaultPools !== undefined
+      ? {
+          default_pools: defaultPools
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+        }
+      : {}),
+    ...(fields["enabled"] !== undefined ? { enabled: fields["enabled"] === "true" } : {}),
+    ...(fields["proxied"] !== undefined ? { proxied: fields["proxied"] === "true" } : {}),
+    ...(ttl !== undefined && ttl !== "" ? { ttl: Number(ttl) } : {}),
+    ...(isSteeringPolicy(steeringPolicy) ? { steering_policy: steeringPolicy } : {}),
+  };
+  const lb = await api.cf.loadBalancers.edit(lbId, params);
   return mapLoadBalancer(asRecord(lb), accountId, zoneId);
 }
 

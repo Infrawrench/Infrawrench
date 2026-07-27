@@ -1,7 +1,10 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord, collectPerZone } from "./shared.js";
-import type { HealthcheckCreateParams } from "cloudflare/resources/healthchecks/healthchecks";
+import type {
+  HealthcheckCreateParams,
+  HealthcheckEditParams,
+} from "cloudflare/resources/healthchecks/healthchecks";
 
 /**
  * Cloudflare standalone Health Checks (`/zones/{id}/healthchecks`) — active
@@ -71,23 +74,27 @@ export async function createHealthcheck(
   const zoneId = fields["zoneId"] || parentExternalId;
   if (!zoneId) throw new Error("Cloudflare plugin: zoneId is required to create a health check");
   const type = (fields["type"] || "HTTPS").toUpperCase();
-  const body: Record<string, unknown> = {
+  const body: HealthcheckCreateParams = {
     zone_id: zoneId,
     name: fields["name"] ?? "",
     address: fields["address"] ?? "",
     type,
     ...(fields["description"] ? { description: fields["description"] } : {}),
+    // `http_config` is only meaningful for the HTTP/HTTPS protocols; a TCP
+    // check carries a `tcp_config` instead (which we don't expose yet).
+    ...(type === "HTTP" || type === "HTTPS"
+      ? {
+          http_config: {
+            method: "GET",
+            path: fields["path"] || "/",
+            ...(fields["expectedCodes"]
+              ? { expected_codes: fields["expectedCodes"].split(",").map((s) => s.trim()) }
+              : {}),
+          },
+        }
+      : {}),
   };
-  if (type === "HTTP" || type === "HTTPS") {
-    body["http_config"] = {
-      method: "GET",
-      path: fields["path"] || "/",
-      ...(fields["expectedCodes"]
-        ? { expected_codes: fields["expectedCodes"].split(",").map((s) => s.trim()) }
-        : {}),
-    };
-  }
-  const hc = await api.cf.healthchecks.create(body as unknown as HealthcheckCreateParams);
+  const hc = await api.cf.healthchecks.create(body);
   return mapHealthcheck(asRecord(hc), accountId, zoneId);
 }
 
@@ -99,22 +106,28 @@ export async function editHealthcheck(
 ): Promise<ResourceInstance> {
   const [zoneId, checkId] = externalId.split("/");
   if (!zoneId || !checkId) throw new Error("Invalid health check ID");
-  // `edit` is a PATCH — send only the editable settings.
-  const body: Record<string, unknown> = { zone_id: zoneId };
-  if (fields["name"] !== undefined) body["name"] = fields["name"];
-  if (fields["address"] !== undefined) body["address"] = fields["address"];
-  if (fields["description"] !== undefined) body["description"] = fields["description"];
-  if (fields["suspended"] !== undefined) body["suspended"] = fields["suspended"] === "true";
-  if (fields["interval"] && Number.isFinite(Number(fields["interval"])))
-    body["interval"] = Number(fields["interval"]);
-  if (fields["timeout"] && Number.isFinite(Number(fields["timeout"])))
-    body["timeout"] = Number(fields["timeout"]);
-  if (fields["retries"] && Number.isFinite(Number(fields["retries"])))
-    body["retries"] = Number(fields["retries"]);
-  const hc = await api.cf.healthchecks.edit(
-    checkId,
-    body as unknown as Parameters<typeof api.cf.healthchecks.edit>[1],
-  );
+  // `edit` is a PATCH, but Cloudflare still marks `name` and `address` as
+  // required on the body (they are non-optional on `HealthcheckEditParams`), so
+  // they always go out. The dispatcher merges the current field values in
+  // before calling us, so a caller that only changed `interval` still supplies
+  // them. Everything else is sent only when the caller supplied it.
+  const body: HealthcheckEditParams = {
+    zone_id: zoneId,
+    name: fields["name"] ?? "",
+    address: fields["address"] ?? "",
+    ...(fields["description"] !== undefined ? { description: fields["description"] } : {}),
+    ...(fields["suspended"] !== undefined ? { suspended: fields["suspended"] === "true" } : {}),
+    ...(fields["interval"] && Number.isFinite(Number(fields["interval"]))
+      ? { interval: Number(fields["interval"]) }
+      : {}),
+    ...(fields["timeout"] && Number.isFinite(Number(fields["timeout"]))
+      ? { timeout: Number(fields["timeout"]) }
+      : {}),
+    ...(fields["retries"] && Number.isFinite(Number(fields["retries"]))
+      ? { retries: Number(fields["retries"]) }
+      : {}),
+  };
+  const hc = await api.cf.healthchecks.edit(checkId, body);
   return mapHealthcheck(asRecord(hc), accountId, zoneId);
 }
 

@@ -1,7 +1,32 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord, withAuthErrorHint } from "./shared.js";
-import type { ConfigCreateParams } from "cloudflare/resources/hyperdrive/configs";
+import type { ConfigCreateParams, ConfigEditParams } from "cloudflare/resources/hyperdrive/configs";
+
+/** URL schemes Hyperdrive accepts for an origin (`ConfigCreateParams.PublicDatabase.scheme`). */
+const ORIGIN_SCHEMES = [
+  "postgres",
+  "postgresql",
+  "mysql",
+] as const satisfies readonly ConfigCreateParams.PublicDatabase["scheme"][];
+type OriginScheme = (typeof ORIGIN_SCHEMES)[number];
+
+/** The create form's default, used when no (or an unrecognised) scheme is given. */
+const DEFAULT_ORIGIN_SCHEME: OriginScheme = "postgres";
+
+function isOriginScheme(value: string): value is OriginScheme {
+  return (ORIGIN_SCHEMES as readonly string[]).includes(value);
+}
+
+/**
+ * The shape the Hyperdrive PATCH endpoint actually wants for a public-database
+ * origin. The SDK splits `ConfigEditParams["origin"]` into four partial
+ * variants — connection details (`HyperdriveHyperdriveDatabase`) and network
+ * address (`HyperdriveInternetOrigin`) live in different members — so the
+ * complete origin we send is their intersection.
+ */
+type HyperdriveOriginPatch = ConfigEditParams.HyperdriveHyperdriveDatabase &
+  ConfigEditParams.HyperdriveInternetOrigin;
 
 function mapHyperdrive(c: Record<string, unknown>, accountId: string): ResourceInstance {
   const id = String(c["id"] ?? "");
@@ -55,8 +80,9 @@ export async function createHyperdrive(
   fields: Record<string, string>,
 ): Promise<ResourceInstance> {
   const account_id = await api.getAccountId();
-  const origin = {
-    scheme: fields["scheme"] ?? "postgres",
+  const scheme = fields["scheme"] ?? "";
+  const origin: ConfigCreateParams.PublicDatabase = {
+    scheme: isOriginScheme(scheme) ? scheme : DEFAULT_ORIGIN_SCHEME,
     host: fields["host"] ?? "",
     port: Number(fields["port"] ?? 5432),
     database: fields["database"] ?? "",
@@ -66,7 +92,7 @@ export async function createHyperdrive(
   const params: ConfigCreateParams = {
     account_id,
     name: fields["name"] ?? "",
-    origin: origin as unknown as ConfigCreateParams["origin"],
+    origin,
   };
   const hd = await api.cf.hyperdrive.configs.create(params);
   return mapHyperdrive(asRecord(hd), accountId);
@@ -92,11 +118,6 @@ export async function editHyperdrive(
   changedKeys: Iterable<string> = Object.keys(fields),
 ): Promise<ResourceInstance> {
   const account_id = await api.getAccountId();
-  const body: Record<string, unknown> = { account_id };
-  if (fields["name"] !== undefined) body["name"] = fields["name"];
-  if (fields["cachingDisabled"] !== undefined) {
-    body["caching"] = { disabled: fields["cachingDisabled"] === "true" };
-  }
 
   // Only send an `origin` patch when a connection field actually changed: the
   // edit is a PATCH that merges per-field, so touching `origin` on a name-only
@@ -105,22 +126,28 @@ export async function editHyperdrive(
   // we include it only when the user entered a new one — omitting it keeps the
   // existing secret.
   const changed = new Set(changedKeys);
-  if (ORIGIN_FIELD_KEYS.some((k) => changed.has(k))) {
-    const origin: Record<string, unknown> = {
-      scheme: fields["originScheme"] || "postgres",
-      host: fields["originHost"] ?? "",
-      port: Number(fields["originPort"] ?? 5432),
-      database: fields["database"] ?? "",
-      user: fields["user"] ?? "",
-    };
-    if (fields["password"]) origin["password"] = fields["password"];
-    body["origin"] = origin;
-  }
+  const originScheme = fields["originScheme"] ?? "";
+  const origin: HyperdriveOriginPatch | undefined = ORIGIN_FIELD_KEYS.some((k) => changed.has(k))
+    ? {
+        scheme: isOriginScheme(originScheme) ? originScheme : DEFAULT_ORIGIN_SCHEME,
+        host: fields["originHost"] ?? "",
+        port: Number(fields["originPort"] ?? 5432),
+        database: fields["database"] ?? "",
+        user: fields["user"] ?? "",
+        ...(fields["password"] ? { password: fields["password"] } : {}),
+      }
+    : undefined;
 
-  const hd = await api.cf.hyperdrive.configs.edit(
-    externalId,
-    body as unknown as Parameters<typeof api.cf.hyperdrive.configs.edit>[1],
-  );
+  const params: ConfigEditParams = {
+    account_id,
+    ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
+    ...(fields["cachingDisabled"] !== undefined
+      ? { caching: { disabled: fields["cachingDisabled"] === "true" } }
+      : {}),
+    ...(origin ? { origin } : {}),
+  };
+
+  const hd = await api.cf.hyperdrive.configs.edit(externalId, params);
   return mapHyperdrive(asRecord(hd), accountId);
 }
 

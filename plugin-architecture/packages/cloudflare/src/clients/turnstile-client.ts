@@ -1,13 +1,43 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord, withAuthErrorHint } from "./shared.js";
-import type { WidgetCreateParams } from "cloudflare/resources/turnstile/widgets";
+import type {
+  WidgetCreateParams,
+  WidgetUpdateParams,
+} from "cloudflare/resources/turnstile/widgets";
 
 /**
  * Cloudflare Turnstile widgets (`/accounts/{id}/challenges/widgets`) — the
  * CAPTCHA-alternative sitekey/secret pairs. The widget `sitekey` doubles as the
  * external id (it's what the embed snippet and siteverify calls reference).
  */
+
+/** Widget modes the API accepts (`WidgetCreateParams.mode`). */
+const WIDGET_MODES = [
+  "non-interactive",
+  "invisible",
+  "managed",
+] as const satisfies readonly WidgetCreateParams["mode"][];
+type WidgetMode = (typeof WIDGET_MODES)[number];
+
+/** Cloudflare's own recommended default, and the create form's default value. */
+const DEFAULT_WIDGET_MODE: WidgetMode = "managed";
+
+function isWidgetMode(value: string): value is WidgetMode {
+  return (WIDGET_MODES as readonly string[]).includes(value);
+}
+
+/** Widget regions the API accepts (`WidgetCreateParams.region`). */
+const WIDGET_REGIONS = ["world", "china"] as const satisfies readonly NonNullable<
+  WidgetCreateParams["region"]
+>[];
+type WidgetRegion = (typeof WIDGET_REGIONS)[number];
+
+/** An unrecognised region is dropped: the API defaults to `world`. */
+function isWidgetRegion(value: string): value is WidgetRegion {
+  return (WIDGET_REGIONS as readonly string[]).includes(value);
+}
+
 function mapWidget(w: Record<string, unknown>, accountId: string): ResourceInstance {
   const sitekey = String(w["sitekey"] ?? "");
   const name = String(w["name"] ?? "");
@@ -63,13 +93,15 @@ export async function createTurnstileWidget(
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  const params = {
+  const mode = fields["mode"] ?? "";
+  const region = fields["region"] ?? "";
+  const params: WidgetCreateParams = {
     account_id,
     name: fields["name"] ?? "",
-    mode: (fields["mode"] || "managed") as "non-interactive" | "invisible" | "managed",
+    mode: isWidgetMode(mode) ? mode : DEFAULT_WIDGET_MODE,
     domains,
-    ...(fields["region"] ? { region: fields["region"] as "world" | "china" } : {}),
-  } as unknown as WidgetCreateParams;
+    ...(isWidgetRegion(region) ? { region } : {}),
+  };
   const w = await api.cf.turnstile.widgets.create(params);
   return mapWidget(asRecord(w), accountId);
 }
@@ -86,20 +118,18 @@ export async function editTurnstileWidget(
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  const body: Record<string, unknown> = {
+  const mode = fields["mode"] ?? "";
+  const params: WidgetUpdateParams = {
     account_id,
     name: fields["name"] ?? "",
-    mode: fields["mode"] || "managed",
+    mode: isWidgetMode(mode) ? mode : DEFAULT_WIDGET_MODE,
     domains,
     ...(fields["botFightMode"] !== undefined
       ? { bot_fight_mode: fields["botFightMode"] === "true" }
       : {}),
     ...(fields["offlabel"] !== undefined ? { offlabel: fields["offlabel"] === "true" } : {}),
   };
-  const w = await api.cf.turnstile.widgets.update(
-    externalId,
-    body as unknown as Parameters<typeof api.cf.turnstile.widgets.update>[1],
-  );
+  const w = await api.cf.turnstile.widgets.update(externalId, params);
   return mapWidget(asRecord(w), accountId);
 }
 

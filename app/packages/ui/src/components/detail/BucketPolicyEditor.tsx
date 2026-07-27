@@ -22,7 +22,7 @@ import {
 interface Props {
   capability: BucketPolicyEditorCapability;
   onGetManifest: () => Promise<string>;
-  onApplyManifest?: (manifest: string) => Promise<void>;
+  onApplyManifest?: ((manifest: string) => Promise<void>) | undefined;
 }
 
 type Mode = "visual" | "json";
@@ -904,7 +904,7 @@ function ConditionEditor({
   condition,
   onChange,
 }: {
-  condition?: Record<string, Record<string, string | string[]>>;
+  condition?: Record<string, Record<string, string | string[]>> | undefined;
   onChange: (cond?: Record<string, Record<string, string | string[]>>) => void;
 }) {
   const rows = flattenCondition(condition);

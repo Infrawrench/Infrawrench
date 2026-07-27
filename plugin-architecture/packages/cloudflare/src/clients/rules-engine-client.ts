@@ -1,8 +1,19 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord, collectPerZone } from "./shared.js";
-import type { RulesetCreateParams } from "cloudflare/resources/rulesets/rulesets";
-import type { RuleCreateParams } from "cloudflare/resources/rulesets/rules";
+import type { PhaseParam, RulesetCreateParams } from "cloudflare/resources/rulesets/rulesets";
+
+/**
+ * One rule as the SDK types it: the discriminated union over the rule `action`,
+ * shared by `rulesets.create({ rules })` and `rulesets.rules.create/edit`
+ * (which additionally take the zone id).
+ *
+ * Taking the element type of `RulesetCreateParams["rules"]` rather than
+ * re-declaring it means every `buildBody` below is checked against the real
+ * per-action parameter shapes — the redirect status code, the edge-TTL mode,
+ * the rate-limit characteristics — instead of being asserted into place.
+ */
+export type CloudflareRuleBody = NonNullable<RulesetCreateParams["rules"]>[number];
 
 /**
  * Generic Cloudflare "Rules engine" client. The modern rules products
@@ -19,7 +30,7 @@ export interface RulePhaseSpec {
   /** Infrawrench resource type id, e.g. "rate-limit-rule". */
   resourceTypeId: string;
   /** Cloudflare ruleset phase, e.g. "http_ratelimit". */
-  phase: string;
+  phase: PhaseParam;
   /** Human ruleset name used when creating the entrypoint ruleset. */
   rulesetName: string;
   /** Friendly noun for error hints, e.g. "rate limiting rules". */
@@ -29,7 +40,7 @@ export interface RulePhaseSpec {
   /** Pull display fields out of a raw CF rule object. */
   mapFields: (rule: Record<string, unknown>) => Record<string, string | number | boolean>;
   /** Build the CF rule body from create-form field values. */
-  buildBody: (fields: Record<string, string>) => Record<string, unknown>;
+  buildBody: (fields: Record<string, string>) => CloudflareRuleBody;
   /** Choose a sidebar/display label for a rule. */
   displayName: (
     rule: Record<string, unknown>,
@@ -66,7 +77,7 @@ function mapRule(
 async function findPhaseRuleset(
   api: CloudflareApi,
   zoneId: string,
-  phase: string,
+  phase: PhaseParam,
 ): Promise<Record<string, unknown> | null> {
   for await (const rs of api.cf.rulesets.list({ zone_id: zoneId })) {
     const raw = asRecord(rs);
@@ -130,7 +141,7 @@ export async function createPhaseRule(
     const ruleset = await api.cf.rulesets.rules.create(rulesetId, {
       zone_id: zoneId,
       ...ruleBody,
-    } as unknown as RuleCreateParams);
+    });
     const full = asRecord(ruleset);
     const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
     result = rules[rules.length - 1] ?? full;
@@ -141,7 +152,7 @@ export async function createPhaseRule(
       kind: "zone",
       phase: spec.phase,
       rules: [ruleBody],
-    } as unknown as RulesetCreateParams);
+    });
     const full = asRecord(ruleset);
     rulesetId = String(full["id"] ?? "");
     const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
@@ -165,7 +176,7 @@ export async function editPhaseRule(
   const ruleset = await api.cf.rulesets.rules.edit(rulesetId, ruleId, {
     zone_id: zoneId,
     ...ruleBody,
-  } as unknown as Parameters<typeof api.cf.rulesets.rules.edit>[2]);
+  });
   const full = asRecord(ruleset);
   const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
   const updated = rules.find((r) => String(r["id"]) === ruleId) ?? { ...full, id: ruleId };
@@ -187,6 +198,43 @@ const num = (v: string | undefined, fallback: number): number => {
 
 /** Rules default to enabled; an explicit `"false"` (from an edit) disables them. */
 const ruleEnabled = (fields: Record<string, string>): boolean => fields["enabled"] !== "false";
+
+/**
+ * Actions the `http_ratelimit` phase accepts, mirroring the picker in
+ * `create-configs.ts`. `action` is the discriminant of the SDK's rule union
+ * (cloudflare/resources/rulesets/rules.d.ts:8537), so a plain `string` can't
+ * be handed to it. Unrecognized values fall back to `block`, the picker's
+ * default — a rate limit that blocks is the conservative choice, and every
+ * alternative here is strictly weaker.
+ */
+const RATE_LIMIT_ACTIONS = [
+  "block",
+  "challenge",
+  "js_challenge",
+  "managed_challenge",
+  "log",
+] as const;
+type RateLimitAction = (typeof RATE_LIMIT_ACTIONS)[number];
+const rateLimitAction = (value: string | undefined): RateLimitAction => {
+  const isRateLimitAction = (v: string): v is RateLimitAction =>
+    (RATE_LIMIT_ACTIONS as readonly string[]).includes(v);
+  return value !== undefined && isRateLimitAction(value) ? value : "block";
+};
+
+/**
+ * Status codes Cloudflare's dynamic-redirect action accepts
+ * (`RedirectRuleParam.ActionParameters.FromValue.status_code`,
+ * cloudflare/resources/rulesets/rules.d.ts:2487). Anything else falls back to
+ * 301, the picker's default.
+ */
+const REDIRECT_STATUS_CODES = [301, 302, 303, 307, 308] as const;
+type RedirectStatusCode = (typeof REDIRECT_STATUS_CODES)[number];
+const redirectStatusCode = (value: string | undefined): RedirectStatusCode => {
+  const isRedirectStatusCode = (n: number): n is RedirectStatusCode =>
+    (REDIRECT_STATUS_CODES as readonly number[]).includes(n);
+  const parsed = Number(value);
+  return isRedirectStatusCode(parsed) ? parsed : 301;
+};
 
 /** Rate limiting rules — `http_ratelimit` phase. */
 export const RATE_LIMIT_SPEC: RulePhaseSpec = {
@@ -213,7 +261,7 @@ export const RATE_LIMIT_SPEC: RulePhaseSpec = {
   buildBody: (fields) => ({
     description: fields["description"] ?? "",
     expression: fields["expression"] ?? "",
-    action: fields["action"] || "block",
+    action: rateLimitAction(fields["action"]),
     enabled: ruleEnabled(fields),
     ratelimit: {
       characteristics: (fields["characteristics"] || "ip.src")
@@ -258,7 +306,7 @@ export const REDIRECT_SPEC: RulePhaseSpec = {
     action_parameters: {
       from_value: {
         target_url: { value: fields["target"] ?? "" },
-        status_code: num(fields["statusCode"], 301),
+        status_code: redirectStatusCode(fields["statusCode"]),
         preserve_query_string: fields["preserveQuery"] === "true",
       },
     },
@@ -287,17 +335,18 @@ export const CACHE_SPEC: RulePhaseSpec = {
   },
   buildBody: (fields) => {
     const cache = fields["cache"] !== "false";
-    const ap: Record<string, unknown> = { cache };
     // Only attach an edge TTL override when caching is on and a value is given.
-    if (cache && fields["edgeTtl"] && Number.isFinite(Number(fields["edgeTtl"]))) {
-      ap["edge_ttl"] = { mode: "override_origin", default: Number(fields["edgeTtl"]) };
-    }
+    const edgeTtl = Number(fields["edgeTtl"]);
+    const overrideEdgeTtl = cache && Boolean(fields["edgeTtl"]) && Number.isFinite(edgeTtl);
     return {
       description: fields["description"] ?? "",
       expression: fields["expression"] ?? "",
       action: "set_cache_settings",
       enabled: ruleEnabled(fields),
-      action_parameters: ap,
+      action_parameters: {
+        cache,
+        ...(overrideEdgeTtl ? { edge_ttl: { mode: "override_origin", default: edgeTtl } } : {}),
+      },
     };
   },
   displayName: (_rule, fields) =>

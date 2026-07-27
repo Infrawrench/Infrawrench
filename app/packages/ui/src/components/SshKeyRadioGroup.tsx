@@ -53,7 +53,7 @@ export interface SshKeyRadioItemProps {
   name: string;
   value: string;
   label: string;
-  sublabel?: string;
+  sublabel?: string | undefined;
   meta?: ReactNode;
   selected: boolean;
   onSelect: () => void;

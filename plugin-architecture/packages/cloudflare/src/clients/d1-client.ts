@@ -2,6 +2,23 @@ import type { ResourceInstance, SqlTableMeta } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord } from "./shared.js";
 
+/**
+ * Narrow the rows of a D1 query page.
+ *
+ * The SDK types a page as `QueryResult` with `results?: Array<unknown>`
+ * (cloudflare/resources/d1/database/database.d.ts:168) — deliberately, since
+ * the row shape depends on the SQL that produced it. Every row Cloudflare
+ * returns from `/query` is a JSON object, so narrow each one here and skip
+ * anything that isn't rather than asserting a shape onto the whole array.
+ */
+function queryRows(results: Array<unknown> | undefined): Record<string, unknown>[] {
+  const rows: Record<string, unknown>[] = [];
+  for (const row of results ?? []) {
+    if (row !== null && typeof row === "object") rows.push(asRecord(row));
+  }
+  return rows;
+}
+
 function mapD1Database(db: Record<string, unknown>, accountId: string): ResourceInstance {
   const uuid = String(db["uuid"] ?? db["id"] ?? "");
   const name = String(db["name"] ?? "");
@@ -77,11 +94,7 @@ export async function executeD1Query(
 
   const rows: Record<string, unknown>[] = [];
   for await (const item of api.cf.d1.database.query(externalId, { account_id, sql })) {
-    const raw = asRecord(item);
-    const results = raw["results"];
-    if (Array.isArray(results)) {
-      for (const r of results) rows.push(r as Record<string, unknown>);
-    }
+    rows.push(...queryRows(item.results));
   }
 
   return { rows, durationMs: Date.now() - start };
@@ -100,8 +113,7 @@ export async function introspectD1Database(
     account_id,
     sql: "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY name",
   })) {
-    const results = (item as unknown as { results?: Array<Record<string, unknown>> }).results;
-    if (Array.isArray(results)) tables.push(...results);
+    tables.push(...queryRows(item.results));
   }
 
   const result: SqlTableMeta[] = [];
@@ -114,8 +126,7 @@ export async function introspectD1Database(
       account_id,
       sql: `PRAGMA table_info('${tableName.replace(/'/g, "''")}')`,
     })) {
-      const results = (item as unknown as { results?: Array<Record<string, unknown>> }).results;
-      if (Array.isArray(results)) cols.push(...results);
+      cols.push(...queryRows(item.results));
     }
 
     const pkColumns: string[] = [];

@@ -1,8 +1,46 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord, collectPerZone } from "./shared.js";
-import type { RulesetCreateParams } from "cloudflare/resources/rulesets/rulesets";
-import type { RuleCreateParams } from "cloudflare/resources/rulesets/rules";
+
+/**
+ * Actions the `http_request_firewall_custom` phase accepts.
+ *
+ * `action` is the discriminant of the SDK's rule union (`RuleCreateParams`,
+ * cloudflare/resources/rulesets/rules.d.ts:8537), so it has to be one of the
+ * SDK's literals — a plain `string` cannot be handed to the SDK. This list is
+ * the subset the WAF-custom-rules picker in `create-configs.ts` offers, minus
+ * anything the rules engine doesn't model.
+ */
+const FIREWALL_ACTIONS = [
+  "block",
+  "challenge",
+  "js_challenge",
+  "managed_challenge",
+  "log",
+  "skip",
+] as const;
+type FirewallAction = (typeof FIREWALL_ACTIONS)[number];
+const isFirewallAction = (value: string): value is FirewallAction =>
+  (FIREWALL_ACTIONS as readonly string[]).includes(value);
+
+/**
+ * Narrow a form-supplied action string to a rules-engine action.
+ *
+ * A missing action defaults to `block` (the picker's first option, and the
+ * only safe default for a WAF rule). An action that is present but not
+ * recognized throws rather than silently falling back: quietly turning, say,
+ * `allow` into `block` would invert the rule's meaning.
+ */
+function firewallAction(value: string | undefined): FirewallAction {
+  const action = value === undefined || value === "" ? "block" : value;
+  if (!isFirewallAction(action)) {
+    throw new Error(
+      `Cloudflare plugin: "${action}" is not a valid WAF custom-rule action — ` +
+        `Cloudflare accepts ${FIREWALL_ACTIONS.join(", ")}.`,
+    );
+  }
+  return action;
+}
 
 function mapFirewallRule(
   rule: Record<string, unknown>,
@@ -89,10 +127,10 @@ export async function createFirewallRule(
     // Ignore — we'll create via the phase entrypoint below.
   }
 
-  const ruleBody: Record<string, unknown> = {
+  const ruleBody = {
     description: fields["description"] ?? "",
     expression: fields["expression"] ?? "",
-    action: fields["action"] ?? "",
+    action: firewallAction(fields["action"]),
     enabled: true,
   };
 
@@ -101,7 +139,7 @@ export async function createFirewallRule(
     const ruleset = await api.cf.rulesets.rules.create(rulesetId, {
       zone_id: zoneId,
       ...ruleBody,
-    } as unknown as RuleCreateParams);
+    });
     const full = asRecord(ruleset);
     const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
     result = rules[rules.length - 1] ?? full;
@@ -112,7 +150,7 @@ export async function createFirewallRule(
       kind: "zone",
       phase: "http_request_firewall_custom",
       rules: [ruleBody],
-    } as unknown as RulesetCreateParams);
+    });
     const full = asRecord(ruleset);
     rulesetId = String(full["id"] ?? "");
     const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
@@ -129,16 +167,16 @@ export async function editFirewallRule(
 ): Promise<ResourceInstance> {
   const [zoneId, rulesetId, ruleId] = externalId.split("/");
   if (!zoneId || !rulesetId || !ruleId) throw new Error("Invalid firewall rule ID");
-  const ruleBody: Record<string, unknown> = {
+  const ruleBody = {
     description: fields["description"] ?? "",
     expression: fields["expression"] ?? "",
-    action: fields["action"] ?? "block",
+    action: firewallAction(fields["action"]),
     enabled: fields["enabled"] !== "false",
   };
   const ruleset = await api.cf.rulesets.rules.edit(rulesetId, ruleId, {
     zone_id: zoneId,
     ...ruleBody,
-  } as unknown as Parameters<typeof api.cf.rulesets.rules.edit>[2]);
+  });
   const full = asRecord(ruleset);
   const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
   const updated = rules.find((r) => String(r["id"]) === ruleId) ?? { ...full, id: ruleId };

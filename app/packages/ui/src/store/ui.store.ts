@@ -12,14 +12,14 @@ export type WorkspaceTabTarget =
       accountId: string;
       resourceId: string;
       view?: "details" | "ssh" | "sftp";
-      pluginId?: string;
-      resourceTypeId?: string;
-      parentResourceId?: string;
+      pluginId?: string | undefined;
+      resourceTypeId?: string | undefined;
+      parentResourceId?: string | undefined;
       agentSessionId?: string;
-      sshKeyId?: string;
-      sshKeyName?: string;
-      initialCommand?: string;
-      initialCwd?: string;
+      sshKeyId?: string | undefined;
+      sshKeyName?: string | undefined;
+      initialCommand?: string | undefined;
+      initialCwd?: string | undefined;
     };
 
 export interface WorkspaceTab {

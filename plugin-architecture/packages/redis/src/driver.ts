@@ -41,6 +41,18 @@ function describeFailure(err: unknown, connectionString: string): Error {
   return err instanceof Error ? err : new Error(msg);
 }
 
+/**
+ * An ioredis command method reached by dynamic lookup. Every ioredis command
+ * returns a promise of a reply whose shape depends on the command, so
+ * `unknown` is the honest return type — the KV console renders whatever comes
+ * back.
+ */
+type RedisCommandMethod = (this: Redis, ...args: unknown[]) => Promise<unknown>;
+
+function isRedisCommandMethod(value: unknown): value is RedisCommandMethod {
+  return typeof value === "function";
+}
+
 async function runOnce(
   connectionString: string,
   cmd: string,
@@ -64,11 +76,17 @@ async function runOnce(
     const commandArgs = [...rawParts.slice(1), ...args];
     if (!commandName) throw new Error("Redis command is required");
 
-    const methods = client as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>;
+    // The command name comes from the user's console input, so the method has
+    // to be looked up dynamically — ioredis' `RedisCommander` interface types
+    // every command individually and cannot be indexed by a runtime string.
+    // Reading through `Record<string, unknown>` (rather than asserting every
+    // property is a callable) keeps the `typeof === "function"` guards
+    // load-bearing instead of decorative.
+    const methods = client as unknown as Record<string, unknown>;
     const fn = methods[commandName.toLowerCase()];
-    if (typeof fn !== "function") {
+    if (!isRedisCommandMethod(fn)) {
       const call = methods["call"];
-      if (typeof call !== "function") throw new Error(`Unknown Redis command: ${cmd}`);
+      if (!isRedisCommandMethod(call)) throw new Error(`Unknown Redis command: ${cmd}`);
       return await call.call(client, commandName, ...commandArgs);
     }
     return await fn.call(client, ...commandArgs);

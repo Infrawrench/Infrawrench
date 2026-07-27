@@ -1,10 +1,23 @@
-import { createConnection, type ResultSetHeader } from "mysql2/promise";
+import {
+  createConnection,
+  type FieldPacket,
+  type ResultSetHeader,
+  type RowDataPacket,
+} from "mysql2/promise";
 import type { SqlNodeDriver } from "@infrawrench/plugin-base";
 
-// mysql2's mixin-based typings don't propagate query/execute generics onto Connection
+/**
+ * mysql2 delivers `query`/`execute` through a mixin (`QueryableBase(...)`)
+ * rather than declaring them on `Connection`, and the checker does not surface
+ * mixin-returned members on the class. There is no way to reach them through
+ * the published types, so we restate the two signatures we use — narrowed to
+ * the single `QueryResult` arm each call site expects — and widen the
+ * connection to them at the call. Everything below still uses mysql2's own
+ * packet types, so a breaking change in the driver shows up here.
+ */
 type Queryable = {
-  query(sql: string): Promise<[Record<string, unknown>[], unknown]>;
-  execute(sql: string, params: unknown[]): Promise<[ResultSetHeader, unknown]>;
+  query(sql: string): Promise<[RowDataPacket[], FieldPacket[]]>;
+  execute(sql: string, params: unknown[]): Promise<[ResultSetHeader, FieldPacket[]]>;
 };
 
 /**

@@ -1,7 +1,26 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord, collectPerZone } from "./shared.js";
-import type { PageRuleCreateParams } from "cloudflare/resources/page-rules/page-rules";
+import type {
+  PageRuleCreateParams,
+  PageRuleUpdateParams,
+} from "cloudflare/resources/page-rules/page-rules";
+
+/**
+ * Page rule statuses the API accepts (`PageRuleCreateParams.status`). The
+ * `status` resource field is free text, so anything else falls back to the
+ * default below rather than being forwarded.
+ */
+const PAGE_RULE_STATUSES = ["active", "disabled"] as const satisfies readonly NonNullable<
+  PageRuleCreateParams["status"]
+>[];
+type PageRuleStatus = (typeof PAGE_RULE_STATUSES)[number];
+
+const DEFAULT_PAGE_RULE_STATUS: PageRuleStatus = "active";
+
+function isPageRuleStatus(value: string): value is PageRuleStatus {
+  return (PAGE_RULE_STATUSES as readonly string[]).includes(value);
+}
 
 function mapPageRule(
   rule: Record<string, unknown>,
@@ -72,21 +91,31 @@ export async function createPageRule(
 ): Promise<ResourceInstance> {
   const zoneId = fields["zoneId"] || parentExternalId;
   if (!zoneId) throw new Error("Cloudflare plugin: zoneId is required to create a page rule");
+  // `targets` has one concrete shape and is checked against the SDK type.
+  const targets: PageRuleCreateParams["targets"] = [
+    {
+      target: "url",
+      constraint: { operator: "matches", value: fields["urlPattern"] ?? "" },
+    },
+  ];
+  // `actions`, by contrast, is a 34-member discriminated union keyed on a
+  // string-literal `id` (PageRuleCreateParams.actions, page-rules.d.ts:504),
+  // where each variant carries its own `value` type — an object for
+  // `forwarding_url`, a number for `browser_cache_ttl`, per-action string
+  // unions elsewhere, and no `value` at all for `always_use_https`. The create
+  // form hands us an opaque `id` + `value` string pair, so satisfying the union
+  // would need a switch over every action Cloudflare supports. The cast below
+  // covers that one unmodelled field.
   const body: Record<string, unknown> = {
     zone_id: zoneId,
-    targets: [
-      {
-        target: "url",
-        constraint: { operator: "matches", value: fields["urlPattern"] ?? "" },
-      },
-    ],
+    targets,
     actions: [
       {
         id: fields["action"] ?? "",
         ...(fields["actionValue"] ? { value: fields["actionValue"] } : {}),
       },
     ],
-    status: "active",
+    status: DEFAULT_PAGE_RULE_STATUS,
   };
   const rule = await api.cf.pageRules.create(body as unknown as PageRuleCreateParams);
   return mapPageRule(asRecord(rule), accountId, zoneId);
@@ -107,19 +136,21 @@ export async function editPageRule(
       zone_id: zoneId,
     }),
   );
+  const status = fields["status"] || String(current["status"] ?? DEFAULT_PAGE_RULE_STATUS);
+  const priority = fields["priority"];
+  // `targets` and `actions` are round-tripped verbatim from `get`, so they are
+  // `unknown` here, and `actions` is in any case the 34-member discriminated
+  // union described in `createPageRule` (PageRuleUpdateParams.actions,
+  // page-rules.d.ts:827) that an opaque round-trip cannot satisfy. Everything
+  // else in the body is narrowed above and checked by the SDK types.
   const body: Record<string, unknown> = {
     zone_id: zoneId,
     targets: current["targets"] ?? [],
     actions: current["actions"] ?? [],
-    status: fields["status"] || String(current["status"] ?? "active"),
-    ...(fields["priority"] && Number.isFinite(Number(fields["priority"]))
-      ? { priority: Number(fields["priority"]) }
-      : {}),
+    status: isPageRuleStatus(status) ? status : DEFAULT_PAGE_RULE_STATUS,
+    ...(priority && Number.isFinite(Number(priority)) ? { priority: Number(priority) } : {}),
   };
-  const rule = await api.cf.pageRules.update(
-    ruleId,
-    body as unknown as Parameters<typeof api.cf.pageRules.update>[1],
-  );
+  const rule = await api.cf.pageRules.update(ruleId, body as unknown as PageRuleUpdateParams);
   return mapPageRule(asRecord(rule), accountId, zoneId);
 }
 

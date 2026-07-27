@@ -1,12 +1,33 @@
 import type { ResourceInstance, StorageObject } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord } from "./shared.js";
+import type { BucketCreateParams } from "cloudflare/resources/r2/buckets/buckets";
 
 /**
  * R2 bucket CRUD uses the official SDK (`cf.r2.buckets.*`). The R2 *object*
  * plane (list/upload/delete per-object) is not exposed by the SDK so those
  * operations remain on `api.fetch`. See task spec for details.
  */
+
+/**
+ * The complete set of location hints the R2 API accepts
+ * (`BucketCreateParams.locationHint`). Anything else is rejected by Cloudflare,
+ * so an unrecognised hint is dropped rather than forwarded — omitting the hint
+ * means "let R2 choose", which is the create form's "Automatic" option.
+ */
+const R2_LOCATION_HINTS = [
+  "apac",
+  "eeur",
+  "enam",
+  "weur",
+  "wnam",
+  "oc",
+] as const satisfies readonly NonNullable<BucketCreateParams["locationHint"]>[];
+type R2LocationHint = (typeof R2_LOCATION_HINTS)[number];
+
+function isR2LocationHint(value: string): value is R2LocationHint {
+  return (R2_LOCATION_HINTS as readonly string[]).includes(value);
+}
 
 function mapR2Bucket(
   b: Record<string, unknown>,
@@ -61,11 +82,13 @@ export async function createR2Bucket(
   fields: Record<string, string>,
 ): Promise<ResourceInstance> {
   const account_id = await api.getAccountId();
-  const params: Record<string, unknown> = { account_id, name: fields["name"] ?? "" };
-  if (fields["locationHint"]) params["locationHint"] = fields["locationHint"];
-  const bucket = await api.cf.r2.buckets.create(
-    params as unknown as Parameters<typeof api.cf.r2.buckets.create>[0],
-  );
+  const locationHint = fields["locationHint"] ?? "";
+  const params: BucketCreateParams = {
+    account_id,
+    name: fields["name"] ?? "",
+    ...(isR2LocationHint(locationHint) ? { locationHint } : {}),
+  };
+  const bucket = await api.cf.r2.buckets.create(params);
   return mapR2Bucket(asRecord(bucket), accountId, account_id);
 }
 

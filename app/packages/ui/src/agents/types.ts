@@ -46,7 +46,7 @@ export interface AgentRepoConfig {
 export interface AgentSetupPlan {
   source: "git-url" | "local-folder";
   workspaceName: string;
-  initialCloneUrl?: string;
+  initialCloneUrl?: string | undefined;
   runtimes: AgentRuntimePlan[];
   packageManagers: string[];
   configSources: Array<{

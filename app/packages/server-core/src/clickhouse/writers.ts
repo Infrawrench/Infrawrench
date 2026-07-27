@@ -49,10 +49,16 @@ export function flattenMetricSeries(
   return rows;
 }
 
-async function insert(table: string, values: object[]): Promise<void> {
+/**
+ * Generic over the row type so each caller's row interface is checked against
+ * the literal it builds. `@clickhouse/client`'s `insert` is itself generic
+ * (`InsertParams<Stream, T>`), so `TRow` flows straight through to the driver
+ * instead of being flattened to `object`.
+ */
+async function insert<TRow>(table: string, values: readonly TRow[]): Promise<void> {
   if (!isClickHouseConfigured() || values.length === 0) return;
   try {
-    await getClickHouseClient().insert({ table, values, format: "JSONEachRow" });
+    await getClickHouseClient().insert<TRow>({ table, values, format: "JSONEachRow" });
   } catch (err) {
     console.error(`[clickhouse] insert into ${table} failed:`, err);
   }

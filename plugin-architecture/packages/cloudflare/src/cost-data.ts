@@ -19,7 +19,7 @@
  */
 
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
-import { CloudflareApi, formatCloudflareError } from "./clients/shared.js";
+import { asRecord, CloudflareApi, formatCloudflareError } from "./clients/shared.js";
 
 export async function fetchCloudflareCostData(
   api: CloudflareApi,
@@ -60,10 +60,14 @@ export async function fetchCloudflareCostData(
     // chunks never write overlapping rows for the same charge period.
     if (!date || date < range.fromDate || date > range.toDate) continue;
 
-    // The alpha response documents optional ZoneName/ZoneId fields the SDK
-    // types don't carry yet — read them defensively.
-    const extra = item as unknown as Record<string, unknown>;
-    const zoneName = typeof extra["ZoneName"] === "string" ? (extra["ZoneName"] as string) : "";
+    // The alpha response documents optional ZoneName/ZoneId fields that
+    // `UsagePaygoResponse.UsagePaygoResponseItem`
+    // (cloudflare/resources/billing/usage.d.ts:19) doesn't declare — a gap in
+    // the SDK's typings, not in the payload. Widen the record and read them
+    // defensively.
+    const extra = asRecord(item);
+    const rawZoneName = extra["ZoneName"];
+    const zoneName = typeof rawZoneName === "string" ? rawZoneName : "";
 
     const service = item.ServiceName ?? "";
     const currency = item.BillingCurrency || "USD";

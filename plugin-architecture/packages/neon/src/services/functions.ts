@@ -1,15 +1,26 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { Api, NeonFunction, ProjectListItem } from "@neondatabase/api-client";
-import { enumerateBranches, isServiceUnavailable, resourceId, type BranchRef } from "./common.js";
+import {
+  enumerateBranches,
+  hasStringFields,
+  isServiceUnavailable,
+  resourceId,
+  validatedArray,
+  type BranchRef,
+} from "./common.js";
 
 /**
  * `@neondatabase/api-client@2.7.3` mistypes the function listing as the
  * single-function `{ function }` response. The published OpenAPI spec documents
- * it as `NeonFunctionsListResponse & CursorPaginationResponse`, so we re-assert
- * the documented shape. Revisit when the SDK codegen is fixed.
+ * it as `NeonFunctionsListResponse & CursorPaginationResponse`, so we have to
+ * look past the generated type — but we validate at runtime rather than assert,
+ * so a drifting SDK or API drops the offending entry instead of throwing a
+ * `TypeError` inside `buildFunctionResource`. Revisit when the codegen is fixed.
  */
-interface FunctionListPayload {
-  functions: NeonFunction[];
+const FUNCTION_REQUIRED_FIELDS = ["id", "slug", "name", "invocation_url", "created_at"] as const;
+
+function isNeonFunction(value: unknown): value is NeonFunction {
+  return hasStringFields(value, FUNCTION_REQUIRED_FIELDS);
 }
 
 export function buildFunctionResource(
@@ -61,8 +72,7 @@ export async function listAllFunctions(
         projectId: ref.projectId,
         branchId: ref.branchId,
       });
-      const payload = resp.data as unknown as FunctionListPayload;
-      for (const fn of payload.functions ?? []) {
+      for (const fn of validatedArray(resp.data, "functions", isNeonFunction)) {
         results.push(buildFunctionResource(accountId, ref, fn));
       }
     } catch (err) {

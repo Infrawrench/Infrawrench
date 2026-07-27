@@ -11,9 +11,9 @@ interface Props {
   defaultQuery: string;
   onRunQuery: (sql: string) => Promise<QueryResult>;
   /** Run a mutation with typed params ($1, $2 …); returns rows affected */
-  onExecute?: (sql: string, params: unknown[]) => Promise<number>;
+  onExecute?: ((sql: string, params: unknown[]) => Promise<number>) | undefined;
   /** When provided, the editor shows an "Estimate" button that runs a dry-run cost query. */
-  onEstimateQueryCost?: (sql: string) => Promise<QueryCostEstimate>;
+  onEstimateQueryCost?: ((sql: string) => Promise<QueryCostEstimate>) | undefined;
 }
 
 function formatBytes(n: number): string {

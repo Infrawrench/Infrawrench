@@ -1,7 +1,25 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord, collectPerZone } from "./shared.js";
-import type { CustomHostnameCreateParams } from "cloudflare/resources/custom-hostnames/custom-hostnames";
+import type {
+  CustomHostnameCreateParams,
+  CustomHostnameEditParams,
+  DCVMethodParam,
+} from "cloudflare/resources/custom-hostnames/custom-hostnames";
+
+/**
+ * Domain control validation methods Cloudflare accepts for a custom hostname
+ * (`DCVMethodParam`). The create form offers exactly these three; anything else
+ * would be rejected by the API, so fall back to `http` (the form default).
+ */
+const DCV_METHODS = ["http", "txt", "email"] as const;
+
+const isDcvMethod = (value: string): value is DCVMethodParam =>
+  (DCV_METHODS as readonly string[]).includes(value);
+
+function toDcvMethod(value: string | undefined): DCVMethodParam {
+  return value !== undefined && isDcvMethod(value) ? value : "http";
+}
 
 function mapCustomHostname(
   h: Record<string, unknown>,
@@ -60,15 +78,15 @@ export async function createCustomHostname(
 ): Promise<ResourceInstance> {
   const zoneId = fields["zoneId"] || parentExternalId;
   if (!zoneId) throw new Error("Cloudflare plugin: zoneId is required to create a custom hostname");
-  const body: Record<string, unknown> = {
+  const body: CustomHostnameCreateParams = {
     zone_id: zoneId,
     hostname: fields["hostname"] ?? "",
     ssl: {
-      method: fields["sslMethod"] ?? "http",
+      method: toDcvMethod(fields["sslMethod"]),
       type: "dv",
     },
   };
-  const ch = await api.cf.customHostnames.create(body as unknown as CustomHostnameCreateParams);
+  const ch = await api.cf.customHostnames.create(body);
   return mapCustomHostname(asRecord(ch), accountId, zoneId);
 }
 
@@ -82,14 +100,11 @@ export async function editCustomHostname(
   if (!zoneId || !hostnameId) throw new Error("Invalid custom hostname ID");
   // The hostname itself is immutable; the editable surface is the SSL
   // validation method (and we always re-assert a DV certificate).
-  const body: Record<string, unknown> = {
+  const body: CustomHostnameEditParams = {
     zone_id: zoneId,
-    ssl: { method: fields["sslMethod"] || "http", type: "dv" },
+    ssl: { method: toDcvMethod(fields["sslMethod"]), type: "dv" },
   };
-  const ch = await api.cf.customHostnames.edit(
-    hostnameId,
-    body as unknown as Parameters<typeof api.cf.customHostnames.edit>[1],
-  );
+  const ch = await api.cf.customHostnames.edit(hostnameId, body);
   return mapCustomHostname(asRecord(ch), accountId, zoneId);
 }
 

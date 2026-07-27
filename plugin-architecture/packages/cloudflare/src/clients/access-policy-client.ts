@@ -1,7 +1,40 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord } from "./shared.js";
-import type { PolicyCreateParams } from "cloudflare/resources/zero-trust/access/applications/policies";
+import type {
+  AccessRuleParam,
+  PolicyCreateParams,
+  PolicyUpdateParams,
+} from "cloudflare/resources/zero-trust/access/applications/policies";
+import type { DecisionParam } from "cloudflare/resources/zero-trust/access/applications/applications";
+
+/**
+ * The SDK's app-scoped `PolicyCreateParams` / `PolicyUpdateParams` only declare
+ * the shared knobs (precedence, session duration, approval groups…) — the
+ * `name`, `decision` and rule arrays that the endpoint actually requires are
+ * missing from the generated request types even though they come back on
+ * `PolicyCreateResponse` and are required on the reusable-policy equivalent in
+ * `cloudflare/resources/zero-trust/access/policies`. Spell the missing body out
+ * here so the payload is still fully typed instead of cast away.
+ */
+type PolicyRules = {
+  name: string;
+  decision: DecisionParam;
+  include: Array<AccessRuleParam>;
+  exclude?: Array<AccessRuleParam>;
+  require?: Array<AccessRuleParam>;
+};
+
+/** The actions Access can take when a policy matches (`DecisionParam`). */
+const DECISIONS = ["allow", "deny", "non_identity", "bypass"] as const;
+
+const isDecision = (value: string): value is DecisionParam =>
+  (DECISIONS as readonly string[]).includes(value);
+
+/** Narrow a free-form decision field, defaulting to the least surprising `allow`. */
+function toDecision(value: string | undefined): DecisionParam {
+  return value !== undefined && isDecision(value) ? value : "allow";
+}
 
 function mapAccessPolicy(
   policy: Record<string, unknown>,
@@ -76,7 +109,7 @@ export async function listAllAccessPolicies(
  * (everyone at that domain); a bare `user@example.com` becomes an exact
  * `email` rule. Blank entries are dropped so trailing commas are harmless.
  */
-function buildEmailRules(value: string): Array<Record<string, unknown>> {
+function buildEmailRules(value: string): Array<AccessRuleParam> {
   return value
     .split(",")
     .map((entry) => entry.trim())
@@ -101,16 +134,13 @@ export async function createAccessPolicy(
   if (includeRules.length === 0) {
     throw new Error("Cloudflare plugin: at least one include email or domain is required");
   }
-  const body: Record<string, unknown> = {
+  const body: PolicyCreateParams & PolicyRules = {
     account_id,
     name: fields["name"] ?? "",
-    decision: fields["decision"] ?? "allow",
+    decision: toDecision(fields["decision"]),
     include: includeRules,
   };
-  const policy = await api.cf.zeroTrust.access.applications.policies.create(
-    appId,
-    body as unknown as PolicyCreateParams,
-  );
+  const policy = await api.cf.zeroTrust.access.applications.policies.create(appId, body);
   return mapAccessPolicy(asRecord(policy), accountId, appId);
 }
 
@@ -126,26 +156,20 @@ export async function editAccessPolicy(
   // The include/exclude/require rule arrays are flattened to display strings on
   // read, so preserve them from the live policy and only edit name/decision/
   // precedence.
-  const current = asRecord(
-    await api.cf.zeroTrust.access.applications.policies.get(appId, policyId, {
-      account_id,
-    }),
-  );
-  const body: Record<string, unknown> = {
+  const current = await api.cf.zeroTrust.access.applications.policies.get(appId, policyId, {
     account_id,
-    name: fields["name"] ?? String(current["name"] ?? ""),
-    decision: fields["decision"] || String(current["decision"] ?? "allow"),
-    include: current["include"] ?? [],
-    ...(current["exclude"] ? { exclude: current["exclude"] } : {}),
-    ...(current["require"] ? { require: current["require"] } : {}),
+  });
+  const body: PolicyUpdateParams & PolicyRules = {
+    account_id,
+    name: fields["name"] ?? current.name ?? "",
+    decision: toDecision(fields["decision"] || current.decision),
+    include: current.include ?? [],
+    ...(current.exclude ? { exclude: current.exclude } : {}),
+    ...(current.require ? { require: current.require } : {}),
     ...(fields["precedence"] && Number.isFinite(Number(fields["precedence"]))
       ? { precedence: Number(fields["precedence"]) }
       : {}),
   };
-  const policy = await api.cf.zeroTrust.access.applications.policies.update(
-    appId,
-    policyId,
-    body as unknown as Parameters<typeof api.cf.zeroTrust.access.applications.policies.update>[2],
-  );
+  const policy = await api.cf.zeroTrust.access.applications.policies.update(appId, policyId, body);
   return mapAccessPolicy(asRecord(policy), accountId, appId);
 }

@@ -124,7 +124,7 @@ function CellContent({ col, child }: { col: ChildTableColumn; child: ChildResour
 interface ChildResourceTableProps {
   spec: ChildTableSchema;
   group: ChildResourceGroup | undefined;
-  onRowClick?: (child: ChildResource) => void;
+  onRowClick?: ((child: ChildResource) => void) | undefined;
   onCreate?: (group: ChildResourceGroup) => void;
   onDelete?: (child: ChildResource) => void | Promise<void>;
   /**
