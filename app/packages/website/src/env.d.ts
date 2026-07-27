@@ -22,7 +22,8 @@ declare module "typewriter-effect/dist/core" {
 
 declare namespace Cloudflare {
   interface Env {
-    GITHUB_TOKEN: string;
+    /** Optional: raises the GitHub rate limit. The repo is public, so calls work without it. */
+    GITHUB_TOKEN?: string;
     GITHUB_OWNER: string;
     GITHUB_REPO: string;
   }

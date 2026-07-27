@@ -1,41 +1,72 @@
 ---
-import { Check } from 'lucide-astro';
+import { Terminal, Users, Bell, Bot, ShieldCheck, Smartphone } from 'lucide-astro';
+
+const benefits = [
+  {
+    icon: Terminal,
+    title: 'SSH and kubectl exec in the browser',
+    body: 'Terminal sessions are proxied through our WebSocket server: shell into EC2, GCE, Droplets, or Hetzner boxes, exec into pods, stream logs, and tunnel a database through a bastion. No VPN, no local SSH client, no kubeconfig file.',
+  },
+  {
+    icon: Users,
+    title: 'One workspace for the whole team',
+    body: 'Invite teammates into an organization and share every account, dashboard, and budget. Roles and permissions decide who can read, who can act, and who can hold the credentials.',
+  },
+  {
+    icon: Bell,
+    title: 'Alerts that find you',
+    body: 'Budget and resource pages route to Slack, Microsoft Teams, and push notifications on the Infrawrench mobile app, instead of an OS notification on a laptop that is closed.',
+  },
+  {
+    icon: Bot,
+    title: 'AI chat and scheduled workflows',
+    body: 'The agent loop and conversation history live in the cloud, so chat works everywhere you sign in. Workflows run server-side on a schedule, on a git push, or when a budget trips.',
+  },
+  {
+    icon: ShieldCheck,
+    title: 'Audit log, API keys, and SDKs',
+    body: 'Every action is recorded against a user. Issue scoped API keys and drive the same HTTP API from nine generated client SDKs. Audit log and API keys are on the paid plan.',
+  },
+  {
+    icon: Smartphone,
+    title: 'Nothing to install, anywhere',
+    body: 'The same app in any browser, always on the latest version, plus an iOS and Android companion for dashboards, resources, chat, and terminals while you are on call.',
+  },
+];
 ---
 
 <div class="cloud-panel">
-  <div class="cloud-panel-inner">
-    <div style="display: flex; flex-direction: column; align-items: center; text-align: center; width: 100%;">
-      <p class="section-eyebrow">Cloud-native access</p>
+  <div style="max-width: 1000px; margin: 0 auto;">
+    <div class="section-header" style="margin-bottom: 40px;">
+      <p class="section-eyebrow">Infrawrench Cloud</p>
       <h2 class="section-title" style="font-size: 34px;">
-        SSH and Kubernetes exec<br />from your browser
+        The same app, hosted for your team
       </h2>
-      <p class="section-subtitle" style="margin: 0; font-size: 15px;">
-        In the cloud web app, terminal sessions are proxied securely through our WebSocket server.
-        No VPN, no local SSH client, no kubeconfig file required. Just sign in and connect.
+      <p class="section-subtitle">
+        Sign in and everything is already there: accounts, terminals, dashboards, and history, all
+        shared with everyone you work with.
       </p>
-      <div class="check-list">
-        <div class="check-item">
-          <Check size={14} class="check-item-mark" />
-          SSH to EC2, GCE, Droplets, Hetzner servers, and any VM
-        </div>
-        <div class="check-item">
-          <Check size={14} class="check-item-mark" />
-          kubectl exec / interactive pod shells via WebSocket proxy
-        </div>
-        <div class="check-item">
-          <Check size={14} class="check-item-mark" />
-          Real-time pod log streaming directly in the browser
-        </div>
-        <div class="check-item">
-          <Check size={14} class="check-item-mark" />
-          SSH tunnels for proxying databases through a bastion host
-        </div>
-        <div class="check-item">
-          <Check size={14} class="check-item-mark" />
-          All sessions authenticated via your Infrawrench account
-        </div>
-      </div>
-      <a class="btn-primary" href="https://app.infrawrench.com" style="margin-top: 28px;">
+    </div>
+
+    <div class="benefit-grid">
+      {
+        benefits.map((b) => {
+          const Icon = b.icon;
+          return (
+            <div class="benefit-card">
+              <span class="benefit-icon">
+                <Icon size={16} />
+              </span>
+              <p class="benefit-title">{b.title}</p>
+              <p class="benefit-body">{b.body}</p>
+            </div>
+          );
+        })
+      }
+    </div>
+
+    <div style="text-align: center;">
+      <a class="btn-primary" href="https://app.infrawrench.com" style="margin-top: 36px;">
         Open the cloud app
       </a>
     </div>

@@ -1,0 +1,267 @@
+---
+import { Apple, Monitor, Copy, ChevronDown } from 'lucide-astro';
+---
+
+<div
+  class="modal-overlay"
+  id="download-modal"
+  role="dialog"
+  aria-modal="true"
+  aria-label="Download Infrawrench"
+>
+  <div class="modal-box modal-box-narrow">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title">Download Infrawrench</h2>
+        <p class="modal-subtitle" data-download-version>The desktop app for macOS, Windows, and Linux</p>
+      </div>
+      <button class="modal-close" id="close-download-modal" aria-label="Close">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="download-grid download-grid-3" style="margin: 0; max-width: none;">
+        <a
+          class="download-card download-card-link"
+          data-download="macos"
+          data-arch="arm64"
+          href="#"
+          aria-disabled="true"
+        >
+          <Apple size={22} color="#9ca3af" />
+          <div class="download-card-name">macOS</div>
+          <div class="card-arch-toggle" role="tablist" aria-label="macOS architecture">
+            <button type="button" data-card-arch="arm64" role="tab" aria-selected="true">ARM</button>
+            <button type="button" data-card-arch="x64" role="tab" aria-selected="false">Intel</button>
+          </div>
+          <div class="download-card-sub" data-download-sub>.dmg</div>
+        </a>
+        <a
+          class="download-card download-card-link"
+          data-download="windows"
+          data-arch="x64"
+          href="#"
+          aria-disabled="true"
+        >
+          <svg width="22" height="22" viewBox="0 0 88 88" fill="none" aria-hidden="true">
+            <path
+              d="M0 12.4L35.7 7.5l.1 34.4-35.7.2zm35.7 33.5l.1 34.5L.1 75.5.1 45.7zm4.3-39L87.3 0v41.5l-47.3.4zm47.3 39.4L87.3 88 40 81.1l-.1-34z"
+              fill="#9ca3af"></path>
+          </svg>
+          <div class="download-card-name">Windows</div>
+          <div class="card-arch-toggle" role="tablist" aria-label="Windows architecture">
+            <button type="button" data-card-arch="arm64" role="tab" aria-selected="false">ARM</button>
+            <button type="button" data-card-arch="x64" role="tab" aria-selected="true">Intel</button>
+          </div>
+          <div class="download-card-sub" data-download-sub>.exe</div>
+        </a>
+        <a
+          class="download-card download-card-link"
+          data-download="appimage"
+          data-arch="x64"
+          href="#"
+          aria-disabled="true"
+        >
+          <Monitor size={22} color="#9ca3af" />
+          <div class="download-card-name">Linux</div>
+          <div class="card-arch-toggle" role="tablist" aria-label="Linux architecture">
+            <button type="button" data-card-arch="arm64" role="tab" aria-selected="false">ARM</button>
+            <button type="button" data-card-arch="x64" role="tab" aria-selected="true">Intel</button>
+          </div>
+          <div class="download-card-sub" data-download-sub>.AppImage</div>
+        </a>
+      </div>
+
+      <!-- Debian / Ubuntu apt install -->
+      <details class="apt-block" style="margin: 0; max-width: none;">
+        <summary class="apt-block-header">
+          <div>
+            <div class="apt-block-title">Debian &amp; Ubuntu</div>
+            <div class="apt-block-sub">Install via apt for automatic updates.</div>
+          </div>
+          <ChevronDown size={16} color="#6b7280" class="apt-chevron" />
+        </summary>
+        <div class="apt-block-body">
+          <div class="apt-copy-row">
+            <button type="button" class="apt-copy-btn" data-apt-copy aria-label="Copy commands">
+              <Copy size={14} />
+              <span data-apt-copy-label>Copy</span>
+            </button>
+          </div>
+          <pre class="apt-code" data-apt-code>Loading install commands…</pre>
+        </div>
+      </details>
+
+      <p class="download-modal-note">
+        Local-first and free. Credentials stay encrypted on your machine, and no account is
+        required. Prefer nothing to install?
+        <a href="https://app.infrawrench.com">Use the cloud app instead →</a>
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+  type Arch = "arm64" | "x64";
+  type Platform = "macos" | "windows" | "appimage";
+  type PlatformKey =
+    | "macos-arm64"
+    | "macos-x64"
+    | "windows-x64"
+    | "windows-arm64"
+    | "linux-x64-appimage"
+    | "linux-arm64-appimage"
+    | "linux-x64-deb"
+    | "linux-arm64-deb"
+    | "linux-x64-snap";
+
+  type LatestResponse = {
+    version: string;
+    downloads: Partial<Record<PlatformKey, string>>;
+  };
+
+  const PLATFORM_SUBS: Record<Platform, { arm64: string; x64: string }> = {
+    macos: { arm64: ".dmg", x64: ".dmg" },
+    windows: { arm64: ".exe", x64: ".exe" },
+    appimage: { arm64: ".AppImage", x64: ".AppImage" },
+  };
+
+  const PLATFORM_KEYS: Record<Platform, Record<Arch, PlatformKey>> = {
+    macos: { arm64: "macos-arm64", x64: "macos-x64" },
+    windows: { arm64: "windows-arm64", x64: "windows-x64" },
+    appimage: { arm64: "linux-arm64-appimage", x64: "linux-x64-appimage" },
+  };
+
+  let latest: LatestResponse | null = null;
+
+  const modal = document.getElementById("download-modal")!;
+  const closeBtn = document.getElementById("close-download-modal")!;
+  const versionEl = document.querySelector<HTMLElement>("[data-download-version]");
+
+  function openModal() {
+    modal.setAttribute("data-open", "");
+    document.body.style.overflow = "hidden";
+    setTimeout(() => closeBtn.focus(), 100);
+  }
+
+  function closeModal() {
+    modal.removeAttribute("data-open");
+    document.body.style.overflow = "";
+  }
+
+  document.querySelectorAll<HTMLElement>("[data-open-download]").forEach((trigger) => {
+    trigger.addEventListener("click", (e) => {
+      e.preventDefault();
+      openModal();
+    });
+  });
+
+  closeBtn.addEventListener("click", closeModal);
+
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modal.hasAttribute("data-open")) closeModal();
+  });
+
+  function applyCard(card: HTMLAnchorElement) {
+    const platform = card.dataset.download as Platform | undefined;
+    const arch = card.dataset.arch as Arch | undefined;
+    if (!platform || !arch) return;
+
+    card.querySelectorAll<HTMLButtonElement>(".card-arch-toggle button").forEach((btn) => {
+      const isActive = btn.dataset.cardArch === arch;
+      btn.setAttribute("aria-selected", isActive ? "true" : "false");
+      btn.toggleAttribute("data-active", isActive);
+    });
+
+    const sub = card.querySelector<HTMLElement>("[data-download-sub]");
+    const key = PLATFORM_KEYS[platform][arch];
+    const url = latest?.downloads[key];
+
+    if (url) {
+      card.href = url;
+      card.removeAttribute("aria-disabled");
+      if (sub) sub.textContent = PLATFORM_SUBS[platform][arch];
+    } else {
+      card.href = "#";
+      card.setAttribute("aria-disabled", "true");
+      if (sub) sub.textContent = latest ? "Unavailable" : PLATFORM_SUBS[platform][arch];
+    }
+  }
+
+  function applyAllCards() {
+    document
+      .querySelectorAll<HTMLAnchorElement>(".download-card-link")
+      .forEach((card) => applyCard(card));
+  }
+
+  document.querySelectorAll<HTMLAnchorElement>(".download-card-link").forEach((card) => {
+    card.addEventListener("click", (e) => {
+      if (card.getAttribute("aria-disabled") === "true") e.preventDefault();
+    });
+
+    card.querySelectorAll<HTMLButtonElement>(".card-arch-toggle button").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const arch = btn.dataset.cardArch as Arch | undefined;
+        if (!arch) return;
+        card.dataset.arch = arch;
+        applyCard(card);
+      });
+    });
+  });
+
+  applyAllCards();
+
+  fetch("/api/latest")
+    .then((r) => (r.ok ? (r.json() as Promise<LatestResponse>) : null))
+    .then((data) => {
+      if (!data) return;
+      latest = data;
+      applyAllCards();
+      if (versionEl && data.version) {
+        versionEl.textContent = `Version ${data.version} for macOS, Windows, and Linux`;
+      }
+    })
+    .catch(() => {});
+
+  const aptCodeEl = document.querySelector<HTMLElement>("[data-apt-code]");
+  const aptCopyBtn = document.querySelector<HTMLButtonElement>("[data-apt-copy]");
+  const aptCopyLabel = document.querySelector<HTMLElement>("[data-apt-copy-label]");
+
+  fetch("https://apt.infrawrench.com/infrawrench/setup?dist=desktop&component=stable")
+    .then((r) => (r.ok ? r.text() : null))
+    .then((text) => {
+      if (!aptCodeEl) return;
+      if (!text) {
+        aptCodeEl.textContent =
+          "Could not load install commands. Visit apt.infrawrench.com for instructions.";
+        return;
+      }
+      aptCodeEl.textContent = `${text.trimEnd()}\nsudo apt install infrawrench`;
+    })
+    .catch(() => {
+      if (aptCodeEl) {
+        aptCodeEl.textContent =
+          "Could not load install commands. Visit apt.infrawrench.com for instructions.";
+      }
+    });
+
+  if (aptCopyBtn && aptCodeEl) {
+    aptCopyBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      try {
+        await navigator.clipboard.writeText(aptCodeEl.textContent ?? "");
+        if (aptCopyLabel) aptCopyLabel.textContent = "Copied";
+        setTimeout(() => {
+          if (aptCopyLabel) aptCopyLabel.textContent = "Copy";
+        }, 1500);
+      } catch {
+        /* clipboard unavailable */
+      }
+    });
+  }
+</script>

@@ -225,8 +225,35 @@ body {
 .typewriter-line {
   font-size: 20px;
   color: #9ca3af;
-  margin: 0 0 44px;
+  margin: 0 0 28px;
   min-height: 32px;
+}
+
+.hero-lede {
+  font-size: 16.5px;
+  line-height: 1.7;
+  color: #6b7280;
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.hero-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 24px auto 32px;
+  max-width: 720px;
+}
+
+.hero-chip {
+  font-size: 12.5px;
+  color: #9ca3af;
+  background: #0b0b0b;
+  border: 1px solid #1a1a1a;
+  border-radius: 100px;
+  padding: 5px 12px;
+  white-space: nowrap;
 }
 
 .hero-ctas {
@@ -235,6 +262,14 @@ body {
   justify-content: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.hero-cta-note {
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.6;
+  max-width: 520px;
+  margin: 18px auto 0;
 }
 
 /* ── Screenshot placeholder ─────────────────────────────── */
@@ -472,35 +507,45 @@ body {
   padding: 80px 28px;
 }
 
-.cloud-panel-inner {
-  max-width: 680px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
+.benefit-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
 }
 
-.check-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 24px;
+.benefit-card {
+  background: #0b0b0b;
+  border: 1px solid #161616;
+  border-radius: 12px;
+  padding: 20px;
   text-align: left;
 }
 
-.check-item {
-  display: flex;
+.benefit-icon {
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  font-size: 14px;
-  color: #6b7280;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.09);
+  color: #60a5fa;
+  margin-bottom: 12px;
 }
 
-.check-item-mark {
-  color: #3b82f6;
-  flex-shrink: 0;
-  margin-top: 1px;
+.benefit-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: #e5e7eb;
+  margin: 0 0 8px;
+  line-height: 1.4;
+}
+
+.benefit-body {
+  font-size: 13.5px;
+  color: #6b7280;
+  line-height: 1.65;
+  margin: 0;
 }
 
 /* ── Inputs/Outputs ─────────────────────────────────────── */
@@ -580,18 +625,6 @@ body {
 .download-card-sub {
   font-size: 10px;
   color: #4b5563;
-}
-
-.coming-soon-badge {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.2);
-  color: #f59e0b;
-  border-radius: 100px;
-  padding: 3px 9px;
 }
 
 .download-grid-3 {
@@ -782,6 +815,27 @@ body {
 
 .modal-overlay[data-open] .modal-box {
   transform: translateY(0);
+}
+
+.modal-box-narrow {
+  max-width: 560px;
+}
+
+.download-modal-note {
+  font-size: 12.5px;
+  color: #4b5563;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.download-modal-note a {
+  color: #60a5fa;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.download-modal-note a:hover {
+  text-decoration: underline;
 }
 
 .modal-header {
@@ -1431,6 +1485,10 @@ footer {
     grid-template-columns: repeat(2, 1fr);
   }
 
+  .benefit-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
   .download-grid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -1481,6 +1539,10 @@ footer {
 
 @media (max-width: 600px) {
   .io-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .benefit-grid {
     grid-template-columns: 1fr;
   }
 

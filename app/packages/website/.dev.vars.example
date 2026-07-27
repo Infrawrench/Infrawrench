@@ -1,1 +1,6 @@
-GITHUB_TOKEN=ghp_replace_with_fine_grained_pat
+# Optional. The Infrawrench repo is public, so release listings and downloads work
+# unauthenticated; a token only raises the GitHub rate limit (60 requests per hour
+# per IP without one). Leave it blank for local development. A token that GitHub
+# rejects (expired, or a leftover placeholder) is ignored and the request is
+# retried anonymously. Production sets a real fine-grained PAT as a Cloudflare secret.
+GITHUB_TOKEN=
