@@ -1527,8 +1527,19 @@ Cloud Build's isolation is structural rather than a NetworkPolicy we have to kee
   credential reaches the build. A first step flattens the `owner-repo-sha/` prefix GitHub wraps
   everything in and writes the rendered Dockerfile beside the source, which is how this module
   avoids a hand-rolled tar writer.
-- `run()` becomes one single-step build per call, since calls are interleaved with arbitrary JS
-  in `deploy()` and can't be known upfront. Combine with `&&` when it matters.
+- **`run()` is one single-step build per call**, since calls are interleaved with arbitrary JS in
+  `deploy()` and can't be known upfront. Combine with `&&` when latency matters. Making it work
+  across that split needed three things that are easy to miss: the built image is **always pushed
+  to a staging Artifact Registry repo** (`GCP_BUILD_STAGING_REPO`) because a step's image is
+  _pulled from a registry_ and an image built in one build's daemon does not exist on the next
+  build's worker; the run build **reuses the same `storageSource`** so `/workspace` holds the
+  project the way the local driver mounts it; and logging is **`GCS_ONLY` with a `logsBucket`** so
+  the command's stdout can be read back — without it `run()` returns `""` on cloud and the same
+  Infrafile silently behaves differently depending on where it was deployed from. `run()` env goes
+  through Secret Manager per variable, same reasoning as the registry password. The staged image is
+  deleted after the deploy; give the repo a TTL policy as the backstop.
+- **Where the image runs**: a Cloud Build worker, never our cluster. It was built from a customer
+  Dockerfile, so running it beside our pods is the same exposure as building it there.
 - Bounded by `HOSTED_BUILD_TIMEOUT_SECONDS` (1200) and metered into
   `deployment_runs.build_seconds` / `build_runner`. Env: `GCP_BUILD_PROJECT_ID`,
   `GCP_BUILD_STAGING_BUCKET`, `GCP_BUILD_REGION`, and `GCP_BUILD_SA_KEY` only off-GKE (on GKE the

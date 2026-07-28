@@ -83,6 +83,11 @@ app_env = {
   # roles/storage.objectAdmin on the bucket, and roles/secretmanager.admin.
   GCP_BUILD_PROJECT_ID     = "your-gcp-project"
   GCP_BUILD_STAGING_BUCKET = "your-project-infrawrench-builds"
+  # Artifact Registry repo hosted builds stage images to. Required: a Cloud Build
+  # step pulls its image from a registry, so run() needs one to exist in. Scratch
+  # only — the deployed image goes to the customer's own registry. Give it a TTL
+  # cleanup policy; per-deploy deletion is best effort.
+  GCP_BUILD_STAGING_REPO   = "us-east4-docker.pkg.dev/your-gcp-project/infrawrench-builds"
   GCP_BUILD_REGION         = "us-east4"
 
   WORKFLOW_FETCH_PROXY_URL   = "https://egress.infrawrench.com"

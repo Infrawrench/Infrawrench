@@ -42,10 +42,21 @@ const HOSTED_BUILD_MACHINE = "E2_HIGHCPU_8";
 const POLL_INTERVAL_MS = 3000;
 
 export interface CloudBuildConfig {
-  /** GCP project that owns the builds and the staging bucket. */
+  /** GCP project that owns the builds, the staging bucket and the build secrets. */
   projectId: string;
-  /** GCS bucket holding uploaded build sources. */
+  /** GCS bucket holding uploaded build sources and build logs. */
   stagingBucket: string;
+  /**
+   * Artifact Registry path images are staged to, e.g.
+   * `us-east4-docker.pkg.dev/my-project/infrawrench-builds`.
+   *
+   * Every hosted build pushes here, even when the Infrafile never publishes
+   * anywhere. That is what makes `run()` possible at all: a Cloud Build step
+   * pulls its image from a registry, and an image built inside one build's
+   * daemon does not exist on the next build's worker. This is scratch space —
+   * the *deployed* image still goes to the customer's own registry.
+   */
+  stagingRepo: string;
   /** Region for the build worker pool, e.g. "us-east4". */
   region?: string;
 }
@@ -58,9 +69,10 @@ export interface CloudBuildConfig {
 export function cloudBuildConfig(): CloudBuildConfig | null {
   const projectId = process.env["GCP_BUILD_PROJECT_ID"];
   const stagingBucket = process.env["GCP_BUILD_STAGING_BUCKET"];
-  if (!projectId || !stagingBucket) return null;
+  const stagingRepo = process.env["GCP_BUILD_STAGING_REPO"];
+  if (!projectId || !stagingBucket || !stagingRepo) return null;
   const region = process.env["GCP_BUILD_REGION"];
-  return { projectId, stagingBucket, ...(region ? { region } : {}) };
+  return { projectId, stagingBucket, stagingRepo, ...(region ? { region } : {}) };
 }
 
 export interface CloudBuildContext {
@@ -71,6 +83,14 @@ export interface CloudBuildContext {
   /** Live output sink. */
   log: (line: string) => void;
   signal?: AbortSignal;
+  /**
+   * Set by {@link buildOnCloudBuild}: the GCS object the source was staged to,
+   * and the staged image tag. `run()` reuses both — the same source so
+   * `/workspace` holds the project, and the staged tag so the worker has an
+   * image it can actually pull.
+   */
+  sourceObject?: string;
+  stagedImage?: string;
 }
 
 /** A completed hosted build, with what it cost us in worker time. */
@@ -211,6 +231,9 @@ export async function buildOnCloudBuild(
   }
 
   const image = hostedImageRef(request, ctx.gitSha);
+  // Scratch tag in our own registry. Pushed on every hosted build so later
+  // run() builds have something to pull; deleted once the deploy finishes.
+  const staged = `${config.stagingRepo}/deploy:${randomUUID()}`;
   const buildArgs = Object.entries(request.args ?? {}).flatMap(([k, v]) => [
     "--build-arg",
     `${k}=${v}`,
@@ -232,7 +255,12 @@ printf '%s' ${shellQuote(request.dockerfile)} > Dockerfile.infrawrench`,
     },
     {
       name: "gcr.io/cloud-builders/docker",
-      args: ["build", "-f", "Dockerfile.infrawrench", "-t", image, ...buildArgs, "."],
+      args: ["build", "-f", "Dockerfile.infrawrench", "-t", image, "-t", staged, ...buildArgs, "."],
+    },
+    {
+      // Our own registry, so the build's service account authenticates itself.
+      name: "gcr.io/cloud-builders/docker",
+      args: ["push", staged],
     },
   ];
 
@@ -262,7 +290,8 @@ printf '%s' ${shellQuote(request.dockerfile)} > Dockerfile.infrawrench`,
     source: { storageSource: { bucket: config.stagingBucket, object: objectName } },
     steps,
     timeout: `${HOSTED_BUILD_TIMEOUT_SECONDS}s`,
-    options: { machineType: HOSTED_BUILD_MACHINE, logging: "CLOUD_LOGGING_ONLY" },
+    logsBucket: `gs://${config.stagingBucket}/buildlogs`,
+    options: { machineType: HOSTED_BUILD_MACHINE, logging: "GCS_ONLY" },
     ...(secretName
       ? {
           availableSecrets: {
@@ -307,6 +336,11 @@ printf '%s' ${shellQuote(request.dockerfile)} > Dockerfile.infrawrench`,
         `See the build log in Google Cloud Build (id ${buildId}).`,
     );
   }
+
+  // run() reuses both: the same source so /workspace holds the project, and the
+  // staged tag because a step's image is pulled from a registry.
+  ctx.sourceObject = objectName;
+  ctx.stagedImage = staged;
 
   ctx.log(`Built ${image} in ${buildSeconds}s`);
   return { image, buildSeconds };
@@ -388,46 +422,148 @@ export async function runOnCloudBuild(
   ctx: CloudBuildContext,
 ): Promise<RunInImageResult> {
   const { config } = ctx;
+  if (!ctx.stagedImage || !ctx.sourceObject) {
+    throw new Error("run() ran before the hosted build produced an image.");
+  }
   const token = await accessToken();
   const entrypoint = request.entrypoint ?? "sh";
+  const shell = entrypoint === "sh" || entrypoint === "bash" || entrypoint === "/bin/sh";
 
-  const build = {
-    steps: [
+  // `run()` may carry credentials, and a step's args are recorded in this
+  // project's build history — so they go through Secret Manager exactly as the
+  // registry password does, one secret per variable.
+  const env = request.env ?? {};
+  const secretNames: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    secretNames[key] = await createBuildSecret(config, token, value);
+  }
+
+  try {
+    const step: Record<string, unknown> = {
+      // The staged tag: a step's image is pulled from a registry, and the image
+      // this deploy built exists nowhere else.
+      name: ctx.stagedImage,
+      entrypoint,
+      args: shell ? ["-lc", request.command] : [request.command],
+    };
+    // Cloud Build extracts the source into /workspace, which is also the step's
+    // working directory — so the project is mounted the same way the local
+    // driver mounts it.
+    if (request.workdir) step["dir"] = request.workdir;
+    if (Object.keys(secretNames).length > 0) step["secretEnv"] = Object.keys(secretNames);
+
+    const build: Record<string, unknown> = {
+      steps: [step],
+      timeout: `${HOSTED_BUILD_TIMEOUT_SECONDS}s`,
+      logsBucket: `gs://${config.stagingBucket}/buildlogs`,
+      options: { machineType: HOSTED_BUILD_MACHINE, logging: "GCS_ONLY" },
+    };
+    // Without a source there is no /workspace, so `mountSource: false` is the
+    // only case that legitimately omits it.
+    if (request.mountSource !== false) {
+      build["source"] = {
+        storageSource: { bucket: config.stagingBucket, object: ctx.sourceObject },
+      };
+    }
+    if (Object.keys(secretNames).length > 0) {
+      build["availableSecrets"] = {
+        secretManager: Object.entries(secretNames).map(([envName, name]) => ({
+          versionName: `${name}/versions/latest`,
+          env: envName,
+        })),
+      };
+    }
+
+    ctx.log(`$ ${request.command}`);
+    const res = await fetch(
+      `https://cloudbuild.googleapis.com/v1/projects/${encodeURIComponent(config.projectId)}/builds`,
       {
-        name: request.image,
-        ...(entrypoint ? { entrypoint } : {}),
-        args:
-          entrypoint === "sh" || entrypoint === "bash"
-            ? ["-lc", request.command]
-            : [request.command],
-        ...(request.env && Object.keys(request.env).length > 0
-          ? { secretEnv: Object.keys(request.env) }
-          : {}),
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify(build),
+        ...(ctx.signal ? { signal: ctx.signal } : {}),
       },
-    ],
-    timeout: `${HOSTED_BUILD_TIMEOUT_SECONDS}s`,
-    options: { machineType: HOSTED_BUILD_MACHINE, logging: "CLOUD_LOGGING_ONLY" },
-  };
+    );
+    if (!res.ok) {
+      throw new Error(`Cloud Build rejected the command (${res.status}): ${await res.text()}`);
+    }
+    const operation = (await res.json()) as { metadata?: { build?: { id?: string } } };
+    const buildId = operation.metadata?.build?.id;
+    if (!buildId) throw new Error("Cloud Build did not return a build id.");
 
-  ctx.log(`$ ${request.command}`);
+    const status = await waitForBuild(config, buildId, ctx);
+    // The command's output is the whole point of run() — `const v = await
+    // run(...)` has to return what it printed, or the same Infrafile behaves
+    // differently depending on where it was deployed from.
+    const output = await readBuildLog(config, buildId).catch(() => "");
+    for (const line of output.split("\n")) {
+      if (line) ctx.log(line);
+    }
+
+    // Cloud Build reports pass/fail, not the process's exit code, so a failure
+    // normalises to 1 — enough for the caller's zero/non-zero decision, though
+    // `allowFailure` callers do not get the real code on this path.
+    return status === "SUCCESS"
+      ? { exitCode: 0, stdout: output, stderr: "" }
+      : { exitCode: 1, stdout: output, stderr: output };
+  } finally {
+    await Promise.all(
+      Object.values(secretNames).map((n) => destroyBuildSecret(token, n).catch(() => {})),
+    );
+  }
+}
+
+/**
+ * A finished build's log text.
+ *
+ * Cloud Build writes it to `logsBucket` as `log-<id>.txt` when logging is
+ * GCS_ONLY. Its own step banners are stripped so what comes back is what the
+ * command actually printed.
+ */
+async function readBuildLog(config: CloudBuildConfig, buildId: string): Promise<string> {
+  const token = await accessToken();
+  const object = `buildlogs/log-${buildId}.txt`;
   const res = await fetch(
-    `https://cloudbuild.googleapis.com/v1/projects/${encodeURIComponent(config.projectId)}/builds`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: JSON.stringify(build),
-      ...(ctx.signal ? { signal: ctx.signal } : {}),
-    },
+    `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(config.stagingBucket)}` +
+      `/o/${encodeURIComponent(object)}?alt=media`,
+    { headers: { Authorization: `Bearer ${token}` } },
   );
-  if (!res.ok) throw new Error(`Cloud Build rejected the command (${res.status}).`);
-  const operation = (await res.json()) as { metadata?: { build?: { id?: string } } };
-  const buildId = operation.metadata?.build?.id;
-  if (!buildId) throw new Error("Cloud Build did not return a build id.");
+  if (!res.ok) return "";
+  const raw = await res.text();
+  return (
+    raw
+      .split("\n")
+      .filter(
+        (line) =>
+          !/^(starting build|BUILD|Starting Step|Finished Step|PUSH|DONE|Step #\d+:? *$)/i.test(
+            line.trim(),
+          ),
+      )
+      // Cloud Build prefixes each line with its step number.
+      .map((line) => line.replace(/^Step #\d+: ?/, ""))
+      .join("\n")
+      .trim()
+  );
+}
 
-  const status = await waitForBuild(config, buildId, ctx);
-  // Cloud Build reports pass/fail, not the process's exit code, so a failure is
-  // normalised to 1 — enough for the caller's zero/non-zero decision.
-  return { exitCode: status === "SUCCESS" ? 0 : 1, stdout: "", stderr: "" };
+/** Remove a deploy's scratch image. Best effort; a repo TTL policy is the backstop. */
+export async function cleanupStagedImage(ctx: CloudBuildContext): Promise<void> {
+  if (!ctx.stagedImage) return;
+  const token = await accessToken();
+  // <region>-docker.pkg.dev/<project>/<repo>/<image>:<tag>
+  const [hostAndPath, tag] = ctx.stagedImage.split(":");
+  if (!hostAndPath || !tag) return;
+  const [host, project, repo, ...rest] = hostAndPath.split("/");
+  const pkg = rest.join("/");
+  if (!host || !project || !repo || !pkg) return;
+  const location = host.replace("-docker.pkg.dev", "");
+  const name =
+    `projects/${project}/locations/${location}/repositories/${repo}` +
+    `/packages/${encodeURIComponent(pkg)}/tags/${encodeURIComponent(tag)}`;
+  await fetch(`https://artifactregistry.googleapis.com/v1/${name}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
 }
 
 /**

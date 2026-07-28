@@ -23,6 +23,7 @@ import {
 } from "@infrawrench/server-core/github/app";
 import {
   buildOnCloudBuild,
+  cleanupStagedImage,
   cloudBuildConfig,
   runOnCloudBuild,
   type CloudBuildContext,
@@ -351,6 +352,8 @@ export async function runDeployment(
     // Always clear the scratch directory — a failed deploy leaves a clone with
     // build artifacts behind otherwise, and those accumulate silently.
     if (sshCtx) await cleanupOverSsh(sshCtx).catch(() => {});
+    // Same for the staged image: it exists only so run() had something to pull.
+    if (cloudCtx) await cleanupStagedImage(cloudCtx).catch(() => {});
   }
 
   await db
