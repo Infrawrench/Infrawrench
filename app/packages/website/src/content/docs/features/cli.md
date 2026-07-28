@@ -59,6 +59,14 @@ infrawrench resource <resource-id>                  # fields + outputs of one re
 
 Account references accept an id, an exact name, or a unique name prefix. When the same name exists both locally and in an org, disambiguate with `--local` or `--org`.
 
+Local accounts are listed live from the provider, exactly as the desktop sidebar does — the CLI holds no cached copy of your infrastructure, so what it prints is what the provider says right now. That also means a listing is only as fast as the provider's API, and a resource type the credentials can't reach is reported on stderr rather than quietly dropped:
+
+```
+volume: 403 Forbidden — token is missing the "block_storage:read" scope
+```
+
+The rest of the account still lists. Org accounts read from the cloud's synced copy instead, which is why they return instantly.
+
 ## Metrics and cost charts
 
 Cloud resources that are pinned to a dashboard accumulate metric history; the CLI renders it as terminal charts:
@@ -111,14 +119,16 @@ parse-invoice --json | infrawrench costs push --source colo
 | ------------------ | -------------------------------------------- |
 | `↑`/`↓` or `j`/`k` | move selection                               |
 | `tab`              | switch between accounts and resources panes  |
-| `enter`            | open the selected account / resource         |
+| `enter`            | list the selected account / open a resource  |
 | `o`                | cycle through Local and your organizations   |
 | `c`                | 30-day cost view for the active organization |
 | `r`                | refresh the current pane                     |
 | `esc`              | back                                         |
 | `q`                | quit                                         |
 
-Opening a resource shows its fields and outputs plus six-hour metric charts for cloud resources with history.
+Moving through the accounts list only moves the cursor — `enter` is what asks the provider for that account's resources, so scrolling never fires a burst of API calls. Opening a resource shows its fields and outputs plus six-hour metric charts for cloud resources with history.
+
+If the CLI cannot read your workspace's master key — a locked login keychain, or a terminal session that has no access to it — it stops with an error instead of continuing. Nothing is rewritten: minting a replacement key would leave every stored credential unreadable. Unlock the keychain, or open the desktop app once, and run the command again.
 
 ## Scripting
 

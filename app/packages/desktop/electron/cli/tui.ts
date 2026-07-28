@@ -12,6 +12,7 @@ import {
   listCloudAccounts,
   listLocalResources,
   listCloudResources,
+  loadLocalResourceOutputs,
   orgFetch,
   type AccountInfo,
   type CliContext,
@@ -47,6 +48,8 @@ interface TuiState {
   pane: Pane;
   status: string;
   loading: boolean;
+  /** True once the selected account's resources have been asked for. */
+  resourcesLoaded: boolean;
   metrics: Array<{
     label: string;
     unit?: string;
@@ -97,6 +100,7 @@ export async function runTui(ctx: CliContext): Promise<void> {
     pane: "accounts",
     status: "",
     loading: true,
+    resourcesLoaded: false,
     metrics: null,
     costs: null,
   };
@@ -129,8 +133,7 @@ export async function runTui(ctx: CliContext): Promise<void> {
       state.accounts =
         scope.kind === "local" ? await listLocalAccounts() : await listCloudAccounts(scope.org!.id);
       state.accountIndex = 0;
-      state.resources = [];
-      state.resourceIndex = 0;
+      clearResources();
       state.status = "";
     } catch (e) {
       state.status = e instanceof Error ? e.message : String(e);
@@ -140,25 +143,64 @@ export async function runTui(ctx: CliContext): Promise<void> {
     render();
   }
 
+  function clearResources(): void {
+    state.resources = [];
+    state.resourceIndex = 0;
+    state.resourcesLoaded = false;
+    state.metrics = null;
+  }
+
+  // Listing a local account goes out to the provider, so a stale reply from a
+  // previously-selected account must not land on top of the current one.
+  let resourceLoadToken = 0;
+
   async function loadResources(): Promise<void> {
     const account = activeAccount();
     if (!account) return;
+    const token = ++resourceLoadToken;
     state.loading = true;
+    state.resourcesLoaded = true;
     render();
     try {
       const scope = activeScope();
-      state.resources =
-        scope.kind === "local"
-          ? await listLocalResources(account.id)
-          : await listCloudResources(scope.org!.id, account.id);
+      if (scope.kind === "local") {
+        const { rows, errors } = await listLocalResources(account);
+        if (token !== resourceLoadToken) return;
+        state.resources = rows;
+        state.status = errors.length
+          ? errors.map((e) => `${e.typeId}: ${e.message}`).join(" · ")
+          : "";
+      } else {
+        const rows = await listCloudResources(scope.org!.id, account.id);
+        if (token !== resourceLoadToken) return;
+        state.resources = rows;
+        state.status = "";
+      }
       state.resourceIndex = 0;
-      state.status = "";
     } catch (e) {
+      if (token !== resourceLoadToken) return;
       state.status = e instanceof Error ? e.message : String(e);
       state.resources = [];
     }
     state.loading = false;
     render();
+  }
+
+  /** Fill in the selected resource's outputs — local listings arrive without them. */
+  async function loadResourceOutputs(): Promise<void> {
+    const scope = activeScope();
+    const account = activeAccount();
+    const resource = activeResource();
+    if (scope.kind !== "local" || !account || !resource) return;
+    const index = state.resourceIndex;
+    try {
+      const enriched = await loadLocalResourceOutputs(account, resource);
+      if (state.resources[index]?.id !== resource.id) return;
+      state.resources[index] = enriched;
+      render();
+    } catch {
+      /* outputs are a bonus on the detail pane — the fields still render */
+    }
   }
 
   async function loadMetrics(): Promise<void> {
@@ -225,8 +267,11 @@ export async function runTui(ctx: CliContext): Promise<void> {
 
   function render(): void {
     if (!alive) return;
-    const cols = out.columns ?? 80;
-    const rows = out.rows ?? 24;
+    // `||`, not `??`: a pty with no window size reports 0, and 0 columns sends
+    // the cursor to negative rows and paints garbage. Floors keep the geometry
+    // (bodyRows, rightWidth) non-negative on a genuinely tiny terminal too.
+    const cols = Math.max(30, out.columns || 80);
+    const rows = Math.max(8, out.rows || 24);
     const leftWidth = Math.max(24, Math.min(36, Math.floor(cols * 0.32)));
     const rightWidth = cols - leftWidth - 3;
     const bodyRows = rows - 4; // header(2) + footer(1) + status(1)
@@ -299,9 +344,9 @@ export async function runTui(ctx: CliContext): Promise<void> {
     );
     lines.push("");
     if (state.resources.length === 0) {
-      lines.push(
-        c.dim(state.loading ? "loading…" : "No resources. Press enter on an account to load."),
-      );
+      if (state.loading) lines.push(c.dim("loading…"));
+      else if (!state.resourcesLoaded) lines.push(c.dim("Press enter to list this account."));
+      else lines.push(c.dim("No resources in this account."));
       return;
     }
     const typeIndex = new Map<string, number>();
@@ -422,7 +467,10 @@ export async function runTui(ctx: CliContext): Promise<void> {
       const next = state.accountIndex + delta;
       if (next >= 0 && next < state.accounts.length) {
         state.accountIndex = next;
-        void loadResources();
+        // Listing hits the provider, so moving the cursor only clears the
+        // pane — enter is what asks for the new account's resources.
+        clearResources();
+        render();
       }
     } else if (state.pane === "resources") {
       const next = state.resourceIndex + delta;
@@ -452,14 +500,21 @@ export async function runTui(ctx: CliContext): Promise<void> {
       else if (key === "\t") {
         state.pane = state.pane === "accounts" ? "resources" : "accounts";
         render();
-      } else if (key === "\r") {
+      } else if (key === "\r" || key === "\n") {
         if (state.pane === "accounts") {
           state.pane = "resources";
           void loadResources();
-        } else if (state.pane === "resources" && activeResource()) {
-          state.pane = "detail";
-          render();
-          void loadMetrics();
+        } else if (state.pane === "resources") {
+          if (activeResource()) {
+            state.pane = "detail";
+            render();
+            void loadResourceOutputs();
+            void loadMetrics();
+          } else if (!state.loading) {
+            // Tabbed into the pane before listing it — enter still means
+            // "list this account", exactly as the placeholder text says.
+            void loadResources();
+          }
         }
       } else if (key === ESC && state.pane === "detail") {
         state.pane = "resources";

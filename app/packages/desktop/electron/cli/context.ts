@@ -5,6 +5,7 @@
 // straight from the SQLite tables the GUI maintains.
 import { getDb } from "../main-utils";
 import { getAccessToken, forceRefreshAccessToken, fetchCloudOrgs } from "../cloud-tokens";
+import { listAccountResourcesLive, resolveResourceOutputs } from "../plugin-runtime";
 import { CLOUD_URL } from "../../env";
 
 export type OutputMode = "json" | "text";
@@ -127,7 +128,12 @@ export async function listCloudAccounts(orgId: string): Promise<AccountInfo[]> {
   const rows = await orgFetch<
     Array<{ id: string; pluginId: string; displayName: string; createdAt: string }>
   >(orgId, "/accounts");
-  return rows.map((r) => ({ id: r.id, pluginId: r.pluginId, displayName: r.displayName }));
+  // The route doesn't order its rows, so without this the list — and the TUI
+  // cursor's starting account — moves between invocations. Local accounts come
+  // back `ORDER BY display_name`; match them.
+  return rows
+    .map((r) => ({ id: r.id, pluginId: r.pluginId, displayName: r.displayName }))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
 
 export interface ResourceRow {
@@ -142,46 +148,74 @@ export interface ResourceRow {
   parentResourceId: string | null;
 }
 
+/**
+ * `fieldsJson` / `outputsJson` are jsonb columns and the API serves them as
+ * real JSON objects (`JsonObject` in api/openapi/paths/accounts.ts) — the name
+ * is a leftover from the column, not a promise of a string. A string is still
+ * accepted for anything that does send one.
+ */
 function parseJsonObject(raw: unknown): Record<string, unknown> {
-  if (typeof raw !== "string" || !raw) return {};
+  if (!raw) return {};
+  if (typeof raw === "object") {
+    return Array.isArray(raw) ? {} : (raw as Record<string, unknown>);
+  }
+  if (typeof raw !== "string") return {};
   try {
     const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
   } catch {
     return {};
   }
 }
 
-export async function listLocalResources(accountId?: string): Promise<ResourceRow[]> {
-  const db = await getDb();
-  const where = accountId ? " WHERE account_id = $1" : "";
-  const rows = await db.select<
-    Array<{
-      id: string;
-      plugin_id: string;
-      resource_type_id: string;
-      account_id: string;
-      display_name: string;
-      external_id: string;
-      fields_json: string;
-      outputs_json: string;
-      parent_resource_id: string | null;
-    }>
-  >(
-    `SELECT id, plugin_id, resource_type_id, account_id, display_name, external_id, fields_json, outputs_json, parent_resource_id FROM resources${where} ORDER BY resource_type_id, display_name`,
-    accountId ? [accountId] : [],
-  );
-  return rows.map((r) => ({
-    id: r.id,
-    pluginId: r.plugin_id,
-    resourceTypeId: r.resource_type_id,
-    accountId: r.account_id,
-    displayName: r.display_name,
-    externalId: r.external_id,
-    fields: parseJsonObject(r.fields_json),
-    outputs: parseJsonObject(r.outputs_json),
-    parentResourceId: r.parent_resource_id,
-  }));
+export interface ResourceListing {
+  rows: ResourceRow[];
+  /** Resource types the provider refused. Reported, never silently dropped. */
+  errors: Array<{ typeId: string; message: string }>;
+}
+
+/**
+ * A local account's resources, read live from the provider.
+ *
+ * The local `resources` table is *not* the source of truth here: desktop only
+ * writes rows for resources the app itself created or pinned, so a workspace
+ * full of discovered droplets has an empty table. The GUI's sidebar and
+ * account pages have always enumerated through the plugin — this does the
+ * same, from the main process.
+ */
+export async function listLocalResources(
+  account: AccountInfo,
+  options: { typeId?: string } = {},
+): Promise<ResourceListing> {
+  const { resources, errors } = await listAccountResourcesLive(account, options);
+  return {
+    errors,
+    rows: resources.map((r) => ({
+      id: r.id,
+      pluginId: r.pluginId,
+      resourceTypeId: r.resourceTypeId,
+      accountId: r.accountId,
+      displayName: r.displayName,
+      externalId: r.externalId ?? "",
+      fields: r.fields,
+      outputs: r.resolvedOutputs,
+      parentResourceId: r.parentResourceId ?? null,
+    })),
+  };
+}
+
+/**
+ * Fill in a local resource's outputs. `listResources` leaves them empty by
+ * contract, so detail views resolve them separately.
+ */
+export async function loadLocalResourceOutputs(
+  account: AccountInfo,
+  row: ResourceRow,
+): Promise<ResourceRow> {
+  const outputs = await resolveResourceOutputs(account, row.resourceTypeId, row.id);
+  return { ...row, outputs: { ...row.outputs, ...outputs } };
 }
 
 export async function listCloudResources(orgId: string, accountId: string): Promise<ResourceRow[]> {
@@ -193,22 +227,30 @@ export async function listCloudResources(orgId: string, accountId: string): Prom
       accountId: string;
       displayName: string;
       externalId: string;
-      fieldsJson: string | null;
-      outputsJson: string | null;
+      fieldsJson: unknown;
+      outputsJson: unknown;
       parentResourceId: string | null;
     }>
   >(orgId, `/accounts/${encodeURIComponent(accountId)}/resources`);
-  return rows.map((r) => ({
-    id: r.id,
-    pluginId: r.pluginId,
-    resourceTypeId: r.resourceTypeId,
-    accountId: r.accountId,
-    displayName: r.displayName,
-    externalId: r.externalId,
-    fields: parseJsonObject(r.fieldsJson),
-    outputs: parseJsonObject(r.outputsJson),
-    parentResourceId: r.parentResourceId,
-  }));
+  return rows
+    .map((r) => ({
+      id: r.id,
+      pluginId: r.pluginId,
+      resourceTypeId: r.resourceTypeId,
+      accountId: r.accountId,
+      displayName: r.displayName,
+      externalId: r.externalId,
+      fields: parseJsonObject(r.fieldsJson),
+      outputs: parseJsonObject(r.outputsJson),
+      parentResourceId: r.parentResourceId,
+    }))
+    .sort(
+      // The API returns rows in sync order; sort so a cloud listing reads the
+      // same way as the local one.
+      (a, b) =>
+        a.resourceTypeId.localeCompare(b.resourceTypeId) ||
+        a.displayName.localeCompare(b.displayName),
+    );
 }
 
 /** Resolve an account by id, exact name, or unique name prefix. */

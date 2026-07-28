@@ -9,11 +9,21 @@ import {
   listCloudAccounts,
   listLocalResources,
   listCloudResources,
+  loadLocalResourceOutputs,
   type AccountInfo,
   type CliContext,
+  type ResourceRow,
 } from "../context";
 import { getAuthStatus } from "../../cloud-tokens";
-import { c, printJson, println, printTable, printKeyValues, seriesColor } from "../output";
+import {
+  c,
+  printErr,
+  printJson,
+  println,
+  printTable,
+  printKeyValues,
+  seriesColor,
+} from "../output";
 
 export async function cmdOrgs(ctx: CliContext): Promise<void> {
   const orgs = await listOrgs();
@@ -124,12 +134,18 @@ async function resolveScopedAccount(
 
 export async function cmdResources(ctx: CliContext, typeFilter?: string): Promise<void> {
   const { orgId, account } = await resolveScopedAccount(ctx);
-  let rows = orgId
-    ? await listCloudResources(orgId, account.id)
-    : await listLocalResources(account.id);
-  if (typeFilter) {
-    rows = rows.filter((r) => r.resourceTypeId === typeFilter);
+  let rows: ResourceRow[];
+  let errors: Array<{ typeId: string; message: string }> = [];
+  if (orgId) {
+    rows = await listCloudResources(orgId, account.id);
+    if (typeFilter) rows = rows.filter((r) => r.resourceTypeId === typeFilter);
+  } else {
+    const listing = await listLocalResources(account, typeFilter ? { typeId: typeFilter } : {});
+    rows = listing.rows;
+    errors = listing.errors;
   }
+  // Warnings go to stderr so `--json` stays a plain array for `jq`.
+  printListingErrors(errors);
   if (ctx.flags.output === "json") {
     printJson(rows);
     return;
@@ -149,16 +165,31 @@ export async function cmdResources(ctx: CliContext, typeFilter?: string): Promis
   ]);
 }
 
+/**
+ * Resource types the provider refused. Reported on stderr so an empty table
+ * is never mistaken for "this account has nothing".
+ */
+function printListingErrors(errors: Array<{ typeId: string; message: string }>): void {
+  for (const e of errors) {
+    printErr(c.yellow(`${e.typeId}: ${e.message}`));
+  }
+}
+
 export async function cmdResource(ctx: CliContext, resourceId: string): Promise<void> {
   if (!resourceId) throw new CliError("Usage: infrawrench resource <resource-id>");
   // Resource ids embed their account id: {accountId}:{typeId}:{externalId}.
   if (!ctx.flags.account) ctx.flags.account = resourceId.split(":")[0]!;
   const { orgId, account } = await resolveScopedAccount(ctx);
+  // Local ids carry their type, so a targeted list beats fanning out over
+  // every resource type the plugin has.
+  const typeId = orgId ? undefined : resourceId.split(":")[1];
   const rows = orgId
     ? await listCloudResources(orgId, account.id)
-    : await listLocalResources(account.id);
-  const row = rows.find((r) => r.id === resourceId);
+    : (await listLocalResources(account, typeId ? { typeId } : {})).rows;
+  let row = rows.find((r) => r.id === resourceId);
   if (!row) throw new CliError(`Resource ${resourceId} not found in ${account.displayName}.`);
+  // Cloud rows arrive with their outputs; local ones resolve on demand.
+  if (!orgId) row = await loadLocalResourceOutputs(account, row);
 
   if (ctx.flags.output === "json") {
     printJson(row);
