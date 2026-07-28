@@ -471,6 +471,21 @@ function BlockView({
   onToggle: (id: string) => void;
   onResolve: (pending: ChatPendingAction, action: "approve" | "reject") => Promise<void>;
 }) {
+  // Approve executes the tool synchronously server-side (a workflow run can
+  // take minutes), so the buttons must lock and the label must say the action
+  // is underway — otherwise the card looks hung and invites a second tap.
+  const [resolving, setResolving] = useState<"approve" | "reject" | null>(null);
+
+  async function resolve(target: ChatPendingAction, action: "approve" | "reject"): Promise<void> {
+    if (resolving) return;
+    setResolving(action);
+    try {
+      await onResolve(target, action);
+    } finally {
+      setResolving(null);
+    }
+  }
+
   if (block.type === "text") {
     return <ChatMarkdown text={block.text} />;
   }
@@ -493,16 +508,20 @@ function BlockView({
   const status = pending?.status ?? (result?.isError ? "errored" : "executed");
   const statusLabel =
     status === "pending"
-      ? "Pending approval"
+      ? resolving === "approve"
+        ? "Running…"
+        : resolving === "reject"
+          ? "Rejecting…"
+          : "Pending approval"
       : status === "approved"
-        ? "Approved…"
+        ? "Running…"
         : status === "rejected"
           ? "Rejected"
           : status === "errored"
             ? "Errored"
             : "Done";
   const statusStyle =
-    status === "pending"
+    status === "pending" && !resolving
       ? styles.toolStatusWarning
       : status === "rejected" || status === "errored"
         ? styles.toolStatusError
@@ -526,11 +545,16 @@ function BlockView({
       </Pressable>
       {pending?.status === "pending" && (
         <View style={styles.toolActions}>
-          <Button label="Approve" onPress={() => void onResolve(pending, "approve")} />
+          <Button
+            label="Approve"
+            disabled={resolving !== null}
+            onPress={() => void resolve(pending, "approve")}
+          />
           <Button
             label="Reject"
             variant="secondary"
-            onPress={() => void onResolve(pending, "reject")}
+            disabled={resolving !== null}
+            onPress={() => void resolve(pending, "reject")}
           />
         </View>
       )}

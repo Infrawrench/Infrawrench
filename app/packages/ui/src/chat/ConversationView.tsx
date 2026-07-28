@@ -478,6 +478,22 @@ function BlockView({
   onApprove,
   onReject,
 }: BlockProps): React.ReactElement | null {
+  // Approve executes the tool synchronously server-side (a workflow run can
+  // take minutes), so the buttons must lock and the label must say the action
+  // is underway — otherwise the card looks hung and invites a second click.
+  const [resolving, setResolving] = useState<"approve" | "reject" | null>(null);
+
+  async function resolve(action: "approve" | "reject"): Promise<void> {
+    if (!pending || resolving) return;
+    setResolving(action);
+    try {
+      if (action === "approve") await onApprove(pending.id);
+      else await onReject(pending.id);
+    } finally {
+      setResolving(null);
+    }
+  }
+
   if (block.type === "text") {
     return <ChatMarkdown text={block.text} />;
   }
@@ -498,16 +514,20 @@ function BlockView({
     const status = pending?.status ?? (result?.isError ? "errored" : "executed");
     const statusLabel =
       status === "pending"
-        ? "Pending approval"
+        ? resolving === "approve"
+          ? "Running…"
+          : resolving === "reject"
+            ? "Rejecting…"
+            : "Pending approval"
         : status === "approved"
-          ? "Approved…"
+          ? "Running…"
           : status === "rejected"
             ? "Rejected"
             : status === "errored"
               ? "Errored"
               : "Done";
     const statusColor =
-      status === "pending"
+      status === "pending" && !resolving
         ? "text-amber-500"
         : status === "rejected" || status === "errored"
           ? "text-red-500"
@@ -526,15 +546,17 @@ function BlockView({
           <div className="flex gap-2 px-3 pb-2">
             <button
               type="button"
-              onClick={() => void onApprove(pending.id)}
-              className="px-2.5 py-1 text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white rounded transition-colors"
+              disabled={resolving !== null}
+              onClick={() => void resolve("approve")}
+              className="px-2.5 py-1 text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white rounded transition-colors disabled:opacity-50 disabled:pointer-events-none"
             >
               Approve
             </button>
             <button
               type="button"
-              onClick={() => void onReject(pending.id)}
-              className="px-2.5 py-1 text-xs font-medium bg-red-600 hover:bg-red-500 text-white rounded transition-colors"
+              disabled={resolving !== null}
+              onClick={() => void resolve("reject")}
+              className="px-2.5 py-1 text-xs font-medium bg-red-600 hover:bg-red-500 text-white rounded transition-colors disabled:opacity-50 disabled:pointer-events-none"
             >
               Reject
             </button>
