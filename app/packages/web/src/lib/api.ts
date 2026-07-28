@@ -33,6 +33,36 @@ export class HostKeyTrustRequiredClientError extends Error {
   }
 }
 
+/** Payload of the structured 409 an invite gets when the paid plan is full. */
+export interface SeatLimitPayload {
+  error: string;
+  code: "seat_limit_reached";
+  seatCount: number;
+  seatsUsed: number;
+}
+
+function isSeatLimitResponse(parsed: unknown): parsed is SeatLimitPayload {
+  return (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    (parsed as { code?: unknown }).code === "seat_limit_reached"
+  );
+}
+
+/**
+ * Error thrown by `apiFetch` for the structured `seat_limit_reached` 409.
+ * Callers can `catch` it to drive an "add a seat?" prompt, then retry the
+ * invite with `addSeat: true`.
+ */
+export class SeatLimitReachedClientError extends Error {
+  readonly payload: SeatLimitPayload;
+  constructor(payload: SeatLimitPayload) {
+    super(payload.error || "All seats are in use");
+    this.name = "SeatLimitReachedClientError";
+    this.payload = payload;
+  }
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     credentials: "include",
@@ -61,6 +91,9 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     }
     if (res.status === 409 && isHostKeyTrustResponse(parsed)) {
       throw new HostKeyTrustRequiredClientError(parsed);
+    }
+    if (res.status === 409 && isSeatLimitResponse(parsed)) {
+      throw new SeatLimitReachedClientError(parsed);
     }
     // Step-up: the server accepted who we are but wants a fresher sign-in
     // before allowing this change. Treated like the 401 path — bounce through

@@ -33,7 +33,7 @@ import {
 } from "../db/schema";
 import { workos } from "../auth/workos";
 import { getStripe } from "./stripe";
-import { releaseSeat } from "./seat-release";
+import { releaseSeat } from "./seats";
 import { logAudit } from "./audit";
 import { classifyMemberships, type AccountDeletionPlan } from "./account-deletion-plan";
 

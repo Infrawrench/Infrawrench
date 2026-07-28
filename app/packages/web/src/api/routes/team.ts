@@ -5,7 +5,7 @@ import { eq, and, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { apiKeys, users, invitations, organizationMembers, roles } from "../../db/schema";
 import { logAudit } from "../../services/audit";
-import { releaseSeat } from "../../services/seat-release";
+import { addSeat, checkSeatAvailability, releaseSeat } from "../../services/seats";
 import { isOwnerRole } from "../../services/org-roles";
 import { requirePermission } from "../../auth/permissions";
 import {
@@ -274,7 +274,12 @@ app.post("/invitations", async (c) => {
   requirePermission(c, "team:invite");
   const session = c.get("session");
   const organizationId = c.get("organizationId");
-  const body = await c.req.json<{ email: string; role?: string; roleId?: string }>();
+  const body = await c.req.json<{
+    email: string;
+    role?: string;
+    roleId?: string;
+    addSeat?: boolean;
+  }>();
   const email = body.email;
 
   // Prefer roleId; fall back to mapping the legacy text role to a system role.
@@ -294,6 +299,34 @@ app.post("/invitations", async (c) => {
     if (isSystemRoleKey(body.role)) {
       const sys = await getSystemRole(organizationId, body.role);
       resolvedRoleId = sys.id;
+    }
+  }
+
+  // Seat gate: on a paid plan every member and pending invite occupies a
+  // seat. Inviting past capacity needs an explicit `addSeat` opt-in — the
+  // client shows the 409 as an "add a seat?" prompt and retries with it set.
+  const seatLimit = await checkSeatAvailability(organizationId);
+  let seatAdded = false;
+  if (seatLimit) {
+    if (!body.addSeat) {
+      return c.json(
+        {
+          error: `All ${seatLimit.seatCount} seats are in use. Add a seat to send this invitation.`,
+          code: "seat_limit_reached",
+          seatCount: seatLimit.seatCount,
+          seatsUsed: seatLimit.seatsUsed,
+        },
+        409,
+      );
+    }
+    // Buying a seat is a billing change, not a team change.
+    requirePermission(c, "billing:write");
+    try {
+      await addSeat(organizationId);
+      seatAdded = true;
+    } catch (err) {
+      console.error(`[team] adding a seat for org ${organizationId} failed:`, err);
+      return c.json({ error: "Adding a seat failed, so the invitation was not sent." }, 502);
     }
   }
 
@@ -320,7 +353,7 @@ app.post("/invitations", async (c) => {
     action: "member.invite",
     entityType: "member",
     entityId: id,
-    metadata: { email, role: legacyRole, roleId: resolvedRoleId },
+    metadata: { email, role: legacyRole, roleId: resolvedRoleId, seatAdded },
   });
 
   return c.json({ id, token });

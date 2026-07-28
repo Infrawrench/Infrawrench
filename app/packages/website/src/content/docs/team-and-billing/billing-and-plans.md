@@ -30,7 +30,7 @@ Free orgs (no payment method on file) can use the [AI chat](../features/ai-chat.
 
 ## Seats
 
-A seat is one user in your organization. If you invite a fourth teammate while on 3 seats, you will be prompted to add a seat before the invite is sent. Downgrading removes the last-invited seat first.
+A seat is one user in your organization, and a pending invitation reserves one. If you invite a fourth teammate while on 3 seats, you will be prompted to confirm adding a seat before the invite is sent; the new seat is billed pro-rata from that day. Adding a seat this way needs billing permission as well as invite permission.
 
 Removing a member (or a member deleting their own account) frees their seat automatically: your seat count drops by one, and the next invoice bills the lower count — no mid-cycle credit, since the seat was already paid through the period. Seats you bought beyond your current member count are kept, and the count never drops below one; you can always adjust it manually from the Stripe portal under **Settings → Billing**.
 

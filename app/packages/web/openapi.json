@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.11.0",
+    "version": "0.12.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -5886,6 +5886,28 @@
         "required": ["id", "token"],
         "additionalProperties": false
       },
+      "SeatLimitResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "enum": ["seat_limit_reached"]
+          },
+          "seatCount": {
+            "type": "integer",
+            "description": "Seats on the plan"
+          },
+          "seatsUsed": {
+            "type": "integer",
+            "description": "Members plus pending unexpired invitations"
+          }
+        },
+        "required": ["error", "code", "seatCount", "seatsUsed"],
+        "additionalProperties": false
+      },
       "InviteRequest": {
         "type": "object",
         "properties": {
@@ -5900,6 +5922,10 @@
             "type": "string",
             "format": "uuid",
             "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "addSeat": {
+            "type": "boolean",
+            "description": "When the paid plan is full (409 seat_limit_reached), retry with this set to buy one more seat and send the invitation. Requires billing:write."
           }
         },
         "required": ["email"],
@@ -15817,6 +15843,26 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/InviteResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "All seats are in use; retry with addSeat to buy one more",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatLimitResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Buying the extra seat failed; the invitation was not sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

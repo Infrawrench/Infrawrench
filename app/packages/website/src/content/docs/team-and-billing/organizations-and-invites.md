@@ -19,6 +19,10 @@ An **organization** is a shared workspace. Accounts, resources, dashboards, SSH 
 
 The invitee gets an email with a link. They sign up (or sign in), and the org appears in their workspace picker.
 
+On the paid plan, every member and pending invite occupies a [seat](./billing-and-plans.md). If all seats are taken, you'll be asked to confirm adding one (billed pro-rata) before the invite is sent — this needs billing permission, so a member who can invite but can't manage billing will be asked to get a billing admin to add the seat first.
+
+<insert [Invite form showing the "All seats are in use. Add a seat for $20/month and send the invitation?" confirmation prompt] here>
+
 ## Pending invitations
 
 Pending invites show in **Settings → Team** with a **Resend** and **Revoke** button. Invites expire after 7 days.

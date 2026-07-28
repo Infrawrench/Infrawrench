@@ -29,7 +29,11 @@ vi.mock("@/db/schema", () => ({
 }));
 
 vi.mock("@/services/audit", () => ({ logAudit: vi.fn() }));
-vi.mock("@/services/seat-release", () => ({ releaseSeat: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@/services/seats", () => ({
+  releaseSeat: vi.fn().mockResolvedValue(undefined),
+  addSeat: vi.fn().mockResolvedValue(undefined),
+  checkSeatAvailability: vi.fn().mockResolvedValue(null),
+}));
 
 const mockHasPermission = vi.fn().mockReturnValue(true);
 vi.mock("@infrawrench/server-core/permissions/catalog", () => ({
@@ -46,7 +50,7 @@ vi.mock("@infrawrench/server-core/permissions", () => ({
 }));
 
 const { teamRoutes } = await import("@/api/routes/team");
-const { releaseSeat } = await import("@/services/seat-release");
+const { releaseSeat, addSeat, checkSeatAvailability } = await import("@/services/seats");
 const perms = await import("@infrawrench/server-core/permissions");
 
 function buildApp(opts?: { permissions?: string[]; roleSystemKey?: string | null }) {
@@ -245,6 +249,73 @@ describe("Team routes", () => {
     const body = await res.json();
     expect(body.token).toBeTruthy();
     expect(body.id).toBeTruthy();
+  });
+
+  it("POST /invitations returns the structured 409 when the plan is full", async () => {
+    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({ seatCount: 3, seatsUsed: 3 });
+    const values = vi.fn().mockResolvedValue(undefined);
+    mockInsert.mockReturnValue({ values });
+
+    const res = await buildApp().request("/invitations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "fourth@e.com", role: "member" }),
+    });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.code).toBe("seat_limit_reached");
+    expect(body.seatCount).toBe(3);
+    expect(values).not.toHaveBeenCalled();
+    expect(addSeat).not.toHaveBeenCalled();
+  });
+
+  it("POST /invitations with addSeat buys a seat and sends the invite", async () => {
+    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({ seatCount: 3, seatsUsed: 3 });
+    const values = vi.fn().mockResolvedValue(undefined);
+    mockInsert.mockReturnValue({ values });
+
+    const res = await buildApp().request("/invitations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "fourth@e.com", role: "member", addSeat: true }),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).token).toBeTruthy();
+    expect(addSeat).toHaveBeenCalledWith("org-1");
+    expect(values).toHaveBeenCalled();
+  });
+
+  it("POST /invitations with addSeat needs billing:write", async () => {
+    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({ seatCount: 3, seatsUsed: 3 });
+    mockHasPermission.mockImplementation((_granted, perm) => perm !== "billing:write");
+    const values = vi.fn().mockResolvedValue(undefined);
+    mockInsert.mockReturnValue({ values });
+
+    const res = await buildApp().request("/invitations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "fourth@e.com", role: "member", addSeat: true }),
+    });
+    expect(res.status).toBe(403);
+    expect(addSeat).not.toHaveBeenCalled();
+    expect(values).not.toHaveBeenCalled();
+  });
+
+  it("POST /invitations does not send the invite when the seat purchase fails", async () => {
+    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({ seatCount: 3, seatsUsed: 3 });
+    vi.mocked(addSeat).mockRejectedValueOnce(new Error("stripe down"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const values = vi.fn().mockResolvedValue(undefined);
+    mockInsert.mockReturnValue({ values });
+
+    const res = await buildApp().request("/invitations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "fourth@e.com", role: "member", addSeat: true }),
+    });
+    expect(res.status).toBe(502);
+    expect(values).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 
   it("DELETE /members/:id blocks removing the last owner", async () => {

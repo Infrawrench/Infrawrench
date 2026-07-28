@@ -63,8 +63,22 @@ const InviteRequest = strict({
   email: Email,
   role: Role.optional(),
   roleId: Uuid.optional(),
+  addSeat: z.boolean().optional().openapi({
+    description:
+      "When the paid plan is full (409 seat_limit_reached), retry with this set to buy one more seat and send the invitation. Requires billing:write.",
+  }),
 }).openapi("InviteRequest");
 const InviteResponse = strict({ id: Uuid, token: z.string() }).openapi("InviteResponse");
+
+const SeatLimitResponse = strict({
+  error: z.string(),
+  code: z.literal("seat_limit_reached"),
+  seatCount: z.number().int().openapi({ description: "Seats on the plan" }),
+  seatsUsed: z
+    .number()
+    .int()
+    .openapi({ description: "Members plus pending unexpired invitations" }),
+}).openapi("SeatLimitResponse");
 
 const RoleChangeRequest = strict({
   role: Role.optional(),
@@ -203,6 +217,14 @@ export function registerTeamPaths(ctx: BuildContext) {
     },
     responses: {
       200: { description: "Invited", content: { "application/json": { schema: InviteResponse } } },
+      409: {
+        description: "All seats are in use; retry with addSeat to buy one more",
+        content: { "application/json": { schema: SeatLimitResponse } },
+      },
+      502: {
+        description: "Buying the extra seat failed; the invitation was not sent",
+        content: { "application/json": { schema: ErrorResponse } },
+      },
     },
   });
 

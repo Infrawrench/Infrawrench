@@ -1,6 +1,6 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useState, useEffect, useCallback } from "react";
-import { apiGet, apiPost, apiDelete, apiPatch } from "@/lib/api";
+import { apiGet, apiPost, apiDelete, apiPatch, SeatLimitReachedClientError } from "@/lib/api";
 import { Can, usePermissions } from "@/auth/permissions-context";
 import type { InvitationSummary, TeamMember } from "@infrawrench/ui";
 
@@ -56,11 +56,30 @@ function TeamPage() {
     if (!inviteEmail.trim() || !inviteRoleId) return;
     setInviting(true);
     setError(null);
+    const body = { email: inviteEmail.trim(), roleId: inviteRoleId };
     try {
-      await apiPost(`/api/org/${orgId}/team/invitations`, {
-        email: inviteEmail.trim(),
-        roleId: inviteRoleId,
-      });
+      try {
+        await apiPost(`/api/org/${orgId}/team/invitations`, body);
+      } catch (e) {
+        if (!(e instanceof SeatLimitReachedClientError)) throw e;
+        // The paid plan is full — every member and pending invite holds a
+        // seat. Confirm buying one more, then retry with the opt-in flag.
+        const { seatCount } = e.payload;
+        if (!has("billing:write")) {
+          setError(
+            `All ${seatCount} seats are in use. Ask someone with billing access to add a seat first.`,
+          );
+          return;
+        }
+        if (
+          !window.confirm(
+            `All ${seatCount} seats are in use. Add a seat for $20/month and send the invitation?`,
+          )
+        ) {
+          return;
+        }
+        await apiPost(`/api/org/${orgId}/team/invitations`, { ...body, addSeat: true });
+      }
       setInviteEmail("");
       await load();
     } catch (e) {

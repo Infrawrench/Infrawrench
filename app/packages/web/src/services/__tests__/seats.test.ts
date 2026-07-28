@@ -11,6 +11,7 @@ vi.mock("@/db/client", () => ({
 vi.mock("@/db/schema", () => ({
   subscriptions: { id: "id", organizationId: "org" },
   organizationMembers: { organizationId: "org" },
+  invitations: { organizationId: "org", acceptedAt: "accepted_at", expiresAt: "expires_at" },
 }));
 
 const mockRetrieve = vi.fn();
@@ -21,7 +22,7 @@ const mockGetStripe = vi.fn(() => ({
 }));
 vi.mock("@/services/stripe", () => ({ getStripe: () => mockGetStripe() }));
 
-const { releaseSeat } = await import("@/services/seat-release");
+const { releaseSeat, addSeat, checkSeatAvailability } = await import("@/services/seats");
 
 /** Queue one select chain per query, in call order. */
 function selectSequence(...rowSets: unknown[][]) {
@@ -124,5 +125,57 @@ describe("releaseSeat", () => {
     await releaseSeat("org-1");
 
     expect(mockItemUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe("checkSeatAvailability", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("is null on the free tier (no subscription row)", async () => {
+    selectSequence([]);
+    expect(await checkSeatAvailability("org-1")).toBeNull();
+  });
+
+  it("is null while seats remain", async () => {
+    // 5 seats, 3 members + 1 pending invite = 4 used.
+    selectSequence([subRow()], [{ n: 3 }], [{ n: 1 }]);
+    expect(await checkSeatAvailability("org-1")).toBeNull();
+  });
+
+  it("reports the plan as full, counting pending invites as occupied seats", async () => {
+    // 5 seats, 3 members + 2 pending invites.
+    selectSequence([subRow()], [{ n: 3 }], [{ n: 2 }]);
+    expect(await checkSeatAvailability("org-1")).toEqual({ seatCount: 5, seatsUsed: 5 });
+  });
+});
+
+describe("addSeat", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("throws without a live subscription", async () => {
+    selectSequence([]);
+    await expect(addSeat("org-1")).rejects.toThrow(/no live subscription/);
+  });
+
+  it("bumps the licensed quantity by one and records it locally", async () => {
+    selectSequence([subRow()]);
+    mockRetrieve.mockResolvedValue(
+      stripeSub([{ id: "si_metered" }, { id: "si_seats", quantity: 5 }]),
+    );
+    const { set } = updateChain();
+
+    await addSeat("org-1");
+
+    expect(mockItemUpdate).toHaveBeenCalledWith("si_seats", { quantity: 6 });
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ seatCount: 6 }));
+  });
+
+  it("propagates Stripe failures so the invite is not sent", async () => {
+    selectSequence([subRow()]);
+    mockRetrieve.mockResolvedValue(stripeSub([{ id: "si_seats", quantity: 5 }]));
+    mockItemUpdate.mockRejectedValueOnce(new Error("stripe down"));
+
+    await expect(addSeat("org-1")).rejects.toThrow("stripe down");
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 });
