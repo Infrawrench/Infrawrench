@@ -17,6 +17,7 @@ vi.mock("@/db/client", () => ({
 }));
 vi.mock("@/db/schema", () => ({
   users: {},
+  apiKeys: { id: "id", userId: "uid", organizationId: "org", revokedAt: "revoked_at" },
   invitations: { id: "id", organizationId: "org", acceptedAt: "accepted", roleId: "role_id" },
   organizationMembers: {
     userId: "uid",
@@ -28,6 +29,7 @@ vi.mock("@/db/schema", () => ({
 }));
 
 vi.mock("@/services/audit", () => ({ logAudit: vi.fn() }));
+vi.mock("@/services/seat-release", () => ({ releaseSeat: vi.fn().mockResolvedValue(undefined) }));
 
 const mockHasPermission = vi.fn().mockReturnValue(true);
 vi.mock("@infrawrench/server-core/permissions/catalog", () => ({
@@ -44,6 +46,7 @@ vi.mock("@infrawrench/server-core/permissions", () => ({
 }));
 
 const { teamRoutes } = await import("@/api/routes/team");
+const { releaseSeat } = await import("@/services/seat-release");
 const perms = await import("@infrawrench/server-core/permissions");
 
 function buildApp(opts?: { permissions?: string[]; roleSystemKey?: string | null }) {
@@ -273,6 +276,47 @@ describe("Team routes", () => {
       method: "DELETE",
     });
     expect(res.status).toBe(403);
+  });
+
+  it("DELETE /members/:id removes the member and releases their seat", async () => {
+    // isMemberOwner -> not an owner
+    const ownerLimit = vi.fn().mockResolvedValue([]);
+    const ownerWhere = vi.fn().mockReturnValue({ limit: ownerLimit });
+    const ownerLeftJoin = vi.fn().mockReturnValue({ where: ownerWhere });
+    const ownerFrom = vi.fn().mockReturnValue({ leftJoin: ownerLeftJoin });
+    mockSelect.mockReturnValue({ from: ownerFrom });
+    mockDelete.mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    // apiKeys revocation
+    const returning = vi.fn().mockResolvedValue([]);
+    const revokeWhere = vi.fn().mockReturnValue({ returning });
+    mockUpdate.mockReturnValue({ set: vi.fn().mockReturnValue({ where: revokeWhere }) });
+
+    const res = await buildApp({ roleSystemKey: "owner" }).request("/members/u2", {
+      method: "DELETE",
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).ok).toBe(true);
+    expect(releaseSeat).toHaveBeenCalledWith("org-1");
+  });
+
+  it("DELETE /members/:id still succeeds when the seat release fails", async () => {
+    const ownerLimit = vi.fn().mockResolvedValue([]);
+    const ownerWhere = vi.fn().mockReturnValue({ limit: ownerLimit });
+    const ownerLeftJoin = vi.fn().mockReturnValue({ where: ownerWhere });
+    const ownerFrom = vi.fn().mockReturnValue({ leftJoin: ownerLeftJoin });
+    mockSelect.mockReturnValue({ from: ownerFrom });
+    mockDelete.mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    const returning = vi.fn().mockResolvedValue([]);
+    const revokeWhere = vi.fn().mockReturnValue({ returning });
+    mockUpdate.mockReturnValue({ set: vi.fn().mockReturnValue({ where: revokeWhere }) });
+    vi.mocked(releaseSeat).mockRejectedValueOnce(new Error("stripe down"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await buildApp({ roleSystemKey: "owner" }).request("/members/u2", {
+      method: "DELETE",
+    });
+    expect(res.status).toBe(200);
+    errorSpy.mockRestore();
   });
 
   it("DELETE /invitations/:id returns ok", async () => {

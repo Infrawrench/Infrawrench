@@ -5,6 +5,7 @@ import { eq, and, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { apiKeys, users, invitations, organizationMembers, roles } from "../../db/schema";
 import { logAudit } from "../../services/audit";
+import { releaseSeat } from "../../services/seat-release";
 import { isOwnerRole } from "../../services/org-roles";
 import { requirePermission } from "../../auth/permissions";
 import {
@@ -416,6 +417,15 @@ app.delete("/members/:id", async (c) => {
     entityId: userId,
     metadata: { revokedApiKeyIds: revoked.map((k) => k.id) },
   });
+
+  // Best-effort: the member is already out either way, and the seat can still
+  // be dropped by hand in the Stripe portal if this fails.
+  try {
+    await releaseSeat(organizationId);
+  } catch (err) {
+    console.error(`[team] releasing a seat for org ${organizationId} failed:`, err);
+  }
+
   return c.json({ ok: true });
 });
 

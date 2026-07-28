@@ -33,6 +33,7 @@ import {
 } from "../db/schema";
 import { workos } from "../auth/workos";
 import { getStripe } from "./stripe";
+import { releaseSeat } from "./seat-release";
 import { logAudit } from "./audit";
 import { classifyMemberships, type AccountDeletionPlan } from "./account-deletion-plan";
 
@@ -147,6 +148,18 @@ export async function deleteAccount(userId: string): Promise<{ organizationsDele
     }
     await tx.delete(users).where(eq(users.id, userId));
   });
+
+  // The membership rows for the organizations being left just cascaded away
+  // with the user row, so each of those orgs now has one seat nobody fills.
+  // Best-effort: the account is gone either way, and a surviving owner can
+  // still drop the seat in the Stripe portal.
+  for (const organizationId of plan.organizationIdsToLeave) {
+    try {
+      await releaseSeat(organizationId);
+    } catch (err) {
+      console.error(`[account-deletion] releasing a seat for org ${organizationId} failed:`, err);
+    }
+  }
 
   try {
     await workos.userManagement.deleteUser(userId);
