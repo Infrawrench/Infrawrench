@@ -38,8 +38,12 @@ export const HOSTED_BUILD_TIMEOUT_SECONDS = 1200;
 /** Machine type for hosted builds. Deliberately not configurable by the caller. */
 const HOSTED_BUILD_MACHINE = "E2_HIGHCPU_8";
 
-/** How often to poll a running build. */
-const POLL_INTERVAL_MS = 3000;
+/**
+ * Polling backoff for a running build. Starts tight so a short `run()` is not
+ * charged a fixed delay it did not need, then relaxes for a long image build.
+ */
+const POLL_MIN_MS = 800;
+const POLL_MAX_MS = 5000;
 
 export interface CloudBuildConfig {
   /** GCP project that owns the builds, the staging bucket and the build secrets. */
@@ -394,9 +398,11 @@ async function waitForBuild(
   buildId: string,
   ctx: CloudBuildContext,
 ): Promise<string> {
+  let wait = POLL_MIN_MS;
   for (;;) {
     if (ctx.signal?.aborted) throw new Error("Deploy stopped.");
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    await new Promise((r) => setTimeout(r, wait));
+    wait = Math.min(Math.round(wait * 1.5), POLL_MAX_MS);
     const token = await accessToken();
     const res = await fetch(
       `https://cloudbuild.googleapis.com/v1/projects/${encodeURIComponent(config.projectId)}/builds/${encodeURIComponent(buildId)}`,
@@ -439,12 +445,28 @@ export async function runOnCloudBuild(
   }
 
   try {
+    // Cloud Build reports pass/fail, not the process's exit status, and writes
+    // one interleaved log. A shell entrypoint lets us wrap the command so it
+    // reports both precisely: streams captured to separate files, then replayed
+    // around markers with the real exit code. The nonce makes the markers
+    // impossible for the command's own output to forge.
+    const nonce = randomUUID().replace(/-/g, "");
+    // A SUBSHELL, not a brace group: `exit 1` inside a brace group terminates
+    // the whole shell, so the markers below would never print and the command's
+    // output and code would both be lost. A very ordinary thing for a script to do.
+    const wrapped =
+      `( ${request.command}\n) >/tmp/iw-out 2>/tmp/iw-err; __iw_code=$?\n` +
+      `printf '\\n__IW_OUT_${nonce}__\\n'; cat /tmp/iw-out\n` +
+      `printf '\\n__IW_ERR_${nonce}__\\n'; cat /tmp/iw-err\n` +
+      `printf '\\n__IW_EXIT_${nonce}__%s\\n' "$__iw_code"\n` +
+      `exit $__iw_code`;
+
     const step: Record<string, unknown> = {
       // The staged tag: a step's image is pulled from a registry, and the image
       // this deploy built exists nowhere else.
       name: ctx.stagedImage,
       entrypoint,
-      args: shell ? ["-lc", request.command] : [request.command],
+      args: shell ? ["-lc", wrapped] : [request.command],
     };
     // Cloud Build extracts the source into /workspace, which is also the step's
     // working directory — so the project is mounted the same way the local
@@ -495,17 +517,20 @@ export async function runOnCloudBuild(
     // The command's output is the whole point of run() — `const v = await
     // run(...)` has to return what it printed, or the same Infrafile behaves
     // differently depending on where it was deployed from.
-    const output = await readBuildLog(config, buildId).catch(() => "");
-    for (const line of output.split("\n")) {
+    const raw = await readBuildLog(config, buildId).catch(() => "");
+    const parsed = shell ? parseWrappedOutput(raw, nonce) : null;
+
+    const result: RunInImageResult = parsed ?? {
+      // A non-shell entrypoint cannot be wrapped, so fall back to the build's
+      // own verdict and the whole log.
+      exitCode: status === "SUCCESS" ? 0 : 1,
+      stdout: stripStepPrefixes(raw),
+      stderr: "",
+    };
+    for (const line of `${result.stdout}${result.stderr}`.split("\n")) {
       if (line) ctx.log(line);
     }
-
-    // Cloud Build reports pass/fail, not the process's exit code, so a failure
-    // normalises to 1 — enough for the caller's zero/non-zero decision, though
-    // `allowFailure` callers do not get the real code on this path.
-    return status === "SUCCESS"
-      ? { exitCode: 0, stdout: output, stderr: "" }
-      : { exitCode: 1, stdout: output, stderr: output };
+    return result;
   } finally {
     await Promise.all(
       Object.values(secretNames).map((n) => destroyBuildSecret(token, n).catch(() => {})),
@@ -513,12 +538,52 @@ export async function runOnCloudBuild(
   }
 }
 
+/** Cloud Build prefixes every line of step output with its step number. */
+function stripStepPrefixes(raw: string): string {
+  return raw
+    .split("\n")
+    .map((line) => line.replace(/^Step #\d+: ?/, ""))
+    .join("\n")
+    .trim();
+}
+
 /**
- * A finished build's log text.
+ * Split a wrapped command's log into its real streams and exit code.
+ *
+ * Everything is delimited by nonce markers rather than matched by shape. An
+ * earlier version filtered Cloud Build's banners by regex, which silently ate
+ * any line of the command's own output that happened to start with `DONE`,
+ * `BUILD` or `PUSH`. Returns null when the markers are absent — the step died
+ * before it could report, so the caller falls back to the build's verdict.
+ */
+function parseWrappedOutput(raw: string, nonce: string): RunInImageResult | null {
+  const text = stripStepPrefixes(raw);
+  const outAt = text.indexOf(`__IW_OUT_${nonce}__`);
+  const errAt = text.indexOf(`__IW_ERR_${nonce}__`);
+  const exitAt = text.indexOf(`__IW_EXIT_${nonce}__`);
+  if (outAt < 0 || errAt < outAt || exitAt < errAt) return null;
+
+  const stdout = text.slice(outAt + `__IW_OUT_${nonce}__`.length, errAt).trim();
+  const stderr = text.slice(errAt + `__IW_ERR_${nonce}__`.length, exitAt).trim();
+  const code = Number.parseInt(
+    text
+      .slice(exitAt + `__IW_EXIT_${nonce}__`.length)
+      .trim()
+      .split("\n")[0] ?? "",
+    10,
+  );
+  return { exitCode: Number.isFinite(code) ? code : 1, stdout, stderr };
+}
+
+/** Test seam: the parsing is pure and its failure modes are subtle. */
+export const __parseWrappedOutputForTests = parseWrappedOutput;
+
+/**
+ * A finished build's raw log text.
  *
  * Cloud Build writes it to `logsBucket` as `log-<id>.txt` when logging is
- * GCS_ONLY. Its own step banners are stripped so what comes back is what the
- * command actually printed.
+ * GCS_ONLY. Returned verbatim — the caller decides what is output and what is
+ * Cloud Build's own chatter, using markers rather than guessing.
  */
 async function readBuildLog(config: CloudBuildConfig, buildId: string): Promise<string> {
   const token = await accessToken();
@@ -529,21 +594,7 @@ async function readBuildLog(config: CloudBuildConfig, buildId: string): Promise<
     { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!res.ok) return "";
-  const raw = await res.text();
-  return (
-    raw
-      .split("\n")
-      .filter(
-        (line) =>
-          !/^(starting build|BUILD|Starting Step|Finished Step|PUSH|DONE|Step #\d+:? *$)/i.test(
-            line.trim(),
-          ),
-      )
-      // Cloud Build prefixes each line with its step number.
-      .map((line) => line.replace(/^Step #\d+: ?/, ""))
-      .join("\n")
-      .trim()
-  );
+  return res.text();
 }
 
 /** Remove a deploy's scratch image. Best effort; a repo TTL policy is the backstop. */

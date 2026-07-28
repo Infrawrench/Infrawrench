@@ -1540,6 +1540,15 @@ Cloud Build's isolation is structural rather than a NetworkPolicy we have to kee
   deleted after the deploy; give the repo a TTL policy as the backstop.
 - **Where the image runs**: a Cloud Build worker, never our cluster. It was built from a customer
   Dockerfile, so running it beside our pods is the same exposure as building it there.
+- **The command is wrapped so it reports its own streams and exit code.** Cloud Build gives one
+  interleaved log and a pass/fail verdict, so the step runs
+  `( cmd ) >out 2>err; code=$?` and replays both around **nonce-delimited markers**. Two traps
+  here, both found by running it: a **brace group is wrong** — `exit 1` inside `{ }` kills the
+  whole shell and the markers never print, losing the output _and_ the code, so it must be a
+  subshell; and **filtering Cloud Build's banners by regex is wrong** — it silently ate any line
+  of the command's own output starting with `DONE`/`BUILD`/`PUSH`, which is why parsing is by
+  marker and not by shape. A non-shell `entrypoint` can't be wrapped, so it falls back to the
+  build's verdict and the whole log. `parseWrappedOutput` is exported as a test seam.
 - Bounded by `HOSTED_BUILD_TIMEOUT_SECONDS` (1200) and metered into
   `deployment_runs.build_seconds` / `build_runner`. Env: `GCP_BUILD_PROJECT_ID`,
   `GCP_BUILD_STAGING_BUCKET`, `GCP_BUILD_REGION`, and `GCP_BUILD_SA_KEY` only off-GKE (on GKE the
