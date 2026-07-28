@@ -79,6 +79,49 @@ function writeKeyToDisk(rawKey: Buffer): void {
   }
 }
 
+/**
+ * When true, a missing or unreadable master key is a hard error instead of a
+ * reason to mint a new one.
+ *
+ * Minting is only ever correct on a fresh install. Every other time the key
+ * fails to load — a locked keychain, a headless session safeStorage can't
+ * reach, a profile opened by a differently-signed build — the old key was
+ * still there and a new one silently orphans every encrypted row: accounts,
+ * secret fields, cloud tokens. The GUI runs after the keychain is unlocked
+ * and owns first-run setup, so it keeps the minting behaviour; the CLI turns
+ * this on (see electron/cli/main.ts) and reports the failure instead.
+ */
+let _requireExistingKey = false;
+
+export function setRequireExistingEncryptionKey(required: boolean): void {
+  _requireExistingKey = required;
+}
+
+/**
+ * A failure the user caused and can fix — a typo'd flag, a locked keychain, an
+ * account that isn't there. Hosts render `.message` on its own: the CLI prints
+ * it without a stack trace, the GUI can put it straight in a toast. Anything
+ * not marked this way is a bug and keeps its stack.
+ */
+export class UserFacingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UserFacingError";
+  }
+}
+
+/** Thrown instead of minting a key. The CLI prints it without a stack trace. */
+export class MasterKeyUnavailableError extends UserFacingError {
+  constructor() {
+    super(
+      "Could not read this workspace's master key. Nothing was changed — a new key would " +
+        "make every stored credential unreadable. Unlock your login keychain (or open the " +
+        "desktop app once) and try again.",
+    );
+    this.name = "MasterKeyUnavailableError";
+  }
+}
+
 export function getEncryptionKey(): Buffer {
   if (_encryptionKey) return _encryptionKey;
   const existing = readKeyFromDisk();
@@ -86,6 +129,7 @@ export function getEncryptionKey(): Buffer {
     _encryptionKey = existing;
     return _encryptionKey;
   }
+  if (_requireExistingKey) throw new MasterKeyUnavailableError();
   _encryptionKey = crypto.randomBytes(32);
   writeKeyToDisk(_encryptionKey);
   return _encryptionKey;

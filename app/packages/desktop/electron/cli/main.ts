@@ -5,6 +5,7 @@
 // the single-instance lock.
 import { app } from "electron";
 import { wireDbGetter, setDatabaseReadOnly } from "../db";
+import { setRequireExistingEncryptionKey, UserFacingError } from "../main-utils";
 import { setTokenStoreReadOnly } from "../cloud-tokens";
 import { parseCliArgs } from "./args";
 import { CliError, type CliContext } from "./context";
@@ -55,7 +56,15 @@ FLAGS
 The CLI shares the desktop app's data: the same local accounts, the same
 cloud session, the same organizations. Sign in once, use both.`;
 
-/** True when the GUI already runs — probe the single-instance lock. */
+/**
+ * True when the GUI already runs — probe the single-instance lock.
+ *
+ * MUST be called after `app.whenReady()`. Losing the lock *before* the ready
+ * event leaves the app permanently un-ready: Electron gates startup for a
+ * second instance because it expects the loser to `app.quit()`, so
+ * `whenReady()` never resolves and the CLI hangs with no output at all.
+ * Probing after ready returns the same answer and costs nothing.
+ */
 function detectGuiRunning(): boolean {
   const acquired = app.requestSingleInstanceLock();
   if (acquired) {
@@ -92,12 +101,17 @@ export async function runCli(): Promise<void> {
       return;
     }
 
-    const guiRunning = detectGuiRunning();
+    // Order is load-bearing — see detectGuiRunning(). Ready first, probe second.
     await app.whenReady();
+    const guiRunning = detectGuiRunning();
 
     wireDbGetter();
     setDatabaseReadOnly(guiRunning);
     setTokenStoreReadOnly(guiRunning);
+    // The GUI owns first-run key creation. A terminal session that can't reach
+    // the keychain must fail loudly rather than mint a key that orphans every
+    // stored credential.
+    setRequireExistingEncryptionKey(true);
 
     const ctx: CliContext = { flags: parsed.flags, positionals: parsed.positionals, guiRunning };
 
@@ -152,9 +166,11 @@ export async function runCli(): Promise<void> {
         exitCode = 2;
     }
   } catch (e) {
-    if (e instanceof CliError) {
+    // A stack trace is for a bug in here, not for a typo'd flag or a locked
+    // keychain — those print as a single line.
+    if (e instanceof CliError || e instanceof UserFacingError) {
       printErr(c.red(e.message));
-      exitCode = e.exitCode;
+      exitCode = e instanceof CliError ? e.exitCode : 1;
     } else {
       printErr(c.red(e instanceof Error ? (e.stack ?? e.message) : String(e)));
       exitCode = 1;
