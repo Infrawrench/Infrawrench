@@ -134,6 +134,41 @@ export const schemaNodeSchema: z.ZodTypeAny = z.lazy(() =>
       ),
       timeRangeLabel: z.string().optional(),
     }),
+    // `table` was in the TypeScript SchemaNode union but missing here, so
+    // `detailViewSchema.safeParse` rejected any detail view containing one.
+    // AWS (DynamoDB), Cloudflare (compute/storage), DigitalOcean (GenAI) and
+    // GCP all emit `kind: "table"` — they pass the contract test only because
+    // their mock fixtures never reach those branches. A new plugin whose
+    // fixture does reach one fails with an opaque union error.
+    z.object({
+      kind: z.literal("table"),
+      columns: z.array(
+        z.object({
+          key: z.string(),
+          label: z.string(),
+          width: z.enum(["auto", "narrow", "wide"]).optional(),
+          mono: z.boolean().optional(),
+        }),
+      ),
+      rows: z.array(
+        z.object({
+          cells: z.record(
+            z.string(),
+            z.union([
+              z.string(),
+              z.object({
+                kind: z.literal("action"),
+                label: z.string(),
+                action: hostActionSchema,
+                variant: z.enum(["default", "danger", "ghost"]).optional(),
+              }),
+            ]),
+          ),
+          depth: z.number().optional(),
+        }),
+      ),
+      emphasizeFirstColumn: z.boolean().optional(),
+    }),
   ]),
 );
 
