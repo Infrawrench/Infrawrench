@@ -85,6 +85,15 @@ async function start() {
 
     prodApp.route("/", api);
     prodApp.use("*", serveStatic({ root: "./dist/client" }));
+    // A hashed asset that isn't on disk must 404, never fall back to index.html:
+    // during a rolling deploy an old pod can get a request for a new bundle, and
+    // a 200 text/html response under a .css/.js URL is cached by extension at the
+    // CDN for hours, breaking the app for everyone. no-store keeps the miss out
+    // of the cache so the browser recovers on the next load.
+    prodApp.use("/assets/*", async (c) => {
+      c.header("cache-control", "no-store");
+      return c.text("Not found", 404);
+    });
     // SPA fallback: serve index.html for all non-API, non-static routes
     prodApp.use("*", serveStatic({ root: "./dist/client", path: "index.html" }));
 

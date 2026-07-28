@@ -1,0 +1,33 @@
+name: Purge Cloudflare Cache
+
+# Manual escape hatch for poisoned edge-cache entries (e.g. an index.html
+# fallback cached under a hashed /assets/*.css URL during a rolling deploy).
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: "Space-separated full URLs to purge. Leave empty to purge the whole zone."
+        required: false
+        default: ""
+
+jobs:
+  purge:
+    name: Purge infrawrench.com zone cache
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Purge
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          URLS: ${{ inputs.urls }}
+        run: |
+          ZONE_ID=678b46e2084a5799afdc5f030980e756
+          if [ -n "$URLS" ]; then
+            BODY=$(printf '%s\n' $URLS | jq -R . | jq -s '{files: .}')
+          else
+            BODY='{"purge_everything":true}'
+          fi
+          echo "Purge body: $BODY"
+          curl -sf -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/purge_cache" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "$BODY"
