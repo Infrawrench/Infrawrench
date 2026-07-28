@@ -261,9 +261,19 @@ export async function buildOnCloudBuild(
       entrypoint: "sh",
       args: [
         "-c",
+        // Flatten ONLY a tarball that is wrapped in exactly one directory —
+        // GitHub's signature. An earlier version took the first directory it
+        // saw, so an unwrapped archive whose root happened to contain `src/`
+        // had *that* flattened instead, silently destroying the layout and
+        // failing later at a COPY. Found by running a real build.
         `set -e
-d=$(ls -d */ 2>/dev/null | head -1)
-if [ -n "$d" ]; then mv "$d".[!.]* . 2>/dev/null || true; mv "$d"* . 2>/dev/null || true; rmdir "$d" 2>/dev/null || true; fi
+entries=$(ls -A)
+count=$(printf '%s\\n' "$entries" | wc -l | tr -d ' ')
+if [ "$count" = "1" ] && [ -d "$entries" ]; then
+  mv "$entries"/.[!.]* . 2>/dev/null || true
+  mv "$entries"/* . 2>/dev/null || true
+  rmdir "$entries" 2>/dev/null || true
+fi
 printf '%s' ${shellQuote(request.dockerfile)} > Dockerfile.infrawrench`,
       ],
     },
@@ -455,6 +465,11 @@ export async function runOnCloudBuild(
   }
 
   try {
+    // The shell variable must NOT start with an underscore. Cloud Build parses
+    // `$_...` in a build config as one of ITS substitution variables, so a
+    // `$__iw_code` made every submission fail up front with
+    // `key in the template "__" is not matched in the substitution data`.
+    //
     // Cloud Build reports pass/fail, not the process's exit status, and writes
     // one interleaved log. A shell entrypoint lets us wrap the command so it
     // reports both precisely: streams captured to separate files, then replayed
@@ -465,11 +480,11 @@ export async function runOnCloudBuild(
     // the whole shell, so the markers below would never print and the command's
     // output and code would both be lost. A very ordinary thing for a script to do.
     const wrapped =
-      `( ${request.command}\n) >/tmp/iw-out 2>/tmp/iw-err; __iw_code=$?\n` +
+      `( ${request.command}\n) >/tmp/iw-out 2>/tmp/iw-err; iwcode=$?\n` +
       `printf '\\n__IW_OUT_${nonce}__\\n'; cat /tmp/iw-out\n` +
       `printf '\\n__IW_ERR_${nonce}__\\n'; cat /tmp/iw-err\n` +
-      `printf '\\n__IW_EXIT_${nonce}__%s\\n' "$__iw_code"\n` +
-      `exit $__iw_code`;
+      `printf '\\n__IW_EXIT_${nonce}__%s\\n' "$iwcode"\n` +
+      `exit $iwcode`;
 
     const step: Record<string, unknown> = {
       // The staged tag: a step's image is pulled from a registry, and the image
@@ -488,7 +503,14 @@ export async function runOnCloudBuild(
       steps: [step],
       timeout: `${HOSTED_BUILD_TIMEOUT_SECONDS}s`,
       logsBucket: `gs://${config.stagingBucket}/buildlogs`,
-      options: { machineType: HOSTED_BUILD_MACHINE, logging: "GCS_ONLY" },
+      options: {
+        machineType: HOSTED_BUILD_MACHINE,
+        logging: "GCS_ONLY",
+        // The command is the customer's. A shell variable like `$_MY_VAR` in it
+        // would otherwise be read as one of Cloud Build's substitutions and fail
+        // the submission rather than the command.
+        substitutionOption: "ALLOW_LOOSE",
+      },
     };
     // Without a source there is no /workspace, so `mountSource: false` is the
     // only case that legitimately omits it.

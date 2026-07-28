@@ -1683,7 +1683,26 @@ does any work — the web SA needs `repoAdmin` on that repo. And the _build work
 build with a registry password fails. Secret access is two narrow custom roles rather than
 `secretmanager.admin`, which would let the web pods read every secret in the project.
 
-**Still TODO**: tests for the two build drivers + the web wiring — both need live infrastructure,
+**Three things about Cloud Build that only a real build reveals**, all found by running one:
+
+1. **`$_` is Cloud Build's substitution syntax.** A shell variable named `$__iw_code` in a step's
+   args makes the _submission_ fail with `key in the template "__" is not matched in the
+substitution data` — `run()` would have failed 100% of the time. The wrapper's variable is now
+   `iwcode`, and `substitutionOption: ALLOW_LOOSE` is set because the _customer's_ command may
+   legitimately contain `$_FOO` and that must fail the command, not the submission.
+2. **`storage.objectAdmin` is not enough for the source bucket.** Cloud Build calls `buckets.get`
+   to validate the source before starting, which is bucket-level, so the worker also needs
+   `roles/storage.legacyBucketReader` — otherwise every submission is rejected with
+   `invalid bucket ...; service account does not have access`.
+3. **Flatten only a tarball wrapped in exactly ONE directory.** The first version took
+   `ls -d */ | head -1`, so an unwrapped archive whose root contained `src/` had _that_ flattened
+   and failed later at a `COPY`.
+
+Verified end to end against the real project: build → staged push → `run()` pulling that image with
+the project mounted → stdout `3.1.4`, stderr separated, **real exit code 7** (not normalised), and
+`parseWrappedOutput` reading the genuine log correctly.
+
+**Still TODO**: tests for the SSH driver + the web wiring — both need live infrastructure,
 so only the runtime is covered.
 
 ## Dashboard card order (one sequence across three tables)

@@ -247,6 +247,17 @@ resource "google_storage_bucket_iam_member" "builder_bucket" {
   member = "serviceAccount:${local.build_service_account}"
 }
 
+# ...and must also be able to READ THE BUCKET ITSELF, which objectAdmin does not
+# grant — it covers objects only. Cloud Build calls buckets.get to validate the
+# source before it starts, so without this every submission is rejected up front
+# with `invalid bucket ...; service account does not have access`, long before
+# any step runs. Found by submitting a real build.
+resource "google_storage_bucket_iam_member" "builder_bucket_read" {
+  bucket = google_storage_bucket.builds.name
+  role   = "roles/storage.legacyBucketReader"
+  member = "serviceAccount:${local.build_service_account}"
+}
+
 # Pushing the staged image is the only registry access a build needs. It never
 # deletes, so writer rather than the repoAdmin the pods hold.
 resource "google_artifact_registry_repository_iam_member" "builder_staging_repo" {
