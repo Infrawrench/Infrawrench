@@ -72,6 +72,10 @@ const DeploymentRun = strict({
   // duplicate in the anyOf — cosmetic, and not worth a component to dodge.
   stage: z.union([DeployStage, z.null()]),
   durationMs: z.number().int().nullable(),
+  /** Hosted build-worker seconds consumed. Null when we did not pay for the build. */
+  buildSeconds: z.number().int().nullable(),
+  /** `cloud-build`, `ssh`, or null when nothing was built. */
+  buildRunner: z.union([z.enum(["cloud-build", "ssh"]), z.null()]),
   startedAt: IsoDateTime,
 }).openapi("DeploymentRun");
 

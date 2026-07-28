@@ -73,6 +73,18 @@ app_env = {
   # and says it isn't configured and `web_fetch` is not offered to the model at
   # all; neither falls back to a request from the pod.
   # The token is the Worker's PROXY_TOKEN secret.
+  # --- Hosted Docker builds (Infrafile deploys from the web app) ---
+  # Optional. Without these a web deploy must name a build host via plan().buildOn;
+  # with them, builds run on Cloud Build and no build host is needed. They run on
+  # Google-managed workers rather than in this cluster on purpose: a Dockerfile's
+  # RUN is arbitrary code, and in-cluster it would sit one curl away from the
+  # metadata server and every other pod.
+  # The pod's service account needs roles/cloudbuild.builds.editor,
+  # roles/storage.objectAdmin on the bucket, and roles/secretmanager.admin.
+  GCP_BUILD_PROJECT_ID     = "your-gcp-project"
+  GCP_BUILD_STAGING_BUCKET = "your-project-infrawrench-builds"
+  GCP_BUILD_REGION         = "us-east4"
+
   WORKFLOW_FETCH_PROXY_URL   = "https://egress.infrawrench.com"
   WORKFLOW_FETCH_PROXY_TOKEN = "<openssl rand -base64 32>"
 

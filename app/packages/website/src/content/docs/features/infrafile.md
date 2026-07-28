@@ -206,9 +206,21 @@ the ability to ship should follow a cancellation, not a bounced card.
 
 Open **Deploy** in the sidebar. Pick the repository and branch, load the
 Infrafile to populate the environment list, then Plan and Deploy. The same three
-stages run server-side. There is no working tree in the browser, so the build host
-clones your repository at the chosen commit and builds there — which is why
-`plan()` needs to return a `buildOn` resource when you deploy from the web.
+stages run server-side.
+
+**Builds are hosted.** You don't need a build machine — your paid plan includes
+the build. Infrawrench sends your repository at the chosen commit, plus the
+Dockerfile your Infrafile rendered, to an isolated build worker, and pushes the
+result to the registry your `plan()` returned. That's why it goes to _your_
+registry: your cluster can then pull it with credentials it already has.
+
+Builds are capped at 20 minutes and metered, so a runaway `RUN` stops on its own.
+
+Set `buildOn` to a resource if you'd rather build somewhere specific — a machine
+with a warm layer cache, or one inside a private network. It's an override, not
+a requirement.
+
+<insert [The Deploy screen mid-build with the stage indicator on "build", showing hosted build output streaming into the live log panel] here>
 
 ## Deploy links
 

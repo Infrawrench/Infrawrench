@@ -17,9 +17,16 @@ import {
   getBranchHeadSha,
   getFileContents,
   getInstallationToken,
+  getRepoTarball,
   isGithubAppConfigured,
   listInstallationRepos,
 } from "@infrawrench/server-core/github/app";
+import {
+  buildOnCloudBuild,
+  cloudBuildConfig,
+  runOnCloudBuild,
+  type CloudBuildContext,
+} from "@infrawrench/server-core/infrafile/build-cloud";
 import {
   buildOverSsh,
   cleanupOverSsh,
@@ -225,15 +232,33 @@ export async function runDeployment(
   // context is completed lazily and shared by build/push/run/copyTo.
   let sshCtx: (SshBuildContext & { workspace: string }) | null = null;
 
-  const requireHost = (request: BuildRequest): BuildTargetOrThrow => {
-    if (!request.target || request.target.kind !== "resource") {
+  // Hosted builds are the default; `buildOn` is an override for a project that
+  // needs a specific machine, a warm cache, or private network access.
+  let cloudCtx: CloudBuildContext | null = null;
+  let buildSeconds = 0;
+
+  const hostedContext = async (): Promise<CloudBuildContext> => {
+    if (cloudCtx) return cloudCtx;
+    const config = cloudBuildConfig();
+    if (!config) {
       throw new Error(
-        "Deploying from the web app needs a build host: return `buildOn` from plan() " +
-          'set to an SSH-reachable resource. ("local" only works from the CLI, which ' +
-          "has your own Docker daemon.)",
+        "Hosted builds are not configured on this deployment. Return `buildOn` from plan() " +
+          "set to an SSH-reachable resource to build there instead.",
       );
     }
-    return request.target.resource;
+    cloudCtx = {
+      config,
+      sourceTarGz: await getRepoTarball(
+        resolved.installationId,
+        resolved.owner,
+        resolved.name,
+        resolved.sha,
+      ),
+      gitSha: resolved.sha,
+      log,
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    };
+    return cloudCtx;
   };
 
   const log = (line: string) => {
@@ -250,7 +275,14 @@ export async function runDeployment(
     infrafileAnswer: async (key: string) => opts.answers?.[key],
 
     infrafileBuild: async (request: BuildRequest) => {
-      const target = requireHost(request);
+      // No target, or the CLI's "local" shorthand, means build on our infra —
+      // the browser has no daemon to offer, so "local" has no other meaning here.
+      if (!request.target || request.target.kind !== "resource") {
+        const built = await buildOnCloudBuild(request, await hostedContext());
+        buildSeconds += built.buildSeconds;
+        return built.digest ? { image: built.image, digest: built.digest } : { image: built.image };
+      }
+      const target = request.target.resource;
       const ctx: SshBuildContext = {
         organizationId: opts.organizationId,
         target,
@@ -271,8 +303,10 @@ export async function runDeployment(
     },
 
     infrafileRun: async (request: RunInImageRequest) => {
-      if (!sshCtx) throw new Error("run() ran before the build.");
-      return runOverSsh(request, sshCtx);
+      // Whichever runner built the image is the one that can run it.
+      if (sshCtx) return runOverSsh(request, sshCtx);
+      if (cloudCtx) return runOnCloudBuild(request, cloudCtx);
+      throw new Error("run() ran before the build.");
     },
 
     infrafileCopyTo: async (target, remotePath) => {
@@ -329,6 +363,8 @@ export async function runDeployment(
       dockerfile: result.dockerfile ?? null,
       image: result.image ?? null,
       stage: result.reachedStage ?? null,
+      buildSeconds: buildSeconds || null,
+      buildRunner: cloudCtx ? "cloud-build" : sshCtx ? "ssh" : null,
       notes: result.notes.length > 0 ? result.notes.join("\n") : null,
       error: result.error ?? null,
       finishedAt: new Date(result.finishedAt),
@@ -354,6 +390,8 @@ export interface DeploymentRunRow {
   origin: string;
   stage: string | null;
   durationMs: number | null;
+  buildSeconds: number | null;
+  buildRunner: string | null;
   startedAt: Date;
 }
 
@@ -379,6 +417,8 @@ export async function listDeploymentRuns(
       origin: deploymentRuns.origin,
       stage: deploymentRuns.stage,
       durationMs: deploymentRuns.durationMs,
+      buildSeconds: deploymentRuns.buildSeconds,
+      buildRunner: deploymentRuns.buildRunner,
       startedAt: deploymentRuns.startedAt,
     })
     .from(deploymentRuns)

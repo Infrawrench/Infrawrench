@@ -50,7 +50,8 @@
     "./paging/external-pages": "./src/paging/external-pages.ts",
     "./push/dispatch": "./src/push/dispatch.ts",
     "./push/types": "./src/push/types.ts",
-    "./infrafile/build-ssh": "./src/infrafile/build-ssh.ts"
+    "./infrafile/build-ssh": "./src/infrafile/build-ssh.ts",
+    "./infrafile/build-cloud": "./src/infrafile/build-cloud.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

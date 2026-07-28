@@ -2942,6 +2942,23 @@
           "durationMs": {
             "type": ["integer", "null"]
           },
+          "buildSeconds": {
+            "type": ["integer", "null"]
+          },
+          "buildRunner": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["cloud-build", "ssh"]
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "startedAt": {
             "type": "string",
             "format": "date-time"
@@ -2958,6 +2975,8 @@
           "origin",
           "stage",
           "durationMs",
+          "buildSeconds",
+          "buildRunner",
           "startedAt"
         ],
         "additionalProperties": false

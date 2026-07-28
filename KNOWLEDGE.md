@@ -1508,12 +1508,38 @@ is not guest execution and must not consume the run's budget.
   a toolchain, not an artifact, and the deploy publishes from it. A non-zero exit fails the
   deploy (with the tail of stderr) unless `allowFailure`.
 
-**Two build paths, deliberately.** The CLI shells out to the local `docker` binary
+**Hosted builds are the web default (`server-core/infrafile/build-cloud.ts`).** A web deploy
+with no `buildOn` builds on **Google Cloud Build**, so a paying customer needs no build host —
+which is also what makes the non-container targets deployable from web at all, since a Worker
+project frequently owns no VM. **It is emphatically NOT built in our cluster**: a Dockerfile's
+`RUN` is arbitrary code with network, so in-cluster it would sit one `curl` from the metadata
+server (`169.254.169.254` → node SA creds) and every other pod — exactly what `egress-proxy`
+exists to keep workflow `fetch` away from, and a build is strictly more capable than a fetch.
+Cloud Build's isolation is structural rather than a NetworkPolicy we have to keep getting right.
+
+- **The image goes to the customer's registry** (`plan().registry`), not ours. Pushing to an
+  Infrawrench registry would mean their cluster couldn't pull without us minting and rotating a
+  pull credential for it.
+- **The registry password goes through Secret Manager**, created per build and destroyed in a
+  `finally`. A step's args are recorded in _our_ project's build history, so a `--password` flag
+  would persist a customer credential in our logs.
+- Source is GitHub's own tarball (`getRepoTarball`) — the pod moves bytes, no git binary and no
+  credential reaches the build. A first step flattens the `owner-repo-sha/` prefix GitHub wraps
+  everything in and writes the rendered Dockerfile beside the source, which is how this module
+  avoids a hand-rolled tar writer.
+- `run()` becomes one single-step build per call, since calls are interleaved with arbitrary JS
+  in `deploy()` and can't be known upfront. Combine with `&&` when it matters.
+- Bounded by `HOSTED_BUILD_TIMEOUT_SECONDS` (1200) and metered into
+  `deployment_runs.build_seconds` / `build_runner`. Env: `GCP_BUILD_PROJECT_ID`,
+  `GCP_BUILD_STAGING_BUCKET`, `GCP_BUILD_REGION`, and `GCP_BUILD_SA_KEY` only off-GKE (on GKE the
+  pod's workload identity is used). Absent config = hosted builds unavailable, reported as such.
+
+**Three build paths, deliberately.** The CLI shells out to the local `docker` binary
 (`desktop/electron/infrafile/build-local.ts`) — warm cache, no VM, and it can deploy a dirty
 working tree. The web app builds over SSH on the resource `buildOn` names
 (`server-core/infrafile/build-ssh.ts`), cloning the repo there because the browser has no
-working tree and the GKE pods have no daemon. `buildOn: "local"` is CLI-only and the web path
-says so. The accepted risk is that one Infrafile has two builders; the mitigation is that both
+working tree and the GKE pods have no daemon. `buildOn: "local"` from the web means hosted, since a browser has no daemon to
+offer. The accepted risk is that one Infrafile has two builders; the mitigation is that both
 receive an identical, already-validated `BuildRequest` normalized in `host.ts` `dispatch`.
 
 **Secrets never reach an argv.** `docker run -e K=secret` and `ssh 'cmd --token=…'` both land in

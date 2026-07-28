@@ -47,6 +47,15 @@ export const deploymentRuns = pgTable(
     /** Notes the deploy stage emitted, newline-joined. */
     notes: text("notes"),
     error: jsonb("error"),
+    /**
+     * Seconds of hosted build-worker time this run consumed. Null for a run
+     * that built somewhere we don't pay for — the CLI's local daemon, or a
+     * customer's own SSH host — so the column means "what it cost us", not
+     * "how long it took".
+     */
+    buildSeconds: integer("build_seconds"),
+    /** Which runner built it: `cloud-build`, `ssh`, or null when nothing built. */
+    buildRunner: text("build_runner"),
     createdByUserId: text("created_by_user_id"),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
     finishedAt: timestamp("finished_at", { withTimezone: true }),

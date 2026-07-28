@@ -161,6 +161,36 @@ export async function getFileContents(
   return Buffer.from(body.content.replace(/\n/g, ""), "base64").toString("utf8");
 }
 
+/**
+ * The repository at `ref` as a gzipped tarball.
+ *
+ * Used to hand a hosted build its source without cloning: the pod only moves
+ * bytes, and no git binary or credential ever reaches the build environment.
+ * GitHub nests everything under a single `owner-repo-sha/` directory, which the
+ * build flattens.
+ */
+export async function getRepoTarball(
+  installationId: number,
+  owner: string,
+  repo: string,
+  ref: string,
+): Promise<Uint8Array> {
+  const token = await getInstallationToken(installationId);
+  const res = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/tarball/${encodeURIComponent(ref)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "User-Agent": "infrawrench",
+      },
+      redirect: "follow",
+    },
+  );
+  if (!res.ok) throw new Error(`GitHub tarball download failed (${res.status})`);
+  return new Uint8Array(await res.arrayBuffer());
+}
+
 /** The account an installation belongs to (used to label the connection). */
 export async function getInstallation(
   installationId: number,
