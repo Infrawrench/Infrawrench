@@ -61,11 +61,47 @@ export async function orgFetch<T>(orgId: string, path: string, init: RequestInit
     token = refreshed;
     res = await fetch(url, buildInit(token));
   }
+  const body = await res.text().catch(() => "");
+
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new CliError(`Cloud request failed: ${res.status} ${path} ${text}`);
+    throw new CliError(`Cloud request failed: ${res.status} ${path}${describeBody(body)}`);
   }
-  return (await res.json()) as T;
+
+  try {
+    return JSON.parse(body) as T;
+  } catch {
+    // A 200 that isn't JSON almost always means the SPA's catch-all served an
+    // HTML page because this route doesn't exist on that server — a version
+    // skew, not a failure. Saying so beats a raw JSON.parse stack trace.
+    if (looksLikeHtml(body)) {
+      throw new CliError(
+        `${path} is not available on ${CLOUD_URL}.\n` +
+          `The server answered with a web page instead of data, which usually means it is ` +
+          `running a version without this endpoint.`,
+      );
+    }
+    throw new CliError(
+      `Cloud request returned a malformed response for ${path}${describeBody(body)}`,
+    );
+  }
+}
+
+/** True for a response body that is a web page rather than data. */
+function looksLikeHtml(body: string): boolean {
+  const head = body.slice(0, 200).trimStart().toLowerCase();
+  return head.startsWith("<!doctype html") || head.startsWith("<html");
+}
+
+/**
+ * A response body worth putting in an error message. HTML is summarised rather
+ * than shown — a whole page of markup buries the actual problem — and anything
+ * long is truncated.
+ */
+function describeBody(body: string): string {
+  const trimmed = body.trim();
+  if (!trimmed) return "";
+  if (looksLikeHtml(trimmed)) return " (the server returned a web page, not data)";
+  return ` ${trimmed.length > 300 ? `${trimmed.slice(0, 300)}…` : trimmed}`;
 }
 
 export interface OrgInfo {
