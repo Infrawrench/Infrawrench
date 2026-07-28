@@ -191,6 +191,75 @@ export async function getRepoTarball(
   return new Uint8Array(await res.arrayBuffer());
 }
 
+/**
+ * Open a GitHub deployment for a commit, returning its id (or null when GitHub
+ * declines to create one).
+ *
+ * Requires the `deployments: write` installation permission.
+ *
+ * Best-effort: a deploy must never fail because reporting it did. Callers get a
+ * null instead of an error for anything GitHub refuses, and can `.catch(() => {})`
+ * to cover transport failures.
+ */
+export async function createGithubDeployment(
+  installationId: number,
+  owner: string,
+  repo: string,
+  opts: { ref: string; environment: string; description?: string },
+): Promise<number | null> {
+  const token = await getInstallationToken(installationId);
+  const res = await gh(token, `/repos/${owner}/${repo}/deployments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ref: opts.ref,
+      environment: opts.environment,
+      ...(opts.description ? { description: opts.description } : {}),
+      // Both defaults are traps. `required_contexts` defaults to *every* status
+      // check on the ref, so GitHub answers 409 while CI is still pending — the
+      // exact moment a deploy typically starts. `auto_merge` defaults to true,
+      // which makes GitHub merge the base branch into the ref and return 202
+      // with no deployment at all. We already know what we are deploying.
+      auto_merge: false,
+      required_contexts: [],
+    }),
+  });
+  if (!res.ok) return null;
+  const body = (await res.json()) as { id?: number };
+  return typeof body.id === "number" ? body.id : null;
+}
+
+/**
+ * Report where a deployment got to. GitHub keeps every status, showing the
+ * latest one on the commit and the environment.
+ *
+ * Requires the `deployments: write` installation permission.
+ *
+ * Best-effort, like `createGithubDeployment`: a rejected status is swallowed,
+ * and callers can `.catch(() => {})` for transport failures.
+ */
+export async function setGithubDeploymentStatus(
+  installationId: number,
+  owner: string,
+  repo: string,
+  deploymentId: number,
+  state: "in_progress" | "success" | "failure" | "error",
+  opts?: { description?: string; logUrl?: string; environmentUrl?: string },
+): Promise<void> {
+  const token = await getInstallationToken(installationId);
+  await gh(token, `/repos/${owner}/${repo}/deployments/${deploymentId}/statuses`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      state,
+      // GitHub truncates past 140 characters; trim rather than let it decide.
+      ...(opts?.description ? { description: opts.description.slice(0, 140) } : {}),
+      ...(opts?.logUrl ? { log_url: opts.logUrl } : {}),
+      ...(opts?.environmentUrl ? { environment_url: opts.environmentUrl } : {}),
+    }),
+  });
+}
+
 /** The account an installation belongs to (used to label the connection). */
 export async function getInstallation(
   installationId: number,

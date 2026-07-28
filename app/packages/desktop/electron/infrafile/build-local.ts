@@ -28,6 +28,10 @@ const RUN_WORKDIR = "/workspace";
 export interface LocalBuildOptions {
   /** Build context — the repo root the Infrafile was found in. */
   contextDir: string;
+  /** `owner/name` when the repo has a remote, so the image matches a web deploy. */
+  projectName?: string;
+  /** Commit being deployed, for the default tag. */
+  gitSha?: string;
   /** Live output sink; every line of docker's stdout/stderr lands here. */
   log: (line: string) => void;
   signal?: AbortSignal;
@@ -86,26 +90,21 @@ async function docker(
   });
 }
 
-/**
- * Derive the image reference. A plan's `tag` wins; otherwise the context
- * directory's name plus a short tag keeps repeated local builds distinguishable.
- * A registry host is prefixed so the image can be pushed without re-tagging.
- */
-function imageRef(request: BuildRequest, contextDir: string): string {
-  const name = path
-    .basename(path.resolve(contextDir))
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]/g, "-");
-  const tag = request.tag || request.env || "latest";
-  const repo = request.registry ? `${request.registry.host}/${name}` : name;
-  return `${repo}:${tag}`;
-}
-
 export async function buildLocally(
   request: BuildRequest,
   opts: LocalBuildOptions,
 ): Promise<BuildResult> {
-  const image = imageRef(request, opts.contextDir);
+  // Shared with the SSH and Cloud Build drivers so the same Infrafile names the
+  // same image wherever it is deployed from. Imported dynamically because the
+  // runtime is ESM-only and this is a CommonJS module.
+  const { infrafileImageRef } = await import("@infrawrench/workflow-runtime");
+  const image = infrafileImageRef({
+    project: opts.projectName ?? path.basename(path.resolve(opts.contextDir)),
+    env: request.env,
+    ...(request.tag ? { tag: request.tag } : {}),
+    ...(opts.gitSha ? { gitSha: opts.gitSha } : {}),
+    ...(request.registry ? { registryHost: request.registry.host } : {}),
+  });
 
   // The rendered Dockerfile lives outside the build context so a deploy never
   // writes into the user's working tree. Both the classic builder and BuildKit

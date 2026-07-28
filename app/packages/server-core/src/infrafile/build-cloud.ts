@@ -25,6 +25,8 @@
  */
 import { randomUUID } from "node:crypto";
 
+import { infrafileImageRef } from "@infrawrench/workflow-runtime";
+
 import type {
   BuildRequest,
   BuildResult,
@@ -84,6 +86,8 @@ export interface CloudBuildContext {
   /** The repository source, as a gzipped tarball. */
   sourceTarGz: Uint8Array;
   gitSha: string;
+  /** `owner/name`, so the image name matches every other driver's. */
+  repo?: string;
   /** Live output sink. */
   log: (line: string) => void;
   signal?: AbortSignal;
@@ -234,7 +238,13 @@ export async function buildOnCloudBuild(
     throw new Error(`Could not stage the build source (${upload.status} from Cloud Storage).`);
   }
 
-  const image = hostedImageRef(request, ctx.gitSha);
+  const image = infrafileImageRef({
+    project: ctx.repo ?? "app",
+    env: request.env,
+    gitSha: ctx.gitSha,
+    ...(request.tag ? { tag: request.tag } : {}),
+    ...(request.registry ? { registryHost: request.registry.host } : {}),
+  });
   // Scratch tag in our own registry. Pushed on every hosted build so later
   // run() builds have something to pull; deleted once the deploy finishes.
   const staged = `${config.stagingRepo}/deploy:${randomUUID()}`;
@@ -615,13 +625,4 @@ export async function cleanupStagedImage(ctx: CloudBuildContext): Promise<void> 
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   });
-}
-
-/**
- * Image reference for a hosted build. A registry from the plan wins; without
- * one the tag is local to the build and never published.
- */
-function hostedImageRef(request: BuildRequest, gitSha: string): string {
-  const tag = request.tag || `${request.env}-${gitSha.slice(0, 7)}`;
-  return request.registry ? `${request.registry.host}/app:${tag}` : `app:${tag}`;
 }

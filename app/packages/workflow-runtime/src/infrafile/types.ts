@@ -240,3 +240,35 @@ export type InfrafileStageListener = (stage: InfrafileStage) => void;
 
 /** Re-exported for hosts that build their own log sinks. */
 export type { RunLogEntry };
+
+/**
+ * The image reference a build produces.
+ *
+ * Shared by every driver on purpose. Each used to derive its own — the local
+ * one from the context directory's name, the others from a hardcoded "app" —
+ * so the *same* Infrafile produced `minimal:production` from the CLI and
+ * `app:production-a1b2c3d` from the web app. A `deploy()` that names its image
+ * in a manifest then worked from one origin and not the other.
+ *
+ * `project` is the repository name where one is known, falling back to the
+ * build directory. `tag` prefers the plan's, else `<env>-<short sha>` so
+ * repeated deploys of one environment stay distinguishable.
+ */
+export function infrafileImageRef(input: {
+  project: string;
+  env: string;
+  tag?: string;
+  gitSha?: string;
+  registryHost?: string;
+}): string {
+  const name =
+    input.project
+      .split("/")
+      .pop()!
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]/g, "-")
+      .replace(/^-+|-+$/g, "") || "app";
+  const sha = input.gitSha ? input.gitSha.slice(0, 7) : "";
+  const tag = input.tag || (sha ? `${input.env}-${sha}` : input.env) || "latest";
+  return input.registryHost ? `${input.registryHost}/${name}:${tag}` : `${name}:${tag}`;
+}

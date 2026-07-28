@@ -219,6 +219,7 @@ export function registerDeploymentPaths(ctx: BuildContext) {
       },
       400: ErrorResponses[400],
       402: ErrorResponses[402],
+      409: ErrorResponses[409],
       401: ErrorResponses[401],
       403: ErrorResponses[403],
       404: ErrorResponses[404],

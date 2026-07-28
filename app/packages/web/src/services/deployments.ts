@@ -15,9 +15,11 @@ import { db } from "@infrawrench/server-core/db/client";
 import { deploymentRuns, githubInstallations } from "@infrawrench/server-core/db/schema";
 import {
   getBranchHeadSha,
+  createGithubDeployment,
   getFileContents,
   getInstallationToken,
   getRepoTarball,
+  setGithubDeploymentStatus,
   isGithubAppConfigured,
   listInstallationRepos,
 } from "@infrawrench/server-core/github/app";
@@ -37,6 +39,7 @@ import {
   type SshBuildContext,
 } from "@infrawrench/server-core/infrafile/build-ssh";
 import { buildOrgWorkflowHost } from "@infrawrench/server-core/workflows/runner";
+import { pageFromExternal } from "@infrawrench/server-core/paging/external-pages";
 import { requirePaidPlan } from "./entitlements";
 import type {
   BuildRequest,
@@ -216,6 +219,29 @@ export async function runDeployment(
   const { runInfrafile } = await import("@infrawrench/workflow-runtime");
   const resolved = await resolveInfrafile(opts.organizationId, opts.repo, opts.branch);
 
+  // One deploy per environment at a time. Without this two people shipping the
+  // same env both proceed and the infrastructure takes whichever finished last —
+  // a race whose loser has no idea it happened. The conditional insert is the
+  // same claim pattern the poller uses to stop replicas double-firing.
+  const inFlight = await db
+    .select({ id: deploymentRuns.id, startedAt: deploymentRuns.startedAt })
+    .from(deploymentRuns)
+    .where(
+      and(
+        eq(deploymentRuns.organizationId, opts.organizationId),
+        eq(deploymentRuns.env, opts.env ?? ""),
+        eq(deploymentRuns.status, "running"),
+      ),
+    )
+    .limit(1);
+  if (!opts.planOnly && inFlight.length > 0) {
+    throw new DeploymentError(
+      `A deploy to ${opts.env} is already running (started ${inFlight[0]!.startedAt.toISOString()}). ` +
+        `Wait for it to finish, or stop it first.`,
+      409,
+    );
+  }
+
   const runId = randomUUID();
   await db.insert(deploymentRuns).values({
     id: runId,
@@ -228,6 +254,33 @@ export async function runDeployment(
     origin: "web",
     ...(opts.userId ? { createdByUserId: opts.userId } : {}),
   });
+
+  // Report the deploy back into the pull request / commit it came from. Every
+  // call is best-effort: GitHub being slow or the App lacking `deployments:
+  // write` must never be what fails somebody's deploy.
+  const ghDeployment = opts.planOnly
+    ? null
+    : await createGithubDeployment(resolved.installationId, resolved.owner, resolved.name, {
+        ref: resolved.sha,
+        environment: opts.env ?? "",
+        description: opts.rollback ? "Rollback via Infrawrench" : "Deploy via Infrawrench",
+      }).catch(() => null);
+
+  const reportToGithub = async (
+    state: "in_progress" | "success" | "failure",
+    description: string,
+  ): Promise<void> => {
+    if (ghDeployment === null) return;
+    await setGithubDeploymentStatus(
+      resolved.installationId,
+      resolved.owner,
+      resolved.name,
+      ghDeployment,
+      state,
+      { description },
+    ).catch(() => {});
+  };
+  await reportToGithub("in_progress", "Building");
 
   // The build host is only known once `plan()` has returned, so the SSH
   // context is completed lazily and shared by build/push/run/copyTo.
@@ -256,6 +309,7 @@ export async function runDeployment(
         resolved.sha,
       ),
       gitSha: resolved.sha,
+      repo: resolved.fullName,
       log,
       ...(opts.signal ? { signal: opts.signal } : {}),
     };
@@ -276,9 +330,17 @@ export async function runDeployment(
     infrafileAnswer: async (key: string) => opts.answers?.[key],
 
     infrafileBuild: async (request: BuildRequest) => {
-      // No target, or the CLI's "local" shorthand, means build on our infra —
-      // the browser has no daemon to offer, so "local" has no other meaning here.
-      if (!request.target || request.target.kind !== "resource") {
+      // `buildOn: "local"` names the operator's own Docker daemon, which does
+      // not exist here. Silently building somewhere else would be answering a
+      // different question than the one the Infrafile asked.
+      if (request.target?.kind === "local") {
+        throw new Error(
+          'plan().buildOn is "local", which means the machine running the deploy — ' +
+            "there is no such machine for a web deploy. Omit buildOn to use a hosted " +
+            "build, or set it to an SSH-reachable resource.",
+        );
+      }
+      if (!request.target) {
         const built = await buildOnCloudBuild(request, await hostedContext());
         buildSeconds += built.buildSeconds;
         return built.digest ? { image: built.image, digest: built.digest } : { image: built.image };
@@ -290,6 +352,7 @@ export async function runDeployment(
         cloneUrl: resolved.cloneUrl,
         gitSha: resolved.sha,
         branch: resolved.branch,
+        repo: resolved.fullName,
         log,
         ...(opts.signal ? { signal: opts.signal } : {}),
       };
@@ -355,6 +418,32 @@ export async function runDeployment(
     // Same for the staged image: it exists only so run() had something to pull.
     if (cloudCtx) await cleanupStagedImage(cloudCtx).catch(() => {});
   }
+
+  // A production deploy that fails at 3am should wake somebody. Reuses the four
+  // transports `infra.page` already fans out to; throttling is keyed per env so
+  // a retry loop pages once rather than every attempt.
+  if (result.status !== "success" && !opts.planOnly) {
+    await pageFromExternal(
+      { organizationId: opts.organizationId, source: "deployments" },
+      {
+        message:
+          `Deploy to ${result.env} failed for ${resolved.fullName}@${resolved.sha.slice(0, 7)}: ` +
+          `${result.error?.message ?? "unknown error"}`,
+        title: `Deploy failed — ${result.env}`,
+        key: `deploy:${result.env}`,
+      },
+    ).catch(() => {
+      // Paging is a courtesy on top of the recorded failure, never a reason to
+      // lose the run's own error.
+    });
+  }
+
+  await reportToGithub(
+    result.status === "success" ? "success" : "failure",
+    result.status === "success"
+      ? `Deployed ${result.image ?? ""}`.trim()
+      : (result.error?.message ?? "Deploy failed"),
+  );
 
   await db
     .update(deploymentRuns)

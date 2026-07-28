@@ -101,5 +101,7 @@ export const ErrorResponses = {
     content: { "application/json": { schema: ReauthenticationRequiredResponse } },
   },
   404: { description: "Not found", content: { "application/json": { schema: ErrorResponse } } },
+  /** The resource is busy — e.g. a deploy to this environment is already running. */
+  409: { description: "Conflict", content: { "application/json": { schema: ErrorResponse } } },
   500: { description: "Server error", content: { "application/json": { schema: ErrorResponse } } },
 } as const;

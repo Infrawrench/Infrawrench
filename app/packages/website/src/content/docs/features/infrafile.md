@@ -308,7 +308,34 @@ organization. It is read from your repository on every run and discarded.
 The web app streams a run's logs live and shows the plan and rendered Dockerfile
 before anything is built.
 
+## Asking an AI client about a deploy
+
+The [AI chat](./ai-chat.md) and the [MCP server](./mcp.md) share a small set of
+deployment tools: `list_deployments` and `get_deployment` for the history and one
+run in full (logs, plan, rendered Dockerfile, error), `list_deployable_repos` for
+what your GitHub App can see, `plan_deployment` to run a repo's `plan()` and
+render its Dockerfile without building anything, and `rollback_deployment`.
+
+There is deliberately **no tool that deploys**. Building and shipping a release
+is slow, expensive, and lands bytes on real infrastructure that nothing can take
+back, so a human starts it — from the Deployments tab or `infrawrench deploy`.
+What a model gets is everything needed to reason about a deploy ("why did last
+night's staging deploy fail?", "what would deploying this branch do?") plus
+rollback, which is the one deploy-shaped action that makes things safer.
+
+`plan_deployment` is a **destructive tool** in chat despite building nothing: it
+executes your repository's `plan()` against your organization's `infra` surface,
+which is arbitrary code that can create or delete resources on its way to
+returning a plan. It waits for your approval, as does `rollback_deployment`.
+Both are audit-logged. They need `deployments:plan` and `deployments:write`
+[permissions](../team-and-billing/roles-and-permissions.md) respectively; the
+read tools need `deployments:read`.
+
+`plan_deployment` cannot answer a `select(...)` prompt — pass the choices up
+front as `answers`, keyed by the same key the Infrafile used.
+
 ## See also
 
 - [Workflows](./workflows.md) — the same `infra` surface, on a trigger
 - [CLI](./cli.md) — the rest of the terminal tool
+- [AI chat](./ai-chat.md) — asking about deploys, and rolling one back

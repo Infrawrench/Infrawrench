@@ -25,6 +25,8 @@ import type {
   RunInImageResult,
 } from "@infrawrench/workflow-runtime";
 
+import { infrafileImageRef } from "@infrawrench/workflow-runtime";
+
 import { buildWorkflowSshDeps } from "../workflows/ssh-host.js";
 
 /** Where the project source is mounted inside a `run(...)` container. */
@@ -38,6 +40,8 @@ export interface SshBuildContext {
   cloneUrl: string;
   /** Commit to build. */
   gitSha: string;
+  /** `owner/name`, so the image name matches every other driver's. */
+  repo?: string;
   branch: string;
   /** Live output sink. */
   log: (line: string) => void;
@@ -106,13 +110,6 @@ function workspaceFor(gitSha: string): string {
   return `/tmp/infrawrench-deploy-${gitSha.slice(0, 12)}-${randomUUID().slice(0, 8)}`;
 }
 
-/** Image reference: the plan's tag wins, else the repo name and the commit. */
-function imageRef(request: BuildRequest, gitSha: string): string {
-  const tag = request.tag || `${request.env}-${gitSha.slice(0, 7)}`;
-  const name = "app";
-  return request.registry ? `${request.registry.host}/${name}:${tag}` : `${name}:${tag}`;
-}
-
 /**
  * Clone the repo at the deployed commit and build the image there.
  *
@@ -131,7 +128,13 @@ export async function buildOverSsh(
   }
 
   const workspace = workspaceFor(ctx.gitSha);
-  const image = imageRef(request, ctx.gitSha);
+  const image = infrafileImageRef({
+    project: ctx.repo ?? "app",
+    env: request.env,
+    gitSha: ctx.gitSha,
+    ...(request.tag ? { tag: request.tag } : {}),
+    ...(request.registry ? { registryHost: request.registry.host } : {}),
+  });
 
   ctx.log(`Preparing ${workspace} on ${ctx.target.displayName ?? ctx.target.id}`);
   await exec(deps, ctx, `mkdir -p ${q(workspace)}`, { quiet: true });

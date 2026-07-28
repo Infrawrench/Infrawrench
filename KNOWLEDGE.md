@@ -1628,6 +1628,27 @@ param rides the `{kind:"deployments"; repo?}` tab target into `DeploymentsPanel.
 tab id deliberately ignores `repo` so a second hotlink retargets the open Deploy tab instead of
 stacking one tab per repository.
 
+**One image name across all three drivers** (`infrafileImageRef` in `infrafile/types.ts`). Each
+driver used to derive its own — local from the build directory, the others from a hardcoded
+`app` — so the _same_ Infrafile produced `minimal:production` from the CLI and
+`app:production-a1b2c3d` from the web app, and a `deploy()` naming its image in a manifest worked
+from one origin and not the other. The default tag differed too.
+
+**A deploy holds a per-(org, env) lock**: `running` rows block a second deploy with a 409. Without
+it two people shipping the same env both proceed and the infrastructure takes whichever finished
+last — a race whose loser never learns it happened. Plan-only previews are exempt.
+
+**`buildOn: "local"` is refused on web, not reinterpreted.** It names the operator's own daemon,
+which has no meaning server-side; silently building elsewhere answers a different question than
+the one the Infrafile asked. Omit `buildOn` for a hosted build.
+
+**A failed deploy pages** via `pageFromExternal` (source `deployments`, key `deploy:<env>`), so a
+retry loop pages once per env rather than per attempt. **Deploys report to GitHub** through
+`createGithubDeployment`/`setGithubDeploymentStatus`; both are best-effort, because GitHub being
+slow must never be what fails a deploy. Note `required_contexts: []` is load-bearing there —
+it defaults to every check on the ref, so GitHub 409s exactly when CI is pending, i.e. when a
+deploy usually starts.
+
 **Still TODO**: tests for the two build drivers + the web wiring — both need live infrastructure,
 so only the runtime is covered.
 

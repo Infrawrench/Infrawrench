@@ -11,6 +11,7 @@ import { perPluginCreateTools } from "./per-plugin-create";
 import { connectionTools } from "./connections";
 import { costTools } from "./costs";
 import { workflowTools } from "./workflows";
+import { deploymentTools } from "./deployments";
 import { sshKeyTools } from "./ssh-keys";
 import { sshHostKeyTools } from "./ssh-host-keys";
 import type { ToolDefinition } from "./types";
@@ -24,6 +25,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...connectionTools(),
     ...costTools(),
     ...workflowTools(),
+    ...deploymentTools(),
     ...sshKeyTools(),
     ...sshHostKeyTools(),
     ...(await perPluginCreateTools()),

@@ -416,7 +416,13 @@ export async function cmdDeploy(ctx: CliContext, flags: DeployFlags): Promise<vo
           2,
         );
       }
-      return buildLocally(request, { contextDir: dir, log: emit });
+      return buildLocally(request, {
+        contextDir: dir,
+        log: emit,
+        // Same image name a web deploy of this repo would produce.
+        ...(git.repo ? { projectName: git.repo } : {}),
+        gitSha: git.sha,
+      });
     },
     infrafilePush: (image, registry) => pushLocally(image, registry, { log: emit }),
     infrafileRun: (request) => runInImage(request, { contextDir: dir, log: emit }),

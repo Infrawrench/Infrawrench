@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import ts from "typescript";
 
 import { generateInfrafileDts } from "./codegen.js";
+import { infrafileImageRef } from "./types.js";
 
 /**
  * `Infrafile.d.ts` is assembled from template literals, so a stray backtick or
@@ -52,5 +53,41 @@ describe("generateInfrafileDts", () => {
     const dts = generateInfrafileDts({ plugins: [] });
     expect(dts).toContain("declare const infra: InfraApi;");
     expect(dts).toContain("declare function fetch(");
+  });
+});
+
+describe("infrafileImageRef", () => {
+  it("gives every driver the same reference for the same inputs", () => {
+    const args = { project: "astrid/my-app", env: "production", gitSha: "a1b2c3d4e5f6" };
+    expect(infrafileImageRef(args)).toBe("my-app:production-a1b2c3d");
+  });
+
+  it("prefers the plan's tag", () => {
+    expect(
+      infrafileImageRef({ project: "my-app", env: "production", tag: "v1.2.3", gitSha: "abc1234" }),
+    ).toBe("my-app:v1.2.3");
+  });
+
+  it("prefixes a registry host so the image can be pushed without re-tagging", () => {
+    expect(
+      infrafileImageRef({
+        project: "astrid/my-app",
+        env: "staging",
+        gitSha: "abc1234",
+        registryHost: "registry.example.com",
+      }),
+    ).toBe("registry.example.com/my-app:staging-abc1234");
+  });
+
+  it("sanitises a name Docker would reject", () => {
+    expect(infrafileImageRef({ project: "My App (v2)!", env: "prod" })).toBe("my-app--v2:prod");
+  });
+
+  it("falls back rather than producing an empty name", () => {
+    expect(infrafileImageRef({ project: "///", env: "prod" })).toBe("app:prod");
+  });
+
+  it("omits the sha suffix when there is no commit", () => {
+    expect(infrafileImageRef({ project: "my-app", env: "prod" })).toBe("my-app:prod");
   });
 });

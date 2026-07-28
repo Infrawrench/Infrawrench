@@ -38,7 +38,7 @@ function fail(c: Context, e: unknown) {
   // this", and lets the client tell it apart from a permission problem.
   if (e instanceof PlanRequiredError) return c.json({ error: e.message }, 402);
   if (e instanceof DeploymentError) {
-    return c.json({ error: e.message }, e.status as 400 | 404);
+    return c.json({ error: e.message }, e.status as 400 | 404 | 409);
   }
   throw e;
 }

@@ -72,6 +72,12 @@ The same permission set gates every surface, not just the web UI:
 - **HTTP API** — checked per route (see `x-required-permission` in the [API reference](./openapi.md)).
 - **[AI chat](../features/ai-chat.md) and [MCP](../features/mcp.md)** — reaching chat at all needs `chat:read` / `chat:write`, and each tool then declares the permission it needs, checked before the tool runs. A member who cannot delete a resource over HTTP cannot delete one by asking the assistant either, and destructive tools are re-checked at approval time rather than only when queued.
 - **WebSocket sessions** (SSH terminals, SQL console, Kubernetes exec and port-forward) — require `resources:execute`, whether the connection authenticates with a browser session or an API key.
+- **[Deploys](../features/infrafile.md)** split across three permissions, because previewing and shipping are different risks:
+  - `deployments:read` — deploy history and a repository's declared environments. Inert. Members hold it.
+  - `deployments:plan` — runs the repository's `plan()`, which executes its code against your accounts but builds and ships nothing. Members hold it; a custom role can withhold it without also taking away the history.
+  - `deployments:write` — builds, deploys and rolls back. Admin and Owner only.
+
+  The deploy WebSocket enforces the same split its HTTP routes do, so a `planOnly` run needs `deployments:plan` and a real deploy needs `deployments:write`.
 
 ## Audit trail
 
