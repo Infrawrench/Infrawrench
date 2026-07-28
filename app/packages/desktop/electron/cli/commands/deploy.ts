@@ -343,13 +343,18 @@ export async function cmdDeploy(ctx: CliContext, flags: DeployFlags): Promise<vo
   const answers = parseAnswers(flags.set);
 
   const json = ctx.flags.output === "json";
-  const logs: RunLogEntry[] = [];
+  // Build output goes to the terminal as it arrives, but is also captured: in
+  // --json mode nothing is printed, and a failed CI run needs the docker output
+  // to be diagnosable rather than just an exit code and a message.
+  const buildLogs: RunLogEntry[] = [];
   const emit = (line: string): void => {
+    buildLogs.push({ at: Date.now(), level: "info", message: line });
     if (!json) println(line);
   };
 
   if (!json) {
-    println(`${c.dim(INFRAFILE_NAME)} ${c.bold(path.relative(process.cwd(), file) || file)}`);
+    const shown = path.relative(process.cwd(), file) || INFRAFILE_NAME;
+    println(c.bold(shown === INFRAFILE_NAME ? INFRAFILE_NAME : shown));
     println(
       `${c.dim("commit")}  ${git.sha.slice(0, 7)} ${c.dim(`(${git.branch})`)}${
         git.dirty ? ` ${c.yellow("· uncommitted changes")}` : ""
@@ -421,7 +426,6 @@ export async function cmdDeploy(ctx: CliContext, flags: DeployFlags): Promise<vo
     interactive: process.stdin.isTTY === true,
     planOnly: flags.plan,
     onLog: (entry) => {
-      logs.push(entry);
       if (!json) println(entry.level === "error" ? c.red(entry.message) : entry.message);
     },
     onStage: (stage) => {
@@ -437,6 +441,12 @@ export async function cmdDeploy(ctx: CliContext, flags: DeployFlags): Promise<vo
       dockerfile: result.dockerfile,
       image: result.image,
       notes: result.notes,
+      // Text mode streams these to the terminal as they arrive; JSON mode
+      // suppresses that, so without them here a failed CI run reports a message
+      // and no build output to work out why.
+      // Interleave by timestamp: the run's own entries (notes, stage markers)
+      // and the build driver's output are two streams of one story.
+      logs: [...result.logs, ...buildLogs].sort((a, b) => a.at - b.at),
       durationMs: result.durationMs,
       ...(result.error ? { error: result.error.message } : {}),
     });
