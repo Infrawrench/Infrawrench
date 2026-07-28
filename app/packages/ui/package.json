@@ -33,6 +33,11 @@
       "types": "./dist/cost/config.d.ts",
       "import": "./dist/cost/config.js",
       "require": "./dist/cost/config.cjs"
+    },
+    "./workflows/prompt-bridge": {
+      "types": "./dist/workflows/prompt-bridge.d.ts",
+      "import": "./dist/workflows/prompt-bridge.js",
+      "require": "./dist/workflows/prompt-bridge.cjs"
     }
   },
   "main": "./dist/index.cjs",

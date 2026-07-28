@@ -49,7 +49,8 @@
     "./cost/external-cost-ids": "./src/cost/external-cost-ids.ts",
     "./paging/external-pages": "./src/paging/external-pages.ts",
     "./push/dispatch": "./src/push/dispatch.ts",
-    "./push/types": "./src/push/types.ts"
+    "./push/types": "./src/push/types.ts",
+    "./infrafile/build-ssh": "./src/infrafile/build-ssh.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

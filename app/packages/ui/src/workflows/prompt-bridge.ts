@@ -1,13 +1,18 @@
 /**
- * Renderer-side bridge for `infra.prompt()` in desktop workflows.
+ * Browser-side bridge for `infra.prompt()` — and for an Infrafile's
+ * `select(...)`, which routes through the same host method.
  *
- * Electron's `window.prompt` is a no-op, so the workflow host can't use it.
- * Instead, the host's `prompt` calls {@link requestWorkflowPrompt}, which
- * surfaces a real modal (mounted once via `WorkflowPromptHost`) and resolves
- * with the user's answer. Everything stays in the renderer — the host already
- * runs here during a run (the sandbox bridges prompt calls back from main).
+ * A running workflow's host needs an answer from a human. On the desktop the
+ * host runs in the renderer and calls {@link requestWorkflowPrompt} directly;
+ * on the web the request arrives over the workflow WebSocket and the transport
+ * calls it. Either way a single modal ({@link PromptHost}, mounted once at the
+ * app root) renders the prompt and resolves the waiting promise.
+ *
+ * This lives in `@infrawrench/ui` rather than in either app because both need
+ * it: `window.prompt` is a no-op in Electron *and* is a single-line string box
+ * in the browser, which silently drops the `kind` and `options` a select needs.
  */
-import type { MetricValue, PromptSpec } from "@infrawrench/workflow-runtime/client";
+import type { MetricValue, PromptSpec } from "./types.js";
 
 export interface WorkflowPromptRequest {
   id: string;

@@ -4,6 +4,7 @@
  */
 import type {
   DebugSession,
+  PromptSpec,
   WorkflowClient,
   WorkflowMetricRow,
   WorkflowRunResult,
@@ -11,6 +12,7 @@ import type {
   WorkflowSaveBody,
   WorkflowSummary,
 } from "@infrawrench/ui/workflows";
+import { requestWorkflowPrompt } from "@infrawrench/ui/workflows/prompt-bridge";
 import { jsonInit, jsonOrThrow } from "./cookie-json";
 
 export function createWebWorkflowClient(orgId: string): WorkflowClient {
@@ -65,7 +67,7 @@ export function createWebWorkflowClient(orgId: string): WorkflowClient {
           type: string;
           line?: number;
           entry?: unknown;
-          spec?: { message?: string; defaultValue?: string };
+          spec?: PromptSpec;
           runId?: string;
           result?: unknown;
           message?: string;
@@ -91,11 +93,12 @@ export function createWebWorkflowClient(orgId: string): WorkflowClient {
             debug.onLog?.(m.entry as Parameters<NonNullable<DebugSession["onLog"]>>[0]);
             break;
           case "workflow:prompt": {
-            const value =
-              typeof window !== "undefined"
-                ? window.prompt(m.spec?.message ?? "Input", m.spec?.defaultValue)
-                : null;
-            send({ type: "workflow:prompt:response", value });
+            // A real modal, not `window.prompt`: the browser's built-in is a
+            // single-line string box that discards `kind` and `options`, so a
+            // select would have rendered as a free-text field with no options.
+            void requestWorkflowPrompt(m.spec ?? { message: "Input" }).then((value) => {
+              send({ type: "workflow:prompt:response", value });
+            });
             break;
           }
           case "workflow:result":

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.9.0",
+    "version": "0.11.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -2728,6 +2728,285 @@
         ],
         "additionalProperties": false
       },
+      "DeployRepo": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "example": "astrid/my-app"
+          },
+          "defaultBranch": {
+            "type": "string",
+            "example": "main"
+          }
+        },
+        "required": ["fullName", "defaultBranch"],
+        "additionalProperties": false
+      },
+      "DeployEnvs": {
+        "type": "object",
+        "properties": {
+          "envs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": ["staging", "production"]
+          },
+          "sha": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          }
+        },
+        "required": ["envs", "sha", "repo", "branch"],
+        "additionalProperties": false
+      },
+      "DeployEnvsInput": {
+        "type": "object",
+        "properties": {
+          "repo": {
+            "type": "string",
+            "minLength": 1,
+            "example": "astrid/my-app"
+          },
+          "branch": {
+            "type": "string",
+            "minLength": 1,
+            "default": "main"
+          }
+        },
+        "required": ["repo"],
+        "additionalProperties": false
+      },
+      "DeployStatus": {
+        "type": "string",
+        "enum": ["pending", "running", "success", "failure", "canceled"]
+      },
+      "DeployRunLog": {
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": "integer"
+          },
+          "level": {
+            "type": "string",
+            "enum": ["debug", "info", "warn", "error"]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["at", "level", "message"],
+        "additionalProperties": false
+      },
+      "DeployStage": {
+        "type": "string",
+        "enum": ["plan", "dockerfile", "build", "deploy"]
+      },
+      "DeployPlanResult": {
+        "type": "object",
+        "properties": {
+          "runId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "result": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "$ref": "#/components/schemas/DeployStatus"
+              },
+              "env": {
+                "type": "string"
+              },
+              "plan": {},
+              "dockerfile": {
+                "type": "string"
+              },
+              "image": {
+                "type": "string"
+              },
+              "notes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "logs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DeployRunLog"
+                }
+              },
+              "reachedStage": {
+                "$ref": "#/components/schemas/DeployStage"
+              },
+              "error": {
+                "type": "object",
+                "properties": {
+                  "message": {
+                    "type": "string"
+                  },
+                  "stack": {
+                    "type": "string"
+                  }
+                },
+                "required": ["message"],
+                "additionalProperties": false
+              },
+              "durationMs": {
+                "type": "integer"
+              }
+            },
+            "required": ["status", "env", "notes", "logs", "durationMs"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["runId", "result"],
+        "additionalProperties": false
+      },
+      "DeployPlanInput": {
+        "type": "object",
+        "properties": {
+          "repo": {
+            "type": "string",
+            "minLength": 1
+          },
+          "branch": {
+            "type": "string",
+            "minLength": 1,
+            "default": "main"
+          },
+          "env": {
+            "type": "string"
+          },
+          "answers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["repo"],
+        "additionalProperties": false
+      },
+      "DeploymentRun": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "env": {
+            "type": "string"
+          },
+          "repo": {
+            "type": ["string", "null"]
+          },
+          "branch": {
+            "type": ["string", "null"]
+          },
+          "gitSha": {
+            "type": ["string", "null"]
+          },
+          "image": {
+            "type": ["string", "null"]
+          },
+          "status": {
+            "$ref": "#/components/schemas/DeployStatus"
+          },
+          "origin": {
+            "type": "string",
+            "enum": ["web", "cli"]
+          },
+          "stage": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DeployStage"
+              },
+              {
+                "type": ["string", "null"]
+              }
+            ]
+          },
+          "durationMs": {
+            "type": ["integer", "null"]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "env",
+          "repo",
+          "branch",
+          "gitSha",
+          "image",
+          "status",
+          "origin",
+          "stage",
+          "durationMs",
+          "startedAt"
+        ],
+        "additionalProperties": false
+      },
+      "DeploymentRunInput": {
+        "type": "object",
+        "properties": {
+          "env": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "$ref": "#/components/schemas/DeployStatus"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "gitSha": {
+            "type": "string"
+          },
+          "image": {
+            "type": "string"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/DeployStage"
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "durationMs": {
+            "type": "integer"
+          },
+          "error": {
+            "type": ["object", "null"],
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["env", "status"],
+        "additionalProperties": false
+      },
       "PageResponse": {
         "type": "object",
         "properties": {
@@ -5289,6 +5568,8 @@
           "storage:write",
           "dashboards:read",
           "dashboards:write",
+          "deployments:read",
+          "deployments:write",
           "costs:read",
           "costs:write",
           "budgets:read",
@@ -9784,6 +10065,552 @@
           }
         },
         "operationId": "getOrgOrgIdBudgetsIdEvents"
+      }
+    },
+    "/api/org/{orgId}/deployments/repos": {
+      "get": {
+        "tags": ["Deployments"],
+        "summary": "List repositories this organization can deploy from",
+        "description": "Repositories visible to the organization's GitHub App installations. Empty when the app is not configured.\n\n_Requires permission: `deployments:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Repositories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeployRepo"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdDeploymentsRepos",
+        "x-required-permission": "deployments:read"
+      }
+    },
+    "/api/org/{orgId}/deployments/envs": {
+      "post": {
+        "tags": ["Deployments"],
+        "summary": "List the environments a repository's Infrafile declares",
+        "description": "Reads `Infrafile` at the branch head and returns its declared environments. The file is parsed, not executed.\n\n_Requires permission: `deployments:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeployEnvsInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Declared environments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeployEnvs"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdDeploymentsEnvs",
+        "x-required-permission": "deployments:read"
+      }
+    },
+    "/api/org/{orgId}/deployments/plan": {
+      "post": {
+        "tags": ["Deployments"],
+        "summary": "Preview a deploy without building",
+        "description": "Runs the Infrafile's `plan()` and renders its Dockerfile, then stops. Nothing is built or deployed.\n\n_Requires permission: `deployments:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeployPlanInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Plan result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeployPlanResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdDeploymentsPlan",
+        "x-required-permission": "deployments:read"
+      }
+    },
+    "/api/org/{orgId}/deployments/runs": {
+      "get": {
+        "tags": ["Deployments"],
+        "summary": "List deployment runs",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "env",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runs, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeploymentRun"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdDeploymentsRuns",
+        "x-required-permission": "deployments:read",
+        "description": "_Requires permission: `deployments:read`._"
+      },
+      "post": {
+        "tags": ["Deployments"],
+        "summary": "Record a deployment that ran elsewhere",
+        "description": "The CLI builds on the operator's own machine, so the server never sees that run. Reporting it here keeps one history across both origins.\n\n_Requires permission: `deployments:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeploymentRunInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "00000000-0000-0000-0000-000000000000"
+                    }
+                  },
+                  "required": ["id"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdDeploymentsRuns",
+        "x-required-permission": "deployments:write"
+      }
+    },
+    "/api/org/{orgId}/deployments/runs/{id}": {
+      "get": {
+        "tags": ["Deployments"],
+        "summary": "Get one deployment run, with its logs and rendered Dockerfile",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentRun"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdDeploymentsRunsId",
+        "x-required-permission": "deployments:read",
+        "description": "_Requires permission: `deployments:read`._"
+      }
+    },
+    "/api/org/{orgId}/deployments/runs/{id}/rollback": {
+      "post": {
+        "tags": ["Deployments"],
+        "summary": "Roll back to a previous deployment",
+        "description": "Re-runs that run's `deploy()` with the image and plan it recorded, building nothing — the exact artifact that was known good ships again. The Infrafile is read at the commit that run deployed, not at the branch head. Only a successful run that produced an image can be rolled back to.\n\n_Requires permission: `deployments:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rollback result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeployPlanResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required — the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdDeploymentsRunsIdRollback",
+        "x-required-permission": "deployments:write"
       }
     },
     "/api/org/{orgId}/pages": {

@@ -138,6 +138,7 @@ export default function OrgLayout() {
       <Tabs.Screen name="tools/[tool]" options={{ href: null, title: "Tools" }} />
       <Tabs.Screen name="workflows" options={{ href: null, title: "Workflows" }} />
       <Tabs.Screen name="agents" options={{ href: null, title: "Agents" }} />
+      <Tabs.Screen name="deployments" options={{ href: null, title: "Deploys" }} />
     </Tabs>
   );
 }

@@ -37,7 +37,7 @@ import {
 } from "@infrawrench/workflow-runtime/client";
 
 import { runWorkflowInMain } from "./workflow-runner";
-import { requestWorkflowPrompt } from "./workflow-prompt";
+import { requestWorkflowPrompt } from "@infrawrench/ui/workflows/prompt-bridge";
 import type {
   DebugSession,
   WorkflowClient,

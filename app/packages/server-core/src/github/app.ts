@@ -133,6 +133,34 @@ export async function getBranchHeadSha(
   return body.commit?.sha ?? null;
 }
 
+/**
+ * Read one file's contents at a ref. Used to fetch the `Infrafile` from a repo
+ * root without cloning — the web app needs the file's *text* to run it, and a
+ * clone only happens later, on the build host.
+ *
+ * Returns null when the file isn't there, so "this repo has no Infrafile" is an
+ * ordinary answer rather than an exception.
+ */
+export async function getFileContents(
+  installationId: number,
+  owner: string,
+  repo: string,
+  ref: string,
+  path: string,
+): Promise<string | null> {
+  const token = await getInstallationToken(installationId);
+  const res = await gh(
+    token,
+    `/repos/${owner}/${repo}/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${encodeURIComponent(ref)}`,
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`GitHub file read failed (${res.status})`);
+  const body = (await res.json()) as { content?: string; encoding?: string; type?: string };
+  if (body.type !== "file" || typeof body.content !== "string") return null;
+  // The contents API base64-encodes, wrapped at 60 columns.
+  return Buffer.from(body.content.replace(/\n/g, ""), "base64").toString("utf8");
+}
+
 /** The account an installation belongs to (used to label the connection). */
 export async function getInstallation(
   installationId: number,

@@ -67,6 +67,19 @@ export function DesktopWorkspaceTabsViewport() {
 function renderPanel(tab: WorkspaceTab, navigate: ReturnType<typeof useNavigate>) {
   const t = tab.target;
   switch (t.kind) {
+    case "deployments":
+      // Deploying needs a cloud org (a GitHub App install to read the Infrafile,
+      // a build host to build on). The desktop binary is also the CLI, which
+      // does the same three stages locally, so it is the answer here.
+      return (
+        <div className="p-6 text-sm text-on-surface-secondary">
+          <p className="mb-2">Deploys run from the web app or the terminal.</p>
+          <p className="text-xs text-on-surface-faint">
+            In this project&apos;s directory, run <code>infrawrench deploy</code>. It reads the
+            Infrafile at your repo root and builds with your local Docker daemon.
+          </p>
+        </div>
+      );
     case "dashboard":
       return <DashboardPanel dashboardId={t.dashboardId} />;
     case "account":

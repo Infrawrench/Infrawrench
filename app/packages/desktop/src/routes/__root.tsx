@@ -30,7 +30,7 @@ import { AddAccountModal } from "../components/AddAccountModal";
 import { GlobalTabBar } from "../components/GlobalTabBar";
 import { DesktopWorkspaceTabsViewport } from "../components/WorkspaceTabsViewport";
 import { SshHostKeyPromptHost } from "../components/SshHostKeyPromptHost";
-import { WorkflowPromptHost } from "../components/WorkflowPromptHost";
+import { PromptHost } from "@infrawrench/ui/workflows";
 import { SpotlightSearch } from "../components/SpotlightSearch";
 import { UpdatePromptHost } from "../components/UpdatePromptHost";
 import { SwipeIndicator } from "../components/SwipeIndicator";
@@ -94,6 +94,7 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     target.kind === "agents" ||
     target.kind === "costs" ||
     target.kind === "workflows" ||
+    target.kind === "deployments" ||
     target.kind === "chat"
   ) {
     return tab;
@@ -709,7 +710,7 @@ function RootLayout() {
 
       <SwipeIndicator gesture={swipeGesture} />
       <SshHostKeyPromptHost />
-      <WorkflowPromptHost />
+      <PromptHost />
       <UpdatePromptHost />
       {tunnelAttach && (
         <TunnelSshAttachModal

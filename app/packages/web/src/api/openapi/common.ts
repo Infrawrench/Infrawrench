@@ -85,6 +85,15 @@ export const ErrorResponses = {
     content: { "application/json": { schema: ErrorResponse } },
   },
   403: { description: "Forbidden", content: { "application/json": { schema: ErrorResponse } } },
+  /**
+   * The organization's plan does not include this feature. Distinct from `403`,
+   * which means the caller lacks a permission — this is about the plan, and the
+   * fix is billing rather than a role change.
+   */
+  402: {
+    description: "Payment required — the organization's plan does not include this",
+    content: { "application/json": { schema: ErrorResponse } },
+  },
   /** Use in place of `403` on step-up-protected routes. */
   reauth: {
     description:

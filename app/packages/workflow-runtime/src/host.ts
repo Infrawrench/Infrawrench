@@ -35,6 +35,15 @@ import type {
   WorkflowFetchResponse,
   WorkflowPluginInfo,
 } from "./types.js";
+import type {
+  BuildRequest,
+  BuildTarget,
+  BuildTargetResource,
+  InfrafileHostOps,
+  InfrafileRunSink,
+  RegistryCredentials,
+  RunInImageRequest,
+} from "./infrafile/types.js";
 
 /**
  * Identifies a peer plugin reached *through* a parent resource, rather than
@@ -155,6 +164,12 @@ export interface WorkflowRunContext {
   log(entry: RunLogEntry): void;
   /** Records the value the workflow declared via `infra.output(...)`. */
   setOutput(value: unknown): void;
+  /**
+   * Present only on an Infrafile run. Collects the stage artifacts (chosen env,
+   * plan, rendered Dockerfile, notes) that are pure bookkeeping and therefore
+   * identical on every platform — see `infrafile/types.ts`.
+   */
+  infrafile?: InfrafileRunSink;
 }
 
 /**
@@ -390,6 +405,13 @@ export interface WorkflowHost {
   ): Promise<{ label: string; unit?: string; points: { timestamp: number; value: number }[] }[]>;
 }
 
+/**
+ * A host that can additionally run an Infrafile. The build/push/copy ops are
+ * separate from {@link WorkflowHost} because a plain workflow never needs them —
+ * only a host driving `runInfrafile` has to implement any of it.
+ */
+export type InfrafileHost = WorkflowHost & InfrafileHostOps;
+
 /** Error thrown when a workflow uses a capability unavailable in its context. */
 export class WorkflowCapabilityError extends Error {
   constructor(message: string) {
@@ -431,6 +453,163 @@ function sftpParams(args: Record<string, unknown>): SftpParamsLite {
 }
 
 /** Longest page message we forward; transports truncate further as needed. */
+/** Largest rendered Dockerfile we will carry across the bridge. */
+const MAX_DOCKERFILE_BYTES = 256 * 1024;
+
+/** Deploy notes are log lines, not essays. */
+const MAX_NOTE_LENGTH = 4000;
+
+/**
+ * The `infrafile` sink is installed by `runInfrafile`. Reaching one of these
+ * RPCs without it means an Infrafile epilogue ran under the plain workflow
+ * runner, which is a wiring bug rather than anything the author did.
+ */
+function requireInfrafileSink(ctx: WorkflowRunContext): InfrafileRunSink {
+  if (!ctx.infrafile) {
+    throw new Error("Infrafile stage RPC used outside an Infrafile run.");
+  }
+  return ctx.infrafile;
+}
+
+/**
+ * Where to build, read off the plan's reserved `buildOn` key. A resource handle
+ * arrives here as its plain identifying fields — `JSON.stringify` dropped the
+ * methods the prelude mixed on, which is exactly what we want to send onward.
+ *
+ * Returning `undefined` lets the host apply its own default (local for the CLI).
+ */
+function buildTarget(raw: unknown): BuildTarget | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw === "string") {
+    if (raw === "local") return { kind: "local" };
+    throw new Error(
+      `plan().buildOn must be a resource or the string "local", not ${JSON.stringify(raw)}.`,
+    );
+  }
+  if (typeof raw !== "object") {
+    throw new Error('plan().buildOn must be a resource or the string "local".');
+  }
+  const r = raw as Record<string, unknown>;
+  const id = typeof r["id"] === "string" ? r["id"] : "";
+  const accountId = typeof r["accountId"] === "string" ? r["accountId"] : "";
+  const resourceTypeId = typeof r["resourceTypeId"] === "string" ? r["resourceTypeId"] : "";
+  if (!id || !accountId || !resourceTypeId) {
+    throw new Error(
+      "plan().buildOn looks like an object but is not a resource — expected one from " +
+        "infra.accounts.<plugin>.<group>.list()/get().",
+    );
+  }
+  const resource: BuildTargetResource = { id, accountId, resourceTypeId };
+  if (typeof r["displayName"] === "string") resource.displayName = r["displayName"];
+  return { kind: "resource", resource };
+}
+
+/** Registry credentials off the plan's reserved `registry` key, if present. */
+function registryCredentials(raw: unknown): RegistryCredentials | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== "object") throw new Error("plan().registry must be an object.");
+  const r = raw as Record<string, unknown>;
+  const host = String(r["host"] ?? "").trim();
+  const username = String(r["username"] ?? "");
+  const password = String(r["password"] ?? "");
+  if (!host || !username || !password) {
+    throw new Error("plan().registry needs host, username and password.");
+  }
+  return { host, username, password };
+}
+
+/**
+ * Assemble the build request from the rendered Dockerfile plus the plan's
+ * reserved keys. Validation lives here so every host — local Docker on the CLI,
+ * SSH on the server — receives an identical, already-checked request.
+ */
+function buildRequest(args: Record<string, unknown>): BuildRequest {
+  const dockerfile = String(args["dockerfile"] ?? "");
+  if (!dockerfile.trim()) throw new Error("dockerfile() produced no content.");
+  if (dockerfile.length > MAX_DOCKERFILE_BYTES) {
+    throw new Error(`Rendered Dockerfile exceeds ${MAX_DOCKERFILE_BYTES} bytes.`);
+  }
+  const plan = (args["plan"] ?? {}) as Record<string, unknown>;
+  const target = buildTarget(plan["buildOn"]);
+  const registry = registryCredentials(plan["registry"]);
+
+  const buildArgs: Record<string, string> = {};
+  const rawArgs = plan["buildArgs"];
+  if (rawArgs && typeof rawArgs === "object") {
+    for (const [k, v] of Object.entries(rawArgs as Record<string, unknown>)) {
+      if (v !== undefined && v !== null) buildArgs[k] = String(v);
+    }
+  }
+
+  const request: BuildRequest = { env: String(args["env"] ?? ""), dockerfile };
+  if (target) request.target = target;
+  if (registry) request.registry = registry;
+  if (typeof plan["tag"] === "string" && plan["tag"]) request.tag = plan["tag"];
+  if (Object.keys(buildArgs).length > 0) request.args = buildArgs;
+  return request;
+}
+
+/** Command line length accepted by `run(...)`. Generous, but not unbounded. */
+const MAX_RUN_COMMAND = 16 * 1024;
+
+/** Environment variables per `run(...)` call. */
+const MAX_RUN_ENV_VARS = 200;
+
+/**
+ * Marshal + validate a `run(command, opts)` call. Normalizing here means the
+ * local Docker path and the SSH path receive an identical request, and it is
+ * the single place that bounds what the guest can ask for.
+ */
+function runInImageRequest(args: Record<string, unknown>): RunInImageRequest {
+  const image = String(args["image"] ?? "").trim();
+  if (!image) throw new Error("run(): no image to run — was the build skipped?");
+  const command = String(args["command"] ?? "").trim();
+  if (!command) throw new Error("run(command): command must be a non-empty string.");
+  if (command.length > MAX_RUN_COMMAND) {
+    throw new Error(`run(): command exceeds ${MAX_RUN_COMMAND} characters.`);
+  }
+
+  const request: RunInImageRequest = { image, command };
+
+  const rawEnv = args["env"];
+  if (rawEnv !== undefined && rawEnv !== null) {
+    if (typeof rawEnv !== "object") throw new Error("run(): `env` must be an object.");
+    const entries = Object.entries(rawEnv as Record<string, unknown>);
+    if (entries.length > MAX_RUN_ENV_VARS) {
+      throw new Error(`run(): at most ${MAX_RUN_ENV_VARS} environment variables.`);
+    }
+    const env: Record<string, string> = {};
+    for (const [key, value] of entries) {
+      // A newline in a name or value lets a caller forge extra variables
+      // wherever the host writes these as `KEY=value` lines (an env-file, a
+      // shell export). Refuse rather than sanitize.
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+        throw new Error(`run(): ${JSON.stringify(key)} is not a valid environment variable name.`);
+      }
+      const text = String(value ?? "");
+      if (text.includes("\n") || text.includes("\0")) {
+        throw new Error(`run(): the value of ${key} may not contain newlines.`);
+      }
+      env[key] = text;
+    }
+    request.env = env;
+  }
+
+  // Default `sh` rather than leaving it unset: see RunInImageRequest.entrypoint
+  // for why the image's own ENTRYPOINT must not be in play here.
+  const entrypoint = args["entrypoint"];
+  request.entrypoint = typeof entrypoint === "string" ? entrypoint : "sh";
+  if (request.entrypoint.includes("\n")) {
+    throw new Error("run(): `entrypoint` may not contain newlines.");
+  }
+  if (typeof args["workdir"] === "string" && args["workdir"]) {
+    request.workdir = args["workdir"];
+  }
+  if (args["mountSource"] === false) request.mountSource = false;
+  if (args["allowFailure"] === true) request.allowFailure = true;
+  return request;
+}
+
 const MAX_PAGE_MESSAGE = 1000;
 
 /**
@@ -565,7 +744,7 @@ function sshParams(args: Record<string, unknown>): SshExecParamsLite {
  * as a thrown error inside the workflow.
  */
 export async function dispatch(
-  host: WorkflowHost,
+  host: InfrafileHost,
   ctx: WorkflowRunContext,
   method: string,
   args: Record<string, unknown>,
@@ -889,6 +1068,91 @@ export async function dispatch(
 
     case "output":
       ctx.setOutput(args["value"]);
+      return null;
+
+    // ---- Infrafile stage boundaries -------------------------------------
+    // Bookkeeping goes to the run's sink; only the genuinely platform-specific
+    // work (build, push, copy, pre-supplied answers) reaches the host.
+
+    case "infrafile.envs":
+      return requireInfrafileSink(ctx).chooseEnv((args["envs"] as string[]) ?? []);
+
+    case "infrafile.plan":
+      return { proceed: requireInfrafileSink(ctx).recordPlan(args["plan"]) };
+
+    case "infrafile.dockerfile":
+      requireInfrafileSink(ctx).recordDockerfile(String(args["dockerfile"] ?? ""));
+      return null;
+
+    case "infrafile.select": {
+      const key = String(args["key"] ?? "");
+      const options = (args["options"] ?? []) as { label: string; value: string }[];
+      // A pre-supplied answer (`--set key=value`) is what lets the same
+      // Infrafile run unattended in CI, so it is checked before interactivity.
+      const preset = await host.infrafileAnswer?.(key);
+      if (preset !== undefined && preset !== null) return preset;
+      if (!ctx.interactive) {
+        throw new WorkflowCapabilityError(
+          `select(${JSON.stringify(key)}, …) has no answer and this run is not interactive. ` +
+            `Pass --set ${key}=<value>, where <value> is one of: ` +
+            `${options.map((o) => o.value).join(", ")}.`,
+        );
+      }
+      return host.prompt({
+        message: String(args["label"] ?? key),
+        kind: "select",
+        options,
+      });
+    }
+
+    case "infrafile.build": {
+      ctx.infrafile?.stage("build");
+      return requireMethod(host.infrafileBuild, "infrafileBuild").call(host, buildRequest(args));
+    }
+
+    case "infrafile.push":
+      await requireMethod(host.infrafilePush, "infrafilePush").call(
+        host,
+        String(args["image"] ?? ""),
+        registryCredentials(args["registry"]),
+      );
+      return null;
+
+    case "infrafile.run": {
+      const request = runInImageRequest(args);
+      const result = await requireMethod(host.infrafileRun, "infrafileRun").call(host, request);
+      // A non-zero exit is a failed deploy unless the author opted in to
+      // handling it — the alternative is `wrangler deploy` failing silently
+      // and the run reporting success.
+      if (!request.allowFailure && result.exitCode !== 0) {
+        const detail = (result.stderr || result.stdout || "")
+          .trim()
+          .split("\n")
+          .slice(-20)
+          .join("\n");
+        throw new Error(
+          `run(${JSON.stringify(request.command)}) exited with code ${result.exitCode}` +
+            (detail ? `:\n${detail}` : "."),
+        );
+      }
+      return result;
+    }
+
+    case "infrafile.copyTo": {
+      const target = buildTarget(args["target"]);
+      if (!target || target.kind !== "resource") {
+        throw new Error("copyTo(target, remotePath): target must be a resource to copy onto.");
+      }
+      await requireMethod(host.infrafileCopyTo, "infrafileCopyTo").call(
+        host,
+        target.resource,
+        String(args["remotePath"] ?? ""),
+      );
+      return null;
+    }
+
+    case "infrafile.note":
+      requireInfrafileSink(ctx).recordNote(String(args["text"] ?? "").slice(0, MAX_NOTE_LENGTH));
       return null;
 
     default:

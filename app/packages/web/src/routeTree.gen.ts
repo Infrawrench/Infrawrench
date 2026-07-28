@@ -13,9 +13,11 @@ import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as OrgOrgIdRouteImport } from './routes/org.$orgId'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as DeploySplatRouteImport } from './routes/deploy.$'
 import { Route as OrgOrgIdIndexRouteImport } from './routes/org.$orgId.index'
 import { Route as OrgOrgIdWorkflowsRouteImport } from './routes/org.$orgId.workflows'
 import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settings'
+import { Route as OrgOrgIdDeploymentsRouteImport } from './routes/org.$orgId.deployments'
 import { Route as OrgOrgIdCostsRouteImport } from './routes/org.$orgId.costs'
 import { Route as OrgOrgIdChatRouteImport } from './routes/org.$orgId.chat'
 import { Route as OrgOrgIdAgentsRouteImport } from './routes/org.$orgId.agents'
@@ -55,6 +57,11 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
   path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DeploySplatRoute = DeploySplatRouteImport.update({
+  id: '/deploy/$',
+  path: '/deploy/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OrgOrgIdIndexRoute = OrgOrgIdIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -68,6 +75,11 @@ const OrgOrgIdWorkflowsRoute = OrgOrgIdWorkflowsRouteImport.update({
 const OrgOrgIdSettingsRoute = OrgOrgIdSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdDeploymentsRoute = OrgOrgIdDeploymentsRouteImport.update({
+  id: '/deployments',
+  path: '/deployments',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdCostsRoute = OrgOrgIdCostsRouteImport.update({
@@ -171,11 +183,13 @@ const OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute =
 export interface FileRoutesByFullPath {
   '/admin': typeof AdminRoute
   '/onboarding': typeof OnboardingRoute
+  '/deploy/$': typeof DeploySplatRoute
   '/invite/$token': typeof InviteTokenRoute
   '/org/$orgId': typeof OrgOrgIdRouteWithChildren
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
+  '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
@@ -198,9 +212,11 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/admin': typeof AdminRoute
   '/onboarding': typeof OnboardingRoute
+  '/deploy/$': typeof DeploySplatRoute
   '/invite/$token': typeof InviteTokenRoute
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
+  '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
   '/org/$orgId': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
@@ -223,11 +239,13 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/admin': typeof AdminRoute
   '/onboarding': typeof OnboardingRoute
+  '/deploy/$': typeof DeploySplatRoute
   '/invite/$token': typeof InviteTokenRoute
   '/org/$orgId': typeof OrgOrgIdRouteWithChildren
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
+  '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
@@ -252,11 +270,13 @@ export interface FileRouteTypes {
   fullPaths:
     | '/admin'
     | '/onboarding'
+    | '/deploy/$'
     | '/invite/$token'
     | '/org/$orgId'
     | '/org/$orgId/agents'
     | '/org/$orgId/chat'
     | '/org/$orgId/costs'
+    | '/org/$orgId/deployments'
     | '/org/$orgId/settings'
     | '/org/$orgId/workflows'
     | '/org/$orgId/'
@@ -279,9 +299,11 @@ export interface FileRouteTypes {
   to:
     | '/admin'
     | '/onboarding'
+    | '/deploy/$'
     | '/invite/$token'
     | '/org/$orgId/agents'
     | '/org/$orgId/costs'
+    | '/org/$orgId/deployments'
     | '/org/$orgId/workflows'
     | '/org/$orgId'
     | '/org/$orgId/accounts/$accountId'
@@ -303,11 +325,13 @@ export interface FileRouteTypes {
     | '__root__'
     | '/admin'
     | '/onboarding'
+    | '/deploy/$'
     | '/invite/$token'
     | '/org/$orgId'
     | '/org/$orgId/agents'
     | '/org/$orgId/chat'
     | '/org/$orgId/costs'
+    | '/org/$orgId/deployments'
     | '/org/$orgId/settings'
     | '/org/$orgId/workflows'
     | '/org/$orgId/'
@@ -331,6 +355,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AdminRoute: typeof AdminRoute
   OnboardingRoute: typeof OnboardingRoute
+  DeploySplatRoute: typeof DeploySplatRoute
   InviteTokenRoute: typeof InviteTokenRoute
   OrgOrgIdRoute: typeof OrgOrgIdRouteWithChildren
 }
@@ -365,6 +390,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/deploy/$': {
+      id: '/deploy/$'
+      path: '/deploy/$'
+      fullPath: '/deploy/$'
+      preLoaderRoute: typeof DeploySplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/org/$orgId/': {
       id: '/org/$orgId/'
       path: '/'
@@ -384,6 +416,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/org/$orgId/settings'
       preLoaderRoute: typeof OrgOrgIdSettingsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/deployments': {
+      id: '/org/$orgId/deployments'
+      path: '/deployments'
+      fullPath: '/org/$orgId/deployments'
+      preLoaderRoute: typeof OrgOrgIdDeploymentsRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/costs': {
@@ -562,6 +601,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdAgentsRoute: typeof OrgOrgIdAgentsRoute
   OrgOrgIdChatRoute: typeof OrgOrgIdChatRouteWithChildren
   OrgOrgIdCostsRoute: typeof OrgOrgIdCostsRoute
+  OrgOrgIdDeploymentsRoute: typeof OrgOrgIdDeploymentsRoute
   OrgOrgIdSettingsRoute: typeof OrgOrgIdSettingsRouteWithChildren
   OrgOrgIdWorkflowsRoute: typeof OrgOrgIdWorkflowsRoute
   OrgOrgIdIndexRoute: typeof OrgOrgIdIndexRoute
@@ -574,6 +614,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdAgentsRoute: OrgOrgIdAgentsRoute,
   OrgOrgIdChatRoute: OrgOrgIdChatRouteWithChildren,
   OrgOrgIdCostsRoute: OrgOrgIdCostsRoute,
+  OrgOrgIdDeploymentsRoute: OrgOrgIdDeploymentsRoute,
   OrgOrgIdSettingsRoute: OrgOrgIdSettingsRouteWithChildren,
   OrgOrgIdWorkflowsRoute: OrgOrgIdWorkflowsRoute,
   OrgOrgIdIndexRoute: OrgOrgIdIndexRoute,
@@ -590,6 +631,7 @@ const OrgOrgIdRouteWithChildren = OrgOrgIdRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRoute,
   OnboardingRoute: OnboardingRoute,
+  DeploySplatRoute: DeploySplatRoute,
   InviteTokenRoute: InviteTokenRoute,
   OrgOrgIdRoute: OrgOrgIdRouteWithChildren,
 }

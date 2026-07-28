@@ -109,6 +109,25 @@ parse-invoice --json | infrawrench costs push --source colo
 
 `--source` names the system doing the pushing and is required by both. `page` also takes `--title`, `--key`, `--cooldown <minutes>`, and `--voice`; a suppressed page still exits zero and prints when the key can fire again. Both need a session (or role) carrying `pages:write` / `costs:write` — see [push from your own servers](./server-push.md) for the endpoints and their limits.
 
+## Deploying
+
+`infrawrench deploy` builds and ships the project in the current directory, driven by the [Infrafile](./infrafile.md) at its repository root:
+
+```bash
+# One environment declared? Nothing else to say.
+infrawrench deploy
+
+# Show what it decided and the Dockerfile it rendered — build nothing.
+infrawrench deploy --plan --env production
+
+# Answer a select() without prompting, so this runs in CI.
+infrawrench deploy --env staging --set build-host=local --json
+```
+
+The CLI builds with the **Docker daemon on your machine**, so you keep your layer cache and need no build VM — and you can deploy a working tree with uncommitted changes, which it points out when it spots them. Anything the Infrafile asks about via `select` is prompted for in the terminal, or answered up front with a repeatable `--set <key>=<value>`.
+
+`infrawrench deploy typings > Infrafile.d.ts` writes the declarations that give your editor autocomplete over your own accounts.
+
 ## The TUI
 
 `infrawrench` (or `infrawrench tui`) opens the interactive dashboard:

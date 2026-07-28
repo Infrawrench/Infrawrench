@@ -1465,6 +1465,120 @@ Docs: `website/src/content/docs/features/workflows.md`.
 
 **Still TODO**: dedicated `workflows:*` permissions; desktop↔cloud sync of workflows + workflow_metrics (syncVersion/deletedAt columns already present); desktop storage-object reads inside workflows (currently throws); web manual-run prompts (the panel's HTTP `/run` is non-interactive — interactive prompting needs the websocket path).
 
+## Infrafile (`deploy`) — building and shipping a user's project
+
+A **project's** build-and-deploy description, as opposed to a workflow's automation. One
+TypeScript file named `Infrafile` at a repo root calls `defineInfra({ envs, plan, dockerfile,
+deploy })`. Docs: `website/src/content/docs/features/infrafile.md`.
+
+**The Infrafile is never stored.** Not in Postgres, not in SQLite. The CLI reads `./Infrafile`
+from disk (walking up to the repo root); the web app fetches it from git through the existing
+GitHub App (`server-core/github/app.ts` `getFileContents`). A stored copy would be a second
+source of truth that silently drifts from the one in version control. What _is_ persisted is
+the record of a run (`deployment_runs`) — env, commit, image, status, logs, and the **rendered**
+Dockerfile, so a run is reproducible without the repo state that produced it.
+
+**It reuses the workflow isolate, it does not fork it.** `sandbox.ts` was split: the isolate
+itself (limits, the pause-aware budget, the interrupt/refusal pair) moved to
+`workflow-runtime/src/isolate.ts` (`runIsolate`), and `runWorkflow` / `runInfrafile` are two
+program epilogues over it. An Infrafile's stages are ordinary workflow code in functions —
+`infra.*`, `fetch` and `console` behave identically.
+
+**Stages are host RPCs, which is the whole design.** `infrafile.envs` → `plan()` →
+`infrafile.plan` → `dockerfile()` → `infrafile.dockerfile` → **`infrafile.build`** → `deploy()`.
+The Docker build happens _outside_ the isolate, as a long RPC. That is what lets the build read
+as a straight line in the file while running on a machine the sandbox can't touch, and it is
+why `infrafile.{build,push,copyTo,run}` are in `extraPausedMethods` — a five-minute image build
+is not guest execution and must not consume the run's budget.
+
+- **Bookkeeping vs capability.** Choosing the env, recording the plan, collecting notes are
+  identical everywhere and live in `InfrafileRunSink` (owned by `run.ts`, reached through
+  `WorkflowRunContext.infrafile`). Only real work — build, push, copyTo, run, pre-supplied
+  answers — reaches the host via `InfrafileHostOps`.
+- **No resource marshalling.** `JSON.stringify` already drops the methods the prelude mixes
+  onto a resource, so `plan().buildOn` arrives host-side as its plain identifying fields.
+  `plan()` has exactly two reserved keys, `buildOn` and `registry`; everything else is the
+  author's.
+- **`select(key, label, items)`** is what makes a deploy scriptable. The key is answerable by
+  `--set key=value` (`host.infrafileAnswer`) so the same file runs in CI; a non-interactive run
+  with no answer fails _naming the key and the options_. Values are labels, not indices, for
+  that reason. It returns the original item, so picking a resource yields a usable resource.
+- **`run(command, opts)`** executes inside the built image with the project mounted at
+  `/workspace`. This is how a non-container target ships (a Worker, a static site): the image is
+  a toolchain, not an artifact, and the deploy publishes from it. A non-zero exit fails the
+  deploy (with the tail of stderr) unless `allowFailure`.
+
+**Two build paths, deliberately.** The CLI shells out to the local `docker` binary
+(`desktop/electron/infrafile/build-local.ts`) — warm cache, no VM, and it can deploy a dirty
+working tree. The web app builds over SSH on the resource `buildOn` names
+(`server-core/infrafile/build-ssh.ts`), cloning the repo there because the browser has no
+working tree and the GKE pods have no daemon. `buildOn: "local"` is CLI-only and the web path
+says so. The accepted risk is that one Infrafile has two builders; the mitigation is that both
+receive an identical, already-validated `BuildRequest` normalized in `host.ts` `dispatch`.
+
+**Secrets never reach an argv.** `docker run -e K=secret` and `ssh 'cmd --token=…'` both land in
+`ps` for every user on the box. Registry passwords go in on stdin (`--password-stdin`), `run()`
+environments go through a mode-0600 `--env-file`, and the GitHub clone token is SFTP'd as a file
+that a git askpass helper reads (then deleted, with the origin remote dropped so it doesn't
+linger in `.git/config` — the same precaution `agent-setup.ts` takes). Env names and values are
+validated in `dispatch`: a newline in a value would forge extra `KEY=value` lines in the
+env-file.
+
+**The CLI needed its own plugin host.** It runs in Electron main with no renderer, so it cannot
+use the renderer's IPC-backed `createPluginClient`, and importing `src/plugins/loader.ts` drags
+a static ESM value import into the CommonJS main tree (`node16` rejects it outright). Hence
+`electron/infrafile/plugin-host.ts` (decrypt from SQLite + call `drivers.ts` directly) and
+`electron/infrafile/plugins.ts` (the same 28 dynamic imports, CJS-safe). Keep both free of GUI
+side effects.
+
+**Interactive runs are websockets, on both surfaces.** `select` needs a live round trip, so the
+web deploy is `deploy:*` frames on `/api/ws` (`services/deployment-ws.ts`), mirroring the
+`workflow:*` protocol minus the line debugger. The HTTP routes cover only what answers in one
+shot: `/repos`, `/envs`, `/plan`, and the run history.
+
+**`@infrawrench/ui/workflows/prompt-bridge` is a separate tsup entry on purpose.** Moving the
+desktop prompt modal into `ui` (so web stopped using `window.prompt`, which discards `kind` and
+`options` and made `select` impossible in a browser) meant the desktop's _data layer_ imported
+the ui barrel — dragging React and Monaco into a Node test until `cloud-api.test.ts` timed out.
+Data-layer modules import the React-free entry; only components import the barrel. Same
+precedent as `agents/launch-command`.
+
+Permissions are `deployments:read` / `deployments:write` — **not** the `dashboards:*` squat
+workflows took. Members get `read` only: `write` runs arbitrary repo code against the org's
+accounts.
+
+**Surfaces**: web tab `{kind:"deployments"}` at `/org/$orgId/deployments`
+(`ui/src/deployments/DeploymentsPanel.tsx`, transport `web/src/lib/deployment-client.ts`);
+`infrawrench deploy` / `deploy log` / `deploy typings`; mobile is a **read-only** run list
+(`mobile/src/app/org/[orgId]/deployments.tsx`) — deploying asks questions through `select`,
+streams for minutes and ships production code, none of which suits a phone.
+
+**Rollback replays, it does not rebuild.** `runInfrafile({ rollback })` skips `plan()`,
+`dockerfile()` and the build, calling `deploy()` with the plan and image a past run recorded — the
+point is the bytes that were known good, not a reconstruction. The Infrafile is re-read **at that
+run's commit**, so `resolveInfrafile` accepts a 40-char SHA as a ref (the branches API only
+resolves names). Consequence to remember: `plan` arrives as recorded JSON, so a resource in it is
+plain data, not a live handle — a `deploy()` needing handles takes them from `infra.*`. Surfaces:
+`POST /deployments/runs/:id/rollback`, the history's Roll back button, and
+`infrawrench deploy rollback [--to-run <id>]` (`--to` was taken by the time range).
+
+**Web deploys are paid-plan-gated; previews are not.** `services/entitlements.ts`
+(`planAccess` / `requirePaidPlan`, 402 `PlanRequiredError`) is the one place that reads what a
+plan grants — billing routes own _buying_ one. The gate sits in `runDeployment` rather than the
+route, so the websocket path is covered too, and it is skipped for `planOnly` so a free org can
+still see what a deploy would do. `past_due` counts as paid on purpose: Stripe is still retrying,
+and revoking the ability to ship on a bounced card takes it away exactly when nobody is watching
+for the reason. The CLI builds locally and is not gated.
+
+**Hotlink**: `/deploy/github.com/owner/name` (`routes/deploy.$.tsx`, splat) → resolves the org
+(straight through with one, asks with several) → `/org/:id/deployments?repo=`. The `repo` search
+param rides the `{kind:"deployments"; repo?}` tab target into `DeploymentsPanel.initialRepo`. The
+tab id deliberately ignores `repo` so a second hotlink retargets the open Deploy tab instead of
+stacking one tab per repository.
+
+**Still TODO**: tests for the two build drivers + the web wiring — both need live infrastructure,
+so only the runtime is covered.
+
 ## Dashboard card order (one sequence across three tables)
 
 Resource pins, workflow pins, and widgets each live in their own table with their own `grid_x`, but the grid drags as **one** sequence — a cost graph can sit between two resource cards. `client-core/src/dashboard-cards.ts` owns the contract (it moved out of `ui/src/dnd/card-order.ts` when mobile started rendering the same dashboards; `@infrawrench/ui` re-exports it, so web and desktop imports are unchanged): `dashboardCardId(kind, id)` (`"widget:abc"`, parsed back by `parseDashboardCardId`; ids may themselves contain colons, so it splits on the first only), `orderDashboardCards`, `moveDashboardCard`, `cardOrderIndex`. `DndShell` emits `iw:dashboard-card-reorder` with `{activeCardId, overCardId}` (was `{activeResourceId, overResourceId}`); both `DashboardView`s merge their three collections into one `DashboardCard[]`, hold it in a ref for the once-registered listener, renumber every card's `gridX` to its new index, and persist.

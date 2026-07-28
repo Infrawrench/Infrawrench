@@ -26,7 +26,7 @@ import type {
 
 import { invoke } from "./invoke";
 import { getCloudWsUrl } from "./cloud-ws";
-import { requestWorkflowPrompt } from "./workflow-prompt";
+import { requestWorkflowPrompt } from "@infrawrench/ui/workflows/prompt-bridge";
 
 export async function listCloudWorkflows(orgId: string): Promise<WorkflowSummary[]> {
   return invoke("cloud_list_workflows", { orgId });

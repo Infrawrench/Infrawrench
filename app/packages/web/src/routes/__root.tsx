@@ -15,6 +15,7 @@ import {
   type TunnelSshAttachZone,
   type TunnelSshAttachKey,
 } from "@infrawrench/ui";
+import { PromptHost } from "@infrawrench/ui/workflows";
 import { WebSidebar } from "@/components/WebSidebar";
 import { SpotlightSearch } from "@/components/SpotlightSearch";
 import { WebWorkspaceTabsViewport } from "@/components/WorkspaceTabsViewport";
@@ -326,6 +327,8 @@ function AuthenticatedShell() {
           </main>
         </div>
       </div>
+      {/* Renders input requests raised by a running workflow or Infrafile. */}
+      <PromptHost />
       {spotlightOpen && <SpotlightSearch mode="navigate" onClose={() => setSpotlightOpen(false)} />}
       {tunnelAttach && orgId && (
         <TunnelSshAttachModal

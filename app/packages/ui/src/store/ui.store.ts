@@ -7,6 +7,7 @@ export type WorkspaceTabTarget =
   | { kind: "agents" }
   | { kind: "costs" }
   | { kind: "workflows"; workflowId?: string }
+  | { kind: "deployments"; repo?: string }
   | { kind: "chat"; conversationId?: string }
   | {
       kind: "resource";
@@ -51,6 +52,10 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "costs";
     case "workflows":
       return target.workflowId ? `workflows:${target.workflowId}` : "workflows";
+    case "deployments":
+      // Not keyed by repo: a hotlink to a different repo should retarget the
+      // open Deploy tab rather than pile up a tab per repository.
+      return "deployments";
     case "chat":
       return target.conversationId ? `chat:${target.conversationId}` : "chat";
     case "resource":
@@ -76,6 +81,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Costs";
     case "workflows":
       return "Workflows";
+    case "deployments":
+      return "Deployments";
     case "chat":
       return "Chat";
     case "resource":
@@ -94,6 +101,8 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
       return a.accountId === (b as { accountId: string }).accountId;
     case "agents":
     case "costs":
+      return true;
+    case "deployments":
       return true;
     case "workflows":
       return a.workflowId === (b as { workflowId?: string }).workflowId;

@@ -1,5 +1,29 @@
 /** Shared UI-side shapes for workflows. Kept decoupled from server types. */
 
+/**
+ * A value a prompt can resolve to. Mirrors the runtime's `MetricValue`; `null`
+ * means the user dismissed the prompt.
+ *
+ * Declared here rather than imported from `@infrawrench/workflow-runtime`
+ * because this package must not depend on the sandbox — its main entry pulls in
+ * QuickJS, and keeping that out of the browser bundle is load-bearing.
+ */
+export type MetricValue = number | string | boolean | null;
+
+/**
+ * A request for input raised by `infra.prompt(...)`, or by an Infrafile's
+ * `select(...)` (which routes through the same host method). Mirrors the
+ * runtime's `PromptSpec`.
+ */
+export interface PromptSpec {
+  message: string;
+  /** Input shape to render. Defaults to "text". `code` is a multiline editor. */
+  kind?: "text" | "password" | "number" | "boolean" | "select" | "code";
+  /** Options for `kind: "select"`. */
+  options?: { label: string; value: string }[];
+  defaultValue?: string;
+}
+
 export interface WorkflowMetricDef {
   key: string;
   label: string;

@@ -16,6 +16,7 @@ import { cmdMetrics } from "./commands/metrics";
 import { cmdCosts } from "./commands/costs";
 import { cmdPage, cmdCostsPush } from "./commands/push";
 import { cmdCli } from "./commands/cli-install";
+import { cmdDeploy } from "./commands/deploy";
 import { runTui } from "./tui";
 
 const HELP = `infrawrench — manage your infrastructure from the terminal
@@ -37,6 +38,10 @@ COMMANDS
   costs push          push your own cost rows   --source <name> [--file rows.json | stdin]
   page <message>      alert the org's on-call transports   --source <name> [--key k] [--voice]
   page clear          drop a page key's cooldown after a recovery   --source <name> [--key k]
+  deploy              build & ship this project via its Infrafile   [-e <env>] [--plan]
+  deploy typings      print Infrafile.d.ts for your editor
+  deploy log          recent deploys for the organization   [-e <env>]
+  deploy rollback     ship a previous deploy's image again   [-e <env>] [--to-run <id>]
   cli install         install this shell command (also: uninstall, status)
   help                show this help
 
@@ -50,6 +55,10 @@ FLAGS
   --source <name>     who is pushing (required by page and costs push)
   --key <k>           page throttle key   --title <t>   --cooldown <min>   --voice
   -f, --file <path>   JSON rows for costs push (stdin when omitted)
+  -e, --env <name>    environment to deploy (optional when the Infrafile has one)
+  --plan              deploy: show the plan and Dockerfile, build nothing
+  --set <key=value>   deploy: answer a select() without prompting (repeatable)
+  --to-run <runId>    deploy rollback: which run to go back to
   --no-color          disable ANSI colors
   -v, --version       app version
 
@@ -157,6 +166,9 @@ export async function runCli(): Promise<void> {
         break;
       case "page":
         await cmdPage(ctx, rest, parsed.push);
+        break;
+      case "deploy":
+        await cmdDeploy(ctx, parsed.deploy);
         break;
       case "cli":
         await cmdCli(ctx, rest[0]);

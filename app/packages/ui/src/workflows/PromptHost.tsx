@@ -1,19 +1,29 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Modal } from "@infrawrench/ui";
-import type { MetricValue } from "@infrawrench/workflow-runtime/client";
+import { Modal } from "../components/Modal.js";
 import {
   WORKFLOW_PROMPT_EVENT,
   resolveWorkflowPrompt,
   type WorkflowPromptRequest,
-} from "../lib/workflow-prompt";
+} from "./prompt-bridge.js";
+import type { MetricValue } from "./types.js";
+
+export interface PromptHostProps {
+  /** Heading shown above the message. Defaults to "Workflow input". */
+  title?: string;
+}
 
 /**
- * Mount once at the root. Renders a modal for each `infra.prompt()` raised by a
- * running workflow (Electron's window.prompt is a no-op). One at a time;
- * additional prompts queue. Resolving/canceling feeds the answer back to the
- * waiting workflow via {@link resolveWorkflowPrompt}.
+ * Mount once at the app root. Renders a modal for each prompt raised by a
+ * running workflow or Infrafile. One at a time; additional prompts queue.
+ * Resolving or canceling feeds the answer back through
+ * {@link resolveWorkflowPrompt}.
+ *
+ * Both hosts need this. Electron's `window.prompt` is a no-op, and the
+ * browser's is a single-line string box that silently discards `kind` and
+ * `options` — so a `select` rendered through it would offer no options at all,
+ * which is precisely the interaction an Infrafile's `select(...)` depends on.
  */
-export function WorkflowPromptHost() {
+export function PromptHost({ title = "Workflow input" }: PromptHostProps) {
   const [queue, setQueue] = useState<WorkflowPromptRequest[]>([]);
   const [text, setText] = useState("");
   const inputRef = useRef<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null>(null);
@@ -64,13 +74,13 @@ export function WorkflowPromptHost() {
   }
 
   return (
-    <Modal onClose={() => answer(null)} ariaLabel="Workflow input">
+    <Modal onClose={() => answer(null)} ariaLabel={title}>
       <div
         className={`bg-surface-raised border border-border-strong rounded-xl shadow-2xl p-6 ${
           kind === "code" ? "w-[640px] max-w-[90vw]" : "w-[440px]"
         }`}
       >
-        <h2 className="text-sm font-semibold text-on-surface mb-1">Workflow input</h2>
+        <h2 className="text-sm font-semibold text-on-surface mb-1">{title}</h2>
         <p id={messageId} className="text-sm text-on-surface-secondary whitespace-pre-wrap mb-4">
           {spec.message}
         </p>

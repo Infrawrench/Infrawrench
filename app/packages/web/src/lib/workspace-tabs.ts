@@ -7,6 +7,7 @@ import {
   costsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
+  deploymentsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -64,6 +65,13 @@ export function getWorkspaceNavigateArgs(
       return {
         to: "/org/$orgId/workflows",
         params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "deployments":
+      return {
+        to: "/org/$orgId/deployments",
+        params: { orgId },
+        ...(target.repo ? { search: { repo: target.repo } } : {}),
         ...(replace ? { replace: true } : {}),
       };
     case "costs":
@@ -159,6 +167,13 @@ export function syncWorkspaceRouteFromPath(
 
   if (s[0] === "workflows") {
     return workflowsTabTarget();
+  }
+  if (s[0] === "deployments") {
+    // `?repo=owner/name` arrives from a /deploy/... hotlink.
+    const params = new URLSearchParams(
+      search ?? (typeof window === "undefined" ? "" : window.location.search),
+    );
+    return deploymentsTabTarget(params.get("repo") ?? undefined);
   }
   if (s[0] === "agents") {
     return agentsTabTarget();

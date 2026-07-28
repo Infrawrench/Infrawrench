@@ -24,3 +24,7 @@ export {
   type SidecarCapabilityProbe,
 } from "./sidecars.js";
 export { PRELUDE } from "./prelude.js";
+export { runIsolate, PAUSED_METHODS, type RunIsolateOptions } from "./isolate.js";
+export * from "./infrafile/types.js";
+export { runInfrafile, INFRAFILE_NAME, type RunInfrafileOptions } from "./infrafile/run.js";
+export { generateInfrafileDts, type GenerateInfrafileDtsInput } from "./infrafile/codegen.js";

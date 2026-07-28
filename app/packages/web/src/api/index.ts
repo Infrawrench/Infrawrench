@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import workflowRoutes from "./routes/workflows.js";
+import deploymentRoutes from "./routes/deployments";
 import agentRoutes from "./routes/agents.js";
 import { HTTPException } from "hono/http-exception";
 import { setCookie } from "hono/cookie";
@@ -206,6 +207,7 @@ orgScoped.route("/dashboards", dashboardRoutes);
 orgScoped.route("/costs", costRoutes);
 orgScoped.route("/budgets", budgetRoutes);
 orgScoped.route("/workflows", workflowRoutes);
+orgScoped.route("/deployments", deploymentRoutes);
 orgScoped.route("/agents", agentRoutes);
 orgScoped.route("/github", githubRoutes);
 orgScoped.route("/accounts", accountRoutes);

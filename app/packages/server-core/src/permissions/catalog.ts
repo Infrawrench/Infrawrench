@@ -20,6 +20,8 @@ export const ALL_PERMISSIONS = [
   "storage:write",
   "dashboards:read",
   "dashboards:write",
+  "deployments:read",
+  "deployments:write",
   "costs:read",
   "costs:write",
   "budgets:read",

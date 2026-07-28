@@ -48,12 +48,20 @@ export type {
 } from "./agents/types.js";
 
 export {
+  PromptHost,
+  requestWorkflowPrompt,
+  resolveWorkflowPrompt,
+  WORKFLOW_PROMPT_EVENT,
   WorkflowDashboardCard,
   WorkflowEditorView,
   WorkflowIcon,
   WorkflowsPanel,
 } from "./workflows/index.js";
 export type {
+  MetricValue,
+  PromptHostProps,
+  PromptSpec,
+  WorkflowPromptRequest,
   BudgetIntegration,
   BudgetOption,
   DebugSession,
@@ -73,6 +81,21 @@ export type {
   WorkflowSummary,
   WorkflowTrigger,
 } from "./workflows/index.js";
+
+export { DeploymentsPanel } from "./deployments/index.js";
+export type {
+  DeployEnvs,
+  DeployRepo,
+  DeployRunResult,
+  DeploySession,
+  DeployStage,
+  DeployStartOptions,
+  DeployStatus,
+  DeploymentClient,
+  DeploymentRunRow,
+  DeploymentsPanelProps,
+} from "./deployments/index.js";
+export { DEPLOY_STAGES } from "./deployments/index.js";
 
 export { SchemaRenderer, StatusDotNodeRenderer } from "./components/renderer/SchemaRenderer.js";
 
@@ -235,6 +258,7 @@ export {
   costsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
+  deploymentsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,

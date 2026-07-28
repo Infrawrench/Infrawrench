@@ -12,6 +12,8 @@ import { AccountPanel } from "@/routes/org.$orgId.accounts.$accountId";
 import { ResourcePanel } from "@/routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId";
 import { getWorkspaceNavigateArgs, syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
 import { type WorkflowClient } from "@infrawrench/ui/workflows";
+import { DeploymentsPanel, type DeploymentClient } from "@infrawrench/ui";
+import { createWebDeploymentClient } from "@/lib/deployment-client";
 import { type AgentClient } from "@infrawrench/ui/agents";
 import { createWebWorkflowClient } from "@/lib/workflow-client";
 import { createWebCostsClient } from "@/lib/cost-client";
@@ -66,6 +68,15 @@ export function WebWorkspaceTabsViewport({ orgId }: WebWorkspaceTabsViewportProp
 const workflowClients = new Map<string, WorkflowClient>();
 const agentClients = new Map<string, AgentClient>();
 const costsClients = new Map<string, CostsClient>();
+const deploymentClients = new Map<string, DeploymentClient>();
+function getDeploymentClient(orgId: string): DeploymentClient {
+  let client = deploymentClients.get(orgId);
+  if (!client) {
+    client = createWebDeploymentClient(orgId);
+    deploymentClients.set(orgId, client);
+  }
+  return client;
+}
 function getWorkflowClient(orgId: string): WorkflowClient {
   let client = workflowClients.get(orgId);
   if (!client) {
@@ -110,6 +121,13 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
       );
     case "workflows":
       return <WebWorkflowsPanel client={getWorkflowClient(orgId)} orgId={orgId} />;
+    case "deployments":
+      return (
+        <DeploymentsPanel
+          client={getDeploymentClient(orgId)}
+          {...(t.repo ? { initialRepo: t.repo } : {})}
+        />
+      );
     case "costs":
       return (
         <CostsPanel

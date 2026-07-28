@@ -39,6 +39,10 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       "storage:read",
       "dashboards:read",
       "dashboards:write",
+      // Members can watch deploys and read the history, but shipping is a
+      // write: `deployments:write` runs arbitrary code from the repo against
+      // the org's accounts, so it stays with admins and owners.
+      "deployments:read",
       "costs:read",
       "budgets:read",
       "team:read",

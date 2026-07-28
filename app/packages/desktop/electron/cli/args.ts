@@ -26,10 +26,26 @@ export interface PushFlags {
   file?: string | undefined;
 }
 
+/** Flags for `deploy`. */
+export interface DeployFlags {
+  /** Which environment to deploy. Omitted is fine when the Infrafile declares one. */
+  env?: string | undefined;
+  /** Stop after plan(): print the plan and Dockerfile, build nothing. */
+  plan: boolean;
+  /** `key=value` answers for `select(key, ...)`, so a deploy can run unattended. */
+  set: string[];
+  /**
+   * Run id to roll back to. Omitted, `deploy rollback` picks the last success.
+   * Named `--to-run` because `--to` is already the time-range end.
+   */
+  toRun?: string | undefined;
+}
+
 export interface ParsedCli {
   flags: CliFlags;
   range: RangeFlags;
   push: PushFlags;
+  deploy: DeployFlags;
   positionals: string[];
   version: boolean;
 }
@@ -65,6 +81,12 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         cooldown: { type: "string" },
         voice: { type: "boolean", default: false },
         file: { type: "string", short: "f" },
+        // Deploy flags (`deploy`).
+        env: { type: "string", short: "e" },
+        plan: { type: "boolean", default: false },
+        // Repeatable: one --set per select() key the Infrafile asks about.
+        set: { type: "string", multiple: true },
+        "to-run": { type: "string" },
       },
     });
   } catch (e) {
@@ -93,6 +115,10 @@ export function parseCliArgs(argv: string[]): ParsedCli {
   const str = (key: string): string | undefined =>
     typeof values[key] === "string" ? (values[key] as string) : undefined;
 
+  // `multiple: true` options come back as arrays, which the `values` cast above
+  // flattens away — read them off the untyped parse result instead.
+  const multi = parsed.values as Record<string, string[] | undefined>;
+
   const cooldownText = str("cooldown");
   let cooldown: number | undefined;
   if (cooldownText !== undefined) {
@@ -118,6 +144,12 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       groupBy: str("group-by"),
       series: str("series"),
       type: str("type"),
+    },
+    deploy: {
+      env: str("env"),
+      plan: values.plan === true,
+      set: Array.isArray(multi.set) ? multi.set : [],
+      toRun: str("to-run"),
     },
     push: {
       source: str("source"),

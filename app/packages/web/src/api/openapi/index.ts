@@ -14,6 +14,7 @@ import { registerAccountPaths } from "./paths/accounts";
 import { registerDashboardPaths } from "./paths/dashboards";
 import { registerCostPaths } from "./paths/costs";
 import { registerBudgetPaths } from "./paths/budgets";
+import { registerDeploymentPaths } from "./paths/deployments";
 import { registerPagePaths } from "./paths/pages";
 import { registerResourcePaths } from "./paths/resources";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
@@ -85,6 +86,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerDashboardPaths(ctx);
   registerCostPaths(ctx);
   registerBudgetPaths(ctx);
+  registerDeploymentPaths(ctx);
   registerPagePaths(ctx);
   registerResourcePaths(ctx);
   registerConnectionFeaturePaths(ctx);
@@ -224,6 +226,14 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /accounts/{id}/sync": "resources:read",
   "GET /accounts/{id}/detail": "accounts:read",
   "POST /accounts/{id}/sync-type/{typeId}": "resources:read",
+  // deployments
+  "GET /deployments/repos": "deployments:read",
+  "POST /deployments/envs": "deployments:read",
+  "POST /deployments/plan": "deployments:read",
+  "GET /deployments/runs": "deployments:read",
+  "GET /deployments/runs/{id}": "deployments:read",
+  "POST /deployments/runs": "deployments:write",
+  "POST /deployments/runs/{id}/rollback": "deployments:write",
   // dashboards
   "GET /dashboards": "dashboards:read",
   "POST /dashboards": "dashboards:write",
