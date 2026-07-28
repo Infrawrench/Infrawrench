@@ -27,6 +27,9 @@ on:
       - "app/packages/poller/**"
       - "app/packages/github-watcher/**"
       - "app/packages/ui/**"
+      # Not imported by web directly, but ui and server-core both depend on it,
+      # so a client-core-only change still alters what ships.
+      - "app/packages/client-core/**"
       - "app/packages/workflow-runtime/**"
       - "plugin-architecture/**"
       - "infra/docker/**"
