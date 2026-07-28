@@ -13,7 +13,7 @@
 import type { RunLogEntry, RunResult } from "../types.js";
 
 /** The three stages, in the order they execute. */
-export type InfrafileStage = "plan" | "dockerfile" | "build" | "deploy";
+export type InfrafileStage = "plan" | "dockerfile" | "build" | "deploy" | "destroy";
 
 /**
  * Where an image is built. Either the local Docker daemon (the CLI's default —
@@ -143,9 +143,26 @@ export interface InfrafileRollback {
 }
 
 /** Git facts about the checkout being deployed, exposed to `plan()` as `git`. */
+/**
+ * The pull request a preview deploy belongs to.
+ *
+ * A preview environment is one declared env (`"preview"`) deployed many times,
+ * once per PR — rather than a dynamic env name, which would make `envs`
+ * unvalidatable. The Infrafile namespaces by reading this: a hostname, a
+ * Kubernetes namespace, a Worker route.
+ */
+export interface InfrafilePullRequest {
+  number: number;
+  /** Head branch, e.g. `feature/thing`. */
+  branch: string;
+  title?: string;
+}
+
 export interface InfrafileGitContext {
   sha: string;
   branch: string;
+  /** Present only on a preview deploy. */
+  pullRequest?: InfrafilePullRequest;
   /** `owner/name` when known — always set on web, best-effort from the remote on CLI. */
   repo?: string;
   /** True when the CLI is deploying a working tree with uncommitted changes. */
@@ -226,6 +243,8 @@ export interface InfrafileRunSink {
     git: InfrafileGitContext;
     /** Present on a rollback — the stage driver then skips straight to deploy. */
     rollback?: InfrafileRollback;
+    /** Present on a teardown — the driver then calls `destroy()` and nothing else. */
+    destroy?: boolean;
   };
   /** Record what `plan()` returned. Returns false to stop before building. */
   recordPlan(plan: unknown): boolean;

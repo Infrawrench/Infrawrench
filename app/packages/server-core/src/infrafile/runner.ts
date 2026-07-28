@@ -452,7 +452,7 @@ export async function runDeployment(
     .set({
       env: result.env,
       status: result.status,
-      logs: result.logs,
+      logs: cappedLogs(result.logs),
       planJson: result.plan ?? null,
       dockerfile: result.dockerfile ?? null,
       image: result.image ?? null,
@@ -626,4 +626,27 @@ export async function recordCliRun(
     ...(userId ? { createdByUserId: userId } : {}),
   });
   return { id };
+}
+
+/**
+ * How many log entries a run persists.
+ *
+ * A hosted build streams every line Docker prints, so an unbounded jsonb column
+ * grows without limit and is read back in full by the history view. The tail is
+ * what people actually want when something failed, so the head is what gets
+ * dropped — with a marker, because silently truncated logs are worse than none.
+ */
+const MAX_PERSISTED_LOGS = 2000;
+
+function cappedLogs(logs: RunLogEntry[]): RunLogEntry[] {
+  if (logs.length <= MAX_PERSISTED_LOGS) return logs;
+  const dropped = logs.length - MAX_PERSISTED_LOGS;
+  return [
+    {
+      at: logs[0]!.at,
+      level: "warn" as const,
+      message: `… ${dropped} earlier log ${dropped === 1 ? "line" : "lines"} not stored (limit ${MAX_PERSISTED_LOGS}).`,
+    },
+    ...logs.slice(dropped),
+  ];
 }

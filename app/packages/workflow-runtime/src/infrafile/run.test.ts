@@ -755,3 +755,88 @@ describe("push() guard", () => {
     expect(result.error?.message).toContain("no image to push");
   });
 });
+
+describe("destroy (preview teardown)", () => {
+  const PR_GIT = { ...GIT, pullRequest: { number: 42, branch: "feature/thing" } };
+
+  it("calls destroy() and skips plan, dockerfile and build entirely", async () => {
+    let built = false;
+    const host = hostFor({
+      build: async () => {
+        built = true;
+        return { image: "never" };
+      },
+    });
+
+    const result = await runInfrafile({
+      source: `
+      defineInfra({
+        envs: ["preview"],
+        async plan() { throw new Error("plan must not run"); },
+        dockerfile() { throw new Error("dockerfile must not run"); },
+        async deploy() { throw new Error("deploy must not run"); },
+        async destroy({ env, git, notes }) {
+          await notes("tore down " + env + " for PR " + git.pullRequest.number);
+        },
+      });
+      `,
+      host,
+      env: "preview",
+      git: PR_GIT,
+      interactive: false,
+      destroy: true,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(built).toBe(false);
+    expect(result.notes).toEqual(["tore down preview for PR 42"]);
+    expect(result.reachedStage).toBe("destroy");
+  });
+
+  it("says so clearly when the Infrafile has no destroy stage", async () => {
+    // Otherwise a closed pull request leaves its environment running and the
+    // only symptom is a bill.
+    const result = await runInfrafile({
+      source: `defineInfra({ envs: ["preview"], plan: async () => ({}), dockerfile: () => "FROM x", deploy: async () => {} });`,
+      host: hostFor(),
+      env: "preview",
+      git: PR_GIT,
+      interactive: false,
+      destroy: true,
+    });
+
+    expect(result.status).toBe("failure");
+    expect(result.error?.message).toContain("no destroy() stage");
+  });
+
+  it("rejects a non-function destroy at registration", async () => {
+    const result = await run(
+      `defineInfra({ envs: ["staging"], plan: async () => ({}), dockerfile: () => "FROM x", deploy: async () => {}, destroy: 3 });`,
+      hostFor(),
+    );
+    expect(result.status).toBe("failure");
+    expect(result.error?.message).toContain("'destroy', when present, must be a function");
+  });
+
+  it("exposes the pull request to a normal preview deploy", async () => {
+    const result = await runInfrafile({
+      source: `
+      defineInfra({
+        envs: ["preview"],
+        async plan() { return { buildOn: "local" }; },
+        dockerfile: () => "FROM node:22",
+        async deploy({ git, notes }) {
+          await notes("pr-" + git.pullRequest.number + " on " + git.pullRequest.branch);
+        },
+      });
+      `,
+      host: hostFor(),
+      env: "preview",
+      git: PR_GIT,
+      interactive: false,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.notes).toEqual(["pr-42 on feature/thing"]);
+  });
+});

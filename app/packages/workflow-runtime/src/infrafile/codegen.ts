@@ -51,10 +51,22 @@ export function generateInfrafileDts(input: GenerateInfrafileDtsInput): string {
 type InfraEnv = ${envType};
 
 /** Git facts about the checkout being deployed. */
+interface InfraPullRequest {
+  number: number;
+  /** Head branch. */
+  branch: string;
+  title?: string;
+}
+
 interface InfraGit {
   /** Commit being deployed. */
   sha: string;
   branch: string;
+  /**
+   * Present only on a preview deploy. Namespace by it — a hostname, a
+   * Kubernetes namespace, a Worker route — so each pull request gets its own.
+   */
+  pullRequest?: InfraPullRequest;
   /** \`owner/name\` when known. */
   repo?: string;
   /** True when deploying a working tree with uncommitted changes (CLI only). */
@@ -180,6 +192,15 @@ interface InfraDefinition<P = InfraPlanResult> {
    * all just ordinary calls.
    */
   deploy(ctx: InfraDeployContext<P>): Promise<void> | void;
+  /**
+   * Tear down what \`deploy()\` created. Required for preview environments —
+   * without it a closed pull request leaves its environment running forever.
+   *
+   * Gets no image and no plan: by the time a preview closes its image is
+   * usually gone, so whatever was created must be identifiable from \`env\` and
+   * \`git\` alone.
+   */
+  destroy?(ctx: { env: InfraEnv; git: InfraGit; notes(text: string): Promise<void> }): Promise<void> | void;
 }
 
 /**

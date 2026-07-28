@@ -73,6 +73,11 @@ export interface RunInfrafileOptions {
   /** Stop after `plan()` (still rendering the Dockerfile, so it can be previewed). */
   planOnly?: boolean;
   /**
+   * Tear down instead of deploying: skips plan, dockerfile and build and calls
+   * `destroy({ env, git })`. Used when a preview's pull request closes.
+   */
+  destroy?: boolean;
+  /**
    * Replay a past run's `deploy()` with its recorded plan and image instead of
    * planning and building afresh. See {@link InfrafileRollback}.
    */
@@ -124,6 +129,14 @@ export async function runInfrafile(opts: RunInfrafileOptions): Promise<Infrafile
           `This Infrafile does not declare an environment named ${JSON.stringify(opts.env)}. ` +
             `It declares: ${envs.join(", ")}.`,
         );
+      }
+      if (opts.destroy) {
+        log(
+          "info",
+          `Tearing down ${env}${opts.git.pullRequest ? ` for PR #${opts.git.pullRequest.number}` : ""}`,
+        );
+        setStage("destroy");
+        return { env, git: opts.git, destroy: true };
       }
       if (opts.rollback) {
         // Nothing to plan or build — the artifact already exists.

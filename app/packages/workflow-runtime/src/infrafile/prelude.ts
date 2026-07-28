@@ -39,6 +39,9 @@ export const INFRAFILE_PRELUDE = String.raw`
     if (typeof def.plan !== "function") throw new Error("defineInfra(): 'plan' must be a function.");
     if (typeof def.dockerfile !== "function") throw new Error("defineInfra(): 'dockerfile' must be a function.");
     if (typeof def.deploy !== "function") throw new Error("defineInfra(): 'deploy' must be a function.");
+    if (def.destroy !== undefined && typeof def.destroy !== "function") {
+      throw new Error("defineInfra(): 'destroy', when present, must be a function.");
+    }
     globalThis.__infraDefinition = def;
   };
 
@@ -140,6 +143,20 @@ export const INFRAFILE_EPILOGUE = String.raw`
       return opts.allowFailure ? res : res.stdout;
     },
   });
+
+  // Tearing down needs no image and no plan — whatever deploy() created is
+  // identified by env and git alone, which matters because a preview's image is
+  // usually long gone by the time its pull request closes.
+  if (chosen.destroy) {
+    if (typeof def.destroy !== "function") {
+      throw new Error(
+        "This Infrafile has no destroy() stage, so its preview environments cannot be torn down. " +
+          "Add destroy({ env, git }) to defineInfra.",
+      );
+    }
+    await def.destroy({ env, git, notes: (text) => rpc("infrafile.note", { text: String(text == null ? "" : text) }) });
+    return;
+  }
 
   if (rollback) {
     await def.deploy(deployCtx(rollback.plan || {}, rollback.image, rollback.digest));
