@@ -92,6 +92,12 @@ app_env = {
   # cleanup policy; per-deploy deletion is best effort.
   GCP_BUILD_STAGING_REPO   = "us-east4-docker.pkg.dev/your-gcp-project/infrawrench-builds"
   GCP_BUILD_REGION         = "us-east4"
+  # Optional: bill hosted build time through a Stripe meter (seconds, keyed by
+  # customer). Unset = builds absorbed into the flat plan. Existing
+  # subscriptions must have the metered price added by hand — checkout only
+  # attaches it to new ones.
+  INFRAWRENCH_STRIPE_BUILD_METER_EVENT = "hosted_build_seconds"
+  STRIPE_BUILD_PRICE_ID                = "price_..."
 
   WORKFLOW_FETCH_PROXY_URL   = "https://egress.infrawrench.com"
   WORKFLOW_FETCH_PROXY_TOKEN = "<openssl rand -base64 32>"

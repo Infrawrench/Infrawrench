@@ -23,6 +23,8 @@ vi.mock("@/services/stripe", () => ({
   getStripe: () => stripeClient,
   getStripePriceId: () => "price_123",
   getStripeChatPriceId: () => mockChatPriceId(),
+  // Unset by default: the build line item is opt-in, same as chat's.
+  getStripeBuildPriceId: () => null,
 }));
 
 vi.mock("uuid", () => ({ v4: () => "sub-uuid-1" }));

@@ -25,6 +25,15 @@ export function getStripeChatPriceId(): string | null {
   return process.env["STRIPE_CHAT_PRICE_ID"] || null;
 }
 
+/**
+ * Metered hosted-build price, bound to the billing meter named by
+ * INFRAWRENCH_STRIPE_BUILD_METER_EVENT. Optional — without it checkout omits
+ * the line item and build time goes unbilled (the flat plan absorbs it).
+ */
+export function getStripeBuildPriceId(): string | null {
+  return process.env["STRIPE_BUILD_PRICE_ID"] || null;
+}
+
 export function getStripeWebhookSecret(): string {
   const secret = process.env["STRIPE_WEBHOOK_SECRET"];
   if (!secret) throw new Error("STRIPE_WEBHOOK_SECRET environment variable is required");

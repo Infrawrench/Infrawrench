@@ -66,6 +66,12 @@ export const deploymentRuns = pgTable(
     buildSeconds: integer("build_seconds"),
     /** Which runner built it: `cloud-build`, `ssh`, or null when nothing built. */
     buildRunner: text("build_runner"),
+    /**
+     * Stripe meter-event identifier once build time was reported for billing.
+     * Null with `build_seconds` set = consumed but unbilled — the rows a
+     * replay job would look for, same arrangement as chat_usage.
+     */
+    meterEventId: text("meter_event_id"),
     createdByUserId: text("created_by_user_id"),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
     finishedAt: timestamp("finished_at", { withTimezone: true }),

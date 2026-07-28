@@ -43,3 +43,14 @@ A seat is one user in your organization. If you invite a fourth teammate while o
 ## Trial
 
 New orgs get a 14-day trial of the paid plan automatically. No card required. You will get a reminder 3 days before it ends.
+
+## Hosted build time
+
+Deploys from the web app (and deploy-on-push) build on Infrawrench-hosted
+workers. When your deployment has build metering configured, that worker time is
+billed per second through a Stripe meter alongside the seat price — each deploy
+run records exactly how many seconds it used, and the run history shows it.
+
+Plan-only previews build nothing and are never metered. Builds on your own
+machine (`infrawrench deploy` locally) or on a `buildOn` host you provide are
+yours already and never billed. Complimentary organizations are never billed.

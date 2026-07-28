@@ -1714,12 +1714,20 @@ the project mounted → stdout `3.1.4`, stderr separated, **real exit code 7** (
 annotated KSA fails auth on every triggered build while the identical deploy works from web, which
 is a miserable thing to debug from the symptom.
 
-**Billing for builds is flat-rate by design** — the paid plan plus the hard timeout are the cost
-controls; there is no Stripe meter for build minutes. If that changes, the chat pattern is the
-template: a Stripe billing meter + optional metered price (`STRIPE_CHAT_PRICE_ID` /
-`INFRAWRENCH_STRIPE_CHAT_METER_EVENT`, unset = unbilled), reported from `chat/billing.ts` —
-`deployment_runs.build_seconds` is already recorded per run, so the meter event would emit from
-the same call site as `writeDeploymentBuildCost`.
+**Hosted build time is metered to Stripe** (`server-core/billing/build-meter.ts`), mirroring the
+chat meter with two deliberate differences. It lives in **server-core**, because deploys run from
+web AND the watcher — a web-only reporter would bill exactly the deploys somebody was watching.
+And the meter value is **seconds, not micro-dollars**: chat pre-prices because per-token cost
+varies by model, but build seconds are uniform, so the price sits on the Stripe metered price
+object and `HOSTED_BUILD_USD_PER_SECOND` (the cost-graph placeholder) can never reach an invoice.
+Config: `INFRAWRENCH_STRIPE_BUILD_METER_EVENT` + `STRIPE_BUILD_PRICE_ID` (checkout attaches the
+line item; both unset = flat-rate as before). Hosted `run()` seconds are accumulated into
+`build_seconds` too — for the Worker pattern the run() steps ARE the deploy, so metering only the
+image build would under-bill the exact use case hosted builds exist for. `identifier =
+deploy-<runId>` gives 24h dedup; `deployment_runs.meter_event_id` null beside non-null
+`build_seconds` marks a consumed-but-unbilled row for a future replay job (none exists yet, same
+as chat). **Existing subscriptions don't gain the metered item** — checkout only attaches it to
+new ones; add the price to live subscriptions in Stripe by hand.
 
 **Still TODO**: tests for the SSH driver + the web wiring — both need live infrastructure,
 so only the runtime is covered.

@@ -44,6 +44,7 @@ import { buildOrgWorkflowHost } from "../workflows/runner.js";
 import { pageFromExternal } from "../paging/external-pages.js";
 import { requirePaidPlan } from "../entitlements.js";
 import { writeDeploymentBuildCost } from "../cost/deployment-costs.js";
+import { reportHostedBuildToMeter } from "../billing/build-meter.js";
 import type {
   BuildRequest,
   InfrafileHost,
@@ -442,7 +443,19 @@ export async function runDeployment(
     infrafileRun: async (request: RunInImageRequest) => {
       // Whichever runner built the image is the one that can run it.
       if (sshCtx) return runOverSsh(request, sshCtx);
-      if (cloudCtx) return runOnCloudBuild(request, cloudCtx);
+      if (cloudCtx) {
+        // Each hosted run() is its own Cloud Build submission, so its worker
+        // time is money we spent exactly like the image build's — and for the
+        // Worker/static-site pattern the run() steps ARE most of the deploy.
+        // Counting only the build would under-meter precisely the use case
+        // hosted builds exist for. Timed even on failure: the worker ran.
+        const startedAt = Date.now();
+        try {
+          return await runOnCloudBuild(request, cloudCtx);
+        } finally {
+          buildSeconds += Math.round((Date.now() - startedAt) / 1000);
+        }
+      }
       throw new Error("run() ran before the build.");
     },
 
@@ -547,6 +560,14 @@ export async function runDeployment(
       env: result.env,
       buildSeconds,
       startedAt: new Date(result.startedAt),
+    }).catch(() => {});
+    // And bill it. Best-effort like the cost row: build_seconds is recorded on
+    // the run either way, and a null meter_event_id beside a non-null
+    // build_seconds is what a replay job would look for.
+    await reportHostedBuildToMeter({
+      organizationId: opts.organizationId,
+      runId,
+      buildSeconds,
     }).catch(() => {});
   }
 

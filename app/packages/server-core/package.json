@@ -56,7 +56,8 @@
     "./infrafile/build-cloud": "./src/infrafile/build-cloud.ts",
     "./infrafile/triggers": "./src/infrafile/triggers.ts",
     "./entitlements": "./src/entitlements.ts",
-    "./infrafile/runner": "./src/infrafile/runner.ts"
+    "./infrafile/runner": "./src/infrafile/runner.ts",
+    "./billing/build-meter": "./src/billing/build-meter.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
