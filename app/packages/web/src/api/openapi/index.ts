@@ -234,6 +234,10 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /deployments/runs/{id}": "deployments:read",
   "POST /deployments/runs": "deployments:write",
   "POST /deployments/runs/{id}/rollback": "deployments:write",
+  "GET /deployments/triggers": "deployments:read",
+  "POST /deployments/triggers": "deployments:write",
+  "PATCH /deployments/triggers/{id}": "deployments:write",
+  "DELETE /deployments/triggers/{id}": "deployments:write",
   // dashboards
   "GET /dashboards": "dashboards:read",
   "POST /dashboards": "dashboards:write",

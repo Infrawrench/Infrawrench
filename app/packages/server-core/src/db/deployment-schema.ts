@@ -13,7 +13,16 @@
  * Kept in its own module with self-contained imports; re-exported from schema.ts
  * so Drizzle + `@infrawrench/server-core/db/schema` consumers pick it up.
  */
-import { index, integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 
 import { organizations } from "./core-schema.js";
 
@@ -65,5 +74,56 @@ export const deploymentRuns = pgTable(
     // The history view is always "this org, newest first".
     index("deployment_runs_org_idx").on(table.organizationId, table.startedAt),
     index("deployment_runs_env_idx").on(table.organizationId, table.env),
+  ],
+);
+
+/**
+ * "Deploy this repo's environment when that branch moves."
+ *
+ * This is config, not source — which is why it can live in the database while
+ * the Infrafile deliberately cannot. The trigger says *when*; the Infrafile at
+ * the branch head still says *what*, read fresh on every run.
+ */
+export const deploymentTriggers = pgTable(
+  "deployment_triggers",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** `owner/name`. */
+    repo: text("repo").notNull(),
+    branch: text("branch").notNull(),
+    /** Environment to deploy. Must be one the Infrafile declares at run time. */
+    env: text("env").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    /**
+     * Answers for `select(key, …)`. A triggered deploy has nobody to ask, so a
+     * key without an answer here fails the run naming it — the same contract
+     * `--set` gives the CLI.
+     */
+    answers: jsonb("answers").$type<Record<string, string>>().notNull().default({}),
+    /**
+     * Last commit seen on the branch. First sight records it WITHOUT deploying:
+     * enabling a trigger should not ship whatever happens to be at HEAD.
+     */
+    lastSha: text("last_sha"),
+    /** Set while a triggered run is in flight, so a slow deploy doesn't stack. */
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    createdByUserId: text("created_by_user_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("deployment_triggers_org_idx").on(table.organizationId),
+    // The watcher sweeps enabled triggers across every org each tick.
+    index("deployment_triggers_enabled_idx").on(table.enabled),
+    // One trigger per destination; re-adding the same one updates it.
+    uniqueIndex("deployment_triggers_unique").on(
+      table.organizationId,
+      table.repo,
+      table.branch,
+      table.env,
+    ),
   ],
 );

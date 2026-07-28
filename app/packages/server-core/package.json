@@ -51,7 +51,8 @@
     "./push/dispatch": "./src/push/dispatch.ts",
     "./push/types": "./src/push/types.ts",
     "./infrafile/build-ssh": "./src/infrafile/build-ssh.ts",
-    "./infrafile/build-cloud": "./src/infrafile/build-cloud.ts"
+    "./infrafile/build-cloud": "./src/infrafile/build-cloud.ts",
+    "./infrafile/triggers": "./src/infrafile/triggers.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

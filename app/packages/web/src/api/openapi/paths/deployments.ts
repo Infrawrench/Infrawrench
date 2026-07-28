@@ -1,5 +1,5 @@
 import { z } from "../zod";
-import { strict, ErrorResponses, OrgIdParam, Uuid, IsoDateTime } from "../common";
+import { strict, ErrorResponses, Ok, OrgIdParam, Uuid, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
 
 const DeployRepo = strict({
@@ -91,6 +91,25 @@ const DeploymentRunInput = strict({
   durationMs: z.number().int().optional(),
   error: strict({ message: z.string() }).nullable().optional(),
 }).openapi("DeploymentRunInput");
+
+const DeployTrigger = strict({
+  id: Uuid,
+  repo: z.string(),
+  branch: z.string(),
+  env: z.string(),
+  enabled: z.boolean(),
+  /** Last commit seen. Recorded when the trigger is armed, so it fires on the NEXT push. */
+  lastSha: z.string().nullable(),
+  lastRunAt: z.union([IsoDateTime, z.null()]),
+}).openapi("DeployTrigger");
+
+const DeployTriggerInput = strict({
+  repo: z.string().min(1),
+  branch: z.string().min(1),
+  env: z.string().min(1),
+  /** Answers for `select(key, …)`: a triggered deploy has nobody to ask. */
+  answers: z.record(z.string(), z.string()).optional(),
+}).openapi("DeployTriggerInput");
 
 /**
  * Deployments run a repository's `Infrafile`. Note what is absent: there is no
@@ -223,6 +242,72 @@ export function registerDeploymentPaths(ctx: BuildContext) {
       401: ErrorResponses[401],
       403: ErrorResponses[403],
       404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/deployments/triggers",
+    tags: ["Deployments"],
+    summary: "List deploy-on-push triggers",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "Triggers",
+        content: { "application/json": { schema: z.array(DeployTrigger) } },
+      },
+      401: ErrorResponses[401],
+      403: ErrorResponses[403],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/deployments/triggers",
+    tags: ["Deployments"],
+    summary: "Deploy an environment whenever a branch moves",
+    description:
+      "Arming a trigger records the branch's current commit WITHOUT deploying it — the trigger fires on the next push, not on the state at the moment it was created. The environment is validated against the Infrafile at that branch head, so a typo fails here rather than silently never firing.",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: DeployTriggerInput } } },
+    },
+    responses: {
+      201: { description: "Trigger", content: { "application/json": { schema: DeployTrigger } } },
+      400: ErrorResponses[400],
+      401: ErrorResponses[401],
+      403: ErrorResponses[403],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "patch",
+    path: "/api/org/{orgId}/deployments/triggers/{id}",
+    tags: ["Deployments"],
+    summary: "Enable or disable a deploy trigger",
+    request: {
+      params: runIdParam(),
+      body: { content: { "application/json": { schema: strict({ enabled: z.boolean() }) } } },
+    },
+    responses: {
+      200: { description: "Trigger", content: { "application/json": { schema: DeployTrigger } } },
+      401: ErrorResponses[401],
+      403: ErrorResponses[403],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "delete",
+    path: "/api/org/{orgId}/deployments/triggers/{id}",
+    tags: ["Deployments"],
+    summary: "Delete a deploy trigger",
+    request: { params: runIdParam() },
+    responses: {
+      200: { description: "Deleted", content: { "application/json": { schema: Ok } } },
+      401: ErrorResponses[401],
+      403: ErrorResponses[403],
     },
   });
 

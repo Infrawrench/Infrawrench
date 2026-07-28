@@ -13,6 +13,11 @@ import { Hono, type Context } from "hono";
 import { requirePermission } from "../../auth/permissions";
 import {
   DeploymentError,
+  declaredEnvs,
+  deleteDeployTrigger,
+  listDeployTriggers,
+  setDeployTriggerEnabled,
+  upsertDeployTrigger,
   getDeploymentRun,
   listDeployableRepos,
   listDeploymentRuns,
@@ -60,11 +65,12 @@ app.post("/envs", async (c) => {
   const body = (await c.req.json()) as { repo?: string; branch?: string };
   try {
     const resolved = await resolveInfrafile(orgId(c), body.repo ?? "", body.branch ?? "main");
-    // Parsed rather than executed: listing environments must not run anybody's
-    // code, and `envs` is a literal array by definition.
-    const match = resolved.source.match(/envs\s*:\s*\[([^\]]*)\]/);
-    const envs = match?.[1] ? [...match[1].matchAll(/["'`]([^"'`]+)["'`]/g)].map((m) => m[1]!) : [];
-    return c.json({ envs, sha: resolved.sha, repo: resolved.fullName, branch: resolved.branch });
+    return c.json({
+      envs: declaredEnvs(resolved.source),
+      sha: resolved.sha,
+      repo: resolved.fullName,
+      branch: resolved.branch,
+    });
   } catch (e) {
     return fail(c, e);
   }
@@ -159,6 +165,60 @@ app.post("/runs", async (c) => {
   } catch (e) {
     return fail(c, e);
   }
+});
+
+/* --------------------------------------------------------- deploy on push -- */
+
+app.get("/triggers", async (c) => {
+  requirePermission(c, "deployments:read");
+  return c.json(await listDeployTriggers(orgId(c)));
+});
+
+/**
+ * Create or update a trigger. `deployments:write`, because a trigger is a
+ * standing instruction to deploy — arming one is the same authority as
+ * deploying, just deferred.
+ */
+app.post("/triggers", async (c) => {
+  requirePermission(c, "deployments:write");
+  const body = (await c.req.json()) as {
+    repo?: string;
+    branch?: string;
+    env?: string;
+    answers?: Record<string, string>;
+  };
+  if (!body.repo || !body.branch || !body.env) {
+    return c.json({ error: "repo, branch and env are required" }, 400);
+  }
+  try {
+    return c.json(
+      await upsertDeployTrigger(orgId(c), userId(c), {
+        repo: body.repo,
+        branch: body.branch,
+        env: body.env,
+        ...(body.answers ? { answers: body.answers } : {}),
+      }),
+      201,
+    );
+  } catch (e) {
+    return fail(c, e);
+  }
+});
+
+app.patch("/triggers/:id", async (c) => {
+  requirePermission(c, "deployments:write");
+  const body = (await c.req.json()) as { enabled?: boolean };
+  try {
+    return c.json(await setDeployTriggerEnabled(orgId(c), c.req.param("id"), body.enabled !== false));
+  } catch (e) {
+    return fail(c, e);
+  }
+});
+
+app.delete("/triggers/:id", async (c) => {
+  requirePermission(c, "deployments:write");
+  await deleteDeployTrigger(orgId(c), c.req.param("id"));
+  return c.json({ ok: true });
 });
 
 export default app;
