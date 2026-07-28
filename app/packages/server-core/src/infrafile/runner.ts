@@ -219,13 +219,13 @@ export async function runDeployment(
     await requirePaidPlan(opts.organizationId, "Deploying from the web app");
   }
 
-  const { runInfrafile } = await import("@infrawrench/workflow-runtime");
-  const resolved = await resolveInfrafile(opts.organizationId, opts.repo, opts.branch);
-
   // One deploy per environment at a time. Without this two people shipping the
   // same env both proceed and the infrastructure takes whichever finished last —
-  // a race whose loser has no idea it happened. The conditional insert is the
-  // same claim pattern the poller uses to stop replicas double-firing.
+  // a race whose loser has no idea it happened.
+  //
+  // Checked BEFORE the Infrafile is fetched: it needs nothing from git, and
+  // paying for a GitHub round-trip only to refuse is both slower and a worse
+  // error (the caller sees whatever git said, not that the env is busy).
   const inFlight = await db
     .select({ id: deploymentRuns.id, startedAt: deploymentRuns.startedAt })
     .from(deploymentRuns)
@@ -244,6 +244,9 @@ export async function runDeployment(
       409,
     );
   }
+
+  const { runInfrafile } = await import("@infrawrench/workflow-runtime");
+  const resolved = await resolveInfrafile(opts.organizationId, opts.repo, opts.branch);
 
   const runId = randomUUID();
   await db.insert(deploymentRuns).values({
