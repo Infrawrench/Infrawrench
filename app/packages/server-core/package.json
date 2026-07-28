@@ -47,6 +47,8 @@
     "./cost/workflow-cost-ids": "./src/cost/workflow-cost-ids.ts",
     "./cost/external-costs": "./src/cost/external-costs.ts",
     "./cost/external-cost-ids": "./src/cost/external-cost-ids.ts",
+    "./cost/deployment-costs": "./src/cost/deployment-costs.ts",
+    "./cost/deployment-cost-ids": "./src/cost/deployment-cost-ids.ts",
     "./paging/external-pages": "./src/paging/external-pages.ts",
     "./push/dispatch": "./src/push/dispatch.ts",
     "./push/types": "./src/push/types.ts",

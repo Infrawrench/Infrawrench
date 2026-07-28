@@ -52,6 +52,42 @@ variable "repository_id" {
   default     = "infrawrench"
 }
 
+variable "build_repository_id" {
+  description = <<-EOT
+    Artifact Registry repository hosted Infrafile builds stage images to
+    (builds.tf). Separate from var.repository_id on purpose: this one holds
+    scratch images built from customer Dockerfiles and is emptied daily, and
+    nothing in it is ever deployed. Its full path is the build_staging_repo
+    output, which is what GCP_BUILD_STAGING_REPO wants.
+  EOT
+  type        = string
+  default     = "infrawrench-builds"
+}
+
+variable "build_bucket_name" {
+  description = <<-EOT
+    GCS bucket for hosted-build sources and logs. Bucket names are globally
+    unique, so leave this unset unless `<project_id>-infrawrench-builds` is
+    taken. Set GCP_BUILD_STAGING_BUCKET to the build_staging_bucket output.
+  EOT
+  type        = string
+  default     = null
+}
+
+variable "build_service_account" {
+  description = <<-EOT
+    The account Cloud Build runs builds as, if it is not the Compute Engine
+    default. Builds are submitted without naming one, so the project's default
+    applies: projects that enabled the Cloud Build API before Google's default
+    service account change use the legacy
+    `<project-number>@cloudbuild.gserviceaccount.com` — set that here so the
+    grants in builds.tf land on the account actually doing the work. Check with
+    `gcloud builds get-default-service-account`.
+  EOT
+  type        = string
+  default     = null
+}
+
 variable "github_repository" {
   description = <<-EOT
     `owner/repo` allowed to impersonate the CI service account through Workload

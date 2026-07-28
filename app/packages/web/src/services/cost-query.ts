@@ -28,6 +28,11 @@ import {
   workflowIdFromCostAccountId,
 } from "@infrawrench/server-core/cost/workflow-cost-ids";
 import {
+  DEPLOYMENT_COST_PLUGIN_ID,
+  DEPLOYMENT_COST_PROVIDER_LABEL,
+  deploymentCostAccountLabels,
+} from "@infrawrench/server-core/cost/deployment-cost-ids";
+import {
   EXTERNAL_COST_PLUGIN_ID,
   sourceFromCostAccountId,
 } from "@infrawrench/server-core/cost/external-cost-ids";
@@ -94,6 +99,7 @@ async function providerNames(): Promise<Map<string, string>> {
   const names = new Map(loaded.map((l) => [l.plugin.manifest.id, l.plugin.manifest.displayName]));
   names.set(WORKFLOW_COST_PLUGIN_ID, "Workflow");
   names.set(EXTERNAL_COST_PLUGIN_ID, "External");
+  names.set(DEPLOYMENT_COST_PLUGIN_ID, DEPLOYMENT_COST_PROVIDER_LABEL);
   return names;
 }
 
@@ -120,6 +126,9 @@ async function labelSeries(
       names.set(id, name);
     }
     for (const [id, name] of externalCostAccountLabels(groups.map((g) => g.key))) {
+      names.set(id, name);
+    }
+    for (const [id, name] of deploymentCostAccountLabels(groups.map((g) => g.key))) {
       names.set(id, name);
     }
     labelFor = (key) => names.get(key) ?? key;
@@ -275,6 +284,9 @@ export async function listCostDimensionValues(
       names.set(id, name);
     }
     for (const [id, name] of externalCostAccountLabels(values)) {
+      names.set(id, name);
+    }
+    for (const [id, name] of deploymentCostAccountLabels(values)) {
       names.set(id, name);
     }
     return values.map((v) => ({ value: v, label: names.get(v) ?? v }));

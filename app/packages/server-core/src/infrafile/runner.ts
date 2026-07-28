@@ -43,6 +43,7 @@ import {
 import { buildOrgWorkflowHost } from "../workflows/runner.js";
 import { pageFromExternal } from "../paging/external-pages.js";
 import { requirePaidPlan } from "../entitlements.js";
+import { writeDeploymentBuildCost } from "../cost/deployment-costs.js";
 import type {
   BuildRequest,
   InfrafileHost,
@@ -465,6 +466,19 @@ export async function runDeployment(
       durationMs: result.durationMs,
     })
     .where(eq(deploymentRuns.id, runId));
+
+  // Hosted build time is money we actually spent, so it belongs in the same
+  // graphs as everything else the org pays for. Best-effort: a cost row must
+  // never be what fails an otherwise-successful deploy.
+  if (buildSeconds > 0) {
+    await writeDeploymentBuildCost({
+      organizationId: opts.organizationId,
+      runId,
+      env: result.env,
+      buildSeconds,
+      startedAt: new Date(result.startedAt),
+    }).catch(() => {});
+  }
 
   return { runId, result };
 }

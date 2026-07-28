@@ -1668,6 +1668,21 @@ triggers and cannot import web, so the runner moved there and web re-exports it,
 `services/workflow-runner.ts` re-exports `runOrgWorkflow`. `entitlements.ts` moved with it for the
 same reason (the runner's paid-plan gate). Web keeps only the org-scoped trigger CRUD.
 
+**Hosted build minutes appear in the cost graphs** (`cost/deployment-costs.ts`). Same
+corruption dodge `infra.costs.write` uses and for the same reason: `cost_daily`'s frozen ORDER BY
+omits `plugin_id`, so a reserved `infrawrench:deployment` tag (value = the run id) is what keeps
+these rows off a poller-collected row's key. Keying on the _run_ also makes a retry restate its
+own row rather than double-count. `HOSTED_BUILD_USD_PER_SECOND` is an order-of-magnitude
+placeholder — revisit before billing anyone off it.
+
+**Terraform for hosted builds** is `infra/terraform/builds.tf`. Two grants there are not what you
+would guess, and the code is wrong without them: `roles/artifactregistry.writer` has no
+`tags.delete`, so `cleanupStagedImage()` 403s on every deploy and only the 1-day cleanup policy
+does any work — the web SA needs `repoAdmin` on that repo. And the _build worker_ needs
+`secretmanager.secretAccessor` or `availableSecrets` never resolves, which is invisible until a
+build with a registry password fails. Secret access is two narrow custom roles rather than
+`secretmanager.admin`, which would let the web pods read every secret in the project.
+
 **Still TODO**: tests for the two build drivers + the web wiring — both need live infrastructure,
 so only the runtime is covered.
 
