@@ -17,6 +17,11 @@ spec:
       labels:
         app: github-watcher
     spec:
+      # Same GCP identity as web. Deploy-on-push runs hosted Cloud Builds from
+      # THIS pod, and the token comes from the metadata server via workload
+      # identity — without the annotated KSA, every triggered hosted build
+      # fails at auth while the same deploy works fine from the web app.
+      serviceAccountName: web
       containers:
         - name: github-watcher
           image: REGION-docker.pkg.dev/PROJECT_ID/infrawrench/github-watcher:bootstrap

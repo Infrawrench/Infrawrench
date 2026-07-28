@@ -1708,6 +1708,19 @@ Verified end to end against the real project: build → staged push → `run()` 
 the project mounted → stdout `3.1.4`, stderr separated, **real exit code 7** (not normalised), and
 `parseWrappedOutput` reading the genuine log correctly.
 
+**The watcher pod shares web's GCP identity** (`serviceAccountName: web` in
+`github-watcher-deployment.yaml`). Deploy-on-push runs hosted Cloud Builds from the watcher, and
+`build-cloud.ts` gets its token from the metadata server via workload identity — a pod without the
+annotated KSA fails auth on every triggered build while the identical deploy works from web, which
+is a miserable thing to debug from the symptom.
+
+**Billing for builds is flat-rate by design** — the paid plan plus the hard timeout are the cost
+controls; there is no Stripe meter for build minutes. If that changes, the chat pattern is the
+template: a Stripe billing meter + optional metered price (`STRIPE_CHAT_PRICE_ID` /
+`INFRAWRENCH_STRIPE_CHAT_METER_EVENT`, unset = unbilled), reported from `chat/billing.ts` —
+`deployment_runs.build_seconds` is already recorded per run, so the meter event would emit from
+the same call site as `writeDeploymentBuildCost`.
+
 **Still TODO**: tests for the SSH driver + the web wiring — both need live infrastructure,
 so only the runtime is covered.
 
