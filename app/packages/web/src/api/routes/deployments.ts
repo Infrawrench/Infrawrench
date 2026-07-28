@@ -55,6 +55,7 @@ app.get("/repos", async (c) => {
  * `envs` read, so this is a separate call the UI makes after picking a branch.
  */
 app.post("/envs", async (c) => {
+  // Read is right here: the file is fetched and regex-parsed, never executed.
   requirePermission(c, "deployments:read");
   const body = (await c.req.json()) as { repo?: string; branch?: string };
   try {
@@ -74,7 +75,11 @@ app.post("/envs", async (c) => {
  * Non-interactive, so any `select(...)` must be answered via `answers`.
  */
 app.post("/plan", async (c) => {
-  requirePermission(c, "deployments:read");
+  // `deployments:write`, not read: a plan still evaluates the repository's
+  // Infrafile in the isolate against this org's host, so `plan()` can reach its
+  // resources. That is code execution, which is exactly why `write` is withheld
+  // from members — the billing gate is separate and does exempt previews.
+  requirePermission(c, "deployments:write");
   const body = (await c.req.json()) as {
     repo?: string;
     branch?: string;

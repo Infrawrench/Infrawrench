@@ -229,7 +229,7 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   // deployments
   "GET /deployments/repos": "deployments:read",
   "POST /deployments/envs": "deployments:read",
-  "POST /deployments/plan": "deployments:read",
+  "POST /deployments/plan": "deployments:write",
   "GET /deployments/runs": "deployments:read",
   "GET /deployments/runs/{id}": "deployments:read",
   "POST /deployments/runs": "deployments:write",

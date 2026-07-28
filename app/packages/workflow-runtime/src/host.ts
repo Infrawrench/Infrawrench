@@ -1110,13 +1110,18 @@ export async function dispatch(
       return requireMethod(host.infrafileBuild, "infrafileBuild").call(host, buildRequest(args));
     }
 
-    case "infrafile.push":
+    case "infrafile.push": {
+      const image = String(args["image"] ?? "").trim();
+      // Matches the guard on run(): an empty image would otherwise surface as
+      // `docker push ""` from a driver rather than as something an author can act on.
+      if (!image) throw new Error("push(): no image to push — was the build skipped?");
       await requireMethod(host.infrafilePush, "infrafilePush").call(
         host,
-        String(args["image"] ?? ""),
+        image,
         registryCredentials(args["registry"]),
       );
       return null;
+    }
 
     case "infrafile.run": {
       const request = runInImageRequest(args);

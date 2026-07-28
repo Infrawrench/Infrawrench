@@ -267,7 +267,7 @@ async function cmdDeployRollback(ctx: CliContext, flags: DeployFlags): Promise<v
   const { result } = await orgFetch<{
     runId: string;
     result: { status: string; image?: string; env: string; error?: { message: string } };
-  }>(org.id, `/deployments/runs/${target}/rollback`, { method: "POST" });
+  }>(org.id, `/deployments/runs/${encodeURIComponent(target)}/rollback`, { method: "POST" });
 
   if (ctx.flags.output === "json") {
     printJson(result);

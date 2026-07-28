@@ -37,14 +37,18 @@ export async function planAccess(organizationId: string): Promise<PlanAccess> {
     .where(eq(organizations.id, organizationId));
   if (org?.complimentary === true) return { paid: true, reason: "complimentary" };
 
-  const [sub] = await db
+  // Ask "is there ANY paid row", not "what is the first row". An org can carry
+  // a stale `canceled` alongside a live `active` one, and without an ordering
+  // Postgres is free to hand back either — which would deny a paying customer
+  // or admit a lapsed one depending on the day.
+  const subs = await db
     .select({ status: subscriptions.status })
     .from(subscriptions)
     .where(eq(subscriptions.organizationId, organizationId));
-  if (!sub) return { paid: false, reason: "none" };
-  return PAID_STATUSES.has(sub.status)
-    ? { paid: true, reason: "subscription", status: sub.status }
-    : { paid: false, reason: "inactive", status: sub.status };
+  if (subs.length === 0) return { paid: false, reason: "none" };
+  const paid = subs.find((s) => PAID_STATUSES.has(s.status));
+  if (paid) return { paid: true, reason: "subscription", status: paid.status };
+  return { paid: false, reason: "inactive", status: subs[0]!.status };
 }
 
 /** Thrown when a paid-only feature is reached on a free organization. */

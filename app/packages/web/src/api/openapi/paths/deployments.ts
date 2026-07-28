@@ -65,7 +65,10 @@ const DeploymentRun = strict({
   image: z.string().nullable(),
   status: DeployStatus,
   origin: z.enum(["web", "cli"]),
-  stage: DeployStage.nullable(),
+  // A union, not `.nullable()`: zod-to-openapi emits the latter as
+  // `allOf: [$ref, {type: ["string","null"]}]`, which still demands an enum
+  // value and so rejects the nulls the table actually stores.
+  stage: z.union([DeployStage, z.null()]),
   durationMs: z.number().int().nullable(),
   startedAt: IsoDateTime,
 }).openapi("DeploymentRun");

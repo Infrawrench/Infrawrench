@@ -2927,12 +2927,15 @@
             "enum": ["web", "cli"]
           },
           "stage": {
-            "allOf": [
+            "anyOf": [
               {
                 "$ref": "#/components/schemas/DeployStage"
               },
               {
-                "type": ["string", "null"]
+                "type": "null"
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -10211,7 +10214,7 @@
       "post": {
         "tags": ["Deployments"],
         "summary": "Preview a deploy without building",
-        "description": "Runs the Infrafile's `plan()` and renders its Dockerfile, then stops. Nothing is built or deployed.\n\n_Requires permission: `deployments:read`._",
+        "description": "Runs the Infrafile's `plan()` and renders its Dockerfile, then stops. Nothing is built or deployed.\n\n_Requires permission: `deployments:write`._",
         "parameters": [
           {
             "schema": {
@@ -10287,7 +10290,7 @@
           }
         },
         "operationId": "postOrgOrgIdDeploymentsPlan",
-        "x-required-permission": "deployments:read"
+        "x-required-permission": "deployments:write"
       }
     },
     "/api/org/{orgId}/deployments/runs": {

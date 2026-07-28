@@ -47,6 +47,10 @@ const INFRAFILE_PAUSED_METHODS = [
   "infrafile.push",
   "infrafile.copyTo",
   "infrafile.run",
+  // `select` waits on a person reading their options — the same reasoning that
+  // keeps the generic `prompt` out of the budget. Without this, taking a moment
+  // to choose a build host can fail an otherwise-fine deploy.
+  "infrafile.select",
 ];
 
 export interface RunInfrafileOptions {

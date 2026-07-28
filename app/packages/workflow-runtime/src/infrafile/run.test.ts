@@ -685,3 +685,73 @@ describe("rollback", () => {
     expect(seen[0]?.command).toBe("npm run db:rollback");
   });
 });
+
+describe("select() label edge cases", () => {
+  it("does not mangle a label that collides with an Object.prototype key", async () => {
+    // A resource legitimately named "constructor" read a truthy inherited value
+    // from the dedupe map, turning its label into "constructor (function Object…1)".
+    const host = hostFor({ answers: { pick: "constructor" } });
+
+    const result = await run(
+      `
+      defineInfra({
+        envs: ["staging"],
+        async plan({ select }) {
+          return { chosen: await select("pick", "Pick", ["constructor", "toString"]) };
+        },
+        dockerfile: () => "FROM node:22",
+        async deploy() {},
+      });
+      `,
+      host,
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.plan).toEqual({ chosen: "constructor" });
+  });
+
+  it("still disambiguates genuine duplicates", async () => {
+    const host = hostFor({ answers: { host: "web (2)" } });
+
+    const result = await run(
+      `
+      defineInfra({
+        envs: ["staging"],
+        async plan({ select }) {
+          const picked = await select("host", "Build on", [
+            { displayName: "web", id: "a" },
+            { displayName: "web", id: "b" },
+          ]);
+          return { id: picked.id };
+        },
+        dockerfile: () => "FROM node:22",
+        async deploy() {},
+      });
+      `,
+      host,
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.plan).toEqual({ id: "b" });
+  });
+});
+
+describe("push() guard", () => {
+  it("refuses an empty image with an author-facing message", async () => {
+    const result = await run(
+      `
+      defineInfra({
+        envs: ["staging"],
+        async plan() { return {}; },
+        dockerfile: () => "FROM node:22",
+        async deploy({ push }) { await push(""); },
+      });
+      `,
+      // A host whose build yields no image at all.
+      { ...hostFor(), infrafileBuild: async () => ({ image: "" }) } as unknown as InfrafileHost,
+    );
+
+    expect(result.status).toBe("failure");
+    expect(result.error?.message).toContain("no image to push");
+  });
+});

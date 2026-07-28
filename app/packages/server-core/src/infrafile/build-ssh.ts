@@ -136,22 +136,35 @@ export async function buildOverSsh(
   ctx.log(`Preparing ${workspace} on ${ctx.target.displayName ?? ctx.target.id}`);
   await exec(deps, ctx, `mkdir -p ${q(workspace)}`, { quiet: true });
 
-  // git needs the credentialed URL but must not be handed it on a command line.
+  // The token must never become part of git's argv. `git clone "$(cat url)"`
+  // would not do: the remote shell expands it *before* exec, so the
+  // credentialed URL lands in argv[1] and is visible in `ps` to every user on
+  // the host. Instead git gets a URL carrying only the username, and asks for
+  // the password through GIT_ASKPASS — which reads it from a 0600 file.
   const askpass = `${workspace}/.git-askpass`;
-  await putSecret(deps, ctx, `${workspace}/.clone-url`, ctx.cloneUrl);
-  await putSecret(deps, ctx, askpass, '#!/bin/sh\nexec cat "$(dirname "$0")/.clone-url"\n');
+  const tokenPath = `${workspace}/.clone-token`;
+  const url = new URL(ctx.cloneUrl);
+  const token = decodeURIComponent(url.password);
+  const username = url.username || "x-access-token";
+  const safeUrl = `${url.protocol}//${username}@${url.host}${url.pathname}`;
+
+  await putSecret(deps, ctx, tokenPath, token);
+  await putSecret(deps, ctx, askpass, '#!/bin/sh\nexec cat "$(dirname "$0")/.clone-token"\n');
 
   ctx.log(`Cloning ${ctx.branch} at ${ctx.gitSha.slice(0, 7)}`);
   await exec(
     deps,
     ctx,
     `cd ${q(workspace)} && chmod +x .git-askpass && ` +
-      `git clone --quiet "$(cat .clone-url)" src && ` +
+      // GIT_TERMINAL_PROMPT=0 makes a missing/failed askpass an error rather
+      // than a hang waiting on a tty that isn't there.
+      `GIT_ASKPASS=${q(askpass)} GIT_TERMINAL_PROMPT=0 ` +
+      `git clone --quiet ${q(safeUrl)} src && ` +
       `cd src && git checkout --quiet ${q(ctx.gitSha)} && ` +
-      // Drop the token: neither the file nor the remote keeps it.
+      // Drop the remote too: even token-free, it is not ours to leave behind.
       `git remote remove origin || true`,
   );
-  await exec(deps, ctx, `rm -f ${q(`${workspace}/.clone-url`)} ${q(askpass)}`, { quiet: true });
+  await exec(deps, ctx, `rm -f ${q(tokenPath)} ${q(askpass)}`, { quiet: true });
 
   // The Dockerfile goes beside the source, not inside it, so a build never
   // writes into the cloned tree.
@@ -306,16 +319,17 @@ export async function copyToOverSsh(
     },
     archive,
   );
-  await deps.sftpPut!(
-    { accountId: target.accountId, typeId: target.resourceTypeId, resourceId: target.id },
-    `${remotePath}/source.tgz`,
-    bytes.base64,
-  );
+
+  const to = { accountId: target.accountId, typeId: target.resourceTypeId, resourceId: target.id };
+  // Create the destination BEFORE writing into it — an SFTP put to a path whose
+  // parent does not exist fails, which is every first copy to a fresh host.
+  await deps.sshExec!({ ...to, command: `mkdir -p ${q(remotePath)}` });
+  await deps.sftpPut!(to, `${remotePath}/source.tgz`, bytes.base64);
   await deps.sshExec!({
-    accountId: target.accountId,
-    typeId: target.resourceTypeId,
-    resourceId: target.id,
-    command: `mkdir -p ${q(remotePath)} && tar -xzf ${q(`${remotePath}/source.tgz`)} -C ${q(remotePath)} && rm -f ${q(`${remotePath}/source.tgz`)}`,
+    ...to,
+    command:
+      `tar -xzf ${q(`${remotePath}/source.tgz`)} -C ${q(remotePath)} && ` +
+      `rm -f ${q(`${remotePath}/source.tgz`)}`,
   });
   await exec(deps, ctx, `rm -f ${q(archive)}`, { quiet: true }).catch(() => {});
 }

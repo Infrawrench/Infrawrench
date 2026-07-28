@@ -299,6 +299,20 @@ export async function runDeployment(
       ...(opts.onStage ? { onStage: opts.onStage } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
     });
+  } catch (err) {
+    // `runInfrafile` returns failures rather than throwing, so reaching here
+    // means something outside it broke (an isolate crash, an abort, a host that
+    // could not be built). Without this the row stays `running` forever and the
+    // history shows a deploy permanently in flight with no reason attached.
+    await db
+      .update(deploymentRuns)
+      .set({
+        status: "failure",
+        error: { message: err instanceof Error ? err.message : String(err) },
+        finishedAt: new Date(),
+      })
+      .where(eq(deploymentRuns.id, runId));
+    throw err;
   } finally {
     // Always clear the scratch directory — a failed deploy leaves a clone with
     // build artifacts behind otherwise, and those accumulate silently.

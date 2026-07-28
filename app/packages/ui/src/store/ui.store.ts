@@ -103,7 +103,10 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "costs":
       return true;
     case "deployments":
-      return true;
+      // Compared even though the tab *id* ignores it: the id keeps a second
+      // hotlink reusing one tab, while this comparison is what makes the route
+      // sync notice the repo changed and actually retarget it.
+      return a.repo === (b as { repo?: string }).repo;
     case "workflows":
       return a.workflowId === (b as { workflowId?: string }).workflowId;
     case "chat":

@@ -59,7 +59,9 @@ export const INFRAFILE_PRELUDE = String.raw`
     const list = Array.from(items || []);
     if (list.length === 0) throw new Error("select(" + JSON.stringify(key) + ", …): no options to choose from.");
     // Disambiguate repeats so a chosen value maps back to exactly one item.
-    const seen = {};
+    // Null-prototype: a resource legitimately named "constructor" or "toString"
+    // would otherwise read a truthy inherited value and mangle its own label.
+    const seen = Object.create(null);
     const options = list.map((item, i) => {
       const base = labelOf(item, i);
       const n = (seen[base] || 0) + 1;

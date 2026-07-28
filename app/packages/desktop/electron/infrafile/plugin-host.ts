@@ -55,6 +55,16 @@ const httpHostServices = {
       body?: string | Uint8Array;
       caCert?: string;
     }): Promise<{ status: number; headers: Record<string, string>; body: string }> {
+      // Node's fetch has no per-request CA option, so honouring this would mean
+      // a custom undici Agent. Until that exists, say so — silently ignoring it
+      // would make a self-signed endpoint fail here with a TLS error while the
+      // same account works fine in the app.
+      if (req.caCert) {
+        throw new Error(
+          "A custom CA certificate is not supported from the CLI yet — " +
+            "run this against the account from the desktop app or the web app.",
+        );
+      }
       const res = await fetch(req.url, {
         method: req.method,
         headers: req.headers,
