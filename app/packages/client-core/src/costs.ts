@@ -49,6 +49,24 @@ export function failingCostAccounts(statuses: CostAccountStatus[]): CostAccountS
   return statuses.filter((s) => s.supportsCosts && s.costPollError);
 }
 
+/**
+ * Accounts that collected cleanly and still have no spend data at all.
+ *
+ * Collection can succeed and return nothing: a Cloud Billing BigQuery export
+ * enabled hours ago is correctly configured but emits no rows until Google's
+ * pipeline catches up. Every stored field on such an account looks healthy —
+ * no error, a recent poll — so the only evidence is the absent coverage, and
+ * without saying so the surface is a blank graph that reads as a bug.
+ *
+ * `costLastPolledAt` gates it so an account that has never run yet stays
+ * quiet rather than announcing emptiness it hasn't earned.
+ */
+export function emptyCostAccounts(statuses: CostAccountStatus[]): CostAccountStatus[] {
+  return statuses.filter(
+    (s) => s.supportsCosts && !s.costPollError && s.costLastPolledAt !== null && !s.coverage,
+  );
+}
+
 /* ------------------------------------------------------------------ *
  * Widget configuration — what a dashboard stores for a cost card.
  * ------------------------------------------------------------------ */

@@ -21,13 +21,28 @@ const GROUP_DIMENSIONS = ["provider", "account", "service", "region", "resource"
  * Collection runs daily in the background and backs off on failure, so a
  * misconfigured provider reads as missing spend rather than an error. Fetch
  * the per-account state so the numbers below can be trusted (or explained).
+ *
+ * Two states are worth reporting: collection that failed, and collection that
+ * succeeded with nothing to show (a billing export that hasn't produced its
+ * first rows yet) — both otherwise look like an account with no spend.
  */
-async function loadFailingAccounts(orgId: string): Promise<CostAccountStatus[]> {
-  const res = await orgFetch<{ accounts: CostAccountStatus[] }>(orgId, "/costs/status");
-  return (res.accounts ?? []).filter((a) => a.supportsCosts && a.costPollError);
+interface CollectionState {
+  failing: CostAccountStatus[];
+  empty: CostAccountStatus[];
 }
 
-function printCollectionWarnings(failing: CostAccountStatus[]): void {
+async function loadCollectionState(orgId: string): Promise<CollectionState> {
+  const res = await orgFetch<{ accounts: CostAccountStatus[] }>(orgId, "/costs/status");
+  const accounts = res.accounts ?? [];
+  return {
+    failing: accounts.filter((a) => a.supportsCosts && a.costPollError),
+    empty: accounts.filter(
+      (a) => a.supportsCosts && !a.costPollError && a.costLastPolledAt !== null && !a.coverage,
+    ),
+  };
+}
+
+function printCollectionWarnings({ failing, empty }: CollectionState): void {
   for (const account of failing) {
     println(`${c.yellow("!")} ${c.bold(account.displayName)} ${c.dim("cost collection failing")}`);
     println(`  ${account.costPollError!.message}`);
@@ -35,7 +50,11 @@ function printCollectionWarnings(failing: CostAccountStatus[]): void {
       println(`  ${c.dim("→")} ${c.blue(account.costPollError!.helpLink.url)}`);
     }
   }
-  if (failing.length > 0) println();
+  for (const account of empty) {
+    println(`${c.dim("·")} ${c.bold(account.displayName)} ${c.dim("no spend data yet")}`);
+    println(`  ${c.dim("collected without error — the provider reported no spend")}`);
+  }
+  if (failing.length > 0 || empty.length > 0) println();
 }
 
 function isoDay(ms: number): string {
@@ -70,20 +89,28 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     forecast: false,
   };
 
-  const [response, failing] = await Promise.all([
+  const [response, collection] = await Promise.all([
     orgFetch<CostQueryResponse>(org.id, "/costs/query", {
       method: "POST",
       body: JSON.stringify(query),
     }),
-    loadFailingAccounts(org.id),
+    loadCollectionState(org.id),
   ]);
 
   if (ctx.flags.output === "json") {
-    printJson({ org: org.id, from, to, groupBy, ...response, collectionFailures: failing });
+    printJson({
+      org: org.id,
+      from,
+      to,
+      groupBy,
+      ...response,
+      collectionFailures: collection.failing,
+      awaitingData: collection.empty,
+    });
     return;
   }
 
-  printCollectionWarnings(failing);
+  printCollectionWarnings(collection);
 
   const { series, totals } = response;
   if (series.length === 0) {

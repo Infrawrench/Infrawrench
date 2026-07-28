@@ -80,7 +80,7 @@ infrawrench costs --group-by account --json
 
 <insert [Terminal showing `infrawrench costs` output with the daily sparkline and per-provider horizontal bar chart] here>
 
-Accounts whose daily cost collection is failing are called out above the chart, with the provider link that fixes the cause; `--json` carries them as `collectionFailures`. See [when collection fails](./cloud-costs.md#when-collection-fails).
+Accounts whose daily cost collection is failing are called out above the chart, with the provider link that fixes the cause; `--json` carries them as `collectionFailures`. Accounts that collected without error but have no spend to show yet are listed the same way, as `awaitingData`. See [when collection fails](./cloud-costs.md#when-collection-fails) and [when there is nothing to collect yet](./cloud-costs.md#when-there-is-nothing-to-collect-yet).
 
 ## Pushing back up
 

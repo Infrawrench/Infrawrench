@@ -15,7 +15,7 @@ function status(over: Partial<CostAccountStatus> = {}): CostAccountStatus {
     costBackfilledAt: null,
     costPollFailureCount: 1,
     costPollError: null,
-    coverage: null,
+    coverage: { firstDay: "2026-06-01", lastDay: "2026-07-25" },
     ...over,
   };
 }
@@ -110,5 +110,44 @@ describe("CostCollectionNotice", () => {
     expect(screen.getByText("Cost collection is failing for 2 accounts")).toBeInTheDocument();
     expect(screen.getByText(/Prod AWS/)).toBeInTheDocument();
     expect(screen.getByText(/Cost Explorer access denied\./)).toBeInTheDocument();
+  });
+
+  it("explains an account that collected cleanly but has no data", () => {
+    render(<CostCollectionNotice statuses={[status({ coverage: null })]} />);
+    expect(screen.getByText("No spend data yet for Infrawrench GCP")).toBeInTheDocument();
+    expect(screen.getByText(/Collection ran without error/i)).toBeInTheDocument();
+  });
+
+  it("stays quiet for an account that has never been polled", () => {
+    const { container } = render(
+      <CostCollectionNotice statuses={[status({ coverage: null, costLastPolledAt: null })]} />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("names each account when several are awaiting data", () => {
+    render(
+      <CostCollectionNotice
+        statuses={[
+          status({ coverage: null }),
+          status({ accountId: "acc-2", displayName: "Prod AWS", coverage: null }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("No spend data yet for 2 accounts")).toBeInTheDocument();
+    expect(screen.getByText("Prod AWS")).toBeInTheDocument();
+  });
+
+  it("reports a failing account and an empty one side by side", () => {
+    render(
+      <CostCollectionNotice
+        statuses={[
+          status({ coverage: null, costPollError: { message: "Access denied.", helpLink: null } }),
+          status({ accountId: "acc-2", displayName: "Prod AWS", coverage: null }),
+        ]}
+      />,
+    );
+    expect(screen.getByText(/Cost collection is failing for Infrawrench GCP/)).toBeInTheDocument();
+    expect(screen.getByText("No spend data yet for Prod AWS")).toBeInTheDocument();
   });
 });

@@ -83,6 +83,7 @@ export {
 } from "./profile";
 export {
   failingCostAccounts,
+  emptyCostAccounts,
   resolveCostDateRange,
   costQueryForConfig,
   totalPerBucket,

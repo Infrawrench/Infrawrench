@@ -26,6 +26,9 @@ export interface CostCollectionResult {
  * ReplacingMergeTree key dedupes them. Subsequent runs re-fetch only the
  * trailing restatement window.
  *
+ * A backfill only counts as done once it has actually ingested a row — see
+ * the note on the flag write below.
+ *
  * Throws on failure — the caller (poller cost pass) owns backoff/reschedule.
  */
 export async function collectAccountCosts(
@@ -55,12 +58,21 @@ export async function collectAccountCosts(
     }
   }
 
-  if (backfilling) {
+  // Only a backfill that ingested something counts as done. A provider can
+  // succeed over the whole window and still return nothing — a Cloud Billing
+  // BigQuery export enabled hours ago emits no rows until Google's pipeline
+  // catches up — and marking that complete drops the account to the short
+  // restatement window permanently, so the history it was waiting for is
+  // never fetched once it does appear. Retrying the window costs a chunk of
+  // requests a day for a genuinely zero-spend account, and stops on the
+  // first row that lands.
+  const backfilled = backfilling && rowCount > 0;
+  if (backfilled) {
     await db
       .update(accounts)
       .set({ costBackfilledAt: new Date(), updatedAt: new Date() })
       .where(eq(accounts.id, accountId));
   }
 
-  return { rowCount, backfilled: backfilling };
+  return { rowCount, backfilled };
 }

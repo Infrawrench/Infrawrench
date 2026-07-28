@@ -98,6 +98,8 @@ The same cost data is exposed through the [MCP server](./mcp.md) and the [AI cha
 
 Each provider plugin that supports cost reporting fetches spend from that provider's own billing API, once a day per account (billing APIs are rate-limited, and some — AWS Cost Explorer — charge per request). When you first connect an account, Infrawrench backfills up to a year of history in the background; the graph shows "Backfilling…" until it completes. Recent days are re-fetched on every collection so provider restatements (late-arriving usage, credits) are absorbed.
 
+The backfill is only considered done once it has actually returned a row. A provider that is set up correctly but has nothing to report yet — a billing export switched on an hour ago — keeps its full history window until real data arrives, so the history is not skipped just because the first attempt was early.
+
 Some providers only publish monthly invoice totals rather than daily costs. Their spend appears on period boundaries, and daily-binned graphs will show it as month steps — the graph notes this when such a provider is in scope.
 
 ### Spend from somewhere else
@@ -118,6 +120,18 @@ Collection runs unattended and retries with a growing backoff, so a provider tha
 Where the plugin can tell exactly what is missing, the banner carries a link straight to the provider page that fixes it — for example GCP's Cloud Billing export settings for the account's project. Fix the cause and the next collection backfills the days that were missed; the banner clears itself on the first success.
 
 `infrawrench costs` prints the same warnings above the chart, and includes them as `collectionFailures` under `--json`. The `get_cost_status` MCP tool and `GET /costs/status` return the failure as `costPollError` with an optional `helpLink`.
+
+## When there is nothing to collect yet
+
+Collection can also succeed and come back with nothing. This is normal for a freshly configured provider: GCP's Cloud Billing export to BigQuery, for instance, creates its table immediately but can take a day or two to write the first rows, and until then every collection legitimately returns no spend.
+
+Because nothing failed, there is no error to report — so the account gets its own, calmer banner instead of a blank graph with no explanation:
+
+<insert [Dashboard showing the neutral "No spend data yet for Infrawrench GCP" banner above an empty cost widget] here>
+
+It clears itself the moment the first row lands. If it persists for more than a couple of days, the export is usually configured but not actually delivering — check it at the provider rather than in Infrawrench.
+
+`infrawrench costs` lists these accounts above the chart too, and includes them as `awaitingData` under `--json`. Over `GET /costs/status` the state is an account with no `costPollError` and a null `coverage`.
 
 See each plugin's page under [Plugins](../plugins/aws.md) for what its cost integration needs (extra IAM permissions, token scopes) and any caveats such as list-price-only dollars.
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   binForecast,
   costQueryForConfig,
+  emptyCostAccounts,
   failingCostAccounts,
   formatBucketLabel,
   formatBudgetMonth,
@@ -171,5 +172,35 @@ describe("failingCostAccounts", () => {
         account({ supportsCosts: false, costPollError: { message: "x", helpLink: null } }),
       ]),
     ).toEqual([failing]);
+  });
+
+  describe("emptyCostAccounts", () => {
+    const polled = { costLastPolledAt: "2026-07-28T00:00:00.000Z" };
+
+    it("keeps an account that collected cleanly and ingested nothing", () => {
+      const waiting = account({ ...polled });
+      expect(emptyCostAccounts([waiting])).toEqual([waiting]);
+    });
+
+    it("drops an account that has data", () => {
+      const covered = account({
+        ...polled,
+        coverage: { firstDay: "2026-07-01", lastDay: "2026-07-27" },
+      });
+      expect(emptyCostAccounts([covered])).toEqual([]);
+    });
+
+    it("drops an account that has never been polled", () => {
+      expect(emptyCostAccounts([account({})])).toEqual([]);
+    });
+
+    it("drops accounts that are failing or have no cost support", () => {
+      expect(
+        emptyCostAccounts([
+          account({ ...polled, costPollError: { message: "denied", helpLink: null } }),
+          account({ ...polled, supportsCosts: false }),
+        ]),
+      ).toEqual([]);
+    });
   });
 });
