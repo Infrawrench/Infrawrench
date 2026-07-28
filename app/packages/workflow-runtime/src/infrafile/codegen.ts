@@ -84,10 +84,43 @@ interface InfraGit {
  */
 type InfraSelect = <T>(key: string, label: string, items: readonly T[]) => Promise<T>;
 
+/** Shared options for \`ask\`. */
+interface InfraAskOptions {
+  /** Pre-filled value, also used when the answer is left blank. */
+  default?: string | number | boolean;
+  /** Reject an empty answer. On by default. */
+  required?: boolean;
+  /** Inclusive bounds — numbers for \`number\`, ISO \`YYYY-MM-DD\` for \`date\`. */
+  min?: number | string;
+  max?: number | string;
+  /** Regular expression the answer must match (\`text\` and \`password\`). */
+  pattern?: string;
+}
+
+/**
+ * Ask for a value that isn't a choice from a list.
+ *
+ * Keyed like \`select\`, and for the same reason: \`--set <key>=<value>\` (or a
+ * deploy trigger's stored answers) resolves it with no prompt, so one Infrafile
+ * serves both a person at a terminal and an unattended deploy.
+ *
+ * The answer comes back already typed and validated — a \`number\` is a number,
+ * a \`date\` is \`YYYY-MM-DD\`. Validation runs host-side, so a bad \`--set\` value
+ * fails just as loudly as a mistyped one.
+ */
+interface InfraAsk {
+  (key: string, label: string, opts?: InfraAskOptions & { kind?: "text" | "password" }): Promise<string>;
+  (key: string, label: string, opts: InfraAskOptions & { kind: "number" }): Promise<number>;
+  /** Resolves to an ISO \`YYYY-MM-DD\` string. */
+  (key: string, label: string, opts: InfraAskOptions & { kind: "date" }): Promise<string>;
+  (key: string, label: string, opts: InfraAskOptions & { kind: "boolean" }): Promise<boolean>;
+}
+
 interface InfraPlanContext {
   env: InfraEnv;
   git: InfraGit;
   select: InfraSelect;
+  ask: InfraAsk;
 }
 
 /**

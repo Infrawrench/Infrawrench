@@ -1499,6 +1499,12 @@ is not guest execution and must not consume the run's budget.
   onto a resource, so `plan().buildOn` arrives host-side as its plain identifying fields.
   `plan()` has exactly two reserved keys, `buildOn` and `registry`; everything else is the
   author's.
+- **`ask(key, label, opts)`** covers everything `select` doesn't — text, password, number, date,
+  boolean — keyed identically so `--set` and a trigger's answers resolve it. Coercion and
+  validation live in `host.ts` `dispatch`, NOT in the input control, because the `--set` path never
+  reaches one: `--set replicas=lots` has to fail as loudly as a typed answer, not arrive as `NaN`.
+  Answers return already typed; a date is normalised to `YYYY-MM-DD` rather than a `Date` so it
+  means the same thing either side of the JSON bridge and in a `--set` string.
 - **`select(key, label, items)`** is what makes a deploy scriptable. The key is answerable by
   `--set key=value` (`host.infrafileAnswer`) so the same file runs in CI; a non-interactive run
   with no answer fails _naming the key and the options_. Values are labels, not indices, for

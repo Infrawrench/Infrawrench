@@ -167,6 +167,24 @@ export const INFRAFILE_EPILOGUE = String.raw`
     env,
     git,
     select: (key, label, items) => globalThis.__infraSelect(key, label, items),
+    // Free-form questions, keyed exactly like select so --set answers them too.
+    // The host validates and coerces, so what comes back is already the right
+    // type: a number is a number, a date is YYYY-MM-DD.
+    ask: (key, label, opts) => {
+      opts = opts || {};
+      return rpc("infrafile.ask", {
+        spec: {
+          key,
+          label: label || key,
+          kind: opts.kind || "text",
+          defaultValue: opts.default === undefined ? undefined : String(opts.default),
+          required: opts.required,
+          min: opts.min,
+          max: opts.max,
+          pattern: opts.pattern,
+        },
+      });
+    },
   };
   const plan = (await def.plan(planCtx)) || {};
 

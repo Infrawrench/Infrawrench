@@ -165,7 +165,15 @@ export function PromptHost({ title = "Workflow input" }: PromptHostProps) {
                 ref={(el) => {
                   inputRef.current = el;
                 }}
-                type={kind === "password" ? "password" : kind === "number" ? "number" : "text"}
+                type={
+                  kind === "password"
+                    ? "password"
+                    : kind === "number"
+                      ? "number"
+                      : kind === "date"
+                        ? "date"
+                        : "text"
+                }
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 aria-labelledby={messageId}

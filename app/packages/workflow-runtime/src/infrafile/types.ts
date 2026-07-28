@@ -65,6 +65,35 @@ export interface BuildResult {
   digest?: string;
 }
 
+/** Input shapes `ask(...)` can request. */
+export type InfrafileAskKind = "text" | "number" | "date" | "boolean" | "password";
+
+/**
+ * A free-form question an Infrafile asks during `plan()`.
+ *
+ * Keyed like `select`, and for the same reason: `--set key=value` (or a
+ * trigger's stored answers) resolves it with no prompt, so one Infrafile serves
+ * both an operator at a terminal and an unattended deploy.
+ *
+ * Validation is deliberately host-side rather than in the UI, because the
+ * `--set` path never reaches a UI — a CI answer of `replicas=lots` has to fail
+ * as loudly as a typed one would, not arrive as NaN.
+ */
+export interface InfrafileAskSpec {
+  key: string;
+  label: string;
+  kind: InfrafileAskKind;
+  /** Pre-filled value shown to a human; also used when an answer is blank. */
+  defaultValue?: string;
+  /** Reject an empty answer. On by default. */
+  required?: boolean;
+  /** Inclusive bounds for `number`, and for `date` as ISO `YYYY-MM-DD`. */
+  min?: number | string;
+  max?: number | string;
+  /** Regex the answer must match, for `text` and `password`. */
+  pattern?: string;
+}
+
 /** Where the project source is mounted inside a `run(...)` container. */
 export const RUN_WORKDIR = "/workspace";
 

@@ -34,7 +34,7 @@ import { createLocalPluginClient } from "../../infrafile/plugin-host";
 import { CliError, listLocalAccounts, orgFetch, resolveOrg, type CliContext } from "../context";
 import type { DeployFlags } from "../args";
 import { c, printJson, printTable, println } from "../output";
-import { askText, selectOne } from "../prompt";
+import { askText, confirm, selectOne } from "../prompt";
 
 const run = promisify(execFile);
 
@@ -400,7 +400,17 @@ export async function cmdDeploy(ctx: CliContext, flags: DeployFlags): Promise<vo
     prompt: async (spec: PromptSpec) => {
       const options = (spec.options ?? []).map((o) => ({ label: o.label, value: o.value }));
       if (options.length > 0) return selectOne(spec.message, options);
-      return askText(spec.message, spec.defaultValue ?? "");
+      if (spec.kind === "boolean") return confirm(spec.message);
+      // Everything else is typed text. The runtime validates and coerces the
+      // answer, so the terminal only has to collect the characters — a number
+      // that isn't one is rejected there with the key named, not here.
+      const hint =
+        spec.kind === "date"
+          ? `${spec.message} (YYYY-MM-DD)`
+          : spec.kind === "number"
+            ? `${spec.message} (number)`
+            : spec.message;
+      return askText(hint, spec.defaultValue ?? "");
     },
   });
 

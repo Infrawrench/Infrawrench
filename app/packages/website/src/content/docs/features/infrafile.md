@@ -69,6 +69,39 @@ deploy fails and tells you which key it needed.
 `select` returns the item you picked, not a label — so selecting a resource
 gives you back a usable resource.
 
+## Asking for anything else
+
+`select` covers "pick one of these". `ask` covers everything else — a version
+string, a replica count, a date, a yes/no:
+
+```ts
+async plan({ ask }) {
+  const tag      = await ask("tag", "Image tag", { pattern: "^v[0-9]" });
+  const replicas = await ask("replicas", "Replicas", { kind: "number", min: 1, max: 20, default: 2 });
+  const when     = await ask("cutover", "Cut over on", { kind: "date" });
+  const drain    = await ask("drain", "Drain connections first?", { kind: "boolean" });
+  return { tag, replicas, when, drain };
+}
+```
+
+Kinds are `text` (the default), `password`, `number`, `date` and `boolean`.
+Answers come back **already typed** — a `number` is a number, a `date` is an ISO
+`YYYY-MM-DD` string — so there is nothing to parse and no `NaN` to guard against.
+
+Same keyed contract as `select`: `--set replicas=4` answers it with no prompt,
+and a trigger's stored answers do the same for a deploy nobody is watching.
+
+Validation runs server-side rather than in the input box, which matters because
+`--set` never sees an input box. `--set replicas=lots` fails naming the key,
+instead of quietly becoming `NaN` and deploying nothing:
+
+```
+ask("replicas"): "lots" is not a number.
+```
+
+`min`/`max` bound numbers and dates, `pattern` constrains text, and `required:
+false` allows an empty answer. A `default` fills in a blank one.
+
 ## Two reserved keys
 
 Everything `plan()` returns is yours except two keys the host reads:

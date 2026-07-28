@@ -42,6 +42,8 @@ import type {
   InfrafileHostOps,
   InfrafileRunSink,
   RegistryCredentials,
+  InfrafileAskKind,
+  InfrafileAskSpec,
   RunInImageRequest,
 } from "./infrafile/types.js";
 
@@ -610,6 +612,112 @@ function runInImageRequest(args: Record<string, unknown>): RunInImageRequest {
   return request;
 }
 
+/**
+ * Marshal + validate an `ask(...)`. The same checks run whether the answer was
+ * typed by a human or supplied by `--set`, which is the point: the unattended
+ * path is exactly the one with nobody watching to notice `replicas=lots`.
+ */
+function askSpec(raw: unknown): InfrafileAskSpec {
+  const s = (raw ?? {}) as Record<string, unknown>;
+  const key = String(s["key"] ?? "").trim();
+  if (!key) {
+    throw new Error(
+      "ask(key, label, …): 'key' must be a non-empty string — it is what --set targets.",
+    );
+  }
+  const kind = String(s["kind"] ?? "text") as InfrafileAskKind;
+  if (!["text", "number", "date", "boolean", "password"].includes(kind)) {
+    throw new Error(`ask(${JSON.stringify(key)}): unknown kind ${JSON.stringify(kind)}.`);
+  }
+  const spec: InfrafileAskSpec = { key, label: String(s["label"] ?? key), kind };
+  if (typeof s["defaultValue"] === "string") spec.defaultValue = s["defaultValue"];
+  if (s["required"] === false) spec.required = false;
+  if (typeof s["min"] === "number" || typeof s["min"] === "string") spec.min = s["min"] as never;
+  if (typeof s["max"] === "number" || typeof s["max"] === "string") spec.max = s["max"] as never;
+  if (typeof s["pattern"] === "string") spec.pattern = s["pattern"];
+  return spec;
+}
+
+/** ISO `YYYY-MM-DD` that is also a real calendar date. */
+function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const d = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
+}
+
+/**
+ * Coerce and check one answer against its spec, returning the typed value.
+ * Every failure names the key, because the person reading it is often looking
+ * at CI output with no other context.
+ */
+function coerceAnswer(spec: InfrafileAskSpec, raw: MetricValue): MetricValue {
+  const where = `ask(${JSON.stringify(spec.key)})`;
+  const text = raw === null || raw === undefined ? "" : String(raw).trim();
+
+  if (!text) {
+    if (spec.defaultValue !== undefined && spec.defaultValue !== "") {
+      // Drop the default before recursing, or a default that fails validation
+      // would loop forever rather than reporting itself.
+      const { defaultValue, ...withoutDefault } = spec;
+      return coerceAnswer(withoutDefault, defaultValue);
+    }
+    if (spec.required === false) return spec.kind === "boolean" ? false : "";
+    throw new Error(`${where} requires an answer.`);
+  }
+
+  switch (spec.kind) {
+    case "number": {
+      const n = Number(text);
+      if (!Number.isFinite(n))
+        throw new Error(`${where}: ${JSON.stringify(text)} is not a number.`);
+      if (typeof spec.min === "number" && n < spec.min) {
+        throw new Error(`${where}: ${n} is below the minimum of ${spec.min}.`);
+      }
+      if (typeof spec.max === "number" && n > spec.max) {
+        throw new Error(`${where}: ${n} is above the maximum of ${spec.max}.`);
+      }
+      return n;
+    }
+    case "date": {
+      // Normalised to YYYY-MM-DD rather than a Date, so the value means the
+      // same thing on both sides of the JSON bridge and in a --set answer.
+      const day = text.length > 10 && isIsoDate(text.slice(0, 10)) ? text.slice(0, 10) : text;
+      if (!isIsoDate(day)) {
+        throw new Error(`${where}: ${JSON.stringify(text)} is not a date (expected YYYY-MM-DD).`);
+      }
+      if (typeof spec.min === "string" && day < spec.min) {
+        throw new Error(`${where}: ${day} is before ${spec.min}.`);
+      }
+      if (typeof spec.max === "string" && day > spec.max) {
+        throw new Error(`${where}: ${day} is after ${spec.max}.`);
+      }
+      return day;
+    }
+    case "boolean": {
+      const yes = ["true", "yes", "y", "1", "on"];
+      const no = ["false", "no", "n", "0", "off"];
+      const lower = text.toLowerCase();
+      if (yes.includes(lower)) return true;
+      if (no.includes(lower)) return false;
+      throw new Error(`${where}: ${JSON.stringify(text)} is not a yes/no answer.`);
+    }
+    default: {
+      if (spec.pattern) {
+        let re: RegExp;
+        try {
+          re = new RegExp(spec.pattern);
+        } catch {
+          throw new Error(`${where}: 'pattern' is not a valid regular expression.`);
+        }
+        if (!re.test(text)) {
+          throw new Error(`${where}: ${JSON.stringify(text)} does not match ${spec.pattern}.`);
+        }
+      }
+      return text;
+    }
+  }
+}
+
 const MAX_PAGE_MESSAGE = 1000;
 
 /**
@@ -1103,6 +1211,26 @@ export async function dispatch(
         kind: "select",
         options,
       });
+    }
+
+    case "infrafile.ask": {
+      const spec = askSpec(args["spec"]);
+      // A pre-supplied answer is validated by exactly the same code a typed one
+      // is — the whole point of doing this host-side.
+      const preset = await host.infrafileAnswer?.(spec.key);
+      if (preset !== undefined && preset !== null) return coerceAnswer(spec, preset);
+      if (!ctx.interactive) {
+        throw new WorkflowCapabilityError(
+          `ask(${JSON.stringify(spec.key)}, …) has no answer and this run is not interactive. ` +
+            `Pass --set ${spec.key}=<value>.`,
+        );
+      }
+      const answered = await host.prompt({
+        message: spec.label,
+        kind: spec.kind === "date" ? "date" : spec.kind,
+        ...(spec.defaultValue !== undefined ? { defaultValue: spec.defaultValue } : {}),
+      });
+      return coerceAnswer(spec, answered);
     }
 
     case "infrafile.build": {

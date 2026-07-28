@@ -840,3 +840,129 @@ describe("destroy (preview teardown)", () => {
     expect(result.notes).toEqual(["pr-42 on feature/thing"]);
   });
 });
+
+describe("ask() — free-form questions", () => {
+  const askPlan = (body: string) => `
+    defineInfra({
+      envs: ["staging"],
+      async plan({ ask }) { ${body} },
+      dockerfile: () => "FROM node:22",
+      async deploy() {},
+    });
+  `;
+
+  it("returns each kind already coerced to its type", async () => {
+    const host = hostFor({
+      answers: { name: "api", replicas: "3", when: "2026-08-01", confirm: "yes" },
+    });
+    const result = await run(
+      askPlan(`return {
+        name: await ask("name", "Service"),
+        replicas: await ask("replicas", "Replicas", { kind: "number" }),
+        when: await ask("when", "Date", { kind: "date" }),
+        confirm: await ask("confirm", "Ship?", { kind: "boolean" }),
+      };`),
+      host,
+    );
+    expect(result.error).toBeUndefined();
+    // Types, not strings — a number is a number and a boolean is a boolean.
+    expect(result.plan).toEqual({ name: "api", replicas: 3, when: "2026-08-01", confirm: true });
+  });
+
+  it("rejects a --set answer that is not a number", async () => {
+    // The unattended path is exactly the one with nobody watching, so it has to
+    // fail as loudly as a typed answer would.
+    const result = await run(
+      askPlan(`return { n: await ask("replicas", "Replicas", { kind: "number" }) };`),
+      hostFor({ answers: { replicas: "lots" } }),
+    );
+    expect(result.status).toBe("failure");
+    expect(result.error?.message).toContain('"lots" is not a number');
+  });
+
+  it("enforces numeric bounds", async () => {
+    const result = await run(
+      askPlan(
+        `return { n: await ask("replicas", "Replicas", { kind: "number", min: 1, max: 5 }) };`,
+      ),
+      hostFor({ answers: { replicas: "9" } }),
+    );
+    expect(result.error?.message).toContain("above the maximum of 5");
+  });
+
+  it("rejects a date that is not a real calendar day", async () => {
+    const result = await run(
+      askPlan(`return { d: await ask("when", "When", { kind: "date" }) };`),
+      hostFor({ answers: { when: "2026-02-30" } }),
+    );
+    expect(result.error?.message).toContain("is not a date");
+  });
+
+  it("accepts the usual spellings of yes and no", async () => {
+    for (const [given, expected] of [
+      ["y", true],
+      ["off", false],
+      ["TRUE", true],
+    ] as const) {
+      const r = await run(
+        askPlan(`return { b: await ask("b", "B", { kind: "boolean" }) };`),
+        hostFor({ answers: { b: given } }),
+      );
+      expect((r.plan as { b: boolean }).b).toBe(expected);
+    }
+  });
+
+  it("enforces a pattern on text", async () => {
+    const result = await run(
+      askPlan(`return { v: await ask("tag", "Tag", { pattern: "^v[0-9]+" }) };`),
+      hostFor({ answers: { tag: "nope" } }),
+    );
+    expect(result.error?.message).toContain("does not match");
+  });
+
+  it("falls back to the default when the answer is blank", async () => {
+    const result = await run(
+      askPlan(`return { n: await ask("replicas", "Replicas", { kind: "number", default: 2 }) };`),
+      hostFor({ answers: { replicas: "" } }),
+    );
+    expect(result.plan).toEqual({ n: 2 });
+  });
+
+  it("requires an answer unless told otherwise", async () => {
+    const required = await run(
+      askPlan(`return { v: await ask("v", "V") };`),
+      hostFor({ answers: { v: "" } }),
+    );
+    expect(required.error?.message).toContain("requires an answer");
+
+    const optional = await run(
+      askPlan(`return { v: await ask("v", "V", { required: false }) };`),
+      hostFor({ answers: { v: "" } }),
+    );
+    expect(optional.plan).toEqual({ v: "" });
+  });
+
+  it("names the key when a non-interactive run has no answer", async () => {
+    const result = await run(askPlan(`return { v: await ask("release", "Release") };`), hostFor());
+    expect(result.status).toBe("failure");
+    expect(result.error?.message).toContain("--set release=");
+  });
+
+  it("prompts with the right input kind when interactive", async () => {
+    const seen: { kind?: string }[] = [];
+    const host = hostFor({
+      prompt: (spec) => {
+        seen.push(spec as never);
+        return "2026-12-25";
+      },
+    });
+    const result = await run(
+      askPlan(`return { d: await ask("when", "Deploy on", { kind: "date" }) };`),
+      host,
+      { interactive: true },
+    );
+    expect(result.error).toBeUndefined();
+    expect(seen[0]?.kind).toBe("date");
+    expect(result.plan).toEqual({ d: "2026-12-25" });
+  });
+});

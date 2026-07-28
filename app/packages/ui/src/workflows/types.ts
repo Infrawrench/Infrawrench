@@ -18,7 +18,7 @@ export type MetricValue = number | string | boolean | null;
 export interface PromptSpec {
   message: string;
   /** Input shape to render. Defaults to "text". `code` is a multiline editor. */
-  kind?: "text" | "password" | "number" | "boolean" | "select" | "code";
+  kind?: "text" | "password" | "number" | "date" | "boolean" | "select" | "code";
   /** Options for `kind: "select"`. */
   options?: { label: string; value: string }[];
   defaultValue?: string;
