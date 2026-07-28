@@ -715,6 +715,13 @@ export interface DetailViewSchema {
    * Pub/Sub & Cloud Tasks, Azure Service Bus & Event Hub, Kafka topics).
    */
   publishPanel?: PublishPanelCapability;
+  /**
+   * If present, the host renders a "Speech" tab that round-trips audio against
+   * the provider: type text and hear it back (TTS), and/or record from the
+   * microphone or upload a clip and read the transcript (STT). Backs onto
+   * `PluginClient.synthesizeSpeech` / `PluginClient.transcribeAudio`.
+   */
+  speechPanel?: SpeechPanelCapability;
 }
 
 /**
@@ -814,6 +821,159 @@ export interface PublishMessageResult {
   id?: string;
   /** One-line summary shown under the form on success. */
   summary?: string;
+}
+
+/**
+ * One entry in a Speech-tab dropdown — a voice, a model, or a language. The
+ * plugin fills these from whatever it already listed for the resource, so the
+ * user picks from real ids rather than typing them.
+ */
+export interface SpeechPanelOption {
+  /** Value handed back in the payload (voice id, model id, BCP-47 tag…). */
+  id: string;
+  /** Display text in the dropdown. */
+  label: string;
+  /** Optional second line — accent, gender, price tier, etc. */
+  description?: string;
+}
+
+/**
+ * A speech playground tab for resources that can synthesise or transcribe
+ * audio (ElevenLabs voices, Deepgram projects, OpenAI models, …).
+ *
+ * `modes` decides which halves render. A provider that does both gets one tab
+ * with two sections; a transcription-only provider gets just the recorder.
+ *
+ * Audio crosses the host boundary base64-encoded inside ordinary JSON rather
+ * than as a stream: a test clip is a sentence or two, and reusing the plain
+ * request/response path keeps this working identically over Electron IPC and
+ * the cloud HTTP API. `maxAudioBytes` is what stops that from becoming a
+ * problem — the host refuses a larger upload client-side, before encoding.
+ */
+export interface SpeechPanelCapability {
+  /** Which halves of the panel to render. At least one entry. */
+  modes: Array<"tts" | "stt">;
+  /** Label for the tab. Defaults to "Speech". */
+  tabLabel?: string;
+  /** One-line copy shown at the top of the pane (e.g. model + quota). */
+  subtitle?: string;
+  /** Help text shown above the controls. */
+  helpText?: string;
+  /** Disable both halves and render this message instead. */
+  disabledReason?: string;
+
+  // ---- Text-to-speech half ----
+  /** Voice dropdown. Omit when the resource *is* the voice. */
+  voices?: SpeechPanelOption[];
+  /** Initial voice selection; defaults to the first entry. */
+  defaultVoice?: string;
+  /** Label for the voice picker. Defaults to "Voice". */
+  voiceLabel?: string;
+  /** Pre-filled text in the synthesis box. */
+  defaultText?: string;
+  /** Character cap enforced client-side, mirroring the provider's own limit. */
+  maxCharacters?: number;
+  /** Submit label for the TTS half. Defaults to "Synthesize". */
+  synthesizeLabel?: string;
+
+  // ---- Speech-to-text half ----
+  /** Language dropdown for transcription. Omit for auto-detect-only providers. */
+  languages?: SpeechPanelOption[];
+  /** Initial language selection. Defaults to the first entry. */
+  defaultLanguage?: string;
+  /** Label for the language picker. Defaults to "Language". */
+  languageLabel?: string;
+  /**
+   * Values for the file picker's `accept` attribute — MIME types and/or
+   * extensions. Defaults to a broad audio list when omitted.
+   */
+  acceptedAudioTypes?: string[];
+  /**
+   * Largest clip the host will accept, in bytes. Defaults to 25 MB, which is
+   * the smallest limit among the providers we ship.
+   */
+  maxAudioBytes?: number;
+  /** Submit label for the STT half. Defaults to "Transcribe". */
+  transcribeLabel?: string;
+
+  // ---- Shared ----
+  /** Model dropdown, applied to whichever half is active. */
+  models?: SpeechPanelOption[];
+  /** Initial model selection; defaults to the first entry. */
+  defaultModel?: string;
+  /** Label for the model picker. Defaults to "Model". */
+  modelLabel?: string;
+}
+
+/** Payload sent to `PluginClient.synthesizeSpeech`. */
+export interface SynthesizeSpeechPayload {
+  /** Raw text the user typed. Never empty — the host validates first. */
+  text: string;
+  /** Selected `voices` entry, when the capability declared any. */
+  voiceId?: string;
+  /** Selected `models` entry, when the capability declared any. */
+  modelId?: string;
+}
+
+/** Result of a successful synthesis — the host plays this back inline. */
+export interface SynthesizeSpeechResult {
+  /** Base64-encoded audio payload, no data: prefix. */
+  audioBase64: string;
+  /**
+   * MIME type of `audioBase64`, e.g. "audio/mpeg". Must be something a browser
+   * `<audio>` element can play — prefer mp3 when the provider offers a choice.
+   */
+  mimeType: string;
+  /** Suggested download filename, extension included. */
+  fileName?: string;
+  /** One-line summary shown under the player (characters billed, latency…). */
+  summary?: string;
+  /** Characters the provider counted against quota, when it reports them. */
+  characters?: number;
+  /** Provider request id, useful when the user files a support ticket. */
+  requestId?: string;
+}
+
+/** One timed word or segment from a transcript. */
+export interface TranscriptWord {
+  text: string;
+  /** Seconds from the start of the clip. */
+  start?: number;
+  end?: number;
+  /** Diarisation label, when the provider returns one. */
+  speaker?: string;
+}
+
+/** Payload sent to `PluginClient.transcribeAudio`. */
+export interface TranscribeAudioPayload {
+  /** Base64-encoded audio, no data: prefix. */
+  audioBase64: string;
+  /** MIME type of the clip — recorded or from the picked file. */
+  mimeType: string;
+  /** Original filename when the clip came from a file picker. */
+  fileName?: string;
+  /** Selected `models` entry, when the capability declared any. */
+  modelId?: string;
+  /** Selected `languages` entry, when the capability declared any. */
+  language?: string;
+}
+
+/** Result of a successful transcription. */
+export interface TranscribeAudioResult {
+  /** The full transcript. May be empty for silent audio. */
+  text: string;
+  /** One-line summary shown under the transcript (duration, cost, model…). */
+  summary?: string;
+  /** Detected language, when the provider reports one. */
+  language?: string;
+  /** Clip length in seconds, when the provider reports it. */
+  durationSeconds?: number;
+  /** Overall confidence in 0..1, when the provider reports it. */
+  confidence?: number;
+  /** Word/segment timings, rendered as an expandable table under the text. */
+  words?: TranscriptWord[];
+  /** Provider request/job id. */
+  requestId?: string;
 }
 
 /** A single chat turn sent to or received from the plugin. */

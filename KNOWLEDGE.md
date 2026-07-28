@@ -821,6 +821,21 @@ The desktop → cloud bridge for publish isn't wired yet (no Tauri command). Sam
 
 ---
 
+## Speech capability (cross-plugin)
+
+`@infrawrench/plugin-base` exposes a `speechPanel?: SpeechPanelCapability` field on `DetailViewSchema` plus `synthesizeSpeech?` / `transcribeAudio?` methods on `PluginClient`. It is the publish capability's shape applied to audio: one-shot request/response, no streaming.
+
+- `modes: Array<"tts" | "stt">` decides which halves of the tab render. A provider that does both (OpenAI, ElevenLabs, Deepgram, Cartesia, Groq) gets one Speech tab with two sections; a transcription-only provider gets just the recorder. The host additionally requires the matching handler to be wired, so a host that only implements one direction degrades to one half rather than showing a dead button.
+- The `SpeechPanel` React component (`@infrawrench/ui`) owns the whole test surface: voice/model/language dropdowns fed from `SpeechPanelOption[]` the plugin filled from real listed ids, a character counter enforcing `maxCharacters`, an `<audio>` player plus download link for synthesised clips, and — for STT — **microphone capture via `MediaRecorder`** alongside a file picker. When `MediaRecorder` is missing the record button is replaced by copy pointing at the upload path, so the panel still works.
+- **Audio crosses the host boundary base64-encoded inside ordinary JSON**, not as a stream. A test clip is a sentence or two, and reusing the plain request/response path means the same code works over Electron IPC and the cloud HTTP API with no new transport. `maxAudioBytes` (default 25 MB) is what keeps that honest — the panel refuses a larger clip client-side, before encoding.
+- **This is why `infra/k8s/web-ingress.yaml` sets `proxy-body-size: 36m`.** Base64 inflates by 4/3, so a clip at the providers' own 25 MB ceiling arrives as ~33.3 MB. At the previous 25m every large upload would have 413'd with nothing in the app logs to explain it.
+- Recorder MIME types differ per browser (`audio/webm;codecs=opus` on Chromium, `audio/mp4` on Safari). The panel forwards `MediaRecorder.mimeType` verbatim as `payload.mimeType`; **plugins must not assume wav/mp3** — pass the type through to the provider, which is why every STT plugin sends the blob as multipart with its real content type rather than transcoding.
+- Web host: `POST /api/org/:orgId/resources/synthesize-speech` and `.../transcribe-audio`, both single JSON round-trips returning `{ result }`, bubbling plugin errors as a 400 `{ error }`.
+- Desktop host: forwards to the in-process plugin client. Cloud-synced accounts aren't bridged (no `cloud_synthesize_speech` / `cloud_transcribe_audio` command) — same constraint and same wording as chat and publish.
+- Not exposed to the workflow runtime: `workflow-runtime/capabilities.ts` deliberately has no `speech` flag. The panel is an interactive credential/voice smoke test, not something a headless workflow step needs.
+
+---
+
 ## CORS in Electron
 
 Electron's renderer runs from `file://` (or `http://localhost:5173` in dev). External APIs (GCP, DO) block cross-origin requests.

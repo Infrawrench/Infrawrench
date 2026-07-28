@@ -211,6 +211,93 @@ export function registerActionRoutes(app: Hono): void {
     }
   });
 
+  /**
+   * POST /api/resources/synthesize-speech — render one clip of text through a
+   * TTS provider (ElevenLabs, Cartesia, OpenAI, Deepgram Aura, …). The
+   * browser-side SpeechPanel posts the text plus the chosen voice/model; the
+   * response carries base64 audio the panel plays inline.
+   */
+  app.post("/synthesize-speech", async (c) => {
+    requirePermission(c, "resources:execute");
+    const organizationId = c.get("organizationId");
+    const input = await c.req.json<{
+      pluginId: string;
+      accountId: string;
+      resourceTypeId: string;
+      resourceId: string;
+      payload: { text: string; voiceId?: string; modelId?: string };
+      parentResourceId?: string;
+    }>();
+    const ctx = await getClientForResource(
+      input.pluginId,
+      input.accountId,
+      organizationId,
+      input.parentResourceId,
+    );
+    if (!ctx) return c.json({ error: "Account not found" }, 404);
+    if (!ctx.client.synthesizeSpeech) {
+      return c.json({ error: "Plugin does not support speech synthesis" }, 400);
+    }
+    try {
+      const result = await ctx.client.synthesizeSpeech(
+        input.resourceTypeId,
+        input.resourceId,
+        input.accountId,
+        input.payload,
+      );
+      return c.json({ result });
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : "Synthesis failed" }, 400);
+    }
+  });
+
+  /**
+   * POST /api/resources/transcribe-audio — transcribe one clip through an STT
+   * provider (Deepgram, AssemblyAI, Whisper, …). The clip arrives base64 in
+   * the JSON body; `SpeechPanelCapability.maxAudioBytes` is what keeps that
+   * body within the server's request limit, enforced browser-side before the
+   * encode.
+   */
+  app.post("/transcribe-audio", async (c) => {
+    requirePermission(c, "resources:execute");
+    const organizationId = c.get("organizationId");
+    const input = await c.req.json<{
+      pluginId: string;
+      accountId: string;
+      resourceTypeId: string;
+      resourceId: string;
+      payload: {
+        audioBase64: string;
+        mimeType: string;
+        fileName?: string;
+        modelId?: string;
+        language?: string;
+      };
+      parentResourceId?: string;
+    }>();
+    const ctx = await getClientForResource(
+      input.pluginId,
+      input.accountId,
+      organizationId,
+      input.parentResourceId,
+    );
+    if (!ctx) return c.json({ error: "Account not found" }, 404);
+    if (!ctx.client.transcribeAudio) {
+      return c.json({ error: "Plugin does not support transcription" }, 400);
+    }
+    try {
+      const result = await ctx.client.transcribeAudio(
+        input.resourceTypeId,
+        input.resourceId,
+        input.accountId,
+        input.payload,
+      );
+      return c.json({ result });
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : "Transcription failed" }, 400);
+    }
+  });
+
   /** POST /api/resources/attach — attach a resource onto a same-account target (e.g. disk → VM). */
   app.post("/attach", async (c) => {
     requirePermission(c, "resources:write");

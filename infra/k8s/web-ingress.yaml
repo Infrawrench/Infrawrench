@@ -8,7 +8,11 @@ metadata:
     # for hours — don't let nginx reap them at its 60s default.
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-    nginx.ingress.kubernetes.io/proxy-body-size: 25m
+    # 25m of audio reaches /resources/transcribe-audio base64-encoded inside a
+    # JSON body, and base64 inflates by 4/3 — a clip at the providers' own
+    # 25 MB ceiling arrives as ~33.3 MB. 36m covers that plus the envelope;
+    # anything smaller silently 413s the largest uploads the UI offers.
+    nginx.ingress.kubernetes.io/proxy-body-size: 36m
     # The sealed WorkOS session refresh sets a multi-KB Set-Cookie; nginx's
     # default 4k proxy buffer rejects those responses with a 502
     # ("upstream sent too big header").

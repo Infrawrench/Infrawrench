@@ -39,6 +39,8 @@ import type {
   QueryCostEstimate,
   SecretVersion,
   SecretVersionMutation,
+  SynthesizeSpeechResult,
+  TranscribeAudioResult,
 } from "@infrawrench/plugin-base";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
@@ -703,6 +705,48 @@ export function ResourceDetailClient({
     [orgId, pluginId, accountId, resourceTypeId, resourceId, parentResourceId],
   );
 
+  const handleSynthesizeSpeech = useCallback(
+    async (payload: { text: string; voiceId?: string; modelId?: string }) => {
+      const res = await apiPost<{ result: SynthesizeSpeechResult }>(
+        `/api/org/${orgId}/resources/synthesize-speech`,
+        {
+          pluginId,
+          accountId,
+          resourceTypeId,
+          resourceId,
+          payload,
+          ...(parentResourceId ? { parentResourceId } : {}),
+        },
+      );
+      return res.result;
+    },
+    [orgId, pluginId, accountId, resourceTypeId, resourceId, parentResourceId],
+  );
+
+  const handleTranscribeAudio = useCallback(
+    async (payload: {
+      audioBase64: string;
+      mimeType: string;
+      fileName?: string;
+      modelId?: string;
+      language?: string;
+    }) => {
+      const res = await apiPost<{ result: TranscribeAudioResult }>(
+        `/api/org/${orgId}/resources/transcribe-audio`,
+        {
+          pluginId,
+          accountId,
+          resourceTypeId,
+          resourceId,
+          payload,
+          ...(parentResourceId ? { parentResourceId } : {}),
+        },
+      );
+      return res.result;
+    },
+    [orgId, pluginId, accountId, resourceTypeId, resourceId, parentResourceId],
+  );
+
   const handleListSecretVersions = useCallback(async (): Promise<SecretVersion[]> => {
     const r = await apiGet<{ versions: SecretVersion[] }>(
       `/api/org/${orgId}/resources/${pluginId}/${resourceTypeId}/secret-versions?resourceId=${encodeURIComponent(resourceId)}&accountId=${accountId}${parentResourceId ? `&parentResourceId=${encodeURIComponent(parentResourceId)}` : ""}`,
@@ -1172,6 +1216,12 @@ export function ResourceDetailClient({
               {...(detailSchema.logs ? { onGetLogs: handleGetLogs } : {})}
               {...(detailSchema.chatPanel ? { onChatStream: handleChatStream } : {})}
               {...(detailSchema.publishPanel ? { onPublishMessage: handlePublishMessage } : {})}
+              {...(detailSchema.speechPanel?.modes.includes("tts")
+                ? { onSynthesizeSpeech: handleSynthesizeSpeech }
+                : {})}
+              {...(detailSchema.speechPanel?.modes.includes("stt")
+                ? { onTranscribeAudio: handleTranscribeAudio }
+                : {})}
               {...(hasArtifactRegistry ? { onListArtifacts: handleListArtifacts } : {})}
               {...(hasSecretVersions
                 ? {

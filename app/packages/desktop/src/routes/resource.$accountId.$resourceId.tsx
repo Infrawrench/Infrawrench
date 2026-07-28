@@ -646,6 +646,8 @@ export function ResourcePanel({
     handleGetDescribe,
     handleChatStream,
     handlePublishMessage,
+    handleSynthesizeSpeech,
+    handleTranscribeAudio,
     handleGetLogs,
     handleListArtifacts,
     handleListSecretVersions,
@@ -1121,6 +1123,8 @@ export function ResourcePanel({
               onNoSqlCommand={handleNoSqlCommand}
               onChatStream={handleChatStream}
               onPublishMessage={handlePublishMessage}
+              onSynthesizeSpeech={handleSynthesizeSpeech}
+              onTranscribeAudio={handleTranscribeAudio}
               onChildCreate={(rt) => setCreateChildTarget(rt)}
               onChildDelete={handleChildDelete}
               onChildEdit={handleChildEdit}

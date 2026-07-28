@@ -187,6 +187,7 @@ export { DescribeView } from "./components/detail/DescribeView.js";
 export { LogsView } from "./components/detail/LogsView.js";
 export { ChatPanel } from "./components/detail/ChatPanel.js";
 export { PublishPanel } from "./components/detail/PublishPanel.js";
+export { SpeechPanel } from "./components/detail/SpeechPanel.js";
 export { ArtifactRegistryView } from "./components/detail/ArtifactRegistryView.js";
 export type {
   ArtifactListParams,

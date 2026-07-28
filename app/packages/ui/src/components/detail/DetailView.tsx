@@ -14,6 +14,10 @@ import type {
   QueryCostEstimate,
   SecretVersion,
   SecretVersionMutation,
+  SynthesizeSpeechPayload,
+  SynthesizeSpeechResult,
+  TranscribeAudioPayload,
+  TranscribeAudioResult,
 } from "@infrawrench/plugin-base";
 import { MetricChart } from "../charts/MetricChart.js";
 import { SchemaRenderer, StatusDotNodeRenderer } from "../renderer/SchemaRenderer.js";
@@ -27,6 +31,7 @@ import { DescribeView } from "./DescribeView.js";
 import { LogsView } from "./LogsView.js";
 import { ChatPanel } from "./ChatPanel.js";
 import { PublishPanel } from "./PublishPanel.js";
+import { SpeechPanel } from "./SpeechPanel.js";
 import { SecretVersionsView } from "./SecretVersionsView.js";
 import {
   ArtifactRegistryView,
@@ -151,6 +156,17 @@ interface DetailViewProps {
    * inline.
    */
   onPublishMessage?: (payload: PublishMessagePayload) => Promise<PublishMessageResult>;
+  /**
+   * When `schema.speechPanel` declares "tts", the host wires this to the
+   * plugin's `synthesizeSpeech`. The result's audio is base64 in ordinary
+   * JSON — see SpeechPanelCapability for why it isn't streamed.
+   */
+  onSynthesizeSpeech?: (payload: SynthesizeSpeechPayload) => Promise<SynthesizeSpeechResult>;
+  /**
+   * When `schema.speechPanel` declares "stt", the host wires this to the
+   * plugin's `transcribeAudio`.
+   */
+  onTranscribeAudio?: (payload: TranscribeAudioPayload) => Promise<TranscribeAudioResult>;
 }
 
 type Tab =
@@ -169,6 +185,7 @@ type Tab =
   | "nosql-browser"
   | "chat"
   | "publish"
+  | "speech"
   | `peer:${number}`
   | `custom:${string}`;
 
@@ -213,6 +230,8 @@ export function DetailView({
   renderStorageBrowser,
   onChatStream,
   onPublishMessage,
+  onSynthesizeSpeech,
+  onTranscribeAudio,
 }: DetailViewProps) {
   const { rerollingField, closeReroll } = useUIStore();
   const hasSqlEditor = !!schema.sqlEditor && !!onRunQuery;
@@ -240,6 +259,14 @@ export function DetailView({
   const hasNoSqlBrowser = !!schema.noSqlBrowser && !!renderNoSqlBrowser;
   const hasChatPanel = !!schema.chatPanel && !!onChatStream;
   const hasPublishPanel = !!schema.publishPanel && !!onPublishMessage;
+  // A speech panel needs the handler for at least one of its declared modes —
+  // a plugin that only synthesizes still gets a tab on a host that hasn't
+  // wired transcription, it just renders the one half.
+  const speechModes = schema.speechPanel?.modes ?? [];
+  const hasSpeechPanel =
+    !!schema.speechPanel &&
+    ((speechModes.includes("tts") && !!onSynthesizeSpeech) ||
+      (speechModes.includes("stt") && !!onTranscribeAudio));
   const customTabs = schema.customTabs ?? [];
   const hasTabs =
     hasStorageBrowser ||
@@ -256,6 +283,7 @@ export function DetailView({
     hasNoSqlBrowser ||
     hasChatPanel ||
     hasPublishPanel ||
+    hasSpeechPanel ||
     customTabs.length > 0 ||
     peerPanes.length > 0;
   const [activeTabState, setActiveTab] = useState<Tab>("overview");
@@ -280,6 +308,7 @@ export function DetailView({
   if (hasNoSqlBrowser) tabKeys.push("nosql-browser");
   if (hasChatPanel) tabKeys.push("chat");
   if (hasPublishPanel) tabKeys.push("publish");
+  if (hasSpeechPanel) tabKeys.push("speech");
   for (const tab of customTabs) tabKeys.push(`custom:${tab.id}` as Tab);
   for (let i = 0; i < peerPanes.length; i++) tabKeys.push(`peer:${i}` as Tab);
 
@@ -520,6 +549,13 @@ export function DetailView({
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("publish")}>
                     {schema.publishPanel?.tabLabel ?? "Publish"}
+                  </TabButton>
+                );
+              }
+              if (key === "speech") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("speech")}>
+                    {schema.speechPanel?.tabLabel ?? "Speech"}
                   </TabButton>
                 );
               }
@@ -803,6 +839,21 @@ export function DetailView({
           className="flex-1 flex flex-col overflow-hidden"
         >
           <PublishPanel capability={schema.publishPanel!} onPublish={onPublishMessage!} />
+        </div>
+      )}
+
+      {hasSpeechPanel && activeTab === "speech" && (
+        <div
+          role="tabpanel"
+          id={panelIdFor("speech")}
+          aria-labelledby={tabIdFor("speech")}
+          className="flex-1 flex flex-col overflow-hidden"
+        >
+          <SpeechPanel
+            capability={schema.speechPanel!}
+            {...(onSynthesizeSpeech ? { onSynthesize: onSynthesizeSpeech } : {})}
+            {...(onTranscribeAudio ? { onTranscribe: onTranscribeAudio } : {})}
+          />
         </div>
       )}
 

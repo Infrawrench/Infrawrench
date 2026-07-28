@@ -11,6 +11,10 @@ import type {
   QueryCostEstimate,
   ResourceInstance,
   SecretVersionMutation,
+  SynthesizeSpeechPayload,
+  SynthesizeSpeechResult,
+  TranscribeAudioPayload,
+  TranscribeAudioResult,
 } from "@infrawrench/plugin-base";
 import {
   queryCostEstimateSchema,
@@ -360,6 +364,43 @@ export function useResourceOperations(deps: ResourceOperationsDeps) {
     [accountId, decodedResourceId, resource],
   );
 
+  // Speech tab. Same cloud-account constraint as chat and publish: there is no
+  // `cloud_speech_*` bridge command, so a cloud-synced account gets a clear
+  // error instead of a silent no-op.
+  const handleSynthesizeSpeech = useCallback(
+    async (payload: SynthesizeSpeechPayload): Promise<SynthesizeSpeechResult> => {
+      const cloud = cloudCtxRef.current;
+      const res = resource;
+      if (!res) throw new Error("Resource not loaded");
+      if (cloud) {
+        throw new Error(
+          "Speech synthesis over a cloud-synced account isn't supported yet from the desktop app. Run this against a locally-added account.",
+        );
+      }
+      const client = clientRef.current;
+      if (!client?.synthesizeSpeech) throw new Error("Plugin does not support speech synthesis.");
+      return client.synthesizeSpeech(res.resourceTypeId, decodedResourceId, accountId, payload);
+    },
+    [accountId, decodedResourceId, resource],
+  );
+
+  const handleTranscribeAudio = useCallback(
+    async (payload: TranscribeAudioPayload): Promise<TranscribeAudioResult> => {
+      const cloud = cloudCtxRef.current;
+      const res = resource;
+      if (!res) throw new Error("Resource not loaded");
+      if (cloud) {
+        throw new Error(
+          "Transcription over a cloud-synced account isn't supported yet from the desktop app. Run this against a locally-added account.",
+        );
+      }
+      const client = clientRef.current;
+      if (!client?.transcribeAudio) throw new Error("Plugin does not support transcription.");
+      return client.transcribeAudio(res.resourceTypeId, decodedResourceId, accountId, payload);
+    },
+    [accountId, decodedResourceId, resource],
+  );
+
   const handleGetLogs = useCallback(
     async (params: LogsFetchParams): Promise<LogsFetchResult> => {
       const cloud = cloudCtxRef.current;
@@ -527,6 +568,8 @@ export function useResourceOperations(deps: ResourceOperationsDeps) {
     handleGetDescribe,
     handleChatStream,
     handlePublishMessage,
+    handleSynthesizeSpeech,
+    handleTranscribeAudio,
     handleGetLogs,
     handleListArtifacts,
     handleListSecretVersions,

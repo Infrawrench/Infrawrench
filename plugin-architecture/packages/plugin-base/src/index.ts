@@ -119,6 +119,13 @@ export type {
   PublishPanelField,
   PublishMessagePayload,
   PublishMessageResult,
+  SpeechPanelCapability,
+  SpeechPanelOption,
+  SynthesizeSpeechPayload,
+  SynthesizeSpeechResult,
+  TranscribeAudioPayload,
+  TranscribeAudioResult,
+  TranscriptWord,
 } from "./schema.js";
 
 export type {

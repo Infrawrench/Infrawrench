@@ -15,6 +15,10 @@ import type {
   ChatStreamEvent,
   PublishMessagePayload,
   PublishMessageResult,
+  SynthesizeSpeechPayload,
+  SynthesizeSpeechResult,
+  TranscribeAudioPayload,
+  TranscribeAudioResult,
 } from "@infrawrench/plugin-base";
 import {
   DetailView,
@@ -73,6 +77,8 @@ interface DetailViewContainerProps {
     options?: { model?: string },
   ) => AsyncIterable<ChatStreamEvent>;
   onPublishMessage: (payload: PublishMessagePayload) => Promise<PublishMessageResult>;
+  onSynthesizeSpeech: (payload: SynthesizeSpeechPayload) => Promise<SynthesizeSpeechResult>;
+  onTranscribeAudio: (payload: TranscribeAudioPayload) => Promise<TranscribeAudioResult>;
   onListKvKeys?: (params: KvBrowserListParams) => Promise<KvListResult>;
   onGetKvValue?: (key: string) => Promise<string>;
   onPutKvValue?: (key: string, value: string) => Promise<void>;
@@ -118,6 +124,8 @@ export function DetailViewContainer({
   onNoSqlCommand,
   onChatStream,
   onPublishMessage,
+  onSynthesizeSpeech,
+  onTranscribeAudio,
   onListKvKeys,
   onGetKvValue,
   onPutKvValue,
@@ -211,6 +219,8 @@ export function DetailViewContainer({
           : {})}
         {...(schema.chatPanel ? { onChatStream } : {})}
         {...(schema.publishPanel ? { onPublishMessage } : {})}
+        {...(schema.speechPanel?.modes.includes("tts") ? { onSynthesizeSpeech } : {})}
+        {...(schema.speechPanel?.modes.includes("stt") ? { onTranscribeAudio } : {})}
         {...(schema.kvBrowser && onListKvKeys && onGetKvValue && onPutKvValue && onDeleteKvKey
           ? {
               onListKvKeys,

@@ -547,6 +547,33 @@ export interface PluginClient {
     payload: PublishMessagePayload,
   ): Promise<PublishMessageResult>;
   /**
+   * Synthesise one clip of speech for the Speech tab's TTS half. Called when
+   * the user clicks Synthesize. Return audio the browser can play directly —
+   * mp3 wherever the provider offers a choice of container.
+   *
+   * Only called when `renderDetail` set `speechPanel.modes` to include "tts".
+   */
+  synthesizeSpeech?(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    payload: SynthesizeSpeechPayload,
+  ): Promise<SynthesizeSpeechResult>;
+  /**
+   * Transcribe one clip for the Speech tab's STT half. The clip arrives
+   * base64-encoded from either the microphone recorder or a file picker; the
+   * plugin decodes it and posts it however the provider expects (multipart,
+   * raw bytes, or a pre-signed upload followed by a poll).
+   *
+   * Only called when `renderDetail` set `speechPanel.modes` to include "stt".
+   */
+  transcribeAudio?(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    payload: TranscribeAudioPayload,
+  ): Promise<TranscribeAudioResult>;
+  /**
    * Attach a resource of `sourceTypeId` onto a resource of `targetTypeId` — e.g. a
    * persistent disk onto a VM. Only called when both resources live in the same
    * account and the source type declares the target in its `attachTargets`.
@@ -795,6 +822,10 @@ import type {
   SidebarItemSchema,
   SqlTableMeta,
   StorageObject,
+  SynthesizeSpeechPayload,
+  SynthesizeSpeechResult,
+  TranscribeAudioPayload,
+  TranscribeAudioResult,
 } from "./schema.js";
 import type {
   CreateResourceConfig,
