@@ -5,12 +5,14 @@ import { KvBrowserScreen } from "@/features/tools/KvBrowserScreen";
 import { LogsScreen } from "@/features/tools/LogsScreen";
 import { MongoBrowserScreen } from "@/features/tools/MongoBrowserScreen";
 import { PeerPaneScreen } from "@/features/tools/PeerPaneScreen";
+import { SpeechScreen } from "@/features/tools/SpeechScreen";
 
 /**
  * Per-resource tools that need a full screen on a phone: logs, the KV console,
- * the Mongo document browser, the KV namespace browser and peer panes. Web
- * renders these as tabs and bottom panels inside the resource page; there's no
- * room for that here, so each is pushed as its own screen.
+ * the Mongo document browser, the KV namespace browser, the speech test
+ * surface and peer panes. Web renders these as tabs and bottom panels inside
+ * the resource page; there's no room for that here, so each is pushed as its
+ * own screen.
  *
  * Every parameter rides in the query string — resource ids contain characters
  * that any packed path segment would collide with.
@@ -76,6 +78,19 @@ export default function ToolRoute() {
           accountId={accountId}
           resourceTypeId={params.resourceTypeId}
           resourceId={params.resourceId}
+        />
+      );
+    case "speech":
+      if (!params.pluginId || !params.resourceTypeId || !params.resourceId) {
+        return <ErrorView message="Invalid speech link." />;
+      }
+      return (
+        <SpeechScreen
+          pluginId={params.pluginId}
+          resourceTypeId={params.resourceTypeId}
+          resourceId={params.resourceId}
+          accountId={accountId}
+          parentResourceId={params.parentResourceId}
         />
       );
     case "peer-pane":

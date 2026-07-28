@@ -193,6 +193,7 @@ export default function ResourceDetailScreen() {
   };
 
   const logs = data.detailSchema.logs;
+  const speech = data.detailSchema.speechPanel;
 
   // A pod's shell runs through its cluster, so exec is only offered when we
   // arrived with the parent in hand — same condition web uses.
@@ -263,6 +264,13 @@ export default function ResourceDetailScreen() {
               label="Keys"
               variant="secondary"
               onPress={() => router.push(toolHref("kv-browser"))}
+            />
+          )}
+          {speech && speech.modes.length > 0 && (
+            <Button
+              label={speech.tabLabel ?? "Speech"}
+              variant="secondary"
+              onPress={() => router.push(toolHref("speech"))}
             />
           )}
           {logs && (

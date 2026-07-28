@@ -158,6 +158,17 @@ export {
   kvConsoleProfile,
   type KvConsoleProfile,
 } from "./kv-console";
+export {
+  DEFAULT_MAX_AUDIO_BYTES,
+  DEFAULT_ACCEPTED_AUDIO_TYPES,
+  audioExtensionFor,
+  audioMimeForExtension,
+  formatAudioBytes,
+  speechTextError,
+  audioSizeError,
+  describeSynthesis,
+  describeTranscript,
+} from "./speech";
 export { evaluateShowWhen, buildDefaultFields, type ShowWhenRuleLike } from "./create-fields";
 export {
   MONGO_PAGE_SIZE,

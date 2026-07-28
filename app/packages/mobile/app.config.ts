@@ -78,6 +78,19 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         defaultChannel: "incidents",
       },
     ],
+    // The Speech screen records a test clip for transcription. The iOS usage
+    // string is not optional: without NSMicrophoneUsageDescription the OS kills
+    // the app the first time it touches the microphone, and the plugin is the
+    // only thing that writes it (plus RECORD_AUDIO on Android). Adding this
+    // module means a new dev-client/EAS build — it cannot be picked up over the
+    // air by an already-installed client.
+    [
+      "expo-audio",
+      {
+        microphonePermission:
+          "Allow Infrawrench to use the microphone so you can record a clip and transcribe it against your speech provider.",
+      },
+    ],
   ],
   experiments: {
     typedRoutes: false,

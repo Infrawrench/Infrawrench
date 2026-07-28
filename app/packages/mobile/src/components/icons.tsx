@@ -110,3 +110,49 @@ export function SwitchIcon(props: IconProps) {
     </Icon>
   );
 }
+
+/** Selected entry in a picker sheet. */
+export function CheckIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <Path d="m5 13 4 4L19 7" />
+    </Icon>
+  );
+}
+
+/* Transport controls for the Speech screen's audio players and recorder. */
+
+export function PlayIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <Path d="M8 5.5v13l11-6.5z" />
+    </Icon>
+  );
+}
+
+export function PauseIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <Path d="M9.5 5v14" />
+      <Path d="M14.5 5v14" />
+    </Icon>
+  );
+}
+
+export function StopIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <Rect x="6" y="6" width="12" height="12" rx="2" />
+    </Icon>
+  );
+}
+
+export function MicIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <Path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z" />
+      <Path d="M19 11v1a7 7 0 0 1-14 0v-1" />
+      <Path d="M12 19v3" />
+    </Icon>
+  );
+}

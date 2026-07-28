@@ -38,10 +38,18 @@ The transcript appears below, with the detected language, clip duration, and con
 
 <insert [The speech-to-text half after a recording, showing the transcript and the expanded word-timings table with speaker labels] here>
 
+## On the phone
+
+The [mobile app](./mobile-app.md) has the same test surface, pushed as its own screen instead of a tab — tap **Speech** on the resource page. Both halves are there: the voice, model and language pickers open as sheets, the character counter enforces the same limit, and synthesized clips play inline with a **Save** button that hands the file to the share sheet rather than downloading it.
+
+Speech to text records from the phone's microphone — iOS and Android ask for permission the first time — or takes a clip from the file picker. Everything else, including the word-timings table, reads the same as it does on web.
+
+<insert [The mobile Speech screen with the voice picker sheet open over the text box, and below it a synthesized clip with its play button and Save control] here>
+
 ## Things to watch
 
 - **It spends real quota.** Every synthesis and transcription is a billed API call against your own account, exactly as if you had made it yourself. There is no sandbox mode.
-- **Recording needs a secure context.** Browsers only grant microphone access over HTTPS (or on `localhost`). If the Record button is missing entirely, your browser doesn't support `MediaRecorder` — upload a clip instead.
+- **Recording needs a secure context.** Browsers only grant microphone access over HTTPS (or on `localhost`). If the Record button is missing entirely, your browser doesn't support `MediaRecorder` — upload a clip instead. On mobile, a denied microphone permission is fixed in the OS settings for the app; picking a clip works either way.
 - **Clip size is capped** at whatever the provider accepts, and the app enforces it before uploading. Long recordings are better sent through the provider's own async job API than through this panel.
 - **Job-based providers take longer.** Transcription services that queue work (AssemblyAI, Speechmatics, Rev.ai) are polled until the job finishes, so a long clip can sit on "Transcribing…" for a while before the text appears.
 - **On the desktop app this only works for locally-added accounts.** Accounts synced from the cloud aren't bridged for speech yet, and the panel says so rather than failing quietly.

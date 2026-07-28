@@ -7,20 +7,18 @@ import type {
   TranscribeAudioPayload,
   TranscribeAudioResult,
 } from "@infrawrench/plugin-base";
-
-/** Fallback cap when a plugin doesn't declare one — the smallest limit we ship against. */
-const DEFAULT_MAX_AUDIO_BYTES = 25 * 1024 * 1024;
-
-const DEFAULT_ACCEPTED_AUDIO_TYPES = [
-  "audio/*",
-  ".mp3",
-  ".wav",
-  ".m4a",
-  ".flac",
-  ".ogg",
-  ".webm",
-  ".mp4",
-];
+// The caps, the MIME→extension map and the wording of the validation messages
+// are shared with the mobile Speech screen, which renders none of this markup.
+import {
+  DEFAULT_ACCEPTED_AUDIO_TYPES,
+  DEFAULT_MAX_AUDIO_BYTES,
+  audioExtensionFor as extensionFor,
+  audioSizeError,
+  describeSynthesis,
+  describeTranscript,
+  formatAudioBytes as formatBytes,
+  speechTextError,
+} from "@infrawrench/client-core";
 
 interface Props {
   capability: SpeechPanelCapability;
@@ -144,12 +142,9 @@ function SynthesizeSection({ capability, model, onSynthesize }: SynthesizeSectio
 
   const run = useCallback(async () => {
     if (busy) return;
-    if (!text.trim()) {
-      setError("Enter some text to synthesize.");
-      return;
-    }
-    if (overLimit) {
-      setError(`Text is ${text.length} characters — the limit is ${maxCharacters}.`);
+    const invalid = speechTextError(text, maxCharacters);
+    if (invalid) {
+      setError(invalid);
       return;
     }
     setError(null);
@@ -168,9 +163,7 @@ function SynthesizeSection({ capability, model, onSynthesize }: SynthesizeSectio
           url,
           mimeType: result.mimeType,
           fileName: result.fileName ?? `speech${extensionFor(result.mimeType)}`,
-          summary:
-            result.summary ??
-            `${formatBytes(blob.size)}${result.characters != null ? ` · ${result.characters} characters billed` : ""}`,
+          summary: result.summary ?? describeSynthesis(blob.size, result.characters),
           text,
         };
       });
@@ -179,7 +172,7 @@ function SynthesizeSection({ capability, model, onSynthesize }: SynthesizeSectio
     } finally {
       setBusy(false);
     }
-  }, [busy, text, overLimit, maxCharacters, onSynthesize, voice, model]);
+  }, [busy, text, maxCharacters, onSynthesize, voice, model]);
 
   return (
     <section className="space-y-3">
@@ -360,10 +353,9 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
       // Reset so re-picking the same file fires change again.
       e.target.value = "";
       if (!file) return;
-      if (file.size > maxBytes) {
-        setError(
-          `${file.name} is ${formatBytes(file.size)} — the limit is ${formatBytes(maxBytes)}.`,
-        );
+      const tooBig = audioSizeError(file.size, maxBytes, file.name);
+      if (tooBig) {
+        setError(tooBig);
         return;
       }
       setError(null);
@@ -374,8 +366,9 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
 
   const run = useCallback(async () => {
     if (busy || !audio) return;
-    if (audio.blob.size > maxBytes) {
-      setError(`Clip is ${formatBytes(audio.blob.size)} — the limit is ${formatBytes(maxBytes)}.`);
+    const tooBig = audioSizeError(audio.blob.size, maxBytes);
+    if (tooBig) {
+      setError(tooBig);
       return;
     }
     setError(null);
@@ -615,14 +608,6 @@ function ErrorBanner({ message }: { message: string }) {
   );
 }
 
-function describeTranscript(result: TranscribeAudioResult): string {
-  const parts: string[] = [];
-  if (result.durationSeconds != null) parts.push(`${result.durationSeconds.toFixed(1)}s of audio`);
-  if (result.language) parts.push(result.language);
-  if (result.confidence != null) parts.push(`${Math.round(result.confidence * 100)}% confidence`);
-  return parts.join(" · ");
-}
-
 /** Decode base64 into a Blob without building a giant intermediate string. */
 function base64ToBlob(base64: string, mimeType: string): Blob {
   const binary = atob(base64);
@@ -647,40 +632,4 @@ function blobToBase64(blob: Blob): Promise<string> {
     };
     reader.readAsDataURL(blob);
   });
-}
-
-/** Map a MIME type to a file extension for downloads and provider filenames. */
-function extensionFor(mimeType: string): string {
-  const base = mimeType.split(";")[0]?.trim().toLowerCase() ?? "";
-  switch (base) {
-    case "audio/mpeg":
-    case "audio/mp3":
-      return ".mp3";
-    case "audio/wav":
-    case "audio/wave":
-    case "audio/x-wav":
-      return ".wav";
-    case "audio/ogg":
-    case "audio/opus":
-      return ".ogg";
-    case "audio/webm":
-      return ".webm";
-    case "audio/mp4":
-    case "audio/aac":
-    case "audio/x-m4a":
-      return ".m4a";
-    case "audio/flac":
-      return ".flac";
-    case "audio/l16":
-    case "audio/pcm":
-      return ".pcm";
-    default:
-      return ".audio";
-  }
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

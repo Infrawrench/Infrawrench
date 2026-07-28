@@ -32,6 +32,7 @@ You can switch organizations at any time from the org switcher; everything you s
 - **[SQL editor](./sql-editor.md)** — run a query against any resource with a SQL surface and page through the rows. Autocomplete stays on web and desktop; the queries themselves run the same way.
 - **[KV console](./kv-console.md) and document browser** — a Redis, Valkey, Memcached or Kafka console with per-driver command hints, and a MongoDB document browser with collections, a JSON filter, paging, and insert/edit/delete. Tap an echoed command to put it back in the input — there are no arrow keys to recall history with.
 - **Key-value namespaces** — for provider KV stores (Cloudflare Workers KV and friends), list keys with a prefix filter, reveal a value, write it back, or delete it.
+- **[Speech testing](./speech-testing.md)** — resources from a speech provider get a **Speech** screen: pick a voice and model, type something and play the clip back (or send it to the share sheet), and record from the phone's own microphone — or pick an audio file — to get the transcript and its word timings. iOS and Android ask for microphone permission the first time you record.
 - **Container actions** — start, stop, and restart a Docker container from its resource page.
 - **Integrations** — the peer panes a resource picks up from its plugin integrations; see below.
 - **Logs** — the same controls as the web Logs tab: container picker, tail length, previous-instance, follow, and copy.
