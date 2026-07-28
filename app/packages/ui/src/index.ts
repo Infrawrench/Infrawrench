@@ -82,7 +82,7 @@ export type {
   WorkflowTrigger,
 } from "./workflows/index.js";
 
-export { DeploymentsPanel } from "./deployments/index.js";
+export { DeploymentsPanel, DeployIcon } from "./deployments/index.js";
 export type {
   DeployEnvs,
   DeployRepo,

@@ -1,3 +1,4 @@
+export { DeployIcon } from "./DeployIcon.js";
 export { DeploymentsPanel, type DeploymentsPanelProps } from "./DeploymentsPanel.js";
 export {
   DEPLOY_STAGES,

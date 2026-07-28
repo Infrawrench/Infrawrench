@@ -13,6 +13,7 @@ import {
 } from "@infrawrench/ui";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
+import { DeployIcon } from "@infrawrench/ui";
 import { CHAT_CONVERSATIONS_CHANGED_EVENT, type ConversationSummary } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { chatTabTarget, navigateToWorkspaceTarget } from "@/lib/workspace-tabs";
@@ -437,64 +438,35 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
         </div>
 
         <div className="flex-1 overflow-y-auto py-2">
-          <div className="mb-2">
-            <div className="mx-2">
-              <button
-                type="button"
-                onClick={() =>
-                  void navigate({ to: "/org/$orgId/agents", params: { orgId: orgId! } })
-                }
-                className="group w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
-              >
-                <span className="opacity-60 flex-shrink-0 font-mono text-[11px]">&gt;_</span>
-                <span className="truncate">Agents</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="mb-2">
-            <div className="mx-2">
-              <button
-                type="button"
-                onClick={() =>
-                  void navigate({ to: "/org/$orgId/workflows", params: { orgId: orgId! } })
-                }
-                className="group w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
-              >
-                <WorkflowIcon className="opacity-50 flex-shrink-0" />
-                <span className="truncate">Workflows</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="mb-2">
-            <div className="mx-2">
-              <button
-                type="button"
-                onClick={() =>
-                  void navigate({ to: "/org/$orgId/deployments", params: { orgId: orgId! } })
-                }
-                className="group w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
-              >
-                <span className="opacity-60 flex-shrink-0 font-mono text-[11px]">^</span>
-                <span className="truncate">Deploy</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="mb-2">
-            <div className="mx-2">
-              <button
-                type="button"
-                onClick={() =>
-                  void navigate({ to: "/org/$orgId/costs", params: { orgId: orgId! } })
-                }
-                className="group w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
-              >
-                <CostsIcon className="opacity-50 flex-shrink-0" />
-                <span className="truncate">Costs</span>
-              </button>
-            </div>
+          {/* One 2×2 grid rather than four stacked rows: the icons are a mix
+              of text glyphs and SVGs with different natural widths, so stacked
+              rows never quite lined up. A fixed-width icon slot per tile is
+              what actually aligns the labels. */}
+          <div className="mx-2 mb-2 grid grid-cols-2 gap-1">
+            <SidebarNavTile
+              label="Agents"
+              onClick={() => void navigate({ to: "/org/$orgId/agents", params: { orgId: orgId! } })}
+              icon={<span className="font-mono text-[11px]">&gt;_</span>}
+            />
+            <SidebarNavTile
+              label="Workflows"
+              onClick={() =>
+                void navigate({ to: "/org/$orgId/workflows", params: { orgId: orgId! } })
+              }
+              icon={<WorkflowIcon />}
+            />
+            <SidebarNavTile
+              label="Deploy"
+              onClick={() =>
+                void navigate({ to: "/org/$orgId/deployments", params: { orgId: orgId! } })
+              }
+              icon={<DeployIcon />}
+            />
+            <SidebarNavTile
+              label="Costs"
+              onClick={() => void navigate({ to: "/org/$orgId/costs", params: { orgId: orgId! } })}
+              icon={<CostsIcon />}
+            />
           </div>
           {/* Dashboards section */}
           <div className="mb-2">
@@ -806,5 +778,29 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
         />
       )}
     </>
+  );
+}
+
+/** One tile in the sidebar's 2×2 nav grid. The `w-3.5` icon slot is the fix
+ *  for the old misalignment: every icon renders inside the same 14px box no
+ *  matter whether it is an SVG or a text glyph. */
+function SidebarNavTile({
+  label,
+  icon,
+  onClick,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+    >
+      <span className="flex w-3.5 flex-none items-center justify-center opacity-60">{icon}</span>
+      <span className="truncate">{label}</span>
+    </button>
   );
 }
