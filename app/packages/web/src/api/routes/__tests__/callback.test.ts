@@ -31,18 +31,51 @@ describe("OAuth callback route", () => {
     expect(await res.text()).toMatch(/Missing code/);
   });
 
-  it("400s when the OAuth state cookie does not match the query", async () => {
+  it("restarts sign-in when the OAuth state cookie does not match the query", async () => {
     const res = await buildApp().request("/?code=abc&state=mismatch", {
       headers: { cookie: "iw_oauth_state=expected" },
+      redirect: "manual",
     });
-    expect(res.status).toBe(400);
-    expect(await res.text()).toMatch(/Invalid OAuth state/);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/api/auth/sign-in");
+    expect(res.headers.get("set-cookie") ?? "").toContain("iw_oauth_retry=1");
+    // The code is never exchanged on a failed state check.
     expect(mockAuthenticateWithCode).not.toHaveBeenCalled();
   });
 
-  it("400s when there is no state cookie at all", async () => {
-    const res = await buildApp().request("/?code=abc&state=foo");
+  it("restarts sign-in when there is no state cookie at all", async () => {
+    const res = await buildApp().request("/?code=abc&state=foo", { redirect: "manual" });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/api/auth/sign-in");
+  });
+
+  it("carries the pending destination across the restart", async () => {
+    const res = await buildApp().request("/?code=abc&state=foo", {
+      headers: { cookie: "iw_return_to=/org/abc/settings" },
+      redirect: "manual",
+    });
+    expect(res.headers.get("location")).toBe("/api/auth/sign-in?return_to=%2Forg%2Fabc%2Fsettings");
+  });
+
+  it("drops an unsafe pending destination rather than restarting with it", async () => {
+    const res = await buildApp().request("/?code=abc&state=foo", {
+      headers: { cookie: "iw_return_to=https://evil.example" },
+      redirect: "manual",
+    });
+    expect(res.headers.get("location")).toBe("/api/auth/sign-in");
+  });
+
+  it("shows a recoverable error page instead of looping on a second failure", async () => {
+    const res = await buildApp().request("/?code=abc&state=foo", {
+      headers: { cookie: "iw_oauth_retry=1" },
+    });
     expect(res.status).toBe(400);
+    const body = await res.text();
+    expect(body).toMatch(/Sign-in could not be completed/);
+    expect(body).toContain('href="/api/auth/sign-in"');
+    expect(mockAuthenticateWithCode).not.toHaveBeenCalled();
+    // The marker is cleared so the next attempt gets its retry back.
+    expect(res.headers.get("set-cookie") ?? "").toContain("iw_oauth_retry=;");
   });
 
   it("exchanges the code, sets the session cookie, and redirects", async () => {
@@ -57,6 +90,8 @@ describe("OAuth callback route", () => {
     expect(setCookie).toContain("wos-session=sealed-blob");
     // The single-use state cookie should be cleared.
     expect(setCookie).toContain("iw_oauth_state=");
+    // …as should the retry marker, so a later failure gets a fresh restart.
+    expect(setCookie).toContain("iw_oauth_retry=");
   });
 
   it("500s when WorkOS returns no sealed session", async () => {

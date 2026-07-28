@@ -64,6 +64,8 @@ next check.
 2. Sign in with your email, Google, or Microsoft account. Authentication is handled by WorkOS.
 3. On first sign-in you are prompted to create an organization. Pick a name you can live with — it shows up in the workspace switcher.
 
+Finish sign-up in the browser you started it in. Verifying your email can take you through your inbox and back, and if that round trip lands in a different browser — a link opened inside a mail app, say — the sign-in cannot be completed and you will be asked to start again. Taking your time is fine; switching browsers mid-flow is not.
+
 <insert [Sign-up page with email / SSO buttons] here>
 
 ### Your first landing

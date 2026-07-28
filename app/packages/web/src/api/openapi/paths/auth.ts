@@ -35,16 +35,23 @@ export function registerAuthPaths(ctx: BuildContext) {
     tags: ["Auth"],
     summary: "WorkOS OAuth callback",
     description:
-      "Exchanges an authorization code for a session and sets the `wos-session` cookie. Public.",
+      "Exchanges an authorization code for a session and sets the `wos-session` cookie. " +
+      "If the `state` nonce does not match the cookie set at sign-in — most often because " +
+      "the cookie expired while the user was still on AuthKit — the flow is restarted once " +
+      "with a fresh nonce rather than failing. Public.",
     security: [],
     request: {
       query: strict({
         code: z.string().openapi({ description: "Authorization code from WorkOS" }),
+        state: z.string().optional().openapi({ description: "CSRF nonce echoed back by WorkOS" }),
       }),
     },
     responses: {
-      302: { description: "Redirect to `/`" },
-      400: { description: "Missing code", content: { "text/plain": { schema: z.string() } } },
+      302: { description: "Redirect to `/`, or back to sign-in to restart a failed state check" },
+      400: {
+        description: "Missing code, or a state check that already failed its one restart",
+        content: { "text/plain": { schema: z.string() }, "text/html": { schema: z.string() } },
+      },
       500: {
         description: "Failed to seal session",
         content: { "text/plain": { schema: z.string() } },

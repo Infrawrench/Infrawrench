@@ -8,7 +8,12 @@ import { apiReference } from "@scalar/hono-api-reference";
 import { sessionMiddleware, orgMiddleware, permissionsMiddleware } from "./auth-middleware";
 import { workos, clientId } from "../auth/workos";
 import { getPublicOpenApiDocument } from "./openapi/index";
-import { OAUTH_STATE_COOKIE, RETURN_TO_COOKIE, safeReturnPath } from "./oauth-state";
+import {
+  OAUTH_STATE_COOKIE,
+  RETURN_TO_COOKIE,
+  OAUTH_COOKIE_MAX_AGE,
+  safeReturnPath,
+} from "./oauth-state";
 
 import { callbackRoutes } from "./routes/callback";
 import { stripeWebhookRoutes } from "./routes/stripe-webhook";
@@ -139,7 +144,7 @@ api.get("/api/auth/sign-in", async (c) => {
     secure: process.env["NODE_ENV"] === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 5,
+    maxAge: OAUTH_COOKIE_MAX_AGE,
   });
   // Where to land afterwards. Used by the step-up flow so a user sent back to
   // sign-in mid-settings-change returns to the page they were on. Validated to
@@ -151,7 +156,7 @@ api.get("/api/auth/sign-in", async (c) => {
       secure: process.env["NODE_ENV"] === "production",
       sameSite: "lax",
       path: "/",
-      maxAge: 60 * 5,
+      maxAge: OAUTH_COOKIE_MAX_AGE,
     });
   }
   const url = workos.userManagement.getAuthorizationUrl({

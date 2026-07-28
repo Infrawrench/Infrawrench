@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.8.0",
+    "version": "0.9.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -6536,7 +6536,7 @@
       "get": {
         "tags": ["Auth"],
         "summary": "WorkOS OAuth callback",
-        "description": "Exchanges an authorization code for a session and sets the `wos-session` cookie. Public.",
+        "description": "Exchanges an authorization code for a session and sets the `wos-session` cookie. If the `state` nonce does not match the cookie set at sign-in — most often because the cookie expired while the user was still on AuthKit — the flow is restarted once with a fresh nonce rather than failing. Public.",
         "security": [],
         "parameters": [
           {
@@ -6547,16 +6547,30 @@
             "required": true,
             "name": "code",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "CSRF nonce echoed back by WorkOS"
+            },
+            "required": false,
+            "name": "state",
+            "in": "query"
           }
         ],
         "responses": {
           "302": {
-            "description": "Redirect to `/`"
+            "description": "Redirect to `/`, or back to sign-in to restart a failed state check"
           },
           "400": {
-            "description": "Missing code",
+            "description": "Missing code, or a state check that already failed its one restart",
             "content": {
               "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/html": {
                 "schema": {
                   "type": "string"
                 }
