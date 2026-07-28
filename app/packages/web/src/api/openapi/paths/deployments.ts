@@ -64,7 +64,7 @@ const DeploymentRun = strict({
   gitSha: z.string().nullable(),
   image: z.string().nullable(),
   status: DeployStatus,
-  origin: z.enum(["web", "cli"]),
+  origin: z.enum(["web", "cli", "trigger"]),
   // A union, not `.nullable()`: the latter renders as
   // `allOf: [$ref, {type:["string","null"]}]`, which still demands an enum value
   // and so rejects the nulls this column actually stores. The generator adds its

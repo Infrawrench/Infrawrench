@@ -79,8 +79,11 @@ app_env = {
   # Google-managed workers rather than in this cluster on purpose: a Dockerfile's
   # RUN is arbitrary code, and in-cluster it would sit one curl away from the
   # metadata server and every other pod.
-  # The pod's service account needs roles/cloudbuild.builds.editor,
-  # roles/storage.objectAdmin on the bucket, and roles/secretmanager.admin.
+  # IAM is provisioned by infra/terraform/builds.tf — nothing to grant by hand.
+  # Notably the BUILD WORKER (not the pod) holds secretmanager.secretAccessor,
+  # because availableSecrets are read by Cloud Build's execution account; the
+  # pod gets two narrow custom roles (create + prefix-scoped manage) rather
+  # than secretmanager.admin, which could read every secret in the project.
   GCP_BUILD_PROJECT_ID     = "your-gcp-project"
   GCP_BUILD_STAGING_BUCKET = "your-project-infrawrench-builds"
   # Artifact Registry repo hosted builds stage images to. Required: a Cloud Build

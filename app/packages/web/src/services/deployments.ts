@@ -103,6 +103,11 @@ export async function upsertDeployTrigger(
       set: {
         enabled: true,
         answers: input.answers ?? {},
+        // Re-stamped on every upsert, not just the first insert. Re-arming a
+        // disabled trigger with a stale lastSha would make the next watcher
+        // poll deploy whatever is ALREADY at HEAD — the exact thing recording
+        // the SHA at arm time exists to prevent.
+        lastSha: resolved.sha,
         updatedAt: new Date(),
       },
     })

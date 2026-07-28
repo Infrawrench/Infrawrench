@@ -288,6 +288,13 @@
       "when": 1785263335701,
       "tag": "0040_bright_night_thrasher",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1785271565867,
+      "tag": "0041_great_jetstream",
+      "breakpoints": true
     }
   ]
 }

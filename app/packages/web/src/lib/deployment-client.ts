@@ -124,7 +124,7 @@ export function createWebDeploymentClient(orgId: string): DeploymentClient {
       fetch(`${base}/triggers`, jsonInit("GET")).then((r) => jsonOrThrow<DeployTrigger[]>(r)),
     createTrigger: (input: DeployTriggerInput) =>
       fetch(`${base}/triggers`, jsonInit("POST", input)).then((r) => jsonOrThrow<DeployTrigger>(r)),
-    updateTrigger: (id: string, input: { enabled?: boolean }) =>
+    updateTrigger: (id: string, input: { enabled: boolean }) =>
       fetch(`${base}/triggers/${encodeURIComponent(id)}`, jsonInit("PATCH", input)).then((r) =>
         jsonOrThrow<DeployTrigger>(r),
       ),

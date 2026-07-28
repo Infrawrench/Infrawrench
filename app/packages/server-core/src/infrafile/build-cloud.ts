@@ -107,6 +107,18 @@ export interface HostedBuildResult extends BuildResult {
   buildSeconds: number;
 }
 
+/**
+ * Base URL for the Builds API. A configured region routes to the regional
+ * endpoint — without this, `GCP_BUILD_REGION` was read into the config and then
+ * ignored, so "regional builds" silently ran in the global pool.
+ */
+function buildsApiBase(config: CloudBuildConfig): string {
+  const project = encodeURIComponent(config.projectId);
+  return config.region
+    ? `https://cloudbuild.googleapis.com/v1/projects/${project}/locations/${encodeURIComponent(config.region)}`
+    : `https://cloudbuild.googleapis.com/v1/projects/${project}`;
+}
+
 /* ------------------------------------------------------------------ auth -- */
 
 interface CachedToken {
@@ -329,24 +341,27 @@ printf '%s' ${shellQuote(request.dockerfile)} > Dockerfile.infrawrench`,
 
   ctx.log(`Building ${image} on Cloud Build`);
   const startedAt = Date.now();
-  const created = await fetch(
-    `https://cloudbuild.googleapis.com/v1/projects/${encodeURIComponent(config.projectId)}/builds`,
-    {
+  let status: string;
+  let buildId: string;
+  // The try begins at submission, not at the wait: a rejected submission (bad
+  // config, quota, an aborted signal) would otherwise leave the customer's
+  // registry credential sitting in Secret Manager with nothing left to use it.
+  try {
+    const created = await fetch(`${buildsApiBase(config)}/builds`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
       body: JSON.stringify(build),
       ...(ctx.signal ? { signal: ctx.signal } : {}),
-    },
-  );
-  if (!created.ok) {
-    throw new Error(`Cloud Build rejected the build (${created.status}): ${await created.text()}`);
-  }
-  const operation = (await created.json()) as { metadata?: { build?: { id?: string } } };
-  const buildId = operation.metadata?.build?.id;
-  if (!buildId) throw new Error("Cloud Build did not return a build id.");
-
-  let status: string;
-  try {
+    });
+    if (!created.ok) {
+      throw new Error(
+        `Cloud Build rejected the build (${created.status}): ${await created.text()}`,
+      );
+    }
+    const operation = (await created.json()) as { metadata?: { build?: { id?: string } } };
+    const id = operation.metadata?.build?.id;
+    if (!id) throw new Error("Cloud Build did not return a build id.");
+    buildId = id;
     status = await waitForBuild(config, buildId, ctx);
   } finally {
     // The credential outlives neither the build nor a failure of it.
@@ -392,11 +407,19 @@ async function createBuildSecret(
   }
   const secret = (await created.json()) as { name: string };
 
-  const added = await fetch(`${base}/secrets/${encodeURIComponent(secretId)}:addVersion`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify({ payload: { data: Buffer.from(value, "utf8").toString("base64") } }),
-  });
+  // From here the secret exists, so every exit path below has to destroy it —
+  // including a *thrown* fetch, which the !ok check alone does not cover.
+  let added: Response;
+  try {
+    added = await fetch(`${base}/secrets/${encodeURIComponent(secretId)}:addVersion`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ payload: { data: Buffer.from(value, "utf8").toString("base64") } }),
+    });
+  } catch (err) {
+    await destroyBuildSecret(token, secret.name).catch(() => {});
+    throw err;
+  }
   if (!added.ok) {
     await destroyBuildSecret(token, secret.name).catch(() => {});
     throw new Error(`Could not stage the registry credential (${added.status}).`);
@@ -424,10 +447,9 @@ async function waitForBuild(
     await new Promise((r) => setTimeout(r, wait));
     wait = Math.min(Math.round(wait * 1.5), POLL_MAX_MS);
     const token = await accessToken();
-    const res = await fetch(
-      `https://cloudbuild.googleapis.com/v1/projects/${encodeURIComponent(config.projectId)}/builds/${encodeURIComponent(buildId)}`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    );
+    const res = await fetch(`${buildsApiBase(config)}/builds/${encodeURIComponent(buildId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     if (!res.ok) throw new Error(`Could not read the build's status (${res.status}).`);
     const body = (await res.json()) as { status?: string };
     const status = body.status ?? "STATUS_UNKNOWN";
@@ -460,11 +482,14 @@ export async function runOnCloudBuild(
   // registry password does, one secret per variable.
   const env = request.env ?? {};
   const secretNames: Record<string, string> = {};
-  for (const [key, value] of Object.entries(env)) {
-    secretNames[key] = await createBuildSecret(config, token, value);
-  }
 
   try {
+    // Created inside the try: if the third of five secrets fails to stage, the
+    // first two are already in `secretNames` and the finally destroys them.
+    for (const [key, value] of Object.entries(env)) {
+      secretNames[key] = await createBuildSecret(config, token, value);
+    }
+
     // The shell variable must NOT start with an underscore. Cloud Build parses
     // `$_...` in a build config as one of ITS substitution variables, so a
     // `$__iw_code` made every submission fail up front with
@@ -529,15 +554,12 @@ export async function runOnCloudBuild(
     }
 
     ctx.log(`$ ${request.command}`);
-    const res = await fetch(
-      `https://cloudbuild.googleapis.com/v1/projects/${encodeURIComponent(config.projectId)}/builds`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
-        body: JSON.stringify(build),
-        ...(ctx.signal ? { signal: ctx.signal } : {}),
-      },
-    );
+    const res = await fetch(`${buildsApiBase(config)}/builds`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(build),
+      ...(ctx.signal ? { signal: ctx.signal } : {}),
+    });
     if (!res.ok) {
       throw new Error(`Cloud Build rejected the command (${res.status}): ${await res.text()}`);
     }

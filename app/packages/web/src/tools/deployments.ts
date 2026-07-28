@@ -42,6 +42,15 @@ function toolError(e: unknown): ToolResult {
   throw e;
 }
 
+/**
+ * `void promise` discards the value but not the rejection — an audit write
+ * failing would take the whole process down as an unhandled rejection, after
+ * the tool call it was recording had already succeeded.
+ */
+function safeAudit(...args: Parameters<typeof logAudit>): void {
+  void logAudit(...args).catch(() => {});
+}
+
 export function deploymentTools(): ToolDefinition[] {
   return [
     {
@@ -178,7 +187,7 @@ export function deploymentTools(): ToolDefinition[] {
             planOnly: true,
             interactive: false,
           });
-          void logAudit({
+          void safeAudit({
             organizationId: auth.organizationId,
             userId: auth.userId,
             action: "deployment.plan",
@@ -235,7 +244,7 @@ export function deploymentTools(): ToolDefinition[] {
             runId: fromRunId,
             userId: auth.userId,
           });
-          void logAudit({
+          void safeAudit({
             organizationId: auth.organizationId,
             userId: auth.userId,
             action: "deployment.rollback",

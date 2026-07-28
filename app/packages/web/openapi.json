@@ -2924,7 +2924,7 @@
           },
           "origin": {
             "type": "string",
-            "enum": ["web", "cli"]
+            "enum": ["web", "cli", "trigger"]
           },
           "stage": {
             "anyOf": [

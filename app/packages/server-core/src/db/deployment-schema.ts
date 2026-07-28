@@ -13,6 +13,7 @@
  * Kept in its own module with self-contained imports; re-exported from schema.ts
  * so Drizzle + `@infrawrench/server-core/db/schema` consumers pick it up.
  */
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -43,7 +44,7 @@ export const deploymentRuns = pgTable(
     image: text("image"),
     /** pending | running | success | failure | canceled */
     status: text("status").notNull().default("pending"),
-    /** Which surface ran it: `web` or `cli`. */
+    /** Which surface ran it: `web`, `cli`, or `trigger` (deploy-on-push). */
     origin: text("origin").notNull().default("web"),
     /** Last stage reached — plan | dockerfile | build | deploy. */
     stage: text("stage"),
@@ -74,6 +75,17 @@ export const deploymentRuns = pgTable(
     // The history view is always "this org, newest first".
     index("deployment_runs_org_idx").on(table.organizationId, table.startedAt),
     index("deployment_runs_env_idx").on(table.organizationId, table.env),
+    /**
+     * The per-environment deploy lock, enforced where it cannot race. The
+     * application-level check reads then inserts, so two deploys arriving in
+     * the same window both see zero running rows and both proceed — this index
+     * makes the second insert conflict instead. Partial on `running` so
+     * history rows (and plan-only previews, which start as `pending`) never
+     * collide.
+     */
+    uniqueIndex("deployment_runs_one_running")
+      .on(table.organizationId, table.env)
+      .where(sql`${table.status} = 'running'`),
   ],
 );
 
@@ -108,7 +120,10 @@ export const deploymentTriggers = pgTable(
      * enabling a trigger should not ship whatever happens to be at HEAD.
      */
     lastSha: text("last_sha"),
-    /** Set while a triggered run is in flight, so a slow deploy doesn't stack. */
+    /**
+     * When this trigger last fired. Informational — the `lastSha` conditional
+     * update is what serializes claims, and nothing reads this as a guard.
+     */
     lastRunAt: timestamp("last_run_at", { withTimezone: true }),
     createdByUserId: text("created_by_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

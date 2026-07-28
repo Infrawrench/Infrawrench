@@ -11,7 +11,7 @@
  * is an audit trail. See `db/deployment-schema.ts` for why that split matters.
  */
 import { randomUUID } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, lt } from "drizzle-orm";
 
 import { db } from "../db/client.js";
 import { deploymentRuns, githubInstallations } from "../db/schema.js";
@@ -53,6 +53,13 @@ import type {
   RunInImageRequest,
   RunLogEntry,
 } from "@infrawrench/workflow-runtime";
+
+/**
+ * A `running` row older than this is treated as abandoned. Double the hosted
+ * build timeout: nothing legitimate outlives that, and a row that does has
+ * lost its process — leaving it would wedge the environment's deploy lock.
+ */
+const STALE_RUN_MS = 2 * 1200 * 1000;
 
 /** Where an Infrafile lives. Not configurable — that is the point of the name. */
 const INFRAFILE_PATH = "Infrafile";
@@ -193,6 +200,12 @@ export interface RunDeploymentOptions {
   /** Pre-supplied answers for `select(key, …)`. */
   answers?: Record<string, string>;
   interactive: boolean;
+  /**
+   * Which surface started this run: `web` (default) or `trigger`
+   * (deploy-on-push via github-watcher). The CLI records its own runs through
+   * `recordCliRun` instead, which is why `cli` is not an option here.
+   */
+  origin?: "web" | "trigger";
   /** Raise a prompt to the caller (websocket sessions only). */
   prompt?: InfrafileHost["prompt"];
   /** Replay a past run's deploy with its recorded artifact (see rollbackDeployment). */
@@ -216,50 +229,104 @@ export async function runDeployment(
   // nothing, and seeing what a deploy *would* do is how someone decides the
   // plan is worth paying for. Anything that actually builds or ships is gated.
   if (!opts.planOnly) {
-    await requirePaidPlan(opts.organizationId, "Deploying from the web app");
+    await requirePaidPlan(
+      opts.organizationId,
+      opts.origin === "trigger" ? "Deploy-on-push" : "Deploying from the web app",
+    );
   }
 
-  // One deploy per environment at a time. Without this two people shipping the
-  // same env both proceed and the infrastructure takes whichever finished last —
-  // a race whose loser has no idea it happened.
+  // One deploy per environment at a time — enforced by the DATABASE, via the
+  // partial unique index `deployment_runs_one_running`. An earlier version
+  // checked then inserted, which reads as a lock and is not one: two deploys
+  // arriving in the same window both saw zero running rows and both proceeded,
+  // which is exactly the race the lock exists to prevent (and the watcher fans
+  // several triggers out concurrently). Here the insert IS the claim; a
+  // conflict means somebody else holds the environment.
   //
-  // Checked BEFORE the Infrafile is fetched: it needs nothing from git, and
+  // Claimed BEFORE the Infrafile is fetched: it needs nothing from git, and
   // paying for a GitHub round-trip only to refuse is both slower and a worse
   // error (the caller sees whatever git said, not that the env is busy).
-  const inFlight = await db
-    .select({ id: deploymentRuns.id, startedAt: deploymentRuns.startedAt })
-    .from(deploymentRuns)
+  //
+  // First, unwedge: a pod killed mid-deploy leaves its row `running` forever,
+  // and with the index enforcing uniqueness that would block every future
+  // deploy to the environment. Anything still "running" after double the build
+  // timeout is dead — its process is gone and nothing will ever finish it.
+  const staleBefore = new Date(Date.now() - STALE_RUN_MS);
+  await db
+    .update(deploymentRuns)
+    .set({
+      status: "failure",
+      error: { message: "Abandoned — the process running this deploy went away." },
+      finishedAt: new Date(),
+    })
     .where(
       and(
         eq(deploymentRuns.organizationId, opts.organizationId),
         eq(deploymentRuns.env, opts.env ?? ""),
         eq(deploymentRuns.status, "running"),
+        lt(deploymentRuns.startedAt, staleBefore),
       ),
-    )
-    .limit(1);
-  if (!opts.planOnly && inFlight.length > 0) {
+    );
+
+  const runId = randomUUID();
+  const claimed = await db
+    .insert(deploymentRuns)
+    .values({
+      id: runId,
+      organizationId: opts.organizationId,
+      env: opts.env ?? "",
+      // A plan-only preview starts as `pending`, deliberately outside the
+      // partial index: previews neither hold the environment nor wait for it.
+      status: opts.planOnly ? "pending" : "running",
+      origin: opts.origin ?? "web",
+      ...(opts.userId ? { createdByUserId: opts.userId } : {}),
+    })
+    .onConflictDoNothing()
+    .returning({ id: deploymentRuns.id });
+
+  if (claimed.length === 0) {
+    const holder = await db
+      .select({ startedAt: deploymentRuns.startedAt })
+      .from(deploymentRuns)
+      .where(
+        and(
+          eq(deploymentRuns.organizationId, opts.organizationId),
+          eq(deploymentRuns.env, opts.env ?? ""),
+          eq(deploymentRuns.status, "running"),
+        ),
+      )
+      .limit(1);
     throw new DeploymentError(
-      `A deploy to ${opts.env} is already running (started ${inFlight[0]!.startedAt.toISOString()}). ` +
-        `Wait for it to finish, or stop it first.`,
+      `A deploy to ${opts.env} is already running` +
+        (holder[0] ? ` (started ${holder[0].startedAt.toISOString()})` : "") +
+        `. Wait for it to finish, or stop it first.`,
       409,
     );
   }
 
   const { runInfrafile } = await import("@infrawrench/workflow-runtime");
-  const resolved = await resolveInfrafile(opts.organizationId, opts.repo, opts.branch);
 
-  const runId = randomUUID();
-  await db.insert(deploymentRuns).values({
-    id: runId,
-    organizationId: opts.organizationId,
-    env: opts.env ?? "",
-    repo: resolved.fullName,
-    branch: resolved.branch,
-    gitSha: resolved.sha,
-    status: "running",
-    origin: "web",
-    ...(opts.userId ? { createdByUserId: opts.userId } : {}),
-  });
+  let resolved: ResolvedSource;
+  try {
+    resolved = await resolveInfrafile(opts.organizationId, opts.repo, opts.branch);
+    await db
+      .update(deploymentRuns)
+      .set({ repo: resolved.fullName, branch: resolved.branch, gitSha: resolved.sha })
+      .where(eq(deploymentRuns.id, runId));
+  } catch (err) {
+    // The claim row exists before git is consulted, so a failed resolve must
+    // release the environment rather than leave it held by a run that never
+    // started.
+    await db
+      .update(deploymentRuns)
+      .set({
+        status: "failure",
+        error: { message: err instanceof Error ? err.message : String(err) },
+        finishedAt: new Date(),
+      })
+      .where(eq(deploymentRuns.id, runId));
+    throw err;
+  }
 
   // Report the deploy back into the pull request / commit it came from. Every
   // call is best-effort: GitHub being slow or the App lacking `deployments:
@@ -635,7 +702,9 @@ export async function recordCliRun(
     status: run.status,
     origin: "cli",
     stage: run.stage ?? null,
-    logs: run.logs ?? [],
+    // Same cap the web path applies — this column is client-supplied here, and
+    // an uncapped jsonb array is read back in full by the history view.
+    logs: cappedLogs(run.logs ?? []),
     notes: run.notes && run.notes.length > 0 ? run.notes.join("\n") : null,
     error: run.error ?? null,
     durationMs: run.durationMs ?? null,
@@ -655,15 +724,26 @@ export async function recordCliRun(
  */
 const MAX_PERSISTED_LOGS = 2000;
 
+/**
+ * A single entry's message is bounded too: the entry cap alone still lets a
+ * hostile CLI persist 2000 multi-megabyte strings through `recordCliRun`.
+ */
+const MAX_LOG_MESSAGE_CHARS = 10_000;
+
 function cappedLogs(logs: RunLogEntry[]): RunLogEntry[] {
-  if (logs.length <= MAX_PERSISTED_LOGS) return logs;
-  const dropped = logs.length - MAX_PERSISTED_LOGS;
+  const bounded = logs.map((entry) =>
+    entry.message.length > MAX_LOG_MESSAGE_CHARS
+      ? { ...entry, message: `${entry.message.slice(0, MAX_LOG_MESSAGE_CHARS)}… (truncated)` }
+      : entry,
+  );
+  if (bounded.length <= MAX_PERSISTED_LOGS) return bounded;
+  const dropped = bounded.length - MAX_PERSISTED_LOGS;
   return [
     {
-      at: logs[0]!.at,
+      at: bounded[0]!.at,
       level: "warn" as const,
       message: `… ${dropped} earlier log ${dropped === 1 ? "line" : "lines"} not stored (limit ${MAX_PERSISTED_LOGS}).`,
     },
-    ...logs.slice(dropped),
+    ...bounded.slice(dropped),
   ];
 }

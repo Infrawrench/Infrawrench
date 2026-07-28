@@ -125,6 +125,10 @@ export class GithubWatcher extends TickLoop {
         env: t.env,
         answers: t.answers,
         interactive: false,
+        // Recorded as `trigger`, not `web` — the audit trail has to say a
+        // push fired this, and the paid-plan refusal has to name the feature
+        // that was refused rather than a screen nobody was on.
+        origin: "trigger",
       });
       console.log(`[github-watcher] deployed ${at} to ${t.env} (run ${runId})`);
     } catch (e) {

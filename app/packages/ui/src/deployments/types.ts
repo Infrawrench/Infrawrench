@@ -43,7 +43,7 @@ export interface DeploymentRunRow {
   gitSha: string | null;
   image: string | null;
   status: DeployStatus;
-  origin: "web" | "cli";
+  origin: "web" | "cli" | "trigger";
   stage: DeployStage | null;
   durationMs: number | null;
   startedAt: string;
@@ -116,6 +116,6 @@ export interface DeploymentClient {
   listTriggers(): Promise<DeployTrigger[]>;
   createTrigger(input: DeployTriggerInput): Promise<DeployTrigger>;
   /** Only `enabled` is editable — the rest is identity, so recreate instead. */
-  updateTrigger(id: string, input: { enabled?: boolean }): Promise<DeployTrigger>;
+  updateTrigger(id: string, input: { enabled: boolean }): Promise<DeployTrigger>;
   deleteTrigger(id: string): Promise<void>;
 }

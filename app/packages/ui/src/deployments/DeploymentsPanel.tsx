@@ -318,7 +318,11 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
       <div className="flex-1 overflow-auto min-h-0">
         {busy === "deploy" && <LogPanel logs={liveLogs} />}
         {result && <ResultPanel result={result} />}
-        {!result && busy === null && (
+        {/* Stays visible after a plan on purpose: a failed non-interactive
+            plan is exactly where unanswered select() keys surface, and hiding
+            the form at that moment would leave nowhere to type the answers
+            the plan just asked for. */}
+        {busy === null && (
           <TriggersSection
             triggers={triggers}
             repo={repo}

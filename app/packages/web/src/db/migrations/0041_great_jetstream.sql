@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "deployment_runs_one_running" ON "deployment_runs" USING btree ("organization_id","env") WHERE "deployment_runs"."status" = 'running';

@@ -207,11 +207,15 @@ app.post("/triggers", async (c) => {
 
 app.patch("/triggers/:id", async (c) => {
   requirePermission(c, "deployments:write");
-  const body = (await c.req.json()) as { enabled?: boolean };
+  const body = (await c.req.json()) as { enabled?: unknown };
+  // Explicit or nothing. `enabled !== false` treated an empty body as "enable",
+  // and enabling a trigger arms a real deploy on the next push — not something
+  // a missing field should ever do.
+  if (typeof body.enabled !== "boolean") {
+    return c.json({ error: "enabled must be true or false" }, 400);
+  }
   try {
-    return c.json(
-      await setDeployTriggerEnabled(orgId(c), c.req.param("id"), body.enabled !== false),
-    );
+    return c.json(await setDeployTriggerEnabled(orgId(c), c.req.param("id"), body.enabled));
   } catch (e) {
     return fail(c, e);
   }
