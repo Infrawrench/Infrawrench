@@ -177,6 +177,24 @@ changes — it will tell you when it spots them.
 
 ## Deploying from the web app
 
+### Who can deploy
+
+Three permissions, because previewing and shipping are different risks:
+
+| Permission          | Grants                                           | Default for    |
+| ------------------- | ------------------------------------------------ | -------------- |
+| `deployments:read`  | Deploy history, and a repo's declared envs       | Members        |
+| `deployments:plan`  | Running `plan()` — code execution, ships nothing | Members        |
+| `deployments:write` | Building, deploying, rolling back                | Admins, owners |
+
+`plan` is separate from `read` because running `plan()` evaluates the
+repository's Infrafile against your organization's accounts — inert as far as
+your infrastructure goes, but still code execution. Members get it so they can
+see what a deploy would do; a custom role can withhold it without also taking
+away the history.
+
+### Plans
+
 Deploying from the web app needs a **paid plan** (or complimentary access).
 Previewing does not — you can Plan a repository on the free tier and see exactly
 what a deploy would do before deciding. `infrawrench deploy` from the CLI builds

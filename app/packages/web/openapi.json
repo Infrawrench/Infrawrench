@@ -5572,6 +5572,7 @@
           "dashboards:read",
           "dashboards:write",
           "deployments:read",
+          "deployments:plan",
           "deployments:write",
           "costs:read",
           "costs:write",
@@ -10214,7 +10215,7 @@
       "post": {
         "tags": ["Deployments"],
         "summary": "Preview a deploy without building",
-        "description": "Runs the Infrafile's `plan()` and renders its Dockerfile, then stops. Nothing is built or deployed.\n\n_Requires permission: `deployments:write`._",
+        "description": "Runs the Infrafile's `plan()` and renders its Dockerfile, then stops. Nothing is built or deployed.\n\n_Requires permission: `deployments:plan`._",
         "parameters": [
           {
             "schema": {
@@ -10290,7 +10291,7 @@
           }
         },
         "operationId": "postOrgOrgIdDeploymentsPlan",
-        "x-required-permission": "deployments:write"
+        "x-required-permission": "deployments:plan"
       }
     },
     "/api/org/{orgId}/deployments/runs": {

@@ -1543,9 +1543,15 @@ the ui barrel — dragging React and Monaco into a Node test until `cloud-api.te
 Data-layer modules import the React-free entry; only components import the barrel. Same
 precedent as `agents/launch-command`.
 
-Permissions are `deployments:read` / `deployments:write` — **not** the `dashboards:*` squat
-workflows took. Members get `read` only: `write` runs arbitrary repo code against the org's
-accounts.
+Permissions are `deployments:read` / `:plan` / `:write` — **not** the `dashboards:*` squat
+workflows took. Three tiers because previewing and shipping are different risks: `read` is the
+history and declared envs (inert), `plan` runs the repo's `plan()` against the org's host so it
+IS code execution but builds and ships nothing, `write` actually deploys. Members get read+plan;
+write is admin/owner. The split is what makes "let members look but not ship" expressible — with
+`plan` folded into `read` it was an accident of the read grant rather than a decision. The
+websocket frame carries `planOnly`, so `deployment-ws.ts` gates on the same split the routes do;
+without that check the socket is a way around them (its upgrade only establishes
+`resources:execute`).
 
 **Surfaces**: web tab `{kind:"deployments"}` at `/org/$orgId/deployments`
 (`ui/src/deployments/DeploymentsPanel.tsx`, transport `web/src/lib/deployment-client.ts`);

@@ -75,11 +75,10 @@ app.post("/envs", async (c) => {
  * Non-interactive, so any `select(...)` must be answered via `answers`.
  */
 app.post("/plan", async (c) => {
-  // `deployments:write`, not read: a plan still evaluates the repository's
-  // Infrafile in the isolate against this org's host, so `plan()` can reach its
-  // resources. That is code execution, which is exactly why `write` is withheld
-  // from members — the billing gate is separate and does exempt previews.
-  requirePermission(c, "deployments:write");
+  // Its own permission, between read and write: a plan evaluates the repo's
+  // Infrafile against this org's host, so it is code execution and not a read —
+  // but it builds nothing and ships nothing, so it is not a write either.
+  requirePermission(c, "deployments:plan");
   const body = (await c.req.json()) as {
     repo?: string;
     branch?: string;

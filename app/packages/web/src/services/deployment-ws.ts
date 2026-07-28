@@ -37,17 +37,25 @@ function send(ws: WebSocket, msg: unknown): void {
 
 /**
  * The socket upgrade only established `resources:execute`, which every channel
- * on `/api/ws` shares. Starting a real deploy is a `deployments:write` action —
- * the HTTP routes enforce that, and without this check the websocket would be a
- * way around them.
+ * on `/api/ws` shares. Without a per-frame check the websocket would be a way
+ * around what the HTTP routes enforce.
+ *
+ * The frame carries `planOnly`, so it needs the same split those routes use: a
+ * preview is `deployments:plan`, an actual deploy is `deployments:write`.
  */
-async function requireDeployPermission(organizationId: string, userId?: string): Promise<void> {
+async function requireDeployPermission(
+  organizationId: string,
+  planOnly: boolean,
+  userId?: string,
+): Promise<void> {
+  const required = planOnly ? "deployments:plan" : "deployments:write";
+  const verb = planOnly ? "preview a deploy" : "deploy";
   // No identified user means nothing to resolve a role against — deny rather
-  // than fall through to an unchecked deploy.
-  if (!userId) throw new Error("You do not have permission to deploy in this organization.");
+  // than fall through to an unchecked run.
+  if (!userId) throw new Error(`You do not have permission to ${verb} in this organization.`);
   const granted = await effectivePermissions({ organizationId, userId });
-  if (!hasPermission(granted, "deployments:write")) {
-    throw new Error("You do not have permission to deploy in this organization.");
+  if (!hasPermission(granted, required)) {
+    throw new Error(`You do not have permission to ${verb} in this organization.`);
   }
 }
 
@@ -104,7 +112,7 @@ export function handleDeploymentSession(
   ws.on("close", unwind);
   ws.on("error", unwind);
 
-  void requireDeployPermission(organizationId, start.userId)
+  void requireDeployPermission(organizationId, Boolean(start.planOnly), start.userId)
     .then(() =>
       runDeployment({
         organizationId,
