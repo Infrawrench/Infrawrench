@@ -49,6 +49,34 @@ export interface DeploymentRunRow {
   startedAt: string;
 }
 
+/**
+ * A watched branch: when `repo`@`branch` moves, deploy `env`.
+ *
+ * `lastSha` is the commit the watcher last saw, not the commit it last shipped:
+ * the first look records HEAD without deploying, so a freshly created trigger
+ * has a SHA and no run.
+ */
+export interface DeployTrigger {
+  id: string;
+  repo: string;
+  branch: string;
+  env: string;
+  enabled: boolean;
+  lastSha: string | null;
+  lastRunAt: string | null;
+}
+
+export interface DeployTriggerInput {
+  repo: string;
+  branch: string;
+  env: string;
+  /**
+   * Answers for the Infrafile's `select(...)` keys. A triggered run has nobody
+   * to ask, so a key with no answer here fails the deploy rather than prompting.
+   */
+  answers?: Record<string, string>;
+}
+
 /** Live callbacks for a deploy driven over the websocket. */
 export interface DeploySession {
   onLog?: (entry: WorkflowRunLog) => void;
@@ -85,4 +113,9 @@ export interface DeploymentClient {
    * for why a rollback replays rather than reconstructs.
    */
   rollback(runId: string): Promise<{ runId: string; result: DeployRunResult }>;
+  listTriggers(): Promise<DeployTrigger[]>;
+  createTrigger(input: DeployTriggerInput): Promise<DeployTrigger>;
+  /** Only `enabled` is editable — the rest is identity, so recreate instead. */
+  updateTrigger(id: string, input: { enabled?: boolean }): Promise<DeployTrigger>;
+  deleteTrigger(id: string): Promise<void>;
 }

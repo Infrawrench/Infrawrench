@@ -15,6 +15,8 @@ import type {
   DeployStartOptions,
   DeploymentClient,
   DeploymentRunRow,
+  DeployTrigger,
+  DeployTriggerInput,
   PromptSpec,
 } from "@infrawrench/ui";
 import { requestWorkflowPrompt } from "@infrawrench/ui/workflows/prompt-bridge";
@@ -118,6 +120,18 @@ export function createWebDeploymentClient(orgId: string): DeploymentClient {
       fetch(`${base}/runs/${runId}/rollback`, jsonInit("POST")).then((r) =>
         jsonOrThrow<{ runId: string; result: DeployRunResult }>(r),
       ),
+    listTriggers: () =>
+      fetch(`${base}/triggers`, jsonInit("GET")).then((r) => jsonOrThrow<DeployTrigger[]>(r)),
+    createTrigger: (input: DeployTriggerInput) =>
+      fetch(`${base}/triggers`, jsonInit("POST", input)).then((r) => jsonOrThrow<DeployTrigger>(r)),
+    updateTrigger: (id: string, input: { enabled?: boolean }) =>
+      fetch(`${base}/triggers/${encodeURIComponent(id)}`, jsonInit("PATCH", input)).then((r) =>
+        jsonOrThrow<DeployTrigger>(r),
+      ),
+    deleteTrigger: (id: string) =>
+      fetch(`${base}/triggers/${encodeURIComponent(id)}`, jsonInit("DELETE"))
+        .then((r) => jsonOrThrow<{ ok: boolean }>(r))
+        .then(() => undefined),
     listRuns: (env) =>
       fetch(`${base}/runs${env ? `?env=${encodeURIComponent(env)}` : ""}`, jsonInit("GET")).then(
         (r) => jsonOrThrow<DeploymentRunRow[]>(r),

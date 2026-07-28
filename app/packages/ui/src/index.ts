@@ -86,6 +86,8 @@ export { DeploymentsPanel } from "./deployments/index.js";
 export type {
   DeployEnvs,
   DeployRepo,
+  DeployTrigger,
+  DeployTriggerInput,
   DeployRunResult,
   DeploySession,
   DeployStage,

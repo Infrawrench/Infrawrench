@@ -227,6 +227,24 @@ a requirement.
 
 <insert [The Deploy screen mid-build with the stage indicator on "build", showing hosted build output streaming into the live log panel] here>
 
+## Deploy on push
+
+In the Deploy screen, add a trigger: _when `owner/repo` `main` moves, deploy
+`production`_. The watcher notices within 30 seconds and deploys the commit that
+moved it.
+
+Two things worth knowing:
+
+- **Adding a trigger does not deploy right now.** It records where the branch is
+  and fires on the _next_ push. Arming a trigger shouldn't ship whatever happened
+  to be at HEAD when you clicked save.
+- **A triggered deploy has nobody to ask.** Any `select(...)` in your Infrafile
+  must be pre-answered on the trigger, the same way `--set` answers it in CI. A
+  key without an answer fails the run and names it.
+
+The environment is checked against your Infrafile when you create the trigger, so
+a typo is caught then rather than silently never firing.
+
 ## Deploy links
 
 `https://app.infrawrench.com/deploy/github.com/owner/name` opens the deploy

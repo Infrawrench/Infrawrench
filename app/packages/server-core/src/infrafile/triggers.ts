@@ -26,9 +26,7 @@ export interface DueTrigger {
 /** `owner/name` → its parts, or null when the stored value is malformed. */
 function splitRepo(repo: string): { owner: string; name: string } | null {
   const parts = repo.split("/");
-  return parts.length === 2 && parts[0] && parts[1]
-    ? { owner: parts[0], name: parts[1] }
-    : null;
+  return parts.length === 2 && parts[0] && parts[1] ? { owner: parts[0], name: parts[1] } : null;
 }
 
 /**

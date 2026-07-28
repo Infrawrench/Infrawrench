@@ -9,6 +9,7 @@ import {
   type DeploymentClient,
   type DeploymentRunRow,
   type DeploySession,
+  type DeployTrigger,
 } from "./types.js";
 import type { WorkflowRunLog } from "../workflows/types.js";
 
@@ -50,6 +51,32 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
 
   const [runs, setRuns] = useState<DeploymentRunRow[]>([]);
 
+  const [triggers, setTriggers] = useState<DeployTrigger[]>([]);
+  const [triggerError, setTriggerError] = useState<string | null>(null);
+  const [triggerBusy, setTriggerBusy] = useState(false);
+  /** `select(...)` keys a run has complained about, so the form can ask for them. */
+  const [selectKeys, setSelectKeys] = useState<string[]>([]);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+
+  const refreshTriggers = useCallback(async () => {
+    try {
+      setTriggers(await client.listTriggers());
+    } catch (e) {
+      setTriggerError(messageOf(e));
+    }
+  }, [client]);
+
+  /**
+   * A non-interactive run fails naming the key it could not answer, and Plan
+   * runs over HTTP are non-interactive — so planning is usually the first time
+   * the UI can know which selects a trigger will have to pre-answer.
+   */
+  const noteSelectKeys = useCallback((message: string | undefined) => {
+    const found = unansweredSelectKeys(message ?? "");
+    if (found.length === 0) return;
+    setSelectKeys((prev) => [...prev, ...found.filter((k) => !prev.includes(k))]);
+  }, []);
+
   useEffect(() => {
     void client
       .listRepos()
@@ -75,7 +102,8 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
       .catch(() => {
         // History is supplementary; a failure here must not block deploying.
       });
-  }, [client, initialRepo]);
+    void refreshTriggers();
+  }, [client, initialRepo, refreshTriggers]);
 
   /** Picking a repo seeds its default branch and clears anything downstream. */
   const chooseRepo = (fullName: string) => {
@@ -126,6 +154,7 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
               return promise;
             })();
       setResult(r);
+      noteSelectKeys(r.error?.message);
       if (mode === "deploy") {
         void client
           .listRuns()
@@ -133,10 +162,57 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
           .catch(() => {});
       }
     } catch (e) {
-      setError(messageOf(e));
+      const message = messageOf(e);
+      setError(message);
+      noteSelectKeys(message);
     } finally {
       setBusy(null);
       setStopFn(null);
+    }
+  };
+
+  const addTrigger = async () => {
+    if (!repo || !branch || !env) return;
+    setTriggerBusy(true);
+    setTriggerError(null);
+    try {
+      // Send only keys the user actually filled in: a blank answer is worse
+      // than a missing one, since it would satisfy the lookup with an option
+      // the Infrafile never offered.
+      const filled = Object.fromEntries(
+        selectKeys.map((k) => [k, answers[k] ?? ""]).filter(([, v]) => v !== ""),
+      );
+      await client.createTrigger({
+        repo,
+        branch,
+        env,
+        ...(Object.keys(filled).length > 0 ? { answers: filled } : {}),
+      });
+      await refreshTriggers();
+    } catch (e) {
+      setTriggerError(messageOf(e));
+    } finally {
+      setTriggerBusy(false);
+    }
+  };
+
+  const toggleTrigger = async (id: string, enabled: boolean) => {
+    setTriggerError(null);
+    try {
+      const updated = await client.updateTrigger(id, { enabled });
+      setTriggers((prev) => prev.map((t) => (t.id === id ? updated : t)));
+    } catch (e) {
+      setTriggerError(messageOf(e));
+    }
+  };
+
+  const removeTrigger = async (id: string) => {
+    setTriggerError(null);
+    try {
+      await client.deleteTrigger(id);
+      setTriggers((prev) => prev.filter((t) => t.id !== id));
+    } catch (e) {
+      setTriggerError(messageOf(e));
     }
   };
 
@@ -242,6 +318,22 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
       <div className="flex-1 overflow-auto min-h-0">
         {busy === "deploy" && <LogPanel logs={liveLogs} />}
         {result && <ResultPanel result={result} />}
+        {!result && busy === null && (
+          <TriggersSection
+            triggers={triggers}
+            repo={repo}
+            branch={branch}
+            env={env}
+            selectKeys={selectKeys}
+            answers={answers}
+            busy={triggerBusy}
+            error={triggerError}
+            onAnswer={(key, value) => setAnswers((prev) => ({ ...prev, [key]: value }))}
+            onAdd={() => void addTrigger()}
+            onToggle={(id, enabled) => void toggleTrigger(id, enabled)}
+            onDelete={(id) => void removeTrigger(id)}
+          />
+        )}
         {!result && busy === null && (
           <RunHistory
             runs={runs}
@@ -390,6 +482,149 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+/**
+ * Deploy-on-push triggers: "when this branch moves, ship this environment".
+ *
+ * The form deliberately has no repo/branch/env inputs of its own — it watches
+ * whatever the header is pointed at, so you add a trigger for something you
+ * have just planned or deployed rather than typing a repo name twice.
+ */
+function TriggersSection({
+  triggers,
+  repo,
+  branch,
+  env,
+  selectKeys,
+  answers,
+  busy,
+  error,
+  onAnswer,
+  onAdd,
+  onToggle,
+  onDelete,
+}: {
+  triggers: DeployTrigger[];
+  repo: string;
+  branch: string;
+  env: string;
+  /** `select(...)` keys a run has already reported as unanswered, if any. */
+  selectKeys: string[];
+  answers: Record<string, string>;
+  busy: boolean;
+  error: string | null;
+  onAnswer: (key: string, value: string) => void;
+  onAdd: () => void;
+  onToggle: (id: string, enabled: boolean) => void;
+  onDelete: (id: string) => void;
+}) {
+  const targeted = Boolean(repo && branch && env);
+  const duplicate = triggers.some((t) => t.repo === repo && t.branch === branch && t.env === env);
+
+  return (
+    <div className="p-4 border-b border-white/10 space-y-3">
+      <h2 className="text-[11px] uppercase tracking-wide text-on-surface-faint">Deploy on push</h2>
+
+      {triggers.length === 0 ? (
+        <p className="text-xs text-on-surface-faint">No branches are watched yet.</p>
+      ) : (
+        <table className="w-full text-xs">
+          <thead className="text-[11px] uppercase tracking-wide text-on-surface-faint">
+            <tr className="border-b border-white/10">
+              <Th>Watching</Th>
+              <Th>Deploys</Th>
+              <Th>Last commit seen</Th>
+              <Th>Last fired</Th>
+              <Th>Enabled</Th>
+              <Th />
+            </tr>
+          </thead>
+          <tbody>
+            {triggers.map((t) => (
+              <tr key={t.id} className="border-b border-white/5">
+                <Td>
+                  {t.repo} @ {t.branch}
+                </Td>
+                <Td>{t.env}</Td>
+                <Td>{t.lastSha ? t.lastSha.slice(0, 7) : "—"}</Td>
+                <Td>
+                  {t.lastRunAt ? (
+                    new Date(t.lastRunAt).toLocaleString()
+                  ) : (
+                    <span className="text-on-surface-faint">Waiting for the next push</span>
+                  )}
+                </Td>
+                <Td>
+                  <input
+                    type="checkbox"
+                    checked={t.enabled}
+                    onChange={(e) => onToggle(t.id, e.target.checked)}
+                    aria-label={`Deploy ${t.env} when ${t.repo} @ ${t.branch} moves`}
+                    className="accent-blue-500"
+                  />
+                </Td>
+                <Td>
+                  <button type="button" onClick={() => onDelete(t.id)} className={ghostButton}>
+                    Delete
+                  </button>
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <div className="flex flex-wrap items-end gap-3">
+        {selectKeys.map((key) => (
+          <Field key={key} label={`Answer for ${key}`}>
+            <input
+              value={answers[key] ?? ""}
+              onChange={(e) => onAnswer(key, e.target.value)}
+              placeholder="value"
+              className={inputClass}
+              disabled={busy}
+            />
+          </Field>
+        ))}
+        <button
+          type="button"
+          onClick={onAdd}
+          disabled={!targeted || duplicate || busy}
+          className={ghostButton}
+        >
+          {busy ? "Adding…" : "Watch this branch"}
+        </button>
+        <p className="text-xs text-on-surface-faint">
+          {duplicate
+            ? `${repo} @ ${branch} → ${env} is already watched.`
+            : targeted
+              ? `Deploy ${env} whenever ${repo} @ ${branch} moves.`
+              : "Choose a repository, branch and environment above to watch one."}
+        </p>
+      </div>
+
+      {selectKeys.length > 0 && (
+        <p className="text-xs text-amber-400">
+          A run reported no answer for {selectKeys.map((k) => `select("${k}")`).join(", ")}. Fill
+          those in above — a triggered deploy cannot ask.
+        </p>
+      )}
+
+      <p className="text-xs text-on-surface-faint">
+        A triggered deploy runs unattended, so every <code>select(…)</code> the Infrafile reaches
+        must be answered here; an unanswered key fails the run instead of prompting. Adding a
+        trigger does not deploy the current commit — the watcher records where the branch is now and
+        deploys on the <em>next</em> push to it.
+      </p>
+
+      {error && (
+        <p className="text-xs text-red-400 whitespace-pre-wrap" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function RunHistory({
   runs,
   onRollback,
@@ -461,6 +696,21 @@ function Th({ children }: { children?: React.ReactNode }) {
 
 function Td({ children }: { children: React.ReactNode }) {
   return <td className="px-3 py-1.5 align-top">{children}</td>;
+}
+
+/**
+ * The keys named by a `select(…) has no answer` failure. Matching the message
+ * is deliberate: the runtime only discovers a select by executing up to it, so
+ * a failed run is the only place the set of keys is ever stated.
+ */
+function unansweredSelectKeys(message: string): string[] {
+  const keys: string[] = [];
+  const pattern = /select\("([^"]+)"[^)]*\)\s*has no answer/g;
+  for (const match of message.matchAll(pattern)) {
+    const key = match[1];
+    if (key && !keys.includes(key)) keys.push(key);
+  }
+  return keys;
 }
 
 function messageOf(e: unknown): string {

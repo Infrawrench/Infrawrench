@@ -209,7 +209,9 @@ app.patch("/triggers/:id", async (c) => {
   requirePermission(c, "deployments:write");
   const body = (await c.req.json()) as { enabled?: boolean };
   try {
-    return c.json(await setDeployTriggerEnabled(orgId(c), c.req.param("id"), body.enabled !== false));
+    return c.json(
+      await setDeployTriggerEnabled(orgId(c), c.req.param("id"), body.enabled !== false),
+    );
   } catch (e) {
     return fail(c, e);
   }

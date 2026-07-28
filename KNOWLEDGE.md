@@ -1649,6 +1649,25 @@ slow must never be what fails a deploy. Note `required_contexts: []` is load-bea
 it defaults to every check on the ref, so GitHub 409s exactly when CI is pending, i.e. when a
 deploy usually starts.
 
+**Deploy on push** — `deployment_triggers` ("deploy env E when repo R branch B moves"). The trigger
+is _config_, which is why it may live in the DB while the Infrafile deliberately may not: the
+trigger says WHEN, the Infrafile at the branch head still says WHAT, read fresh each run.
+`server-core/infrafile/triggers.ts` `claimDueDeploymentTriggers()` is swept by `github-watcher`
+on its existing 30s tick. Two load-bearing properties: **first sight records the SHA without
+firing** (arming a trigger must not ship whatever is at HEAD right then), and the claim is a
+conditional `UPDATE ... RETURNING` so competing replicas never double-fire one push. The watcher
+deploys `trigger.sha`, not the branch — two pushes must ship two commits, not the newer one twice.
+Creating a trigger validates the env against the Infrafile at that branch head, because a typo
+would otherwise fail silently on every push forever. A triggered run has nobody to ask, so
+`select()` keys must be pre-answered in the trigger's `answers` — the same contract `--set` gives
+the CLI. Arming needs `deployments:write`: a standing instruction to deploy is the same authority
+as deploying, deferred.
+
+**`runDeployment` lives in `server-core/infrafile/runner.ts`, not web** — `github-watcher` fires
+triggers and cannot import web, so the runner moved there and web re-exports it, exactly as
+`services/workflow-runner.ts` re-exports `runOrgWorkflow`. `entitlements.ts` moved with it for the
+same reason (the runner's paid-plan gate). Web keeps only the org-scoped trigger CRUD.
+
 **Still TODO**: tests for the two build drivers + the web wiring — both need live infrastructure,
 so only the runtime is covered.
 

@@ -52,7 +52,9 @@
     "./push/types": "./src/push/types.ts",
     "./infrafile/build-ssh": "./src/infrafile/build-ssh.ts",
     "./infrafile/build-cloud": "./src/infrafile/build-cloud.ts",
-    "./infrafile/triggers": "./src/infrafile/triggers.ts"
+    "./infrafile/triggers": "./src/infrafile/triggers.ts",
+    "./entitlements": "./src/entitlements.ts",
+    "./infrafile/runner": "./src/infrafile/runner.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

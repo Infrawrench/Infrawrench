@@ -8,6 +8,8 @@ export {
   type DeployStage,
   type DeployStartOptions,
   type DeployStatus,
+  type DeployTrigger,
+  type DeployTriggerInput,
   type DeploymentClient,
   type DeploymentRunRow,
 } from "./types.js";
