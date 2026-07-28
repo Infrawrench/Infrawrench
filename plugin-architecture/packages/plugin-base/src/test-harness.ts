@@ -9,6 +9,7 @@ import {
 } from "./validation/index.js";
 
 const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
+  assemblyai: { apiKey: "test-assemblyai-key", region: "us" },
   aws: { accessKeyId: "AKIATEST", secretAccessKey: "testsecret", region: "us-east-1" },
   gcp: {
     serviceAccountJson: JSON.stringify({
@@ -44,6 +45,8 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   redis: { connectionString: "redis://localhost:6379" },
   memcached: { connectionString: "localhost:11211" },
   kafka: { connectionString: "kafka://localhost:9092" },
+  openai: { apiKey: "sk-proj-test", adminApiKey: "sk-admin-test" },
+  openrouter: { managementKey: "sk-or-v1-test-management", apiKey: "sk-or-v1-test-inference" },
   opensearch: { endpoint: "https://search.example.com:9200", authMode: "basic" },
   neon: { apiKey: "neon_test_key" },
   planetscale: {
@@ -54,6 +57,11 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   turso: { apiToken: "test-token", organizationName: "test-org" },
   docker: { dockerHost: "unix:///var/run/docker.sock" },
   cloudflare: { apiToken: "test-cf-token" },
+  speechmatics: {
+    apiKey: "test-speechmatics-key",
+    region: "eu1",
+    managementToken: "test-speechmatics-management-token",
+  },
   ssh: {
     host: "192.168.1.1",
     port: "22",
@@ -61,6 +69,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     privateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\ntest\n-----END OPENSSH PRIVATE KEY-----",
   },
   databricks: { host: "https://adb-test.azuredatabricks.net", token: "dapi-test" },
+  deepgram: { apiKey: "test-deepgram-key" },
   azure: {
     tenantId: "test-tenant-id",
     clientId: "test-client-id",
@@ -75,6 +84,15 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     apiKey: "123456789012345",
     apiSecret: "test-api-secret",
   },
+  anthropic: { apiKey: "sk-ant-api03-test-key", adminApiKey: "sk-ant-admin01-test-key" },
+  cohere: { apiKey: "test-cohere-key" },
+  deepseek: { apiKey: "sk-test-deepseek-key" },
+  elevenlabs: { apiKey: "sk_test_elevenlabs_key" },
+  gemini: { apiKey: "AIzaSyTestGeminiApiKey0000000000000000000" },
+  gladia: { apiKey: "test-gladia-key" },
+  groq: { apiKey: "gsk_test_groq_key" },
+  mistral: { apiKey: "test-mistral-key", adminApiKey: "test-mistral-admin-key" },
+  cartesia: { apiKey: "sk_car_test_key", adminApiKey: "sk_car_admin_test_key" },
   clickhouse: {
     apiKeyId: "test-key-id",
     apiKeySecret: "test-key-secret",
@@ -83,6 +101,11 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     chUser: "default",
     chPassword: "test-password",
   },
+  fireworks: { apiKey: "fw_test_fireworks_key", accountId: "test-account" },
+  replicate: { apiToken: "r8_test_replicate_token" },
+  revai: { accessToken: "test-revai-access-token", region: "us" },
+  together: { apiKey: "test-together-key" },
+  xai: { apiKey: "xai-test-inference-key", managementKey: "xai-test-management-key" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

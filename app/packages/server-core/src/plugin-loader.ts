@@ -30,6 +30,25 @@ import { plugin as netlifyPlugin } from "@infrawrench/plugin-netlify";
 import { plugin as cloudinaryPlugin } from "@infrawrench/plugin-cloudinary";
 import { plugin as clickhousePlugin } from "@infrawrench/plugin-clickhouse";
 import { plugin as opensearchPlugin } from "@infrawrench/plugin-opensearch";
+import { plugin as anthropicPlugin } from "@infrawrench/plugin-anthropic";
+import { plugin as assemblyaiPlugin } from "@infrawrench/plugin-assemblyai";
+import { plugin as cartesiaPlugin } from "@infrawrench/plugin-cartesia";
+import { plugin as coherePlugin } from "@infrawrench/plugin-cohere";
+import { plugin as deepgramPlugin } from "@infrawrench/plugin-deepgram";
+import { plugin as deepseekPlugin } from "@infrawrench/plugin-deepseek";
+import { plugin as elevenlabsPlugin } from "@infrawrench/plugin-elevenlabs";
+import { plugin as fireworksPlugin } from "@infrawrench/plugin-fireworks";
+import { plugin as geminiPlugin } from "@infrawrench/plugin-gemini";
+import { plugin as gladiaPlugin } from "@infrawrench/plugin-gladia";
+import { plugin as groqPlugin } from "@infrawrench/plugin-groq";
+import { plugin as mistralPlugin } from "@infrawrench/plugin-mistral";
+import { plugin as openaiPlugin } from "@infrawrench/plugin-openai";
+import { plugin as openrouterPlugin } from "@infrawrench/plugin-openrouter";
+import { plugin as replicatePlugin } from "@infrawrench/plugin-replicate";
+import { plugin as revaiPlugin } from "@infrawrench/plugin-revai";
+import { plugin as speechmaticsPlugin } from "@infrawrench/plugin-speechmatics";
+import { plugin as togetherPlugin } from "@infrawrench/plugin-together";
+import { plugin as xaiPlugin } from "@infrawrench/plugin-xai";
 
 const PLUGINS: Plugin[] = [
   awsPlugin,
@@ -60,6 +79,25 @@ const PLUGINS: Plugin[] = [
   cloudinaryPlugin,
   clickhousePlugin,
   opensearchPlugin,
+  anthropicPlugin,
+  assemblyaiPlugin,
+  cartesiaPlugin,
+  coherePlugin,
+  deepgramPlugin,
+  deepseekPlugin,
+  elevenlabsPlugin,
+  fireworksPlugin,
+  geminiPlugin,
+  gladiaPlugin,
+  groqPlugin,
+  mistralPlugin,
+  openaiPlugin,
+  openrouterPlugin,
+  replicatePlugin,
+  revaiPlugin,
+  speechmaticsPlugin,
+  togetherPlugin,
+  xaiPlugin,
 ];
 
 export interface LoadedPlugin {

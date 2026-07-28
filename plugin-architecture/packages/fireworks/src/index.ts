@@ -1,0 +1,11 @@
+export { plugin } from "./plugin.js";
+export { FireworksClient } from "./client.js";
+export { DeploymentResourceType } from "./resources/deployment.js";
+export { ModelResourceType } from "./resources/model.js";
+export { DatasetResourceType } from "./resources/dataset.js";
+export { DeployedModelResourceType } from "./resources/deployed-model.js";
+export { BatchInferenceJobResourceType } from "./resources/batch-inference-job.js";
+export { SupervisedFineTuningJobResourceType } from "./resources/supervised-fine-tuning-job.js";
+export { ApiKeyResourceType } from "./resources/api-key.js";
+export { SecretResourceType } from "./resources/secret.js";
+export { QuotaResourceType } from "./resources/quota.js";

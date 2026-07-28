@@ -1,0 +1,59 @@
+import { f, o, rt } from "@infrawrench/plugin-base";
+
+/**
+ * A model served by the xAI inference API.
+ *
+ * Folded together from three list endpoints so the user sees one "Models"
+ * list rather than three near-identical ones:
+ *   - GET /v1/language-models        (chat + vision, full pricing/modalities)
+ *   - GET /v1/image-generation-models
+ *   - GET /v1/embedding-models
+ *
+ * Docs: https://docs.x.ai/openapi.json
+ */
+export const ModelResourceType = rt({
+  name: "Model",
+  id: "model",
+  description:
+    "A model available to this xAI API key, with pricing (including cached and long-context rates) and input/output modalities",
+  fields: [
+    f("modelId", "Model ID"),
+    f("kind", "Kind", {
+      kind: "enum",
+      enumValues: ["language", "image-generation", "embedding"],
+    }),
+    f("ownedBy", "Owned By", { required: false }),
+    f("version", "Version", { required: false }),
+    f("fingerprint", "Fingerprint", { required: false }),
+    f("aliases", "Aliases", { required: false }),
+    f("inputModalities", "Input Modalities", { required: false }),
+    f("outputModalities", "Output Modalities", { required: false }),
+    f("created", "Created", { required: false }),
+    f("longContextThreshold", "Long-Context Threshold", { kind: "number", required: false }),
+    f("maxPromptLength", "Max Prompt Length", { kind: "number", required: false }),
+    // All price fields are USD cents per million tokens, straight off the API.
+    f("promptTextTokenPrice", "Prompt Text Price", { kind: "number", required: false }),
+    f("completionTextTokenPrice", "Completion Text Price", { kind: "number", required: false }),
+    f("cachedPromptTextTokenPrice", "Cached Prompt Price", { kind: "number", required: false }),
+    f("promptTextTokenPriceLongContext", "Prompt Text Price (Long Context)", {
+      kind: "number",
+      required: false,
+    }),
+    f("completionTextTokenPriceLongContext", "Completion Text Price (Long Context)", {
+      kind: "number",
+      required: false,
+    }),
+    f("cachedPromptTextTokenPriceLongContext", "Cached Prompt Price (Long Context)", {
+      kind: "number",
+      required: false,
+    }),
+    f("promptImageTokenPrice", "Prompt Image Price", { kind: "number", required: false }),
+    f("imagePrice", "Image Price", { kind: "number", required: false }),
+    f("searchPrice", "Search Price", { kind: "number", required: false }),
+  ],
+  outputs: [
+    o("modelId", "Model ID", { description: "Pass as `model` in inference requests" }),
+    o("ownedBy", "Owned By"),
+  ],
+  iconKey: "cpu",
+});
