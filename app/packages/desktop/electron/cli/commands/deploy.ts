@@ -42,25 +42,44 @@ const run = promisify(execFile);
 const INFRAFILE_NAME = "Infrafile";
 
 /**
- * Walk up from `cwd` looking for an Infrafile. Stops at the filesystem root.
- * Returns the repo root (the directory holding the file), which is also the
- * Docker build context — the Infrafile lives at the root by definition, so the
- * two are the same directory and there is nothing to configure.
+ * Walk up from `cwd` looking for an Infrafile.
+ *
+ * The search stops at the repository root — a directory containing `.git`. An
+ * Infrafile lives at a repo root by definition, so climbing past one would pick
+ * up an unrelated project's file and then build *its* directory as the context,
+ * with this repo's git facts attached. Outside a repo there is no such boundary,
+ * so the walk runs to the filesystem root.
+ *
+ * The directory holding the file is also the Docker build context; being the
+ * same directory is what makes there be nothing to configure.
  */
 async function findInfrafile(from: string): Promise<{ dir: string; file: string }> {
-  let dir = path.resolve(from);
+  const start = path.resolve(from);
+  let dir = start;
   for (;;) {
     const file = path.join(dir, INFRAFILE_NAME);
     try {
       await access(file);
       return { dir, file };
     } catch {
+      // Nothing here — but if this is the repo root, the search ends.
+      let atRepoRoot = false;
+      try {
+        await access(path.join(dir, ".git"));
+        atRepoRoot = true;
+      } catch {
+        // Not a repo root; keep climbing.
+      }
       const parent = path.dirname(dir);
-      if (parent === dir) {
+      if (atRepoRoot) {
         throw new CliError(
-          `No ${INFRAFILE_NAME} found in ${path.resolve(from)} or any parent directory.`,
+          `No ${INFRAFILE_NAME} at the root of this repository (${dir}).\n` +
+            `An Infrafile lives beside your .git directory.`,
           2,
         );
+      }
+      if (parent === dir) {
+        throw new CliError(`No ${INFRAFILE_NAME} found in ${start} or any parent directory.`, 2);
       }
       dir = parent;
     }

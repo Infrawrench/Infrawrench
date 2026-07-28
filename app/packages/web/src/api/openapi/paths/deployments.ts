@@ -65,9 +65,11 @@ const DeploymentRun = strict({
   image: z.string().nullable(),
   status: DeployStatus,
   origin: z.enum(["web", "cli"]),
-  // A union, not `.nullable()`: zod-to-openapi emits the latter as
-  // `allOf: [$ref, {type: ["string","null"]}]`, which still demands an enum
-  // value and so rejects the nulls the table actually stores.
+  // A union, not `.nullable()`: the latter renders as
+  // `allOf: [$ref, {type:["string","null"]}]`, which still demands an enum value
+  // and so rejects the nulls this column actually stores. The generator adds its
+  // own null branch on top of this one, so the output carries a harmless
+  // duplicate in the anyOf — cosmetic, and not worth a component to dodge.
   stage: z.union([DeployStage, z.null()]),
   durationMs: z.number().int().nullable(),
   startedAt: IsoDateTime,

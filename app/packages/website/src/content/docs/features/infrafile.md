@@ -244,6 +244,11 @@ The declarations are generated from _your_ connected accounts, exactly like the
 ones a workflow gets, so `infra.accounts.` autocompletes with real account
 names.
 
+Keep the file extensionless. If you name it `Infrafile.ts`, TypeScript treats
+`Infrafile.d.ts` as _that file's_ declaration output and silently excludes it
+from the program — you get "Cannot find name 'defineInfra'" and no obvious
+reason why.
+
 ## Rolling back
 
 A rollback ships a previous deploy's **exact image** again. It does not rebuild:
