@@ -32,6 +32,10 @@ import {
 } from "./create-handlers/networking.js";
 import { projectGetCreateConfig, projectCreateResource } from "./create-handlers/project.js";
 import { genaiGetCreateConfig, genaiCreateResource } from "./create-handlers/genai.js";
+import {
+  containerRegistryGetCreateConfig,
+  containerRegistryCreateResource,
+} from "./create-handlers/container-registry.js";
 
 export type { DoCreateContext, DoCreateArgs } from "./create-handlers/shared.js";
 export { estimateDoDatabaseMonthlyPrice } from "./create-handlers/database.js";
@@ -43,6 +47,7 @@ const getConfigHandlers: GetConfigHandler[] = [
   networkingGetCreateConfig,
   projectGetCreateConfig,
   genaiGetCreateConfig,
+  containerRegistryGetCreateConfig,
 ];
 
 const createHandlers: CreateHandler[] = [
@@ -52,6 +57,7 @@ const createHandlers: CreateHandler[] = [
   networkingCreateResource,
   projectCreateResource,
   genaiCreateResource,
+  containerRegistryCreateResource,
 ];
 
 export async function doGetCreateConfig(

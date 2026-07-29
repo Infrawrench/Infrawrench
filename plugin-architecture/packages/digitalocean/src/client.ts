@@ -539,6 +539,41 @@ export class DigitalOceanClient implements PluginClient {
       if (outputKey === "secretAccessKey") return this.credentials["spacesSecretAccessKey"] ?? "";
     }
 
+    if (typeId === "container-registry") {
+      // externalId is the registry name — the endpoint/serverUrl outputs are
+      // pure string builds, no API call needed.
+      if (outputKey === "endpoint") return `registry.digitalocean.com/${externalId}`;
+      if (outputKey === "serverUrl") return "registry.digitalocean.com";
+      if (
+        outputKey === "dockerConfigJson" ||
+        outputKey === "username" ||
+        outputKey === "password"
+      ) {
+        // GET /v2/registry/docker-credentials returns a .dockerconfigjson
+        // document verbatim — `{ auths: { "registry.digitalocean.com":
+        // { auth: base64("user:pass") } } }`, no DO envelope around it.
+        // `read_write=true` asks for push+pull credentials (the default is
+        // read-only).
+        const doc = await this.fetch<{ auths?: Record<string, { auth?: string }> }>(
+          "/registry/docker-credentials?read_write=true",
+        );
+        if (outputKey === "dockerConfigJson") return JSON.stringify(doc);
+        const auth = doc.auths?.["registry.digitalocean.com"]?.auth ?? "";
+        if (!auth) {
+          throw new Error("DigitalOcean returned no docker credentials for the registry.");
+        }
+        // base64 → "user:pass". Split on the FIRST colon — DO uses the API
+        // token for both halves today, but only the username is guaranteed
+        // colon-free.
+        const decoded = atob(auth);
+        const sep = decoded.indexOf(":");
+        if (sep === -1) {
+          throw new Error("DigitalOcean returned malformed docker credentials (no user:pass).");
+        }
+        return outputKey === "username" ? decoded.slice(0, sep) : decoded.slice(sep + 1);
+      }
+    }
+
     if (typeId === "domain" && outputKey === "nameservers") {
       return "ns1.digitalocean.com, ns2.digitalocean.com, ns3.digitalocean.com";
     }
@@ -804,6 +839,22 @@ export class DigitalOceanClient implements PluginClient {
             `Spaces S3 API error ${delRes.status} deleting bucket "${bucketName}": ${await delRes.text()}`,
           );
         }
+        break;
+      }
+      case "container-registry": {
+        // DELETE /v2/registry takes no id — it deletes THE account's
+        // registry, whatever it's called. Guard against a stale resource id
+        // pointing at a registry that has since been replaced: verify the
+        // current registry is the one being asked about before firing.
+        const data = await this.fetch<{ registry?: { name?: string } }>("/registry");
+        const currentName = data.registry?.name ?? "";
+        if (currentName !== externalId) {
+          throw new Error(
+            `DigitalOcean plugin: the account's registry is "${currentName}", not ` +
+              `"${externalId}" — refusing to delete it.`,
+          );
+        }
+        await this.fetch<unknown>("/registry", { method: "DELETE" });
         break;
       }
       case "domain":

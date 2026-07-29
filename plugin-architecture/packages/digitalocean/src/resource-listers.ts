@@ -44,6 +44,8 @@ export async function listDoResources(
       return listManagedDatabases(ctx, accountId);
     case "spaces-bucket":
       return listSpacesBuckets(ctx, accountId);
+    case "container-registry":
+      return listContainerRegistry(ctx, accountId);
     case "domain":
       return listDomains(ctx, accountId);
     case "dns-record":
@@ -893,6 +895,59 @@ export async function listSpacesBuckets(
     });
   }
   return buckets;
+}
+
+/**
+ * DO allows at most one container registry per account, and GET /v2/registry
+ * returns it or 404s when none exists — so a 404 maps to an empty list while
+ * every other error propagates (unlike `fetchOrEmpty`, which would also hide
+ * scope/rate-limit failures). The subscription tier isn't on the registry
+ * payload; it lives on GET /v2/registry/subscription, fetched best-effort so
+ * a token without the extra scope just leaves the field blank.
+ */
+async function listContainerRegistry(
+  ctx: DoListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
+  let data: { registry?: Record<string, unknown> | null };
+  try {
+    data = await ctx.fetch<{ registry?: Record<string, unknown> | null }>("/registry");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/\bAPI error 404\b/.test(message)) return [];
+    throw err;
+  }
+  const r = data.registry;
+  if (!r) return [];
+  const name = String(r["name"] ?? "");
+  const subscription = await ctx
+    .fetch<{ subscription?: { tier?: { slug?: string } } }>("/registry/subscription")
+    .catch(() => null);
+  const now = new Date().toISOString();
+  return [
+    {
+      id: `${accountId}:container-registry:${name}`,
+      pluginId: "digitalocean",
+      resourceTypeId: "container-registry",
+      accountId,
+      displayName: name,
+      fields: {
+        name,
+        subscriptionTier: String(subscription?.subscription?.tier?.slug ?? ""),
+        region: String(r["region"] ?? ""),
+        storageUsageBytes: Number(r["storage_usage_bytes"] ?? 0),
+        createdAt: String(r["created_at"] ?? ""),
+      },
+      resolvedOutputs: {
+        endpoint: `registry.digitalocean.com/${name}`,
+        serverUrl: "registry.digitalocean.com",
+      },
+      secretStates: [],
+      externalId: name,
+      createdAt: String(r["created_at"] ?? now),
+      updatedAt: now,
+    },
+  ];
 }
 
 async function listDomains(ctx: DoListerContext, accountId: string): Promise<ResourceInstance[]> {

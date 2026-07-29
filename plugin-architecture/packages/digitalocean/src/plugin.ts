@@ -6,6 +6,7 @@ import { DOKSClusterResourceType } from "./resources/doks-cluster.js";
 import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
 import { DatabaseUserResourceType } from "./resources/db-user.js";
 import { SpacesResourceType } from "./resources/spaces.js";
+import { ContainerRegistryResourceType } from "./resources/container-registry.js";
 import { DomainResourceType } from "./resources/domain.js";
 import { DnsRecordResourceType } from "./resources/dns-record.js";
 import { VolumeResourceType } from "./resources/volume.js";
@@ -73,6 +74,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   ManagedDatabaseResourceType,
   DatabaseUserResourceType,
   SpacesResourceType,
+  ContainerRegistryResourceType,
   DomainResourceType,
   DnsRecordResourceType,
   VolumeResourceType,

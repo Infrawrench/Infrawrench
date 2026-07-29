@@ -280,6 +280,125 @@ describe("resolveOutput", () => {
   });
 });
 
+describe("container-registry", () => {
+  const CREDS_DOC = {
+    auths: { "registry.digitalocean.com": { auth: btoa("dop_v1_tok:secret:with:colons") } },
+  };
+
+  it("lists the account's single registry with its subscription tier", async () => {
+    installFetch((path) => {
+      if (path === "/registry")
+        return {
+          registry: {
+            name: "acme",
+            region: "nyc3",
+            storage_usage_bytes: 12345,
+            created_at: "2026-01-01T00:00:00Z",
+          },
+        };
+      if (path === "/registry/subscription") return { subscription: { tier: { slug: "basic" } } };
+      return undefined;
+    });
+    const list = await newClient().listResources("container-registry", ACC);
+    expect(list).toHaveLength(1);
+    expect(list[0]!.id).toBe(`${ACC}:container-registry:acme`);
+    expect(list[0]!.externalId).toBe("acme");
+    expect(list[0]!.fields).toMatchObject({
+      name: "acme",
+      subscriptionTier: "basic",
+      region: "nyc3",
+      storageUsageBytes: 12345,
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+    expect(list[0]!.resolvedOutputs).toEqual({
+      endpoint: "registry.digitalocean.com/acme",
+      serverUrl: "registry.digitalocean.com",
+    });
+  });
+
+  it("leaves the tier blank when the subscription endpoint fails", async () => {
+    installFetch((path) => {
+      if (path === "/registry") return { registry: { name: "acme" } };
+      return undefined; // /registry/subscription → 404
+    });
+    const list = await newClient().listResources("container-registry", ACC);
+    expect(list[0]!.fields.subscriptionTier).toBe("");
+  });
+
+  it("maps a 404 (no registry yet) to an empty list", async () => {
+    installFetch(() => undefined);
+    expect(await newClient().listResources("container-registry", ACC)).toEqual([]);
+  });
+
+  it("propagates non-404 errors from GET /registry", async () => {
+    installFetch((path) => {
+      if (path === "/registry") return jsonResponse("boom", 500);
+      return undefined;
+    });
+    await expect(newClient().listResources("container-registry", ACC)).rejects.toThrow(
+      /API error 500/,
+    );
+  });
+
+  it("resolves endpoint/serverUrl from the registry name without a network call", async () => {
+    installFetch(() => undefined);
+    const client = newClient();
+    const rid = `${ACC}:container-registry:acme`;
+    expect(await client.resolveOutput("container-registry", rid, "endpoint", ACC)).toBe(
+      "registry.digitalocean.com/acme",
+    );
+    expect(await client.resolveOutput("container-registry", rid, "serverUrl", ACC)).toBe(
+      "registry.digitalocean.com",
+    );
+  });
+
+  it("resolves dockerConfigJson as the compact credentials document", async () => {
+    installFetch((path) => {
+      if (path === "/registry/docker-credentials?read_write=true") return CREDS_DOC;
+      return undefined;
+    });
+    const json = await newClient().resolveOutput(
+      "container-registry",
+      `${ACC}:container-registry:acme`,
+      "dockerConfigJson",
+      ACC,
+    );
+    expect(JSON.parse(json)).toEqual(CREDS_DOC);
+    expect(json).not.toContain("\n");
+  });
+
+  it("parses username/password from the auth value, splitting on the first colon", async () => {
+    installFetch((path) => {
+      if (path === "/registry/docker-credentials?read_write=true") return CREDS_DOC;
+      return undefined;
+    });
+    const client = newClient();
+    const rid = `${ACC}:container-registry:acme`;
+    expect(await client.resolveOutput("container-registry", rid, "username", ACC)).toBe(
+      "dop_v1_tok",
+    );
+    expect(await client.resolveOutput("container-registry", rid, "password", ACC)).toBe(
+      "secret:with:colons",
+    );
+  });
+
+  it("deletes the registry only when the current name matches", async () => {
+    const seen: Array<{ path: string; method: string }> = [];
+    installFetch((path, method) => {
+      seen.push({ path, method });
+      if (path === "/registry") return { registry: { name: "acme" } };
+      return undefined;
+    });
+    const client = newClient();
+    await expect(
+      client.deleteResource("container-registry", `${ACC}:container-registry:other`, ACC),
+    ).rejects.toThrow(/refusing to delete/);
+    expect(seen.some((s) => s.method === "DELETE")).toBe(false);
+    await client.deleteResource("container-registry", `${ACC}:container-registry:acme`, ACC);
+    expect(seen).toContainEqual({ path: "/registry", method: "DELETE" });
+  });
+});
+
 describe("deleteResource", () => {
   it("DELETEs the right endpoint per type", async () => {
     const seen: Array<{ path: string; method: string }> = [];

@@ -141,6 +141,7 @@ describe("doGetCreateConfig — every type produces fields", () => {
     "domain",
     "dns-record",
     "project",
+    "container-registry",
     "volume",
     "nfs-share",
     "gen-ai-agent",
@@ -562,6 +563,57 @@ describe("doCreateResource — REST create branches", () => {
       environment: "Production",
     });
     expect(result.resource.id).toBe("acc:project:p-9");
+  });
+
+  it("creates the container registry, defaulting the tier to starter", async () => {
+    const fetch = vi.fn(async (path: string) => {
+      if (path === "/registry")
+        return {
+          registry: {
+            name: "acme",
+            region: "nyc3",
+            storage_usage_bytes: 0,
+            created_at: "2026-01-01T00:00:00Z",
+          },
+        };
+      return {};
+    }) as Mock;
+    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const result = await doCreateResource(ctx, "container-registry", "acc", { name: "acme" });
+    expect(result.resource.id).toBe("acc:container-registry:acme");
+    expect(result.resource.externalId).toBe("acme");
+    expect(result.resource.resolvedOutputs).toEqual({
+      endpoint: "registry.digitalocean.com/acme",
+      serverUrl: "registry.digitalocean.com",
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      "/registry",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ name: "acme", subscription_tier_slug: "starter" }),
+      }),
+    );
+  });
+
+  it("container registry sends the picked tier and region", async () => {
+    const fetch = vi.fn(async (path: string) => {
+      if (path === "/registry") return { registry: { name: "acme", region: "fra1" } };
+      return {};
+    }) as Mock;
+    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const result = await doCreateResource(ctx, "container-registry", "acc", {
+      name: "acme",
+      subscriptionTier: "basic",
+      region: "fra1",
+    });
+    expect(result.resource.fields.subscriptionTier).toBe("basic");
+    expect(fetch).toHaveBeenCalledWith(
+      "/registry",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ name: "acme", subscription_tier_slug: "basic", region: "fra1" }),
+      }),
+    );
   });
 
   it("creates a volume", async () => {
