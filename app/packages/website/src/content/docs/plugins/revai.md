@@ -39,7 +39,7 @@ The clip is posted to `/jobs` as multipart, then polled for up to two minutes an
 - **Deployments do not share data.** A job submitted to the US host is invisible from the EU host and vice versa, so the deployment you pick when adding the account decides what you can see.
 - **The EU deployment has no saved custom vocabularies and no human transcription.** Frankfurt accepts phrases inline at submit time, but there is no `/vocabularies` collection there, so that section is US-only.
 - **Human transcription will time out in the Speech tab.** It takes hours to come back. Submit it and read the result from the Jobs list instead.
-- **Uploads are capped at 2 GB and 17 hours** per request.
+- **The Speech tab caps clips at 25 MB**, well below what Rev AI itself accepts (2 GB and 17 hours). The panel sends audio base64-encoded inside a JSON request, and base64 inflates by a third — 25 MB is what survives that round trip. Send anything larger through Rev AI's own API directly.
 - **`balance_seconds` is deprecated and always returns 0**, so it is deliberately not shown — displaying it would read as "out of credit" on a funded account. The USD balances are the live numbers.
 - **The transcript URL needs an explicit `Accept` header.** Requesting it with `*/*` is rejected with a `406`.
 - **Rev AI omits null properties entirely** rather than sending nulls, so a blank field on a job usually means "not set", not "failed to load".

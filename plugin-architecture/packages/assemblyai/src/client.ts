@@ -51,12 +51,6 @@ const POLL_INTERVAL_MS = 3_000;
 const POLL_TIMEOUT_MS = 120_000;
 
 /**
- * The Speech panel ships the clip base64-encoded inside an ordinary JSON
- * request, so the practical ceiling is far below the API's own 2.2 GB upload
- * cap. 64 MB of audio is minutes of speech — well past what a playground tab
- * is for — while still fitting comfortably in a JSON body.
- */
-/**
  * Largest clip the Speech panel will accept, in bytes.
  *
  * This is deliberately far below the provider's own ceiling. The panel ships
@@ -449,7 +443,14 @@ export class AssemblyAIClient implements PluginClient {
     return {
       title: resource.displayName,
       subtitle: `AssemblyAI account · ${String(fields["region"] ?? "us")} region`,
-      status: { kind: "status-dot", status: "healthy", label: "Connected" },
+      status:
+        String(fields["reachable"] ?? "yes") === "no"
+          ? {
+              kind: "status-dot",
+              status: "error",
+              label: "Could not reach AssemblyAI",
+            }
+          : { kind: "status-dot", status: "healthy", label: "Connected" },
       sections: [
         {
           kind: "section",
@@ -782,11 +783,18 @@ export class AssemblyAIClient implements PluginClient {
    */
   private async buildAccount(accountId: string): Promise<ResourceInstance> {
     let items: TranscriptListItem[] = [];
+    // Whether the listing succeeded is the only signal this plugin has that the
+    // key works — AssemblyAI exposes no describe-key endpoint. Record it, so a
+    // revoked key does not render as a healthy account that merely happens to
+    // have transcribed nothing. Note a 403 here is ambiguous: AssemblyAI uses it
+    // for both auth failures and rate limiting.
+    let reachable = true;
     try {
       const data = await this.fetch<TranscriptListResponse>(`/v2/transcript?limit=${LIST_LIMIT}`);
       items = data.transcripts ?? [];
     } catch {
       items = [];
+      reachable = false;
     }
 
     let completed = 0;
@@ -809,6 +817,7 @@ export class AssemblyAIClient implements PluginClient {
       accountId,
       displayName: "AssemblyAI",
       fields: {
+        reachable: reachable ? "yes" : "no",
         endpoint: this.baseUrl,
         region: this.region,
         sampledTranscripts: items.length,

@@ -647,7 +647,11 @@ function TranscribeSection({
         disabled={busy || !audio || recording}
         onPress={() => void run()}
       />
-      {!audio ? <FormHint>Record or pick a clip first.</FormHint> : null}
+      {!audio ? (
+        <FormHint>
+          {recordingBlocked ? "Pick a clip first." : "Record or pick a clip first."}
+        </FormHint>
+      ) : null}
 
       {result ? (
         <View style={styles.transcript}>

@@ -29,7 +29,7 @@ Gladia is asynchronous, so one press uploads the clip, creates a job, and polls 
 
 - **There is no usage or quota endpoint.** The workspace's activity panel is deliberately not called "Usage": it sums the most recent jobs returned by `/v2/pre-recorded`, which is a **lower bound** on real usage, not a billing figure. The panel says so in as many words, and Infrawrench charts no Gladia spend.
 - **Billed time and audio duration are different numbers**, and both are shown on every job. Billed time is the one that costs money.
-- **Limits are 135 minutes and 1,000 MB per request.**
+- **The Speech tab caps clips at 25 MB**, well below what Gladia itself accepts (135 minutes and 1,000 MB). The panel sends audio base64-encoded inside a JSON request, and base64 inflates by a third — 25 MB is what survives that round trip. Send anything larger through Gladia's own API directly.
 - **The Speech tab gives up after two minutes.** Long recordings are better submitted from Gladia's own dashboard and read back from the Transcriptions list here.
 - **The list endpoint reports no total.** `/v2/pre-recorded` returns `{first, current, next, items}` with no count, so paging walks `next` until it runs out — there is no "N of M" to show.
 - **Deleting a transcription returns `202 Accepted`**, so the row may linger for a moment before the next sync clears it.

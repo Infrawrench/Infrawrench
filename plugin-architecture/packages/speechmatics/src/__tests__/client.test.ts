@@ -148,6 +148,19 @@ describe("account (the singleton that hosts the Speech tab)", () => {
     // Falls back to the built-in language list rather than an empty picker.
     expect(detail.speechPanel?.languages?.some((l) => l.id === "en")).toBe(true);
     expect(account!.fields["usageHours"]).toBe(0);
+    // …but it must not claim to be healthy. A revoked key reaches exactly this
+    // path, and a green dot over zeroed usage is indistinguishable from a valid
+    // key that has simply never transcribed anything.
+    expect(detail.status?.status).toBe("error");
+  });
+
+  it("reports a healthy account when the authenticated usage call succeeds", async () => {
+    installFetch((url) =>
+      url.includes("/usage") ? response({ summary: [] }) : response({ language_packs: [] }),
+    );
+    const c = client();
+    const [account] = await c.listResources("account", ACCOUNT);
+    expect(c.renderDetail(account!).status?.status).toBe("healthy");
   });
 
   it("summarises GET /v2/usage over a 30-day window and stashes the breakdown", async () => {

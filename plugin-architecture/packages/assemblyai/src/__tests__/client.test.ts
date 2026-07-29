@@ -152,6 +152,20 @@ describe("listResources", () => {
 });
 
 describe("account (the singleton that hosts the Speech tab)", () => {
+  it("marks the account unreachable when the listing fails, rather than healthy", async () => {
+    // A revoked key lands here. The listing failure is swallowed so the Speech
+    // tab survives, but the status must not read the same as a valid key that
+    // has simply never transcribed anything.
+    installFetch(() => jsonResponse({ error: "unauthorized" }, 401));
+    const c = client();
+    const [account] = await c.listResources("account", ACCOUNT);
+
+    expect(account!.fields["reachable"]).toBe("no");
+    expect(c.renderDetail(account!).status?.status).toBe("error");
+    // Still navigable, so the user can see the account at all.
+    expect(c.renderDetail(account!).speechPanel).toBeDefined();
+  });
+
   it("returns exactly one account, with a Speech tab, on a key with zero transcripts", async () => {
     // The regression: a freshly added account has nothing to open, so the
     // Speech tab has to hang off something that exists regardless.

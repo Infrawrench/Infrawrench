@@ -173,6 +173,21 @@ describe("listResources", () => {
     expect(calls).toHaveLength(2);
   });
 
+  it("stops when the server keeps echoing the same cursor, without duplicating rows", async () => {
+    // A server that never advances its cursor. Breaking only on a missing
+    // token would re-fetch this page up to the iteration cap and emit the same
+    // resource id many times over — worse than truncating, because duplicate
+    // ids corrupt the listing rather than shortening it.
+    installFetch(() =>
+      jsonResponse({ data: [{ id: "f0", filename: "f0.txt" }], pagination_token: "stuck" }),
+    );
+
+    const rows = await client().listResources("file", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["f0"]);
+    expect(new Set(rows.map((r) => r.id)).size).toBe(rows.length);
+    expect(calls).toHaveLength(2);
+  });
+
   it("returns an empty list for management-only types when no management key is set", async () => {
     const spy = installFetch(() => jsonResponse({}));
     expect(await client().listResources("api-key", ACCOUNT)).toEqual([]);

@@ -29,13 +29,6 @@ const BASE_URL = "https://api.deepgram.com";
 const MAX_TTS_CHARACTERS = 2000;
 
 /**
- * Deepgram's own pre-recorded limit is 2 GB, but the Speech tab ships clips
- * base64-encoded inside ordinary JSON (Electron IPC / the cloud HTTP API).
- * 100 MB is the practical ceiling for that transport; anything larger belongs
- * in Deepgram's callback-based async flow, not an interactive playground.
- * (Deepgram also 504s on requests that take longer than 10 minutes.)
- */
-/**
  * Largest clip the Speech panel will accept, in bytes.
  *
  * This is deliberately far below the provider's own ceiling. The panel ships

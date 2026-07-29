@@ -44,7 +44,7 @@ Projects get a **Metrics** tab over the last 30 days, charting requests, audio h
 ## Tips & limits
 
 - **Synthesis is capped at 2,000 characters** per request. That is Deepgram's own limit on `/v1/speak`, and the counter enforces it before the call goes out.
-- **Transcription uploads are capped at 100 MB.**
+- **The Speech tab caps clips at 25 MB**, well below what Deepgram itself accepts (2 GB). The panel sends audio base64-encoded inside a JSON request, and base64 inflates by a third — 25 MB is what survives that round trip. Send anything larger through Deepgram's own API directly.
 - **A new key's secret exists in exactly one place: the create response.** The plugin shows it once with a warning. Deepgram only stores the key id and a truncated prefix, so there is genuinely no way to read it back.
 - **Deleting a member revokes every API key they own inside that project**, not just their access.
 - **Renaming is the only project edit.** `name` is the sole documented mutable attribute.

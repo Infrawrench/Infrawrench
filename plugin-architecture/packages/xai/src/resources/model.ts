@@ -31,7 +31,10 @@ export const ModelResourceType = rt({
     f("created", "Created", { required: false }),
     f("longContextThreshold", "Long-Context Threshold", { kind: "number", required: false }),
     f("maxPromptLength", "Max Prompt Length", { kind: "number", required: false }),
-    // All price fields are USD cents per million tokens, straight off the API.
+    // Prices arrive as USD cents per 100 million units — see PRICE_PER_MILLION /
+    // PRICE_PER_UNIT in client.ts, which is where the scaling happens. The token
+    // rows and the per-image/per-search rows share that denomination; only the
+    // unit they are quoted against differs.
     f("promptTextTokenPrice", "Prompt Text Price", { kind: "number", required: false }),
     f("completionTextTokenPrice", "Completion Text Price", { kind: "number", required: false }),
     f("cachedPromptTextTokenPrice", "Cached Prompt Price", { kind: "number", required: false }),

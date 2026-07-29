@@ -49,8 +49,8 @@ Speech to text records from the phone's microphone — iOS and Android ask for p
 ## Things to watch
 
 - **It spends real quota.** Every synthesis and transcription is a billed API call against your own account, exactly as if you had made it yourself. There is no sandbox mode.
-- **Recording needs a secure context.** Browsers only grant microphone access over HTTPS (or on `localhost`). If the Record button is missing entirely, your browser doesn't support `MediaRecorder` — upload a clip instead. On mobile, a denied microphone permission is fixed in the OS settings for the app; picking a clip works either way.
-- **Clip size is capped** at whatever the provider accepts, and the app enforces it before uploading. Long recordings are better sent through the provider's own async job API than through this panel.
+- **Recording needs a secure context.** Browsers only grant microphone access over HTTPS (or on `localhost`). If the Record button is missing, either your browser doesn't support `MediaRecorder` or the provider can't accept what browsers record — Cohere is one such, and says so next to the upload button. Upload a clip instead. On mobile, a denied microphone permission is fixed in the OS settings for the app; picking a clip works either way.
+- **Clip size is capped at 25 MB**, and the app enforces it before uploading. That ceiling is ours, not the provider's — audio is sent base64-encoded inside a JSON request, and base64 inflates by a third. Most providers accept far larger files through their own API; long recordings belong there, not in this panel.
 - **Job-based providers take longer.** Transcription services that queue work (AssemblyAI, Speechmatics, Rev.ai) are polled until the job finishes, so a long clip can sit on "Transcribing…" for a while before the text appears.
 - **On the desktop app this only works for locally-added accounts.** Accounts synced from the cloud aren't bridged for speech yet, and the panel says so rather than failing quietly.
 

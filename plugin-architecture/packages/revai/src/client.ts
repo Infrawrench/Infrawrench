@@ -39,11 +39,6 @@ const POLL_INTERVAL_MS = 3000;
 const MAX_POLL_WAIT_MS = 120_000;
 
 /**
- * Provider limits, verified 2026-07-28 against
- * https://docs.rev.ai/api/asynchronous/reference/jobs/submittranscriptionjob.md
- * — 2 GB per multipart request, 17 hours of media for English.
- */
-/**
  * Largest clip the Speech panel will accept, in bytes.
  *
  * This is deliberately far below the provider's own ceiling. The panel ships

@@ -32,7 +32,7 @@ Transcription runs on `cohere-transcribe-03-2026`. Language is **required** by t
 
 ## Tips & limits
 
-- **You cannot record a clip in the browser and send it straight to Cohere.** The API accepts FLAC, MP3, MPEG, MPGA, OGG and WAV — not the WebM your browser records on Chrome, Edge and Firefox, nor the MP4 Safari records. Convert first and upload. The panel's help text says so above the recorder.
+- **You cannot record a clip in the browser and send it straight to Cohere.** The API accepts FLAC, MP3, MPEG, MPGA, OGG and WAV — not the WebM your browser records on Chrome, Edge and Firefox, nor the MP4 Safari records. Convert first and upload. The Speech tab therefore hides the recorder entirely and offers only upload, with the accepted formats listed next to it.
 - **Uploads are capped at 25 MB.**
 - **Datasets are deleted automatically 30 days after upload.** The dataset list is a rolling month, and the detail page says so.
 - **There is no usage or billing API.** Token consumption is reported only per response, in each call's `meta.billed_units` — there is no aggregate query anywhere, so Infrawrench cannot chart Cohere spend. Every model page carries a **Usage & Billing** section that explains this and links to the Cohere dashboard instead of showing an empty chart.

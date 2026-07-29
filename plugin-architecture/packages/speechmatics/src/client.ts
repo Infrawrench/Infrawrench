@@ -172,6 +172,13 @@ interface StashedDiscovery {
 
 /** Condensed `GET /v2/usage` summary, stashed for the same reason. */
 interface StashedUsage {
+  /**
+   * Whether the authenticated /usage call actually succeeded. Discovery is
+   * unauthenticated, so this is the only signal the plugin has that the API key
+   * works — without it a revoked key renders a healthy account showing zeroes,
+   * indistinguishable from a valid key that has transcribed nothing.
+   */
+  ok: boolean;
   since: string;
   until: string;
   hours: number;
@@ -213,15 +220,6 @@ const ACCEPTED_AUDIO_TYPES = [
   "video/mp4",
 ];
 
-/**
- * A media file posted in the body of `POST /jobs` "must be less than 1 GB in
- * size or the job will be rejected".
- * https://docs.speechmatics.com/speech-to-text/batch/limits
- *
- * In practice our own host caps the upload far below this — the Speech tab
- * base64-encodes the clip into a JSON request body — so this is the provider
- * ceiling, not a promise that a 1 GB clip will survive the round trip.
- */
 /**
  * Largest clip the Speech panel will accept, in bytes.
  *
@@ -536,7 +534,7 @@ export class SpeechmaticsClient implements PluginClient {
    * still comes back with zeroes.
    */
   private async fetchUsageSafe(since: string, until: string): Promise<StashedUsage> {
-    const empty: StashedUsage = { since, until, hours: 0, jobs: 0, rows: [] };
+    const empty: StashedUsage = { ok: false, since, until, hours: 0, jobs: 0, rows: [] };
     let usage: UsageResponse;
     try {
       const params = new URLSearchParams({ since, until });
@@ -558,6 +556,7 @@ export class SpeechmaticsClient implements PluginClient {
     }));
 
     return {
+      ok: true,
       since: usage.since ?? since,
       until: usage.until ?? until,
       hours: Number(condensed.reduce((sum, row) => sum + row.hours, 0).toFixed(3)),
@@ -667,6 +666,7 @@ export class SpeechmaticsClient implements PluginClient {
       accountId,
       displayName: `Speechmatics (${this.region})`,
       fields: {
+        usageReachable: usage.ok ? "yes" : "no",
         region: this.region,
         endpoint: this.baseUrl,
         managementToken: this.managementToken.length > 0,
@@ -1434,7 +1434,10 @@ export class SpeechmaticsClient implements PluginClient {
     return {
       title: resource.displayName,
       subtitle: `Speechmatics account · ${region}`,
-      status: { kind: "status-dot", status: "healthy", label: region },
+      status:
+        String(f["usageReachable"] ?? "yes") === "no"
+          ? { kind: "status-dot", status: "error", label: "Could not reach Speechmatics" }
+          : { kind: "status-dot", status: "healthy", label: region },
       sections,
       headerActions: [
         {

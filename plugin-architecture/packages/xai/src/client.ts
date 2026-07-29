@@ -267,6 +267,19 @@ interface MultipartPart {
  * The management key is optional. Everything that needs it degrades to an empty
  * list (or a clear CostSetupError) rather than failing the whole account.
  */
+/**
+ * Drop repeated resource ids from a paged listing.
+ *
+ * The cursor guard in each loop stops a non-advancing server, but it can only
+ * do so *after* the repeated page has been read, so the rows themselves still
+ * need collapsing. Duplicate ids are worse than a short list: the host keys
+ * resources by id, so they corrupt the listing rather than shortening it.
+ */
+function dedupeById<T extends { id: string }>(rows: T[]): T[] {
+  const seen = new Set<string>();
+  return rows.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
+}
+
 export class XaiClient implements PluginClient {
   private readonly apiKey: string;
   private readonly managementKey: string | undefined;
@@ -505,6 +518,7 @@ export class XaiClient implements PluginClient {
     const now = new Date().toISOString();
     const out: ResourceInstance[] = [];
     let token: string | undefined;
+    let seenToken: string | undefined;
 
     for (let page = 0; page < 20; page++) {
       const qs = new URLSearchParams({ limit: "100", order: "desc", sort_by: "created_at" });
@@ -541,9 +555,14 @@ export class XaiClient implements PluginClient {
       // one: the server may return fewer than `limit` rows and still hand back a
       // token, and stopping there silently drops every file behind it — they
       // vanish from the listing and getResource/delete then 404 on them.
-      if (!token) break;
+      // A repeated cursor means the server is not advancing. Without this the
+      // loop re-fetches the same page until the iteration cap and emits
+      // duplicate resource ids, which is worse than the truncation the old
+      // short-page check caused.
+      if (!token || token === seenToken) break;
+      seenToken = token;
     }
-    return out;
+    return dedupeById(out);
   }
 
   /** GET /v1/batches */
@@ -551,6 +570,7 @@ export class XaiClient implements PluginClient {
     const now = new Date().toISOString();
     const out: ResourceInstance[] = [];
     let token: string | undefined;
+    let seenToken: string | undefined;
 
     for (let page = 0; page < 20; page++) {
       const qs = new URLSearchParams({ limit: "100" });
@@ -562,9 +582,14 @@ export class XaiClient implements PluginClient {
         out.push(this.mapBatch(accountId, now, b));
       }
       token = data.pagination_token ?? undefined;
-      if (!token) break;
+      // A repeated cursor means the server is not advancing. Without this the
+      // loop re-fetches the same page until the iteration cap and emits
+      // duplicate resource ids, which is worse than the truncation the old
+      // short-page check caused.
+      if (!token || token === seenToken) break;
+      seenToken = token;
     }
-    return out;
+    return dedupeById(out);
   }
 
   private mapBatch(accountId: string, now: string, b: XaiBatch): ResourceInstance {
@@ -677,6 +702,7 @@ export class XaiClient implements PluginClient {
   private async fetchCustomVoices(): Promise<XaiCustomVoice[]> {
     const out: XaiCustomVoice[] = [];
     let token: string | undefined;
+    let seenToken: string | undefined;
     for (let page = 0; page < 10; page++) {
       const qs = new URLSearchParams({ limit: "1000" });
       if (token) qs.set("pagination_token", token);
@@ -686,9 +712,14 @@ export class XaiClient implements PluginClient {
       }>(`/v1/custom-voices?${qs.toString()}`);
       out.push(...(data.voices ?? []));
       token = data.pagination_token ?? undefined;
-      if (!token) break;
+      // A repeated cursor means the server is not advancing. Without this the
+      // loop re-fetches the same page until the iteration cap and emits
+      // duplicate resource ids, which is worse than the truncation the old
+      // short-page check caused.
+      if (!token || token === seenToken) break;
+      seenToken = token;
     }
-    return out;
+    return dedupeById(out);
   }
 
   /** GET /auth/teams/{teamId}/api-keys (management key) */
@@ -697,6 +728,7 @@ export class XaiClient implements PluginClient {
     const now = new Date().toISOString();
     const out: ResourceInstance[] = [];
     let token: string | undefined;
+    let seenToken: string | undefined;
 
     for (let page = 0; page < 20; page++) {
       const qs = new URLSearchParams({ pageSize: "100" });
@@ -707,9 +739,14 @@ export class XaiClient implements PluginClient {
       }>(`/auth/teams/${encodeURIComponent(teamId)}/api-keys?${qs.toString()}`);
       for (const k of data.apiKeys ?? []) out.push(this.mapApiKey(accountId, now, k));
       token = data.paginationToken ?? undefined;
-      if (!token) break;
+      // A repeated cursor means the server is not advancing. Without this the
+      // loop re-fetches the same page until the iteration cap and emits
+      // duplicate resource ids, which is worse than the truncation the old
+      // short-page check caused.
+      if (!token || token === seenToken) break;
+      seenToken = token;
     }
-    return out;
+    return dedupeById(out);
   }
 
   private mapApiKey(accountId: string, now: string, k: XaiManagedApiKey): ResourceInstance {
@@ -754,6 +791,7 @@ export class XaiClient implements PluginClient {
     const now = new Date().toISOString();
     const out: ResourceInstance[] = [];
     let token: string | undefined;
+    let seenToken: string | undefined;
 
     for (let page = 0; page < AUDIT_MAX_PAGES; page++) {
       const qs = new URLSearchParams({
@@ -766,14 +804,19 @@ export class XaiClient implements PluginClient {
       );
       for (const e of data.events ?? []) out.push(this.mapAuditEvent(accountId, now, e));
       token = data.nextPageToken || undefined;
-      if (!token) break;
+      // A repeated cursor means the server is not advancing. Without this the
+      // loop re-fetches the same page until the iteration cap and emits
+      // duplicate resource ids, which is worse than the truncation the old
+      // short-page check caused.
+      if (!token || token === seenToken) break;
+      seenToken = token;
     }
 
     // A token left over means the cap stopped the walk. The log is newest-first,
     // so what is missing is the oldest history — say so in the list instead of
     // ending it as if that were all there ever was.
     if (token) out.push(this.auditTruncationMarker(accountId, now, out.length));
-    return out;
+    return dedupeById(out);
   }
 
   private mapAuditEvent(accountId: string, now: string, e: XaiAuditEvent): ResourceInstance {
