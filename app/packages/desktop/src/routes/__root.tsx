@@ -36,6 +36,7 @@ import { UpdatePromptHost } from "../components/UpdatePromptHost";
 import { SwipeIndicator } from "../components/SwipeIndicator";
 import { SidebarAccounts } from "../components/SidebarAccounts";
 import { SidebarDashboards } from "../components/SidebarDashboards";
+import { Onboarding, isOnboardingComplete, markOnboardingComplete } from "../components/Onboarding";
 import { getDb } from "../db/client";
 import type { AccountRow } from "../db/rows";
 import { pinResource, pinWorkflow } from "../lib/pins";
@@ -262,6 +263,7 @@ function RootLayout() {
     () => useUIStore.getState().activeCloudOrgId,
   );
   const [cloudAuthenticated, setCloudAuthenticated] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
     setActiveCloudOrgId(activeOrgId);
@@ -309,6 +311,8 @@ function RootLayout() {
       .then((status) => {
         setCloudAuthenticated(status.authenticated);
         if (status.authenticated) {
+          // Existing sign-ins predate the welcome flow — never show it to them.
+          markOnboardingComplete();
           getCloudOrgs()
             .then((orgs) => {
               setCloudOrgs(orgs);
@@ -322,6 +326,7 @@ function RootLayout() {
             .catch(console.error);
         } else {
           if (useUIStore.getState().activeCloudOrgId) setActiveOrgId(null);
+          if (SHOW_SIGN_IN_BUTTON && !isOnboardingComplete()) setShowOnboarding(true);
         }
       })
       .catch((err) => {
@@ -757,6 +762,22 @@ function RootLayout() {
                 { label: result.displayName },
               );
             }
+          }}
+        />
+      )}
+
+      {showOnboarding && (
+        <Onboarding
+          onSignedIn={(orgs) => {
+            setCloudAuthenticated(true);
+            setCloudOrgs(orgs);
+          }}
+          onSelectOrg={(orgId) => {
+            void handleSwitchOrg(orgId);
+          }}
+          onDone={() => {
+            markOnboardingComplete();
+            setShowOnboarding(false);
           }}
         />
       )}

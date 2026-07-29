@@ -28,12 +28,14 @@ Credentials are stored in a local SQLite database, encrypted with AES-256-GCM us
 
 ### First run
 
-On first launch you see a local-only welcome screen. No sign-in, no account.
+On first launch you see a welcome screen that explains what signing in to Infrawrench Cloud adds — syncing to web and mobile, team organizations, cloud-side workflows and deployments, budgets and alerts — and offers two ways in:
 
-1. Give your workspace a name (this is only a local label).
-2. Click **Add account** to connect your first cloud or service — see [Add your first account](./add-first-account.md).
+- **Sign in to Infrawrench Cloud** — opens your browser to sign in. Once you're back, pick the organization you want to start in (or **Use locally for now**). If you're not in an organization yet, the app points you to the web to create one, then picks it up when you return.
+- **Continue without an account** — skip straight to a fully local workspace. Nothing is uploaded, and you can sign in later from the sidebar.
 
-<insert [First-run welcome screen] here>
+<insert [First-run welcome screen listing the cloud perks with Sign in and Continue without an account buttons] here>
+
+Either way, the next step is the same: click **Add account** to connect your first cloud or service — see [Add your first account](./add-first-account.md).
 
 ### SSH agent integration
 
