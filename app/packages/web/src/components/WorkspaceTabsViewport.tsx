@@ -12,8 +12,9 @@ import { AccountPanel } from "@/routes/org.$orgId.accounts.$accountId";
 import { ResourcePanel } from "@/routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId";
 import { getWorkspaceNavigateArgs, syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
 import { type WorkflowClient } from "@infrawrench/ui/workflows";
-import { DeploymentsPanel, type DeploymentClient } from "@infrawrench/ui";
+import { type DeploymentClient } from "@infrawrench/ui";
 import { createWebDeploymentClient } from "@/lib/deployment-client";
+import { WebDeploymentsPanel } from "./WebDeploymentsPanel";
 import { type AgentClient } from "@infrawrench/ui/agents";
 import { createWebWorkflowClient } from "@/lib/workflow-client";
 import { createWebCostsClient } from "@/lib/cost-client";
@@ -123,8 +124,9 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
       return <WebWorkflowsPanel client={getWorkflowClient(orgId)} orgId={orgId} />;
     case "deployments":
       return (
-        <DeploymentsPanel
+        <WebDeploymentsPanel
           client={getDeploymentClient(orgId)}
+          orgId={orgId}
           {...(t.repo ? { initialRepo: t.repo } : {})}
         />
       );

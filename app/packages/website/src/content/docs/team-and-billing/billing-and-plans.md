@@ -16,6 +16,7 @@ sidebar_order: 3
 | Dashboards         | Yes                    | Yes                    |
 | SSH terminal / SQL | Yes                    | Yes                    |
 | Audit log          | No                     | Yes                    |
+| Deploy from GitHub | No (CLI deploys free)  | Yes                    |
 | API keys           | No                     | Yes                    |
 | AI chat            | $5 usage / mo included | Metered, pay-as-you-go |
 | Price              | $0                     | $20 / seat / mo        |

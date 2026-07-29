@@ -257,10 +257,10 @@ away the history.
 
 ### Plans
 
-Deploying from the web app needs a **paid plan** (or complimentary access).
-Previewing does not — you can Plan a repository on the free tier and see exactly
-what a deploy would do before deciding. `infrawrench deploy` from the CLI builds
-on your own machine and is not gated.
+The Deploy page in the web app needs a **paid plan** (or complimentary access).
+On the free tier the page shows what the feature includes and an upgrade link
+instead. `infrawrench deploy` from the CLI builds on your own machine and is not
+gated — you can plan and deploy from there on any tier.
 
 If a subscription lapses the message says so and points at Settings → Billing. A
 payment that is merely _retrying_ (`past_due`) does not block deploys — losing
