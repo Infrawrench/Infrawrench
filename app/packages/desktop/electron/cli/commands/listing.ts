@@ -141,9 +141,18 @@ export async function cmdResources(ctx: CliContext, typeFilter?: string): Promis
     // Re-sync from the provider first so the listing matches what exists
     // *now*, the way the desktop account page does — the poller's cache can
     // lag or be missing types. A failed sync still prints the cached rows.
+    // The sync blocks until the whole provider crawl finishes — minutes on a
+    // big account — so say what the silence is on an interactive terminal
+    // (stderr, so `--json | jq` stays clean).
+    const showProgress = process.stderr.isTTY === true;
+    if (showProgress) {
+      process.stderr.write(c.dim(`syncing ${account.displayName} from the provider… `));
+    }
     try {
       await syncCloudAccount(orgId, account.id);
+      if (showProgress) process.stderr.write(c.dim("done\n"));
     } catch (e) {
+      if (showProgress) process.stderr.write("\n");
       printErr(c.yellow(`sync failed — showing cached: ${e instanceof Error ? e.message : e}`));
     }
     rows = await listCloudResources(orgId, account.id);

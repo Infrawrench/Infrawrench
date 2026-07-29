@@ -66,6 +66,41 @@ The CLI shares the desktop app's data: the same local accounts, the same
 cloud session, the same organizations. Sign in once, use both.`;
 
 /**
+ * Make an Electron process behave like a terminal program. Three things the
+ * GUI never has to think about:
+ *
+ * - Closing the terminal does not kill an Electron app: Chromium swallows
+ *   SIGHUP's default disposition, so an orphaned CLI keeps running headless
+ *   until its next stdout write hits the dead pty and throws `write EIO`.
+ *   Exit on SIGHUP like every other CLI instead.
+ * - stdout/stderr can die before we do (`| head -1` closes the pipe → EPIPE;
+ *   a closed terminal → EIO). Both mean nobody is reading — exit quietly.
+ * - Anything else uncaught must print to the terminal and exit non-zero.
+ *   Without a listener, Electron answers uncaught exceptions with a GUI
+ *   error dialog, which is bizarre from a shell.
+ */
+function installTerminalGuards(): void {
+  process.on("SIGHUP", () => app.exit(129));
+
+  const onStreamError = (err: NodeJS.ErrnoException): void => {
+    // An `error` listener also stops the stream error from re-throwing as an
+    // uncaught exception, which would try to write to the same dead stream.
+    app.exit(err.code === "EPIPE" || err.code === "EIO" ? 0 : 1);
+  };
+  process.stdout.on("error", onStreamError);
+  process.stderr.on("error", onStreamError);
+
+  process.on("uncaughtException", (err) => {
+    try {
+      printErr(c.red(err instanceof Error ? (err.stack ?? err.message) : String(err)));
+    } catch {
+      // stderr itself is what broke — nothing left to say it with.
+    }
+    app.exit(1);
+  });
+}
+
+/**
  * True when the GUI already runs — probe the single-instance lock.
  *
  * MUST be called after `app.whenReady()`. Losing the lock *before* the ready
@@ -85,6 +120,7 @@ function detectGuiRunning(): boolean {
 }
 
 export async function runCli(): Promise<void> {
+  installTerminalGuards();
   // Terminal process: no GPU, no dock icon, as little Chromium as possible.
   app.commandLine.appendSwitch("disable-gpu");
   if (process.platform === "darwin") app.dock?.hide();
