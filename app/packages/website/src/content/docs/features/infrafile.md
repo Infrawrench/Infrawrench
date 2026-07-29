@@ -55,6 +55,9 @@ and the plan and returns Dockerfile text. Splitting by environment is just an
 again. Applying a Kubernetes manifest, writing a DNS record, SSHing to a box —
 all ordinary calls.
 
+There is also an optional fourth stage, **`destroy(ctx)`**, which is not part of
+a deploy at all — it tears one down. See [Tearing down](#tearing-down).
+
 ## Asking questions with `select`
 
 ```ts
@@ -199,16 +202,42 @@ the one just built.
 ```
 infrawrench deploy                      # one env declared? just go
 infrawrench deploy --env production
-infrawrench deploy --plan               # show the plan and Dockerfile, build nothing
+infrawrench deploy --plan               # dry run: planned changes, plan and Dockerfile — nothing is touched
 infrawrench deploy --env staging --set build-host=local --json
+infrawrench deploy destroy -e staging   # run the destroy() stage — tear the env down
 ```
 
 The CLI reads `./Infrafile` (walking up to your repo root), builds with your
 **local Docker daemon** so you get your warm layer cache and need no VM, and
 prompts in the terminal for anything `select` asks about.
 
-`--plan` is the safe first move: it runs `plan()`, prints what it decided and
-the Dockerfile it rendered, and stops before building anything.
+`infra.accounts` merges your **local workspace's accounts with your
+organization's cloud accounts**. The scope is settled before the run starts:
+at a terminal the CLI asks once ("local + org, or local only?"); `--org
+<id|name>` or `--local` answers it up front, and non-interactive runs default
+to local + your default org. Cloud accounts support listing, outputs, create
+and delete; surfaces that need a live connection from your machine (SSH,
+storage, SQL) still want a local account.
+
+`--plan` is the safe first move, and it is a true dry run: resource creates,
+updates and deletes made through `infra.accounts` are intercepted, and nothing
+touches your providers. Each intercepted call is reported as a planned change —
+`+`, `~` and `-` lines with an "N to create, M to update, K to delete" summary —
+alongside the plan itself and the Dockerfile it rendered.
+
+An intercepted create returns a synthetic resource whose id starts with
+`planned:`, and any output resolved on it comes back as the string
+`(known after apply)` — so a plan that threads a connection string from a
+just-created database into later decisions still runs to completion. The one
+thing that can't work on a synthetic resource is waiting for it: `plan()` now
+receives a `dryRun: boolean` flag on its context, so a readiness wait — polling
+a provider until a branch or an endpoint really appears — should be skipped
+when `ctx.dryRun` is true.
+
+`--plan` also prints a diff of the new plan against the plan recorded by this
+environment's last successful deploy: top-level keys, marked `+`, `-` or `~`,
+with secret-looking values redacted. The diff is best-effort — with no previous
+successful deploy there is nothing to compare against.
 
 Because the build is local, the CLI can deploy a working tree with uncommitted
 changes — it will tell you when it spots them.
@@ -375,10 +404,155 @@ Two consequences worth knowing:
 `run(...)` still works during a rollback and targets the recorded image, so a
 `npm run db:rollback` step reaches the same toolchain the deploy originally used.
 
+### Undoing what a deploy created
+
+Every run keeps a ledger of the resources it created through
+`infra.accounts.*.create(...)` — a self-provisioning Infrafile that spun up a
+database or a cluster records exactly what it spun up. A plain rollback never
+touches those resources: it re-ships the image and nothing else.
+
+To also undo the provisioning, pass `--delete-created`:
+
+```
+infrawrench deploy rollback -e production --to-run <runId> --delete-created
+```
+
+Once the known-good image is confirmed live, every resource that runs **after**
+the target created is deleted — newest run first, children before their parents.
+The target run's own resources survive; so does anything the rollback's own
+`deploy()` just created. Deletions are best-effort and reported in the run's
+notes: a resource somebody already removed by hand is noted, not fatal.
+
+This is opt-in for a reason: a database created by the bad deploy is still a
+database, and it may hold data written since. Reach for `--delete-created` when
+the deploy's provisioning was the mistake — not as a routine part of rolling
+back.
+
+## Tearing down
+
+An Infrafile can declare a `destroy(ctx)` stage — the inverse of `deploy()`:
+
+```ts
+async destroy({ env, git, notes }) {
+  const namespace = git.pullRequest ? `app-pr-${git.pullRequest.number}` : `app-${env}`;
+  // delete the namespace, the DNS record, the preview database…
+  await notes(`tore down ${namespace}`);
+}
+```
+
+Run it from the CLI:
+
+```
+infrawrench deploy destroy -e staging
+```
+
+At a terminal the CLI asks once before proceeding; non-interactive runs (CI
+tearing down a preview when its pull request closes) proceed without asking —
+that is the use case.
+
+`destroy` gets **no image and never prompts**: by the time a preview closes its
+image is usually gone and nobody is at a terminal. What it does get is `plan` —
+the env's **last successful deploy's recorded plan**, when one exists — so a
+choice `env` and `git` cannot settle (which account, which region) should be
+written into the plan by the deploy that created it and read back here:
+
+```ts
+async destroy({ env, plan, notes }) {
+  const account = infra.accounts.neon
+    .list()
+    .find((a) => a.displayName === plan?.neonAccount);
+  // …
+}
+```
+
+Treat `plan` as possibly absent — a teardown can outlive its deploy history —
+and fall back to naming by `env`/`git`. It arrives as recorded JSON (plain
+data, not live handles; take handles from `infra.*` as usual). `destroy` has
+the full `infra` surface, so deleting resources, applying manifests and SSHing
+all work normally, and the run is recorded in the deploy history with stage
+`destroy`.
+
+An Infrafile with a `"preview"` environment should always declare `destroy` —
+without it a closed pull request leaves its environment running forever, and
+the only symptom is a bill.
+
+### Tearing down from the ledger
+
+`destroy()` reconstructs what to delete from `env` and `git`. The other route
+is to delete exactly what the record says was created:
+
+```
+infrawrench deploy destroy --created -e staging
+```
+
+Instead of running the `destroy()` stage, this reads the environment's recorded
+runs and deletes every resource they created — newest run first, children
+before their parents, the same order `rollback --delete-created` uses.
+Deletions are best-effort, reported with a `✓` or `!` line per resource, so
+something already removed by hand is noted rather than fatal. `--created`
+requires an explicit `-e`: a ledger-driven teardown is too sweeping to aim at a
+defaulted environment.
+
+An Infrafile with no `destroy()` stage no longer leaves a plain
+`deploy destroy` with nowhere to go — the message now points at `--created`,
+which needs no stage at all.
+
+## Outputs
+
+`notes()` records prose for humans. `infra.output(...)` is its structured
+counterpart — call it from `deploy()` with whatever a script will want later,
+and the value is persisted on the run:
+
+```ts
+async deploy({ env, plan, image, push, notes }) {
+  await push(image);
+  const ip = await applyManifestAndWait(env, plan, image);
+  await notes(`deployed ${image} behind ${ip}`);
+  await infra.output({ url: `http://${ip}`, image });
+}
+```
+
+`infra.output` already existed in [workflows](./workflows.md); calling it from
+a deploy works the same way, and the value lands on the deploy's record. Read
+it back with:
+
+```
+infrawrench deploy outputs -e staging
+infrawrench deploy outputs -e staging --json
+```
+
+which prints the latest **successful** deploy's output as JSON — the service
+URL, the load-balancer IP, whatever `deploy()` recorded. `--json` is the mode
+for scripting; a `jq '.url'` away from a smoke test. When prose is what you
+want — "migrated and shipped" — that is still `notes()`; `infra.output` is for
+values another program reads.
+
+## Drift
+
+Every run records the resources it created (the same ledger
+`--delete-created` and `destroy --created` read). `deploy status` checks that
+record against reality:
+
+```
+infrawrench deploy status -e staging
+infrawrench deploy status -e staging --json
+```
+
+Each resource past runs created is reported as **ok** (still exists),
+**missing** (deleted out-of-band — somebody removed it at the provider), or
+**unknown** (the check could not be completed), followed by a summary. From
+the CLI the ledger consulted is this machine's deploy history, so the report
+covers what _this machine_ deployed.
+
 ## What a deploy records
 
 The Infrafile itself is never stored — not on your machine's behalf, not in your
 organization. It is read from your repository on every run and discarded.
+
+What is stored is the record of a run: env, commit, image, logs, the plan as
+JSON, the rendered Dockerfile, notes, the structured output recorded with
+`infra.output(...)` — and the created-resource ledger that `--delete-created`
+reads (see above).
 
 The web app streams a run's logs live and shows the plan and rendered Dockerfile
 before anything is built.

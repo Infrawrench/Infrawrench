@@ -6,6 +6,7 @@ sidebar_order: 3
 
 ## What you can manage
 
+- **Projects** — the GCP projects your service-account key can see, so surfaces can offer a picker instead of asking for a project ID.
 - **Compute** — Compute Engine VM instances.
 - **Kubernetes** — GKE clusters (links to the [Kubernetes plugin](./kubernetes.md)).
 - **Databases** — Cloud SQL (Postgres, MySQL).
