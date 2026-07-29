@@ -34,6 +34,28 @@ const TTS_MAX_CHARACTERS = 15_000;
 const STT_MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
 /**
+ * The audit log is unbounded, so the walk needs a stop: 20 pages of 200 is the
+ * 4,000 most recent events, in line with the 20-page cap the other list loops
+ * use. Anything past that is reported as a truncation row rather than dropped.
+ */
+const AUDIT_PAGE_SIZE = 200;
+const AUDIT_MAX_PAGES = 20;
+const AUDIT_TRUNCATED_ID = "__truncated__";
+
+/**
+ * Every price the models endpoints report is an integer of USD cents per 100
+ * million units — whatever the unit is. `grok-4.3` lists
+ * `prompt_text_token_price: 12500` against its published $1.25 / 1M tokens, and
+ * `grok-imagine-image` lists `image_price: 200000000` against its published
+ * $0.02 an image, so the same 1e8 scale covers tokens, images and search
+ * sources. Divide by 1e4 for dollars per million, by 1e10 for dollars apiece.
+ *
+ * Docs: https://docs.x.ai/openapi.json, https://docs.x.ai/docs/models
+ */
+const PRICE_PER_MILLION = 1e4;
+const PRICE_PER_UNIT = 1e10;
+
+/**
  * BCP-47 codes POST /v1/tts documents for its required `language` field.
  * `auto` is TTS-only — for STT the plugin simply omits `language`.
  */
@@ -515,8 +537,11 @@ export class XaiClient implements PluginClient {
         });
       }
       token = data.pagination_token ?? undefined;
-      // The list ends when a page comes back shorter than `limit`.
-      if (!token || batch.length < 100) break;
+      // `pagination_token` is the only end-of-list signal. A short page is not
+      // one: the server may return fewer than `limit` rows and still hand back a
+      // token, and stopping there silently drops every file behind it — they
+      // vanish from the listing and getResource/delete then 404 on them.
+      if (!token) break;
     }
     return out;
   }
@@ -719,37 +744,86 @@ export class XaiClient implements PluginClient {
     };
   }
 
-  /** GET /audit/teams/{teamId}/events (management key) */
+  /**
+   * GET /audit/teams/{teamId}/events (management key). Pages with `pageToken`
+   * against the response's `nextPageToken`.
+   * Docs: https://docs.x.ai/developers/management-api-guide
+   */
   private async listAuditEvents(accountId: string): Promise<ResourceInstance[]> {
     const teamId = await this.getTeamId();
     const now = new Date().toISOString();
-    const data = await this.mgmtFetch<{ events?: XaiAuditEvent[]; nextPageToken?: string }>(
-      `/audit/teams/${encodeURIComponent(teamId)}/events?pageSize=200&orderBy=TIME_DESCENDING`,
-    );
-    return (data.events ?? []).map((e) => {
-      const id = e.eventId ?? "";
-      const name = [e.user?.givenName, e.user?.familyName].filter(Boolean).join(" ");
-      return {
-        id: `${accountId}:audit-event:${id}`,
-        pluginId: "xai",
-        resourceTypeId: "audit-event",
-        accountId,
-        displayName: e.description || id,
-        externalId: id,
-        fields: {
-          eventId: id,
-          eventTime: e.eventTime ?? "",
-          description: e.description ?? "",
-          userId: e.user?.userId ?? "",
-          userEmail: e.user?.email ?? "",
-          userName: name,
-        },
-        resolvedOutputs: {},
-        secretStates: [],
-        createdAt: now,
-        updatedAt: now,
-      } satisfies ResourceInstance;
-    });
+    const out: ResourceInstance[] = [];
+    let token: string | undefined;
+
+    for (let page = 0; page < AUDIT_MAX_PAGES; page++) {
+      const qs = new URLSearchParams({
+        pageSize: String(AUDIT_PAGE_SIZE),
+        orderBy: "TIME_DESCENDING",
+      });
+      if (token) qs.set("pageToken", token);
+      const data = await this.mgmtFetch<{ events?: XaiAuditEvent[]; nextPageToken?: string }>(
+        `/audit/teams/${encodeURIComponent(teamId)}/events?${qs.toString()}`,
+      );
+      for (const e of data.events ?? []) out.push(this.mapAuditEvent(accountId, now, e));
+      token = data.nextPageToken || undefined;
+      if (!token) break;
+    }
+
+    // A token left over means the cap stopped the walk. The log is newest-first,
+    // so what is missing is the oldest history — say so in the list instead of
+    // ending it as if that were all there ever was.
+    if (token) out.push(this.auditTruncationMarker(accountId, now, out.length));
+    return out;
+  }
+
+  private mapAuditEvent(accountId: string, now: string, e: XaiAuditEvent): ResourceInstance {
+    const id = e.eventId ?? "";
+    const name = [e.user?.givenName, e.user?.familyName].filter(Boolean).join(" ");
+    return {
+      id: `${accountId}:audit-event:${id}`,
+      pluginId: "xai",
+      resourceTypeId: "audit-event",
+      accountId,
+      displayName: e.description || id,
+      externalId: id,
+      fields: {
+        eventId: id,
+        eventTime: e.eventTime ?? "",
+        description: e.description ?? "",
+        userId: e.user?.userId ?? "",
+        userEmail: e.user?.email ?? "",
+        userName: name,
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  /** Tail row telling the user the audit log is longer than what was synced. */
+  private auditTruncationMarker(accountId: string, now: string, fetched: number): ResourceInstance {
+    const note = `Older events not shown — this team's audit log has more than the ${fetched.toLocaleString()} most recent events synced here.`;
+    return {
+      id: `${accountId}:audit-event:${AUDIT_TRUNCATED_ID}`,
+      pluginId: "xai",
+      resourceTypeId: "audit-event",
+      accountId,
+      displayName: note,
+      externalId: AUDIT_TRUNCATED_ID,
+      fields: {
+        eventId: "",
+        eventTime: "",
+        description: note,
+        userId: "",
+        userEmail: "",
+        userName: "",
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: now,
+      updatedAt: now,
+    };
   }
 
   // ------------------------------------------------------------------- get
@@ -1235,6 +1309,10 @@ export class XaiClient implements PluginClient {
 
     const parts: MultipartPart[] = [];
     // `auto` is a TTS-only value; for STT an unset language means auto-detect.
+    // `format` belongs in this branch rather than beside `diarize`: the docs
+    // define it as `"true" | "false"` and require `language` to be set with it,
+    // and the pair is what turns on inverse text normalisation (spoken numbers,
+    // currencies and units written out). Sending it on its own does nothing.
     if (payload.language && payload.language !== "auto") {
       parts.push({ name: "language", value: payload.language });
       parts.push({ name: "format", value: "true" });
@@ -1317,11 +1395,11 @@ export class XaiClient implements PluginClient {
     const kind = String(f["kind"] ?? "language");
 
     const priceRows: TableRow[] = [];
-    const addPrice = (label: string, key: string, unit: string) => {
-      const cents = Number(f[key] ?? 0);
-      if (!cents) return;
+    const addPrice = (label: string, key: string, unit: string, scale = PRICE_PER_MILLION) => {
+      const raw = Number(f[key] ?? 0);
+      if (!raw) return;
       priceRows.push({
-        cells: { meter: label, price: `$${(cents / 100).toFixed(4)}`, unit },
+        cells: { meter: label, price: `$${(raw / scale).toFixed(4)}`, unit },
       });
     };
     addPrice("Prompt text", "promptTextTokenPrice", "per 1M tokens");
@@ -1339,8 +1417,9 @@ export class XaiClient implements PluginClient {
       "per 1M tokens",
     );
     addPrice("Prompt image", "promptImageTokenPrice", "per 1M tokens");
-    addPrice("Image", "imagePrice", "per 1M images");
-    addPrice("Live search", "searchPrice", "per 1M sources");
+    // Images and search sources are bought one at a time, not by the million.
+    addPrice("Image", "imagePrice", "per image", PRICE_PER_UNIT);
+    addPrice("Live search", "searchPrice", "per source", PRICE_PER_UNIT);
 
     const identity: KVItem[] = [
       { key: "Model ID", value: String(f["modelId"] ?? resource.displayName), copyable: true },

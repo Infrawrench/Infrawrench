@@ -71,7 +71,10 @@ describe("renderDetail", () => {
   it("declares an STT-only speech panel on the workspace", () => {
     const schema = client().renderDetail(workspace());
     expect(schema.speechPanel?.modes).toEqual(["stt"]);
-    expect(schema.speechPanel?.maxAudioBytes).toBe(1000 * 1024 * 1024);
+    // Capped by our base64-over-JSON transport (ingress proxy-body-size 36m
+    // ⇒ ~27 MB of raw audio), not by what the provider would accept.
+    expect(schema.speechPanel?.maxAudioBytes).toBe(25 * 1024 * 1024);
+    expect(schema.speechPanel!.maxAudioBytes!).toBeLessThanOrEqual(27 * 1024 * 1024);
     expect(schema.speechPanel?.defaultLanguage).toBe("auto");
     expect(schema.speechPanel?.models?.map((m) => m.id)).toEqual(["solaria-1", "solaria-3"]);
   });

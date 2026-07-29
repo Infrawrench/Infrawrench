@@ -64,10 +64,24 @@ describe("model detail", () => {
     expect(accepted).not.toContain("audio/mp4");
   });
 
-  it("says so in the help text, since the panel offers a recorder", () => {
+  it("says so in the help text", () => {
     const help = client().renderDetail(resource("model", { name: "m" })).speechPanel!.helpText!;
     expect(help).toMatch(/WebM/i);
     expect(help).toMatch(/MP4/i);
+  });
+
+  it("hides the recorder outright — every recording would be rejected", () => {
+    // Chromium and Firefox record WebM, Safari records MP4, mobile records
+    // M4A; Cohere accepts none of the three. A Record button here could only
+    // ever end in "…is not a container Cohere transcribes".
+    const panel = client().renderDetail(resource("model", { name: "m" })).speechPanel!;
+
+    expect(panel.disableRecording).toBe(true);
+    expect(panel.recordingDisabledReason).toMatch(/FLAC, MP3, MPEG, MPGA, OGG and WAV/);
+    expect(panel.recordingDisabledReason).toMatch(/WebM/i);
+    // Uploading is untouched — only the recorder half goes away.
+    expect(panel.disabledReason).toBeUndefined();
+    expect(panel.acceptedAudioTypes!.length).toBeGreaterThan(0);
   });
 
   it("defaults the language picker, because the API requires one", () => {

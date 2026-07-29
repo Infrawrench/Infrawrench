@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { SpeechmaticsClient } from "./client.js";
+import { AccountResourceType } from "./resources/account.js";
 import { JobResourceType } from "./resources/job.js";
 import { ProjectResourceType } from "./resources/project.js";
 import { ApiKeyResourceType } from "./resources/api-key.js";
@@ -71,7 +72,11 @@ const manifest: PluginManifest = {
   ],
 };
 
+// Account first: it is the only type guaranteed to exist. Jobs expire after 7
+// days, and projects and API keys need the optional management token — so the
+// Speech tab hangs off the account, not off a job that may have been purged.
 const resourceTypes: ResourceTypeDefinition[] = [
+  AccountResourceType,
   JobResourceType,
   ProjectResourceType,
   ApiKeyResourceType,

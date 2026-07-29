@@ -38,9 +38,80 @@ function transcript(overrides: Partial<ResourceInstance> = {}): ResourceInstance
   };
 }
 
+function account(fields: Record<string, string | number | boolean> = {}): ResourceInstance {
+  return {
+    id: `${ACCOUNT}:account:default`,
+    pluginId: "assemblyai",
+    resourceTypeId: "account",
+    accountId: ACCOUNT,
+    displayName: "AssemblyAI",
+    fields: {
+      endpoint: "https://api.assemblyai.com",
+      region: "us",
+      sampledTranscripts: 0,
+      completedTranscripts: 0,
+      erroredTranscripts: 0,
+      pendingTranscripts: 0,
+      oldestSampledAt: "",
+      ...fields,
+    },
+    resolvedOutputs: {},
+    secretStates: [],
+    externalId: "default",
+    createdAt: "2026-07-20T10:00:00.000Z",
+    updatedAt: "2026-07-20T10:00:00.000Z",
+  };
+}
+
 function client(): AssemblyAIClient {
   return new AssemblyAIClient({ apiKey: "k" });
 }
+
+describe("renderDetail — account", () => {
+  it("carries the Speech tab on an account with zero transcripts", () => {
+    // The plugin's only feature must not be gated behind already having used it.
+    const schema = client().renderDetail(account());
+    expect(schema.speechPanel?.modes).toEqual(["stt"]);
+    expect(schema.speechPanel?.models?.map((m) => m.id)).toEqual([
+      "universal-3-5-pro",
+      "universal-2",
+    ]);
+  });
+
+  it("shows the retention-window counts, labelled as a job count and not spend", () => {
+    const schema = client().renderDetail(
+      account({
+        sampledTranscripts: 12,
+        completedTranscripts: 10,
+        erroredTranscripts: 1,
+        pendingTranscripts: 1,
+        oldestSampledAt: "2026-05-01T00:00:00.000Z",
+      }),
+    );
+    expect(schema.sections.map((s) => s.title)).toContain(
+      "Recent activity (90-day retention window)",
+    );
+    const flat = JSON.stringify(schema.sections);
+    expect(flat).toContain("2026-05-01T00:00:00.000Z");
+    expect(flat).toContain("not billed usage");
+  });
+
+  it("names the host the account is pinned to", () => {
+    const schema = client().renderDetail(
+      account({ endpoint: "https://api.eu.assemblyai.com", region: "eu" }),
+    );
+    expect(schema.subtitle).toContain("eu");
+    expect(JSON.stringify(schema.sections)).toContain("https://api.eu.assemblyai.com");
+  });
+
+  it("renders an informational sidebar dot rather than a job status", () => {
+    expect(client().renderSidebarItem(account()).status).toEqual({
+      kind: "status-dot",
+      status: "info",
+      label: "Account",
+    });
+  });
+});
 
 describe("renderDetail", () => {
   it("declares an STT-only speech panel — AssemblyAI has no TTS", () => {

@@ -11,7 +11,7 @@ sidebar_order: 35
 - **Files** — anything uploaded to xAI storage, with size, purpose and expiry (delete).
 - **Batches** — batch inference jobs, with per-request pending/succeeded/errored/cancelled counts.
 - **API keys** — full lifecycle on your team's keys: create with model and endpoint scopes plus QPS/QPM/TPM limits, rename, enable/disable, rotate the secret, delete.
-- **Audit events** — the team audit log, newest first.
+- **Audit events** — the team audit log, newest first, paged until it runs out or the 4,000 most recent events are in. A longer log ends with a row saying older events were left behind, so nothing goes missing quietly.
 
 ## Credentials
 
@@ -53,6 +53,6 @@ Prepaid balance and invoices live on the same host if you need to reconcile agai
 - **Speech tags work.** `[pause]`, `[laugh]`, `[breath]` and wrapping styles like `<whisper>`, `<slow>` and `<sing-song>` are passed straight through to the model.
 - **Transcription accepts up to 500 MB upstream, but the app caps uploads at 25 MB.** A test clip is a sentence or two; anything longer belongs in xAI's own streaming endpoint.
 - **Your recording's container is forwarded as-is.** xAI auto-detects WAV, MP3, OGG, Opus, FLAC, AAC, MP4, M4A and MKV from the file header, so nothing is transcoded on the way out — whatever your browser recorded is what xAI receives.
-- **Model prices are in USD cents per million tokens** on the wire. The detail page converts them to dollars so you can compare at a glance.
+- **Model prices are in USD cents per 100 million units** on the wire — tokens, generated images or search sources alike. The detail page converts them to dollars, per million tokens for the token rates and per item for the image and live-search rates, so you can compare at a glance.
 - **Rotating an API key is not instant-revoke.** The old secret keeps working for 24 hours by default so in-flight deployments don't break. The app confirms before rotating and says so.
 - **Custom voices are cloned from an audio clip**, which the app doesn't upload for you — create the voice in the xAI console or via `POST /v1/custom-voices`, then manage its metadata here.

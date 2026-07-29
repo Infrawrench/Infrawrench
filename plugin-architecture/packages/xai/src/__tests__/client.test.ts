@@ -153,6 +153,26 @@ describe("listResources", () => {
     expect(rows[100]?.externalId).toBe("f100");
   });
 
+  it("keeps paging files while a token comes back, even on a short page", async () => {
+    let page = 0;
+    installFetch(() => {
+      page++;
+      // A page well under `limit` that still carries a token: the server
+      // short-paged, it is not the end of the list.
+      if (page === 1) {
+        return jsonResponse({
+          data: [{ id: "f0", filename: "f0.txt" }],
+          pagination_token: "next",
+        });
+      }
+      return jsonResponse({ data: [{ id: "f1", filename: "f1.txt" }], pagination_token: null });
+    });
+
+    const rows = await client().listResources("file", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["f0", "f1"]);
+    expect(calls).toHaveLength(2);
+  });
+
   it("returns an empty list for management-only types when no management key is set", async () => {
     const spy = installFetch(() => jsonResponse({}));
     expect(await client().listResources("api-key", ACCOUNT)).toEqual([]);
@@ -213,6 +233,47 @@ describe("listResources", () => {
     const rows = await client("xai-mgmt").listResources("audit-event", ACCOUNT);
     expect(rows[0]?.fields["userName"]).toBe("Ada L");
     expect(rows[0]?.displayName).toBe("Key created");
+  });
+
+  it("follows nextPageToken through the audit log and stops when it runs out", async () => {
+    let page = 0;
+    installFetch((url) => {
+      if (url.endsWith("/auth/management-keys/validation")) return jsonResponse({ scopeId: "t1" });
+      if (url.includes("/audit/teams/t1/events")) {
+        expect(url).toContain("pageSize=200");
+        page++;
+        if (page === 1) {
+          expect(url).not.toContain("pageToken=");
+          return jsonResponse({ events: [{ eventId: "e1" }], nextPageToken: "p2" });
+        }
+        expect(url).toContain("pageToken=p2");
+        return jsonResponse({ events: [{ eventId: "e2" }] });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+
+    const rows = await client("xai-mgmt").listResources("audit-event", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["e1", "e2"]);
+    expect(page).toBe(2);
+  });
+
+  it("caps the audit walk and says so instead of truncating silently", async () => {
+    let page = 0;
+    installFetch((url) => {
+      if (url.endsWith("/auth/management-keys/validation")) return jsonResponse({ scopeId: "t1" });
+      if (url.includes("/audit/teams/t1/events")) {
+        page++;
+        // A log that never stops handing back tokens.
+        return jsonResponse({ events: [{ eventId: `e${page}` }], nextPageToken: `p${page + 1}` });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+
+    const rows = await client("xai-mgmt").listResources("audit-event", ACCOUNT);
+    expect(page).toBe(20);
+    expect(rows).toHaveLength(21);
+    expect(rows[20]?.externalId).toBe("__truncated__");
+    expect(rows[20]?.displayName).toContain("Older events not shown");
   });
 });
 

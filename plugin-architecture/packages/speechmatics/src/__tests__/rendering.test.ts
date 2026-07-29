@@ -29,6 +29,95 @@ function job(
   };
 }
 
+function account(
+  fields: Record<string, string | number | boolean> = {},
+  resolvedOutputs: Record<string, string> = {},
+): ResourceInstance {
+  return {
+    id: "acct-1:account:default",
+    pluginId: "speechmatics",
+    resourceTypeId: "account",
+    accountId: "acct-1",
+    displayName: "Speechmatics (eu1)",
+    fields: {
+      region: "eu1",
+      endpoint: "https://eu1.asr.api.speechmatics.com/v2",
+      managementToken: false,
+      usageSince: "2026-06-29",
+      usageUntil: "2026-07-28",
+      usageHours: 0,
+      usageJobs: 0,
+      languagePacks: 0,
+      ...fields,
+    },
+    resolvedOutputs,
+    secretStates: [],
+    externalId: "default",
+    createdAt: "2026-07-28T00:00:00Z",
+    updatedAt: "2026-07-28T00:00:00Z",
+  };
+}
+
+describe("renderDetail — account", () => {
+  it("carries the Speech tab on an account with no jobs and no usage", () => {
+    // Jobs are purged after 7 days; the account is what keeps the tab reachable.
+    const detail = client().renderDetail(account());
+    expect(detail.speechPanel?.modes).toEqual(["stt"]);
+    expect(detail.speechPanel?.maxAudioBytes).toBe(25 * 1024 * 1024);
+    expect(detail.speechPanel?.defaultModel).toBe("enhanced");
+    // Discovery was never stashed, so the picker falls back rather than emptying.
+    expect(detail.speechPanel?.languages?.some((l) => l.id === "en")).toBe(true);
+  });
+
+  it("renders the usage window, the breakdown rows and the language-pack count", () => {
+    const detail = client().renderDetail(
+      account(
+        { usageHours: 1.75, usageJobs: 4, languagePacks: 2 },
+        {
+          __usage__: JSON.stringify({
+            since: "2026-06-29",
+            until: "2026-07-28",
+            hours: 1.75,
+            jobs: 4,
+            rows: [{ label: "batch · transcription · enhanced", count: 3, hours: 1.25 }],
+          }),
+          __discovery__: JSON.stringify({
+            languages: [
+              { id: "en", label: "English (en)" },
+              { id: "multi", label: "Multilingual (multi)" },
+            ],
+            models: [{ id: "enhanced", label: "Enhanced" }],
+          }),
+        },
+      ),
+    );
+
+    const flat = JSON.stringify(detail.sections);
+    expect(flat).toContain("2026-06-29 → 2026-07-28");
+    expect(flat).toContain("batch · transcription · enhanced");
+    expect(flat).toContain("3 jobs · 1.250 h");
+    expect(detail.speechPanel?.languages?.map((l) => l.id)).toEqual(["en", "multi"]);
+    expect(detail.metricsCapability).toBeDefined();
+  });
+
+  it("says the Projects and API Keys lists stay empty without a management token", () => {
+    expect(JSON.stringify(client().renderDetail(account()).sections)).toContain(
+      "Projects and API Keys lists stay empty",
+    );
+    expect(
+      JSON.stringify(client().renderDetail(account({ managementToken: true })).sections),
+    ).toContain("mp.api.speechmatics.com");
+  });
+
+  it("labels the sidebar entry with the region rather than a job status", () => {
+    expect(client().renderSidebarItem(account()).status).toEqual({
+      kind: "status-dot",
+      status: "info",
+      label: "eu1",
+    });
+  });
+});
+
 describe("renderDetail — job", () => {
   it("declares an stt-only speech panel with the documented limits", () => {
     const detail = client().renderDetail(job({ status: "done" }));
@@ -37,7 +126,10 @@ describe("renderDetail — job", () => {
     expect(panel?.modes).toEqual(["stt"]);
     // Speechmatics does no synthesis.
     expect(panel?.modes).not.toContain("tts");
-    expect(panel?.maxAudioBytes).toBe(1024 * 1024 * 1024);
+    // Capped by our base64-over-JSON transport (ingress proxy-body-size 36m
+    // ⇒ ~27 MB of raw audio), not by what the provider would accept.
+    expect(panel?.maxAudioBytes).toBe(25 * 1024 * 1024);
+    expect(panel!.maxAudioBytes!).toBeLessThanOrEqual(27 * 1024 * 1024);
     expect(panel?.acceptedAudioTypes).toContain(".flac");
     expect(panel?.acceptedAudioTypes).not.toContain(".opus");
     expect(panel?.models?.map((m) => m.id)).toEqual(["enhanced", "standard", "melia-1"]);

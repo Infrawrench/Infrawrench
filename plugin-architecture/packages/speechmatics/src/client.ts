@@ -7,6 +7,7 @@ import type {
   ResourceInstance,
   SectionNode,
   SidebarItemSchema,
+  SpeechPanelCapability,
   SpeechPanelOption,
   TranscribeAudioPayload,
   TranscribeAudioResult,
@@ -70,7 +71,27 @@ interface TranscriptJsonV2 {
   metadata?: {
     created_at?: string;
     type?: string;
+    /**
+     * The config the job was *submitted* with, echoed back. `language` here is
+     * the request, never a detection — for melia-1 it is always the literal
+     * "multi". Never surface it to the user as a detected language.
+     */
     transcription_config?: { language?: string; model?: string; operating_point?: string };
+    /**
+     * `LanguageIdentificationResult` — the real language-ID output, present
+     * when the job ran with `language: "auto"` or a
+     * `language_identification_config`. `error` is set instead of `results`
+     * when identification failed (LOW_CONFIDENCE, NO_SPEECH, …).
+     */
+    language_identification?: {
+      results?: Array<{
+        start_time?: number;
+        end_time?: number;
+        alternatives?: Array<{ language?: string; confidence?: number }>;
+      }>;
+      error?: string;
+      message?: string;
+    };
   };
   results?: Array<{
     type?: string;
@@ -80,6 +101,7 @@ interface TranscriptJsonV2 {
     alternatives?: Array<{
       content?: string;
       confidence?: number;
+      /** Per-item recognised language — populated by the multilingual packs. */
       language?: string;
       speaker?: string;
     }>;
@@ -148,6 +170,15 @@ interface StashedDiscovery {
   models: SpeechPanelOption[];
 }
 
+/** Condensed `GET /v2/usage` summary, stashed for the same reason. */
+interface StashedUsage {
+  since: string;
+  until: string;
+  hours: number;
+  jobs: number;
+  rows: Array<{ label: string; count: number; hours: number }>;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Constants                                                                   */
 /* -------------------------------------------------------------------------- */
@@ -191,7 +222,17 @@ const ACCEPTED_AUDIO_TYPES = [
  * base64-encodes the clip into a JSON request body — so this is the provider
  * ceiling, not a promise that a 1 GB clip will survive the round trip.
  */
-const MAX_AUDIO_BYTES = 1024 * 1024 * 1024;
+/**
+ * Largest clip the Speech panel will accept, in bytes.
+ *
+ * This is deliberately far below the provider's own ceiling. The panel ships
+ * audio base64-encoded inside a JSON body, and base64 inflates by 4/3 — with
+ * the web ingress at `proxy-body-size: 36m` the real raw-audio ceiling is
+ * ~27 MB, and a clip large enough to matter also blows up `FileReader`
+ * (`RangeError: Invalid string length`) before it ever reaches the network.
+ * The transport is the binding constraint here, not the API.
+ */
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // Speechmatics accepts 1 GB; our transport does not.
 
 /**
  * `#/definitions/Model` — "Specific model to use in transcription (previously
@@ -227,8 +268,22 @@ const FALLBACK_LANGUAGES: SpeechPanelOption[] = [
   { id: MULTILINGUAL_LANGUAGE, label: "Multilingual (multi)" },
 ];
 
-/** Key under `resolvedOutputs` used to smuggle async data into `renderDetail`. */
+/** Keys under `resolvedOutputs` used to smuggle async data into `renderDetail`. */
 const DISCOVERY_STASH_KEY = "__discovery__";
+const USAGE_STASH_KEY = "__usage__";
+
+/**
+ * The singleton account pseudo-resource.
+ *
+ * Jobs are purged 7 days after they run, and projects and API keys need the
+ * optional management token, so none of the other types can be relied on to
+ * exist. This one always does — it is what keeps the Speech tab reachable.
+ */
+const ACCOUNT_TYPE = "account";
+const ACCOUNT_ID = "default";
+
+/** Window the account view summarises usage over. */
+const USAGE_WINDOW_DAYS = 30;
 
 /** Blocking window we ask `POST /jobs?wait=` to hold the connection for. */
 const SYNC_WAIT_SECONDS = 60;
@@ -471,12 +526,56 @@ export class SpeechmaticsClient implements PluginClient {
     }
   }
 
+  /**
+   * `GET /v2/usage?since=&until=` for the account view, condensed for the
+   * synchronous renderer.
+   *
+   * Both bounds are inclusive ISO calendar dates. Like discovery this is a
+   * nicety — a fresh key with no usage answers with empty rows, and a failure
+   * must not take the account (and with it the Speech tab) away, so the window
+   * still comes back with zeroes.
+   */
+  private async fetchUsageSafe(since: string, until: string): Promise<StashedUsage> {
+    const empty: StashedUsage = { since, until, hours: 0, jobs: 0, rows: [] };
+    let usage: UsageResponse;
+    try {
+      const params = new URLSearchParams({ since, until });
+      usage = await this.fetch<UsageResponse>(`/usage?${params.toString()}`);
+    } catch {
+      return empty;
+    }
+
+    // The schema names the breakdown key `operating_point` while the documented
+    // examples show `model`, and `summary` is the aggregate of `details` — take
+    // whichever is populated.
+    const rows = usage.summary?.length ? usage.summary : (usage.details ?? []);
+    const condensed = rows.map((row) => ({
+      label: [row.mode, row.type, row.model ?? row.operating_point, row.language]
+        .filter((part): part is string => Boolean(part))
+        .join(" · "),
+      count: row.count ?? 0,
+      hours: Number((row.duration_hrs ?? 0).toFixed(3)),
+    }));
+
+    return {
+      since: usage.since ?? since,
+      until: usage.until ?? until,
+      hours: Number(condensed.reduce((sum, row) => sum + row.hours, 0).toFixed(3)),
+      jobs: condensed.reduce((sum, row) => sum + row.count, 0),
+      rows: condensed,
+    };
+  }
+
   /* ---------------------------------------------------------------------- */
   /* Listing                                                                  */
   /* ---------------------------------------------------------------------- */
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     switch (typeId) {
+      case ACCOUNT_TYPE:
+        // Exactly one, always — including on an account whose jobs have all
+        // expired and which has no management token.
+        return [await this.buildAccount(accountId)];
       case "job":
         return this.listJobs(accountId);
       case "project":
@@ -540,6 +639,54 @@ export class SpeechmaticsClient implements PluginClient {
 
   private jobTranscriptUrl(jobId: string): string {
     return `${this.baseUrl}/jobs/${encodeURIComponent(jobId)}/transcript?format=txt`;
+  }
+
+  /**
+   * The singleton account resource.
+   *
+   * Both calls are best-effort by design: this resource has to render on a key
+   * that has never submitted a job, and neither the usage summary nor the
+   * language packs are worth failing the whole view over. Both are stashed
+   * under `__doubleUnderscore__` keys because `renderDetail` is synchronous.
+   */
+  private async buildAccount(accountId: string): Promise<ResourceInstance> {
+    const dayMs = 86_400_000;
+    const untilMs = Date.now();
+    const sinceMs = untilMs - (USAGE_WINDOW_DAYS - 1) * dayMs;
+
+    const [discovery, usage] = await Promise.all([
+      this.fetchDiscoverySafe(),
+      this.fetchUsageSafe(isoDate(sinceMs), isoDate(untilMs)),
+    ]);
+
+    const now = new Date().toISOString();
+    return {
+      id: `${accountId}:${ACCOUNT_TYPE}:${ACCOUNT_ID}`,
+      pluginId: "speechmatics",
+      resourceTypeId: ACCOUNT_TYPE,
+      accountId,
+      displayName: `Speechmatics (${this.region})`,
+      fields: {
+        region: this.region,
+        endpoint: this.baseUrl,
+        managementToken: this.managementToken.length > 0,
+        usageSince: usage.since,
+        usageUntil: usage.until,
+        usageHours: usage.hours,
+        usageJobs: usage.jobs,
+        languagePacks: discovery.languages.length,
+      },
+      resolvedOutputs: {
+        region: this.region,
+        endpoint: this.baseUrl,
+        [DISCOVERY_STASH_KEY]: JSON.stringify(discovery),
+        [USAGE_STASH_KEY]: JSON.stringify(usage),
+      },
+      secretStates: [],
+      externalId: ACCOUNT_ID,
+      createdAt: now,
+      updatedAt: now,
+    };
   }
 
   private mapJob(job: SpeechmaticsJob, accountId: string): ResourceInstance {
@@ -643,6 +790,8 @@ export class SpeechmaticsClient implements PluginClient {
     resourceId: string,
     accountId: string,
   ): Promise<ResourceInstance> {
+    if (typeId === ACCOUNT_TYPE) return this.buildAccount(accountId);
+
     if (typeId === "job") {
       const jobId = this.externalId(resourceId);
       // `GET /v2/jobs/{jobid}` — https://docs.speechmatics.com/batch.yaml
@@ -673,6 +822,10 @@ export class SpeechmaticsClient implements PluginClient {
     accountId: string,
   ): Promise<string> {
     // Region and the transcript URL are derivable without a round trip.
+    if (typeId === ACCOUNT_TYPE) {
+      if (outputKey === "region") return this.region;
+      if (outputKey === "endpoint") return this.baseUrl;
+    }
     if (typeId === "job") {
       const jobId = this.externalId(resourceId);
       if (outputKey === "jobId") return jobId;
@@ -699,6 +852,13 @@ export class SpeechmaticsClient implements PluginClient {
     const resource = await this.getResource(resourceTypeId, resourceId, accountId);
     const f = resource.fields;
     switch (resourceTypeId) {
+      case ACCOUNT_TYPE:
+        return [
+          { label: "Region", value: String(f["region"] ?? "") },
+          { label: "Hours (30d)", value: String(f["usageHours"] ?? 0) },
+          { label: "Billable jobs (30d)", value: String(f["usageJobs"] ?? 0) },
+          { label: "Language packs", value: String(f["languagePacks"] ?? 0) },
+        ];
       case "job": {
         const status = String(f["status"] ?? "");
         return [
@@ -751,7 +911,9 @@ export class SpeechmaticsClient implements PluginClient {
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "job") return [];
+    // `/usage` is account-wide, so the series belongs to the account view as
+    // much as to a job — and the account is the one that always exists.
+    if (resourceTypeId !== "job" && resourceTypeId !== ACCOUNT_TYPE) return [];
 
     const dayMs = 86_400_000;
     const endMs = timeRange?.endMs ?? Date.now();
@@ -846,7 +1008,10 @@ export class SpeechmaticsClient implements PluginClient {
     _accountId: string,
     payload: TranscribeAudioPayload,
   ): Promise<TranscribeAudioResult> {
-    if (typeId !== "job") {
+    // The two types that carry the panel, and nothing else — the account (which
+    // always exists) and a job (where it reads as "run this one again"). The
+    // guard stays explicit rather than accepting any type.
+    if (typeId !== ACCOUNT_TYPE && typeId !== "job") {
       throw new Error(`Speechmatics plugin: transcribeAudio not supported for type "${typeId}"`);
     }
     if (!payload.audioBase64) throw new Error("Speechmatics plugin: no audio supplied");
@@ -926,16 +1091,23 @@ export class SpeechmaticsClient implements PluginClient {
       if (extracted.words.length > 0) words = extracted.words;
       confidence = extracted.confidence;
       durationSeconds = jsonV2.job?.duration;
-      detectedLanguage = jsonV2.metadata?.transcription_config?.language ?? undefined;
+      detectedLanguage = detectLanguage(jsonV2);
     } catch {
       // Timings are a bonus; the plain text stands on its own.
     }
+
+    // "auto" and "multi" are instructions to the recogniser, not languages. If
+    // nothing was actually identified, report no language rather than handing
+    // the panel back the string it was asked with.
+    const reportedLanguage =
+      detectedLanguage ??
+      (language === MULTILINGUAL_LANGUAGE || language === "auto" ? undefined : language);
 
     const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
     const summaryParts = [
       `job ${jobId}`,
       `model ${model}`,
-      `language ${detectedLanguage ?? language}`,
+      `language ${reportedLanguage ?? "not identified"}`,
       `${this.region} region`,
     ];
     if (typeof durationSeconds === "number") {
@@ -947,8 +1119,8 @@ export class SpeechmaticsClient implements PluginClient {
     return {
       text: (text ?? "").trim(),
       summary: summaryParts.join(" · "),
-      language: detectedLanguage ?? language,
       requestId: jobId,
+      ...(reportedLanguage !== undefined ? { language: reportedLanguage } : {}),
       ...(durationSeconds !== undefined ? { durationSeconds } : {}),
       ...(confidence !== undefined ? { confidence } : {}),
       ...(words ? { words } : {}),
@@ -976,6 +1148,8 @@ export class SpeechmaticsClient implements PluginClient {
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     switch (resource.resourceTypeId) {
+      case ACCOUNT_TYPE:
+        return this.renderAccountDetail(resource);
       case "job":
         return this.renderJobDetail(resource);
       case "project":
@@ -992,6 +1166,16 @@ export class SpeechmaticsClient implements PluginClient {
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
     switch (resource.resourceTypeId) {
+      case ACCOUNT_TYPE:
+        return {
+          id: resource.id,
+          label: resource.displayName,
+          status: {
+            kind: "status-dot",
+            status: "info",
+            label: String(resource.fields["region"] ?? this.region),
+          },
+        };
       case "job": {
         const status = String(resource.fields["status"] ?? "");
         return {
@@ -1123,24 +1307,145 @@ export class SpeechmaticsClient implements PluginClient {
         },
       ],
       metricsCapability: { defaultTimeRangeMs: 30 * 86_400_000 },
-      speechPanel: {
-        modes: ["stt"],
-        tabLabel: "Speech",
-        subtitle: `Speechmatics batch transcription · ${region} · results are kept for 7 days`,
-        helpText:
-          "Record or upload a clip and it is submitted as a batch job with ?wait=60, so the " +
-          "transcript comes back in the same request. Longer clips fall back to polling, capped " +
-          "at two minutes. Melia-1 is multilingual only — picking it forces the language to “multi”.",
-        languages: discovery.languages,
-        defaultLanguage: "en",
-        languageLabel: "Language pack",
-        models: discovery.models,
-        defaultModel: "enhanced",
-        modelLabel: "Model",
-        acceptedAudioTypes: ACCEPTED_AUDIO_TYPES,
-        maxAudioBytes: MAX_AUDIO_BYTES,
-        transcribeLabel: "Transcribe",
+      // Also offered here, where it reads as "run this one again with different
+      // settings". The account copy is the one that survives the 7-day purge.
+      speechPanel: this.speechPanel(discovery, region),
+    };
+  }
+
+  /** One panel definition, shared by the account and job detail views. */
+  private speechPanel(discovery: StashedDiscovery, region: string): SpeechPanelCapability {
+    return {
+      modes: ["stt"],
+      tabLabel: "Speech",
+      subtitle: `Speechmatics batch transcription · ${region} · results are kept for 7 days`,
+      helpText:
+        "Record or upload a clip and it is submitted as a batch job with ?wait=60, so the " +
+        "transcript comes back in the same request. Longer clips fall back to polling, capped " +
+        "at two minutes. Melia-1 is multilingual only — picking it forces the language to “multi”.",
+      languages: discovery.languages,
+      defaultLanguage: "en",
+      languageLabel: "Language pack",
+      models: discovery.models,
+      defaultModel: "enhanced",
+      modelLabel: "Model",
+      acceptedAudioTypes: ACCEPTED_AUDIO_TYPES,
+      maxAudioBytes: MAX_AUDIO_BYTES,
+      transcribeLabel: "Transcribe",
+    };
+  }
+
+  /**
+   * The account view — the one detail page that always renders, and therefore
+   * the reliable home of the Speech tab.
+   *
+   * Both the usage numbers and the language-pack list were fetched in
+   * `buildAccount` and stashed on `resolvedOutputs`, because this method is
+   * synchronous and cannot make a call of its own.
+   */
+  private renderAccountDetail(resource: ResourceInstance): DetailViewSchema {
+    const f = resource.fields;
+    const region = String(f["region"] ?? this.region);
+    const discovery = parseStashedDiscovery(resource.resolvedOutputs[DISCOVERY_STASH_KEY]);
+    const usage = parseStashedUsage(resource.resolvedOutputs[USAGE_STASH_KEY]);
+    const hasManagementToken = f["managementToken"] === true;
+
+    const sections: SectionNode[] = [
+      {
+        kind: "section",
+        title: "Account",
+        children: [
+          {
+            kind: "key-value-list",
+            items: [
+              { key: "Region", value: region },
+              {
+                key: "Batch API",
+                value: String(f["endpoint"] ?? this.baseUrl),
+                copyable: true,
+              },
+              {
+                key: "Management API",
+                value: hasManagementToken ? "Configured" : "Not configured",
+              },
+            ],
+          },
+          {
+            kind: "text",
+            variant: "muted",
+            content: hasManagementToken
+              ? "Projects and API keys are read from the Management API " +
+                "(https://mp.api.speechmatics.com/v1) with this account's management token — a " +
+                "different credential on a different host to the batch API key."
+              : "No management token is set, so the Projects and API Keys lists stay empty. " +
+                "Transcription jobs, usage and the Speech tab are unaffected — add one from " +
+                "Portal › Manage workspace › Management tokens if you want them.",
+          },
+        ],
       },
+      {
+        kind: "section",
+        title: `Usage (${usage.since} → ${usage.until})`,
+        children: [
+          {
+            kind: "key-value-list",
+            items: [
+              { key: "Transcription hours", value: usage.hours.toFixed(3) },
+              { key: "Billable jobs", value: String(usage.jobs) },
+              ...usage.rows.map((row) => ({
+                key: row.label || "Unlabelled",
+                value: `${row.count} job${row.count === 1 ? "" : "s"} · ${row.hours.toFixed(3)} h`,
+              })),
+            ],
+          },
+          {
+            kind: "text",
+            variant: "muted",
+            content:
+              "Read from GET /v2/usage, which takes inclusive calendar dates rather than a " +
+              `granularity. Usage is region-scoped like everything else — this is ${region} only.`,
+          },
+        ],
+      },
+      {
+        kind: "section",
+        title: "Language packs",
+        children: [
+          {
+            kind: "key-value-list",
+            items: [
+              { key: "Packs offered", value: String(discovery.languages.length) },
+              { key: "Models", value: discovery.models.map((model) => model.id).join(", ") },
+            ],
+          },
+          {
+            kind: "text",
+            variant: "muted",
+            content:
+              "The Speech tab's pickers come from GET /v1/discovery/features on this region, " +
+              "which is unauthenticated — so they are populated even before the API key is " +
+              "validated. “multi” is appended because melia-1 requires it and discovery does " +
+              "not list it as a pack.",
+          },
+        ],
+      },
+    ];
+
+    return {
+      title: resource.displayName,
+      subtitle: `Speechmatics account · ${region}`,
+      status: { kind: "status-dot", status: "healthy", label: region },
+      sections,
+      headerActions: [
+        {
+          kind: "action",
+          label: "Open Speechmatics Portal",
+          action: { type: "open-url", url: "https://portal.speechmatics.com/" },
+          variant: "ghost",
+        },
+      ],
+      metricsCapability: { defaultTimeRangeMs: USAGE_WINDOW_DAYS * 86_400_000 },
+      speechPanel: this.speechPanel(discovery, region),
     };
   }
 
@@ -1339,11 +1644,82 @@ function parseStashedDiscovery(raw: string | undefined): StashedDiscovery {
 }
 
 /**
+ * Read back the stashed usage summary. An account whose `/usage` call failed —
+ * or which was rendered from a cached instance predating the stash — still has
+ * to produce a view, so this degrades to an empty window rather than throwing.
+ */
+function parseStashedUsage(raw: string | undefined): StashedUsage {
+  const empty: StashedUsage = { since: "—", until: "—", hours: 0, jobs: 0, rows: [] };
+  if (!raw) return empty;
+  try {
+    const parsed = JSON.parse(raw) as Partial<StashedUsage>;
+    return {
+      since: parsed.since ?? empty.since,
+      until: parsed.until ?? empty.until,
+      hours: typeof parsed.hours === "number" ? parsed.hours : 0,
+      jobs: typeof parsed.jobs === "number" ? parsed.jobs : 0,
+      rows: Array.isArray(parsed.rows) ? parsed.rows : [],
+    };
+  } catch {
+    return empty;
+  }
+}
+
+/**
  * Pull word timings out of a json-v2 transcript. Only `type: "word"` items
  * become rows — punctuation carries no useful timing for the table — and the
  * mean of their confidences stands in for an overall score, which the API
  * does not report directly.
  */
+/**
+ * The language Speechmatics actually *recognised*, or `undefined`.
+ *
+ * Deliberately never reads `metadata.transcription_config.language`: that is
+ * the value the job was submitted with, echoed back, which for melia-1 is
+ * always the literal "multi" and for every other run is just whatever the
+ * picker was set to.
+ *
+ * Two genuine sources, in order:
+ *  1. `metadata.language_identification` — the language-ID feature's own
+ *     output, emitted for `language: "auto"` jobs. It is segmented, so the
+ *     per-segment top alternatives are summed by confidence and the highest
+ *     total wins.
+ *  2. `results[].alternatives[].language` — the per-word language the
+ *     multilingual packs tag each token with. Only used when every recognised
+ *     word agrees; a genuinely code-switched clip has no single language and
+ *     is better left blank than reduced to its most common one.
+ */
+function detectLanguage(transcript: TranscriptJsonV2): string | undefined {
+  const identification = transcript.metadata?.language_identification;
+  if (identification && !identification.error) {
+    const totals = new Map<string, number>();
+    for (const segment of identification.results ?? []) {
+      const top = segment.alternatives?.[0];
+      if (!top?.language) continue;
+      totals.set(top.language, (totals.get(top.language) ?? 0) + (top.confidence ?? 1));
+    }
+    let best: string | undefined;
+    let bestScore = -1;
+    for (const [language, score] of totals) {
+      if (score > bestScore) {
+        best = language;
+        bestScore = score;
+      }
+    }
+    if (best) return best;
+  }
+
+  let unanimous: string | undefined;
+  for (const result of transcript.results ?? []) {
+    if (result.type !== "word") continue;
+    const language = result.alternatives?.[0]?.language;
+    if (!language) continue;
+    if (unanimous === undefined) unanimous = language;
+    else if (unanimous !== language) return undefined;
+  }
+  return unanimous;
+}
+
 function extractWords(transcript: TranscriptJsonV2): {
   words: TranscriptWord[];
   confidence: number | undefined;

@@ -6,6 +6,7 @@ import type {
   ResourceInstance,
   SectionNode,
   SidebarItemSchema,
+  SpeechPanelCapability,
   SpeechPanelOption,
   TranscribeAudioPayload,
   TranscribeAudioResult,
@@ -15,6 +16,17 @@ import { jsonRestFetch } from "@infrawrench/plugin-base";
 
 const PLUGIN_ID = "assemblyai";
 const TRANSCRIPT_TYPE = "transcript";
+
+/**
+ * The singleton pseudo-resource that stands in for the API key itself.
+ *
+ * Transcripts only exist once the key has been used, and are purged after 90
+ * days, so they cannot be the only place the Speech tab lives — a fresh (or
+ * long-idle) account would have nothing to open. `listResources` always returns
+ * exactly one of these, whatever else is in the account.
+ */
+const ACCOUNT_TYPE = "account";
+const ACCOUNT_ID = "default";
 
 /** Hosts. https://www.assemblyai.com/docs/faq/do-you-offer-servers-in-the-eu */
 const HOSTS: Record<string, string> = {
@@ -44,7 +56,17 @@ const POLL_TIMEOUT_MS = 120_000;
  * cap. 64 MB of audio is minutes of speech — well past what a playground tab
  * is for — while still fitting comfortably in a JSON body.
  */
-const MAX_AUDIO_BYTES = 64 * 1024 * 1024;
+/**
+ * Largest clip the Speech panel will accept, in bytes.
+ *
+ * This is deliberately far below the provider's own ceiling. The panel ships
+ * audio base64-encoded inside a JSON body, and base64 inflates by 4/3 — with
+ * the web ingress at `proxy-body-size: 36m` the real raw-audio ceiling is
+ * ~27 MB, and a clip large enough to matter also blows up `FileReader`
+ * (`RangeError: Invalid string length`) before it ever reaches the network.
+ * The transport is the binding constraint here, not the API.
+ */
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // AssemblyAI accepts 2.2 GB; our transport does not.
 
 // ---------------------------------------------------------------------------
 // Wire shapes
@@ -272,6 +294,9 @@ export class AssemblyAIClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+    // Exactly one account, always — including on a key that has never
+    // transcribed anything. That is the point of it.
+    if (typeId === ACCOUNT_TYPE) return [await this.buildAccount(accountId)];
     if (typeId !== TRANSCRIPT_TYPE) {
       throw new Error(`AssemblyAI plugin: unknown resource type "${typeId}"`);
     }
@@ -298,6 +323,7 @@ export class AssemblyAIClient implements PluginClient {
     resourceId: string,
     accountId: string,
   ): Promise<ResourceInstance> {
+    if (typeId === ACCOUNT_TYPE) return this.buildAccount(accountId);
     if (typeId !== TRANSCRIPT_TYPE) {
       throw new Error(`AssemblyAI plugin: unknown resource type "${typeId}"`);
     }
@@ -312,7 +338,7 @@ export class AssemblyAIClient implements PluginClient {
     outputKey: string,
     accountId: string,
   ): Promise<string> {
-    if (typeId !== TRANSCRIPT_TYPE) {
+    if (typeId !== TRANSCRIPT_TYPE && typeId !== ACCOUNT_TYPE) {
       throw new Error(`AssemblyAI plugin: unknown resource type "${typeId}"`);
     }
     const resource = await this.getResource(typeId, resourceId, accountId);
@@ -345,6 +371,21 @@ export class AssemblyAIClient implements PluginClient {
   ): Promise<DashboardStat[]> {
     const resource = await this.getResource(resourceTypeId, resourceId, accountId);
     const fields = resource.fields;
+
+    if (resourceTypeId === ACCOUNT_TYPE) {
+      const failed = Number(fields["erroredTranscripts"] ?? 0);
+      return [
+        { label: "Transcripts sampled", value: String(fields["sampledTranscripts"] ?? 0) },
+        { label: "Completed", value: String(fields["completedTranscripts"] ?? 0) },
+        {
+          label: "Failed",
+          value: String(failed),
+          variant: failed > 0 ? "status-degraded" : "default",
+        },
+        { label: "Region", value: String(fields["region"] ?? "") },
+      ];
+    }
+
     const status = String(fields["status"] ?? "");
     return [
       {
@@ -391,6 +432,78 @@ export class AssemblyAIClient implements PluginClient {
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
+    if (resource.resourceTypeId === ACCOUNT_TYPE) return this.renderAccountDetail(resource);
+    return this.renderTranscriptDetail(resource);
+  }
+
+  /**
+   * The account view. Everything here is derived — AssemblyAI exposes no
+   * account, usage, billing or quota endpoint — but it is always renderable,
+   * which is what makes it a safe home for the Speech tab.
+   */
+  private renderAccountDetail(resource: ResourceInstance): DetailViewSchema {
+    const fields = resource.fields;
+    const sampled = Number(fields["sampledTranscripts"] ?? 0);
+    const oldest = String(fields["oldestSampledAt"] ?? "");
+
+    return {
+      title: resource.displayName,
+      subtitle: `AssemblyAI account · ${String(fields["region"] ?? "us")} region`,
+      status: { kind: "status-dot", status: "healthy", label: "Connected" },
+      sections: [
+        {
+          kind: "section",
+          title: "Endpoint",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "API Base", value: String(fields["endpoint"] ?? ""), copyable: true },
+                { key: "Region", value: String(fields["region"] ?? "") },
+                // Documented gotcha, not decoration: `Bearer` fails auth here.
+                { key: "Auth Header", value: "authorization: <key> (no Bearer prefix)" },
+              ],
+            },
+            {
+              kind: "text",
+              content:
+                "Transcripts live on the host they were created against — an account pointed at EU cannot see transcripts submitted through the default host, and vice versa.",
+              variant: "muted",
+            },
+          ],
+        },
+        {
+          kind: "section",
+          // Named for what it actually is. AssemblyAI has no usage, billing or
+          // quota endpoint, so this counts jobs in the 90-day retention window —
+          // it is not a spend figure and does not include anything already purged.
+          title: "Recent activity (90-day retention window)",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Transcripts sampled", value: String(sampled) },
+                { key: "Completed", value: String(fields["completedTranscripts"] ?? 0) },
+                { key: "Failed", value: String(fields["erroredTranscripts"] ?? 0) },
+                { key: "Queued / processing", value: String(fields["pendingTranscripts"] ?? 0) },
+                { key: "Oldest sampled", value: oldest || "—" },
+              ],
+            },
+            {
+              kind: "text",
+              content:
+                "AssemblyAI exposes no usage, billing, or quota API — spend is dashboard-only. This is a count of jobs still inside the 90-day retention window, not billed usage.",
+              variant: "muted",
+            },
+          ],
+        },
+      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      speechPanel: this.speechPanel(),
+    };
+  }
+
+  private renderTranscriptDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     const status = String(fields["status"] ?? "unknown");
     const duration = Number(fields["audioDuration"] ?? 0);
@@ -490,27 +603,41 @@ export class AssemblyAIClient implements PluginClient {
       },
       sections,
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
-      speechPanel: {
-        modes: ["stt"],
-        tabLabel: "Speech",
-        subtitle:
-          "Record or upload a clip and AssemblyAI transcribes it — upload, submit, and poll all happen in this one request.",
-        helpText:
-          "The v2 API is async-only, so this runs three calls back to back: POST /v2/upload with the raw bytes, POST /v2/transcript with the returned URL, then GET /v2/transcript/{id} every 3 seconds until it completes. It gives up after 120 seconds — long recordings are better submitted from the dashboard. Punctuation, text formatting, and speaker diarization are all on. The API itself accepts files up to 2.2 GB; this panel caps lower because the clip travels base64-encoded inside a JSON request.",
-        models: SPEECH_MODELS,
-        defaultModel: DEFAULT_MODEL,
-        modelLabel: "Speech model",
-        languages: LANGUAGES,
-        defaultLanguage: AUTO_LANGUAGE,
-        languageLabel: "Language",
-        acceptedAudioTypes: ["audio/*", "video/*"],
-        maxAudioBytes: MAX_AUDIO_BYTES,
-        transcribeLabel: "Transcribe",
-      },
+      // Also offered here, where it doubles as "re-run this one with different
+      // settings". The account copy above is the one that is always reachable.
+      speechPanel: this.speechPanel(),
+    };
+  }
+
+  /** One panel definition, shared by the account and transcript detail views. */
+  private speechPanel(): SpeechPanelCapability {
+    return {
+      modes: ["stt"],
+      tabLabel: "Speech",
+      subtitle:
+        "Record or upload a clip and AssemblyAI transcribes it — upload, submit, and poll all happen in this one request.",
+      helpText:
+        "The v2 API is async-only, so this runs three calls back to back: POST /v2/upload with the raw bytes, POST /v2/transcript with the returned URL, then GET /v2/transcript/{id} every 3 seconds until it completes. It gives up after 120 seconds — long recordings are better submitted from the dashboard. Punctuation, text formatting, and speaker diarization are all on. The API itself accepts files up to 2.2 GB; this panel caps lower because the clip travels base64-encoded inside a JSON request.",
+      models: SPEECH_MODELS,
+      defaultModel: DEFAULT_MODEL,
+      modelLabel: "Speech model",
+      languages: LANGUAGES,
+      defaultLanguage: AUTO_LANGUAGE,
+      languageLabel: "Language",
+      acceptedAudioTypes: ["audio/*", "video/*"],
+      maxAudioBytes: MAX_AUDIO_BYTES,
+      transcribeLabel: "Transcribe",
     };
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
+    if (resource.resourceTypeId === ACCOUNT_TYPE) {
+      return {
+        id: resource.id,
+        label: resource.displayName,
+        status: { kind: "status-dot", status: "info", label: "Account" },
+      };
+    }
     const status = String(resource.fields["status"] ?? "unknown");
     return {
       id: resource.id,
@@ -540,7 +667,9 @@ export class AssemblyAIClient implements PluginClient {
     _accountId: string,
     payload: TranscribeAudioPayload,
   ): Promise<TranscribeAudioResult> {
-    if (typeId !== TRANSCRIPT_TYPE) {
+    // Both hosts of the Speech tab, and nothing else — the guard stays explicit
+    // about which types are valid rather than accepting anything.
+    if (typeId !== ACCOUNT_TYPE && typeId !== TRANSCRIPT_TYPE) {
       throw new Error(`AssemblyAI plugin: transcribeAudio not supported for type "${typeId}"`);
     }
 
@@ -642,6 +771,59 @@ export class AssemblyAIClient implements PluginClient {
   // -------------------------------------------------------------------------
   // Mapping
   // -------------------------------------------------------------------------
+
+  /**
+   * The singleton account resource.
+   *
+   * There is no endpoint that describes an AssemblyAI key, so the only honest
+   * content is the same retention-window count `enrichDetail` computes. A
+   * listing failure is swallowed on purpose: the account has to stay navigable
+   * — and the Speech tab usable — on a key that has never transcribed anything.
+   */
+  private async buildAccount(accountId: string): Promise<ResourceInstance> {
+    let items: TranscriptListItem[] = [];
+    try {
+      const data = await this.fetch<TranscriptListResponse>(`/v2/transcript?limit=${LIST_LIMIT}`);
+      items = data.transcripts ?? [];
+    } catch {
+      items = [];
+    }
+
+    let completed = 0;
+    let error = 0;
+    let pending = 0;
+    let oldest = "";
+    for (const item of items) {
+      if (item.status === "completed") completed += 1;
+      else if (item.status === "error") error += 1;
+      else pending += 1;
+      const created = item.created ?? "";
+      if (created && (!oldest || created < oldest)) oldest = created;
+    }
+
+    const now = new Date().toISOString();
+    return {
+      id: `${accountId}:${ACCOUNT_TYPE}:${ACCOUNT_ID}`,
+      pluginId: PLUGIN_ID,
+      resourceTypeId: ACCOUNT_TYPE,
+      accountId,
+      displayName: "AssemblyAI",
+      fields: {
+        endpoint: this.baseUrl,
+        region: this.region,
+        sampledTranscripts: items.length,
+        completedTranscripts: completed,
+        erroredTranscripts: error,
+        pendingTranscripts: pending,
+        oldestSampledAt: oldest,
+      },
+      resolvedOutputs: { endpoint: this.baseUrl, region: this.region },
+      secretStates: [],
+      externalId: ACCOUNT_ID,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
 
   private mapTranscript(t: Transcript, accountId: string): ResourceInstance {
     const status = t.status ?? "queued";

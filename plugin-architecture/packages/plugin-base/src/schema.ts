@@ -895,6 +895,22 @@ export interface SpeechPanelCapability {
   maxAudioBytes?: number;
   /** Submit label for the STT half. Defaults to "Transcribe". */
   transcribeLabel?: string;
+  /**
+   * Hide the microphone button and leave only the file picker.
+   *
+   * For providers that reject the containers browsers and phones actually
+   * record in — `MediaRecorder` emits WebM/Opus on Chromium and Firefox and
+   * MP4/AAC on Safari, mobile records M4A — so every recording would fail at
+   * upload. Unlike `disabledReason` this only removes the recorder; uploading
+   * a supported clip still works.
+   */
+  disableRecording?: boolean;
+  /**
+   * Why recording is unavailable, shown next to the upload button. Name the
+   * formats the provider *does* take so the user knows what to convert to.
+   * Only read when `disableRecording` is set.
+   */
+  recordingDisabledReason?: string;
 
   // ---- Shared ----
   /** Model dropdown, applied to whichever half is active. */

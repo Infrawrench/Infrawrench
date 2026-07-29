@@ -35,7 +35,17 @@ const MAX_TTS_CHARACTERS = 2000;
  * in Deepgram's callback-based async flow, not an interactive playground.
  * (Deepgram also 504s on requests that take longer than 10 minutes.)
  */
-const MAX_AUDIO_BYTES = 100 * 1024 * 1024;
+/**
+ * Largest clip the Speech panel will accept, in bytes.
+ *
+ * This is deliberately far below the provider's own ceiling. The panel ships
+ * audio base64-encoded inside a JSON body, and base64 inflates by 4/3 — with
+ * the web ingress at `proxy-body-size: 36m` the real raw-audio ceiling is
+ * ~27 MB, and a clip large enough to matter also blows up `FileReader`
+ * (`RangeError: Invalid string length`) before it ever reaches the network.
+ * The transport is the binding constraint here, not the API.
+ */
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // Deepgram accepts 2 GB; our transport does not.
 
 /** Fallback when `/v1/models` can't be reached — Deepgram's own documented defaults. */
 const FALLBACK_TTS_VOICE = "aura-2-thalia-en";

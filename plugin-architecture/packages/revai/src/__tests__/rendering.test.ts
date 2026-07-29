@@ -3,7 +3,7 @@ import { runPluginRenderingTests } from "@infrawrench/plugin-base/test-harness";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { plugin } from "../plugin.js";
 import { RevAiClient, assembleTranscript } from "../client.js";
-import { REVAI_TRANSCRIBER_OPTIONS } from "../options.js";
+import { REVAI_PANEL_TRANSCRIBER_OPTIONS, REVAI_TRANSCRIBER_OPTIONS } from "../options.js";
 
 const ACCOUNT = "acct-1";
 
@@ -109,6 +109,35 @@ describe("transcriber options", () => {
       expect(ids).not.toContain(marketingName);
     }
   });
+
+  it("keeps human out of the panel list but leaves it available elsewhere", () => {
+    expect(REVAI_PANEL_TRANSCRIBER_OPTIONS.map((option) => option.id)).toEqual([
+      "machine",
+      "low_cost",
+      "fusion",
+    ]);
+    expect(REVAI_TRANSCRIBER_OPTIONS.map((option) => option.id)).toContain("human");
+  });
+});
+
+describe("account speech panel", () => {
+  it("never offers the human transcriber", () => {
+    // A human job runs for hours and bills at human rates the moment it is
+    // accepted; the panel gives up polling after two minutes, so clicking it
+    // could only ever produce a surprise charge and a timeout.
+    const panel = client().renderDetail(account()).speechPanel;
+
+    expect(panel?.models?.map((option) => option.id)).toEqual(["machine", "low_cost", "fusion"]);
+    expect(panel?.models?.map((option) => option.id)).not.toContain("human");
+    expect(panel?.defaultModel).toBe("machine");
+  });
+
+  it("says where human transcription actually lives, and that it bills", () => {
+    const helpText = client().renderDetail(account()).speechPanel?.helpText ?? "";
+
+    expect(helpText).toMatch(/human rates/i);
+    expect(helpText).toMatch(/Rev AI directly/i);
+  });
 });
 
 describe("assembleTranscript", () => {
@@ -147,7 +176,10 @@ describe("renderDetail", () => {
   it("declares an STT-only speech panel on the account", () => {
     const schema = client().renderDetail(account());
     expect(schema.speechPanel?.modes).toEqual(["stt"]);
-    expect(schema.speechPanel?.maxAudioBytes).toBe(2 * 1024 * 1024 * 1024);
+    // Capped by our base64-over-JSON transport (ingress proxy-body-size 36m
+    // ⇒ ~27 MB of raw audio), not by what the provider would accept.
+    expect(schema.speechPanel?.maxAudioBytes).toBe(25 * 1024 * 1024);
+    expect(schema.speechPanel!.maxAudioBytes!).toBeLessThanOrEqual(27 * 1024 * 1024);
     expect(schema.speechPanel?.modelLabel).toBe("Transcriber");
     expect(schema.speechPanel?.defaultModel).toBe("machine");
   });

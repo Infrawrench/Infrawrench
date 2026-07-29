@@ -115,6 +115,11 @@ const SPEECH_HELP_TEXT =
   "by the API — pick the one spoken in the clip. Cohere returns plain text only, with no " +
   "word-level timings.";
 
+/** Why the Speech tab shows no Record button. See `disableRecording` below. */
+const RECORDING_DISABLED_REASON =
+  "Cohere transcribes FLAC, MP3, MPEG, MPGA, OGG and WAV only — it rejects the WebM, MP4 and " +
+  "M4A that browsers and phones record, so upload a converted clip instead.";
+
 /**
  * Cohere plugin client.
  *
@@ -873,6 +878,12 @@ export class CohereClient implements PluginClient {
         acceptedAudioTypes: ACCEPTED_AUDIO_TYPES,
         maxAudioBytes: MAX_AUDIO_BYTES,
         transcribeLabel: "Transcribe",
+        // Nothing a browser or phone records is a container Cohere accepts —
+        // WebM on Chromium and Firefox, MP4 on Safari, M4A on mobile — so the
+        // recorder could only ever hand `transcribeAudio` a clip it rejects.
+        // Uploading one of the six real formats still works.
+        disableRecording: true,
+        recordingDisabledReason: RECORDING_DISABLED_REASON,
       },
     };
   }

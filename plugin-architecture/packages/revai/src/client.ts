@@ -17,8 +17,8 @@ import {
   REVAI_DEFAULT_LANGUAGE,
   REVAI_DEFAULT_TRANSCRIBER,
   REVAI_LANGUAGE_OPTIONS,
+  REVAI_PANEL_TRANSCRIBER_OPTIONS,
   REVAI_REGIONS,
-  REVAI_TRANSCRIBER_OPTIONS,
 } from "./options.js";
 
 /** The single account pseudo-resource's external id. */
@@ -43,7 +43,17 @@ const MAX_POLL_WAIT_MS = 120_000;
  * https://docs.rev.ai/api/asynchronous/reference/jobs/submittranscriptionjob.md
  * — 2 GB per multipart request, 17 hours of media for English.
  */
-const MAX_AUDIO_BYTES = 2 * 1024 * 1024 * 1024;
+/**
+ * Largest clip the Speech panel will accept, in bytes.
+ *
+ * This is deliberately far below the provider's own ceiling. The panel ships
+ * audio base64-encoded inside a JSON body, and base64 inflates by 4/3 — with
+ * the web ingress at `proxy-body-size: 36m` the real raw-audio ceiling is
+ * ~27 MB, and a clip large enough to matter also blows up `FileReader`
+ * (`RangeError: Invalid string length`) before it ever reaches the network.
+ * The transport is the binding constraint here, not the API.
+ */
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // Rev AI accepts 2 GB; our transport does not.
 const MAX_AUDIO_HOURS = 17;
 
 const ACCEPTED_AUDIO_TYPES = [
@@ -936,13 +946,14 @@ export class RevAiClient implements PluginClient {
         helpText:
           "Rev AI is asynchronous: the clip is posted to /jobs as multipart, then this panel " +
           `polls the job for up to ${Math.round(MAX_POLL_WAIT_MS / 1000)} seconds and fetches the ` +
-          `transcript. Limits are 2 GB and ${MAX_AUDIO_HOURS} hours per request. Human ` +
-          "transcription takes hours to return and will time out here — use it from the Jobs list " +
-          "instead.",
+          `transcript. Limits are 2 GB and ${MAX_AUDIO_HOURS} hours per request. Only the ` +
+          "automatic transcribers are offered here — human transcription takes hours to come " +
+          "back, bills at human rates the moment the job is accepted, and could only ever time " +
+          "out in this panel; order it through Rev AI directly.",
         languages: REVAI_LANGUAGE_OPTIONS,
         defaultLanguage: REVAI_DEFAULT_LANGUAGE,
         languageLabel: "Language",
-        models: REVAI_TRANSCRIBER_OPTIONS,
+        models: REVAI_PANEL_TRANSCRIBER_OPTIONS,
         defaultModel: REVAI_DEFAULT_TRANSCRIBER,
         modelLabel: "Transcriber",
         acceptedAudioTypes: ACCEPTED_AUDIO_TYPES,

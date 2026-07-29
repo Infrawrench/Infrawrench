@@ -109,6 +109,102 @@ describe("listResources — job", () => {
   });
 });
 
+describe("account (the singleton that hosts the Speech tab)", () => {
+  const discovery = {
+    metadata: { language_pack_info: { en: { language_description: "English" } } },
+    batch: { transcription: [{ version: "latest", languages: ["en"] }] },
+  };
+
+  it("returns exactly one account, with a Speech tab, when the account has zero jobs", async () => {
+    // The regression: Speechmatics purges jobs after 7 days, so a week-idle
+    // account has nothing to open and the Speech tab has to live elsewhere.
+    installFetch((url) => {
+      if (url.includes("/v1/discovery/features")) return response(discovery);
+      if (url.includes("/v2/usage")) return response({ summary: [], details: [] });
+      return response({ jobs: [] });
+    });
+    const c = client();
+
+    expect(await c.listResources("job", ACCOUNT)).toEqual([]);
+    const resources = await c.listResources("account", ACCOUNT);
+
+    expect(resources).toHaveLength(1);
+    const account = resources[0]!;
+    expect(account.id).toBe(`${ACCOUNT}:account:default`);
+    expect(c.renderDetail(account).speechPanel?.modes).toEqual(["stt"]);
+    expect(c.renderDetail(account).speechPanel?.languages?.map((l) => l.id)).toEqual([
+      "en",
+      "multi",
+    ]);
+  });
+
+  it("still renders — Speech tab included — when discovery and usage both fail", async () => {
+    installFetch(() => response("nope", 503));
+    const c = client();
+    const [account] = await c.listResources("account", ACCOUNT);
+    const detail = c.renderDetail(account!);
+
+    expect(detail.speechPanel).toBeDefined();
+    // Falls back to the built-in language list rather than an empty picker.
+    expect(detail.speechPanel?.languages?.some((l) => l.id === "en")).toBe(true);
+    expect(account!.fields["usageHours"]).toBe(0);
+  });
+
+  it("summarises GET /v2/usage over a 30-day window and stashes the breakdown", async () => {
+    installFetch((url) => {
+      if (url.includes("/v1/discovery/features")) return response(discovery);
+      return response({
+        since: "2026-06-29",
+        until: "2026-07-28",
+        summary: [
+          { mode: "batch", type: "transcription", model: "enhanced", count: 3, duration_hrs: 1.25 },
+          {
+            mode: "batch",
+            type: "transcription",
+            operating_point: "standard",
+            count: 1,
+            duration_hrs: 0.5,
+          },
+        ],
+      });
+    });
+
+    const [account] = await client().listResources("account", ACCOUNT);
+    const usageCall = calls.find((c) => c.url.includes("/v2/usage"))!;
+    expect(usageCall.url).toMatch(/\/v2\/usage\?since=\d{4}-\d{2}-\d{2}&until=\d{4}-\d{2}-\d{2}$/);
+
+    expect(account!.fields["usageHours"]).toBe(1.75);
+    expect(account!.fields["usageJobs"]).toBe(4);
+
+    const flat = JSON.stringify(client().renderDetail(account!).sections);
+    expect(flat).toContain("2026-06-29 → 2026-07-28");
+    // Both spellings of the breakdown key make it into a row label.
+    expect(flat).toContain("batch · transcription · enhanced");
+    expect(flat).toContain("batch · transcription · standard");
+  });
+
+  it("says whether the management token is configured", async () => {
+    installFetch(() => response({}));
+    const [without] = await client().listResources("account", ACCOUNT);
+    const [with_] = await client({ managementToken: "mgmt" }).listResources("account", ACCOUNT);
+
+    expect(JSON.stringify(client().renderDetail(without!).sections)).toContain("Not configured");
+    expect(JSON.stringify(client().renderDetail(with_!).sections)).toContain("Configured");
+  });
+
+  it("derives account outputs without a round trip", async () => {
+    const spy = installFetch(() => response({}));
+    const c = client({ region: "us1" });
+    expect(await c.resolveOutput("account", `${ACCOUNT}:account:default`, "region", ACCOUNT)).toBe(
+      "us1",
+    );
+    expect(
+      await c.resolveOutput("account", `${ACCOUNT}:account:default`, "endpoint", ACCOUNT),
+    ).toBe("https://us1.asr.api.speechmatics.com/v2");
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
 describe("management API", () => {
   it("stays empty rather than erroring when no management token is configured", async () => {
     const spy = installFetch(() => response([]));
@@ -249,6 +345,139 @@ describe("transcribeAudio", () => {
     );
   });
 
+  it("never surfaces the echoed request as the detected language", async () => {
+    // `metadata.transcription_config.language` is the value the job was
+    // *submitted* with. For melia-1 that is always the literal "multi", which
+    // is an instruction to the recogniser and not a language anyone speaks.
+    installFetch((url) => {
+      if (url.includes("/jobs?wait=")) {
+        return response({ id: "job-m", status: "done", txt: "bonjour hello" });
+      }
+      return response({
+        job: { id: "job-m", duration: 3 },
+        metadata: { transcription_config: { language: "multi", model: "melia-1" } },
+        results: [
+          { type: "word", start_time: 0, end_time: 0.4, alternatives: [{ content: "bonjour" }] },
+        ],
+      });
+    });
+
+    const result = await client().transcribeAudio("job", "res", ACCOUNT, {
+      audioBase64,
+      mimeType: "audio/wav",
+      language: "fr",
+      modelId: "melia-1",
+    });
+
+    expect(result.language).toBeUndefined();
+    expect("language" in result).toBe(false);
+    expect(result.summary).toContain("language not identified");
+    expect(result.summary).not.toContain("multi");
+  });
+
+  it("reads the real language-identification block when the job ran language-ID", async () => {
+    installFetch((url) => {
+      if (url.includes("/jobs?wait=")) {
+        return response({ id: "job-lid", status: "done", txt: "hola" });
+      }
+      return response({
+        job: { id: "job-lid", duration: 6 },
+        metadata: {
+          transcription_config: { language: "auto", model: "enhanced" },
+          language_identification: {
+            results: [
+              {
+                start_time: 0,
+                end_time: 3,
+                alternatives: [
+                  { language: "es", confidence: 0.91 },
+                  { language: "pt", confidence: 0.09 },
+                ],
+              },
+              {
+                start_time: 3,
+                end_time: 6,
+                alternatives: [{ language: "es", confidence: 0.88 }],
+              },
+            ],
+          },
+        },
+        results: [],
+      });
+    });
+
+    const result = await client().transcribeAudio("job", "res", ACCOUNT, {
+      audioBase64,
+      mimeType: "audio/wav",
+      language: "auto",
+    });
+
+    expect(result.language).toBe("es");
+    expect(result.summary).toContain("language es");
+  });
+
+  it("ignores a failed language-identification and reports nothing detected", async () => {
+    installFetch((url) => {
+      if (url.includes("/jobs?wait=")) return response({ id: "job-lidx", status: "done", txt: "" });
+      return response({
+        job: { id: "job-lidx" },
+        metadata: {
+          transcription_config: { language: "auto" },
+          language_identification: { error: "LOW_CONFIDENCE", message: "not confident enough" },
+        },
+        results: [],
+      });
+    });
+
+    const result = await client().transcribeAudio("job", "res", ACCOUNT, {
+      audioBase64,
+      mimeType: "audio/wav",
+      language: "auto",
+    });
+
+    expect(result.language).toBeUndefined();
+    expect(result.summary).not.toContain("language auto");
+  });
+
+  it("falls back to the per-word language, but only when every word agrees", async () => {
+    function withWordLanguages(languages: string[]) {
+      return (url: string) => {
+        if (url.includes("/jobs?wait=")) {
+          return response({ id: "job-w", status: "done", txt: "words" });
+        }
+        return response({
+          job: { id: "job-w" },
+          metadata: { transcription_config: { language: "multi", model: "melia-1" } },
+          results: languages.map((language, i) => ({
+            type: "word",
+            start_time: i,
+            end_time: i + 0.5,
+            alternatives: [{ content: `w${i}`, confidence: 0.9, language }],
+          })),
+        });
+      };
+    }
+
+    installFetch(withWordLanguages(["de", "de", "de"]));
+    const unanimous = await client().transcribeAudio("job", "res", ACCOUNT, {
+      audioBase64,
+      mimeType: "audio/wav",
+      modelId: "melia-1",
+    });
+    expect(unanimous.language).toBe("de");
+
+    // A genuinely code-switched clip has no single language; blank beats
+    // picking whichever one happened to have more words.
+    calls = [];
+    installFetch(withWordLanguages(["de", "en", "de"]));
+    const mixed = await client().transcribeAudio("job", "res", ACCOUNT, {
+      audioBase64,
+      mimeType: "audio/wav",
+      modelId: "melia-1",
+    });
+    expect(mixed.language).toBeUndefined();
+  });
+
   it("falls back to polling and ?format=txt when the transcript is not embedded", async () => {
     installFetch((url) => {
       if (url.includes("/jobs?wait=")) return response({ id: "job-3", status: "created" });
@@ -278,6 +507,26 @@ describe("transcribeAudio", () => {
     await expect(
       client().transcribeAudio("job", "res", ACCOUNT, { audioBase64, mimeType: "audio/wav" }),
     ).rejects.toThrow(/rejected/);
+  });
+
+  it("accepts the account singleton, which is where the tab lives once jobs expire", async () => {
+    installFetch((url) => {
+      if (url.includes("/jobs?wait=")) return response({ id: "job-6", status: "done", txt: "hi" });
+      return response({}, 500);
+    });
+    const result = await client().transcribeAudio(
+      "account",
+      `${ACCOUNT}:account:default`,
+      ACCOUNT,
+      { audioBase64, mimeType: "audio/wav" },
+    );
+    expect(result.text).toBe("hi");
+  });
+
+  it("rejects a type that does not carry the panel", async () => {
+    await expect(
+      client().transcribeAudio("project", "res", ACCOUNT, { audioBase64, mimeType: "audio/wav" }),
+    ).rejects.toThrow(/not supported for type/);
   });
 
   it("surfaces an expired job from the async status enum", async () => {

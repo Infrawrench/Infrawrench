@@ -379,9 +379,23 @@ describe("transcribeAudio", () => {
         audio_duration_secs: 1.42,
         transcription_id: "tr-1",
         words: [
-          { text: "Hello", start: 0, end: 0.4, type: "word", speaker_id: "speaker_0" },
-          { text: " ", start: 0.4, end: 0.45, type: "spacing" },
-          { text: "there.", start: 0.45, end: 0.9, type: "word", speaker_id: "speaker_0" },
+          {
+            text: "Hello",
+            start: 0,
+            end: 0.4,
+            type: "word",
+            speaker_id: "speaker_0",
+            logprob: Math.log(0.9),
+          },
+          { text: " ", start: 0.4, end: 0.45, type: "spacing", logprob: Math.log(0.1) },
+          {
+            text: "there.",
+            start: 0.45,
+            end: 0.9,
+            type: "word",
+            speaker_id: "speaker_0",
+            logprob: Math.log(0.7),
+          },
         ],
       }),
     );
@@ -410,7 +424,10 @@ describe("transcribeAudio", () => {
 
     expect(result.text).toBe("Hello there.");
     expect(result.language).toBe("en");
-    expect(result.confidence).toBeCloseTo(0.98);
+    // Mean of exp(logprob) over the two *word* tokens — (0.9 + 0.7) / 2. The
+    // spacing token's logprob is excluded along with the token itself, and
+    // language_probability (0.98) plays no part.
+    expect(result.confidence).toBeCloseTo(0.8);
     expect(result.durationSeconds).toBeCloseTo(1.42);
     expect(result.requestId).toBe("tr-1");
     // Spacing tokens are dropped from the word table.
@@ -430,6 +447,54 @@ describe("transcribeAudio", () => {
     expect(form.get("language_code")).toBeNull();
     expect(form.get("model_id")).toBe("scribe_v2");
     expect((form.get("file") as File).name).toBe("clip.m4a");
+  });
+
+  it("never reports the language-ID score as transcript confidence", async () => {
+    // The pathological case: Scribe is all but certain the audio is English
+    // and all but certain every word it picked is wrong. Reporting 0.99 here
+    // would render as "99% confidence" over a mangled transcript.
+    installFetch(() =>
+      jsonResponse({
+        language_code: "en",
+        language_probability: 0.99,
+        text: "grbl mmf",
+        words: [
+          { text: "grbl", type: "word", logprob: Math.log(0.11) },
+          { text: "mmf", type: "word", logprob: Math.log(0.09) },
+        ],
+      }),
+    );
+
+    const result = await client().transcribeAudio("voice", `${ACCOUNT}:voice:v1`, ACCOUNT, {
+      audioBase64: "AA==",
+      mimeType: "audio/wav",
+    });
+
+    expect(result.confidence).toBeCloseTo(0.1);
+    expect(result.confidence).not.toBeCloseTo(0.99);
+    // The language score is still reported — labelled as one, in the summary.
+    expect(result.summary).toContain("en (99%)");
+  });
+
+  it("leaves confidence unset when Scribe returns no logprobs", async () => {
+    installFetch(() =>
+      jsonResponse({
+        language_code: "fr",
+        language_probability: 0.97,
+        text: "Bonjour.",
+        words: [{ text: "Bonjour.", type: "word" }],
+      }),
+    );
+
+    const result = await client().transcribeAudio("voice", `${ACCOUNT}:voice:v1`, ACCOUNT, {
+      audioBase64: "AA==",
+      mimeType: "audio/wav",
+    });
+
+    // Absent, not zero and not invented — the panel omits the row entirely.
+    expect(result.confidence).toBeUndefined();
+    expect("confidence" in result).toBe(false);
+    expect(result.language).toBe("fr");
   });
 
   it("surfaces API errors", async () => {

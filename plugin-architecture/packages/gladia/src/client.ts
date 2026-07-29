@@ -40,7 +40,17 @@ const MAX_POLL_WAIT_MS = 120_000;
  * Provider limits, verified 2026-07-28 against
  * https://docs.gladia.io/chapters/limits-and-specifications/supported-formats
  */
-const MAX_AUDIO_BYTES = 1000 * 1024 * 1024;
+/**
+ * Largest clip the Speech panel will accept, in bytes.
+ *
+ * This is deliberately far below the provider's own ceiling. The panel ships
+ * audio base64-encoded inside a JSON body, and base64 inflates by 4/3 — with
+ * the web ingress at `proxy-body-size: 36m` the real raw-audio ceiling is
+ * ~27 MB, and a clip large enough to matter also blows up `FileReader`
+ * (`RangeError: Invalid string length`) before it ever reaches the network.
+ * The transport is the binding constraint here, not the API.
+ */
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // Gladia accepts 1000 MB; our transport does not.
 const MAX_AUDIO_MINUTES = 135;
 
 const ACCEPTED_AUDIO_TYPES = [

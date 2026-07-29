@@ -73,6 +73,19 @@ export const REVAI_TRANSCRIBER_OPTIONS: SpeechPanelOption[] = [
   },
 ];
 
+/**
+ * What the Speech tab may offer — the automatic tiers only.
+ *
+ * `human` is a real API value and stays in `REVAI_TRANSCRIBER_OPTIONS` for job
+ * submission elsewhere, but it must never appear in this panel: a human job
+ * takes hours, the panel gives up polling after two minutes, and the job keeps
+ * running and billing at human rates behind the timeout. Offering a button
+ * whose only possible outcome is "timed out, and you were charged" is worse
+ * than not offering it.
+ */
+export const REVAI_PANEL_TRANSCRIBER_OPTIONS: SpeechPanelOption[] =
+  REVAI_TRANSCRIBER_OPTIONS.filter((option) => option.id !== "human");
+
 export const REVAI_DEFAULT_TRANSCRIBER = "machine";
 
 /** Sentinel for "let Rev AI use its default (`en`)" rather than pinning a tag. */

@@ -146,6 +146,13 @@ interface ScribeWord {
   end?: number | null;
   type?: string | null;
   speaker_id?: string | null;
+  /**
+   * "The log of the probability with which this word was predicted." Range is
+   * (-∞, 0], so `Math.exp` turns it back into a 0..1 probability. This is the
+   * only per-transcript confidence Scribe exposes — `language_probability` is
+   * a language-ID score and says nothing about transcript quality.
+   */
+  logprob?: number | null;
 }
 
 interface ScribeResponse {
@@ -869,14 +876,22 @@ export class ElevenLabsClient implements PluginClient {
     const elapsedMs = Date.now() - started;
     const data = (await response.json()) as ScribeResponse;
 
-    const words: TranscriptWord[] = (data.words ?? [])
-      .filter((word) => (word.type ?? "word") === "word" && Boolean(word.text))
-      .map((word) => ({
-        text: word.text ?? "",
-        ...(word.start != null ? { start: word.start } : {}),
-        ...(word.end != null ? { end: word.end } : {}),
-        ...(word.speaker_id ? { speaker: word.speaker_id } : {}),
-      }));
+    const spoken = (data.words ?? []).filter(
+      (word) => (word.type ?? "word") === "word" && Boolean(word.text),
+    );
+
+    const words: TranscriptWord[] = spoken.map((word) => ({
+      text: word.text ?? "",
+      ...(word.start != null ? { start: word.start } : {}),
+      ...(word.end != null ? { end: word.end } : {}),
+      ...(word.speaker_id ? { speaker: word.speaker_id } : {}),
+    }));
+
+    // The only honest transcript confidence Scribe offers. `language_probability`
+    // is deliberately not used here — it scores the *language guess*, sits near
+    // 0.99 for any intelligible audio, and would render as "99% confidence" over
+    // a badly mangled transcript. It is still reported in the summary, labelled.
+    const confidence = averageWordConfidence(spoken);
 
     const summaryParts = [modelId];
     if (data.audio_duration_secs != null) {
@@ -897,7 +912,7 @@ export class ElevenLabsClient implements PluginClient {
       summary: summaryParts.join(" · "),
       ...(data.language_code ? { language: data.language_code } : {}),
       ...(data.audio_duration_secs != null ? { durationSeconds: data.audio_duration_secs } : {}),
-      ...(data.language_probability != null ? { confidence: data.language_probability } : {}),
+      ...(confidence != null ? { confidence } : {}),
       ...(words.length ? { words } : {}),
       ...(data.transcription_id ? { requestId: data.transcription_id } : {}),
     };
@@ -1385,6 +1400,28 @@ function quotaSection(quota: StashedQuota): SectionNode {
       },
     ],
   };
+}
+
+/**
+ * Mean per-word confidence, or `undefined` when Scribe returned no logprobs.
+ *
+ * Scribe has no single transcript-level confidence field; what it gives is
+ * `words[].logprob`, the log-probability of each predicted word. `Math.exp`
+ * converts each back to a 0..1 probability and the arithmetic mean is the
+ * "overall confidence" the `TranscribeAudioResult` contract asks for.
+ * Clamped because a logprob of exactly 0 is legal and floating point can
+ * nudge `exp(0)` a hair over 1.
+ */
+function averageWordConfidence(words: ScribeWord[]): number | undefined {
+  let sum = 0;
+  let count = 0;
+  for (const word of words) {
+    if (typeof word.logprob !== "number" || !Number.isFinite(word.logprob)) continue;
+    sum += Math.min(1, Math.exp(word.logprob));
+    count++;
+  }
+  if (count === 0) return undefined;
+  return Number((sum / count).toFixed(4));
 }
 
 /** Best-effort extension for the multipart filename Scribe sees. */

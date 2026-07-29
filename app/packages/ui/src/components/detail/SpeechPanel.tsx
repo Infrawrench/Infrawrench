@@ -296,7 +296,12 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
   const maxBytes = capability.maxAudioBytes ?? DEFAULT_MAX_AUDIO_BYTES;
   const accept = (capability.acceptedAudioTypes ?? DEFAULT_ACCEPTED_AUDIO_TYPES).join(",");
 
+  // A plugin can veto the recorder on its own — providers that reject the
+  // containers MediaRecorder emits (WebM on Chromium and Firefox, MP4 on
+  // Safari) would fail every recording at upload time. Uploading is untouched.
+  const recordingBlocked = capability.disableRecording === true;
   const canRecord =
+    !recordingBlocked &&
     typeof navigator !== "undefined" &&
     !!navigator.mediaDevices?.getUserMedia &&
     typeof MediaRecorder !== "undefined";
@@ -448,7 +453,10 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
 
         {!canRecord && (
           <span className="text-[11px] text-on-surface-faint">
-            Microphone recording needs a browser with MediaRecorder — upload a clip instead.
+            {recordingBlocked
+              ? (capability.recordingDisabledReason ??
+                "This provider does not accept browser recordings — upload a clip instead.")
+              : "Microphone recording needs a browser with MediaRecorder — upload a clip instead."}
           </span>
         )}
       </div>
@@ -576,6 +584,13 @@ function OptionSelect({
   onChange: (value: string) => void;
 }) {
   const selected = options.find((o) => o.id === value);
+  // Several plugins ship a real empty-id entry — "Auto-detect" (Groq, Mistral)
+  // or "Match the input text" (Gemini) — as a meaningful choice. Rendering the
+  // "Select…" placeholder alongside one gives two <option>s with value "", and
+  // the browser resolves the collision to the first, so the picker reads
+  // "Select…" and choosing the real entry never changes the label. Only offer
+  // the placeholder when the plugin hasn't supplied its own empty option.
+  const hasEmptyOption = options.some((o) => o.id === "");
   return (
     <label className="block">
       <span className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide">
@@ -586,7 +601,7 @@ function OptionSelect({
         onChange={(e) => onChange(e.target.value)}
         className="mt-1 w-full bg-surface-overlay text-on-surface text-sm border border-border-strong rounded-md px-3 py-2 focus:outline-none focus:border-accent-blue"
       >
-        {!value && <option value="">Select…</option>}
+        {!value && !hasEmptyOption && <option value="">Select…</option>}
         {options.map((opt) => (
           <option key={opt.id} value={opt.id}>
             {opt.label}

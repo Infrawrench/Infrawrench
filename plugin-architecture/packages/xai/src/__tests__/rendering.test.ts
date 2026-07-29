@@ -31,18 +31,49 @@ function resource(
 }
 
 describe("renderDetail", () => {
-  it("converts model prices from USD cents to dollars per million tokens", () => {
-    const schema = client().renderDetail(
-      resource("model", {
-        modelId: "grok-4",
-        kind: "language",
-        promptTextTokenPrice: 300,
-        completionTextTokenPrice: 1500,
-      }),
+  function pricing(schema: { sections: Array<{ kind: string; title?: string }> }): string {
+    return JSON.stringify(
+      schema.sections.find((s) => s.kind === "section" && s.title === "Pricing"),
     );
-    const pricing = schema.sections.find((s) => s.kind === "section" && s.title === "Pricing");
-    expect(JSON.stringify(pricing)).toContain("$3.0000");
-    expect(JSON.stringify(pricing)).toContain("$15.0000");
+  }
+
+  it("converts token prices from the reported cents-per-100M scale", () => {
+    // The numbers xAI's own docs report for grok-4.3, published at $1.25 / 1M
+    // prompt tokens, $0.20 cached and $2.50 / 1M completion tokens.
+    const rows = pricing(
+      client().renderDetail(
+        resource("model", {
+          modelId: "grok-4.3",
+          kind: "language",
+          promptTextTokenPrice: 12500,
+          cachedPromptTextTokenPrice: 2000,
+          completionTextTokenPrice: 25000,
+        }),
+      ),
+    );
+    expect(rows).toContain("$1.2500");
+    expect(rows).toContain("$0.2000");
+    expect(rows).toContain("$2.5000");
+    expect(rows).toContain("per 1M tokens");
+  });
+
+  it("prices images per image and search per source, not per million", () => {
+    // grok-imagine-image is published at $0.02 an image; live search at $25 per
+    // 1,000 sources, i.e. $0.025 each.
+    const rows = pricing(
+      client().renderDetail(
+        resource("model", {
+          modelId: "grok-imagine-image",
+          kind: "image-generation",
+          imagePrice: 200_000_000,
+          searchPrice: 250_000_000,
+        }),
+      ),
+    );
+    expect(rows).toContain(`"price":"$0.0200","unit":"per image"`);
+    expect(rows).toContain(`"price":"$0.0250","unit":"per source"`);
+    expect(rows).not.toContain("per 1M images");
+    expect(rows).not.toContain("per 1M sources");
   });
 
   it("gives models with audio modalities a speech panel and plain models none", () => {

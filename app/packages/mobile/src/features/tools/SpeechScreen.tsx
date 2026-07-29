@@ -41,6 +41,7 @@ import { Field, FormError, FormHint, Sheet } from "@/components/form";
 import { KeyboardAvoider } from "@/components/KeyboardAvoider";
 import { CheckIcon, MicIcon, PauseIcon, PlayIcon, StopIcon } from "@/components/icons";
 import { colors, radii, spacing } from "@/lib/theme";
+import { releaseRecordingMode, withRecordingMode } from "./recording-session";
 
 /**
  * The mobile counterpart of the web/desktop `SpeechPanel` — the Speech tab a
@@ -399,6 +400,11 @@ interface PendingAudio {
   size: number;
 }
 
+/** Release the iOS recording session. See `./recording-session.ts`. */
+function releaseRecording(): Promise<void> {
+  return releaseRecordingMode(setAudioModeAsync);
+}
+
 function TranscribeSection({
   capability,
   model,
@@ -424,6 +430,25 @@ function TranscribeSection({
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder);
   const recording = recorderState.isRecording;
+
+  // Backing out of the screen mid-recording never reaches `stopRecording`, so
+  // the mic and the audio session would both stay on. The web panel releases
+  // the recorder on unmount for the same reason.
+  const recorderRef = useRef(recorder);
+  useEffect(() => {
+    recorderRef.current = recorder;
+  }, [recorder]);
+  useEffect(() => {
+    return () => {
+      const active = recorderRef.current;
+      if (active.isRecording) void active.stop().catch(() => {});
+      void releaseRecording();
+    };
+  }, []);
+
+  // Providers that reject browser/phone recording containers hide the mic and
+  // keep the file picker — see `SpeechPanelCapability.disableRecording`.
+  const recordingBlocked = capability.disableRecording === true;
 
   const maxBytes = capability.maxAudioBytes ?? DEFAULT_MAX_AUDIO_BYTES;
 
@@ -451,11 +476,14 @@ function TranscribeSection({
         return;
       }
       // iOS routes playback through the earpiece at a fraction of the volume
-      // while the recording category is active, so it is turned back off in
-      // `stopRecording` rather than left on for the life of the screen.
-      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-      await recorder.prepareToRecordAsync();
-      recorder.record();
+      // while the recording category is active, so `withRecordingMode` turns
+      // it back off if the recorder fails to start and `stopRecording` turns
+      // it off once the clip is in hand — it is never left on for the life of
+      // the screen.
+      await withRecordingMode(setAudioModeAsync, async () => {
+        await recorder.prepareToRecordAsync();
+        recorder.record();
+      });
     } catch (e) {
       setError(e instanceof Error ? `Could not start recording: ${e.message}` : "Recording failed");
     }
@@ -465,7 +493,6 @@ function TranscribeSection({
     try {
       await recorder.stop();
       const uri = recorder.uri;
-      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => {});
       if (!uri) {
         setError("The recorder returned no clip.");
         return;
@@ -480,6 +507,10 @@ function TranscribeSection({
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Recording failed");
+    } finally {
+      // Runs whether `stop()` threw, the recorder handed back no uri, or the
+      // clip attached cleanly — the session must not outlive the recording.
+      await releaseRecording();
     }
   }, [attach, recorder]);
 
@@ -554,7 +585,7 @@ function TranscribeSection({
       ) : null}
 
       <View style={styles.buttonRow}>
-        {recording ? (
+        {recordingBlocked ? null : recording ? (
           <IconButton
             label="Stop recording"
             tone="danger"
@@ -576,6 +607,13 @@ function TranscribeSection({
           onPress={() => void pickFile()}
         />
       </View>
+
+      {recordingBlocked ? (
+        <FormHint>
+          {capability.recordingDisabledReason ??
+            "This provider does not accept recordings made on a phone — pick a clip instead."}
+        </FormHint>
+      ) : null}
 
       {recording ? (
         <Text style={styles.recording} accessibilityLiveRegion="polite">

@@ -41,6 +41,18 @@ const STT_ONLY: SpeechPanelCapability = {
   maxAudioBytes: 64,
 };
 
+/** Give jsdom just enough MediaRecorder for the panel to offer the recorder. */
+function stubMediaRecorder() {
+  vi.stubGlobal(
+    "MediaRecorder",
+    class {
+      start() {}
+      stop() {}
+    },
+  );
+  vi.stubGlobal("navigator", { ...navigator, mediaDevices: { getUserMedia: vi.fn() } });
+}
+
 describe("SpeechPanel — text to speech", () => {
   it("passes the selected voice and model to the plugin and plays the result", async () => {
     const onSynthesize = vi.fn().mockResolvedValue({
@@ -148,20 +160,59 @@ describe("SpeechPanel — speech to text", () => {
   });
 
   it("offers a record button when MediaRecorder is available", () => {
-    vi.stubGlobal(
-      "MediaRecorder",
-      class {
-        start() {}
-        stop() {}
-      },
-    );
-    vi.stubGlobal("navigator", {
-      ...navigator,
-      mediaDevices: { getUserMedia: vi.fn() },
-    });
+    stubMediaRecorder();
 
     render(<SpeechPanel capability={STT_ONLY} onTranscribe={vi.fn()} />);
 
+    expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument();
+  });
+
+  it("hides only the recorder when the plugin sets disableRecording", () => {
+    // For providers that reject WebM/MP4 — the containers MediaRecorder emits —
+    // so the recorder is a guaranteed failure while uploading still works.
+    stubMediaRecorder();
+
+    render(
+      <SpeechPanel
+        capability={{
+          ...STT_ONLY,
+          disableRecording: true,
+          recordingDisabledReason: "Cohere takes FLAC, MP3, OGG and WAV only.",
+        }}
+        onTranscribe={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /Record/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Cohere takes FLAC, MP3, OGG and WAV only.")).toBeInTheDocument();
+    // The other half of the row is untouched.
+    expect(screen.getByRole("button", { name: "Upload a clip" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Audio file to transcribe")).toBeInTheDocument();
+  });
+
+  it("falls back to generic copy when disableRecording carries no reason", () => {
+    stubMediaRecorder();
+
+    render(
+      <SpeechPanel capability={{ ...STT_ONLY, disableRecording: true }} onTranscribe={vi.fn()} />,
+    );
+
+    expect(screen.queryByRole("button", { name: /Record/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/does not accept browser recordings/)).toBeInTheDocument();
+    // Not the MediaRecorder-missing message — MediaRecorder is present here.
+    expect(screen.queryByText(/needs a browser with MediaRecorder/)).not.toBeInTheDocument();
+  });
+
+  it("leaves the recorder alone when disableRecording is absent or false", () => {
+    stubMediaRecorder();
+
+    const { rerender } = render(
+      <SpeechPanel capability={{ ...STT_ONLY, disableRecording: false }} onTranscribe={vi.fn()} />,
+    );
+    expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument();
+
+    // A capability that never heard of the flag behaves exactly as before.
+    rerender(<SpeechPanel capability={STT_ONLY} onTranscribe={vi.fn()} />);
     expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument();
   });
 });

@@ -151,6 +151,63 @@ describe("listResources", () => {
   });
 });
 
+describe("account (the singleton that hosts the Speech tab)", () => {
+  it("returns exactly one account, with a Speech tab, on a key with zero transcripts", async () => {
+    // The regression: a freshly added account has nothing to open, so the
+    // Speech tab has to hang off something that exists regardless.
+    installFetch(() => jsonResponse({ transcripts: [] }));
+    const resources = await client().listResources("account", ACCOUNT);
+
+    expect(resources).toHaveLength(1);
+    const account = resources[0]!;
+    expect(account.id).toBe(`${ACCOUNT}:account:default`);
+    expect(account.fields["sampledTranscripts"]).toBe(0);
+    expect(client().renderDetail(account).speechPanel?.modes).toEqual(["stt"]);
+  });
+
+  it("still returns the account when the transcript listing fails outright", async () => {
+    installFetch(() => jsonResponse("Server error", 500));
+    const resources = await client().listResources("account", ACCOUNT);
+    expect(resources).toHaveLength(1);
+    expect(client().renderDetail(resources[0]!).speechPanel).toBeDefined();
+  });
+
+  it("counts the retention window and the oldest transcript sampled", async () => {
+    installFetch(() =>
+      jsonResponse({
+        transcripts: [
+          { id: "a", status: "completed", created: "2026-07-20T10:00:00.000Z" },
+          { id: "b", status: "error", created: "2026-07-01T10:00:00.000Z" },
+          { id: "c", status: "processing", created: "2026-07-25T10:00:00.000Z" },
+        ],
+      }),
+    );
+    const account = await client().getResource("account", `${ACCOUNT}:account:default`, ACCOUNT);
+    expect(calls[0]!.url).toContain("/v2/transcript?limit=100");
+    // The account view is a count, so it never hydrates each record.
+    expect(calls).toHaveLength(1);
+    expect(account.fields).toMatchObject({
+      sampledTranscripts: 3,
+      completedTranscripts: 1,
+      erroredTranscripts: 1,
+      pendingTranscripts: 1,
+      oldestSampledAt: "2026-07-01T10:00:00.000Z",
+    });
+  });
+
+  it("resolves the endpoint output against the account's region", async () => {
+    installFetch(() => jsonResponse({ transcripts: [] }));
+    await expect(
+      client({ region: "eu" }).resolveOutput(
+        "account",
+        `${ACCOUNT}:account:default`,
+        "endpoint",
+        ACCOUNT,
+      ),
+    ).resolves.toBe("https://api.eu.assemblyai.com");
+  });
+});
+
 describe("getResource / resolveOutput / deleteResource", () => {
   it("fetches a single transcript by its trailing UUID", async () => {
     installFetch(() => jsonResponse(completedTranscript()));
@@ -374,6 +431,16 @@ describe("transcribeAudio", () => {
       }),
     ).rejects.toThrow(/empty audio payload/);
     expect(calls).toHaveLength(0);
+  });
+
+  it("accepts the account singleton, which is where the tab lives on a fresh key", async () => {
+    installTranscribeFetch();
+    await expect(
+      client().transcribeAudio("account", `${ACCOUNT}:account:default`, ACCOUNT, {
+        audioBase64,
+        mimeType: "audio/webm",
+      }),
+    ).resolves.toMatchObject({ text: "Hello there." });
   });
 
   it("rejects an unknown resource type", async () => {

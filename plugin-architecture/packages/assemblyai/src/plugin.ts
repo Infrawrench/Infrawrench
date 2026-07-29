@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { AssemblyAIClient } from "./client.js";
+import { AccountResourceType } from "./resources/account.js";
 import { TranscriptResourceType } from "./resources/transcript.js";
 
 /**
@@ -60,7 +61,9 @@ const manifest: PluginManifest = {
   rateLimit: { capacity: 40, refillPerSecond: 2 },
 };
 
-const resourceTypes: ResourceTypeDefinition[] = [TranscriptResourceType];
+// Account first: it is the singleton that always exists, and the one that
+// carries the Speech tab on an account that has not transcribed anything yet.
+const resourceTypes: ResourceTypeDefinition[] = [AccountResourceType, TranscriptResourceType];
 
 export const plugin: Plugin = {
   manifest,
