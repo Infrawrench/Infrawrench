@@ -35,12 +35,18 @@ function run(overrides: Partial<LocalDeployRun> = {}): LocalDeployRun {
 }
 
 describe("deploy-history", () => {
+  // Tracked separately from h.userData so cleanup still removes the real
+  // temp dir when a test points userData somewhere else (the unwritable-path
+  // case below).
+  let tmpRoot = "";
+
   beforeEach(() => {
-    h.userData = fs.mkdtempSync(path.join(os.tmpdir(), "iw-deploy-history-"));
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "iw-deploy-history-"));
+    h.userData = tmpRoot;
   });
 
   afterEach(() => {
-    fs.rmSync(h.userData, { recursive: true, force: true });
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
   });
 
   it("returns nothing before anything has been deployed", () => {
@@ -73,7 +79,13 @@ describe("deploy-history", () => {
   });
 
   it("never throws out of a deploy when the history cannot be written", () => {
-    h.userData = "/proc/definitely-not-writable";
+    // A *file* where a directory is needed: mkdir/append fail immediately on
+    // every platform, even running as root. Never use a /proc path for this —
+    // on Linux, Node's recursive mkdirSync busy-loops forever on procfs
+    // instead of throwing, which hung the whole CI suite.
+    const blocker = path.join(h.userData, "blocker");
+    fs.writeFileSync(blocker, "", "utf8");
+    h.userData = blocker;
     expect(() => recordLocalDeploy(run())).not.toThrow();
   });
 });
