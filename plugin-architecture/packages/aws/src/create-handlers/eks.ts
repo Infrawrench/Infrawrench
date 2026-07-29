@@ -110,6 +110,44 @@ async function eksFetch<T>(
   return text ? (JSON.parse(text) as T) : ({} as T);
 }
 
+/**
+ * Preflight the node role's trust policy. EKS worker nodes launch as EC2
+ * instances, so CreateNodegroup requires a role assumable by
+ * `ec2.amazonaws.com` — but that call only happens in the background task
+ * ~10 minutes after this handler returns (once the control plane is ACTIVE).
+ * A wrong role would otherwise fail silently there, leaving an ACTIVE
+ * cluster with zero nodes and every workload Pending forever. Checking here
+ * turns that into an immediate create-time error.
+ *
+ * Best-effort: skipped when `iam:GetRole` is denied or the trust document
+ * can't be decoded — we only fail when the role is provably not EC2-trusted.
+ */
+async function assertNodeRoleTrustsEc2(rctx: AwsCreateContext, nodeRoleArn: string): Promise<void> {
+  const roleName = nodeRoleArn.split("/").pop() ?? "";
+  if (!roleName) return;
+  let trustDoc = "";
+  try {
+    const data = await rctx.ec2Query<Record<string, unknown>>("iam", "GetRole", "2010-05-08", {
+      RoleName: roleName,
+    });
+    const result = data["GetRoleResult"] as Record<string, unknown> | undefined;
+    const role = result?.["Role"] as Record<string, unknown> | undefined;
+    const raw = String(role?.["AssumeRolePolicyDocument"] ?? "");
+    trustDoc = raw ? decodeURIComponent(raw) : "";
+  } catch {
+    return;
+  }
+  if (!trustDoc) return;
+  if (!trustDoc.includes("ec2.amazonaws.com")) {
+    throw new Error(
+      `Node Role "${roleName}" is not assumable by EC2 (ec2.amazonaws.com is missing from its ` +
+        "trust policy), so the managed node group would fail to create after the control plane " +
+        "becomes ACTIVE — leaving a cluster with zero nodes. Pick an EC2-trusted role or use " +
+        "+ Generate role to mint one with the standard EKS worker policies.",
+    );
+  }
+}
+
 export async function createEksCluster(
   ctx: AwsCreateContext,
   accountId: string,
@@ -131,6 +169,8 @@ export async function createEksCluster(
 
   if (!roleArn) throw new Error("Cluster Role is required (use + Generate role to mint one).");
   if (!nodeRoleArn) throw new Error("Node Role is required (use + Generate role to mint one).");
+
+  await assertNodeRoleTrustsEc2(rctx, nodeRoleArn);
 
   const allSubnets = await discoverDefaultSubnets(rctx);
   if (allSubnets.length < 2) {

@@ -112,6 +112,53 @@ export async function resolveOutput(
       return "";
     }
   }
+  if (
+    typeId === "ecr-repository" &&
+    (outputKey === "serverUrl" ||
+      outputKey === "username" ||
+      outputKey === "password" ||
+      outputKey === "dockerConfigJson")
+  ) {
+    // ECR docker logins always authenticate as the literal "AWS" user; the
+    // password comes from GetAuthorizationToken below.
+    if (outputKey === "username") return "AWS";
+    const resource = await ctx.getResource(typeId, resourceId, accountId);
+    // The registry host is the repositoryUri minus the per-repo path —
+    // `<accountId>.dkr.ecr.<region>.amazonaws.com`.
+    const repositoryUri = String(resource.resolvedOutputs["repositoryUri"] ?? "");
+    const serverFromUri = repositoryUri.split("/")[0] ?? "";
+    if (outputKey === "serverUrl") return serverFromUri;
+    const region = String(resource.fields["region"] ?? ctx.creds.region);
+    const creds = ctx.credsFor(region);
+    // Registry-level call — no repository parameters. The token it returns is
+    // base64("AWS:<password>") and is valid for 12 hours. Errors propagate:
+    // silently returning an empty credential would only surface later as a
+    // failed docker login / ImagePullBackOff.
+    const data = await jsonCall<{
+      authorizationData?: { authorizationToken?: string; proxyEndpoint?: string }[];
+    }>(creds, "ecr", "AmazonEC2ContainerRegistry_V20150921.GetAuthorizationToken", {});
+    const auth = data.authorizationData?.[0];
+    const token = String(auth?.authorizationToken ?? "");
+    if (!token) {
+      throw new Error("ECR GetAuthorizationToken returned no authorization data.");
+    }
+    if (outputKey === "dockerConfigJson") {
+      // The `.dockerconfigjson` auth entry is exactly the raw token — docker
+      // decodes it to `user:pass` itself. Fall back to the proxyEndpoint host
+      // when the resource predates the serverUrl output.
+      const serverUrl =
+        serverFromUri || String(auth?.proxyEndpoint ?? "").replace(/^https?:\/\//, "");
+      return JSON.stringify({ auths: { [serverUrl]: { auth: token } } });
+    }
+    // password: split on the FIRST colon — only the "AWS" username half is
+    // guaranteed colon-free.
+    const decoded = Buffer.from(token, "base64").toString("utf8");
+    const sep = decoded.indexOf(":");
+    if (sep === -1) {
+      throw new Error("ECR returned a malformed authorization token (no user:password).");
+    }
+    return decoded.slice(sep + 1);
+  }
   const resource = await ctx.getResource(typeId, resourceId, accountId);
   const value = resource.resolvedOutputs[outputKey];
   if (value === undefined) {

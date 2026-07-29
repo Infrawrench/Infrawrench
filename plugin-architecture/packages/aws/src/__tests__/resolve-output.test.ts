@@ -150,6 +150,106 @@ describe("resolveOutput msk-cluster bootstrapBrokers", () => {
   });
 });
 
+describe("resolveOutput ecr-repository docker credentials", () => {
+  const uri = "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app";
+  const token = Buffer.from("AWS:ecr-secret-pass", "utf8").toString("base64");
+
+  it("derives serverUrl from repositoryUri without calling the API", async () => {
+    const r = res({ resolvedOutputs: { repositoryUri: uri } });
+    expect(await resolveOutput(makeCtx(r), "ecr-repository", "rid", "serverUrl", "acct")).toBe(
+      "123456789012.dkr.ecr.us-east-1.amazonaws.com",
+    );
+    expect(jsonCall).not.toHaveBeenCalled();
+  });
+
+  it('username is always the literal "AWS"', async () => {
+    const r = res();
+    expect(await resolveOutput(makeCtx(r), "ecr-repository", "rid", "username", "acct")).toBe(
+      "AWS",
+    );
+    expect(jsonCall).not.toHaveBeenCalled();
+  });
+
+  it("password decodes GetAuthorizationToken's base64 AWS:<password>", async () => {
+    const r = res({ resolvedOutputs: { repositoryUri: uri }, fields: { region: "eu-west-1" } });
+    jsonCall.mockResolvedValue({ authorizationData: [{ authorizationToken: token }] });
+    expect(await resolveOutput(makeCtx(r), "ecr-repository", "rid", "password", "acct")).toBe(
+      "ecr-secret-pass",
+    );
+    expect(jsonCall).toHaveBeenCalledWith(
+      { ...creds, region: "eu-west-1" },
+      "ecr",
+      "AmazonEC2ContainerRegistry_V20150921.GetAuthorizationToken",
+      {},
+    );
+  });
+
+  it("password splits on the FIRST colon only", async () => {
+    const r = res({ resolvedOutputs: { repositoryUri: uri } });
+    const colonToken = Buffer.from("AWS:pass:with:colons", "utf8").toString("base64");
+    jsonCall.mockResolvedValue({ authorizationData: [{ authorizationToken: colonToken }] });
+    expect(await resolveOutput(makeCtx(r), "ecr-repository", "rid", "password", "acct")).toBe(
+      "pass:with:colons",
+    );
+  });
+
+  it("dockerConfigJson embeds the raw token under the registry host", async () => {
+    const r = res({ resolvedOutputs: { repositoryUri: uri } });
+    jsonCall.mockResolvedValue({ authorizationData: [{ authorizationToken: token }] });
+    const out = await resolveOutput(
+      makeCtx(r),
+      "ecr-repository",
+      "rid",
+      "dockerConfigJson",
+      "acct",
+    );
+    expect(JSON.parse(out)).toEqual({
+      auths: { "123456789012.dkr.ecr.us-east-1.amazonaws.com": { auth: token } },
+    });
+    // Compact document — no pretty-printing whitespace.
+    expect(out).not.toContain("\n");
+  });
+
+  it("dockerConfigJson falls back to proxyEndpoint host when repositoryUri is missing", async () => {
+    const r = res({ resolvedOutputs: {} });
+    jsonCall.mockResolvedValue({
+      authorizationData: [
+        {
+          authorizationToken: token,
+          proxyEndpoint: "https://123456789012.dkr.ecr.us-east-1.amazonaws.com",
+        },
+      ],
+    });
+    const out = await resolveOutput(
+      makeCtx(r),
+      "ecr-repository",
+      "rid",
+      "dockerConfigJson",
+      "acct",
+    );
+    expect(JSON.parse(out)).toEqual({
+      auths: { "123456789012.dkr.ecr.us-east-1.amazonaws.com": { auth: token } },
+    });
+  });
+
+  it("throws when GetAuthorizationToken returns no authorization data", async () => {
+    const r = res({ resolvedOutputs: { repositoryUri: uri } });
+    jsonCall.mockResolvedValue({ authorizationData: [] });
+    await expect(
+      resolveOutput(makeCtx(r), "ecr-repository", "rid", "password", "acct"),
+    ).rejects.toThrow(/no authorization data/);
+  });
+
+  it("throws when the token has no user:password separator", async () => {
+    const r = res({ resolvedOutputs: { repositoryUri: uri } });
+    const badToken = Buffer.from("nocolonhere", "utf8").toString("base64");
+    jsonCall.mockResolvedValue({ authorizationData: [{ authorizationToken: badToken }] });
+    await expect(
+      resolveOutput(makeCtx(r), "ecr-repository", "rid", "password", "acct"),
+    ).rejects.toThrow(/malformed authorization token/);
+  });
+});
+
 describe("resolveOutput generic", () => {
   it("returns a resolvedOutput value", async () => {
     const r = res({ resolvedOutputs: { functionArn: "arn:fn" } });

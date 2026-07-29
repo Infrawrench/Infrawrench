@@ -180,6 +180,7 @@ export async function storageCreateResource(
       },
     );
     const repo = data.repository ?? {};
+    const repositoryUri = String(repo["repositoryUri"] ?? "");
     return {
       id: ctx.makeId(accountId, "ecr-repository", repoName),
       pluginId: "aws",
@@ -195,8 +196,12 @@ export async function storageCreateResource(
         encryptionType: "AES256",
       },
       resolvedOutputs: {
-        repositoryUri: String(repo["repositoryUri"] ?? ""),
+        repositoryUri,
         repositoryArn: String(repo["repositoryArn"] ?? ""),
+        // Registry host for docker login — the repositoryUri minus the
+        // per-repo path. The docker credentials themselves (username /
+        // password / dockerConfigJson) are minted on demand in resolveOutput.
+        serverUrl: repositoryUri.split("/")[0] ?? "",
       },
       secretStates: [],
       externalId: repoName,

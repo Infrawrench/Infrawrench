@@ -961,6 +961,7 @@ export async function listECRRepositories(
   const repos = data.repositories ?? [];
   return repos.map((repo) => {
     const name = String(repo["repositoryName"] ?? "");
+    const repositoryUri = String(repo["repositoryUri"] ?? "");
     return {
       id: ctx.id(accountId, "ecr-repository", name),
       pluginId: "aws",
@@ -983,8 +984,12 @@ export async function listECRRepositories(
         ),
       },
       resolvedOutputs: {
-        repositoryUri: String(repo["repositoryUri"] ?? ""),
+        repositoryUri,
         repositoryArn: String(repo["repositoryArn"] ?? ""),
+        // Registry host for docker login — the repositoryUri minus the
+        // per-repo path. The docker credentials themselves (username /
+        // password / dockerConfigJson) are minted on demand in resolveOutput.
+        serverUrl: repositoryUri.split("/")[0] ?? "",
       },
       secretStates: [],
       externalId: name,
