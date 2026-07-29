@@ -1011,6 +1011,8 @@ WorkOS AuthKit — middleware-enforced on all `(app)/*` routes. Auto-provisions 
 
 `src/auth/__tests__/api-auth.test.ts` asserts both options stay absent.
 
+**Custom Authentication API domain (`auth-api.infrawrench.com`):** WorkOS has two separate custom domains — the AuthKit UI/authorization-server domain (`auth.infrawrench.com`, `WORKOS_AUTHKIT_DOMAIN`) and the Authentication API domain, which fronts `api.workos.com` itself. Production uses `auth-api.infrawrench.com` for the latter, and once a custom API domain is live in WorkOS, requests to `api.workos.com` are unsupported. Three places pin it: web reads `WORKOS_API_HOSTNAME` (hostname, no scheme; optional — unset falls back to `api.workos.com`) in `src/auth/workos.ts` and passes it as the SDK's `apiHostname`, which reroutes every SDK call including `getJwksUrl` for bearer verification; desktop `env.production.ts` and mobile `env.ts` hardcode `WORKOS_API_URL = "https://auth-api.infrawrench.com"` for their PKCE `user_management/authorize`/`authenticate` calls (desktop `env.example.ts` stays on `api.workos.com` for self-builds against a vanilla WorkOS app).
+
 ### Personal account settings (`api/routes/profile.ts`)
 
 `/api/profile/*` is user-scoped, deliberately outside the org tree: one WorkOS identity is shared across every org a user belongs to. It wraps WorkOS user management for name, password reset, TOTP factors, and active sessions, and backs **Settings → General** on web plus **Settings → Account** on mobile.

@@ -27,6 +27,12 @@ app_env = {
   # the AuthKit origin (Dashboard > Authentication > AuthKit), not api.workos.com.
   # Dynamic Client Registration must also be enabled under Connect > Configuration.
   WORKOS_AUTHKIT_DOMAIN = "https://auth.infrawrench.com"
+  # Custom Authentication API domain (Dashboard > Domains > Configure
+  # authentication API domain). Hostname only, no scheme. Required once the
+  # custom domain is live in WorkOS — the SDK then routes user management,
+  # authorize/token, and JWKS through it; api.workos.com is unsupported after
+  # cutover. Omit only while still on the default WorkOS domain.
+  WORKOS_API_HOSTNAME = "auth-api.infrawrench.com"
 
   # Stripe
   STRIPE_SECRET_KEY                   = "sk_live_..."
