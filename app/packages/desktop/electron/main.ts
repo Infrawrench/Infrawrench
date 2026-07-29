@@ -294,6 +294,18 @@ app.whenReady().then(() => {
     callback({ responseHeaders: headers });
   });
 
+  // Note on microphone access for the Speech tab: no Electron permission
+  // handler is registered on purpose. `media` requests already reach the OS
+  // under Electron's default behaviour, and installing a handler here would
+  // change the answer for every *other* permission at the same time — this
+  // renderer already relies on that default (see the clipboard-read fallback
+  // in SshTerminal.tsx). What macOS actually needs is declarative and lives
+  // outside this file: NSMicrophoneUsageDescription in package.json's
+  // `mac.extendInfo`, and com.apple.security.device.audio-input in
+  // build/info.plist. Miss those and a packaged build is denied capture — or
+  // killed outright — while `pnpm dev` keeps working, because the prebuilt
+  // Electron.app ships its own microphone usage string.
+
   createWindow();
   startAutoUpdater();
   reportTelemetry();

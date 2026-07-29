@@ -6,5 +6,12 @@
     <true/>
     <key>com.apple.security.cs.allow-jit</key>
     <true/>
+    <!-- The Speech tab records from the microphone. Under the hardened runtime
+         macOS denies capture without this entitlement, regardless of what the
+         user answers in the TCC prompt. Pairs with NSMicrophoneUsageDescription
+         in package.json's mac.extendInfo — the entitlement permits capture, the
+         usage string is what lets macOS show a prompt at all. -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
   </dict>
 </plist>
