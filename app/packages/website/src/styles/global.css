@@ -272,6 +272,131 @@ body {
   margin: 18px auto 0;
 }
 
+/* ── Agent skill (hero button + modal) ──────────────────── */
+.hero-agent-skill {
+  margin-top: 20px;
+}
+
+.modal-subtitle code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.agent-skill-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.agent-skill-tab {
+  font-size: 13px;
+  font-weight: 500;
+  color: #9ca3af;
+  background: #0b0b0b;
+  border: 1px solid #1a1a1a;
+  border-radius: 100px;
+  padding: 7px 16px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s;
+}
+
+.agent-skill-tab:hover {
+  border-color: #333;
+  color: #e5e7eb;
+}
+
+.agent-skill-tab[data-active] {
+  color: #60a5fa;
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.agent-skill-panel {
+  display: none;
+}
+
+.agent-skill-panel[data-active] {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.agent-skill-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #4b5563;
+  margin: 0 0 8px;
+}
+
+.agent-skill-file {
+  border: 1px solid #181818;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0a0a0a;
+}
+
+.agent-skill-note {
+  font-size: 12px;
+  color: #4b5563;
+  line-height: 1.6;
+  margin: 8px 0 0;
+}
+
+.agent-skill-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 14px;
+  border-bottom: 1px solid #161616;
+  background: #0d0d0d;
+}
+
+.agent-skill-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #9ca3af;
+  overflow-wrap: anywhere;
+}
+
+.agent-skill-copy-btn {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  background: transparent;
+  border: 1px solid #222;
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.agent-skill-copy-btn:hover {
+  border-color: #444;
+  color: #e5e7eb;
+}
+
+.agent-skill-code {
+  margin: 0;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.65;
+  color: #9ca3af;
+  text-align: left;
+}
+
 /* ── Screenshot placeholder ─────────────────────────────── */
 .screenshot {
   border: 1px solid #181818;

@@ -1,0 +1,148 @@
+---
+import { harnessVariants } from '../data/agent-skill';
+---
+
+<div
+  class="modal-overlay"
+  id="agent-skill-modal"
+  role="dialog"
+  aria-modal="true"
+  aria-label="Use with your coding agent"
+>
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title">Use with your coding agent</h2>
+        <p class="modal-subtitle">
+          Connect the hosted MCP server and drop the CLI skill into your repo — your agent can list
+          resources, chart metrics and costs, page on-call, and deploy.
+        </p>
+      </div>
+      <button class="modal-close" id="close-agent-skill-modal" aria-label="Close">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div>
+        <div class="agent-skill-tabs" role="tablist" aria-label="Agent harness">
+          {
+            harnessVariants.map((h) => (
+              <button class="agent-skill-tab" type="button" role="tab" data-skill-tab={h.id}>
+                {h.label}
+              </button>
+            ))
+          }
+        </div>
+
+        {
+          harnessVariants.map((h) => (
+            <div class="agent-skill-panel" role="tabpanel" data-skill-panel={h.id}>
+              <div>
+                <p class="agent-skill-section-label">MCP server</p>
+                <div class="agent-skill-file">
+                  <div class="agent-skill-panel-head">
+                    <code class="agent-skill-path">{h.mcp.file}</code>
+                    <button class="agent-skill-copy-btn" type="button" data-skill-copy>
+                      Copy
+                    </button>
+                  </div>
+                  <pre class="agent-skill-code"><code set:text={h.mcp.content} /></pre>
+                </div>
+                <p class="agent-skill-note">
+                  Signs in through your browser on first connect (OAuth) — tools for resources,
+                  costs, workflows, SQL, SSH, and more.
+                </p>
+              </div>
+
+              <div>
+                <p class="agent-skill-section-label">CLI skill</p>
+                <div class="agent-skill-file">
+                  <div class="agent-skill-panel-head">
+                    <code class="agent-skill-path">{h.skill.file}</code>
+                    <button class="agent-skill-copy-btn" type="button" data-skill-copy>
+                      Copy
+                    </button>
+                  </div>
+                  <pre class="agent-skill-code"><code set:text={h.skill.content} /></pre>
+                </div>
+              </div>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const modal = document.getElementById('agent-skill-modal')!;
+  const closeBtn = document.getElementById('close-agent-skill-modal')!;
+
+  function openModal() {
+    modal.setAttribute('data-open', '');
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => closeBtn.focus(), 100);
+  }
+
+  function closeModal() {
+    modal.removeAttribute('data-open');
+    document.body.style.overflow = '';
+  }
+
+  document.querySelectorAll<HTMLElement>('[data-open-agent-skill]').forEach((trigger) => {
+    trigger.addEventListener('click', (e) => {
+      e.preventDefault();
+      openModal();
+    });
+  });
+
+  closeBtn.addEventListener('click', closeModal);
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.hasAttribute('data-open')) closeModal();
+  });
+
+  const tabs = document.querySelectorAll<HTMLElement>('[data-skill-tab]');
+  const panels = document.querySelectorAll<HTMLElement>('[data-skill-panel]');
+
+  function activate(id: string) {
+    tabs.forEach((tab) => {
+      const active = tab.dataset.skillTab === id;
+      active ? tab.setAttribute('data-active', '') : tab.removeAttribute('data-active');
+      tab.setAttribute('aria-selected', String(active));
+    });
+    panels.forEach((panel) => {
+      panel.dataset.skillPanel === id
+        ? panel.setAttribute('data-active', '')
+        : panel.removeAttribute('data-active');
+    });
+  }
+
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      if (tab.dataset.skillTab) activate(tab.dataset.skillTab);
+    });
+  });
+
+  document.querySelectorAll<HTMLElement>('[data-skill-copy]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const code = button.closest('.agent-skill-file')?.querySelector('code')?.textContent;
+      if (!code) return;
+      try {
+        await navigator.clipboard.writeText(code);
+        const label = button.textContent;
+        button.textContent = 'Copied!';
+        setTimeout(() => {
+          button.textContent = label;
+        }, 1500);
+      } catch {
+        /* clipboard unavailable */
+      }
+    });
+  });
+
+  if (tabs[0]?.dataset.skillTab) activate(tabs[0].dataset.skillTab);
+</script>

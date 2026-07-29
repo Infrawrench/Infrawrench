@@ -1,5 +1,5 @@
 ---
-import { Cloud, Download } from 'lucide-astro';
+import { Bot, Cloud, Download } from 'lucide-astro';
 
 const capabilities = [
   'SSH terminals',
@@ -60,5 +60,12 @@ const capabilities = [
       Run it in your browser with nothing to install, or download the desktop app for macOS,
       Windows, and Linux and keep everything local, free and with no account required.
     </p>
+
+    <div class="hero-agent-skill">
+      <button class="btn-ghost" type="button" data-open-agent-skill>
+        <Bot size={15} />
+        Using a coding agent? MCP server + CLI skill
+      </button>
+    </div>
   </div>
 </section>
