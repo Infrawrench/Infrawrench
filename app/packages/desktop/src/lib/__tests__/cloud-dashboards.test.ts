@@ -14,6 +14,7 @@ import {
   renameCloudDashboard,
   reorderCloudCards,
   unpinCloudResource,
+  validateCloudWorkspaceTabs,
 } from "../cloud-dashboards";
 
 beforeEach(() => {
@@ -95,6 +96,22 @@ describe("cloud-dashboards wrappers", () => {
     const res = await probeCloudPins("org1", items);
     expect(invoke).toHaveBeenCalledWith("cloud_probe_pins", { orgId: "org1", items });
     expect(res).toEqual({ r1: "ok" });
+  });
+
+  it("validateCloudWorkspaceTabs returns the ids the org still has", async () => {
+    invoke.mockResolvedValue({ validTabIds: ["dashboard:d1"] });
+    const tabs = [
+      { id: "dashboard:d1", target: { kind: "dashboard" as const, dashboardId: "d1" } },
+      { id: "dashboard:d2", target: { kind: "dashboard" as const, dashboardId: "d2" } },
+    ];
+    const res = await validateCloudWorkspaceTabs("org1", tabs);
+    expect(invoke).toHaveBeenCalledWith("cloud_validate_tabs", { orgId: "org1", tabs });
+    expect(res).toEqual(["dashboard:d1"]);
+  });
+
+  it("validateCloudWorkspaceTabs tolerates a missing payload", async () => {
+    invoke.mockResolvedValue(undefined);
+    expect(await validateCloudWorkspaceTabs("org1", [])).toEqual([]);
   });
 
   it("getCloudEnrichedPin", async () => {

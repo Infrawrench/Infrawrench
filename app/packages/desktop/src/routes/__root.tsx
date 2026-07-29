@@ -52,6 +52,7 @@ import {
   pinCloudResource,
   pinCloudWorkflow,
   listCloudDashboards,
+  validateCloudWorkspaceTabs as validateCloudTabs,
   type CloudOrg,
 } from "../lib/cloud-api";
 import {
@@ -67,6 +68,51 @@ import { BANNERS, SHOW_SIGN_IN_BUTTON } from "../../env";
 export const Route = createRootRoute({
   component: RootLayout,
 });
+
+/**
+ * Cloud tabs point at rows that live in the org, not in the local database, so
+ * they have to be validated server-side. A failed call keeps every tab: losing
+ * the whole workspace because the network blipped is worse than briefly holding
+ * a tab whose row is gone.
+ */
+async function validateCloudWorkspaceTabs(
+  orgId: string,
+  tabs: WorkspaceTab[],
+): Promise<Array<WorkspaceTab | null>> {
+  if (tabs.length === 0) return [];
+  try {
+    const validIds = new Set(
+      await validateCloudTabs(
+        orgId,
+        tabs.map((tab) => ({ id: tab.id, target: tab.target })),
+      ),
+    );
+    return tabs.map((tab) => (validIds.has(tab.id) ? tab : null));
+  } catch (e) {
+    console.error("[workspace-tabs] cloud validation failed:", e);
+    return tabs.map((tab) => tab);
+  }
+}
+
+/**
+ * The dashboard to fall back to — the org's default when signed in, the local
+ * default otherwise. Dashboards live on whichever side is active, so this has
+ * to branch on the org rather than always reading the local database.
+ */
+async function resolveDefaultDashboard(
+  orgId: string | null,
+): Promise<{ id: string; name: string } | null> {
+  if (orgId) {
+    const list = await listCloudDashboards(orgId);
+    const first = list.find((d) => d.isDefault) ?? list[0];
+    return first ? { id: first.id, name: first.name } : null;
+  }
+  const db = await getDb();
+  const rows = await db.select<{ id: string; name: string }[]>(
+    "SELECT id, name FROM dashboards ORDER BY is_default DESC, name ASC LIMIT 1",
+  );
+  return rows[0] ?? null;
+}
 
 async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | null> {
   const db = await getDb();
@@ -317,9 +363,14 @@ function RootLayout() {
     // intentionally excluded from deps so this runs only once.
     const tabsSnapshot = useUIStore.getState().workspaceTabs;
     const activeIdSnapshot = useUIStore.getState().activeWorkspaceTabId;
+    // The persisted org rehydrates with the tabs, so it's readable here even
+    // though the auth/org effect hasn't resolved yet.
+    const orgIdSnapshot = useUIStore.getState().activeCloudOrgId;
 
     async function validateTabs() {
-      const validated = await Promise.all(tabsSnapshot.map((tab) => validateWorkspaceTab(tab)));
+      const validated = orgIdSnapshot
+        ? await validateCloudWorkspaceTabs(orgIdSnapshot, tabsSnapshot)
+        : await Promise.all(tabsSnapshot.map((tab) => validateWorkspaceTab(tab)));
       if (cancelled) return;
       // Validation is slow (it can hit plugin APIs), so merge against the LIVE
       // tab list instead of replacing it with the hydration snapshot — the
@@ -347,6 +398,16 @@ function RootLayout() {
           null);
       replaceWorkspaceTabs(nextTabs, nextActiveId);
       setTabsValidated(true);
+      // Validation dropped everything (stale ids, a deleted dashboard), which
+      // would leave the window on a route no open tab renders — i.e. blank.
+      if (nextTabs.length === 0) {
+        const home = await resolveDefaultDashboard(orgIdSnapshot).catch(() => null);
+        if (!home || cancelled) return;
+        void navigateToWorkspaceTarget(navigate, dashboardTabTarget(home.id), {
+          label: home.name,
+          replace: true,
+        });
+      }
     }
 
     void validateTabs();
@@ -354,7 +415,7 @@ function RootLayout() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [replaceWorkspaceTabs, tabsHydrated, tabsValidated]);
+  }, [navigate, replaceWorkspaceTabs, tabsHydrated, tabsValidated]);
 
   useEffect(() => {
     if (!tabsHydrated || pathname !== "/") return;
@@ -459,37 +520,29 @@ function RootLayout() {
   }
 
   async function handleNewTab() {
-    const db = await getDb();
-    const rows = await db.select<{ id: string }[]>(
-      "SELECT id FROM dashboards WHERE is_default = 1 LIMIT 1",
-    );
-    const homeId = rows[0]?.id ?? "dashboard-home";
-    const target = dashboardTabTarget(homeId);
-    createWorkspaceTabInstance(target, "Home");
+    const orgId = useUIStore.getState().activeCloudOrgId;
+    const home = await resolveDefaultDashboard(orgId).catch(() => null);
+    // Only the local side can fall back to a synthesized id; a cloud dashboard
+    // id has to come from the org.
+    if (!home && orgId) {
+      toast.error("Couldn't open a new tab", {
+        description: "No dashboards in this organization.",
+      });
+      return;
+    }
+    const target = dashboardTabTarget(home?.id ?? "dashboard-home");
+    createWorkspaceTabInstance(target, home?.name ?? "Home");
     void navigate(getWorkspaceNavigateArgs(target));
   }
 
   async function handleSwitchOrg(orgId: string | null) {
     setActiveOrgId(orgId);
     try {
-      if (orgId) {
-        const list = await listCloudDashboards(orgId);
-        const first = list.find((d) => d.isDefault) ?? list[0];
-        if (!first) return;
-        void navigateToWorkspaceTarget(navigate, dashboardTabTarget(first.id), {
-          label: first.name,
-        });
-      } else {
-        const db = await getDb();
-        const rows = await db.select<{ id: string; name: string }[]>(
-          "SELECT id, name FROM dashboards ORDER BY is_default DESC, name ASC LIMIT 1",
-        );
-        const first = rows[0];
-        if (!first) return;
-        void navigateToWorkspaceTarget(navigate, dashboardTabTarget(first.id), {
-          label: first.name,
-        });
-      }
+      const first = await resolveDefaultDashboard(orgId);
+      if (!first) return;
+      void navigateToWorkspaceTarget(navigate, dashboardTabTarget(first.id), {
+        label: first.name,
+      });
     } catch (e) {
       console.error("[org-switch] failed to navigate to first dashboard:", e);
       toast.error("Couldn't switch organization", {

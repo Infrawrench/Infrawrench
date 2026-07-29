@@ -671,7 +671,12 @@ app.post("/validate-tabs", async (c) => {
 
   for (const tab of tabs) {
     const { target } = tab;
-    if (target.kind === "agents" || target.kind === "costs" || target.kind === "workflows") {
+    if (
+      target.kind === "agents" ||
+      target.kind === "costs" ||
+      target.kind === "workflows" ||
+      target.kind === "deployments"
+    ) {
       validIds.add(tab.id);
     } else if (target.kind === "chat") {
       // The conversation-list tab is always valid; a conversation tab only

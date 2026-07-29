@@ -1,4 +1,4 @@
-import type { Dashboard, DashboardCardRef } from "@infrawrench/ui";
+import type { Dashboard, DashboardCardRef, WorkspaceTabTarget } from "@infrawrench/ui";
 import type { DashboardWidget } from "@infrawrench/ui/cost";
 import type { ProbeStatus } from "@infrawrench/plugin-base";
 import { invoke } from "./invoke";
@@ -82,6 +82,18 @@ export async function deleteCloudDashboard(orgId: string, id: string): Promise<v
 
 export async function renameCloudDashboard(orgId: string, id: string, name: string): Promise<void> {
   await invoke("cloud_rename_dashboard", { orgId, id, name });
+}
+
+/**
+ * Which of the restored workspace tabs still point at rows that exist in the
+ * org. Tabs whose ids come back are kept; the rest are dropped.
+ */
+export async function validateCloudWorkspaceTabs(
+  orgId: string,
+  tabs: Array<{ id: string; target: WorkspaceTabTarget }>,
+): Promise<string[]> {
+  const result = await invoke<{ validTabIds: string[] }>("cloud_validate_tabs", { orgId, tabs });
+  return result?.validTabIds ?? [];
 }
 
 export async function pinCloudResource(

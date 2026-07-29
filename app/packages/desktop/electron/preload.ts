@@ -151,6 +151,7 @@ const INVOKE_CHANNELS = [
   "cloud_create_dashboard",
   "cloud_delete_dashboard",
   "cloud_rename_dashboard",
+  "cloud_validate_tabs",
   "cloud_list_workflows",
   "cloud_create_workflow",
   "cloud_update_workflow",

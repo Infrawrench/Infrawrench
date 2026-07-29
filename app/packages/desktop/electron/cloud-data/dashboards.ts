@@ -138,3 +138,18 @@ ipcMain.handle(
 ipcMain.handle("cloud_get_pin", async (_e, { orgId, pinId }: { orgId: string; pinId: string }) => {
   return cloudFetch(orgId, `/dashboards/pin/${encodeURIComponent(pinId)}`);
 });
+
+// Restored workspace tabs point at cloud rows when an org is active, so they
+// have to be validated against the org — the local database knows nothing
+// about them.
+ipcMain.handle(
+  "cloud_validate_tabs",
+  async (_e, { orgId, tabs }: { orgId: string; tabs: Array<{ id: string; target: unknown }> }) => {
+    return (
+      (await cloudFetch<{ validTabIds: string[] }>(orgId, `/dashboards/validate-tabs`, {
+        method: "POST",
+        body: JSON.stringify({ tabs }),
+      })) ?? { validTabIds: [] }
+    );
+  },
+);

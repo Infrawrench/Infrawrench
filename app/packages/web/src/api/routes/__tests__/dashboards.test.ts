@@ -435,4 +435,32 @@ describe("Dashboard routes", () => {
       expect(body["missing"]?.error).toBe("Resource not found");
     });
   });
+
+  describe("POST /validate-tabs — validate restored workspace tabs", () => {
+    it("keeps the tabs that aren't backed by a row and drops missing dashboards", async () => {
+      mockSelect.mockReturnValue(chainMock([]));
+
+      const app = buildApp();
+      const res = await app.request("/validate-tabs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tabs: [
+            { id: "agents", target: { kind: "agents" } },
+            { id: "costs", target: { kind: "costs" } },
+            { id: "workflows", target: { kind: "workflows" } },
+            { id: "deployments", target: { kind: "deployments" } },
+            { id: "chat", target: { kind: "chat" } },
+            { id: "dashboard:gone", target: { kind: "dashboard", dashboardId: "gone" } },
+          ],
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(new Set(body.validTabIds)).toEqual(
+        new Set(["agents", "costs", "workflows", "deployments", "chat"]),
+      );
+    });
+  });
 });

@@ -174,7 +174,16 @@ const ReorderRequest = strict({
 }).openapi("ReorderRequest");
 
 const TabTarget = strict({
-  kind: z.enum(["dashboard", "account", "resource", "agents", "costs", "workflows", "chat"]),
+  kind: z.enum([
+    "dashboard",
+    "account",
+    "resource",
+    "agents",
+    "costs",
+    "workflows",
+    "deployments",
+    "chat",
+  ]),
   dashboardId: Uuid.optional(),
   accountId: Uuid.optional(),
   resourceId: ResourceId.optional(),
