@@ -195,6 +195,29 @@ describe("single-PUT create handlers", () => {
     expect(out.resolvedOutputs["loginServer"]).toBe("acr1.azurecr.io");
   });
 
+  it("createContainerRegistry defaults the admin user to enabled", async () => {
+    const put = vi.fn(async () => ({ properties: { loginServer: "acr1.azurecr.io" } }));
+    const out = await createContainerRegistry(makeCtx({ put }), ACCT, {
+      name: "acr1",
+      resourceGroup: "rg1",
+      region: "eastus",
+    });
+    const body = (
+      put.mock.calls[0] as unknown as [string, { properties: { adminUserEnabled: boolean } }]
+    )[1];
+    expect(body.properties.adminUserEnabled).toBe(true);
+    expect(out.fields["adminEnabled"]).toBe(true);
+
+    const putOff = vi.fn(async () => ({ properties: {} }));
+    const off = await createContainerRegistry(makeCtx({ put: putOff }), ACCT, {
+      name: "acr2",
+      resourceGroup: "rg1",
+      region: "eastus",
+      adminEnabled: "false",
+    });
+    expect(off.fields["adminEnabled"]).toBe(false);
+  });
+
   it("createPublicIP", async () => {
     const put = vi.fn(async () => ({ properties: { ipAddress: "1.2.3.4" } }));
     const out = await createPublicIP(makeCtx({ put }), ACCT, {
@@ -336,10 +359,16 @@ describe("single-PUT create handlers", () => {
     const body = (
       put.mock.calls[0] as unknown as [
         string,
-        { properties: { servicePrincipalProfile: { clientId: string } } },
+        {
+          identity: { type: string };
+          properties: { servicePrincipalProfile?: unknown };
+        },
       ]
     )[1];
-    expect(body.properties.servicePrincipalProfile.clientId).toBe("c1");
+    // The cluster must run on a system-assigned managed identity; sending a
+    // real service principal alongside it is rejected by ARM.
+    expect(body.identity).toEqual({ type: "SystemAssigned" });
+    expect(body.properties.servicePrincipalProfile).toBeUndefined();
     expect(out.fields["nodeCount"]).toBe(3);
   });
 });

@@ -91,6 +91,41 @@ export async function resolveAzureOutput(
     return `${hostName}.redis.cache.windows.net:6380,password=${pk},ssl=True,abortConnect=False`;
   }
 
+  if (
+    typeId === "azure-container-registry" &&
+    (outputKey === "username" || outputKey === "password" || outputKey === "dockerConfigJson")
+  ) {
+    const resource = await getResource(typeId, resourceId, accountId);
+    const [rg, name] = (resource.externalId ?? "").split("/");
+    const adminDisabledError = () =>
+      new Error(
+        `The admin user is disabled on container registry "${name}", so docker credentials ` +
+          `cannot be resolved. Enable it on the registry ` +
+          `(az acr update --name ${name} --admin-enabled true) and try again.`,
+      );
+    if (resource.fields["adminEnabled"] === false) throw adminDisabledError();
+    const creds = await ctx.post<{
+      username?: string;
+      passwords?: Array<{ name?: string; value?: string }>;
+    }>(
+      `${ARM}/subscriptions/${ctx.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.ContainerRegistry/registries/${name}/listCredentials?api-version=2023-07-01`,
+      {},
+    );
+    const username = creds.username ?? "";
+    const password = creds.passwords?.[0]?.value ?? "";
+    // listCredentials returns no usable material when adminUserEnabled is
+    // false — surface the fix rather than handing back empty credentials.
+    if (!username || !password) throw adminDisabledError();
+    if (outputKey === "username") return username;
+    if (outputKey === "password") return password;
+    const loginServer =
+      String(resource.resolvedOutputs["loginServer"] ?? "") ||
+      `${(name ?? "").toLowerCase()}.azurecr.io`;
+    return JSON.stringify({
+      auths: { [loginServer]: { auth: btoa(`${username}:${password}`) } },
+    });
+  }
+
   if (typeId === "azure-service-bus" && outputKey === "primaryConnectionString") {
     const resource = await getResource(typeId, resourceId, accountId);
     const [rg, name] = (resource.externalId ?? "").split("/");

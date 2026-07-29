@@ -110,10 +110,12 @@ export async function getAKSCreateConfig(ctx: AzureCreateContext): Promise<Creat
         kind: "select",
         required: false,
         defaultValue: "azure",
+        // ARM's networkProfile.networkPlugin only accepts "azure", "kubenet",
+        // and "none" — Azure CNI *is* the "azure" value, there is no
+        // "azure-cni" enum member (it would be rejected at create).
         options: [
           { id: "kubenet", label: "kubenet" },
-          { id: "azure", label: "azure" },
-          { id: "azure-cni", label: "azure-cni" },
+          { id: "azure", label: "azure (Azure CNI)" },
         ],
       },
     ],
@@ -154,11 +156,19 @@ export async function createAKSCluster(
         networkProfile: {
           networkPlugin,
         },
-        servicePrincipalProfile: {
-          clientId: ctx.clientId,
-          secret: ctx.clientSecret,
-        },
+        // No servicePrincipalProfile: the cluster runs on the system-assigned
+        // managed identity below. ARM rejects a request that carries both a
+        // real service principal and a managed identity (the only accepted
+        // servicePrincipalProfile alongside `identity` is the `clientId:
+        // "msi"` sentinel, which is what omitting it defaults to). The managed
+        // identity is also what lets the cluster manage its own load
+        // balancers / node resources without a client secret to rotate.
       },
+      // NOTE: pulling from an Azure Container Registry additionally requires
+      // an AcrPull role assignment on the registry for the cluster's kubelet
+      // identity (az aks update --attach-acr <registry>); this handler does
+      // not wire IAM. Without it, deploys referencing ACR images fail at
+      // runtime with ImagePullBackOff.
       identity: { type: "SystemAssigned" },
     },
   );

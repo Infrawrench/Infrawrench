@@ -46,10 +46,12 @@ export async function getContainerRegistryCreateConfig(
         label: "Admin User",
         kind: "select",
         required: true,
-        defaultValue: "false",
+        defaultValue: "true",
+        description:
+          "Required for docker login and the registry's username/password/dockerConfigJson outputs",
         options: [
-          { id: "false", label: "Disabled" },
           { id: "true", label: "Enabled" },
+          { id: "false", label: "Disabled" },
         ],
       },
     ],
@@ -65,7 +67,11 @@ export async function createContainerRegistry(
   const rg = fields["resourceGroup"]!;
   const location = fields["region"]!;
   const sku = fields["sku"] ?? "Basic";
-  const adminEnabled = fields["adminEnabled"] === "true";
+  // Default the admin user to enabled: without it the registry's docker
+  // credential outputs (username/password/dockerConfigJson) are unresolvable
+  // and nothing can `docker login` — a registry that creates fine but can't be
+  // pushed to. An explicit "false" still opts out.
+  const adminEnabled = (fields["adminEnabled"] ?? "true") !== "false";
 
   const result = await ctx.put<Record<string, unknown>>(
     `${ARM}/subscriptions/${ctx.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.ContainerRegistry/registries/${name}?api-version=2023-07-01`,

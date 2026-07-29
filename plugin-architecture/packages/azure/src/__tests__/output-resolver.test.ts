@@ -114,6 +114,62 @@ describe("resolveAzureOutput", () => {
     expect(cs).toContain("password=rk");
   });
 
+  it("ACR docker credentials via listCredentials", async () => {
+    const registry = res({
+      resourceTypeId: "azure-container-registry",
+      externalId: "rg1/acr1",
+      fields: { adminEnabled: true },
+      resolvedOutputs: { loginServer: "acr1.azurecr.io" },
+    });
+    const deps = makeDeps({
+      resource: registry,
+      post: (url) => {
+        expect(url).toContain("/registries/acr1/listCredentials");
+        return { username: "acr1", passwords: [{ name: "password", value: "pw1" }] };
+      },
+    });
+    expect(
+      await resolveAzureOutput(deps, "azure-container-registry", "id", "username", "acct"),
+    ).toBe("acr1");
+    expect(
+      await resolveAzureOutput(deps, "azure-container-registry", "id", "password", "acct"),
+    ).toBe("pw1");
+    const doc = await resolveAzureOutput(
+      deps,
+      "azure-container-registry",
+      "id",
+      "dockerConfigJson",
+      "acct",
+    );
+    expect(doc).toBe(JSON.stringify({ auths: { "acr1.azurecr.io": { auth: btoa("acr1:pw1") } } }));
+  });
+
+  it("ACR credentials throw a clear error when the admin user is disabled", async () => {
+    const disabled = makeDeps({
+      resource: res({
+        resourceTypeId: "azure-container-registry",
+        externalId: "rg1/acr1",
+        fields: { adminEnabled: false },
+      }),
+    });
+    await expect(
+      resolveAzureOutput(disabled, "azure-container-registry", "id", "password", "acct"),
+    ).rejects.toThrow(/admin user is disabled.*--admin-enabled true/s);
+
+    // Same error when listCredentials comes back without usable material.
+    const empty = makeDeps({
+      resource: res({
+        resourceTypeId: "azure-container-registry",
+        externalId: "rg1/acr1",
+        fields: { adminEnabled: true },
+      }),
+      post: () => ({}),
+    });
+    await expect(
+      resolveAzureOutput(empty, "azure-container-registry", "id", "dockerConfigJson", "acct"),
+    ).rejects.toThrow(/Enable it on the registry/);
+  });
+
   it("Service Bus and Event Hub primary connection strings", async () => {
     const deps = makeDeps({
       resource: res({ resourceTypeId: "azure-service-bus", externalId: "rg1/sb1" }),
