@@ -33,11 +33,39 @@ const DeployRunLog = strict({
   message: z.string(),
 }).openapi("DeployRunLog");
 
-const DeployStage = z.enum(["plan", "dockerfile", "build", "deploy"]).openapi("DeployStage");
+const DeployStage = z
+  .enum(["plan", "dockerfile", "build", "deploy", "destroy"])
+  .openapi("DeployStage");
 
 const DeployStatus = z
   .enum(["pending", "running", "success", "failure", "canceled"])
   .openapi("DeployStatus");
+
+/** A resource the run provisioned through `infra.accounts.*.create(...)`. */
+const DeployCreatedResource = strict({
+  pluginId: z.string(),
+  accountId: z.string(),
+  resourceTypeId: z.string(),
+  resourceId: z.string(),
+  externalId: z.string().optional(),
+  displayName: z.string(),
+  sidecar: strict({ pluginId: z.string(), parentResourceId: z.string() }).optional(),
+}).openapi("DeployCreatedResource");
+
+/**
+ * A change a dry-run plan would make. On a plan-only run, creates/updates/
+ * deletes through `infra.accounts` are intercepted and reported here instead
+ * of touching the provider.
+ */
+const DeployPlannedChange = strict({
+  action: z.enum(["create", "update", "delete"]),
+  accountId: z.string(),
+  resourceTypeId: z.string(),
+  resourceId: z.string().optional(),
+  displayName: z.string(),
+  fields: z.record(z.string(), z.string()).optional(),
+  sidecar: strict({ pluginId: z.string(), parentResourceId: z.string() }).optional(),
+}).openapi("DeployPlannedChange");
 
 const DeployPlanResult = strict({
   runId: Uuid,
@@ -49,6 +77,9 @@ const DeployPlanResult = strict({
     dockerfile: z.string().optional(),
     image: z.string().optional(),
     notes: z.array(z.string()),
+    createdResources: z.array(DeployCreatedResource),
+    /** Populated on plan-only runs; empty on real deploys. */
+    plannedChanges: z.array(DeployPlannedChange),
     logs: z.array(DeployRunLog),
     reachedStage: DeployStage.optional(),
     error: strict({ message: z.string(), stack: z.string().optional() }).optional(),
@@ -88,6 +119,11 @@ const DeploymentRunInput = strict({
   image: z.string().optional(),
   stage: DeployStage.optional(),
   notes: z.array(z.string()).optional(),
+  /** Whatever the run's `infra.output(...)` recorded. */
+  output: z.unknown().optional(),
+  /** Whatever `plan()` returned, so `deploy --plan` can diff against this run. */
+  plan: z.unknown().optional(),
+  createdResources: z.array(DeployCreatedResource).optional(),
   durationMs: z.number().int().optional(),
   error: strict({ message: z.string() }).nullable().optional(),
 }).openapi("DeploymentRunInput");
@@ -229,8 +265,21 @@ export function registerDeploymentPaths(ctx: BuildContext) {
     tags: ["Deployments"],
     summary: "Roll back to a previous deployment",
     description:
-      "Re-runs that run's `deploy()` with the image and plan it recorded, building nothing — the exact artifact that was known good ships again. The Infrafile is read at the commit that run deployed, not at the branch head. Only a successful run that produced an image can be rolled back to.",
-    request: { params: runIdParam() },
+      "Re-runs that run's `deploy()` with the image and plan it recorded, building nothing — the exact artifact that was known good ships again. The Infrafile is read at the commit that run deployed, not at the branch head. Only a successful run that produced an image can be rolled back to. With `deleteCreated`, resources that runs after the target created through `infra.accounts` are deleted once the rollback has succeeded — undoing the provisioning, not just the shipping. Deletions are best-effort and reported in the result's notes.",
+    request: {
+      params: runIdParam(),
+      body: {
+        required: false,
+        content: {
+          "application/json": {
+            schema: strict({
+              /** Also delete resources created by runs newer than the target. Destructive; off by default. */
+              deleteCreated: z.boolean().optional(),
+            }).openapi("DeployRollbackInput"),
+          },
+        },
+      },
+    },
     responses: {
       200: {
         description: "Rollback result",

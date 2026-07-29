@@ -114,13 +114,31 @@ export async function buildLocally(
   try {
     await writeFile(dockerfilePath, request.dockerfile, "utf8");
 
+    // Without an explicit platform the manifest inherits the BUILDER's — an
+    // arm64 laptop then ships images amd64 nodes refuse ("no match for
+    // platform in manifest"). A push means the image is destined for another
+    // machine, and the overwhelming default elsewhere is amd64 — so assume it
+    // rather than let the mismatch surface as ImagePullBackOff minutes later.
+    // plan.platform overrides; a build that stays local keeps the host's.
+    let platform = request.platform;
+    if (!platform && request.registry && process.arch === "arm64") {
+      platform = "linux/amd64";
+      opts.log(
+        "no plan.platform set — assuming linux/amd64 for the pushed image " +
+          "(this machine is arm64; set plan.platform to override)",
+      );
+    }
+
     const args = ["build", "-f", dockerfilePath, "-t", image];
+    if (platform) args.push("--platform", platform);
     for (const [key, value] of Object.entries(request.args ?? {})) {
       args.push("--build-arg", `${key}=${value}`);
     }
     args.push(opts.contextDir);
 
-    opts.log(`$ docker build -t ${image} ${opts.contextDir}`);
+    opts.log(
+      `$ docker build${platform ? ` --platform ${platform}` : ""} -t ${image} ${opts.contextDir}`,
+    );
     await docker(args, {
       log: opts.log,
       cwd: opts.contextDir,

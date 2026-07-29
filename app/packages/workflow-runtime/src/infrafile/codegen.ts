@@ -119,6 +119,14 @@ interface InfraAsk {
 interface InfraPlanContext {
   env: InfraEnv;
   git: InfraGit;
+  /**
+   * True on a \`--plan\` preview. Creates, updates and deletes through
+   * \`infra.accounts\` are then recorded as planned changes instead of performed,
+   * and return synthetic resources whose outputs resolve to
+   * \`"(known after apply)"\`. Use it to skip waits that depend on a resource
+   * actually existing.
+   */
+  dryRun: boolean;
   select: InfraSelect;
   ask: InfraAsk;
 }
@@ -132,12 +140,17 @@ interface InfraPlanContext {
  * - \`registry\` — credentials used for \`docker login\` before a push. Never
  *   logged.
  *
- * \`tag\` and \`buildArgs\` are honoured when present.
+ * \`tag\` and \`buildArgs\` are honoured when present. A \`tag\` containing "/"
+ * is a full image reference used verbatim — the way to target registries whose
+ * image path is more than \`host/name\`, like Artifact Registry's
+ * \`host/project/repo/image\`.
  */
 interface InfraPlanResult {
   buildOn?: WorkflowResourceBase | "local";
   registry?: { host: string; username: string; password: string };
   tag?: string;
+  /** Target platform for the image ("linux/amd64"). Unset, a CLI build that pushes to a registry from an arm64 machine assumes linux/amd64 (a pushed image is for another machine); a local-only build keeps the host's platform. Set explicitly to override either way. */
+  platform?: string;
   buildArgs?: Record<string, string | number | boolean>;
   [key: string]: unknown;
 }
@@ -229,11 +242,21 @@ interface InfraDefinition<P = InfraPlanResult> {
    * Tear down what \`deploy()\` created. Required for preview environments —
    * without it a closed pull request leaves its environment running forever.
    *
-   * Gets no image and no plan: by the time a preview closes its image is
-   * usually gone, so whatever was created must be identifiable from \`env\` and
-   * \`git\` alone.
+   * Gets no image and never prompts: by the time a preview closes its image is
+   * usually gone and nobody is at a terminal. What it does get is \`plan\` — the
+   * env's **last successful deploy's recorded plan**, when one exists — so
+   * anything env and git cannot name (which account, which region) should be
+   * written into the plan by the deploy that created it. Recorded JSON: plain
+   * data, not live handles; take handles from \`infra.*\` as usual, and treat
+   * \`plan\` as possibly absent (a teardown can outlive its deploy history).
    */
-  destroy?(ctx: { env: InfraEnv; git: InfraGit; notes(text: string): Promise<void> }): Promise<void> | void;
+  destroy?(ctx: {
+    env: InfraEnv;
+    git: InfraGit;
+    /** The last successful deploy's recorded plan for this env, if the host found one. */
+    plan?: P;
+    notes(text: string): Promise<void>;
+  }): Promise<void> | void;
 }
 
 /**

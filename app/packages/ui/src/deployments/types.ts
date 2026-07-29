@@ -1,11 +1,15 @@
 /** Shared UI-side shapes for deployments. Kept decoupled from server types. */
 import type { WorkflowRunLog } from "../workflows/types.js";
 
-export type DeployStage = "plan" | "dockerfile" | "build" | "deploy";
+export type DeployStage = "plan" | "dockerfile" | "build" | "deploy" | "destroy";
 
 export type DeployStatus = "pending" | "running" | "success" | "failure" | "canceled";
 
-/** Order the stage indicator walks through. */
+/**
+ * Order the stage indicator walks through. `destroy` is deliberately absent:
+ * a teardown run has no build pipeline to render progress against, so the
+ * indicator shows nothing for it (indexOf returns -1).
+ */
 export const DEPLOY_STAGES: readonly DeployStage[] = ["plan", "dockerfile", "build", "deploy"];
 
 export interface DeployRepo {

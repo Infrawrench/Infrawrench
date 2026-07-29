@@ -302,6 +302,20 @@
       "when": 1785272825708,
       "tag": "0042_brief_mauler",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1785333093721,
+      "tag": "0043_gigantic_champions",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1785334611309,
+      "tag": "0044_gigantic_gateway",
+      "breakpoints": true
     }
   ]
 }

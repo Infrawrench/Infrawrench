@@ -34,7 +34,9 @@ import type {
   WorkflowFetchRequest,
   WorkflowFetchResponse,
   WorkflowPluginInfo,
+  WorkflowRegionOption,
 } from "./types.js";
+import { PLAN_PLACEHOLDER, PLANNED_ID_PREFIX } from "./infrafile/types.js";
 import type {
   BuildRequest,
   BuildTarget,
@@ -208,6 +210,13 @@ export interface WorkflowHost {
     outputKey: string,
     sidecar?: SidecarRef,
   ): Promise<string>;
+
+  /**
+   * The regions a resource type can be created in, with display metadata
+   * (flag, location) — sourced from the plugin's create config, so a plan's
+   * region `select` shows the same list the GUI's region picker does.
+   */
+  getRegions?(accountId: string, typeId: string): Promise<WorkflowRegionOption[]>;
 
   createResource?(
     accountId: string,
@@ -387,8 +396,12 @@ export interface WorkflowHost {
     manifest: string,
     sidecar?: SidecarRef,
   ): Promise<void>;
-  /** Apply arbitrary (multi-doc) YAML to an account (kubectl apply -f). */
-  importYaml?(accountId: string, yaml: string): Promise<{ applied: number }>;
+  /**
+   * Apply arbitrary (multi-doc) YAML to an account (kubectl apply -f). The
+   * sidecar is present when the YAML targets a peer plugin reached through a
+   * parent resource — a manifest applied into a managed cluster.
+   */
+  importYaml?(accountId: string, yaml: string, sidecar?: SidecarRef): Promise<{ applied: number }>;
   /** Publish a message to a pub/sub resource. */
   publish?(
     accountId: string,
@@ -547,6 +560,9 @@ function buildRequest(args: Record<string, unknown>): BuildRequest {
   if (target) request.target = target;
   if (registry) request.registry = registry;
   if (typeof plan["tag"] === "string" && plan["tag"]) request.tag = plan["tag"];
+  if (typeof plan["platform"] === "string" && plan["platform"]) {
+    request.platform = plan["platform"];
+  }
   if (Object.keys(buildArgs).length > 0) request.args = buildArgs;
   return request;
 }
@@ -876,44 +892,152 @@ export async function dispatch(
         sidecar,
       );
 
-    case "resource.resolveOutput":
+    case "resource.regions":
+      return (
+        (await requireMethod(host.getRegions, "getRegions").call(
+          host,
+          String(args["accountId"]),
+          String(args["typeId"]),
+        )) ?? []
+      );
+
+    case "resource.resolveOutput": {
+      const resourceId = String(args["resourceId"]);
+      // A planned id names a resource that exists nowhere host-side, so its
+      // outputs can only ever be the placeholder — checked regardless of
+      // dryRun, since a lookup on one would fail wherever it landed.
+      if (resourceId.startsWith(PLANNED_ID_PREFIX)) return PLAN_PLACEHOLDER;
       return host.resolveOutput(
         String(args["accountId"]),
         String(args["typeId"]),
-        String(args["resourceId"]),
+        resourceId,
         String(args["outputKey"]),
         sidecar,
       );
+    }
 
-    case "resource.create":
-      return requireMethod(host.createResource, "createResource").call(
+    case "resource.create": {
+      const accountId = String(args["accountId"]);
+      const typeId = String(args["typeId"]);
+      const fields = (args["fields"] as Record<string, string>) ?? {};
+      const parentResourceId = args["parentResourceId"]
+        ? String(args["parentResourceId"])
+        : undefined;
+      // A --plan run must provision nothing: record what would be created and
+      // hand back a synthetic resource so the rest of plan() keeps working.
+      // Its id is namespaced (see PLANNED_ID_PREFIX) so resolveOutput knows
+      // never to send it to the host.
+      if (ctx.infrafile?.dryRun) {
+        const displayName = fields["name"] ?? fields["displayName"] ?? typeId;
+        const index = ctx.infrafile.recordPlanned({
+          action: "create",
+          accountId,
+          resourceTypeId: typeId,
+          displayName,
+          fields,
+          // The plugin id of a bare parented create is only known host-side,
+          // and the host is exactly what a dry run must not consult.
+          ...(sidecar
+            ? { sidecar }
+            : parentResourceId
+              ? { sidecar: { pluginId: "", parentResourceId } }
+              : {}),
+        });
+        const synthetic: ResourceInstanceLite = {
+          id: `${PLANNED_ID_PREFIX}${typeId}:${index}`,
+          pluginId: "",
+          resourceTypeId: typeId,
+          accountId,
+          displayName,
+          fields,
+          resolvedOutputs: {},
+        };
+        return synthetic;
+      }
+      const created = await requireMethod(host.createResource, "createResource").call(
         host,
-        String(args["accountId"]),
-        String(args["typeId"]),
-        (args["fields"] as Record<string, string>) ?? {},
-        args["parentResourceId"] ? String(args["parentResourceId"]) : undefined,
+        accountId,
+        typeId,
+        fields,
+        parentResourceId,
         sidecar,
       );
+      // An Infrafile run keeps a ledger of what it provisioned — that is what
+      // lets a rollback offer to undo the provisioning, not just the shipping.
+      ctx.infrafile?.recordCreated({
+        pluginId: created.pluginId,
+        accountId: created.accountId,
+        resourceTypeId: created.resourceTypeId,
+        resourceId: created.id,
+        displayName: created.displayName,
+        ...(created.externalId ? { externalId: created.externalId } : {}),
+        ...(sidecar ? { sidecar } : {}),
+      });
+      return created;
+    }
 
-    case "resource.update":
+    case "resource.update": {
+      const accountId = String(args["accountId"]);
+      const typeId = String(args["typeId"]);
+      const resourceId = String(args["resourceId"]);
+      const fields = (args["fields"] as Record<string, string>) ?? {};
+      if (ctx.infrafile?.dryRun) {
+        // The real resource is never fetched (that would be a read *for* a
+        // write), so its display name is best-effort from the update itself.
+        const displayName = fields["name"] ?? fields["displayName"] ?? resourceId;
+        ctx.infrafile.recordPlanned({
+          action: "update",
+          accountId,
+          resourceTypeId: typeId,
+          resourceId,
+          displayName,
+          fields,
+          ...(sidecar ? { sidecar } : {}),
+        });
+        const synthetic: ResourceInstanceLite = {
+          id: resourceId,
+          pluginId: "",
+          resourceTypeId: typeId,
+          accountId,
+          displayName,
+          fields,
+          resolvedOutputs: {},
+        };
+        return synthetic;
+      }
       return requireMethod(host.updateResource, "updateResource").call(
         host,
-        String(args["accountId"]),
-        String(args["typeId"]),
-        String(args["resourceId"]),
-        (args["fields"] as Record<string, string>) ?? {},
+        accountId,
+        typeId,
+        resourceId,
+        fields,
         sidecar,
       );
+    }
 
-    case "resource.delete":
+    case "resource.delete": {
+      const resourceId = String(args["resourceId"]);
+      if (ctx.infrafile?.dryRun) {
+        ctx.infrafile.recordPlanned({
+          action: "delete",
+          accountId: String(args["accountId"]),
+          resourceTypeId: String(args["typeId"]),
+          resourceId,
+          // A delete carries no fields, so the id is the best name available.
+          displayName: resourceId,
+          ...(sidecar ? { sidecar } : {}),
+        });
+        return null;
+      }
       await requireMethod(host.deleteResource, "deleteResource").call(
         host,
         String(args["accountId"]),
         String(args["typeId"]),
-        String(args["resourceId"]),
+        resourceId,
         sidecar,
       );
       return null;
+    }
 
     case "storage.list":
       return host.listStorageObjects(
@@ -1115,6 +1239,7 @@ export async function dispatch(
         host,
         String(args["accountId"]),
         String(args["yaml"]),
+        sidecar,
       );
 
     case "resource.publish":

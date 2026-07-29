@@ -1,0 +1,1 @@
+ALTER TABLE "deployment_runs" ADD COLUMN "output_json" jsonb;

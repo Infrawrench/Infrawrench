@@ -300,8 +300,13 @@ export const PRELUDE = String.raw`
       list: async () => (await h.list()).map(wrap),
       get: async (externalId) => wrap(await h.get(externalId)),
     };
-    if (rt.supportsCreate)
+    if (rt.supportsCreate) {
       g.create = async (fields, parentResourceId) => wrap(await h.create(fields, parentResourceId));
+      // The provider's region list with display metadata (flag, location) —
+      // hand it to select() and the picker reads like the GUI's. Sidecars have
+      // no create form of their own to source it from.
+      if (!sidecar) g.regions = () => rpc("resource.regions", { accountId, typeId: rt.id });
+    }
     if (rt.supportsUpdate)
       g.update = async (resourceId, fields) => wrap(await h.update(resourceId, fields));
     if (rt.supportsDelete) g.delete = (resourceId) => h.delete(resourceId);
@@ -318,7 +323,16 @@ export const PRELUDE = String.raw`
     const out = {};
     for (const sc of rt.sidecars || []) {
       if (!sc.pluginId || sc.pluginId in out) continue;
-      const groups = {};
+      const groups = {
+        // Apply arbitrary (multi-document) YAML inside this resource's peer
+        // plugin (kubectl apply -f into a managed cluster).
+        importYaml: (yaml) =>
+          rpc("account.importYaml", {
+            accountId,
+            yaml,
+            sidecar: { pluginId: sc.pluginId, parentResourceId },
+          }),
+      };
       for (const srt of sc.resourceTypes || []) {
         const group = camel(srt.pluralDisplayName);
         if (!group || group in groups) continue;

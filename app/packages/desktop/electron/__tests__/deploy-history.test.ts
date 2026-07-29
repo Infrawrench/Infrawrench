@@ -28,6 +28,7 @@ function run(overrides: Partial<LocalDeployRun> = {}): LocalDeployRun {
     durationMs: 42_000,
     dir: "/home/dev/app",
     notes: [],
+    createdResources: [],
     error: null,
     orgId: null,
     ...overrides,

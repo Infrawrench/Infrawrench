@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.14.1",
+    "version": "0.15.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -1255,6 +1255,7 @@
           "gateway",
           "gce-disk",
           "gce-instance",
+          "gcp-project",
           "gcp-service-account",
           "gcs-bucket",
           "gen-ai-agent",
@@ -2874,6 +2875,86 @@
         "type": "string",
         "enum": ["pending", "running", "success", "failure", "canceled"]
       },
+      "DeployCreatedResource": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "sidecar": {
+            "type": "object",
+            "properties": {
+              "pluginId": {
+                "type": "string"
+              },
+              "parentResourceId": {
+                "type": "string"
+              }
+            },
+            "required": ["pluginId", "parentResourceId"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["pluginId", "accountId", "resourceTypeId", "resourceId", "displayName"],
+        "additionalProperties": false
+      },
+      "DeployPlannedChange": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["create", "update", "delete"]
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "sidecar": {
+            "type": "object",
+            "properties": {
+              "pluginId": {
+                "type": "string"
+              },
+              "parentResourceId": {
+                "type": "string"
+              }
+            },
+            "required": ["pluginId", "parentResourceId"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["action", "accountId", "resourceTypeId", "displayName"],
+        "additionalProperties": false
+      },
       "DeployRunLog": {
         "type": "object",
         "properties": {
@@ -2893,7 +2974,7 @@
       },
       "DeployStage": {
         "type": "string",
-        "enum": ["plan", "dockerfile", "build", "deploy"]
+        "enum": ["plan", "dockerfile", "build", "deploy", "destroy"]
       },
       "DeployPlanResult": {
         "type": "object",
@@ -2925,6 +3006,18 @@
                   "type": "string"
                 }
               },
+              "createdResources": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DeployCreatedResource"
+                }
+              },
+              "plannedChanges": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DeployPlannedChange"
+                }
+              },
               "logs": {
                 "type": "array",
                 "items": {
@@ -2951,7 +3044,15 @@
                 "type": "integer"
               }
             },
-            "required": ["status", "env", "notes", "logs", "durationMs"],
+            "required": [
+              "status",
+              "env",
+              "notes",
+              "createdResources",
+              "plannedChanges",
+              "logs",
+              "durationMs"
+            ],
             "additionalProperties": false
           }
         },
@@ -3068,6 +3169,15 @@
         ],
         "additionalProperties": false
       },
+      "DeployRollbackInput": {
+        "type": "object",
+        "properties": {
+          "deleteCreated": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
       "DeployTrigger": {
         "type": "object",
         "properties": {
@@ -3163,6 +3273,14 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "output": {},
+          "plan": {},
+          "createdResources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeployCreatedResource"
             }
           },
           "durationMs": {
@@ -10725,7 +10843,7 @@
       "post": {
         "tags": ["Deployments"],
         "summary": "Roll back to a previous deployment",
-        "description": "Re-runs that run's `deploy()` with the image and plan it recorded, building nothing — the exact artifact that was known good ships again. The Infrafile is read at the commit that run deployed, not at the branch head. Only a successful run that produced an image can be rolled back to.\n\n_Requires permission: `deployments:write`._",
+        "description": "Re-runs that run's `deploy()` with the image and plan it recorded, building nothing — the exact artifact that was known good ships again. The Infrafile is read at the commit that run deployed, not at the branch head. Only a successful run that produced an image can be rolled back to. With `deleteCreated`, resources that runs after the target created through `infra.accounts` are deleted once the rollback has succeeded — undoing the provisioning, not just the shipping. Deletions are best-effort and reported in the result's notes.\n\n_Requires permission: `deployments:write`._",
         "parameters": [
           {
             "schema": {
@@ -10749,6 +10867,16 @@
             "in": "path"
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeployRollbackInput"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Rollback result",

@@ -157,9 +157,25 @@ export interface PromptSpec {
   message: string;
   /** Input shape the UI should render. Defaults to "text". `code` is a multiline code editor. */
   kind?: "text" | "password" | "number" | "date" | "boolean" | "select" | "code";
-  /** Options for `kind: "select"`. */
-  options?: { label: string; value: string }[];
+  /**
+   * Options for `kind: "select"`. `hint` is display-only decoration beside the
+   * label (a region's "🇺🇸 Iowa, USA") — the answer is always the `value`, so
+   * `--set` stays stable while the picker stays pretty.
+   */
+  options?: { label: string; value: string; hint?: string }[];
   defaultValue?: string;
+}
+
+/** A provider region as `group.regions()` returns it — for a plan's `select`. */
+export interface WorkflowRegionOption {
+  /** The value the provider expects in create fields, e.g. "us-central1". */
+  id: string;
+  /** Short identifier; what `select()` matches and `--set` targets. */
+  label: string;
+  /** Human-readable city/country, e.g. "Iowa, USA". */
+  location?: string;
+  /** Emoji flag, e.g. "🇺🇸". */
+  flag?: string;
 }
 
 /**

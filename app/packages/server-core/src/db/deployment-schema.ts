@@ -56,6 +56,18 @@ export const deploymentRuns = pgTable(
     dockerfile: text("dockerfile"),
     /** Notes the deploy stage emitted, newline-joined. */
     notes: text("notes"),
+    /**
+     * Whatever the run's `infra.output(...)` recorded — the queryable,
+     * structured counterpart of `notes` (service URL, IPs); read back by
+     * `infrawrench deploy outputs`.
+     */
+    output: jsonb("output_json"),
+    /**
+     * InfrafileCreatedResource[] — resources the run provisioned through
+     * `infra.accounts.*.create(...)`. This is what lets a rollback offer to
+     * undo the provisioning (`--delete-created`), not just re-ship the image.
+     */
+    createdResources: jsonb("created_resources").notNull().default([]),
     error: jsonb("error"),
     /**
      * Seconds of hosted build-worker time this run consumed. Null for a run

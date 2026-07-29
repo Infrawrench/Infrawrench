@@ -167,6 +167,28 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
       return client.resolveOutput(typeId, rid, outputKey, accountId);
     },
 
+    async getRegions(accountId, typeId) {
+      const client = await deps.getClient(accountId);
+      if (!client.getCreateConfig) return [];
+      // The create form is the one place plugins already publish their region
+      // list with display metadata — reuse it rather than invent a second one.
+      const config = await client.getCreateConfig(typeId);
+      for (const field of config.fields ?? []) {
+        const regions = (field as { regions?: unknown }).regions;
+        if (!Array.isArray(regions) || regions.length === 0) continue;
+        return regions.map((r) => {
+          const region = r as { id: string; label: string; location?: string; flag?: string };
+          return {
+            id: region.id,
+            label: region.label || region.id,
+            ...(region.location ? { location: region.location } : {}),
+            ...(region.flag ? { flag: region.flag } : {}),
+          };
+        });
+      }
+      return [];
+    },
+
     async createResource(accountId, typeId, fields, parentResourceId, sidecar) {
       const client = await deps.getClient(accountId, sidecar);
       if (!client.createResource) {
@@ -299,9 +321,15 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
       if (!client.applyManifest) throw new Error(`This resource does not support applyManifest().`);
       await client.applyManifest(resourceId, accountId, manifest);
     },
-    async importYaml(accountId, yaml) {
-      const client = await deps.getClient(accountId);
-      if (!client.importYaml) throw new Error(`This account does not support importYaml().`);
+    async importYaml(accountId, yaml, sidecar) {
+      const client = await deps.getClient(accountId, sidecar);
+      if (!client.importYaml) {
+        throw new Error(
+          sidecar
+            ? `The ${sidecar.pluginId} plugin does not support importYaml().`
+            : `This account does not support importYaml().`,
+        );
+      }
       return client.importYaml(accountId, yaml);
     },
     async publish(accountId, typeId, resourceId, payload, sidecar) {

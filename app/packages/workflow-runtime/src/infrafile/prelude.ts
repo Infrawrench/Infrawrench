@@ -70,10 +70,24 @@ export const INFRAFILE_PRELUDE = String.raw`
       const n = (seen[base] || 0) + 1;
       seen[base] = n;
       const l = n === 1 ? base : base + " (" + n + ")";
-      return { label: l, value: l };
+      // Display-only decoration: a region's flag and location ride beside the
+      // label, while the answer (and --set) stays the stable label itself.
+      // A hint that merely repeats the label (a region the catalog doesn't
+      // know) is noise, not decoration.
+      const hint =
+        item && typeof item === "object"
+          ? [item.flag, item.location].filter(Boolean).join(" ")
+          : "";
+      return hint && hint !== base ? { label: l, value: l, hint } : { label: l, value: l };
     });
     const chosen = await rpc("infrafile.select", { key, label: label || key, options });
-    const idx = options.findIndex((o) => o.value === chosen);
+    let idx = options.findIndex((o) => o.value === chosen);
+    // A preset (--set / stored) answer may also name an item's stable id —
+    // "fra1" for a region whose display label is "Frankfurt 1". Labels win
+    // when both could match; ids only break the tie labels can't settle.
+    if (idx < 0) {
+      idx = list.findIndex((item) => item && typeof item === "object" && item.id === chosen);
+    }
     if (idx < 0) {
       throw new Error(
         "select(" + JSON.stringify(key) + "): " + JSON.stringify(String(chosen)) +
@@ -123,7 +137,11 @@ export const INFRAFILE_EPILOGUE = String.raw`
     git,
     image,
     digest,
-    push: (i, registry) => rpc("infrafile.push", { image: i || image, registry }),
+    // The plan's reserved "registry" key is the documented docker-login
+    // credential for the push — a bare push() must use it, not push
+    // unauthenticated. An explicit second argument still overrides.
+    push: (i, registry) =>
+      rpc("infrafile.push", { image: i || image, registry: registry || (plan && plan.registry) }),
     copyTo: (target, remotePath) => rpc("infrafile.copyTo", { target, remotePath }),
     notes: (text) => rpc("infrafile.note", { text: String(text == null ? "" : text) }),
     // Run a command inside the image we just built, with the project mounted.
@@ -144,9 +162,13 @@ export const INFRAFILE_EPILOGUE = String.raw`
     },
   });
 
-  // Tearing down needs no image and no plan — whatever deploy() created is
-  // identified by env and git alone, which matters because a preview's image is
-  // usually long gone by the time its pull request closes.
+  // Tearing down needs no image and no fresh plan — but it does get the LAST
+  // successful deploy's recorded plan for this env, when the host found one.
+  // That is deliberately state, not a question: destroy() never prompts (a
+  // preview teardown fires from a closed pull request with nobody at a
+  // terminal), so anything env and git cannot name must have been written down
+  // by the deploy that created it. The plan is recorded JSON — plain data, not
+  // live handles.
   if (chosen.destroy) {
     if (typeof def.destroy !== "function") {
       throw new Error(
@@ -154,7 +176,12 @@ export const INFRAFILE_EPILOGUE = String.raw`
           "Add destroy({ env, git }) to defineInfra.",
       );
     }
-    await def.destroy({ env, git, notes: (text) => rpc("infrafile.note", { text: String(text == null ? "" : text) }) });
+    await def.destroy({
+      env,
+      git,
+      plan: chosen.plan,
+      notes: (text) => rpc("infrafile.note", { text: String(text == null ? "" : text) }),
+    });
     return;
   }
 
@@ -166,6 +193,9 @@ export const INFRAFILE_EPILOGUE = String.raw`
   const planCtx = {
     env,
     git,
+    // True on a --plan preview: writes through infra.accounts become recorded
+    // planned changes, so plan() can skip waits that need a real resource.
+    dryRun: chosen.planOnly === true,
     select: (key, label, items) => globalThis.__infraSelect(key, label, items),
     // Free-form questions, keyed exactly like select so --set answers them too.
     // The host validates and coerces, so what comes back is already the right

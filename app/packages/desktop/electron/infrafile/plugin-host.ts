@@ -186,17 +186,30 @@ function buildHostServices(
   return base;
 }
 
-/** A ready-to-use plugin client for one locally-stored account. */
-export async function createLocalPluginClient(
-  accountId: string,
+/**
+ * A ready-to-use plugin client from a credential the caller already holds.
+ * This is what makes an ORG account first-class from the CLI: fetch its
+ * credentials over the (audited) org API and the plugin runs right here —
+ * same listers, same freshness as a local account — instead of reading the
+ * cloud's cached rows.
+ */
+export async function createPluginClientFromCredentials(
   pluginId: string,
+  credentials: Record<string, string>,
 ): Promise<PluginClient> {
   // Imported lazily: the plugin registry is large, and a CLI invocation that
   // never touches a plugin (login, orgs, costs) should not pay to load it.
   const { getPlugin } = await import("./plugins.js");
   const loaded = await getPlugin(pluginId);
   if (!loaded) throw new Error(`Plugin "${pluginId}" is not available.`);
-  const credentials = await getAccountCredentials(accountId);
   const services = buildHostServices(loaded.plugin.manifest, credentials);
   return loaded.plugin.createClient(credentials, services);
+}
+
+/** A ready-to-use plugin client for one locally-stored account. */
+export async function createLocalPluginClient(
+  accountId: string,
+  pluginId: string,
+): Promise<PluginClient> {
+  return createPluginClientFromCredentials(pluginId, await getAccountCredentials(accountId));
 }

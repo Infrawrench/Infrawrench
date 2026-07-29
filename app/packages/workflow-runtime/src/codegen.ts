@@ -338,6 +338,8 @@ function renderSidecarInterface(sc: WorkflowSidecarInfo, sshKeyNames: string[]):
   return `/** ${sc.displayName} inside a parent resource. */
 interface ${sidecarInterfaceName(sc.pluginId)} {
 ${groups}
+  /** Apply arbitrary (multi-document) YAML inside this resource's ${sc.displayName} (kubectl apply -f). */
+  importYaml(yaml: string): Promise<{ applied: number }>;
 }`;
 }
 
@@ -361,6 +363,9 @@ function renderResourceGroups(
       const createFieldsType = renderCreateFieldsType(rt.createFields, sshKeyNames);
       ops.push(
         `    /** Create a ${rt.displayName}. */\n    create(fields: ${createFieldsType}, parentResourceId?: string): Promise<${ret}>;`,
+      );
+      ops.push(
+        `    /** The regions a ${rt.displayName} can be created in, with flag/location — hand the list to select() for a country picker; \`--set\` matches the short label. Empty when the type has no region choice. */\n    regions(): Promise<{ id: string; label: string; location?: string; flag?: string }[]>;`,
       );
     }
     if (rt.supportsUpdate)

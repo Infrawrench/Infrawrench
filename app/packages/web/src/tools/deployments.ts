@@ -224,13 +224,21 @@ export function deploymentTools(): ToolDefinition[] {
         "Ship a previous run's image again. The Infrafile is re-read at the commit that run " +
         "deployed (not at the branch head) and its `deploy()` re-run with the recorded plan and " +
         "image, so nothing is planned or built and the exact known-good artifact is what lands. " +
-        "Only a successful run that produced an image can be rolled back to. This changes what is " +
-        "running in the environment — the chat surface confirms with the user before invoking. " +
-        "Audit-logged.",
+        "Only a successful run that produced an image can be rolled back to. With deleteCreated, " +
+        "resources that runs after the target created through `infra.accounts` are deleted once " +
+        "the rollback succeeds — only pass it when the user explicitly asked for that, since those " +
+        "resources can hold data. This changes what is running in the environment — the chat " +
+        "surface confirms with the user before invoking. Audit-logged.",
       inputSchema: {
         runId: z
           .string()
           .describe("The successful run whose image should be redeployed, from list_deployments."),
+        deleteCreated: z
+          .boolean()
+          .optional()
+          .describe(
+            "Also delete resources created by runs newer than the target. Destructive; off by default.",
+          ),
       },
       risk: "destructive",
       permission: "deployments:write",
@@ -243,6 +251,7 @@ export function deploymentTools(): ToolDefinition[] {
             organizationId: auth.organizationId,
             runId: fromRunId,
             userId: auth.userId,
+            ...(input["deleteCreated"] === true ? { deleteCreated: true } : {}),
           });
           void safeAudit({
             organizationId: auth.organizationId,
@@ -255,6 +264,7 @@ export function deploymentTools(): ToolDefinition[] {
               env: result.env,
               status: result.status,
               image: result.image ?? null,
+              deleteCreated: input["deleteCreated"] === true,
               source: auth.source,
             },
           });

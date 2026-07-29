@@ -11,7 +11,7 @@
  * is an audit trail. See `db/deployment-schema.ts` for why that split matters.
  */
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, lt } from "drizzle-orm";
+import { and, desc, eq, gt, lt } from "drizzle-orm";
 
 import { db } from "../db/client.js";
 import { deploymentRuns, githubInstallations } from "../db/schema.js";
@@ -47,6 +47,7 @@ import { writeDeploymentBuildCost } from "../cost/deployment-costs.js";
 import { reportHostedBuildToMeter } from "../billing/build-meter.js";
 import type {
   BuildRequest,
+  InfrafileCreatedResource,
   InfrafileHost,
   InfrafileRollback,
   InfrafileRunResult,
@@ -544,6 +545,8 @@ export async function runDeployment(
       buildSeconds: buildSeconds || null,
       buildRunner: cloudCtx ? "cloud-build" : sshCtx ? "ssh" : null,
       notes: result.notes.length > 0 ? result.notes.join("\n") : null,
+      output: cappedJson(result.output),
+      createdResources: cappedCreatedResources(result.createdResources ?? []),
       error: result.error ?? null,
       finishedAt: new Date(result.finishedAt),
       durationMs: result.durationMs,
@@ -653,6 +656,13 @@ export async function rollbackDeployment(opts: {
   organizationId: string;
   runId: string;
   userId?: string;
+  /**
+   * Also delete the resources that runs *after* the target created through
+   * `infra.accounts` — undoing the provisioning, not just the shipping.
+   * Opt-in because those resources can hold data (a database created by the
+   * bad deploy is still a database); the default rollback never touches them.
+   */
+  deleteCreated?: boolean;
   onLog?: (entry: RunLogEntry) => void;
   onStage?: (stage: InfrafileStage) => void;
   signal?: AbortSignal;
@@ -670,7 +680,7 @@ export async function rollbackDeployment(opts: {
     );
   }
 
-  return runDeployment({
+  const outcome = await runDeployment({
     organizationId: opts.organizationId,
     ...(opts.userId ? { userId: opts.userId } : {}),
     repo: source.repo,
@@ -687,6 +697,109 @@ export async function rollbackDeployment(opts: {
     ...(opts.onStage ? { onStage: opts.onStage } : {}),
     ...(opts.signal ? { signal: opts.signal } : {}),
   });
+
+  // Only after the known-good image is confirmed live: a rollback that failed
+  // must leave everything alone, or a broken environment gets *more* broken.
+  if (opts.deleteCreated && outcome.result.status === "success") {
+    const { deleted, failed } = await deleteResourcesCreatedAfter({
+      organizationId: opts.organizationId,
+      env: source.env,
+      after: source.startedAt,
+      // The rollback's own run row is newer than the target by definition, and
+      // its deploy() may itself have created resources — those are live now.
+      excludeRunIds: [outcome.runId],
+      ...(opts.onLog ? { onLog: opts.onLog } : {}),
+    });
+    const lines = [
+      ...deleted.map((r) => `deleted ${r.resourceTypeId} ${r.displayName}`),
+      ...failed.map(
+        (f) =>
+          `could not delete ${f.resource.resourceTypeId} ${f.resource.displayName}: ${f.message}`,
+      ),
+    ];
+    if (lines.length > 0) {
+      outcome.result.notes.push(...lines);
+      await db
+        .update(deploymentRuns)
+        .set({ notes: outcome.result.notes.join("\n") })
+        .where(eq(deploymentRuns.id, outcome.runId));
+    }
+  }
+
+  return outcome;
+}
+
+/**
+ * Delete the resources that deploys to `env` after `after` created, newest run
+ * first and within each run in reverse creation order — children before the
+ * parents they were created under. Failed runs count too: a deploy that
+ * provisioned a database and then died still provisioned the database.
+ *
+ * Per-resource best-effort: a resource somebody already deleted by hand (or
+ * whose account is gone) is reported, not fatal — the rollback this runs after
+ * has already succeeded.
+ */
+async function deleteResourcesCreatedAfter(opts: {
+  organizationId: string;
+  env: string;
+  after: Date;
+  excludeRunIds: string[];
+  onLog?: (entry: RunLogEntry) => void;
+}): Promise<{
+  deleted: InfrafileCreatedResource[];
+  failed: { resource: InfrafileCreatedResource; message: string }[];
+}> {
+  const rows = await db
+    .select({ id: deploymentRuns.id, createdResources: deploymentRuns.createdResources })
+    .from(deploymentRuns)
+    .where(
+      and(
+        eq(deploymentRuns.organizationId, opts.organizationId),
+        eq(deploymentRuns.env, opts.env),
+        gt(deploymentRuns.startedAt, opts.after),
+      ),
+    )
+    .orderBy(desc(deploymentRuns.startedAt));
+
+  const host = buildOrgWorkflowHost(opts.organizationId, "deploy-rollback-cleanup");
+  const seen = new Set<string>();
+  const deleted: InfrafileCreatedResource[] = [];
+  const failed: { resource: InfrafileCreatedResource; message: string }[] = [];
+
+  for (const row of rows) {
+    if (opts.excludeRunIds.includes(row.id)) continue;
+    const created = Array.isArray(row.createdResources)
+      ? (row.createdResources as InfrafileCreatedResource[])
+      : [];
+    for (const resource of [...created].reverse()) {
+      const key = `${resource.accountId}:${resource.resourceTypeId}:${resource.resourceId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      try {
+        await host.deleteResource?.(
+          resource.accountId,
+          resource.resourceTypeId,
+          resource.resourceId,
+          resource.sidecar,
+        );
+        deleted.push(resource);
+        opts.onLog?.({
+          at: Date.now(),
+          level: "info",
+          message: `deleted ${resource.resourceTypeId} ${resource.displayName}`,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        failed.push({ resource, message });
+        opts.onLog?.({
+          at: Date.now(),
+          level: "warn",
+          message: `could not delete ${resource.resourceTypeId} ${resource.displayName}: ${message}`,
+        });
+      }
+    }
+  }
+  return { deleted, failed };
 }
 
 /**
@@ -707,6 +820,9 @@ export async function recordCliRun(
     stage?: string;
     logs?: RunLogEntry[];
     notes?: string[];
+    output?: unknown;
+    plan?: unknown;
+    createdResources?: InfrafileCreatedResource[];
     durationMs?: number;
     error?: { message: string } | null;
   },
@@ -727,6 +843,11 @@ export async function recordCliRun(
     // an uncapped jsonb array is read back in full by the history view.
     logs: cappedLogs(run.logs ?? []),
     notes: run.notes && run.notes.length > 0 ? run.notes.join("\n") : null,
+    output: cappedJson(run.output),
+    // CLI runs used to drop their plan; storing it is what lets `deploy --plan`
+    // diff against the last CLI deploy.
+    planJson: cappedJson(run.plan),
+    createdResources: cappedCreatedResources(run.createdResources ?? []),
     error: run.error ?? null,
     durationMs: run.durationMs ?? null,
     finishedAt: new Date(),
@@ -744,6 +865,31 @@ export async function recordCliRun(
  * dropped — with a marker, because silently truncated logs are worse than none.
  */
 const MAX_PERSISTED_LOGS = 2000;
+
+/**
+ * A run that legitimately provisions does so tens of times, not thousands —
+ * but this column is client-supplied through `recordCliRun`, so it gets the
+ * same treatment as `logs`: bounded on write.
+ */
+const MAX_CREATED_RESOURCES = 500;
+
+function cappedCreatedResources(list: InfrafileCreatedResource[]): InfrafileCreatedResource[] {
+  return list.length <= MAX_CREATED_RESOURCES ? list : list.slice(0, MAX_CREATED_RESOURCES);
+}
+
+/**
+ * Client-supplied and unbounded jsonb values (`output`, a CLI-reported plan)
+ * get the same treatment as `logs`: bounded on write. Oversized or
+ * unserializable values become a marker rather than the payload.
+ */
+function cappedJson(value: unknown, maxChars = 100_000): unknown {
+  if (value === undefined) return null;
+  try {
+    return JSON.stringify(value).length > maxChars ? { truncated: true } : value;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * A single entry's message is bounded too: the entry cap alone still lets a

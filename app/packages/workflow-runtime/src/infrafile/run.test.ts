@@ -966,3 +966,429 @@ describe("ask() — free-form questions", () => {
     expect(result.plan).toEqual({ d: "2026-12-25" });
   });
 });
+
+describe("created-resource ledger", () => {
+  const creatingHost = (): InfrafileHost =>
+    ({
+      ...hostFor(),
+      listPlugins: async () => [
+        {
+          pluginId: "neon",
+          displayName: "Neon",
+          accounts: [{ id: "acct-1", pluginId: "neon", displayName: "test" }],
+          resourceTypes: [
+            {
+              id: "neon-project",
+              displayName: "Project",
+              pluralDisplayName: "Projects",
+              outputs: [],
+              supportsCreate: true,
+              supportsUpdate: false,
+              supportsDelete: true,
+            },
+          ],
+        },
+      ],
+      createResource: async (
+        accountId: string,
+        typeId: string,
+        fields: Record<string, string>,
+      ) => ({
+        id: `${accountId}:${typeId}:prj_1`,
+        pluginId: "neon",
+        resourceTypeId: typeId,
+        accountId,
+        displayName: fields["name"] ?? "created",
+        externalId: "prj_1",
+        fields,
+        resolvedOutputs: {},
+      }),
+    }) as unknown as InfrafileHost;
+
+  it("records resources created through infra.accounts on the run result", async () => {
+    const result = await run(
+      `
+      defineInfra({
+        envs: ["staging"],
+        async plan() {
+          const neon = infra.accounts.neon.list()[0];
+          await neon.projects.create({ name: "todo-api" });
+          return {};
+        },
+        dockerfile: () => "FROM node:22",
+        deploy: async () => {},
+      });
+      `,
+      creatingHost(),
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.createdResources).toEqual([
+      {
+        pluginId: "neon",
+        accountId: "acct-1",
+        resourceTypeId: "neon-project",
+        resourceId: "acct-1:neon-project:prj_1",
+        externalId: "prj_1",
+        displayName: "todo-api",
+      },
+    ]);
+    expect(result.logs.map((l) => l.message)).toContain("created neon-project todo-api");
+  });
+
+  it("leaves the ledger empty for a run that only lists", async () => {
+    const result = await run(
+      `
+      defineInfra({
+        envs: ["staging"],
+        async plan() {
+          await infra.accounts.neon.list()[0].projects.list();
+          return {};
+        },
+        dockerfile: () => "FROM node:22",
+        deploy: async () => {},
+      });
+      `,
+      {
+        ...creatingHost(),
+        listResources: async () => [],
+      } as unknown as InfrafileHost,
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.createdResources).toEqual([]);
+  });
+});
+
+describe("sidecar importYaml", () => {
+  // The kubernetes sidecar carries no resource types here on purpose: the
+  // importYaml surface must exist independently of any peer resource groups.
+  const clusterHost = (calls: unknown[]): InfrafileHost =>
+    ({
+      ...hostFor(),
+      listPlugins: async () => [
+        {
+          pluginId: "gcp",
+          displayName: "Google Cloud",
+          accounts: [{ id: "acct-1", pluginId: "gcp", displayName: "test" }],
+          resourceTypes: [
+            {
+              id: "gke-cluster",
+              displayName: "GKE Cluster",
+              pluralDisplayName: "GKE Clusters",
+              outputs: [],
+              supportsCreate: false,
+              supportsUpdate: false,
+              supportsDelete: false,
+              sidecars: [
+                {
+                  pluginId: "kubernetes",
+                  displayName: "Kubernetes",
+                  tabLabel: "Kubernetes",
+                  resourceTypes: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      listResources: async (accountId: string, typeId: string) => [
+        {
+          id: `${accountId}:${typeId}:cl_1`,
+          pluginId: "gcp",
+          resourceTypeId: typeId,
+          accountId,
+          displayName: "prod",
+          externalId: "cl_1",
+          fields: {},
+          resolvedOutputs: {},
+        },
+      ],
+      importYaml: async (accountId: string, yaml: string, sidecar?: unknown) => {
+        calls.push({ accountId, yaml, sidecar });
+        return { applied: 1 };
+      },
+    }) as unknown as InfrafileHost;
+
+  it("routes cluster.kubernetes.importYaml through the parent resource's sidecar ref", async () => {
+    const calls: unknown[] = [];
+    const result = await run(
+      `
+      defineInfra({
+        envs: ["staging"],
+        async plan() {
+          const gcp = infra.accounts.gcp.list()[0];
+          const cluster = (await gcp.gkeClusters.list())[0];
+          await cluster.kubernetes.importYaml("kind: Namespace");
+          return {};
+        },
+        dockerfile: () => "FROM node:22",
+        deploy: async () => {},
+      });
+      `,
+      clusterHost(calls),
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(calls).toEqual([
+      {
+        accountId: "acct-1",
+        yaml: "kind: Namespace",
+        sidecar: { pluginId: "kubernetes", parentResourceId: "acct-1:gke-cluster:cl_1" },
+      },
+    ]);
+  });
+});
+
+describe("read-only plan", () => {
+  // Same shape as the ledger's creatingHost, plus a call counter — the point
+  // of every dry-run assertion is that this counter stays at zero.
+  const countingHost = (): { host: InfrafileHost; calls: { created: number } } => {
+    const calls = { created: 0 };
+    const host = {
+      ...hostFor(),
+      listPlugins: async () => [
+        {
+          pluginId: "neon",
+          displayName: "Neon",
+          accounts: [{ id: "acct-1", pluginId: "neon", displayName: "test" }],
+          resourceTypes: [
+            {
+              id: "neon-project",
+              displayName: "Project",
+              pluralDisplayName: "Projects",
+              outputs: [],
+              supportsCreate: true,
+              supportsUpdate: false,
+              supportsDelete: true,
+            },
+          ],
+        },
+      ],
+      createResource: async (accountId: string, typeId: string, fields: Record<string, string>) => {
+        calls.created += 1;
+        return {
+          id: `${accountId}:${typeId}:prj_1`,
+          pluginId: "neon",
+          resourceTypeId: typeId,
+          accountId,
+          displayName: fields["name"] ?? "created",
+          externalId: "prj_1",
+          fields,
+          resolvedOutputs: {},
+        };
+      },
+    } as unknown as InfrafileHost;
+    return { host, calls };
+  };
+
+  it("records a create as a planned change instead of performing it", async () => {
+    const { host, calls } = countingHost();
+    const result = await run(
+      `
+      defineInfra({
+        envs: ["staging"],
+        async plan() {
+          const neon = infra.accounts.neon.list()[0];
+          const prj = await neon.projects.create({ name: "todo-api" });
+          return { createdId: prj.id };
+        },
+        dockerfile: () => "FROM node:22",
+        deploy: async () => { throw new Error("deploy must not run"); },
+      });
+      `,
+      host,
+      { planOnly: true },
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(calls.created).toBe(0);
+    expect(result.createdResources).toEqual([]);
+    expect(result.plannedChanges).toEqual([
+      {
+        action: "create",
+        accountId: "acct-1",
+        resourceTypeId: "neon-project",
+        displayName: "todo-api",
+        fields: { name: "todo-api" },
+      },
+    ]);
+    expect((result.plan as { createdId: string }).createdId.startsWith("planned:")).toBe(true);
+  });
+
+  it("resolves a synthetic resource's outputs to the placeholder", async () => {
+    // hostFor() has no resolveOutput, so reaching the host here would fail the
+    // run — a passing test proves the placeholder short-circuited it.
+    const { host } = countingHost();
+    const result = await run(
+      `
+      defineInfra({
+        envs: ["staging"],
+        async plan() {
+          const neon = infra.accounts.neon.list()[0];
+          const prj = await neon.projects.create({ name: "todo-api" });
+          const conn = await neon.resolveOutput("neon-project", prj.id, "connectionString");
+          return { conn };
+        },
+        dockerfile: () => "FROM node:22",
+        deploy: async () => {},
+      });
+      `,
+      host,
+      { planOnly: true },
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.plan).toEqual({ conn: "(known after apply)" });
+  });
+
+  it("performs creates for real when planOnly is off", async () => {
+    const { host, calls } = countingHost();
+    const result = await run(
+      `
+      defineInfra({
+        envs: ["staging"],
+        async plan() {
+          const neon = infra.accounts.neon.list()[0];
+          await neon.projects.create({ name: "todo-api" });
+          return {};
+        },
+        dockerfile: () => "FROM node:22",
+        deploy: async () => {},
+      });
+      `,
+      host,
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(calls.created).toBe(1);
+    expect(result.plannedChanges).toEqual([]);
+    expect(result.createdResources).toHaveLength(1);
+  });
+
+  it("exposes ctx.dryRun to plan(): true on planOnly, false otherwise", async () => {
+    const source = `
+      defineInfra({
+        envs: ["staging"],
+        async plan(ctx) { return { dry: ctx.dryRun }; },
+        dockerfile: () => "FROM node:22",
+        deploy: async () => {},
+      });
+      `;
+
+    const planned = await run(source, hostFor(), { planOnly: true });
+    expect(planned.error).toBeUndefined();
+    expect(planned.plan).toEqual({ dry: true });
+
+    const real = await run(source, hostFor());
+    expect(real.error).toBeUndefined();
+    expect(real.plan).toEqual({ dry: false });
+  });
+});
+
+describe("destroy plan state", () => {
+  it("hands destroy() the recorded plan the caller supplied", async () => {
+    const result = await runInfrafile({
+      source: `
+      defineInfra({
+        envs: ["staging"],
+        plan: async () => ({}),
+        dockerfile: () => "FROM x",
+        deploy: async () => {},
+        async destroy({ env, plan, notes }) {
+          await notes("tearing down " + (plan ? plan.namespace : "without a plan") + " on " + env);
+        },
+      });
+      `,
+      host: hostFor(),
+      env: "staging",
+      git: GIT,
+      interactive: false,
+      destroy: true,
+      destroyPlan: { namespace: "todo-api-staging", neonAccount: "test" },
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.notes).toEqual(["tearing down todo-api-staging on staging"]);
+  });
+
+  it("leaves plan undefined when the caller found no history", async () => {
+    const result = await runInfrafile({
+      source: `
+      defineInfra({
+        envs: ["staging"],
+        plan: async () => ({}),
+        dockerfile: () => "FROM x",
+        deploy: async () => {},
+        async destroy({ plan, notes }) {
+          await notes(plan === undefined ? "no plan" : "unexpected plan");
+        },
+      });
+      `,
+      host: hostFor(),
+      env: "staging",
+      git: GIT,
+      interactive: false,
+      destroy: true,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.notes).toEqual(["no plan"]);
+  });
+});
+
+describe("infrafileImageRef", () => {
+  it("uses a slash-bearing tag verbatim as the full image reference", async () => {
+    const { infrafileImageRef } = await import("./types.js");
+    expect(
+      infrafileImageRef({
+        project: "astrid/demo",
+        env: "production",
+        tag: "europe-north2-docker.pkg.dev/my-proj/repo/app:production-abc",
+        registryHost: "europe-north2-docker.pkg.dev",
+      }),
+    ).toBe("europe-north2-docker.pkg.dev/my-proj/repo/app:production-abc");
+  });
+
+  it("still composes host/name:tag from a bare tag", async () => {
+    const { infrafileImageRef } = await import("./types.js");
+    expect(
+      infrafileImageRef({
+        project: "astrid/demo",
+        env: "staging",
+        tag: "staging-abc1234",
+        registryHost: "registry.example.com",
+      }),
+    ).toBe("registry.example.com/demo:staging-abc1234");
+  });
+});
+
+describe("push() registry default", () => {
+  it("a bare push() carries the plan's registry credentials", async () => {
+    const pushes: Array<{ image: string; registry?: { host: string } }> = [];
+    const host = {
+      ...hostFor(),
+      infrafilePush: async (image: string, registry?: { host: string }) => {
+        pushes.push({ image, ...(registry ? { registry } : {}) });
+      },
+    } as unknown as InfrafileHost;
+
+    const result = await run(
+      `
+      defineInfra({
+        envs: ["staging"],
+        async plan() {
+          return { registry: { host: "eu-docker.pkg.dev", username: "oauth2accesstoken", password: "tok" } };
+        },
+        dockerfile: () => "FROM node:22",
+        async deploy({ push }) { await push(); },
+      });
+      `,
+      host,
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0]?.registry?.host).toBe("eu-docker.pkg.dev");
+  });
+});

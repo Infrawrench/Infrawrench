@@ -137,11 +137,15 @@ app.get("/runs/:id", async (c) => {
  */
 app.post("/runs/:id/rollback", async (c) => {
   requirePermission(c, "deployments:write");
+  // The body is optional — a bare rollback has nothing to say.
+  const body = (await c.req.json().catch(() => ({}))) as { deleteCreated?: unknown };
   try {
     const { runId, result } = await rollbackDeployment({
       organizationId: orgId(c),
       runId: c.req.param("id"),
       ...(userId(c) ? { userId: userId(c)! } : {}),
+      // Explicit true or nothing: this deletes real resources.
+      ...(body.deleteCreated === true ? { deleteCreated: true } : {}),
     });
     return c.json({ runId, result });
   } catch (e) {

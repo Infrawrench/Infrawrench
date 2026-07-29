@@ -52,6 +52,14 @@ export interface BuildRequest {
   target?: BuildTarget;
   /** Image tag the plan asked for, e.g. `staging-a1b2c3d`. */
   tag?: string;
+  /**
+   * Target platform (`linux/amd64`), passed to `docker build --platform`.
+   * Without it the image inherits the BUILDER's platform — an Apple Silicon
+   * laptop produces arm64 manifests that amd64 cluster nodes refuse with
+   * "no match for platform in manifest". `FROM --platform` pins alone don't
+   * fix the manifest, only the base images.
+   */
+  platform?: string;
   /** Build args, stringified by the prelude. */
   args?: Record<string, string>;
   registry?: RegistryCredentials;
@@ -210,6 +218,53 @@ export interface InfrafileRunContext {
   planOnly?: boolean;
 }
 
+/**
+ * A resource an Infrafile run created via `infra.accounts.*.create(...)`.
+ *
+ * Recorded so a run's record can say what it provisioned — and so a rollback
+ * asked to also undo provisioning (`--delete-created`) knows exactly what to
+ * delete, rather than guessing from a diff of listings. `resourceId` is the
+ * Infrawrench id (`delete` takes it directly); `externalId` is the provider's,
+ * kept for display and audit.
+ */
+export interface InfrafileCreatedResource {
+  pluginId: string;
+  accountId: string;
+  resourceTypeId: string;
+  resourceId: string;
+  externalId?: string;
+  displayName: string;
+  /** Present when the create targeted a sidecar (peer plugin) surface. */
+  sidecar?: { pluginId: string; parentResourceId: string };
+}
+
+/**
+ * Synthetic resource ids minted for a dry run start with this. Namespacing them
+ * is what lets `resolveOutput` recognise an id that exists nowhere host-side
+ * and answer with {@link PLAN_PLACEHOLDER} instead of a lookup that would fail.
+ */
+export const PLANNED_ID_PREFIX = "planned:";
+
+/** What a planned (not-yet-created) resource's outputs resolve to. */
+export const PLAN_PLACEHOLDER = "(known after apply)";
+
+/**
+ * A write an Infrafile *would* have performed, recorded during a `--plan` run
+ * instead of reaching the host. The ledger is the dry run's whole product: it
+ * is what the CLI and web preview render as "this deploy would do X".
+ */
+export interface InfrafilePlannedChange {
+  action: "create" | "update" | "delete";
+  accountId: string;
+  resourceTypeId: string;
+  /** Present for update/delete — the real resource id targeted. */
+  resourceId?: string;
+  displayName: string;
+  /** Present for create/update — the fields that would be applied. */
+  fields?: Record<string, string>;
+  sidecar?: { pluginId: string; parentResourceId: string };
+}
+
 /** Outcome of executing an Infrafile once. */
 export interface InfrafileRunResult extends RunResult {
   env: string;
@@ -221,6 +276,10 @@ export interface InfrafileRunResult extends RunResult {
   image?: string;
   /** Notes the deploy stage emitted, in order. */
   notes: string[];
+  /** Resources the run created through `infra.accounts`, in creation order. */
+  createdResources: InfrafileCreatedResource[];
+  /** Writes a `--plan` run recorded instead of performing. Empty on a real run. */
+  plannedChanges: InfrafilePlannedChange[];
   /** The last stage that started. Useful for reporting where a failure happened. */
   reachedStage?: InfrafileStage;
 }
@@ -264,6 +323,12 @@ export interface InfrafileHostOps {
  */
 export interface InfrafileRunSink {
   /**
+   * True on a `--plan` run. Dispatch consults this to intercept writes: creates,
+   * updates and deletes are recorded via {@link recordPlanned} instead of
+   * reaching the host, while reads pass through untouched.
+   */
+  readonly dryRun: boolean;
+  /**
    * Validate the file's declared envs against the one the caller asked for.
    * Throws (naming the declared envs) when they don't match.
    */
@@ -274,11 +339,31 @@ export interface InfrafileRunSink {
     rollback?: InfrafileRollback;
     /** Present on a teardown — the driver then calls `destroy()` and nothing else. */
     destroy?: boolean;
+    /**
+     * Teardown only: the env's last successful deploy's recorded plan, when the
+     * host found one. Handed to `destroy()` as `plan` so a teardown can consume
+     * what the deploy wrote down (which account, which region) without asking.
+     */
+    plan?: unknown;
+    /**
+     * Present on a `--plan` run. Carried in this RPC's return — rather than the
+     * later `infrafile.plan` one — because `plan()` itself needs the flag, and
+     * this is the only host round-trip that completes before it runs.
+     */
+    planOnly?: boolean;
   };
   /** Record what `plan()` returned. Returns false to stop before building. */
   recordPlan(plan: unknown): boolean;
   recordDockerfile(text: string): void;
   recordNote(text: string): void;
+  /** Record a resource created through `infra.accounts` during any stage. */
+  recordCreated(resource: InfrafileCreatedResource): void;
+  /**
+   * Record a write a dry run intercepted. Returns the change's 0-based index,
+   * which dispatch bakes into the synthetic resource id it hands back — so each
+   * planned resource stays distinguishable within the run.
+   */
+  recordPlanned(change: InfrafilePlannedChange): number;
   /** Announce that a stage is starting, for live progress rendering. */
   stage(stage: InfrafileStage): void;
 }
@@ -301,6 +386,13 @@ export type { RunLogEntry };
  * `project` is the repository name where one is known, falling back to the
  * build directory. `tag` prefers the plan's, else `<env>-<short sha>` so
  * repeated deploys of one environment stay distinguishable.
+ *
+ * A `tag` containing "/" is a FULL image reference and is used verbatim.
+ * Registries whose image path is more than `host/name` — Artifact Registry's
+ * `host/project/repo/image` — cannot be derived from a bare registry host, so
+ * the plan names the whole thing:
+ *
+ *   tag: `${region}-docker.pkg.dev/${project}/${repo}/app:${env}-${sha}`
  */
 export function infrafileImageRef(input: {
   project: string;
@@ -309,6 +401,7 @@ export function infrafileImageRef(input: {
   gitSha?: string;
   registryHost?: string;
 }): string {
+  if (input.tag && input.tag.includes("/")) return input.tag;
   const name =
     input.project
       .split("/")

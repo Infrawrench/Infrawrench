@@ -17,4 +17,4 @@
  * Adding or removing a plugin changes the `pluginId` / `resourceTypeId` enums,
  * which is a real change to the published surface — that counts.
  */
-export const API_VERSION = "0.14.1";
+export const API_VERSION = "0.15.0";

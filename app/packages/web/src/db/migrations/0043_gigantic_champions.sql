@@ -1,0 +1,1 @@
+ALTER TABLE "deployment_runs" ADD COLUMN "created_resources" jsonb DEFAULT '[]'::jsonb NOT NULL;

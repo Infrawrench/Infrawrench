@@ -22,7 +22,9 @@ import {
 } from "../types.js";
 import { INFRAFILE_EPILOGUE, INFRAFILE_PRELUDE } from "./prelude.js";
 import type {
+  InfrafileCreatedResource,
   InfrafileGitContext,
+  InfrafilePlannedChange,
   InfrafileRollback,
   InfrafileRunResult,
   InfrafileRunSink,
@@ -78,6 +80,12 @@ export interface RunInfrafileOptions {
    */
   destroy?: boolean;
   /**
+   * The env's last successful deploy's recorded plan, when the caller has one
+   * (the CLI reads its deploy history, the web the run row). Passed to
+   * `destroy()` as `plan` — recorded JSON, so plain data rather than handles.
+   */
+  destroyPlan?: unknown;
+  /**
    * Replay a past run's `deploy()` with its recorded plan and image instead of
    * planning and building afresh. See {@link InfrafileRollback}.
    */
@@ -93,6 +101,8 @@ export async function runInfrafile(opts: RunInfrafileOptions): Promise<Infrafile
   const startedAt = Date.now();
   const logs: RunLogEntry[] = [];
   const notes: string[] = [];
+  const createdResources: InfrafileCreatedResource[] = [];
+  const plannedChanges: InfrafilePlannedChange[] = [];
   let output: unknown;
   let plan: unknown;
   let dockerfile: string | undefined;
@@ -115,6 +125,7 @@ export async function runInfrafile(opts: RunInfrafileOptions): Promise<Infrafile
   let env = opts.env ?? "";
 
   const sink: InfrafileRunSink = {
+    dryRun: opts.planOnly === true,
     chooseEnv: (envs) => {
       if (!opts.env) {
         if (envs.length !== 1) {
@@ -136,7 +147,12 @@ export async function runInfrafile(opts: RunInfrafileOptions): Promise<Infrafile
           `Tearing down ${env}${opts.git.pullRequest ? ` for PR #${opts.git.pullRequest.number}` : ""}`,
         );
         setStage("destroy");
-        return { env, git: opts.git, destroy: true };
+        return {
+          env,
+          git: opts.git,
+          destroy: true,
+          ...(opts.destroyPlan !== undefined ? { plan: opts.destroyPlan } : {}),
+        };
       }
       if (opts.rollback) {
         // Nothing to plan or build — the artifact already exists.
@@ -149,7 +165,9 @@ export async function runInfrafile(opts: RunInfrafileOptions): Promise<Infrafile
         return { env, git: opts.git, rollback: opts.rollback };
       }
       setStage("plan");
-      return { env, git: opts.git };
+      // planOnly rides on this return — the earliest host round-trip — because
+      // plan() itself needs the flag; the `infrafile.plan` RPC answers too late.
+      return { env, git: opts.git, ...(opts.planOnly ? { planOnly: true } : {}) };
     },
     recordPlan: (value) => {
       plan = value;
@@ -167,6 +185,15 @@ export async function runInfrafile(opts: RunInfrafileOptions): Promise<Infrafile
       if (!text) return;
       notes.push(text);
       log("info", text);
+    },
+    recordCreated: (resource) => {
+      createdResources.push(resource);
+      log("info", `created ${resource.resourceTypeId} ${resource.displayName}`);
+    },
+    recordPlanned: (change) => {
+      plannedChanges.push(change);
+      log("info", `plan: would ${change.action} ${change.resourceTypeId} ${change.displayName}`);
+      return plannedChanges.length - 1;
     },
     stage: setStage,
   };
@@ -194,6 +221,8 @@ export async function runInfrafile(opts: RunInfrafileOptions): Promise<Infrafile
       status,
       logs,
       notes,
+      createdResources,
+      plannedChanges,
       env,
       startedAt,
       finishedAt,
