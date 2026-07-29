@@ -12,7 +12,7 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { formatBytes, jsonRestFetch } from "@infrawrench/plugin-base";
+import { base64ToBytes, bytesToBase64, formatBytes, jsonRestFetch } from "@infrawrench/plugin-base";
 
 /**
  * OpenAI-compatible surface: models, batches, files, audio.
@@ -203,18 +203,6 @@ function epochToIso(seconds: number | null | undefined): string {
 function extensionFor(mimeType: string): string {
   const base = mimeType.split(";")[0]?.trim().toLowerCase() ?? "";
   return AUDIO_EXTENSIONS[base] ?? "webm";
-}
-
-/**
- * base64 → a standalone `ArrayBuffer`. `Buffer.from` allocates out of Node's
- * shared pool, so its `.buffer` is a slab of unrelated bytes — copying into a
- * fresh buffer is what makes it safe to hand to `Blob`.
- */
-function decodeBase64(b64: string): ArrayBuffer {
-  const decoded = Buffer.from(b64, "base64");
-  const out = new ArrayBuffer(decoded.byteLength);
-  new Uint8Array(out).set(decoded);
-  return out;
 }
 
 /**
@@ -657,12 +645,12 @@ export class GroqClient implements PluginClient {
       );
     }
 
-    const bytes = Buffer.from(await response.arrayBuffer());
+    const bytes = new Uint8Array(await response.arrayBuffer());
     const elapsedMs = Date.now() - started;
     const requestId = response.headers.get("x-request-id") ?? undefined;
 
     return {
-      audioBase64: bytes.toString("base64"),
+      audioBase64: bytesToBase64(bytes),
       mimeType: "audio/wav",
       fileName: `groq-${voice}.wav`,
       summary: `${model} · ${voice} · ${text.length} characters · ${formatBytes(bytes.byteLength)} · ${elapsedMs} ms`,
@@ -691,7 +679,7 @@ export class GroqClient implements PluginClient {
         ? payload.modelId
         : (FALLBACK_STT_MODELS[0] as string);
 
-    const buffer = decodeBase64(payload.audioBase64);
+    const buffer = base64ToBytes(payload.audioBase64);
     if (buffer.byteLength === 0) throw new Error("Groq plugin: empty audio clip");
     if (buffer.byteLength > MAX_AUDIO_BYTES) {
       throw new Error(

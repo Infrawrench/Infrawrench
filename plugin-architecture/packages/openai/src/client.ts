@@ -22,7 +22,12 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { CostSetupError, jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  CostSetupError,
+  base64ToBytes,
+  bytesToBase64,
+  jsonRestFetch,
+} from "@infrawrench/plugin-base";
 import {
   ACCEPTED_AUDIO_TYPES,
   AUTO_LANGUAGE,
@@ -2266,7 +2271,7 @@ export class OpenAIClient implements PluginClient {
     const note = isTtsModel(requested) ? "" : ` · ${requested} can't synthesize, used ${model}`;
 
     return {
-      audioBase64: Buffer.from(bytes).toString("base64"),
+      audioBase64: bytesToBase64(bytes),
       mimeType: "audio/mpeg",
       fileName: `openai-${voice}.mp3`,
       summary: `${model} · ${voice} · ${characters.toLocaleString()} characters · mp3 · ${elapsedMs} ms${note}`,
@@ -2404,7 +2409,7 @@ export class OpenAIClient implements PluginClient {
     responseFormat: string,
     withTimestamps: boolean,
   ): Promise<TranscriptionResponse> {
-    const bytes = new Uint8Array(Buffer.from(payload.audioBase64, "base64"));
+    const bytes = base64ToBytes(payload.audioBase64);
     const form = new FormData();
     form.append(
       "file",

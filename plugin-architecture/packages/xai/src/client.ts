@@ -19,7 +19,7 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { CostSetupError, jsonRestFetch } from "@infrawrench/plugin-base";
+import { CostSetupError, base64ToBytes, jsonRestFetch } from "@infrawrench/plugin-base";
 
 const INFERENCE_BASE = "https://api.x.ai";
 const MANAGEMENT_BASE = "https://management-api.x.ai";
@@ -268,16 +268,24 @@ interface MultipartPart {
  * list (or a clear CostSetupError) rather than failing the whole account.
  */
 /**
- * Drop repeated resource ids from a paged listing.
+ * Drop repeated rows from a paged listing, keyed by whatever identifies them.
  *
- * The cursor guard in each loop stops a non-advancing server, but it can only
- * do so *after* the repeated page has been read, so the rows themselves still
- * need collapsing. Duplicate ids are worse than a short list: the host keys
- * resources by id, so they corrupt the listing rather than shortening it.
+ * The cursor guard in each loop stops a non-advancing server, but only *after*
+ * the repeated page has been read, so the rows still need collapsing. The key
+ * is explicit because these loops do not all yield the same shape: most build
+ * `ResourceInstance`s keyed by `id`, while the custom-voice loop accumulates
+ * raw API rows keyed by `voice_id`. Reading `.id` off those silently collapsed
+ * every voice into one, since they all had `undefined` there.
  */
-function dedupeById<T extends { id: string }>(rows: T[]): T[] {
+function dedupeBy<T>(rows: T[], key: (row: T) => string | undefined): T[] {
   const seen = new Set<string>();
-  return rows.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
+  return rows.filter((row) => {
+    const k = key(row);
+    if (k === undefined) return true;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
 export class XaiClient implements PluginClient {
@@ -562,7 +570,7 @@ export class XaiClient implements PluginClient {
       if (!token || token === seenToken) break;
       seenToken = token;
     }
-    return dedupeById(out);
+    return dedupeBy(out, (r) => r.id);
   }
 
   /** GET /v1/batches */
@@ -589,7 +597,7 @@ export class XaiClient implements PluginClient {
       if (!token || token === seenToken) break;
       seenToken = token;
     }
-    return dedupeById(out);
+    return dedupeBy(out, (r) => r.id);
   }
 
   private mapBatch(accountId: string, now: string, b: XaiBatch): ResourceInstance {
@@ -719,7 +727,7 @@ export class XaiClient implements PluginClient {
       if (!token || token === seenToken) break;
       seenToken = token;
     }
-    return dedupeById(out);
+    return dedupeBy(out, (r) => r.voice_id);
   }
 
   /** GET /auth/teams/{teamId}/api-keys (management key) */
@@ -746,7 +754,7 @@ export class XaiClient implements PluginClient {
       if (!token || token === seenToken) break;
       seenToken = token;
     }
-    return dedupeById(out);
+    return dedupeBy(out, (r) => r.id);
   }
 
   private mapApiKey(accountId: string, now: string, k: XaiManagedApiKey): ResourceInstance {
@@ -816,7 +824,7 @@ export class XaiClient implements PluginClient {
     // so what is missing is the oldest history — say so in the list instead of
     // ending it as if that were all there ever was.
     if (token) out.push(this.auditTruncationMarker(accountId, now, out.length));
-    return dedupeById(out);
+    return dedupeBy(out, (r) => r.id);
   }
 
   private mapAuditEvent(accountId: string, now: string, e: XaiAuditEvent): ResourceInstance {
@@ -1343,7 +1351,7 @@ export class XaiClient implements PluginClient {
     _accountId: string,
     payload: TranscribeAudioPayload,
   ): Promise<TranscribeAudioResult> {
-    const bytes = Buffer.from(payload.audioBase64, "base64");
+    const bytes = base64ToBytes(payload.audioBase64);
     if (bytes.byteLength > STT_MAX_AUDIO_BYTES) {
       throw new Error(
         `xAI plugin: clip is ${(bytes.byteLength / 1024 / 1024).toFixed(1)} MB, over the ${STT_MAX_AUDIO_BYTES / 1024 / 1024} MB limit`,
@@ -1363,7 +1371,7 @@ export class XaiClient implements PluginClient {
     parts.push({ name: "diarize", value: "true" });
     parts.push({
       name: "file",
-      value: new Uint8Array(bytes),
+      value: bytes,
       filename: payload.fileName || fileNameForMime(payload.mimeType),
       contentType: payload.mimeType || "application/octet-stream",
     });

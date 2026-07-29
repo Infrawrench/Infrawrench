@@ -10,7 +10,7 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { base64ToBytes, jsonRestFetch } from "@infrawrench/plugin-base";
 import { buildMultipartBody } from "./multipart.js";
 import {
   GLADIA_AUTO_LANGUAGE,
@@ -401,7 +401,7 @@ export class GladiaClient implements PluginClient {
       throw new Error(`Gladia plugin: cannot transcribe audio for type "${typeId}"`);
     }
 
-    const bytes = new Uint8Array(Buffer.from(payload.audioBase64, "base64"));
+    const bytes = base64ToBytes(payload.audioBase64);
     if (bytes.byteLength === 0) throw new Error("Gladia plugin: empty audio payload");
     if (bytes.byteLength > MAX_AUDIO_BYTES) {
       throw new Error(

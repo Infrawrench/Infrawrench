@@ -12,7 +12,7 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { base64ToBytes, jsonRestFetch } from "@infrawrench/plugin-base";
 
 const PLUGIN_ID = "assemblyai";
 const TRANSCRIPT_TYPE = "transcript";
@@ -675,8 +675,7 @@ export class AssemblyAIClient implements PluginClient {
     }
 
     const startedAt = Date.now();
-    // Plugins run in Node (server / Electron main), so Buffer — not atob.
-    const bytes = Buffer.from(payload.audioBase64, "base64");
+    const bytes = base64ToBytes(payload.audioBase64);
     if (bytes.length === 0) throw new Error("AssemblyAI plugin: empty audio payload");
     if (bytes.length > MAX_AUDIO_BYTES) {
       throw new Error(

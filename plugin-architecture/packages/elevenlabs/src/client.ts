@@ -15,7 +15,7 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { base64ToBytes, bytesToBase64, jsonRestFetch } from "@infrawrench/plugin-base";
 
 const API_BASE = "https://api.elevenlabs.io";
 
@@ -769,7 +769,7 @@ export class ElevenLabsClient implements PluginClient {
     ];
 
     return {
-      audioBase64: Buffer.from(audio.bytes).toString("base64"),
+      audioBase64: bytesToBase64(audio.bytes),
       // ElevenLabs answers with application/octet-stream even though the bytes
       // are mp3, so we label it ourselves for the browser `<audio>` element.
       mimeType: "audio/mpeg",
@@ -849,7 +849,7 @@ export class ElevenLabsClient implements PluginClient {
     // `payload.mimeType` is whatever MediaRecorder produced —
     // `audio/webm;codecs=opus` on Chromium, `audio/mp4` on Safari. Scribe
     // accepts both; forward it verbatim rather than assuming or transcoding.
-    const bytes = Buffer.from(payload.audioBase64, "base64");
+    const bytes = base64ToBytes(payload.audioBase64);
     const fileName = payload.fileName ?? `clip.${extensionForMime(payload.mimeType)}`;
 
     const form = new FormData();

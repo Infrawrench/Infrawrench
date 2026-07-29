@@ -235,3 +235,5 @@ export {
   queryResultSchema,
   queryExecuteResultSchema,
 } from "./validation/index.js";
+
+export { base64ToBytes, bytesToBase64, utf8ToBase64, base64ToUtf8 } from "./base64.js";

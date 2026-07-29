@@ -13,7 +13,7 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { base64ToBytes, jsonRestFetch } from "@infrawrench/plugin-base";
 
 /* -------------------------------------------------------------------------- */
 /* Wire shapes                                                                 */
@@ -1019,9 +1019,7 @@ export class SpeechmaticsClient implements PluginClient {
     const startedAt = Date.now();
     const deadline = startedAt + TOTAL_TIMEOUT_MS;
 
-    // Plugins run in Node (server / Electron main), so Buffer is the right
-    // decoder here — `atob` would hand back a binary string.
-    const audio = new Uint8Array(Buffer.from(payload.audioBase64, "base64"));
+    const audio = base64ToBytes(payload.audioBase64);
     if (audio.length === 0) throw new Error("Speechmatics plugin: decoded audio is empty");
     if (audio.length > MAX_AUDIO_BYTES) {
       throw new Error(
@@ -1652,11 +1650,14 @@ function parseStashedDiscovery(raw: string | undefined): StashedDiscovery {
  * to produce a view, so this degrades to an empty window rather than throwing.
  */
 function parseStashedUsage(raw: string | undefined): StashedUsage {
-  const empty: StashedUsage = { since: "—", until: "—", hours: 0, jobs: 0, rows: [] };
+  const empty: StashedUsage = { ok: false, since: "—", until: "—", hours: 0, jobs: 0, rows: [] };
   if (!raw) return empty;
   try {
     const parsed = JSON.parse(raw) as Partial<StashedUsage>;
     return {
+      // A stash written before `ok` existed reads as reachable, which matches
+      // the behaviour those instances were rendered with.
+      ok: parsed.ok ?? true,
       since: parsed.since ?? empty.since,
       until: parsed.until ?? empty.until,
       hours: typeof parsed.hours === "number" ? parsed.hours : 0,

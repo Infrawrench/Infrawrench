@@ -12,7 +12,7 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { base64ToBytes, bytesToBase64, jsonRestFetch } from "@infrawrench/plugin-base";
 
 const BASE_URL = "https://api.cartesia.ai";
 
@@ -509,7 +509,7 @@ export class CartesiaClient implements PluginClient {
 
     const characters = payload.text.length;
     return {
-      audioBase64: Buffer.from(bytes).toString("base64"),
+      audioBase64: bytesToBase64(bytes),
       mimeType: "audio/mpeg",
       fileName: `cartesia-${voiceId}.mp3`,
       summary: `${modelId} · ${characters.toLocaleString()} characters · mp3 44.1 kHz 128 kbps · ${elapsedMs} ms`,
@@ -598,7 +598,7 @@ export class CartesiaClient implements PluginClient {
    * file picker produced — forwarded verbatim, never transcoded.
    */
   private async sttTranscribe(payload: TranscribeAudioPayload): Promise<CartesiaTranscript> {
-    const bytes = new Uint8Array(Buffer.from(payload.audioBase64, "base64"));
+    const bytes = base64ToBytes(payload.audioBase64);
     const form = new FormData();
     form.append(
       "file",

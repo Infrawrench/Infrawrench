@@ -13,7 +13,7 @@ import type {
   TranscribeAudioPayload,
   TranscribeAudioResult,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { base64ToBytes, bytesToBase64, jsonRestFetch } from "@infrawrench/plugin-base";
 import {
   GEMINI_PCM_BITS_PER_SAMPLE,
   GEMINI_PCM_CHANNELS,
@@ -84,6 +84,19 @@ const SPEECH_HELP_TEXT =
  * bastion egress routing and the custom CA; no binary or multipart side-channel
  * is needed.
  */
+/**
+ * Instruction for the transcription call, optionally pinned to a language.
+ *
+ * An empty/absent language means "auto", which is the picker's first entry and
+ * the sensible default — the model infers it from the audio.
+ */
+function transcriptionPrompt(language: string | undefined): string {
+  const base =
+    "Transcribe this audio verbatim. Reply with the transcript only — no preamble, no commentary, no formatting.";
+  if (!language) return base;
+  return `${base} The audio is in ${language}; transcribe it in that language and do not translate it.`;
+}
+
 export class GeminiClient implements PluginClient {
   private readonly apiKey: string;
   private readonly services: HostServices | undefined;
@@ -1538,11 +1551,11 @@ export class GeminiClient implements PluginClient {
       };
     }
 
-    const pcm = new Uint8Array(Buffer.from(base64, "base64"));
+    const pcm = base64ToBytes(base64);
     const wav = pcmToWav(pcm, sampleRate, channels, GEMINI_PCM_BITS_PER_SAMPLE);
 
     return {
-      audioBase64: Buffer.from(wav).toString("base64"),
+      audioBase64: bytesToBase64(wav),
       mimeType: "audio/wav",
       fileName: `gemini-${voice.toLowerCase()}.wav`,
       summary: summariseSynthesis({
@@ -1580,7 +1593,7 @@ export class GeminiClient implements PluginClient {
     _accountId: string,
     payload: TranscribeAudioPayload,
   ): Promise<TranscribeAudioResult> {
-    const audio = new Uint8Array(Buffer.from(payload.audioBase64, "base64"));
+    const audio = base64ToBytes(payload.audioBase64);
     if (audio.byteLength === 0) throw new Error("Gemini plugin: the audio clip was empty");
     if (audio.byteLength > MAX_INLINE_AUDIO_BYTES) {
       throw new Error(
@@ -1607,7 +1620,13 @@ export class GeminiClient implements PluginClient {
                 role: "user",
                 parts: [
                   {
-                    text: "Transcribe this audio verbatim. Reply with the transcript only — no preamble, no commentary, no formatting.",
+                    // The panel's language picker feeds `payload.language`
+                    // (TranscribeAudioPayload carries it; SynthesizeSpeechPayload
+                    // does not). Gemini has no language parameter on
+                    // generateContent, so the only way to honour the choice is
+                    // to name it in the instruction — otherwise the control is
+                    // inert and the request goes out identical either way.
+                    text: transcriptionPrompt(payload.language),
                   },
                   { inline_data: { mime_type: mimeType, data: payload.audioBase64 } },
                 ],

@@ -31,6 +31,8 @@
  * ```
  */
 
+import { base64ToBytes, bytesToBase64 } from "@infrawrench/plugin-base";
+
 /** Byte length of a canonical PCM WAV header. */
 export const WAV_HEADER_BYTES = 44;
 
@@ -92,14 +94,14 @@ export function pcmToWav(
  * base64 PCM in, base64 WAV out, ready to hand back as `audio/wav`.
  */
 export function geminiPcmBase64ToWavBase64(pcmBase64: string): string {
-  const pcm = new Uint8Array(Buffer.from(pcmBase64, "base64"));
+  const pcm = base64ToBytes(pcmBase64);
   const wav = pcmToWav(
     pcm,
     GEMINI_PCM_SAMPLE_RATE,
     GEMINI_PCM_CHANNELS,
     GEMINI_PCM_BITS_PER_SAMPLE,
   );
-  return Buffer.from(wav).toString("base64");
+  return bytesToBase64(wav);
 }
 
 /**

@@ -13,7 +13,12 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { CostSetupError, formatBytes, jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  CostSetupError,
+  base64ToBytes,
+  formatBytes,
+  jsonRestFetch,
+} from "@infrawrench/plugin-base";
 
 /** Data plane. `Authorization: Bearer <apiKey>`. https://docs.mistral.ai/api */
 const BASE = "https://api.mistral.ai/v1";
@@ -213,18 +218,6 @@ function isTtsModel(id: string): boolean {
 
 function isSttModel(id: string): boolean {
   return /voxtral/i.test(id) && !isTtsModel(id);
-}
-
-/**
- * base64 → a standalone `ArrayBuffer`. `Buffer.from` allocates out of Node's
- * shared pool, so its `.buffer` is a slab of unrelated bytes; copying is what
- * makes the result safe to hand to `Blob`.
- */
-function decodeBase64(b64: string): ArrayBuffer {
-  const decoded = Buffer.from(b64, "base64");
-  const out = new ArrayBuffer(decoded.byteLength);
-  new Uint8Array(out).set(decoded);
-  return out;
 }
 
 /**
@@ -851,7 +844,7 @@ export class MistralClient implements PluginClient {
 
     const audioBase64 = String(result.audio_data ?? "");
     if (!audioBase64) throw new Error("Mistral plugin: /v1/audio/speech returned no audio_data");
-    const bytes = Buffer.from(audioBase64, "base64").byteLength;
+    const bytes = base64ToBytes(audioBase64).byteLength;
 
     return {
       audioBase64,
@@ -882,7 +875,7 @@ export class MistralClient implements PluginClient {
     const model =
       payload.modelId && isSttModel(payload.modelId) ? payload.modelId : FALLBACK_STT_MODEL;
 
-    const buffer = decodeBase64(payload.audioBase64);
+    const buffer = base64ToBytes(payload.audioBase64);
     if (buffer.byteLength === 0) throw new Error("Mistral plugin: empty audio clip");
     if (buffer.byteLength > MAX_AUDIO_BYTES) {
       throw new Error(

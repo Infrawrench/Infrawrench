@@ -17,7 +17,7 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { base64ToBytes, bytesToBase64, jsonRestFetch } from "@infrawrench/plugin-base";
 
 const API_BASE = "https://api.together.ai/v1";
 /**
@@ -1527,7 +1527,7 @@ export class TogetherClient implements PluginClient {
     const elapsedMs = Date.now() - started;
 
     return {
-      audioBase64: Buffer.from(bytes).toString("base64"),
+      audioBase64: bytesToBase64(bytes),
       mimeType: "audio/mpeg",
       fileName: `together-${voice}-${Date.now()}.mp3`,
       summary: [
@@ -1564,7 +1564,7 @@ export class TogetherClient implements PluginClient {
     // `payload.mimeType` is whatever MediaRecorder produced —
     // `audio/webm;codecs=opus` on Chromium, `audio/mp4` on Safari. Forward it
     // verbatim; Whisper accepts both and we must not transcode.
-    const bytes = Buffer.from(payload.audioBase64, "base64");
+    const bytes = base64ToBytes(payload.audioBase64);
     const fileName = payload.fileName ?? `clip.${extensionForMime(payload.mimeType)}`;
 
     const form = new FormData();

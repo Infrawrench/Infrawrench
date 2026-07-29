@@ -17,7 +17,7 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { base64ToBytes, bytesToBase64, jsonRestFetch } from "@infrawrench/plugin-base";
 
 const BASE_URL = "https://api.deepgram.com";
 
@@ -1198,7 +1198,7 @@ export class DeepgramClient implements PluginClient {
     const characters = Number.isFinite(headerChars) && headerChars > 0 ? headerChars : text.length;
 
     return {
-      audioBase64: Buffer.from(bytes).toString("base64"),
+      audioBase64: bytesToBase64(bytes),
       mimeType: "audio/mpeg",
       fileName: `${voice}-${started}.mp3`,
       summary: `${characters.toLocaleString()} characters · ${modelName} · ${elapsedMs} ms · ${(bytes.byteLength / 1024).toFixed(1)} KB`,
@@ -1227,7 +1227,7 @@ export class DeepgramClient implements PluginClient {
     if (typeId !== "project") {
       throw new Error(`Deepgram plugin: transcription is not available on "${typeId}"`);
     }
-    const audio = Buffer.from(payload.audioBase64, "base64");
+    const audio = base64ToBytes(payload.audioBase64);
     if (audio.byteLength === 0) throw new Error("Deepgram plugin: the clip is empty");
 
     const params = new URLSearchParams({
@@ -1244,11 +1244,11 @@ export class DeepgramClient implements PluginClient {
     const { bytes, headers } = await this.speechFetch(
       `${BASE_URL}/v1/listen?${params.toString()}`,
       payload.mimeType || "application/octet-stream",
-      new Uint8Array(audio),
+      audio,
     );
     const elapsedMs = Date.now() - started;
 
-    const parsed = JSON.parse(Buffer.from(bytes).toString("utf8")) as DgListenResponse;
+    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as DgListenResponse;
     const channel = parsed.results?.channels?.[0];
     const alternative = channel?.alternatives?.[0];
     const utterances = parsed.results?.utterances ?? [];

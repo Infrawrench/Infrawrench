@@ -21,7 +21,7 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { CostSetupError, jsonRestFetch } from "@infrawrench/plugin-base";
+import { CostSetupError, bytesToBase64, jsonRestFetch } from "@infrawrench/plugin-base";
 
 const BASE_URL = "https://openrouter.ai/api/v1";
 
@@ -896,7 +896,7 @@ export class OpenRouterClient implements PluginClient {
     const elapsed = Date.now() - started;
 
     return {
-      audioBase64: Buffer.from(bytes).toString("base64"),
+      audioBase64: bytesToBase64(bytes),
       mimeType: res.headers.get("content-type") ?? "audio/mpeg",
       fileName: `openrouter-${voice}.mp3`,
       summary: `${payload.text.length.toLocaleString()} characters · ${model} · voice ${voice} · ${(bytes.byteLength / 1024).toFixed(0)} KB · ${elapsed} ms`,

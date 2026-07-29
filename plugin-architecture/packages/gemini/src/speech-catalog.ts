@@ -66,9 +66,15 @@ export const TTS_MODELS: SpeechPanelOption[] = [
 export const DEFAULT_TTS_MODEL = "gemini-3.1-flash-tts-preview";
 
 /**
- * Languages Gemini TTS supports, as BCP-47 tags. Sent through
- * `generation_config.speech_config[].language`; leaving it unset lets the
- * model infer the language from the input text, which is the usual case.
+ * Languages Gemini supports, as BCP-47 tags.
+ *
+ * These drive the Speech panel's language picker, which is a **transcription**
+ * control: `TranscribeAudioPayload` carries `language`, `SynthesizeSpeechPayload`
+ * does not, so a selection here reaches `transcribeAudio` and nothing else.
+ * Gemini has no language parameter on `generateContent` either, so the value is
+ * honoured by naming it in the transcription instruction — see
+ * `transcriptionPrompt` in client.ts. Synthesis infers the language from the
+ * input text, which is the usual case anyway.
  *
  * Verified: https://ai.google.dev/gemini-api/docs/speech-generation
  */

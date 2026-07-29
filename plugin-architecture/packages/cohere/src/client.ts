@@ -11,7 +11,7 @@ import type {
   TranscribeAudioPayload,
   TranscribeAudioResult,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { base64ToBytes, jsonRestFetch } from "@infrawrench/plugin-base";
 import { buildMultipartBody, type MultipartPart } from "./multipart.js";
 import type {
   CheckApiKeyResponse,
@@ -1424,7 +1424,7 @@ export class CohereClient implements PluginClient {
     _accountId: string,
     payload: TranscribeAudioPayload,
   ): Promise<TranscribeAudioResult> {
-    const audio = new Uint8Array(Buffer.from(payload.audioBase64, "base64"));
+    const audio = base64ToBytes(payload.audioBase64);
     if (audio.byteLength === 0) throw new Error("Cohere plugin: the audio clip was empty");
     if (audio.byteLength > MAX_AUDIO_BYTES) {
       throw new Error(
