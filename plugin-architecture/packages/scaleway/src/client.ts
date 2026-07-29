@@ -1503,6 +1503,9 @@ export class ScalewayClient implements PluginClient {
       Number.isFinite(requestedNodeCount) && requestedNodeCount > 0 ? requestedNodeCount : 3;
 
     const poolNameBase = (fields["name"] ?? "cluster").trim() || "cluster";
+    // Working default mirroring rdb's "DB-DEV-S" and OVH's "b3-8" — DEV1-M is
+    // the cheapest widely-available type and the create-config fallback size.
+    const nodeType = fields["nodeType"] ?? "DEV1-M";
     // The cluster's first pool inherits the cluster region's first zone.
     const poolZone = `${region}-1` as Zone;
 
@@ -1518,7 +1521,7 @@ export class ScalewayClient implements PluginClient {
       pools: [
         {
           name: `${poolNameBase}-default-pool`,
-          nodeType: fields["nodeType"] ?? "",
+          nodeType,
           size: nodeCount,
           autoscaling: false,
           autohealing: true,
@@ -1550,7 +1553,7 @@ export class ScalewayClient implements PluginClient {
         name: cluster.name || fields["name"] || "",
         region,
         version: cluster.version || fields["version"] || "",
-        nodeType: fields["nodeType"] ?? "",
+        nodeType,
         nodeCount,
         status: cluster.status ?? "creating",
       },

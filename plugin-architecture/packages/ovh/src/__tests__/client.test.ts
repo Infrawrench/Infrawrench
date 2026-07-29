@@ -804,6 +804,29 @@ describe("createResource", () => {
     expect(r.fields["nodePoolCount"]).toBe(1);
   });
 
+  it("managed-kube node pool request carries working defaults", async () => {
+    const c = makeClient();
+    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("/auth/time")) return okJson(1700000000);
+      if (u.endsWith("/nodepool")) return okJson({ id: "p1" });
+      if (u.endsWith("/kube")) return okJson({ id: "c-12", name: "My Cluster" });
+      return okJson({});
+    });
+    await c.createResource("managed-kube", ACCOUNT, { name: "My Cluster", region: "GRA11" });
+    const kubeCall = apiCalls().find((call) => String(call[0]).endsWith("/kube"))!;
+    const kubeBody = JSON.parse(kubeCall[1]!.body as string);
+    expect(kubeBody.version).toBe("1.31");
+    const poolCall = apiCalls().find((call) => String(call[0]).endsWith("/nodepool"))!;
+    expect(String(poolCall[0])).toContain("/kube/c-12/nodepool");
+    const poolBody = JSON.parse(poolCall[1]!.body as string);
+    expect(poolBody.name).toBe("my-cluster-default-pool");
+    expect(poolBody.flavorName).toBe("b3-8");
+    expect(poolBody.desiredNodes).toBe(3);
+    expect(poolBody.autoscale).toBe(false);
+    expect(poolBody.monthlyBilled).toBe(false);
+  });
+
   it("managed-kube uses defaults when nodeCount invalid", async () => {
     const c = makeClient();
     fetchMock.mockImplementation(async (url: string | URL | Request) => {

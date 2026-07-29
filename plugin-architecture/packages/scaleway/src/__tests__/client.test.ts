@@ -753,8 +753,17 @@ describe("createResource", () => {
     expect(r.externalId).toBe("fr-par/cl9");
     expect(r.fields["nodeCount"]).toBe(4);
     const arg = (k8sMethods.createCluster.mock.calls as unknown as [unknown[]])[0]![0] as any;
+    expect(arg.type).toBe("kapsule");
+    expect(arg.cni).toBe("cilium");
+    expect(arg.pools).toHaveLength(1);
+    expect(arg.pools[0].name).toBe("k8s-default-pool");
+    expect(arg.pools[0].nodeType).toBe("DEV1-M");
     expect(arg.pools[0].size).toBe(4);
     expect(arg.pools[0].zone).toBe("fr-par-1");
+    expect(arg.pools[0].autohealing).toBe(true);
+    // Nodes need a public IP (or a NAT gateway) to pull images — the default
+    // pool must not come up isolated.
+    expect(arg.pools[0].publicIpDisabled).toBe(false);
   });
 
   it("kapsule create defaults invalid node count to 3", async () => {
@@ -765,6 +774,18 @@ describe("createResource", () => {
       nodeCount: "x",
     });
     expect(r.fields["nodeCount"]).toBe(3);
+  });
+
+  it("kapsule create applies working defaults when version and node type omitted", async () => {
+    const c = makeClient();
+    k8sMethods.createCluster.mockResolvedValue({ id: "cl11" });
+    const r = await c.createResource("kapsule-cluster", ACCOUNT, { region: "fr-par" });
+    const arg = (k8sMethods.createCluster.mock.calls as unknown as [unknown[]])[0]![0] as any;
+    expect(arg.version).toBe("1.30.2");
+    expect(arg.cni).toBe("cilium");
+    expect(arg.pools[0].nodeType).toBe("DEV1-M");
+    expect(arg.pools[0].name).toBe("cluster-default-pool");
+    expect(r.fields["nodeType"]).toBe("DEV1-M");
   });
 
   it("creates rdb instance", async () => {
