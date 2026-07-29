@@ -27,7 +27,9 @@ jobs:
             BODY='{"purge_everything":true}'
           fi
           echo "Purge body: $BODY"
-          curl -sf -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/purge_cache" \
+          RESP=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/purge_cache" \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             -H "Content-Type: application/json" \
-            --data "$BODY"
+            --data "$BODY")
+          echo "$RESP" | jq .
+          echo "$RESP" | jq -e '.success == true' > /dev/null

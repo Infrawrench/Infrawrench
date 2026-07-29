@@ -3,3 +3,10 @@
 
 @source "../components/**/*.{ts,tsx}";
 @source "../../ui/src/**/*.{ts,tsx}";
+
+/* Bumping this value re-hashes the emitted stylesheet, moving it to a fresh
+   /assets/index-*.css URL. Do that when a CDN edge has cached a bad response
+   under the current URL and no cache-purge credential is at hand. */
+:root {
+  --iw-css-rev: 1;
+}
