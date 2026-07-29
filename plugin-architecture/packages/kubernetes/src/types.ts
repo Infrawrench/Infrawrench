@@ -16,15 +16,29 @@ export interface K8sNamespace {
   status: { phase: string };
 }
 
+export interface K8sNode {
+  metadata: K8sMeta & { labels?: Record<string, string> };
+  spec?: { unschedulable?: boolean };
+  status?: {
+    conditions?: Array<{ type: string; status: string }>;
+    allocatable?: Record<string, string>;
+    nodeInfo?: { kubeletVersion?: string };
+  };
+}
+
 export interface K8sPod {
   metadata: K8sMeta;
   spec: { containers: Array<{ name: string; image: string }> };
   status: {
     phase: string;
+    conditions?: Array<{ type: string; status: string; reason?: string; message?: string }>;
     containerStatuses?: Array<{
       ready: boolean;
       restartCount: number;
-      state: Record<string, unknown>;
+      state: {
+        waiting?: { reason?: string; message?: string };
+        [key: string]: unknown;
+      };
     }>;
   };
 }
@@ -51,6 +65,7 @@ export interface K8sService {
     ports?: Array<{ port: number; targetPort: number | string; protocol: string; name?: string }>;
     selector?: Record<string, string>;
   };
+  status?: { loadBalancer?: { ingress?: Array<{ ip?: string; hostname?: string }> } };
 }
 
 export interface K8sStatefulSet {

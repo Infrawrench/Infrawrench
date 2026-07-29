@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrenc
 import { KubernetesClient } from "./client.js";
 import { KubernetesClusterResourceType } from "./resources/k8s-cluster.js";
 import { NamespaceResourceType } from "./resources/namespace.js";
+import { NodeResourceType } from "./resources/node.js";
 import { PodResourceType } from "./resources/pod.js";
 import { DeploymentResourceType } from "./resources/deployment.js";
 import { ServiceResourceType } from "./resources/service.js";
@@ -47,6 +48,7 @@ const manifest: PluginManifest = {
 const resourceTypes: ResourceTypeDefinition[] = [
   KubernetesClusterResourceType,
   NamespaceResourceType,
+  NodeResourceType,
   PodResourceType,
   DeploymentResourceType,
   ServiceResourceType,

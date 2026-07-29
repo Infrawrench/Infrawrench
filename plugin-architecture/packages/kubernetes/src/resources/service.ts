@@ -10,6 +10,10 @@ export const ServiceResourceType = rt({
     f("namespace", "Namespace"),
     f("type", "Type", { required: false }),
     f("clusterIP", "Cluster IP", { required: false }),
+    f("externalIP", "External IP", {
+      required: false,
+      description: "The LoadBalancer's provisioned address, once one exists",
+    }),
     f("ports", "Ports", { required: false }),
   ],
   outputs: [

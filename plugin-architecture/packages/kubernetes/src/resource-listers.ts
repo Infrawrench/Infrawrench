@@ -3,6 +3,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type {
   K8sList,
   K8sNamespace,
+  K8sNode,
   K8sPod,
   K8sDeployment,
   K8sService,
@@ -88,6 +89,40 @@ export async function listNamespaces(
   }));
 }
 
+export async function listNodes(
+  ctx: ListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
+  const now = new Date().toISOString();
+  const data = await ctx.k8sFetch<K8sList<K8sNode>>("/api/v1/nodes");
+  return data.items.map((n) => {
+    const ready = (n.status?.conditions ?? []).find((c) => c.type === "Ready");
+    const labels = n.metadata.labels ?? {};
+    return {
+      id: `${accountId}:k8s-node:${n.metadata.name}`,
+      pluginId: "kubernetes",
+      resourceTypeId: "k8s-node",
+      accountId,
+      displayName: n.metadata.name,
+      fields: {
+        name: n.metadata.name,
+        ready: ready?.status === "True" ? "true" : "false",
+        unschedulable: n.spec?.unschedulable ? "true" : "false",
+        instanceType: labels["node.kubernetes.io/instance-type"] ?? "",
+        zone: labels["topology.kubernetes.io/zone"] ?? "",
+        version: n.status?.nodeInfo?.kubeletVersion ?? "",
+        allocatableCpu: n.status?.allocatable?.["cpu"] ?? "",
+        allocatableMemory: n.status?.allocatable?.["memory"] ?? "",
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      parentResourceId: `${accountId}:k8s-cluster:default`,
+      createdAt: n.metadata.creationTimestamp,
+      updatedAt: now,
+    };
+  });
+}
+
 export async function listPods(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
   const now = new Date().toISOString();
   const data = await ctx.k8sFetch<K8sList<K8sPod>>("/api/v1/pods");
@@ -115,6 +150,22 @@ export async function listPods(ctx: ListerContext, accountId: string): Promise<R
 
     const container = pod.spec.containers[0];
     const restarts = pod.status.containerStatuses?.[0]?.restartCount ?? 0;
+    // Why a not-Running pod isn't running. Two places hold the answer: an
+    // unschedulable pod's PodScheduled condition ("0/3 nodes are available: 3
+    // Insufficient cpu…"), and a scheduled-but-stuck container's waiting state
+    // ("ImagePullBackOff: … 401 Unauthorized"). Without either, a stuck
+    // rollout is undiagnosable from a listing.
+    const scheduled = (pod.status.conditions ?? []).find((cond) => cond.type === "PodScheduled");
+    const waiting = pod.status.containerStatuses?.[0]?.state?.waiting;
+    let statusReason = "";
+    if (phase === "Pending" && scheduled?.status === "False") {
+      statusReason = `${scheduled.reason ?? ""}${scheduled.message ? `: ${scheduled.message}` : ""}`;
+    } else if (waiting?.reason) {
+      statusReason = `${waiting.reason}${waiting.message ? `: ${waiting.message}` : ""}`;
+    }
+    // Generous cap: registry-pull failures put the decisive part (the HTTP
+    // status) at the very end of a long message.
+    statusReason = statusReason.slice(0, 1500);
     const expiresAt = isEphemeral
       ? (pod.metadata.annotations?.["infrawrench.io/expires-at"] ?? "")
       : "";
@@ -133,6 +184,7 @@ export async function listPods(ctx: ListerContext, accountId: string): Promise<R
         namespace: pod.metadata.namespace ?? "default",
         image: container?.image ?? "",
         status: phase,
+        statusReason,
         containerName: container?.name ?? pod.metadata.name,
         restarts,
         ...(isEphemeral ? { ephemeral: "true", expiresAt, ttlSeconds } : {}),
@@ -197,6 +249,12 @@ export async function listServices(
     .map((s) => {
       const ports = (s.spec.ports ?? []).map((p) => `${p.port}/${p.protocol}`).join(", ");
       const hasSelector = !!s.spec.selector && Object.keys(s.spec.selector).length > 0;
+      // A LoadBalancer's provisioned address — what a deploy actually waits
+      // for. Mapped the way the ingress lister maps its address.
+      const externalIP = (s.status?.loadBalancer?.ingress ?? [])
+        .map((lb) => lb.ip ?? lb.hostname ?? "")
+        .filter(Boolean)
+        .join(", ");
       return {
         id: `${accountId}:k8s-service:${s.metadata.namespace}:${s.metadata.name}`,
         pluginId: "kubernetes",
@@ -208,6 +266,7 @@ export async function listServices(
           namespace: s.metadata.namespace ?? "default",
           type: s.spec.type,
           clusterIP: s.spec.clusterIP ?? "",
+          externalIP,
           ports,
           hasSelector: hasSelector ? "true" : "false",
         },

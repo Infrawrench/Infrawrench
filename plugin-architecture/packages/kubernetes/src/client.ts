@@ -85,6 +85,8 @@ export class KubernetesClient implements PluginClient {
         return listers.listClusters(this.listerCtx, accountId);
       case "k8s-namespace":
         return listers.listNamespaces(this.listerCtx, accountId);
+      case "k8s-node":
+        return listers.listNodes(this.listerCtx, accountId);
       case "k8s-pod":
         return listers.listPods(this.listerCtx, accountId);
       case "k8s-deployment":
