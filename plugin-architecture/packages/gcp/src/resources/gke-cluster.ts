@@ -11,6 +11,11 @@ export const GkeClusterResourceType = rt({
     f("machineType", "Machine Type", { required: false }),
     f("diskSizeGb", "Disk Size (GB)", { kind: "number", required: false }),
     f("nodeCount", "Node Count", { kind: "number", required: false }),
+    f("serviceAccount", "Node Service Account", {
+      required: false,
+      description:
+        "Service account email the node VMs run as; the Compute Engine default when omitted",
+    }),
     f("status", "Status", { required: false }),
     f("network", "VPC Network", {
       kind: "association",

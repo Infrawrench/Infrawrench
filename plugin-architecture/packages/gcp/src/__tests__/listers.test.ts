@@ -926,3 +926,66 @@ describe("devops + observability listers", () => {
     expect(a!.fields.notificationChannelCount).toBe(2);
   });
 });
+
+describe("project lister", () => {
+  it("listGcpProjects maps rows and requests only ACTIVE projects", async () => {
+    const ctx = makeCtx({
+      paginate: () => [
+        {
+          projectId: "proj1",
+          name: "My Project",
+          projectNumber: "123456",
+          lifecycleState: "ACTIVE",
+          createTime: "2025-01-01T00:00:00Z",
+        },
+        { projectId: "unnamed", lifecycleState: "ACTIVE" },
+        { projectId: "gone", name: "Gone", lifecycleState: "DELETE_REQUESTED" },
+      ],
+    });
+    const rs = await listers.listGcpProjects(ctx, ACCT, PROJ);
+    expect(ctx.paginate).toHaveBeenCalledWith(
+      "https://cloudresourcemanager.googleapis.com/v1/projects",
+      "projects",
+      { filter: "lifecycleState:ACTIVE" },
+    );
+    expect(rs.map((r) => r.externalId)).toEqual(["proj1", "unnamed"]);
+    const [r] = rs;
+    expect(r!.displayName).toBe("My Project");
+    expect(r!.fields).toEqual({
+      projectId: "proj1",
+      name: "My Project",
+      projectNumber: "123456",
+      state: "ACTIVE",
+    });
+    expect(r!.resolvedOutputs.projectId).toBe("proj1");
+    expect(r!.createdAt).toBe("2025-01-01T00:00:00Z");
+    // A project without a name falls back to its projectId.
+    expect(rs[1]!.displayName).toBe("unnamed");
+  });
+
+  it("listGcpProjects falls back to the credential's project on 403", async () => {
+    const ctx = makeCtx({
+      paginate: () => {
+        throw Object.assign(new Error("GCP API 403 for https://x: forbidden"), { status: 403 });
+      },
+    });
+    const rs = await listers.listGcpProjects(ctx, ACCT, PROJ);
+    expect(rs).toHaveLength(1);
+    expect(rs[0]!.externalId).toBe(PROJ);
+    expect(rs[0]!.fields).toEqual({
+      projectId: PROJ,
+      name: PROJ,
+      projectNumber: "",
+      state: "ACTIVE",
+    });
+  });
+
+  it("listGcpProjects propagates non-403 errors", async () => {
+    const ctx = makeCtx({
+      paginate: () => {
+        throw Object.assign(new Error("GCP API 500 for https://x: boom"), { status: 500 });
+      },
+    });
+    await expect(listers.listGcpProjects(ctx, ACCT, PROJ)).rejects.toThrow("GCP API 500");
+  });
+});

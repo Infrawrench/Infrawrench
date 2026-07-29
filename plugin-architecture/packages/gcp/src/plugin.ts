@@ -1,5 +1,6 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { GcpClient } from "./client.js";
+import { GcpProjectResourceType } from "./resources/project.js";
 import { GceInstanceResourceType } from "./resources/gce-instance.js";
 import { GceDiskResourceType } from "./resources/gce-disk.js";
 import { GkeClusterResourceType } from "./resources/gke-cluster.js";
@@ -113,6 +114,8 @@ const manifest: PluginManifest = {
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
+  // Projects
+  GcpProjectResourceType,
   // Compute
   GceInstanceResourceType,
   GceDiskResourceType,

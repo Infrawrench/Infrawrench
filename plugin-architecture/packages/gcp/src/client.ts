@@ -257,6 +257,8 @@ export class GcpClient implements PluginClient {
     const p = this.project;
     const ctx = this.listerCtx;
     switch (typeId) {
+      case "gcp-project":
+        return listers.listGcpProjects(ctx, accountId, p);
       case "gce-instance":
         return listers.listGceInstances(ctx, accountId, p);
       case "gce-disk":

@@ -12,6 +12,18 @@ export async function resolveOutput(
 ): Promise<string> {
   const p = ctx.project;
 
+  if (typeId === "gcp-project") {
+    // The token comes from the account's own credentials — this is what lets
+    // an Infrafile authenticate gcloud (CLOUDSDK_AUTH_ACCESS_TOKEN) and
+    // Artifact Registry (`docker login -u oauth2accesstoken`) without the
+    // operator re-supplying the service-account key.
+    if (outputKey === "accessToken") return ctx.token();
+    if (outputKey === "projectId") {
+      const resource = await ctx.getResource(typeId, resourceId, accountId);
+      return String(resource.externalId ?? resource.fields["projectId"] ?? "");
+    }
+  }
+
   if (typeId === "gke-cluster" && outputKey === "kubeconfig") {
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const cluster = await ctx.get<Record<string, unknown>>(

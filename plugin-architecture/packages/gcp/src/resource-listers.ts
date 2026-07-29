@@ -1,4 +1,5 @@
 export * from "./resource-listers/shared.js";
+export * from "./resource-listers/projects.js";
 export * from "./resource-listers/compute.js";
 export * from "./resource-listers/database.js";
 export * from "./resource-listers/networking.js";
