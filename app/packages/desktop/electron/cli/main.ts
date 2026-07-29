@@ -33,7 +33,7 @@ COMMANDS
   accounts            list accounts (local + every org by default)
   resources           list an account's resources   --account <id|name>
   resource <id>       show one resource's fields & outputs
-  metrics <id>        metric charts for a cloud resource   [--last 6h] [--series cpu]
+  metrics <id>        metric charts for a resource   [--last 6h] [--series cpu] [--local]
   costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource]
   costs push          push your own cost rows   --source <name> [--file rows.json | stdin]
   page <message>      alert the org's on-call transports   --source <name> [--key k] [--voice]

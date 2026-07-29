@@ -10,6 +10,7 @@ import {
   listLocalResources,
   listCloudResources,
   loadLocalResourceOutputs,
+  syncCloudAccount,
   type AccountInfo,
   type CliContext,
   type ResourceRow,
@@ -137,6 +138,14 @@ export async function cmdResources(ctx: CliContext, typeFilter?: string): Promis
   let rows: ResourceRow[];
   let errors: Array<{ typeId: string; message: string }> = [];
   if (orgId) {
+    // Re-sync from the provider first so the listing matches what exists
+    // *now*, the way the desktop account page does — the poller's cache can
+    // lag or be missing types. A failed sync still prints the cached rows.
+    try {
+      await syncCloudAccount(orgId, account.id);
+    } catch (e) {
+      printErr(c.yellow(`sync failed — showing cached: ${e instanceof Error ? e.message : e}`));
+    }
     rows = await listCloudResources(orgId, account.id);
     if (typeFilter) rows = rows.filter((r) => r.resourceTypeId === typeFilter);
   } else {

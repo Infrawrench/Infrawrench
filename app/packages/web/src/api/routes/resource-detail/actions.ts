@@ -459,14 +459,18 @@ export function registerActionRoutes(app: Hono): void {
   /**
    * POST /api/resources/:pluginId/:typeId/metrics
    *
-   * Returns historical metric series for a resource. Data is sourced from
-   * ClickHouse (written by the poller). Only resources pinned on some dashboard
-   * accumulate points; unpinned resources will return an empty series array.
+   * Returns metric series for a resource. History comes from ClickHouse
+   * (written by the poller) — only resources pinned on some dashboard
+   * accumulate points. When there is no history, falls back to fetching the
+   * series live from the provider via the plugin's `fetchMetricSeries`, so an
+   * unpinned resource still charts whatever the provider can serve on demand.
    */
   app.post("/:pluginId/:typeId/metrics", async (c) => {
     requirePermission(c, "resources:read");
     const organizationId = c.get("organizationId");
-    const { resourceId, startMs, endMs } = await c.req.json<{
+    const pluginId = c.req.param("pluginId");
+    const resourceTypeId = c.req.param("typeId");
+    const { accountId, resourceId, startMs, endMs, parentResourceId } = await c.req.json<{
       accountId: string;
       resourceId: string;
       startMs?: number;
@@ -477,6 +481,20 @@ export function registerActionRoutes(app: Hono): void {
     const toMs = endMs ?? Date.now();
     const fromMs = startMs ?? toMs - 60 * 60 * 1000;
     const series = await getMetricRange(organizationId, resourceId, fromMs, toMs);
-    return c.json({ series });
+    if (series.length > 0) return c.json({ series });
+
+    // Live fallback. Failures degrade to the empty history rather than a 500 —
+    // "no data" is an answer, a dead provider shouldn't take out the chart pane.
+    try {
+      const ctx = await getClientForResource(pluginId, accountId, organizationId, parentResourceId);
+      if (!ctx?.client.fetchMetricSeries) return c.json({ series });
+      const live = await ctx.client.fetchMetricSeries(resourceTypeId, resourceId, accountId, {
+        startMs: fromMs,
+        endMs: toMs,
+      });
+      return c.json({ series: live });
+    } catch {
+      return c.json({ series });
+    }
   });
 }

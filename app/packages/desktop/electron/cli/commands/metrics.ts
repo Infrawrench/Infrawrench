@@ -1,7 +1,17 @@
-// `infrawrench metrics <resource-id>` — historical metric series from the
-// cloud's ClickHouse store, rendered as terminal charts. Cloud-only: local
-// mode has no metric history (the poller writes ClickHouse for org resources).
-import { CliError, listCloudAccounts, orgFetch, resolveOrg, type CliContext } from "../context";
+// `infrawrench metrics <resource-id>` — metric series rendered as terminal
+// charts. Cloud resources answer from the metric store when they have pinned
+// history and fall back to a live provider fetch server-side; local resources
+// fetch live through the plugin in-process.
+import {
+  CliError,
+  fetchLocalMetrics,
+  listCloudAccounts,
+  listLocalAccounts,
+  orgFetch,
+  resolveAccount,
+  resolveOrg,
+  type CliContext,
+} from "../context";
 import type { RangeFlags } from "../args";
 import { parseDuration } from "../args";
 import { c, printJson, println, formatNumber } from "../output";
@@ -19,12 +29,6 @@ export async function cmdMetrics(
   range: RangeFlags,
 ): Promise<void> {
   if (!resourceId) throw new CliError("Usage: infrawrench metrics <resource-id> [--last 6h]");
-  if (ctx.flags.local) {
-    throw new CliError(
-      "Metric history lives in Infrawrench Cloud — local resources have none. Pass --org for a cloud resource.",
-    );
-  }
-  const org = await resolveOrg(ctx);
 
   // {accountId}:{resourceTypeId}:{externalId} — the account resolves the plugin.
   const [accountId, resourceTypeId] = resourceId.split(":");
@@ -33,8 +37,6 @@ export async function cmdMetrics(
       `"${resourceId}" doesn't look like a resource id (accountId:typeId:externalId).`,
     );
   }
-  const account = (await listCloudAccounts(org.id)).find((a) => a.id === accountId);
-  if (!account) throw new CliError(`Account ${accountId} not found in ${org.displayName}.`);
 
   const endMs = range.to ? Date.parse(range.to) : Date.now();
   const startMs = range.from ? Date.parse(range.from) : endMs - parseDuration(range.last ?? "1h");
@@ -42,14 +44,26 @@ export async function cmdMetrics(
     throw new CliError("Invalid --from/--to timestamp (use ISO 8601).");
   }
 
-  const { series } = await orgFetch<{ series: MetricSeries[] }>(
-    org.id,
-    `/resources/${encodeURIComponent(account.pluginId)}/${encodeURIComponent(resourceTypeId)}/metrics`,
-    {
-      method: "POST",
-      body: JSON.stringify({ accountId, resourceId, startMs, endMs }),
-    },
-  );
+  let series: MetricSeries[];
+  if (ctx.flags.local) {
+    // Live from the plugin, the way the desktop's Metrics tab reads a local
+    // resource. There is no local history store, so the provider decides how
+    // far back the series go.
+    const account = resolveAccount(await listLocalAccounts(), accountId);
+    series = await fetchLocalMetrics(account, resourceTypeId, resourceId, { startMs, endMs });
+  } else {
+    const org = await resolveOrg(ctx);
+    const account = (await listCloudAccounts(org.id)).find((a) => a.id === accountId);
+    if (!account) throw new CliError(`Account ${accountId} not found in ${org.displayName}.`);
+    ({ series } = await orgFetch<{ series: MetricSeries[] }>(
+      org.id,
+      `/resources/${encodeURIComponent(account.pluginId)}/${encodeURIComponent(resourceTypeId)}/metrics`,
+      {
+        method: "POST",
+        body: JSON.stringify({ accountId, resourceId, startMs, endMs }),
+      },
+    ));
+  }
 
   const filtered = range.series
     ? series.filter((s) => s.label.toLowerCase().includes(range.series!.toLowerCase()))
@@ -64,7 +78,7 @@ export async function cmdMetrics(
     println(
       c.dim(
         series.length === 0
-          ? "No metric points. Only resources pinned to a dashboard accumulate history."
+          ? "No metric points — the provider reported nothing for this resource and range."
           : `No series matches "${range.series}". Available: ${series.map((s) => s.label).join(", ")}`,
       ),
     );

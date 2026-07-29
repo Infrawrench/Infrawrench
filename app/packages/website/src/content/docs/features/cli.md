@@ -65,16 +65,19 @@ Local accounts are listed live from the provider, exactly as the desktop sidebar
 volume: 403 Forbidden — token is missing the "block_storage:read" scope
 ```
 
-The rest of the account still lists. Org accounts read from the cloud's synced copy instead, which is why they return instantly.
+The rest of the account still lists. Org accounts ask the cloud to re-sync the account from the provider first and then read the synced copy, so they reflect what exists right now too — if the sync fails (provider outage, rate limit) the CLI prints the last synced copy and says so on stderr. The TUI does the same when you open an account: the synced copy appears instantly, then refreshes in place once the live sync completes.
 
 ## Metrics and cost charts
 
-Cloud resources that are pinned to a dashboard accumulate metric history; the CLI renders it as terminal charts:
+The CLI renders metric series as terminal charts:
 
 ```
 infrawrench metrics <resource-id> --last 6h
 infrawrench metrics <resource-id> --series cpu --last 24h
+infrawrench metrics <resource-id> --local        # a local resource, live from the provider
 ```
+
+Cloud resources [pinned to a dashboard](./dashboard.md#historical-metrics) answer from their accumulated history, which supports long ranges; unpinned ones are fetched live from the provider on demand, so you still get a chart — just limited to whatever window the provider serves. Local resources are always fetched live through the plugin.
 
 <insert [Terminal showing `infrawrench metrics` output with two colored area charts (CPU and memory series) including y-axis labels and a time axis] here>
 

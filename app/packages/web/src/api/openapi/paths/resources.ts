@@ -835,6 +835,10 @@ export function registerResourcePaths(ctx: BuildContext) {
     path: "/api/org/{orgId}/resources/{pluginId}/{typeId}/metrics",
     tags: ["Resources"],
     summary: "Fetch metric series for a resource",
+    description:
+      "Historical points from the metrics store when the resource has accumulated any " +
+      "(resources pinned to a dashboard are polled continuously); otherwise the series are " +
+      "fetched live from the provider on demand.",
     request: {
       params: pluginTypeParams,
       body: { content: { "application/json": { schema: MetricsRequest } }, required: true },

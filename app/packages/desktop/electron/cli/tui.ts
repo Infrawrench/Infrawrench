@@ -13,6 +13,8 @@ import {
   listLocalResources,
   listCloudResources,
   loadLocalResourceOutputs,
+  syncCloudAccount,
+  fetchLocalMetrics,
   orgFetch,
   type AccountInfo,
   type CliContext,
@@ -43,8 +45,14 @@ interface TuiState {
   scopeIndex: number;
   accounts: AccountInfo[];
   accountIndex: number;
+  /** First visible row of the accounts pane — keeps the cursor on screen. */
+  accountScroll: number;
   resources: ResourceRow[];
   resourceIndex: number;
+  /** First visible row of the resources list. */
+  resourceScroll: number;
+  /** First visible line of the detail pane (j/k scroll it — no cursor there). */
+  detailScroll: number;
   pane: Pane;
   status: string;
   loading: boolean;
@@ -76,6 +84,20 @@ function truncate(s: string, width: number): string {
   return `${s.slice(0, Math.max(0, width - 1))}…`;
 }
 
+/**
+ * Clamp a pane's scroll offset so the cursor row stays on screen and the
+ * window never runs past the end of the list. Called on every render — the
+ * terminal can resize between key presses, so the offset is re-derived from
+ * the current geometry rather than maintained by the key handlers.
+ */
+function followScroll(scroll: number, index: number, visible: number, total: number): number {
+  if (visible <= 0 || total <= visible) return 0;
+  let next = Math.min(scroll, total - visible);
+  if (index < next) next = index;
+  if (index >= next + visible) next = index - visible + 1;
+  return Math.max(0, next);
+}
+
 export async function runTui(ctx: CliContext): Promise<void> {
   if (!process.stdout.isTTY || !process.stdin.isTTY) {
     throw new Error(
@@ -95,8 +117,11 @@ export async function runTui(ctx: CliContext): Promise<void> {
     scopeIndex: 0,
     accounts: [],
     accountIndex: 0,
+    accountScroll: 0,
     resources: [],
     resourceIndex: 0,
+    resourceScroll: 0,
+    detailScroll: 0,
     pane: "accounts",
     status: "",
     loading: true,
@@ -125,6 +150,10 @@ export async function runTui(ctx: CliContext): Promise<void> {
   const activeAccount = (): AccountInfo | undefined => state.accounts[state.accountIndex];
   const activeResource = (): ResourceRow | undefined => state.resources[state.resourceIndex];
 
+  // Listing an account goes out to the provider, so a stale reply from a
+  // previously-selected account must not land on top of the current one.
+  let resourceLoadToken = 0;
+
   async function loadAccounts(): Promise<void> {
     state.loading = true;
     render();
@@ -133,6 +162,7 @@ export async function runTui(ctx: CliContext): Promise<void> {
       state.accounts =
         scope.kind === "local" ? await listLocalAccounts() : await listCloudAccounts(scope.org!.id);
       state.accountIndex = 0;
+      state.accountScroll = 0;
       clearResources();
       state.status = "";
     } catch (e) {
@@ -144,15 +174,16 @@ export async function runTui(ctx: CliContext): Promise<void> {
   }
 
   function clearResources(): void {
+    // Invalidate any in-flight listing/sync — its reply belongs to whatever
+    // account was selected when it started, not this one.
+    resourceLoadToken++;
     state.resources = [];
     state.resourceIndex = 0;
+    state.resourceScroll = 0;
+    state.detailScroll = 0;
     state.resourcesLoaded = false;
     state.metrics = null;
   }
-
-  // Listing a local account goes out to the provider, so a stale reply from a
-  // previously-selected account must not land on top of the current one.
-  let resourceLoadToken = 0;
 
   async function loadResources(): Promise<void> {
     const account = activeAccount();
@@ -170,13 +201,33 @@ export async function runTui(ctx: CliContext): Promise<void> {
         state.status = errors.length
           ? errors.map((e) => `${e.typeId}: ${e.message}`).join(" · ")
           : "";
+        state.resourceIndex = 0;
+        state.resourceScroll = 0;
       } else {
-        const rows = await listCloudResources(scope.org!.id, account.id);
+        // Cached rows first so the pane fills instantly…
+        const cached = await listCloudResources(scope.org!.id, account.id);
         if (token !== resourceLoadToken) return;
-        state.resources = rows;
-        state.status = "";
+        state.resources = cached;
+        state.resourceIndex = 0;
+        state.resourceScroll = 0;
+        state.loading = false;
+        state.status = "syncing from provider…";
+        render();
+        // …then a live sync so the listing matches what the provider has now
+        // (the desktop account page re-syncs the same way). A failed sync
+        // keeps the cached rows on screen instead of wiping the pane.
+        try {
+          await syncCloudAccount(scope.org!.id, account.id);
+          const fresh = await listCloudResources(scope.org!.id, account.id);
+          if (token !== resourceLoadToken) return;
+          state.resources = fresh;
+          state.resourceIndex = Math.min(state.resourceIndex, Math.max(0, fresh.length - 1));
+          state.status = "";
+        } catch (e) {
+          if (token !== resourceLoadToken) return;
+          state.status = `sync failed — showing cached: ${e instanceof Error ? e.message : String(e)}`;
+        }
       }
-      state.resourceIndex = 0;
     } catch (e) {
       if (token !== resourceLoadToken) return;
       state.status = e instanceof Error ? e.message : String(e);
@@ -203,29 +254,47 @@ export async function runTui(ctx: CliContext): Promise<void> {
     }
   }
 
+  // Metrics arrive async while the user may already be looking at another
+  // resource — same staleness hazard as resource listing.
+  let metricsLoadToken = 0;
+
   async function loadMetrics(): Promise<void> {
     const scope = activeScope();
     const resource = activeResource();
     const account = activeAccount();
     state.metrics = null;
-    if (scope.kind !== "org" || !resource || !account) return;
+    if (!resource || !account) return;
+    const token = ++metricsLoadToken;
+    const endMs = Date.now();
+    const startMs = endMs - 6 * 60 * 60 * 1000;
     try {
-      const endMs = Date.now();
-      const { series } = await orgFetch<{ series: NonNullable<TuiState["metrics"]> }>(
-        scope.org!.id,
-        `/resources/${encodeURIComponent(account.pluginId)}/${encodeURIComponent(resource.resourceTypeId)}/metrics`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            accountId: account.id,
-            resourceId: resource.id,
-            startMs: endMs - 6 * 60 * 60 * 1000,
-            endMs,
-          }),
-        },
-      );
-      state.metrics = series;
+      if (scope.kind === "local") {
+        // Live from the plugin, exactly as the GUI's Metrics tab does.
+        const series = await fetchLocalMetrics(account, resource.resourceTypeId, resource.id, {
+          startMs,
+          endMs,
+        });
+        if (token !== metricsLoadToken) return;
+        state.metrics = series;
+      } else {
+        const { series } = await orgFetch<{ series: NonNullable<TuiState["metrics"]> }>(
+          scope.org!.id,
+          `/resources/${encodeURIComponent(account.pluginId)}/${encodeURIComponent(resource.resourceTypeId)}/metrics`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              accountId: account.id,
+              resourceId: resource.id,
+              startMs,
+              endMs,
+            }),
+          },
+        );
+        if (token !== metricsLoadToken) return;
+        state.metrics = series;
+      }
     } catch {
+      if (token !== metricsLoadToken) return;
       state.metrics = [];
     }
     render();
@@ -288,12 +357,18 @@ export async function runTui(ctx: CliContext): Promise<void> {
     buf += moveTo(1, 1) + truncateAnsiSafe(` ${c.bold("Infrawrench")}  ${tabs}`, cols);
     buf += moveTo(2, 1) + c.dim("─".repeat(cols));
 
-    // Left pane: accounts
+    // Left pane: accounts, windowed so the cursor is always on screen.
+    state.accountScroll = followScroll(
+      state.accountScroll,
+      state.accountIndex,
+      bodyRows,
+      state.accounts.length,
+    );
     for (let i = 0; i < bodyRows; i++) {
-      const account = state.accounts[i];
+      const account = state.accounts[state.accountScroll + i];
       let line = "";
       if (account) {
-        const selected = i === state.accountIndex;
+        const selected = state.accountScroll + i === state.accountIndex;
         const marker = selected ? (state.pane === "accounts" ? c.cyan("▶ ") : c.dim("▶ ")) : "  ";
         const name = truncate(account.displayName, leftWidth - 4);
         line = marker + (selected ? c.bold(name) : name);
@@ -310,13 +385,19 @@ export async function runTui(ctx: CliContext): Promise<void> {
     }
 
     // Right pane
-    const right: string[] = [];
+    let right: string[] = [];
     if (state.pane === "costs") {
       renderCostsPane(right, rightWidth);
     } else if (state.pane === "detail") {
       renderDetailPane(right, rightWidth);
+      // The detail pane has no cursor — j/k slide the whole pane instead.
+      state.detailScroll = Math.max(0, Math.min(state.detailScroll, right.length - bodyRows));
+      if (state.detailScroll > 0) {
+        right = right.slice(state.detailScroll);
+        right[0] = c.dim(`↑ ${state.detailScroll} more`);
+      }
     } else {
-      renderResourcesPane(right, rightWidth);
+      renderResourcesPane(right, rightWidth, bodyRows);
     }
     for (let i = 0; i < bodyRows; i++) {
       buf += moveTo(3 + i, leftWidth + 4) + truncateAnsiSafe(right[i] ?? "", rightWidth);
@@ -326,21 +407,23 @@ export async function runTui(ctx: CliContext): Promise<void> {
     buf += moveTo(rows - 1, 1) + truncateAnsiSafe(state.status ? c.yellow(state.status) : "", cols);
     const hints =
       state.pane === "detail"
-        ? "esc back · m refresh metrics · q quit"
+        ? "↑↓/jk scroll · esc back · m refresh metrics · q quit"
         : "↑↓/jk move · tab pane · enter open · o org · c costs · r refresh · q quit";
     buf += moveTo(rows, 1) + truncateAnsiSafe(c.dim(` ${hints}`), cols);
 
     out.write(buf);
   }
 
-  function renderResourcesPane(lines: string[], width: number): void {
+  function renderResourcesPane(lines: string[], width: number, bodyRows: number): void {
     const account = activeAccount();
     if (!account) {
       lines.push(c.dim("Select an account."));
       return;
     }
+    const position =
+      state.resources.length > 0 ? ` ${state.resourceIndex + 1}/${state.resources.length}` : "";
     lines.push(
-      `${c.bold(truncate(account.displayName, width - 12))} ${c.dim(`(${account.pluginId})`)}`,
+      `${c.bold(truncate(account.displayName, width - 12))} ${c.dim(`(${account.pluginId})${position}`)}`,
     );
     lines.push("");
     if (state.resources.length === 0) {
@@ -353,15 +436,26 @@ export async function runTui(ctx: CliContext): Promise<void> {
     for (const r of state.resources) {
       if (!typeIndex.has(r.resourceTypeId)) typeIndex.set(r.resourceTypeId, typeIndex.size);
     }
-    state.resources.forEach((r, i) => {
-      const selected = i === state.resourceIndex && state.pane === "resources";
-      const marker = selected ? c.cyan("▶ ") : "  ";
-      const type = seriesColor(typeIndex.get(r.resourceTypeId) ?? 0)(
-        truncate(r.resourceTypeId, 18).padEnd(18),
-      );
-      const name = truncate(r.displayName, Math.max(8, width - 24));
-      lines.push(marker + type + " " + (selected ? c.bold(name) : name));
-    });
+    // Two header lines above the list — window the rest around the cursor.
+    const visible = Math.max(1, bodyRows - 2);
+    state.resourceScroll = followScroll(
+      state.resourceScroll,
+      state.resourceIndex,
+      visible,
+      state.resources.length,
+    );
+    state.resources
+      .slice(state.resourceScroll, state.resourceScroll + visible)
+      .forEach((r, offset) => {
+        const i = state.resourceScroll + offset;
+        const selected = i === state.resourceIndex && state.pane === "resources";
+        const marker = selected ? c.cyan("▶ ") : "  ";
+        const type = seriesColor(typeIndex.get(r.resourceTypeId) ?? 0)(
+          truncate(r.resourceTypeId, 18).padEnd(18),
+        );
+        const name = truncate(r.displayName, Math.max(8, width - 24));
+        lines.push(marker + type + " " + (selected ? c.bold(name) : name));
+      });
   }
 
   function renderDetailPane(lines: string[], width: number): void {
@@ -375,27 +469,35 @@ export async function runTui(ctx: CliContext): Promise<void> {
     );
     lines.push(c.dim(truncate(resource.id, width)));
     lines.push("");
-    const entries = [
-      ...Object.entries(resource.fields),
-      ...Object.entries(resource.outputs),
-    ].filter(([, v]) => typeof v !== "object" || v === null);
-    for (const [k, v] of entries.slice(0, 8)) {
-      lines.push(`${c.dim(truncate(k, 20).padEnd(20))} ${truncate(String(v ?? "—"), width - 21)}`);
+    // Everything scalar the desktop detail page would show — the pane
+    // scrolls, so nothing gets sliced away.
+    const sections: Array<[string, Array<[string, unknown]>]> = [
+      ["", Object.entries(resource.fields)],
+      ["outputs", Object.entries(resource.outputs)],
+    ];
+    for (const [heading, entries] of sections) {
+      const scalars = entries.filter(([, v]) => typeof v !== "object" || v === null);
+      if (scalars.length === 0) continue;
+      if (heading) {
+        lines.push("");
+        lines.push(c.dim(heading));
+      }
+      for (const [k, v] of scalars) {
+        lines.push(
+          `${c.dim(truncate(k, 20).padEnd(20))} ${truncate(String(v ?? "—"), width - 21)}`,
+        );
+      }
     }
     lines.push("");
-    if (activeScope().kind !== "org") {
-      lines.push(c.dim("Metrics are available for cloud org resources."));
-      return;
-    }
     if (state.metrics === null) {
       lines.push(c.dim("Loading metrics…"));
       return;
     }
     if (state.metrics.length === 0) {
-      lines.push(c.dim("No metric history (pin the resource to a dashboard to collect it)."));
+      lines.push(c.dim("No metrics reported for this resource."));
       return;
     }
-    for (const s of state.metrics.slice(0, 3)) {
+    for (const s of state.metrics) {
       const values = s.points.map((p) => p.value);
       const now = values.length > 0 ? formatNumber(values[values.length - 1]!, s.unit) : "—";
       lines.push(`${c.bold(truncate(s.label, 28))} ${c.dim("6h")} ${c.dim("now")} ${now}`);
@@ -478,6 +580,11 @@ export async function runTui(ctx: CliContext): Promise<void> {
         state.resourceIndex = next;
         render();
       }
+    } else if (state.pane === "detail") {
+      // No cursor in the detail pane — j/k scroll the content itself.
+      // render() clamps to the pane's real height.
+      state.detailScroll = Math.max(0, state.detailScroll + delta);
+      render();
     }
   }
 
@@ -507,6 +614,7 @@ export async function runTui(ctx: CliContext): Promise<void> {
         } else if (state.pane === "resources") {
           if (activeResource()) {
             state.pane = "detail";
+            state.detailScroll = 0;
             render();
             void loadResourceOutputs();
             void loadMetrics();
@@ -518,6 +626,7 @@ export async function runTui(ctx: CliContext): Promise<void> {
         }
       } else if (key === ESC && state.pane === "detail") {
         state.pane = "resources";
+        state.detailScroll = 0;
         render();
       } else if (key === ESC && state.pane === "costs") {
         state.pane = "accounts";

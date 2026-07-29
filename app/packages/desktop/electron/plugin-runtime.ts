@@ -19,6 +19,7 @@ import http from "node:http";
 import type {
   HostServices,
   HttpHostServices,
+  MetricSeries,
   Plugin,
   PluginClient,
   PluginManifest,
@@ -325,6 +326,25 @@ export async function listAccountResourcesLive(
       a.displayName.localeCompare(b.displayName),
   );
   return { resources, errors };
+}
+
+/**
+ * Fetch a local resource's metric series live from the provider — the same
+ * call the GUI's detail view makes through the renderer. Types that don't
+ * declare `supportsMetrics` (or plugins without `fetchMetricSeries`) return
+ * an empty list rather than throwing, so callers can render "no metrics"
+ * without pre-checking the type definition.
+ */
+export async function fetchLocalMetricSeries(
+  account: LocalAccountRow,
+  resourceTypeId: string,
+  resourceId: string,
+  range?: { startMs: number; endMs: number },
+): Promise<MetricSeries[]> {
+  const { plugin, client } = await createAccountPluginClient(account);
+  const typeDef = plugin.resourceTypes.find((t) => t.id === resourceTypeId);
+  if (!typeDef?.supportsMetrics || !client.fetchMetricSeries) return [];
+  return client.fetchMetricSeries(resourceTypeId, resourceId, account.id, range);
 }
 
 /**

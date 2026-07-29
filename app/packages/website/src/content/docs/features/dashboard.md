@@ -36,6 +36,8 @@ Behind the scenes, the poller writes a datapoint every 15 seconds to a time-seri
 
 Only **pinned** resources accumulate history. Unpin a resource and its history stops being collected (existing points age out via the retention windows above).
 
+Unpinned resources still get a chart: when a resource has no accumulated history, the Metrics tab fetches the series live from the provider on demand. Pinning is what buys you the long ranges and retention — the live fetch only covers whatever window the provider itself serves.
+
 <insert [Resource Metrics tab with a 7-day range selector showing CPU/memory series] here>
 
 ## Cost graphs and budgets

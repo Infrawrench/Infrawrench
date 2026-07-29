@@ -3,9 +3,14 @@
 // same userData directory as the GUI: same SQLite database, same master key,
 // same cloud session. Cloud data goes through the HTTP API; local data is read
 // straight from the SQLite tables the GUI maintains.
+import type { MetricSeries } from "@infrawrench/plugin-base";
 import { getDb } from "../main-utils";
 import { getAccessToken, forceRefreshAccessToken, fetchCloudOrgs } from "../cloud-tokens";
-import { listAccountResourcesLive, resolveResourceOutputs } from "../plugin-runtime";
+import {
+  fetchLocalMetricSeries,
+  listAccountResourcesLive,
+  resolveResourceOutputs,
+} from "../plugin-runtime";
 import { CLOUD_URL } from "../../env";
 
 export type OutputMode = "json" | "text";
@@ -252,6 +257,34 @@ export async function loadLocalResourceOutputs(
 ): Promise<ResourceRow> {
   const outputs = await resolveResourceOutputs(account, row.resourceTypeId, row.id);
   return { ...row, outputs: { ...row.outputs, ...outputs } };
+}
+
+/**
+ * Ask the cloud to re-list every resource type of an account from the
+ * provider right now. The poller keeps the cache warm on its own schedule,
+ * but "show me this account" should mean what the provider says *now* — the
+ * desktop account page syncs the same way. Returns the synced row count.
+ */
+export async function syncCloudAccount(orgId: string, accountId: string): Promise<number> {
+  const { synced } = await orgFetch<{ synced: number }>(
+    orgId,
+    `/accounts/${encodeURIComponent(accountId)}/sync`,
+    { method: "POST" },
+  );
+  return synced;
+}
+
+/**
+ * A local resource's metric series, fetched live from the provider the way
+ * the GUI's Metrics tab does. Empty when the type has no metrics support.
+ */
+export async function fetchLocalMetrics(
+  account: AccountInfo,
+  resourceTypeId: string,
+  resourceId: string,
+  range?: { startMs: number; endMs: number },
+): Promise<MetricSeries[]> {
+  return fetchLocalMetricSeries(account, resourceTypeId, resourceId, range);
 }
 
 export async function listCloudResources(orgId: string, accountId: string): Promise<ResourceRow[]> {
