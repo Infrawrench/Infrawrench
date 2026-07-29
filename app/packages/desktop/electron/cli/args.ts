@@ -39,6 +39,17 @@ export interface DeployFlags {
    * Named `--to-run` because `--to` is already the time-range end.
    */
   toRun?: string | undefined;
+  /**
+   * `deploy rollback` only: also delete the resources that runs after the
+   * target created through `infra.accounts` — undo the provisioning, not just
+   * the shipping. Destructive, so it is never the default.
+   */
+  deleteCreated: boolean;
+  /**
+   * `deploy destroy` only: skip the Infrafile and delete what the local ledger
+   * says this env's runs created. Requires an explicit `--env`.
+   */
+  created: boolean;
 }
 
 export interface ParsedCli {
@@ -87,6 +98,8 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         // Repeatable: one --set per select() key the Infrafile asks about.
         set: { type: "string", multiple: true },
         "to-run": { type: "string" },
+        "delete-created": { type: "boolean", default: false },
+        created: { type: "boolean", default: false },
       },
     });
   } catch (e) {
@@ -150,6 +163,8 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       plan: values.plan === true,
       set: Array.isArray(multi.set) ? multi.set : [],
       toRun: str("to-run"),
+      deleteCreated: values["delete-created"] === true,
+      created: values.created === true,
     },
     push: {
       source: str("source"),

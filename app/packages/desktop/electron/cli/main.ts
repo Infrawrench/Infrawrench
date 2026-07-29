@@ -39,9 +39,13 @@ COMMANDS
   page <message>      alert the org's on-call transports   --source <name> [--key k] [--voice]
   page clear          drop a page key's cooldown after a recovery   --source <name> [--key k]
   deploy              build & ship this project via its Infrafile   [-e <env>] [--plan]
+                      (--org/--local scope which accounts the Infrafile sees)
   deploy typings      print Infrafile.d.ts for your editor
   deploy log          recent deploys for the organization (--local: this machine's)   [-e <env>]
-  deploy rollback     ship a previous deploy's image again   [-e <env>] [--to-run <id>]
+  deploy rollback     ship a previous deploy's image again   [-e <env>] [--to-run <id>] [--delete-created]
+  deploy outputs      print the last successful deploy's infra.output(...) value   [-e <env>]
+  deploy status       check the resources the local ledger says exist   [-e <env>]
+  deploy destroy      run the Infrafile's destroy() stage — tear the env down   [-e <env>] [--created]
   cli install         install this shell command (also: uninstall, status)
   help                show this help
 
@@ -59,6 +63,8 @@ FLAGS
   --plan              deploy: show the plan and Dockerfile, build nothing
   --set <key=value>   deploy: answer a select() without prompting (repeatable)
   --to-run <runId>    deploy rollback: which run to go back to
+  --delete-created    deploy rollback: also delete resources newer runs created
+  --created           deploy destroy: delete what the local ledger says the env created (needs -e)
   --no-color          disable ANSI colors
   -v, --version       app version
 

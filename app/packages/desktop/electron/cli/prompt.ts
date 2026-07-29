@@ -12,7 +12,7 @@
  * `--set key=value` exists to prevent in the first place.
  */
 import { CliError } from "./context";
-import { c, println } from "./output";
+import { c, colorIsEnabled, println } from "./output";
 
 const ESC = "\u001b";
 const HIDE_CURSOR = `${ESC}[?25l`;
@@ -83,11 +83,20 @@ function readKeys(handle: (key: string) => boolean): Promise<void> {
 export interface SelectOption {
   label: string;
   value: string;
+  /** Display-only decoration beside the label (a region's "🇺🇸 Iowa, USA"). */
+  hint?: string;
 }
 
 /**
  * Arrow-key (or j/k) list picker. Returns the chosen option's value, or throws
  * if the user escapes — a deploy should stop rather than proceed on a guess.
+ *
+ * Long lists (every GCP region) are WINDOWED to the terminal height: the
+ * in-place repaint walks the cursor back up over the previous render, which
+ * cannot cross the top of the screen — painting more rows than the viewport
+ * holds smears the list and scrolls the question away. The title and help
+ * line live inside the repainted block, so they stay pinned at the top, with
+ * "↑/↓ n more" markers standing in for what is off-window.
  */
 export async function selectOne(message: string, options: SelectOption[]): Promise<string> {
   if (options.length === 0) throw new CliError(`${message}: nothing to choose from.`, 2);
@@ -98,20 +107,38 @@ export async function selectOne(message: string, options: SelectOption[]): Promi
   requireTty();
 
   let index = 0;
+  let offset = 0;
   let painted = 0;
 
+  // Title + help + two scroll markers = 4 rows of chrome; one spare row keeps
+  // the block strictly inside the viewport so the cursor-up repaint holds.
+  const windowSize = () => Math.max(3, Math.min(options.length, (process.stdout.rows || 24) - 5));
+
   const paint = () => {
-    // Redraw in place: jump back over the previous render, then rewrite.
     if (painted > 0) process.stdout.write(`${ESC}[${painted}A`);
-    const lines = options.map((o, i) =>
-      i === index ? `${c.cyan("❯")} ${c.bold(o.label)}` : `  ${c.dim(o.label)}`,
-    );
+    const size = windowSize();
+    if (index < offset) offset = index;
+    if (index >= offset + size) offset = index - size + 1;
+    if (offset > options.length - size) offset = Math.max(0, options.length - size);
+
+    const lines: string[] = [c.bold(message), c.dim("  ↑/↓ to move, ↵ to choose")];
+    // Marker rows render even when empty so the block height never shifts
+    // between repaints — a varying height would desync the cursor-up walk.
+    lines.push(offset > 0 ? c.dim(`  ↑ ${offset} more`) : "");
+    for (let i = offset; i < Math.min(offset + size, options.length); i++) {
+      const o = options[i]!;
+      const hint = o.hint ? `  ${c.dim(o.hint)}` : "";
+      lines.push(
+        i === index ? `${c.cyan("❯")} ${c.bold(o.label)}${hint}` : `  ${c.dim(o.label)}${hint}`,
+      );
+    }
+    const below = options.length - (offset + size);
+    lines.push(below > 0 ? c.dim(`  ↓ ${below} more`) : "");
+
     for (const line of lines) process.stdout.write(`${CLEAR_LINE}${line}\n`);
     painted = lines.length;
   };
 
-  println(c.bold(message));
-  println(c.dim("  ↑/↓ to move, ↵ to choose"));
   paint();
 
   await readKeys((key) => {
@@ -130,17 +157,29 @@ export async function selectOne(message: string, options: SelectOption[]): Promi
     return false;
   });
 
-  println(`${c.dim("→")} ${options[index]!.label}`);
+  // Collapse the whole picker to its one-line answer, like a form field.
+  if (painted > 0) {
+    process.stdout.write(`${ESC}[${painted}A`);
+    for (let i = 0; i < painted; i++) process.stdout.write(`${CLEAR_LINE}\n`);
+    process.stdout.write(`${ESC}[${painted}A`);
+  }
+  println(`${c.bold(message)} ${c.dim("→")} ${options[index]!.label}`);
   return options[index]!.value;
 }
 
-/** Single-line text input. Supports backspace; Enter submits. */
+/**
+ * Single-line text input, drawn like a form field: a dim `›` separator, the
+ * editable value, and an inverse-video caret standing in for the terminal
+ * cursor (readKeys hides the real one). Enter submits; the line then collapses
+ * to the same `label → value` form an answered select leaves behind.
+ */
 export async function askText(message: string, defaultValue = ""): Promise<string> {
   requireTty();
   let value = defaultValue;
 
+  const caret = colorIsEnabled() ? `${ESC}[7m ${ESC}[27m` : "_";
   const paint = () => {
-    process.stdout.write(`\r${CLEAR_LINE}${c.bold(message)} ${value}`);
+    process.stdout.write(`\r${CLEAR_LINE}${c.bold(message)} ${c.dim("›")} ${value}${caret}`);
   };
   paint();
 
@@ -158,7 +197,7 @@ export async function askText(message: string, defaultValue = ""): Promise<strin
     return false;
   });
 
-  process.stdout.write("\n");
+  process.stdout.write(`\r${CLEAR_LINE}${c.bold(message)} ${c.dim("→")} ${value}\n`);
   return value;
 }
 
