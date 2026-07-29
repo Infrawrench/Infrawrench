@@ -23,6 +23,7 @@ import { killAllK9sSessions } from "./k9s";
 import { validateSql, validateParams, classifyMutation } from "./db-guard";
 import { registerKubeconfigClusterEndpoints } from "./k8s-endpoints";
 import { getShellCommandStatus, installShellCommand, uninstallShellCommand } from "./shell-command";
+import { readLocalDeploys } from "./deploy-history";
 import {
   getEncryptionKey,
   encryptValue,
@@ -662,6 +663,11 @@ ipcMain.handle("db_execute", async (_e, { sql, params }: { sql: string; params?:
 ipcMain.handle("cli_shell_command_status", () => getShellCommandStatus());
 ipcMain.handle("cli_install_shell_command", () => installShellCommand());
 ipcMain.handle("cli_uninstall_shell_command", () => uninstallShellCommand());
+
+// What `infrawrench deploy` did on this machine — see deploy-history.ts for why
+// it is a file rather than a table. Read-only from the renderer: only the CLI
+// ever deploys locally, so only the CLI writes.
+ipcMain.handle("local_deploy_history", () => readLocalDeploys());
 
 // Native clipboard image read. The renderer cannot use
 // navigator.clipboard.read() — Electron fails its permission check and the

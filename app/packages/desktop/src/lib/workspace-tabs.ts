@@ -7,6 +7,7 @@ import {
   costsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
+  deploymentsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -22,6 +23,7 @@ export {
   costsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
+  deploymentsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -54,6 +56,12 @@ export function getWorkspaceNavigateArgs(
       return { to: "/agents", ...(replace ? { replace: true } : {}) };
     case "workflows":
       return { to: "/workflows", ...(replace ? { replace: true } : {}) };
+    case "deployments":
+      return {
+        to: "/deployments",
+        ...(target.repo ? { search: { repo: target.repo } } : {}),
+        ...(replace ? { replace: true } : {}),
+      };
     case "costs":
       return { to: "/costs", ...(replace ? { replace: true } : {}) };
     case "chat":
@@ -124,6 +132,10 @@ export function syncWorkspaceRouteFromPath(
   const segments = pathname.split("/").filter(Boolean);
   if (segments[0] === "workflows") {
     return workflowsTabTarget();
+  }
+  if (segments[0] === "deployments") {
+    const params = new URLSearchParams(search ?? "");
+    return deploymentsTabTarget(params.get("repo") ?? undefined);
   }
   if (segments[0] === "agents") {
     return agentsTabTarget();

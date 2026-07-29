@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   dashboardTabTarget,
   accountTabTarget,
+  deploymentsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -118,6 +119,17 @@ describe("getWorkspaceNavigateArgs", () => {
     const args = getWorkspaceNavigateArgs(dashboardTabTarget("d"), false);
     expect(args.replace).toBeUndefined();
   });
+
+  it("returns deployments route args", () => {
+    expect(getWorkspaceNavigateArgs(deploymentsTabTarget())).toEqual({ to: "/deployments" });
+  });
+
+  it("carries a hotlinked repo through as a search param", () => {
+    expect(getWorkspaceNavigateArgs(deploymentsTabTarget("owner/name"))).toEqual({
+      to: "/deployments",
+      search: { repo: "owner/name" },
+    });
+  });
 });
 
 describe("syncWorkspaceRouteFromPath", () => {
@@ -136,6 +148,19 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/accounts/acc-1")).toEqual({
       kind: "account",
       accountId: "acc-1",
+    });
+  });
+
+  it("parses the deployments path", () => {
+    expect(syncWorkspaceRouteFromPath("/deployments")).toEqual({ kind: "deployments" });
+  });
+
+  // Under hash history the query lives inside the fragment, so the repo a
+  // /deploy/... hotlink carries only arrives via the router's search string.
+  it("parses a deployments path with a repo", () => {
+    expect(syncWorkspaceRouteFromPath("/deployments", undefined, "?repo=owner%2Fname")).toEqual({
+      kind: "deployments",
+      repo: "owner/name",
     });
   });
 

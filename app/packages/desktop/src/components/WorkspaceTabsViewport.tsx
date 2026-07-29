@@ -4,8 +4,10 @@ import { useRouterState } from "@tanstack/react-router";
 import {
   WorkspaceTabsViewport as BaseViewport,
   dashboardTabTarget,
+  DeploymentsPanel,
   useUIStore,
   workspaceTabTargetsEqual,
+  type DeploymentClient,
   type WorkspaceTab,
 } from "@infrawrench/ui";
 import { DashboardPanel } from "@/routes/dashboard.$dashboardId";
@@ -16,13 +18,23 @@ import { AgentsPanel, type AgentClient } from "@infrawrench/ui/agents";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
 import { createDesktopCostsClient } from "@/lib/costs-client";
 import { createDesktopAgentClient } from "@/lib/agent-client";
+import { createDesktopDeploymentClient } from "@/lib/cloud-deployments";
 import { CloudChatPanel } from "@/components/CloudChatPanel";
 import { DesktopWorkflowsPanel } from "@/components/DesktopWorkflowsPanel";
+import { LocalDeploymentsPanel } from "@/components/LocalDeploymentsPanel";
 
 let agentClient: AgentClient | null = null;
 function getAgentClient(): AgentClient {
   if (!agentClient) agentClient = createDesktopAgentClient();
   return agentClient;
+}
+
+// One client for every org: it resolves the active org per call, so switching
+// org under a mounted Deploy tab reaches the new org's repos and history.
+let deploymentClient: DeploymentClient | null = null;
+function getDeploymentClient(): DeploymentClient {
+  if (!deploymentClient) deploymentClient = createDesktopDeploymentClient();
+  return deploymentClient;
 }
 
 let costsClient: CostsClient | null = null;
@@ -42,6 +54,7 @@ export function DesktopWorkspaceTabsViewport() {
   // window.location.search is always empty — read it from router state.
   const searchStr = useRouterState({ select: (s) => s.location.searchStr });
   const tabsHydrated = useUIStore((s) => s.tabsHydrated);
+  const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
 
   // The URL is a "tab URL" when syncWorkspaceRouteFromPath returns a target.
   // On non-tab routes (index, settings) we hide all tab panels so the route's
@@ -60,25 +73,35 @@ export function DesktopWorkspaceTabsViewport() {
   }, [tabsHydrated, pathname, hash, searchStr]);
 
   return (
-    <BaseViewport showActive={showActive} renderTabPanel={(tab) => renderPanel(tab, navigate)} />
+    <BaseViewport
+      showActive={showActive}
+      renderTabPanel={(tab) => renderPanel(tab, navigate, activeCloudOrgId)}
+    />
   );
 }
 
-function renderPanel(tab: WorkspaceTab, navigate: ReturnType<typeof useNavigate>) {
+function renderPanel(
+  tab: WorkspaceTab,
+  navigate: ReturnType<typeof useNavigate>,
+  activeCloudOrgId: string | null,
+) {
   const t = tab.target;
   switch (t.kind) {
     case "deployments":
-      // Deploying needs a cloud org (a GitHub App install to read the Infrafile,
-      // a build host to build on). The desktop binary is also the CLI, which
-      // does the same three stages locally, so it is the answer here.
-      return (
-        <div className="p-6 text-sm text-on-surface-secondary">
-          <p className="mb-2">Deploys run from the web app or the terminal.</p>
-          <p className="text-xs text-on-surface-faint">
-            In this project&apos;s directory, run <code>infrawrench deploy</code>. It reads the
-            Infrafile at your repo root and builds with your local Docker daemon.
-          </p>
-        </div>
+      // Deploying from the app needs an org: a GitHub App install to read the
+      // Infrafile at a branch head, and a build host to build on. Without one
+      // the desktop binary is also the CLI, which runs the same three stages
+      // locally — so local mode shows what those runs did.
+      return activeCloudOrgId ? (
+        <DeploymentsPanel
+          // Keyed by org so switching org refetches repos, history and
+          // triggers rather than showing the previous org's.
+          key={activeCloudOrgId}
+          client={getDeploymentClient()}
+          {...(t.repo ? { initialRepo: t.repo } : {})}
+        />
+      ) : (
+        <LocalDeploymentsPanel />
       );
     case "dashboard":
       return <DashboardPanel dashboardId={t.dashboardId} />;

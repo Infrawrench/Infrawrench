@@ -40,7 +40,7 @@ COMMANDS
   page clear          drop a page key's cooldown after a recovery   --source <name> [--key k]
   deploy              build & ship this project via its Infrafile   [-e <env>] [--plan]
   deploy typings      print Infrafile.d.ts for your editor
-  deploy log          recent deploys for the organization   [-e <env>]
+  deploy log          recent deploys for the organization (--local: this machine's)   [-e <env>]
   deploy rollback     ship a previous deploy's image again   [-e <env>] [--to-run <id>]
   cli install         install this shell command (also: uninstall, status)
   help                show this help

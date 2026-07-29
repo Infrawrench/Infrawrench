@@ -121,6 +121,8 @@ export { DashboardGrid } from "./components/dashboard/DashboardGrid.js";
 
 export { SidebarItem } from "./components/sidebar/SidebarItem.js";
 export { SidebarSection } from "./components/sidebar/SidebarSection.js";
+export { SidebarNavGrid, SidebarNavTile } from "./components/sidebar/SidebarNavGrid.js";
+export type { SidebarNavTileDef } from "./components/sidebar/SidebarNavGrid.js";
 
 export { OrgSwitcher } from "./components/OrgSwitcher.js";
 export type { OrgSwitcherProps, OrgEntry } from "./components/OrgSwitcher.js";

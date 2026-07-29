@@ -407,7 +407,9 @@ Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `me
 ### Key components (`src/components/`)
 
 - `SidebarAccounts.tsx` — grouped by plugin, lazy-loaded per account on expand, auto-refresh every 30s, right-click SSH context menu
-- `SidebarDashboards.tsx` — dashboard list + create; dashboard sidebar pill/drop/drag visuals are canonicalized in shared `@infrawrench/ui` `DroppableDashboardItem` so desktop and web stay in sync
+- `SidebarDashboards.tsx` — dashboard list + create, under the Agents/Workflows/Deploy/Costs tile grid; dashboard sidebar pill/drop/drag visuals are canonicalized in shared `@infrawrench/ui` `DroppableDashboardItem` so desktop and web stay in sync
+- The tile grid itself is shared: `@infrawrench/ui` `SidebarNavGrid` (was a private `SidebarNavTile` in `WebSidebar.tsx`). Icons are a mix of text glyphs and SVGs, so each gets a fixed `w-3.5` slot or the labels don't line up. Desktop drops the Costs tile in local mode (spend is collected server-side), which is why the grid spans the last tile across both columns when the count is odd
+- `LocalDeploymentsPanel.tsx` — the Deploy tab in local mode: history of `infrawrench deploy` runs on this machine (cloud mode renders the shared `DeploymentsPanel` instead)
 - `DashboardView.tsx` — pinned resource cards, drag-and-drop pin, auto-connect & refresh stats every 30s
 - `CreateResourceModal.tsx` — calls `getCreateConfig` on mount, renders region/size/image/disk/ssh-key pickers, navigates to new resource on success
 - `AddAccountModal.tsx` — collects credential fields, encrypts, saves to DB
@@ -1771,6 +1773,26 @@ deploy-<runId>` gives 24h dedup; `deployment_runs.meter_event_id` null beside no
 `build_seconds` marks a consumed-but-unbilled row for a future replay job (none exists yet, same
 as chat). **Existing subscriptions don't gain the metered item** — checkout only attaches it to
 new ones; add the price to live subscriptions in Stripe by hand.
+
+**The desktop Deploy tab follows the org switcher**, the way workflows and costs already do. With
+an org selected it renders the shared `DeploymentsPanel` against `lib/cloud-deployments.ts` — the
+one-shot calls proxied over `cloud_deploy_*` IPC (`electron/cloud-data/deployments.ts`), the
+interactive deploy over the cloud websocket's `deploy:*` frames straight from the renderer, exactly
+as `cloud-workflows.ts` runs `workflow:*`. `select()` goes to the same `PromptHost` local workflow
+runs use, because Electron's `window.prompt` is a no-op.
+
+**In local mode it shows local deploy history, and that history is a JSONL file, not a table**
+(`electron/deploy-history.ts`, `~/…/userData/deploy-history.jsonl`; the record's shape lives in
+`src/lib/deploy-history-types.ts` so both tsconfigs can see it, the same arrangement
+`src/db/schema.ts` has). The obvious home would be local SQLite — and it is wrong: `db.ts` opens
+read-only whenever the GUI holds the single-instance lock (sql.js rewrites the whole file, so two
+processes must never both persist), so a run recorded from the terminal while the app is open
+would silently vanish, which is precisely when someone goes looking for it. An append to a file of
+its own is safe from either process. `recordRun` in the CLI now writes locally **always** —
+including `--local`, which never talks to an org and so previously left no trace anywhere — and
+still POSTs to the org when there is one. `infrawrench deploy log --local` prints the same list.
+Deploying itself stays terminal-only in local mode: a local deploy needs the working tree on disk
+and the user's own Docker daemon, both of which the CLI already has.
 
 **Still TODO**: tests for the SSH driver + the web wiring — both need live infrastructure,
 so only the runtime is covered.

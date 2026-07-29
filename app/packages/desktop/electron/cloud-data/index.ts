@@ -4,6 +4,7 @@ import "./accounts";
 import "./chat";
 import "./costs";
 import "./dashboards";
+import "./deployments";
 import "./resources";
 import "./secrets";
 import "./metrics";

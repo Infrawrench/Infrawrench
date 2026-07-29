@@ -82,7 +82,9 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
     case "workflows":
       return "Workflows";
     case "deployments":
-      return "Deployments";
+      // "Deploy" everywhere the user reads it — the sidebar tile, the panel
+      // heading and the docs all say Deploy; only the tab used to disagree.
+      return "Deploy";
     case "chat":
       return "Chat";
     case "resource":

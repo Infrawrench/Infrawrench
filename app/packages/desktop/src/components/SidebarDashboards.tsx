@@ -5,10 +5,13 @@ import { createDashboard } from "../lib/pins";
 import {
   CHAT_CONVERSATIONS_CHANGED_EVENT,
   DEFAULT_CHAT_MODEL,
+  DeployIcon,
   DroppableDashboardItem,
   emitChatConversationsChanged,
+  SidebarNavGrid,
   useUIStore,
   type ConversationSummary,
+  type SidebarNavTileDef,
 } from "@infrawrench/ui";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
@@ -17,6 +20,7 @@ import {
   costsTabTarget,
   chatTabTarget,
   dashboardTabTarget,
+  deploymentsTabTarget,
   workflowsTabTarget,
   navigateToWorkspaceTarget,
 } from "../lib/workspace-tabs";
@@ -160,49 +164,48 @@ export function SidebarDashboards() {
     }
   }
 
+  // Deploy is here in both modes: with an org it is the full deploy screen,
+  // and without one it is the history of what `infrawrench deploy` did on this
+  // machine. Costs has no local half — spend is collected server-side — so the
+  // grid drops to three tiles, and SidebarNavGrid squares that off itself.
+  const navTiles: SidebarNavTileDef[] = [
+    {
+      key: "agents",
+      label: "Agents",
+      icon: <span className="font-mono text-[11px]">&gt;_</span>,
+      onClick: () =>
+        void navigateToWorkspaceTarget(navigate, agentsTabTarget(), { label: "Agents" }),
+    },
+    {
+      key: "workflows",
+      label: "Workflows",
+      icon: <WorkflowIcon />,
+      onClick: () =>
+        void navigateToWorkspaceTarget(navigate, workflowsTabTarget(), { label: "Workflows" }),
+    },
+    {
+      key: "deploy",
+      label: "Deploy",
+      icon: <DeployIcon />,
+      onClick: () =>
+        void navigateToWorkspaceTarget(navigate, deploymentsTabTarget(), { label: "Deploy" }),
+    },
+    ...(activeCloudOrgId
+      ? [
+          {
+            key: "costs",
+            label: "Costs",
+            icon: <CostsIcon />,
+            onClick: () =>
+              void navigateToWorkspaceTarget(navigate, costsTabTarget(), { label: "Costs" }),
+          },
+        ]
+      : []),
+  ];
+
   return (
     <div className="mb-2">
-      <div className="mx-2 mb-1">
-        <button
-          type="button"
-          onClick={() =>
-            void navigateToWorkspaceTarget(navigate, agentsTabTarget(), { label: "Agents" })
-          }
-          className="group w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
-        >
-          <span className="opacity-60 flex-shrink-0 font-mono text-[11px]">&gt;_</span>
-          <span className="truncate">Agents</span>
-        </button>
-      </div>
-
-      <div className="mx-2 mb-1">
-        <button
-          type="button"
-          onClick={() =>
-            void navigateToWorkspaceTarget(navigate, workflowsTabTarget(), { label: "Workflows" })
-          }
-          className="group w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
-        >
-          <WorkflowIcon className="opacity-50 flex-shrink-0" />
-          <span className="truncate">Workflows</span>
-        </button>
-      </div>
-
-      {/* Costs are collected server-side, so the panel is cloud-only. */}
-      {activeCloudOrgId && (
-        <div className="mx-2 mb-1">
-          <button
-            type="button"
-            onClick={() =>
-              void navigateToWorkspaceTarget(navigate, costsTabTarget(), { label: "Costs" })
-            }
-            className="group w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
-          >
-            <CostsIcon className="opacity-50 flex-shrink-0" />
-            <span className="truncate">Costs</span>
-          </button>
-        </div>
-      )}
+      <SidebarNavGrid tiles={navTiles} />
 
       {/* Section header */}
       <div className="flex items-center justify-between px-3 py-1">

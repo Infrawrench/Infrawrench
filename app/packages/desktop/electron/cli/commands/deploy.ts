@@ -8,6 +8,7 @@
  * The web app does the same three stages against a repo pulled from git and an
  * SSH build host — same runtime, different edges.
  */
+import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
@@ -30,6 +31,7 @@ import type { ResourceTypeDefinition } from "@infrawrench/plugin-base" with {
 };
 
 import { buildLocally, pushLocally, runInImage } from "../../infrafile/build-local";
+import { recordLocalDeploy, readLocalDeploys, type LocalDeployRun } from "../../deploy-history";
 import { createLocalPluginClient } from "../../infrafile/plugin-host";
 import { CliError, listLocalAccounts, orgFetch, resolveOrg, type CliContext } from "../context";
 import type { DeployFlags } from "../args";
@@ -210,10 +212,16 @@ interface DeploymentRunRow {
   startedAt: string;
 }
 
-/** `infrawrench deploy log` — the org's deploy history, newest first. */
+/**
+ * `infrawrench deploy log` — deploy history, newest first.
+ *
+ * `--local` reads this machine's own runs (the same list the desktop app's
+ * Deploy tab shows in local mode); anything else reads the organization's.
+ */
 async function cmdDeployLog(ctx: CliContext, flags: DeployFlags): Promise<void> {
   if (ctx.flags.local) {
-    throw new CliError("Deploy history lives in Infrawrench Cloud — pass --org instead.", 2);
+    cmdDeployLogLocal(ctx, flags);
+    return;
   }
   const org = await resolveOrg(ctx);
   const query = flags.env ? `?env=${encodeURIComponent(flags.env)}` : "";
@@ -247,6 +255,51 @@ async function cmdDeployLog(ctx: CliContext, flags: DeployFlags): Promise<void> 
     },
     { header: "from", value: (r) => r.origin },
   ]);
+}
+
+/** The `--local` half of `deploy log`: runs built by this machine's Docker. */
+function cmdDeployLogLocal(ctx: CliContext, flags: DeployFlags): void {
+  const runs = readLocalDeploys().filter((r) => !flags.env || r.env === flags.env);
+
+  if (ctx.flags.output === "json") {
+    printJson(runs);
+    return;
+  }
+  if (runs.length === 0) {
+    println(c.dim("No local deploys yet. Run `infrawrench deploy` in a project directory."));
+    return;
+  }
+  printTable(runs, [
+    {
+      header: "when",
+      value: (r) => new Date(r.startedAt).toISOString().slice(0, 16).replace("T", " "),
+    },
+    { header: "env", value: (r) => r.env || "—" },
+    {
+      header: "commit",
+      value: (r) => (r.gitSha ? `${r.gitSha.slice(0, 7)}${r.dirty ? "*" : ""}` : "—"),
+    },
+    { header: "image", value: (r) => r.image ?? "—" },
+    {
+      header: "status",
+      value: (r) =>
+        r.status === "success"
+          ? c.green(r.status)
+          : r.status === "failure"
+            ? c.red(r.status)
+            : r.status,
+    },
+    {
+      header: "took",
+      value: (r) => (r.durationMs === null ? "—" : `${Math.round(r.durationMs / 1000)}s`),
+      align: "right",
+    },
+    { header: "where", value: (r) => r.dir },
+  ]);
+  if (runs.some((r) => r.dirty)) {
+    println("");
+    println(c.dim("* built from a working tree with uncommitted changes"));
+  }
 }
 
 /**
@@ -301,9 +354,13 @@ async function cmdDeployRollback(ctx: CliContext, flags: DeployFlags): Promise<v
 }
 
 /**
- * Report a local run to the org so both origins share one history. Best-effort:
- * a deploy that worked must not be reported as failed because the record
- * afterwards did not land.
+ * Record a run. Two destinations, and they are not alternatives:
+ *
+ * - The org, so a terminal deploy and a web deploy share one history. Skipped
+ *   for `--local`, and best-effort otherwise: a deploy that worked must not be
+ *   reported as failed because the record afterwards did not land.
+ * - This machine, always — including `--local`, which has no org to report to.
+ *   That is what the desktop app's Deploy tab reads when no org is selected.
  */
 async function recordRun(
   ctx: CliContext,
@@ -317,28 +374,57 @@ async function recordRun(
     error?: { message: string };
   },
   git: InfrafileGitContext,
+  dir: string,
+  startedAt: number,
 ): Promise<void> {
-  if (ctx.flags.local) return;
-  try {
-    const org = await resolveOrg(ctx);
-    await orgFetch(org.id, "/deployments/runs", {
-      method: "POST",
-      body: JSON.stringify({
-        env: result.env,
-        status: result.status,
-        repo: git.repo,
-        branch: git.branch,
-        gitSha: git.sha,
-        image: result.image,
-        stage: result.reachedStage,
-        notes: result.notes,
-        durationMs: result.durationMs,
-        error: result.error ? { message: result.error.message } : null,
-      }),
-    });
-  } catch {
-    // Not signed in, offline, or no permission — the deploy still happened.
+  let orgId: string | null = null;
+  if (!ctx.flags.local) {
+    try {
+      const org = await resolveOrg(ctx);
+      await orgFetch(org.id, "/deployments/runs", {
+        method: "POST",
+        body: JSON.stringify({
+          env: result.env,
+          status: result.status,
+          repo: git.repo,
+          branch: git.branch,
+          gitSha: git.sha,
+          image: result.image,
+          stage: result.reachedStage,
+          notes: result.notes,
+          durationMs: result.durationMs,
+          error: result.error ? { message: result.error.message } : null,
+        }),
+      });
+      orgId = org.id;
+    } catch {
+      // Not signed in, offline, or no permission — the deploy still happened,
+      // and the local record below still captures it.
+    }
   }
+
+  const local: LocalDeployRun = {
+    id: randomUUID(),
+    startedAt: new Date(startedAt).toISOString(),
+    env: result.env,
+    repo: git.repo ?? null,
+    branch: git.branch || null,
+    gitSha: git.sha || null,
+    dirty: git.dirty === true,
+    image: result.image ?? null,
+    status: isDeployStatus(result.status) ? result.status : "failure",
+    stage: result.reachedStage ?? null,
+    durationMs: result.durationMs,
+    dir,
+    notes: result.notes,
+    error: result.error?.message ?? null,
+    orgId,
+  };
+  recordLocalDeploy(local);
+}
+
+function isDeployStatus(status: string): status is LocalDeployRun["status"] {
+  return ["success", "failure", "canceled", "running", "pending"].includes(status);
 }
 
 export async function cmdDeploy(ctx: CliContext, flags: DeployFlags): Promise<void> {
@@ -356,6 +442,7 @@ export async function cmdDeploy(ctx: CliContext, flags: DeployFlags): Promise<vo
     return;
   }
 
+  const startedAt = Date.now();
   const { dir, file } = await findInfrafile(process.cwd());
   const source = await readFile(file, "utf8");
   const git = await gitContext(dir);
@@ -502,7 +589,7 @@ export async function cmdDeploy(ctx: CliContext, flags: DeployFlags): Promise<vo
 
   // Record before throwing: a failed deploy is exactly the one worth having in
   // the history.
-  if (!flags.plan) await recordRun(ctx, result, git);
+  if (!flags.plan) await recordRun(ctx, result, git, dir, startedAt);
 
   if (result.status !== "success") {
     throw new CliError(result.error?.message ?? "Deploy failed.", 1);

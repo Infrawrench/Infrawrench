@@ -213,6 +213,30 @@ the Dockerfile it rendered, and stops before building anything.
 Because the build is local, the CLI can deploy a working tree with uncommitted
 changes — it will tell you when it spots them.
 
+## Deploying from the desktop app
+
+Open **Deploy** in the sidebar. What it shows follows the org switcher:
+
+- **With an organization selected** it is the web app's Deploy screen — the same
+  repository and environment pickers, plan-then-deploy flow, live build output,
+  deploy-on-push triggers and rollbacks, driven by the same hosted builds.
+- **In local mode** it is the history of what `infrawrench deploy` did on this
+  machine: when each run happened, which environment and project directory,
+  the commit (flagged when the tree was dirty), the image it produced, how far
+  a failed run got, and how long it took. Expanding a run shows its notes and
+  the error that stopped it.
+
+Local deploys are still driven from the terminal, because a local deploy needs
+the two things the terminal already has: your working tree on disk and your own
+Docker daemon. The app is where you go afterwards to see what happened.
+
+A run recorded on this machine is kept locally whether or not it was also
+reported to an organization, so a `--local` deploy — which never talks to an org
+at all — still leaves a trace you can read. The same list is available as
+`infrawrench deploy log --local`.
+
+<insert [The desktop app's Deploy tab in local mode, showing a table of past `infrawrench deploy` runs with one failed run expanded to reveal its error] here>
+
 ## Deploying from the web app
 
 ### Who can deploy
@@ -369,7 +393,7 @@ render its Dockerfile without building anything, and `rollback_deployment`.
 
 There is deliberately **no tool that deploys**. Building and shipping a release
 is slow, expensive, and lands bytes on real infrastructure that nothing can take
-back, so a human starts it — from the Deployments tab or `infrawrench deploy`.
+back, so a human starts it — from the Deploy tab or `infrawrench deploy`.
 What a model gets is everything needed to reason about a deploy ("why did last
 night's staging deploy fail?", "what would deploying this branch do?") plus
 rollback, which is the one deploy-shaped action that makes things safer.

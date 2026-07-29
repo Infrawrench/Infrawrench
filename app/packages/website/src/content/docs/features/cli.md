@@ -126,6 +126,18 @@ infrawrench deploy --env staging --set build-host=local --json
 
 The CLI builds with the **Docker daemon on your machine**, so you keep your layer cache and need no build VM — and you can deploy a working tree with uncommitted changes, which it points out when it spots them. Anything the Infrafile asks about via `select` is prompted for in the terminal, or answered up front with a repeatable `--set <key>=<value>`.
 
+Every run is recorded, twice when it can be: in the organization, so a terminal deploy and a web deploy share one history, and on this machine, which is the only record a `--local` run has.
+
+```bash
+# The organization's deploy history.
+infrawrench deploy log --env production
+
+# What this machine built, wherever it was building it.
+infrawrench deploy log --local
+```
+
+`--local` lists the runs the **desktop app's Deploy tab** shows when no organization is selected, including the project directory each one built and a `*` on any commit that was built from a working tree with uncommitted changes.
+
 `infrawrench deploy typings > Infrafile.d.ts` writes the declarations that give your editor autocomplete over your own accounts.
 
 ## The TUI
