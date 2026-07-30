@@ -24,6 +24,16 @@ import { organizations, subscriptions } from "./db/schema.js";
  */
 const PAID_STATUSES = new Set(["active", "trialing", "past_due"]);
 
+/**
+ * What the free tier includes. Enforced at the invite and account-creation
+ * routes; the same numbers appear in billing copy and the docs plan table, so
+ * a change here means changing those too.
+ */
+export const FREE_PLAN_LIMITS = {
+  users: 1,
+  accounts: 3,
+} as const;
+
 export interface PlanAccess {
   paid: boolean;
   /** Why access was granted or withheld, for the message the caller shows. */

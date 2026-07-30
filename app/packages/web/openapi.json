@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.17.0",
+    "version": "0.18.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -8632,6 +8632,16 @@
                 }
               }
             }
+          },
+          "402": {
+            "description": "Payment required — the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "operationId": "postOrgOrgIdAccounts",
@@ -16770,6 +16780,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/InviteResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required — the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

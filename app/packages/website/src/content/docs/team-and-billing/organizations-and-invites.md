@@ -19,6 +19,8 @@ An **organization** is a shared workspace. Accounts, resources, dashboards, SSH 
 
 The invitee gets an email with a link. They sign up (or sign in), and the org appears in their workspace picker.
 
+Inviting teammates requires the paid plan — the [free plan](./billing-and-plans.md) is a single user, and the invite form will prompt you to upgrade.
+
 On the paid plan, every member and pending invite occupies a [seat](./billing-and-plans.md). If all seats are taken, you'll be asked to confirm adding one (billed pro-rata) before the invite is sent — this needs billing permission, so a member who can invite but can't manage billing will be asked to get a billing admin to add the seat first.
 
 <insert [Invite form showing the "All seats are in use. Add a seat for $20/month and send the invitation?" confirmation prompt] here>

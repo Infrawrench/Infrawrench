@@ -217,6 +217,7 @@ export function registerTeamPaths(ctx: BuildContext) {
     },
     responses: {
       200: { description: "Invited", content: { "application/json": { schema: InviteResponse } } },
+      402: ErrorResponses[402],
       409: {
         description: "All seats are in use; retry with addSeat to buy one more",
         content: { "application/json": { schema: SeatLimitResponse } },

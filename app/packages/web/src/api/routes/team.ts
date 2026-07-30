@@ -6,6 +6,7 @@ import { db } from "../../db/client";
 import { apiKeys, users, invitations, organizationMembers, roles } from "../../db/schema";
 import { logAudit } from "../../services/audit";
 import { addSeat, checkSeatAvailability, releaseSeat } from "../../services/seats";
+import { planAccess, FREE_PLAN_LIMITS } from "../../services/entitlements";
 import { isOwnerRole } from "../../services/org-roles";
 import { requirePermission } from "../../auth/permissions";
 import {
@@ -281,6 +282,21 @@ app.post("/invitations", async (c) => {
     addSeat?: boolean;
   }>();
   const email = body.email;
+
+  // The free plan is a single user, so any invite means upgrading first.
+  // Paid orgs skip this and hit the seat gate below instead.
+  const access = await planAccess(organizationId);
+  if (!access.paid) {
+    return c.json(
+      {
+        error:
+          access.reason === "inactive"
+            ? `This organization's subscription is ${access.status}. Reactivate it under Settings → Billing to invite teammates.`
+            : `The free plan includes ${FREE_PLAN_LIMITS.users} user. Upgrade to Pro to invite your team.`,
+      },
+      402,
+    );
+  }
 
   // Prefer roleId; fall back to mapping the legacy text role to a system role.
   let resolvedRoleId: string | null = null;

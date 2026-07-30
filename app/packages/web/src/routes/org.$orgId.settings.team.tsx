@@ -1,6 +1,13 @@
-import { createFileRoute, useParams } from "@tanstack/react-router";
+import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useState, useEffect, useCallback } from "react";
-import { apiGet, apiPost, apiDelete, apiPatch, SeatLimitReachedClientError } from "@/lib/api";
+import {
+  apiGet,
+  apiPost,
+  apiDelete,
+  apiPatch,
+  PlanRequiredClientError,
+  SeatLimitReachedClientError,
+} from "@/lib/api";
 import { Can, usePermissions } from "@/auth/permissions-context";
 import type { InvitationSummary, TeamMember } from "@infrawrench/ui";
 
@@ -26,6 +33,7 @@ function TeamPage() {
   const [inviteRoleId, setInviteRoleId] = useState<string>("");
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [planRequired, setPlanRequired] = useState(false);
 
   const canInvite = has("team:invite");
   const canChangeRoles = has("team:role:write");
@@ -56,6 +64,7 @@ function TeamPage() {
     if (!inviteEmail.trim() || !inviteRoleId) return;
     setInviting(true);
     setError(null);
+    setPlanRequired(false);
     const body = { email: inviteEmail.trim(), roleId: inviteRoleId };
     try {
       try {
@@ -83,6 +92,7 @@ function TeamPage() {
       setInviteEmail("");
       await load();
     } catch (e) {
+      if (e instanceof PlanRequiredClientError) setPlanRequired(true);
       setError(e instanceof Error ? e.message : "Failed to send invitation");
     } finally {
       setInviting(false);
@@ -145,7 +155,23 @@ function TeamPage() {
               {inviting ? "Inviting..." : "Invite"}
             </button>
           </div>
-          {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+          {error && (
+            <p className="text-xs text-red-400 mt-2">
+              {error}
+              {planRequired && (
+                <>
+                  {" "}
+                  <Link
+                    to="/org/$orgId/settings/billing"
+                    params={{ orgId }}
+                    className="text-blue-400 hover:text-blue-300 underline"
+                  >
+                    Upgrade to Pro
+                  </Link>
+                </>
+              )}
+            </p>
+          )}
         </div>
       </Can>
 

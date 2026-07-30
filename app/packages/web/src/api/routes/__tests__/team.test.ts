@@ -34,6 +34,10 @@ vi.mock("@/services/seats", () => ({
   addSeat: vi.fn().mockResolvedValue(undefined),
   checkSeatAvailability: vi.fn().mockResolvedValue(null),
 }));
+vi.mock("@/services/entitlements", () => ({
+  planAccess: vi.fn().mockResolvedValue({ paid: true, reason: "subscription", status: "active" }),
+  FREE_PLAN_LIMITS: { users: 1, accounts: 3 },
+}));
 
 const mockHasPermission = vi.fn().mockReturnValue(true);
 vi.mock("@infrawrench/server-core/permissions/catalog", () => ({
@@ -51,6 +55,7 @@ vi.mock("@infrawrench/server-core/permissions", () => ({
 
 const { teamRoutes } = await import("@/api/routes/team");
 const { releaseSeat, addSeat, checkSeatAvailability } = await import("@/services/seats");
+const { planAccess } = await import("@/services/entitlements");
 const perms = await import("@infrawrench/server-core/permissions");
 
 function buildApp(opts?: { permissions?: string[]; roleSystemKey?: string | null }) {
@@ -249,6 +254,38 @@ describe("Team routes", () => {
     const body = await res.json();
     expect(body.token).toBeTruthy();
     expect(body.id).toBeTruthy();
+  });
+
+  it("POST /invitations returns 402 on a free org", async () => {
+    vi.mocked(planAccess).mockResolvedValueOnce({ paid: false, reason: "none" });
+    const values = vi.fn().mockResolvedValue(undefined);
+    mockInsert.mockReturnValue({ values });
+
+    const res = await buildApp().request("/invitations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "second@e.com", role: "member" }),
+    });
+    expect(res.status).toBe(402);
+    const body = await res.json();
+    expect(body.error).toContain("Upgrade");
+    expect(values).not.toHaveBeenCalled();
+  });
+
+  it("POST /invitations returns 402 mentioning the status on a lapsed org", async () => {
+    vi.mocked(planAccess).mockResolvedValueOnce({
+      paid: false,
+      reason: "inactive",
+      status: "canceled",
+    });
+    const res = await buildApp().request("/invitations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "second@e.com", role: "member" }),
+    });
+    expect(res.status).toBe(402);
+    const body = await res.json();
+    expect(body.error).toContain("canceled");
   });
 
   it("POST /invitations returns the structured 409 when the plan is full", async () => {

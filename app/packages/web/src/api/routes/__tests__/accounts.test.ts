@@ -55,7 +55,13 @@ vi.mock("@infrawrench/server-core/tunnel-resolver", () => ({
 
 vi.mock("uuid", () => ({ v4: () => "acct-uuid-1" }));
 
+vi.mock("@/services/entitlements", () => ({
+  planAccess: vi.fn().mockResolvedValue({ paid: true, reason: "subscription", status: "active" }),
+  FREE_PLAN_LIMITS: { users: 1, accounts: 3 },
+}));
+
 const { accountRoutes } = await import("@/api/routes/accounts");
+const { planAccess } = await import("@/services/entitlements");
 const { pluginCatalogUrl } = await import("@/lib/plugin-catalog");
 
 const buildApp = () => buildTestApp(accountRoutes);
@@ -176,6 +182,53 @@ describe("Account routes", () => {
       const insertedValues = values.mock.calls[0]![0];
       expect(insertedValues.encryptedCredentials).toBe("enc-blob");
       expect(insertedValues.credentialsIv).toBe("iv-123");
+    });
+
+    it("returns 402 when a free org is at the account cap", async () => {
+      vi.mocked(planAccess).mockResolvedValueOnce({ paid: false, reason: "none" });
+      // The free-tier gate's count query awaits `where` directly (no .limit).
+      const where = vi.fn().mockResolvedValue([{ n: 3 }]);
+      mockSelect.mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where }) });
+      const values = vi.fn().mockResolvedValue(undefined);
+      mockInsert.mockReturnValue({ values });
+
+      const res = await buildApp().request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pluginId: "aws",
+          displayName: "Fourth account",
+          credentials: { accessKeyId: "AKIA...", secretAccessKey: "abc" },
+        }),
+      });
+
+      expect(res.status).toBe(402);
+      const body = await res.json();
+      expect(body.error).toContain("Upgrade");
+      expect(values).not.toHaveBeenCalled();
+    });
+
+    it("creates the account on a free org under the cap", async () => {
+      vi.mocked(planAccess).mockResolvedValueOnce({ paid: false, reason: "none" });
+      const where = vi.fn().mockResolvedValue([{ n: 2 }]);
+      mockSelect
+        .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where }) })
+        .mockReturnValue(chainMock([]));
+      const values = vi.fn().mockResolvedValue(undefined);
+      mockInsert.mockReturnValue({ values });
+
+      const res = await buildApp().request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pluginId: "aws",
+          displayName: "Third account",
+          credentials: { accessKeyId: "AKIA...", secretAccessKey: "abc" },
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(values).toHaveBeenCalled();
     });
   });
 

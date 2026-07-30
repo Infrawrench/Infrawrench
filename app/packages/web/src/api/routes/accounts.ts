@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { v4 as uuid } from "uuid";
-import { eq, and, isNull, or, inArray } from "drizzle-orm";
+import { eq, and, isNull, or, inArray, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { accounts, bastionVms, resources } from "../../db/schema";
 import { refreshAllowlistById } from "@infrawrench/server-core/bastion/registry";
@@ -8,6 +8,7 @@ import { encrypt, decrypt, buildAad } from "../../services/encryption";
 import { loadPlugins, getPlugin } from "../../plugins/loader";
 import { syncAccountResources, syncAccountResourceType } from "../../services/sync-resources";
 import { requirePermission } from "../../auth/permissions";
+import { planAccess, FREE_PLAN_LIMITS } from "../../services/entitlements";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
 
@@ -72,6 +73,24 @@ app.post("/", async (c) => {
     credentials: Record<string, string>;
     bastionId?: string | null;
   }>();
+
+  // The free plan caps connected accounts. Deleted accounts don't count —
+  // the filter matches the list route's.
+  const access = await planAccess(organizationId);
+  if (!access.paid) {
+    const [row] = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(accounts)
+      .where(and(eq(accounts.organizationId, organizationId), isNull(accounts.deletedAt)));
+    if (Number(row?.n ?? 0) >= FREE_PLAN_LIMITS.accounts) {
+      return c.json(
+        {
+          error: `The free plan includes ${FREE_PLAN_LIMITS.accounts} connected accounts. Upgrade to Pro to add more.`,
+        },
+        402,
+      );
+    }
+  }
 
   // Verify the bastion (if any) belongs to this org — never trust the client.
   let validatedBastionId: string | null = null;

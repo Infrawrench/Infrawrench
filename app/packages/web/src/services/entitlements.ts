@@ -5,6 +5,7 @@
 export {
   planAccess,
   requirePaidPlan,
+  FREE_PLAN_LIMITS,
   PlanRequiredError,
   type PlanAccess,
 } from "@infrawrench/server-core/entitlements";

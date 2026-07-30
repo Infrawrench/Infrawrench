@@ -182,6 +182,7 @@ export function registerAccountPaths(ctx: BuildContext) {
         content: { "application/json": { schema: CreateAccountResponse } },
       },
       400: ErrorResponses[400],
+      402: ErrorResponses[402],
     },
   });
 

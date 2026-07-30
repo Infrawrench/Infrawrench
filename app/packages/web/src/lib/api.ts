@@ -63,6 +63,18 @@ export class SeatLimitReachedClientError extends Error {
   }
 }
 
+/**
+ * Error thrown by `apiFetch` for any 402 — the organization's plan does not
+ * include the attempted action. Callers can `catch` it to render an upgrade
+ * prompt instead of a plain error message.
+ */
+export class PlanRequiredClientError extends Error {
+  constructor(message: string) {
+    super(message || "This feature requires a paid plan");
+    this.name = "PlanRequiredClientError";
+  }
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     credentials: "include",
@@ -107,6 +119,9 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     if (parsed && typeof parsed === "object" && parsed !== null && "error" in parsed) {
       const errField = (parsed as { error?: unknown }).error;
       if (typeof errField === "string") message = errField;
+    }
+    if (res.status === 402) {
+      throw new PlanRequiredClientError(message);
     }
     throw new Error(message);
   }
