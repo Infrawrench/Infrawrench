@@ -18,6 +18,11 @@ const CustomGraphFull = strict({
   /** The graph's TypeScript source, run server-side in a sandbox. */
   source: z.string(),
   createdByUserId: z.string().nullable(),
+  /**
+   * Who last wrote the source; the script's read-only infra.* access runs
+   * with this user's role permissions at render time.
+   */
+  sourceAuthorUserId: z.string().nullable(),
   deletedAt: IsoDateTime.nullable(),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,

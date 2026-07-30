@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { runGraph } from "./run.js";
 import type { GraphHost } from "./types.js";
@@ -224,5 +224,178 @@ describe("runGraph", () => {
     });
     expect(result.status).toBe("success");
     expect(result.logs.map((l) => l.message)).toContain('hello {"a":1}');
+  });
+});
+
+describe("runGraph infra access", () => {
+  const tree = [
+    {
+      pluginId: "digitalocean",
+      displayName: "DigitalOcean",
+      accounts: [{ id: "acc1", pluginId: "digitalocean", displayName: "prod" }],
+      resourceTypes: [
+        {
+          id: "droplet",
+          displayName: "Droplet",
+          pluralDisplayName: "Droplets",
+          outputs: [],
+          supportsCreate: true,
+          supportsUpdate: false,
+          supportsDelete: true,
+        },
+      ],
+    },
+  ];
+
+  function infraFor(overrides: Record<string, unknown> = {}, authorize = vi.fn()) {
+    const droplet = {
+      id: "d1",
+      pluginId: "digitalocean",
+      resourceTypeId: "droplet",
+      accountId: "acc1",
+      displayName: "web-1",
+      fields: {},
+      resolvedOutputs: {},
+    };
+    const host = {
+      listPlugins: async () => tree,
+      listResources: async () => [droplet],
+      getResource: async () => droplet,
+      resolveOutput: async () => "203.0.113.7",
+      listStorageObjects: async () => [],
+      readStorageObject: async () => ({ base64: "", text: "" }),
+      prompt: async () => {
+        throw new Error("no prompts in graphs");
+      },
+      getMetric: async () => null,
+      setMetric: async () => {},
+      listMetrics: async () => ({}),
+      createResource: async () => {
+        throw new Error("createResource must never be reached from a graph");
+      },
+      deleteResource: async () => {
+        throw new Error("deleteResource must never be reached from a graph");
+      },
+      sshExec: async () => ({
+        stdoutBase64: Buffer.from("uptime ok", "utf8").toString("base64"),
+        stderrBase64: "",
+        code: 0,
+      }),
+      ...overrides,
+    };
+    return {
+      authorize,
+      infra: {
+        accountsTreeJson: JSON.stringify(tree),
+        host: host as never,
+        authorize,
+      },
+    };
+  }
+
+  it("lists resources through infra.accounts and authorizes reads", async () => {
+    const { infra, authorize } = infraFor();
+    const result = await runGraph({
+      source: [
+        'const account = infra.accounts.digitalocean.getByName("prod");',
+        "const droplets = await account.droplets.list();",
+        'graph.render({ chart: { type: "stat", value: droplets.length, caption: droplets[0].displayName } });',
+      ].join("\n"),
+      host: hostFor(),
+      infra,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.spec?.chart).toMatchObject({ value: 1, caption: "web-1" });
+    expect(authorize).toHaveBeenCalledWith("read");
+  });
+
+  it("runs ssh with a clamped timeout under the execute action", async () => {
+    const seen: unknown[] = [];
+    const { infra, authorize } = infraFor({
+      sshExec: async (params: Record<string, unknown>) => {
+        seen.push(params);
+        return {
+          stdoutBase64: Buffer.from("14:02 up 3 days", "utf8").toString("base64"),
+          stderrBase64: "",
+          code: 0,
+        };
+      },
+    });
+    const result = await runGraph({
+      source: [
+        'const [droplet] = await infra.accounts.digitalocean.getByName("prod").droplets.list();',
+        'const out = await droplet.ssh("uptime", { timeoutMs: 999999 });',
+        'graph.render({ chart: { type: "stat", value: out.trim() } });',
+      ].join("\n"),
+      host: hostFor(),
+      infra,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.spec?.chart).toMatchObject({ value: "14:02 up 3 days" });
+    expect(authorize).toHaveBeenCalledWith("execute");
+    expect((seen[0] as { timeoutMs: number }).timeoutMs).toBe(30_000);
+  });
+
+  it("fails closed on mutations even with infra enabled", async () => {
+    const { infra } = infraFor();
+    const result = await runGraph({
+      source: [
+        'const account = infra.accounts.digitalocean.getByName("prod");',
+        'await account.droplets.create({ name: "nope" });',
+        'graph.render({ chart: { type: "stat", value: 1 } });',
+      ].join("\n"),
+      host: hostFor(),
+      infra,
+    });
+    expect(result.status).toBe("failure");
+    expect(result.error?.message).toContain("not available in a custom graph");
+  });
+
+  it("surfaces an authorization denial as the script's error", async () => {
+    const { infra } = infraFor(
+      {},
+      vi.fn().mockImplementation(() => {
+        throw new Error("The author of this graph no longer has resources:read.");
+      }),
+    );
+    const result = await runGraph({
+      source: [
+        'await infra.accounts.digitalocean.getByName("prod").droplets.list();',
+        'graph.render({ chart: { type: "stat", value: 1 } });',
+      ].join("\n"),
+      host: hostFor(),
+      infra,
+    });
+    expect(result.status).toBe("failure");
+    expect(result.error?.message).toContain("no longer has resources:read");
+  });
+
+  it("explains itself when infra is not configured", async () => {
+    const result = await runGraph({
+      // Straight to the RPC: without a tree the prelude has no account handle,
+      // so this is the only way to reach a whitelisted method infra-less.
+      source: [
+        'await __host("resource.list", JSON.stringify({ accountId: "acc1", typeId: "droplet" }));',
+        'graph.render({ chart: { type: "stat", value: 1 } });',
+      ].join("\n"),
+      host: hostFor(),
+    });
+    expect(result.status).toBe("failure");
+    expect(result.error?.message).toContain("no recorded author");
+  });
+
+  it("enforces the per-run SSH command budget", async () => {
+    const { infra } = infraFor();
+    const result = await runGraph({
+      source: [
+        'const [droplet] = await infra.accounts.digitalocean.getByName("prod").droplets.list();',
+        'for (let i = 0; i < 12; i++) await droplet.ssh("true");',
+        'graph.render({ chart: { type: "stat", value: 1 } });',
+      ].join("\n"),
+      host: hostFor(),
+      infra,
+    });
+    expect(result.status).toBe("failure");
+    expect(result.error?.message).toContain("at most 10 SSH commands");
   });
 });

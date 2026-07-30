@@ -333,13 +333,20 @@ function renderResourceTypeInterface(pluginId: string, rt: WorkflowResourceTypeI
  * Shape-identical to an account's resource groups — the difference is only
  * where the credentials came from, which the runtime handles.
  */
-function renderSidecarInterface(sc: WorkflowSidecarInfo, sshKeyNames: string[]): string {
+function renderSidecarInterface(
+  sc: WorkflowSidecarInfo,
+  sshKeyNames: string[],
+  readOnly = false,
+): string {
   const groups = renderResourceGroups(sc.pluginId, sc.resourceTypes, sshKeyNames);
+  const importYaml = readOnly
+    ? ""
+    : `
+  /** Apply arbitrary (multi-document) YAML inside this resource's ${sc.displayName} (kubectl apply -f). */
+  importYaml(yaml: string): Promise<{ applied: number }>;`;
   return `/** ${sc.displayName} inside a parent resource. */
 interface ${sidecarInterfaceName(sc.pluginId)} {
-${groups}
-  /** Apply arbitrary (multi-document) YAML inside this resource's ${sc.displayName} (kubectl apply -f). */
-  importYaml(yaml: string): Promise<{ applied: number }>;
+${groups}${importYaml}
 }`;
 }
 
@@ -649,6 +656,36 @@ export interface GenerateInfraDtsInput {
    * Fetched fresh per typings request so newly-added keys appear immediately.
    */
   sshKeyNames?: string[];
+  /**
+   * Read-plus-SSH surface only (custom graphs): strips create/update/delete,
+   * importYaml, publish, and sftp from every type and sidecar, and types
+   * `infra.page` as unavailable. The runtime enforces the same boundary — this
+   * just makes the editor say so first.
+   */
+  readOnly?: boolean;
+}
+
+/** Strip every mutating accessor for {@link GenerateInfraDtsInput.readOnly}. */
+function stripMutations(plugins: WorkflowPluginInfo[]): WorkflowPluginInfo[] {
+  const stripTypes = (types: WorkflowResourceTypeInfo[]): WorkflowResourceTypeInfo[] =>
+    types.map((rt) => ({
+      ...rt,
+      supportsCreate: false,
+      supportsUpdate: false,
+      supportsDelete: false,
+      ...(rt.capabilities
+        ? { capabilities: { ...rt.capabilities, publish: false, sftp: false } }
+        : {}),
+      sidecars: (rt.sidecars ?? []).map((sc) => ({
+        ...sc,
+        resourceTypes: stripTypes(sc.resourceTypes),
+      })),
+    }));
+  return plugins.map((p) => ({
+    ...p,
+    supportsImportYaml: false,
+    resourceTypes: stripTypes(p.resourceTypes),
+  }));
 }
 
 /**
@@ -667,6 +704,7 @@ function collectResourceInterfaces(
   resourceOut: Map<string, string>,
   sidecarOut: Map<string, string>,
   sshKeyNames: string[],
+  readOnly = false,
 ): void {
   for (const rt of dedupedResourceTypes(types)) {
     const name = resourceTypeInterfaceName(pluginId, rt.id);
@@ -675,7 +713,7 @@ function collectResourceInterfaces(
       if (sc.resourceTypes.length === 0) continue;
       const scName = sidecarInterfaceName(sc.pluginId);
       if (!sidecarOut.has(scName)) {
-        sidecarOut.set(scName, renderSidecarInterface(sc, sshKeyNames));
+        sidecarOut.set(scName, renderSidecarInterface(sc, sshKeyNames, readOnly));
       }
       collectResourceInterfaces(
         sc.pluginId,
@@ -683,6 +721,7 @@ function collectResourceInterfaces(
         resourceOut,
         sidecarOut,
         sshKeyNames,
+        readOnly,
       );
     }
   }
@@ -690,7 +729,8 @@ function collectResourceInterfaces(
 
 /** Build the full `infra.d.ts` source string. */
 export function generateInfraDts(input: GenerateInfraDtsInput): string {
-  const plugins = input.plugins;
+  const readOnly = input.readOnly ?? false;
+  const plugins = readOnly ? stripMutations(input.plugins) : input.plugins;
   const interactive = input.interactive ?? true;
   const sshKeyNames = input.sshKeyNames ?? [];
 
@@ -703,6 +743,7 @@ export function generateInfraDts(input: GenerateInfraDtsInput): string {
       resourceByName,
       sidecarByName,
       sshKeyNames,
+      readOnly,
     );
   }
   const resourceInterfaces = [...resourceByName.values(), ...sidecarByName.values()].join("\n\n");
@@ -720,6 +761,15 @@ export function generateInfraDts(input: GenerateInfraDtsInput): string {
     ? `  /** Prompt the user for input. Only available for manual runs. */\n  prompt(spec: string | PromptSpec): Promise<string | number | boolean | null>;`
     : `  /** Unavailable for automated triggers. */\n  prompt: never;`;
 
+  const pageDecl = readOnly
+    ? `  /** Unavailable here — alerting belongs to workflows, not graphs. */\n  page: never;`
+    : `  /**
+   * Alert the humans who own this workflow — SMS/voice (Twilio) and mobile
+   * push in the cloud, a desktop notification locally. Repeat pages under the
+   * same key are throttled, so a monitoring cron can call this every run and
+   * only the first occurrence gets through.
+   */
+  readonly page: InfraPage;`;
   const costsDecl =
     input.costs === false
       ? `  /** Unavailable here — cost reporting needs the cloud's cost store. */\n  costs: never;`
@@ -758,13 +808,7 @@ ${promptDecl}
   /** What started this run. Frozen. */
   readonly event: WorkflowEvent;
 ${costsDecl}
-  /**
-   * Alert the humans who own this workflow — SMS/voice (Twilio) and mobile
-   * push in the cloud, a desktop notification locally. Repeat pages under the
-   * same key are throttled, so a monitoring cron can call this every run and
-   * only the first occurrence gets through.
-   */
-  readonly page: InfraPage;
+${pageDecl}
   /** Record a JSON-serializable result for this run. */
   output(value: JsonValue): Promise<void>;
   /** Stream an SSH \`{ stdout, stderr }\` object to the run log live (stderr in red). */

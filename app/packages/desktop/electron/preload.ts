@@ -154,6 +154,7 @@ const INVOKE_CHANNELS = [
   "cloud_delete_custom_graph",
   "cloud_render_custom_graph",
   "cloud_check_custom_graph",
+  "cloud_custom_graph_typings",
   "cloud_reorder_pins",
   "cloud_list_dashboards",
   "cloud_get_dashboard",

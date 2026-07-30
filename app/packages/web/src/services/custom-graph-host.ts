@@ -9,14 +9,21 @@
 import { and, asc, count, eq, ilike, isNull, sql } from "drizzle-orm";
 
 import { getMetricRange } from "@infrawrench/server-core/clickhouse/readers";
+import { getOrgAccountClient } from "@infrawrench/server-core/org-accounts";
+import { hasPermission, resolveEffectivePermissions } from "@infrawrench/server-core/permissions";
 import { buildWorkflowFetch } from "@infrawrench/server-core/workflows/fetch";
-import type {
-  GraphCostQuery,
-  GraphCostResult,
-  GraphHost,
-  GraphMetricSeries,
-  GraphResourceFilter,
-  GraphResourceInfo,
+import { buildWorkflowSshDeps, listOrgPlugins } from "@infrawrench/server-core/workflows/runner";
+import {
+  buildWorkflowHost,
+  type GraphCostQuery,
+  type GraphCostResult,
+  type GraphHost,
+  type GraphInfraAccess,
+  type GraphInfraAction,
+  type GraphMetricSeries,
+  type GraphResourceFilter,
+  type GraphResourceInfo,
+  type SidecarRef,
 } from "@infrawrench/workflow-runtime";
 
 import { db } from "../db/client";
@@ -207,4 +214,90 @@ export function buildOrgCustomGraphHost(organizationId: string, graphId: string)
 
     fetch: buildWorkflowFetch(),
   };
+}
+
+/* ------------------------------------------------------------------ *
+ * infra.* access — read + SSH over the org's accounts, run AS THE
+ * GRAPH'S AUTHOR (definer-style).
+ * ------------------------------------------------------------------ */
+
+/** What each whitelisted action class requires of the author's role. */
+const INFRA_ACTION_PERMISSION: Record<GraphInfraAction, string> = {
+  read: "resources:read",
+  storage: "storage:read",
+  execute: "resources:execute",
+};
+
+/**
+ * Build the `infra.*` half of a graph run, or null when the graph has no
+ * recorded source author (pre-feature rows) — the runtime then reports how to
+ * fix that instead of running with nobody's authority.
+ *
+ * The author's effective permissions are resolved fresh per render, so a
+ * demoted or removed author's graphs stop reaching infrastructure on the very
+ * next render — the render itself is triggered by any viewer with
+ * dashboards:read, which is exactly why the check can't be the viewer's.
+ */
+export async function buildOrgCustomGraphInfra(
+  organizationId: string,
+  authorUserId: string | null,
+): Promise<GraphInfraAccess | null> {
+  if (!authorUserId) return null;
+  const access = await resolveEffectivePermissions(organizationId, {
+    kind: "user",
+    userId: authorUserId,
+  });
+
+  const authorize = (action: GraphInfraAction): void => {
+    const permission = INFRA_ACTION_PERMISSION[action];
+    if (!hasPermission(access.permissions, permission)) {
+      throw new Error(
+        `infra.* denied: the author of this graph does not hold the "${permission}" ` +
+          `permission (infrastructure access runs with the author's role, not the ` +
+          `viewer's). Someone with the permission can re-save the graph to become ` +
+          `its author.`,
+      );
+    }
+  };
+
+  const plugins = await listOrgPlugins(organizationId);
+  const host = buildWorkflowHost({
+    listPlugins: async () => plugins,
+    getClient: async (accountId: string, sidecar?: SidecarRef) => {
+      if (!sidecar) {
+        const ctx = await getOrgAccountClient(accountId, organizationId);
+        if (!ctx) throw new Error(`Account ${accountId} not found in this organization.`);
+        return ctx.client;
+      }
+      const ctx = await getClientForResource(
+        sidecar.pluginId,
+        accountId,
+        organizationId,
+        sidecar.parentResourceId,
+      );
+      if (!ctx) {
+        throw new Error(
+          `Could not reach the ${sidecar.pluginId} sidecar of ${sidecar.parentResourceId}.`,
+        );
+      }
+      return ctx.client;
+    },
+    readStorageObject: async () => {
+      throw new Error(
+        "storage.get() is not available in a custom graph yet — list with " +
+          "storage.list() or fetch the object over HTTP.",
+      );
+    },
+    // Graphs have no declared metrics; the prelude's snapshot stays empty and
+    // nothing ever persists.
+    getMetric: async () => null,
+    setMetric: async () => {},
+    listMetrics: async () => ({}),
+    prompt: async () => {
+      throw new Error("infra.prompt() is not available in a custom graph.");
+    },
+    ...buildWorkflowSshDeps(organizationId),
+  });
+
+  return { accountsTreeJson: JSON.stringify(plugins), host, authorize };
 }

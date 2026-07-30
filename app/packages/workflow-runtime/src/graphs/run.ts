@@ -26,8 +26,14 @@ import {
   CUSTOM_GRAPH_MIN_REFRESH_SECONDS,
 } from "@infrawrench/client-core";
 
-import { fetchRequest, WorkflowCapabilityError, type WorkflowRunContext } from "../host.js";
+import {
+  dispatch,
+  fetchRequest,
+  WorkflowCapabilityError,
+  type WorkflowRunContext,
+} from "../host.js";
 import { runIsolate, toError } from "../isolate.js";
+import { PRELUDE } from "../prelude.js";
 import { transpileWorkflow } from "../transpile.js";
 import type { RunLogEntry } from "../types.js";
 import { GRAPH_EPILOGUE, GRAPH_PRELUDE } from "./prelude.js";
@@ -35,6 +41,9 @@ import {
   GRAPH_MAX_CONTROLS,
   GRAPH_MAX_COST_QUERIES,
   GRAPH_MAX_DATA_KEY_LENGTH,
+  GRAPH_MAX_INFRA_CALLS,
+  GRAPH_MAX_SSH_COMMANDS,
+  GRAPH_MAX_SSH_TIMEOUT_MS,
   GRAPH_MAX_DATA_OPS,
   GRAPH_MAX_DATA_VALUE_BYTES,
   GRAPH_MAX_FETCHES,
@@ -58,9 +67,40 @@ import {
   GRAPH_RUN_LIMITS,
   type GraphCostQuery,
   type GraphHost,
+  type GraphInfraAction,
   type GraphRunResult,
   type RunGraphOptions,
 } from "./types.js";
+
+/**
+ * The `infra.*` methods a graph may reach, mapped to the action class its
+ * host must authorize. Grabbing data plus SSH — nothing that provisions,
+ * mutates, or deletes. Everything absent from this map fails closed in the
+ * dispatcher's default arm, so `resource.create`, `applyManifest`,
+ * `account.importYaml`, `resource.publish`, `kv.put`, `sftp.*`, `costs.write`,
+ * `page`, and `prompt` can never run from a graph.
+ */
+const INFRA_METHODS: Readonly<Record<string, GraphInfraAction>> = {
+  "accounts.list": "read",
+  "resource.list": "read",
+  "resource.get": "read",
+  "resource.resolveOutput": "read",
+  "resource.logs": "read",
+  "resource.describe": "read",
+  "resource.getManifest": "read",
+  "resource.metrics": "read",
+  "storage.list": "storage",
+  "storage.get": "storage",
+  "resource.query": "execute",
+  "kv.list": "execute",
+  "kv.get": "execute",
+  "resource.nosql": "execute",
+  "ssh.exec": "execute",
+  "ssh.probe": "execute",
+  "ssh.streamStart": "execute",
+  "ssh.streamRead": "execute",
+  "ssh.streamClose": "execute",
+};
 
 const CONTROL_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const DATA_KEY_RE = /^[A-Za-z0-9_.:-]+$/;
@@ -486,6 +526,8 @@ export async function runGraph(opts: RunGraphOptions): Promise<GraphRunResult> {
   };
 
   const countCosts = budgeted(GRAPH_MAX_COST_QUERIES, "cost queries");
+  const countInfra = budgeted(GRAPH_MAX_INFRA_CALLS, "infra calls");
+  const countSsh = budgeted(GRAPH_MAX_SSH_COMMANDS, "SSH commands");
   const countMetrics = budgeted(GRAPH_MAX_METRIC_QUERIES, "metric queries");
   const countLists = budgeted(GRAPH_MAX_RESOURCE_LISTS, "resource listings");
   const countData = budgeted(GRAPH_MAX_DATA_OPS, "data-store operations");
@@ -575,8 +617,35 @@ export async function runGraph(opts: RunGraphOptions): Promise<GraphRunResult> {
         return host.fetch(fetchRequest(args["request"]));
       }
 
-      default:
-        fail(`"${method}" is not available in a custom graph.`);
+      default: {
+        const action = INFRA_METHODS[method];
+        if (!action) fail(`"${method}" is not available in a custom graph.`);
+        const infra = opts.infra;
+        if (!infra) {
+          fail(
+            "infra.* is unavailable: this graph has no recorded author to run " +
+              "infrastructure access as. Save the graph again to record one.",
+          );
+        }
+        // The platform decides WHO this access runs as (author permissions).
+        infra.authorize(action);
+        // Stream polls are excluded from the call budget — a single tailed
+        // command would otherwise burn it in seconds.
+        if (method !== "ssh.streamRead" && method !== "ssh.streamClose") countInfra();
+        let forwarded = args;
+        if (method === "ssh.exec" || method === "ssh.streamStart") {
+          countSsh();
+          const t = Number(args["timeoutMs"]);
+          forwarded = {
+            ...args,
+            timeoutMs:
+              Number.isFinite(t) && t > 0
+                ? Math.min(t, GRAPH_MAX_SSH_TIMEOUT_MS)
+                : GRAPH_MAX_SSH_TIMEOUT_MS,
+          };
+        }
+        return dispatch(infra.host, ctx, method, forwarded);
+      }
     }
   };
 
@@ -600,7 +669,10 @@ export async function runGraph(opts: RunGraphOptions): Promise<GraphRunResult> {
     dispatcher,
     ctx,
     env: {
-      accountsTree: "[]",
+      // The workflow prelude builds `infra.accounts` from this; an empty tree
+      // still defines `infra` so scripts fail with our dispatcher's message
+      // rather than a bare ReferenceError.
+      accountsTree: opts.infra?.accountsTreeJson ?? "[]",
       metrics: "{}",
       event: JSON.stringify({
         // A button press is always an interaction, whatever the caller said.
@@ -659,7 +731,14 @@ function buildProgram(userJs: string): string {
   return [
     `export {};`,
     `const __host = env.__host;`,
+    `const __accountsTree = env.__accountsTree;`,
+    `const __metrics = env.__metrics;`,
     `const __event = env.__event;`,
+    // The workflow prelude supplies `infra.accounts` (reads + ssh reach the
+    // graph dispatcher's whitelist; everything else fails closed there). The
+    // graph prelude runs after it, so its fetch/console assignments win —
+    // they are the same implementations either way.
+    PRELUDE,
     GRAPH_PRELUDE,
     `const __task = (async () => {`,
     `  try {`,

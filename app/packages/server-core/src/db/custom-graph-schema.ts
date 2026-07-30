@@ -22,6 +22,14 @@ export const customGraphs = pgTable(
     /** The user-authored TypeScript source. */
     source: text("source").notNull().default(""),
     createdByUserId: text("created_by_user_id"),
+    /**
+     * Who last wrote `source` — the user whose role permissions the script's
+     * `infra.*` access runs as at render time (definer-style, since any viewer
+     * with dashboards:read can trigger a render). Updated on every source
+     * change, so editing someone else's graph makes it run as YOU. Null on
+     * rows that predate infra access; those render with `infra.*` disabled.
+     */
+    sourceAuthorUserId: text("source_author_user_id"),
     deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),

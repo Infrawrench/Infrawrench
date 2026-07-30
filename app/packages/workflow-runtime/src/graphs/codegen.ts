@@ -5,11 +5,23 @@
  * typecheck, and the MCP typings tool alike. Its shape must mirror
  * `graphs/prelude.ts` exactly.
  */
-export function generateGraphDts(): string {
-  return GRAPH_DTS;
+export interface GenerateGraphDtsOptions {
+  /**
+   * Omit the graph dts's own `fetch` declaration. Used when the string is
+   * combined with a generated (read-only) workflow `infra.d.ts`, which brings
+   * its own — two `declare function fetch` overloads would both resolve, and
+   * the infra one documents the egress-proxy behavior more precisely.
+   */
+  omitFetch?: boolean;
 }
 
-const GRAPH_DTS = `/**
+export function generateGraphDts(opts: GenerateGraphDtsOptions = {}): string {
+  return opts.omitFetch
+    ? GRAPH_DTS_CORE + GRAPH_DTS_CONSOLE
+    : GRAPH_DTS_CORE + GRAPH_DTS_FETCH + GRAPH_DTS_CONSOLE;
+}
+
+const GRAPH_DTS_CORE = `/**
  * Custom-graph runtime API.
  *
  * A graph script runs server-side in a sandbox, gathers data, declares its
@@ -206,7 +218,9 @@ interface Graph {
 
 declare const graph: Graph;
 
-interface GraphFetchInit {
+`;
+
+const GRAPH_DTS_FETCH = `interface GraphFetchInit {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
   headers?: Record<string, string>;
   /** Strings and bytes pass through; anything else is sent as JSON. */
@@ -240,7 +254,9 @@ interface GraphFetchResponse {
 /** HTTP from the graph. Runs through Infrawrench's egress proxy on the cloud. */
 declare function fetch(url: string, init?: GraphFetchInit): Promise<GraphFetchResponse>;
 
-declare const console: {
+`;
+
+const GRAPH_DTS_CONSOLE = `declare const console: {
   log(...parts: unknown[]): void;
   info(...parts: unknown[]): void;
   warn(...parts: unknown[]): void;

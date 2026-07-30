@@ -1,10 +1,8 @@
 import { ipcMain } from "electron";
-import { cloudFetch } from "./shared";
+import { cloudFetch, cloudFetchText } from "./shared";
 
 // Custom graphs — cloud-mode only (the script runs in the web server's
-// sandbox against org data; there is no local-SQLite equivalent). The ambient
-// graph.d.ts is NOT fetched here: it is static, and the renderer imports it
-// from @infrawrench/workflow-runtime/client directly.
+// sandbox against org data; there is no local-SQLite equivalent).
 
 ipcMain.handle("cloud_list_custom_graphs", async (_e, { orgId }: { orgId: string }) => {
   return (await cloudFetch(orgId, "/custom-graphs")) ?? [];
@@ -52,6 +50,12 @@ ipcMain.handle(
     });
   },
 );
+
+// Org-specific since the read-only infra half reflects connected accounts —
+// this cannot be the static string the renderer once imported.
+ipcMain.handle("cloud_custom_graph_typings", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetchText(orgId, "/custom-graphs/typings");
+});
 
 ipcMain.handle(
   "cloud_check_custom_graph",

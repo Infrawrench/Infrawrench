@@ -197,6 +197,11 @@ export interface CustomGraphSummary {
 
 export interface CustomGraphDetail extends CustomGraphSummary {
   source: string;
+  /**
+   * Who last wrote `source` — the user whose role permissions the script's
+   * `infra.*` access runs as at render time. Null disables infra access.
+   */
+  sourceAuthorUserId?: string | null;
 }
 
 /** A dashboard card pointing at a custom graph by id. */

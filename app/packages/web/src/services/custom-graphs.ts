@@ -11,8 +11,10 @@
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 
 import type { CustomGraphControlState, CustomGraphRenderResult } from "@infrawrench/client-core";
+import { listOrgPlugins, listOrgSshKeyNames } from "@infrawrench/server-core/workflows/runner";
 import {
   generateGraphDts,
+  generateInfraDts,
   runGraph,
   typecheckWorkflow,
   type TypecheckResult,
@@ -20,7 +22,7 @@ import {
 
 import { db } from "../db/client";
 import { customGraphData, customGraphs, dashboardWidgets } from "../db/schema";
-import { buildOrgCustomGraphHost } from "./custom-graph-host";
+import { buildOrgCustomGraphHost, buildOrgCustomGraphInfra } from "./custom-graph-host";
 import { requirePaidPlan } from "./entitlements";
 
 export type CustomGraphRow = typeof customGraphs.$inferSelect;
@@ -110,6 +112,9 @@ export async function createCustomGraph(
       description: body.description?.trim() || null,
       source: body.source ?? "",
       createdByUserId: createdByUserId ?? null,
+      // The creator authored whatever source this starts with; infra.* in the
+      // script will run with THEIR role permissions at render time.
+      sourceAuthorUserId: createdByUserId ?? null,
     })
     .returning();
   return row!;
@@ -119,6 +124,7 @@ export async function updateCustomGraph(
   organizationId: string,
   id: string,
   body: CustomGraphBody,
+  updatedByUserId?: string,
 ): Promise<CustomGraphRow> {
   await requirePaidPlan(organizationId, "Custom graphs");
   validateBody(body);
@@ -128,7 +134,14 @@ export async function updateCustomGraph(
     .set({
       ...(body.name !== undefined ? { name: body.name.trim() } : {}),
       ...(body.description !== undefined ? { description: body.description?.trim() || null } : {}),
-      ...(body.source !== undefined ? { source: body.source } : {}),
+      // A source change re-attributes authorship: infra.* runs as whoever last
+      // wrote the script, so editing someone else's graph makes it run as YOU
+      // — a dashboards:write member can't borrow an admin's authority by
+      // appending to their script. An update with no recorded user disables
+      // infra rather than keeping the previous author's.
+      ...(body.source !== undefined
+        ? { source: body.source, sourceAuthorUserId: updatedByUserId ?? null }
+        : {}),
       updatedAt: new Date(),
     })
     .where(eq(customGraphs.id, existing.id))
@@ -168,13 +181,40 @@ export async function softDeleteCustomGraph(organizationId: string, id: string):
     );
 }
 
-/** The ambient d.ts for graph source — static, unlike workflow typings. */
-export function generateCustomGraphTypings(): string {
-  return generateGraphDts();
+/**
+ * The ambient d.ts for graph source: the static `graph.*` half plus a
+ * READ-ONLY `infra.d.ts` generated from the org's real accounts — the same
+ * accounts tree the render hands the script, minus everything a graph cannot
+ * do (create/update/delete, importYaml, publish, sftp, page). Falls back to
+ * the static half alone if account enumeration fails, so a provider hiccup
+ * can't take the editor's typings down entirely.
+ */
+export async function generateCustomGraphTypings(organizationId: string): Promise<string> {
+  try {
+    const [plugins, sshKeyNames] = await Promise.all([
+      listOrgPlugins(organizationId),
+      listOrgSshKeyNames(organizationId),
+    ]);
+    const infraDts = generateInfraDts({
+      plugins,
+      metrics: [],
+      interactive: false,
+      costs: false,
+      readOnly: true,
+      sshKeyNames,
+    });
+    return `${generateGraphDts({ omitFetch: true })}
+${infraDts}`;
+  } catch {
+    return generateGraphDts();
+  }
 }
 
-export function checkCustomGraphSource(source: string): TypecheckResult {
-  return typecheckWorkflow({ source, dts: generateGraphDts() });
+export async function checkCustomGraphSource(
+  organizationId: string,
+  source: string,
+): Promise<TypecheckResult> {
+  return typecheckWorkflow({ source, dts: await generateCustomGraphTypings(organizationId) });
 }
 
 export interface RenderCustomGraphOptions {
@@ -192,9 +232,11 @@ export async function renderOrgCustomGraph(
 ): Promise<CustomGraphRenderResult> {
   await requirePaidPlan(organizationId, "Custom graphs");
   const row = await requireCustomGraph(organizationId, id);
+  const infra = await buildOrgCustomGraphInfra(organizationId, row.sourceAuthorUserId);
   const result = await runGraph({
     source: row.source,
     host: buildOrgCustomGraphHost(organizationId, row.id),
+    ...(infra ? { infra } : {}),
     ...(opts.controls ? { controls: opts.controls } : {}),
     ...(opts.button ? { button: opts.button } : {}),
     ...(opts.trigger ? { trigger: opts.trigger } : {}),

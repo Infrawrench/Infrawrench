@@ -80,17 +80,18 @@ app.post("/", async (c) => {
   }
 });
 
-// Static per build, but served per org so clients need no second base URL.
-app.get("/typings", (c) => {
+// Org-specific: the graph half is static, the appended read-only infra half
+// reflects this org's connected accounts.
+app.get("/typings", async (c) => {
   requirePermission(c, "dashboards:read");
-  return c.text(generateCustomGraphTypings());
+  return c.text(await generateCustomGraphTypings(orgId(c)));
 });
 
 app.post("/check", async (c) => {
   requirePermission(c, "dashboards:read");
   const { source } = (await c.req.json()) as { source?: string };
   if (typeof source !== "string") return c.json({ error: "source is required" }, 400);
-  return c.json(checkCustomGraphSource(source));
+  return c.json(await checkCustomGraphSource(orgId(c), source));
 });
 
 app.get("/:id", async (c) => {
@@ -103,8 +104,9 @@ app.get("/:id", async (c) => {
 app.put("/:id", async (c) => {
   requirePermission(c, "dashboards:write");
   const body = (await c.req.json()) as CustomGraphBody;
+  const userId = (c.get("session") as { userId?: string } | undefined)?.userId;
   try {
-    return c.json(await updateCustomGraph(orgId(c), c.req.param("id"), body));
+    return c.json(await updateCustomGraph(orgId(c), c.req.param("id"), body, userId));
   } catch (e) {
     return fail(c, e);
   }

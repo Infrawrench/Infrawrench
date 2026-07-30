@@ -1,10 +1,9 @@
 /**
  * Cloud custom graphs. Cloud-mode only — the script runs in the web server's
- * sandbox against org data, so local mode never shows these. The ambient
- * `graph.d.ts` is static and comes straight from the runtime package rather
- * than a round-trip to the server.
+ * sandbox against org data, so local mode never shows these. Typings come
+ * from the server: the `graph.*` half is static but the appended read-only
+ * `infra.*` half reflects the org's connected accounts.
  */
-import { generateGraphDts } from "@infrawrench/workflow-runtime/client";
 import type {
   CustomGraphCheckResult,
   CustomGraphsClient,
@@ -29,6 +28,6 @@ export function createCloudCustomGraphsClient(orgId: string): CustomGraphsClient
     },
     check: (source) =>
       invoke<CustomGraphCheckResult>("cloud_check_custom_graph", { orgId, source }),
-    typings: () => Promise.resolve(generateGraphDts()),
+    typings: () => invoke<string>("cloud_custom_graph_typings", { orgId }),
   };
 }

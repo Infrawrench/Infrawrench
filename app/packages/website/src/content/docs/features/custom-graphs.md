@@ -18,6 +18,7 @@ The script runs against a global `graph` object:
 - `fetch(url, init)` — external HTTP APIs, through the same egress proxy workflows use (public addresses only).
 - `graph.data.get/set/delete/list` — a private key/value store persisted between runs, for caches and baselines.
 - `graph.controls.select/checkbox/text/number/button` — declare the card's controls and read their current values synchronously.
+- `infra.accounts.<plugin>` — **read-only access to your connected accounts**, the same tree [workflows](./workflows.md) get: list and fetch resources, resolve outputs, read logs, describe, read manifests, run SQL queries, read KV keys, fetch metrics — and run **SSH commands** with `resource.ssh(cmd)`. Nothing that provisions or mutates: `create`, `update`, `delete`, `applyManifest`, `importYaml`, and `publish` are not available in graphs (and don't appear in the editor's typings).
 - `graph.render({ title, chart, refreshSeconds, notice })` — say what to draw: `line`, `area`, `stacked_bar`, `multi_bar`, `pie`, `stat`, or `table`.
 
 A minimal graph:
@@ -60,9 +61,13 @@ The same graph can sit on any number of dashboards; removing a card leaves the g
 
 Custom graphs are designed to be written by an AI over [MCP](../team-and-billing/openapi.md) or the in-app chat. The model calls `get_custom_graph_typings` for the full `graph` API, writes the script with `write_custom_graph` (the source is type-checked before saving — errors are returned as diagnostics instead of being persisted), and verifies it with `render_custom_graph`. Ask for "a graph of our egress spend against the bandwidth metrics of the CDN droplets, with a toggle for daily/weekly" and pin the result.
 
+## Who infrastructure access runs as
+
+A graph renders for anyone who can see the dashboard, so `infra.*` cannot run with the viewer's permissions — it runs with the **author's**: whoever last saved the script. Reads need the author to hold `resources:read` (`storage:read` for buckets); SSH, SQL, and KV need `resources:execute`. The check uses the author's _current_ role on every render, so a demoted or removed author's graphs stop reaching infrastructure immediately. Editing someone else's script makes you its author — you can't borrow a more privileged author's access by appending to their graph.
+
 ## Sandbox and limits
 
-Graph scripts run in the same QuickJS isolate as [workflows](./workflows.md), with a tighter budget: 30 seconds of execution, 64 MiB of memory, and per-run caps on cost queries, metric lookups, fetches, and data-store operations. The script is read-only over your organization — it cannot create, modify, or delete resources, and `fetch` can only reach public addresses. The data store holds up to 200 keys of 64 KiB each, private to the graph.
+Graph scripts run in the same QuickJS isolate as [workflows](./workflows.md), with a tighter budget: 30 seconds of execution, 64 MiB of memory, and per-run caps on cost queries, metric lookups, fetches, and data-store operations. The script is read-only over your organization — it cannot create, modify, or delete resources, `fetch` can only reach public addresses, and SSH is capped at 10 commands of 30 seconds each per render. The data store holds up to 200 keys of 64 KiB each, private to the graph.
 
 ## Where they render
 

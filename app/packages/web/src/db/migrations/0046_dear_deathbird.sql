@@ -1,0 +1,1 @@
+ALTER TABLE "custom_graphs" ADD COLUMN "source_author_user_id" text;

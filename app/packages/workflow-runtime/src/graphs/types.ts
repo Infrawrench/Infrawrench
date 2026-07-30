@@ -16,6 +16,7 @@ import type {
   CustomGraphSeries,
 } from "@infrawrench/client-core";
 
+import type { WorkflowHost } from "../host.js";
 import type {
   RunLimits,
   RunLogEntry,
@@ -107,10 +108,32 @@ export interface GraphHost {
   fetch?(request: WorkflowFetchRequest): Promise<WorkflowFetchResponse>;
 }
 
+/** Coarse action classes the infra whitelist maps onto, for authorization. */
+export type GraphInfraAction = "read" | "storage" | "execute";
+
+/**
+ * Optional `infra.*` access for a graph run: the workflow accounts tree plus a
+ * host the whitelisted read/SSH methods are forwarded to. The graph dispatcher
+ * only ever forwards its whitelist — mutating workflow methods fail closed
+ * whether or not this is supplied — and calls {@link authorize} before every
+ * forwarded call, which is where the platform enforces WHO the access runs as
+ * (on the cloud: the graph author's role permissions, definer-style, since any
+ * viewer can trigger a render).
+ */
+export interface GraphInfraAccess {
+  /** JSON `WorkflowPluginInfo[]` — becomes the prelude's `infra.accounts`. */
+  accountsTreeJson: string;
+  host: WorkflowHost;
+  /** Throw to deny; the message surfaces as the script's error. */
+  authorize: (action: GraphInfraAction) => void;
+}
+
 export interface RunGraphOptions {
   /** The graph's TypeScript source. */
   source: string;
   host: GraphHost;
+  /** Read-plus-SSH infrastructure access; absent means `infra.*` throws. */
+  infra?: GraphInfraAccess;
   /** Current control values, as the client last chose them. */
   controls?: CustomGraphControlState;
   /** Id of the declared button that was pressed, when the run is a press. */
@@ -156,6 +179,12 @@ export const GRAPH_RUN_LIMITS: RunLimits = {
 
 /** Host-call budget per run, by capability. */
 export const GRAPH_MAX_COST_QUERIES = 10;
+/** Forwarded infra.* calls per run (ssh stream polls excluded). */
+export const GRAPH_MAX_INFRA_CALLS = 100;
+/** SSH commands per run — each may block up to the clamp below. */
+export const GRAPH_MAX_SSH_COMMANDS = 10;
+/** Hard per-command SSH timeout; a render blocks a dashboard card, not a CI job. */
+export const GRAPH_MAX_SSH_TIMEOUT_MS = 30_000;
 export const GRAPH_MAX_METRIC_QUERIES = 20;
 export const GRAPH_MAX_RESOURCE_LISTS = 10;
 export const GRAPH_MAX_DATA_OPS = 100;

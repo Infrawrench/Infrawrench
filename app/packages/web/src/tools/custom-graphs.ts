@@ -106,15 +106,20 @@ export function customGraphTools(): ToolDefinition[] {
         "`graph.controls.*` (selects/checkboxes/buttons/inputs whose values round-trip from the " +
         "viewer), `graph.costs.query` (the org's collected spend), `graph.resources.list` and " +
         "`graph.metrics` (provider metric series), `graph.data.*` (a private key/value store), " +
-        "the proxied global `fetch`, and `graph.render` (chart types: line, area, stacked_bar, " +
-        "multi_bar, pie, stat, table; plus refreshSeconds for auto-refresh).",
+        "the proxied global `fetch`, `graph.render` (chart types: line, area, stacked_bar, " +
+        "multi_bar, pie, stat, table; plus refreshSeconds for auto-refresh), and a READ-ONLY " +
+        "`infra.accounts` tree over this organization's real accounts — list/get resources, " +
+        "resolve outputs, read logs/metrics/manifests, run SQL queries, and run SSH commands " +
+        "via resource.ssh(cmd). Mutations (create/update/delete/applyManifest) are not " +
+        "available in graphs, and infra.* runs with the AUTHOR's role permissions at render " +
+        "time (resources:read for reads, resources:execute for SSH/SQL/KV).",
       inputSchema: {},
       risk: "read",
       permission: "dashboards:read",
       handler: async (_input, auth) => {
         const denied = await denyUnlessPermitted(auth, "dashboards:read");
         if (denied) return denied;
-        return okText(generateCustomGraphTypings());
+        return okText(await generateCustomGraphTypings(auth.organizationId));
       },
     },
 
@@ -126,8 +131,10 @@ export function customGraphTools(): ToolDefinition[] {
         "TypeScript run in a sandbox against the global `graph` object — call " +
         "get_custom_graph_typings FIRST. The script gathers data (org costs via " +
         "graph.costs.query, provider metrics via graph.metrics, external APIs via fetch, its own " +
-        "stored data via graph.data), declares controls whose current values it reads back " +
-        "synchronously, and finishes with graph.render({ title, chart, refreshSeconds }). " +
+        "stored data via graph.data, and read-only `infra.accounts` access incl. " +
+        "resource.ssh(cmd) — which runs with the SAVING USER's role permissions at render time), " +
+        "declares controls whose current values it reads back synchronously, and finishes with " +
+        "graph.render({ title, chart, refreshSeconds }). " +
         "Before saving, the source is type-checked and the save is REJECTED with diagnostics on " +
         "errors: read them, fix the source, and call again (set skipTypecheck to save anyway). " +
         "After saving, call render_custom_graph to verify it actually renders, then add it to a " +
@@ -158,9 +165,9 @@ export function customGraphTools(): ToolDefinition[] {
           // Gate only the write the caller is actually making: a metadata-only
           // update must not re-litigate stored source that was deliberately
           // saved with skipTypecheck.
-          let check: ReturnType<typeof checkCustomGraphSource> | undefined;
+          let check: Awaited<ReturnType<typeof checkCustomGraphSource>> | undefined;
           if (input["source"] !== undefined && source.trim() && !input["skipTypecheck"]) {
-            check = checkCustomGraphSource(source);
+            check = await checkCustomGraphSource(auth.organizationId, source);
             if (check.hasErrors) {
               return err(
                 `Not saved — the graph source has type errors:\n${formatDiagnostics(check.diagnostics)}\n\n` +
@@ -178,7 +185,7 @@ export function customGraphTools(): ToolDefinition[] {
             ...(input["source"] !== undefined ? { source } : {}),
           };
           const saved = existing
-            ? await updateCustomGraph(auth.organizationId, existing.id, body)
+            ? await updateCustomGraph(auth.organizationId, existing.id, body, auth.userId)
             : await createCustomGraph(auth.organizationId, body, auth.userId);
 
           void logAudit({
