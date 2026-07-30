@@ -26,12 +26,19 @@ import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
 
 interface WebWorkspaceTabsViewportProps {
   orgId: string;
+  /**
+   * False until the restored tabs have been validated against this org
+   * (see the validate-tabs effect in __root.tsx). While false, only the tab
+   * matching the current URL mounts — tabs persisted from another org must
+   * not mount and fetch ids that don't exist here.
+   */
+  tabsValidated: boolean;
 }
 
 // Web-side glue between WorkspaceTabsViewport (in @infrawrench/ui) and the
 // per-kind panel components. Each open tab is rendered once and kept mounted
 // across tab switches — see WorkspaceTabsViewport for the rendering rules.
-export function WebWorkspaceTabsViewport({ orgId }: WebWorkspaceTabsViewportProps) {
+export function WebWorkspaceTabsViewport({ orgId, tabsValidated }: WebWorkspaceTabsViewportProps) {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const hash = useRouterState({ select: (s) => s.location.hash });
@@ -60,6 +67,12 @@ export function WebWorkspaceTabsViewport({ orgId }: WebWorkspaceTabsViewportProp
   return (
     <BaseViewport
       showActive={showActive}
+      {...(tabsValidated
+        ? {}
+        : {
+            shouldMountTab: (tab: WorkspaceTab) =>
+              routeTarget !== null && workspaceTabTargetsEqual(tab.target, routeTarget),
+          })}
       renderTabPanel={(tab) => renderPanel(tab, orgId, navigate)}
     />
   );

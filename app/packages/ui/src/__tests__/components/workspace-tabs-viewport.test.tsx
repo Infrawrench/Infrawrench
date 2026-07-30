@@ -33,6 +33,17 @@ describe("WorkspaceTabsViewport", () => {
     expect(screen.getByText("panel-t1").parentElement!.style.display).toBe("none");
   });
 
+  it("mounts only tabs shouldMountTab allows", () => {
+    render(
+      <WorkspaceTabsViewport
+        shouldMountTab={(tab) => tab.id === "t2"}
+        renderTabPanel={(tab) => <div>panel-{tab.id}</div>}
+      />,
+    );
+    expect(screen.queryByText("panel-t1")).not.toBeInTheDocument();
+    expect(screen.getByText("panel-t2")).toBeInTheDocument();
+  });
+
   it("provides each panel its own tab id via context", () => {
     function Probe() {
       return <span>id:{useTabId()}</span>;

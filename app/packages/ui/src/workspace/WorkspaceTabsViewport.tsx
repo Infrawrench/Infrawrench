@@ -12,6 +12,13 @@ interface WorkspaceTabsViewportProps {
    * way — SSH sessions etc. survive the route switch.
    */
   showActive?: boolean;
+  /**
+   * When provided, only tabs it returns true for are mounted at all. Used
+   * while restored tabs are being validated against the current org, so a
+   * tab persisted from another org never mounts and fires fetches that 404.
+   * Omit (the default) to mount every tab.
+   */
+  shouldMountTab?: (tab: WorkspaceTab) => boolean;
 }
 
 /**
@@ -26,26 +33,29 @@ interface WorkspaceTabsViewportProps {
 export function WorkspaceTabsViewport({
   renderTabPanel,
   showActive = true,
+  shouldMountTab,
 }: WorkspaceTabsViewportProps) {
   const tabs = useUIStore((s) => s.workspaceTabs);
   const activeTabId = useUIStore((s) => s.activeWorkspaceTabId);
 
   return (
     <>
-      {tabs.map((tab) => {
-        const isActive = showActive && tab.id === activeTabId;
-        return (
-          <div
-            key={tab.id}
-            // `hidden` rather than unmount: the DOM and React state for
-            // inactive tabs stay alive, preserving terminal sessions etc.
-            style={{ display: isActive ? "flex" : "none" }}
-            className="flex-col flex-1 min-h-0 min-w-0 overflow-auto"
-          >
-            <WorkspaceTabProvider tabId={tab.id}>{renderTabPanel(tab)}</WorkspaceTabProvider>
-          </div>
-        );
-      })}
+      {tabs
+        .filter((tab) => shouldMountTab?.(tab) ?? true)
+        .map((tab) => {
+          const isActive = showActive && tab.id === activeTabId;
+          return (
+            <div
+              key={tab.id}
+              // `hidden` rather than unmount: the DOM and React state for
+              // inactive tabs stay alive, preserving terminal sessions etc.
+              style={{ display: isActive ? "flex" : "none" }}
+              className="flex-col flex-1 min-h-0 min-w-0 overflow-auto"
+            >
+              <WorkspaceTabProvider tabId={tab.id}>{renderTabPanel(tab)}</WorkspaceTabProvider>
+            </div>
+          );
+        })}
     </>
   );
 }

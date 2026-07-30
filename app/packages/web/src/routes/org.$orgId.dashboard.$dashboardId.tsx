@@ -36,9 +36,12 @@ export function DashboardPanel({ orgId, dashboardId }: DashboardPanelProps) {
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
   const tabId = useTabId();
   const [data, setData] = useState<DashboardPanelData | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
-    apiGet<DashboardPanelData>(`/api/org/${orgId}/dashboards/${dashboardId}`).then(setData);
+    apiGet<DashboardPanelData>(`/api/org/${orgId}/dashboards/${dashboardId}`)
+      .then(setData)
+      .catch(() => setLoadFailed(true));
   }, [orgId, dashboardId, dashboardPinsVersion]);
 
   useEffect(() => {
@@ -48,12 +51,21 @@ export function DashboardPanel({ orgId, dashboardId }: DashboardPanelProps) {
 
   useEffect(() => {
     function onChanged() {
-      apiGet<DashboardPanelData>(`/api/org/${orgId}/dashboards/${dashboardId}`).then(setData);
+      apiGet<DashboardPanelData>(`/api/org/${orgId}/dashboards/${dashboardId}`)
+        .then(setData)
+        .catch(console.error);
     }
     window.addEventListener(RESOURCES_CHANGED_EVENT, onChanged);
     return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, onChanged);
   }, [orgId, dashboardId]);
 
+  if (!data && loadFailed) {
+    return (
+      <div className="p-6 text-on-surface-muted text-sm">
+        This dashboard no longer exists or could not be loaded.
+      </div>
+    );
+  }
   if (!data) return <div className="p-6 text-on-surface-muted text-sm animate-pulse">Loading…</div>;
 
   return (

@@ -133,10 +133,14 @@ function AuthenticatedShell() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const hash = useRouterState({ select: (s) => s.location.hash });
   const [spotlightOpen, setSpotlightOpen] = useState(false);
-  const [tabsValidated, setTabsValidated] = useState(false);
+  // Keyed by org rather than a boolean: switching orgs must re-validate,
+  // since the persisted tabs are global and the previous org's tabs point at
+  // ids that don't exist in the new one.
+  const [tabsValidatedForOrg, setTabsValidatedForOrg] = useState<string | null>(null);
 
   const orgIdMatch = pathname.match(/^\/org\/([^/]+)/);
   const orgId = orgIdMatch?.[1] ? decodeURIComponent(orgIdMatch[1]) : null;
+  const tabsValidated = tabsValidatedForOrg === orgId;
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -192,11 +196,11 @@ function AuthenticatedShell() {
     const tabsSnapshot = useUIStore.getState().workspaceTabs;
     const activeIdSnapshot = useUIStore.getState().activeWorkspaceTabId;
     if (tabsSnapshot.length === 0) {
-      setTabsValidated(true);
+      setTabsValidatedForOrg(orgId);
       return;
     }
     if (!orgId) {
-      setTabsValidated(true);
+      setTabsValidatedForOrg(null);
       return;
     }
 
@@ -209,10 +213,10 @@ function AuthenticatedShell() {
         const validSet = new Set(validTabIds);
         const nextTabs = tabsSnapshot.filter((t) => validSet.has(t.id));
         replaceWorkspaceTabs(nextTabs, activeIdSnapshot);
-        setTabsValidated(true);
+        setTabsValidatedForOrg(orgId);
       })
       .catch(() => {
-        if (!cancelled) setTabsValidated(true);
+        if (!cancelled) setTabsValidatedForOrg(orgId);
       });
     return () => {
       cancelled = true;
@@ -322,7 +326,7 @@ function AuthenticatedShell() {
                 subscriptions survive tab switches. <Outlet/> still renders
                 non-tab routes like /onboarding and /settings; tab routes'
                 components are no-ops. */}
-            {orgId && <WebWorkspaceTabsViewport orgId={orgId} />}
+            {orgId && <WebWorkspaceTabsViewport orgId={orgId} tabsValidated={tabsValidated} />}
             <Outlet />
           </main>
         </div>

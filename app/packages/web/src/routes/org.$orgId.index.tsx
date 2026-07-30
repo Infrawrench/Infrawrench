@@ -28,7 +28,9 @@ function HomePage() {
   } | null>(null);
 
   useEffect(() => {
-    apiGet<typeof data>(`/api/org/${orgId}/dashboards/default/full`).then(setData);
+    apiGet<typeof data>(`/api/org/${orgId}/dashboards/default/full`)
+      .then(setData)
+      .catch(console.error);
   }, [orgId, dashboardPinsVersion]);
 
   useEffect(() => {
@@ -39,7 +41,9 @@ function HomePage() {
 
   useEffect(() => {
     function onChanged() {
-      apiGet<typeof data>(`/api/org/${orgId}/dashboards/default/full`).then(setData);
+      apiGet<typeof data>(`/api/org/${orgId}/dashboards/default/full`)
+        .then(setData)
+        .catch(console.error);
     }
     window.addEventListener(RESOURCES_CHANGED_EVENT, onChanged);
     return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, onChanged);
