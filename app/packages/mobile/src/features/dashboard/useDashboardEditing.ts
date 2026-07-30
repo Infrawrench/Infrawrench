@@ -150,6 +150,21 @@ export function useDashboardEditing(dashboardId: string) {
       [api, orgId, run, refresh],
     ),
 
+    addCustomGraphCard: useCallback(
+      async (graphId: string, title: string) => {
+        await run("Couldn't add the graph", () =>
+          post("/dashboards/widgets", {
+            dashboardId,
+            kind: "custom_graph",
+            title,
+            config: { version: 1, graphId },
+          }),
+        );
+        refresh();
+      },
+      [dashboardId, post, run, refresh],
+    ),
+
     /** Create the budget row, then the card that points at it — as web does. */
     createBudget: useCallback(
       async (input: BudgetInput) => {

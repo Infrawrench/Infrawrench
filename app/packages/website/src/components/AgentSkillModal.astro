@@ -129,7 +129,8 @@ import { harnessVariants } from '../data/agent-skill';
 
   document.querySelectorAll<HTMLElement>('[data-skill-copy]').forEach((button) => {
     button.addEventListener('click', async () => {
-      const code = button.closest('.agent-skill-file')?.querySelector('code')?.textContent;
+      const code = button.closest('.agent-skill-file')?.querySelector('.agent-skill-code code')
+        ?.textContent;
       if (!code) return;
       try {
         await navigator.clipboard.writeText(code);

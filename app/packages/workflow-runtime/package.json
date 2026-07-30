@@ -20,6 +20,7 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
+    "@infrawrench/client-core": "workspace:*",
     "@infrawrench/plugin-base": "workspace:*",
     "@sebastianwessel/quickjs": "^3.0.1",
     "@jitl/quickjs-ng-wasmfile-release-asyncify": "^0.31.0",

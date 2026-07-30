@@ -17,6 +17,8 @@
 
 import type { CostCapabilityDeclaration } from "@infrawrench/plugin-base";
 
+import type { CustomGraphWidgetConfig } from "./custom-graphs";
+
 /** Why an account's last cost collection failed, as stored by the poller. */
 export interface CostPollError {
   message: string;
@@ -219,7 +221,7 @@ export const COST_DIMENSION_LABELS: Record<CostDimensionId, string> = {
   tag: "Tag",
 };
 
-export const DASHBOARD_WIDGET_KINDS = ["cost_graph", "budget"] as const;
+export const DASHBOARD_WIDGET_KINDS = ["cost_graph", "budget", "custom_graph"] as const;
 export type DashboardWidgetKind = (typeof DASHBOARD_WIDGET_KINDS)[number];
 
 /** Widget row shape shared by API responses and the dashboard UIs. */
@@ -228,7 +230,7 @@ export interface DashboardWidget {
   dashboardId: string;
   kind: DashboardWidgetKind;
   title: string;
-  config: CostGraphConfig | BudgetWidgetConfig;
+  config: CostGraphConfig | BudgetWidgetConfig | CustomGraphWidgetConfig;
   gridX: number;
   gridY: number;
   gridW: number;

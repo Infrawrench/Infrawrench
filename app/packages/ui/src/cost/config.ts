@@ -19,6 +19,7 @@ import {
   type CostFilter,
   type CostGraphConfig,
   type CostQueryRequest,
+  type CustomGraphWidgetConfig,
   type DashboardWidgetKind,
 } from "@infrawrench/client-core";
 
@@ -56,6 +57,7 @@ export {
   type CostSeriesPoint,
   type CostQuerySeries,
   type CostQueryResponse,
+  type CustomGraphWidgetConfig,
 } from "@infrawrench/client-core";
 
 export const costFilterSchema = z.object({
@@ -108,8 +110,20 @@ export const budgetInputSchema = z.object({
   thresholds: z.array(budgetThresholdSchema).min(1).max(10),
 });
 
+/** A custom-graph widget is a dashboard view onto a custom_graphs row. */
+export const customGraphWidgetConfigSchema = z.object({
+  version: z.literal(1),
+  graphId: z.string().min(1),
+});
+
+const widgetConfigSchemas = {
+  cost_graph: costGraphConfigSchema,
+  budget: budgetWidgetConfigSchema,
+  custom_graph: customGraphWidgetConfigSchema,
+} as const satisfies Record<DashboardWidgetKind, z.ZodTypeAny>;
+
 export function widgetConfigSchemaFor(kind: DashboardWidgetKind) {
-  return kind === "cost_graph" ? costGraphConfigSchema : budgetWidgetConfigSchema;
+  return widgetConfigSchemas[kind];
 }
 
 /** The cost query the API accepts — a graph config resolved to concrete dates. */
@@ -138,4 +152,5 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof budgetThresholdSchema>, BudgetThreshold>,
   Exact<z.infer<typeof budgetInputSchema>, BudgetInput>,
   Exact<z.infer<typeof costQueryRequestSchema>, CostQueryRequest>,
+  Exact<z.infer<typeof customGraphWidgetConfigSchema>, CustomGraphWidgetConfig>,
 ];

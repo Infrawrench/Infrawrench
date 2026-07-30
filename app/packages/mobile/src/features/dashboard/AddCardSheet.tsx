@@ -1,8 +1,13 @@
 import { Sheet } from "@/components/form";
 import { Button, Card, Row } from "@/components/ui";
 
-/** What "Add a card" can add — the same four choices as web's add menu. */
-export type AddCardChoice = "pin" | "cost_graph" | "new_budget" | "existing_budget";
+/** What "Add a card" can add — the same choices as web's add menu. */
+export type AddCardChoice =
+  | "pin"
+  | "cost_graph"
+  | "new_budget"
+  | "existing_budget"
+  | "custom_graph";
 
 export function AddCardSheet({
   visible,
@@ -40,6 +45,11 @@ export function AddCardSheet({
           title="Existing budget"
           subtitle="Show a budget this organization already has"
           onPress={() => onChoose("existing_budget")}
+        />
+        <Row
+          title="Custom graph"
+          subtitle="A script-defined chart this organization already has"
+          onPress={() => onChoose("custom_graph")}
         />
       </Card>
     </Sheet>

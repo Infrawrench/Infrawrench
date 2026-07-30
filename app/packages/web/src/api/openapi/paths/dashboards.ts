@@ -54,7 +54,7 @@ const WorkflowPin = strict({
   ),
 }).openapi("DashboardWorkflowPin");
 
-const WidgetKind = z.enum(["cost_graph", "budget"]).openapi("DashboardWidgetKind");
+const WidgetKind = z.enum(["cost_graph", "budget", "custom_graph"]).openapi("DashboardWidgetKind");
 
 const Widget = strict({
   id: Uuid,

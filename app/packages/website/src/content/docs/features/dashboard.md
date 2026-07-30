@@ -42,11 +42,11 @@ Unpinned resources still get a chart: when a resource has no accumulated history
 
 ## Cost graphs and budgets
 
-The **+** tile on a dashboard is a menu: pin a resource, add a **Cost graph**, create a **New budget**, or place an **Existing budget** you already have (cloud orgs only). Cost widgets chart the actual spend of your connected accounts and track monthly budgets with alerts — see [Cost graphs & budgets](./cloud-costs.md). They drag into place alongside resource cards like anything else on the grid; a cost graph occupies two columns.
+The **+** tile on a dashboard is a menu: pin a resource, add a **Cost graph**, create a **New budget**, place an **Existing budget** you already have, or add a **Custom graph** (cloud orgs only). Cost widgets chart the actual spend of your connected accounts and track monthly budgets with alerts — see [Cost graphs & budgets](./cloud-costs.md). Custom graphs are script-defined charts with their own controls — see [Custom graphs](./custom-graphs.md). They drag into place alongside resource cards like anything else on the grid; cost graphs and custom graphs occupy two columns.
 
 Budget cards are views onto a budget, not the budget itself: removing one leaves the budget tracking and alerting, and the [**Costs** panel](./cloud-costs.md#the-costs-panel) lists every budget whether or not a dashboard shows it.
 
-<insert [Dashboard "+" tile menu open showing Pin a resource, Cost graph, New budget, and Existing budget entries] here>
+<insert [Dashboard "+" tile menu open showing Pin a resource, Cost graph, New budget, Existing budget, and Custom graph entries] here>
 
 ## Multiple dashboards
 

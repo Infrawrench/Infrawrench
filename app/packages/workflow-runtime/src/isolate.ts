@@ -55,7 +55,14 @@ export interface IsolateEnvValues {
 export interface RunIsolateOptions {
   /** The complete guest program: prelude + transpiled body + epilogue. */
   program: string;
-  host: WorkflowHost;
+  /** Required unless a custom {@link RunIsolateOptions.dispatcher} is given. */
+  host?: WorkflowHost;
+  /**
+   * Routes `__host` RPCs instead of the workflow {@link dispatch}. Program
+   * kinds with their own (narrower) host surface — custom graphs — supply one
+   * so unknown methods fail closed rather than reaching workflow powers.
+   */
+  dispatcher?: (method: string, args: Record<string, unknown>) => Promise<unknown>;
   /** Log/output sink shared with the caller, which owns the accumulated arrays. */
   ctx: WorkflowRunContext;
   env: IsolateEnvValues;
@@ -80,6 +87,14 @@ export interface IsolateOutcome {
 
 export async function runIsolate(opts: RunIsolateOptions): Promise<IsolateOutcome> {
   const { limits } = opts;
+  const hostForDispatch = opts.host;
+  if (!opts.dispatcher && !hostForDispatch) {
+    throw new Error("runIsolate needs a host or a dispatcher.");
+  }
+  const route =
+    opts.dispatcher ??
+    ((method: string, args: Record<string, unknown>) =>
+      dispatch(hostForDispatch!, opts.ctx, method, args));
   const paused =
     opts.extraPausedMethods && opts.extraPausedMethods.length > 0
       ? new Set([...PAUSED_METHODS, ...opts.extraPausedMethods])
@@ -136,7 +151,7 @@ export async function runIsolate(opts: RunIsolateOptions): Promise<IsolateOutcom
       }
       if (pause) pauseTimeout();
       try {
-        const result = await dispatch(opts.host, opts.ctx, method, args);
+        const result = await route(method, args);
         return result === undefined ? "" : JSON.stringify(result);
       } finally {
         if (pause) resumeTimeout();

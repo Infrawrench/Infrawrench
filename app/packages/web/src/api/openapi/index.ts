@@ -14,6 +14,7 @@ import { registerAccountPaths } from "./paths/accounts";
 import { registerDashboardPaths } from "./paths/dashboards";
 import { registerCostPaths } from "./paths/costs";
 import { registerBudgetPaths } from "./paths/budgets";
+import { registerCustomGraphPaths } from "./paths/custom-graphs";
 import { registerDeploymentPaths } from "./paths/deployments";
 import { registerPagePaths } from "./paths/pages";
 import { registerResourcePaths } from "./paths/resources";
@@ -86,6 +87,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerDashboardPaths(ctx);
   registerCostPaths(ctx);
   registerBudgetPaths(ctx);
+  registerCustomGraphPaths(ctx);
   registerDeploymentPaths(ctx);
   registerPagePaths(ctx);
   registerResourcePaths(ctx);
@@ -135,6 +137,10 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       { name: "Invitations", description: "Accepting team invites." },
       { name: "Accounts", description: "Provider connections (cloud accounts)." },
       { name: "Dashboards", description: "Pinned resources, custom dashboards." },
+      {
+        name: "Custom graphs",
+        description: "Script-defined dashboard charts run in a server-side sandbox.",
+      },
       {
         name: "Resources",
         description: "CRUD, manifest, logs, secrets, metrics — all dispatched to plugins.",
@@ -251,6 +257,16 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /dashboards/validate-tabs": "dashboards:read",
   "GET /dashboards/pin/{pinId}": "dashboards:read",
   "POST /dashboards/probe": "dashboards:read",
+
+  // custom graphs (share the dashboards permissions, like workflows)
+  "GET /custom-graphs": "dashboards:read",
+  "POST /custom-graphs": "dashboards:write",
+  "GET /custom-graphs/typings": "dashboards:read",
+  "POST /custom-graphs/check": "dashboards:read",
+  "GET /custom-graphs/{id}": "dashboards:read",
+  "PUT /custom-graphs/{id}": "dashboards:write",
+  "DELETE /custom-graphs/{id}": "dashboards:write",
+  "POST /custom-graphs/{id}/render": "dashboards:read",
   // agents
   "GET /agents/accounts": "accounts:read",
   "GET /agents/settings": "accounts:read",

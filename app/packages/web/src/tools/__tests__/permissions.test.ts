@@ -132,6 +132,8 @@ describe("tool registry permission declarations", () => {
     ["delete_ssh_key", "ssh-keys:write"],
     ["trust_ssh_host", "accounts:write"],
     ["delete_budget", "budgets:write"],
+    ["write_custom_graph", "dashboards:write"],
+    ["delete_custom_graph", "dashboards:write"],
   ])("gates %s behind %s", async (name, permission) => {
     const tools = await getToolRegistry();
     expect(tools.find((t) => t.name === name)?.permission).toBe(permission);

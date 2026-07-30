@@ -983,5 +983,6 @@ export const externalPages = pgTable(
 
 export * from "./core-schema.js";
 export * from "./workflow-schema.js";
+export * from "./custom-graph-schema.js";
 export * from "./deployment-schema.js";
 export * from "./agent-schema.js";

@@ -451,4 +451,6 @@ export {
 
 export * from "./cost/index.js";
 
+export * from "./custom-graphs/index.js";
+
 export * from "./chat/index.js";

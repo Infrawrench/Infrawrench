@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.15.0",
+    "version": "0.16.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -51,6 +51,10 @@
     {
       "name": "Dashboards",
       "description": "Pinned resources, custom dashboards."
+    },
+    {
+      "name": "Custom graphs",
+      "description": "Script-defined dashboard charts run in a server-side sandbox."
     },
     {
       "name": "Resources",
@@ -1184,6 +1188,7 @@
           "collection",
           "composer-environment",
           "container",
+          "container-registry",
           "custom-hostname",
           "custom-voice",
           "d1-database",
@@ -1292,6 +1297,7 @@
           "k8s-ingress",
           "k8s-job",
           "k8s-namespace",
+          "k8s-node",
           "k8s-pod",
           "k8s-secret",
           "k8s-service",
@@ -1605,7 +1611,7 @@
       },
       "DashboardWidgetKind": {
         "type": "string",
-        "enum": ["cost_graph", "budget"]
+        "enum": ["cost_graph", "budget", "custom_graph"]
       },
       "DashboardWidget": {
         "type": "object",
@@ -2814,6 +2820,249 @@
           "forecastAmountCents",
           "triggeredAt"
         ],
+        "additionalProperties": false
+      },
+      "CustomGraphSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": ["string", "null"]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["id", "name", "description", "createdAt", "updatedAt"],
+        "additionalProperties": false
+      },
+      "CustomGraphFull": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": ["string", "null"]
+          },
+          "source": {
+            "type": "string"
+          },
+          "createdByUserId": {
+            "type": ["string", "null"]
+          },
+          "deletedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "organizationId",
+          "name",
+          "description",
+          "source",
+          "createdByUserId",
+          "deletedAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CustomGraphInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": ["string", "null"],
+            "maxLength": 500
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 131072
+          }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      },
+      "CustomGraphCheckResult": {
+        "type": "object",
+        "properties": {
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "line": {
+                  "type": "integer"
+                },
+                "column": {
+                  "type": "integer"
+                },
+                "code": {
+                  "type": "integer"
+                },
+                "category": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": ["line", "column", "code", "category", "message"],
+              "additionalProperties": false
+            }
+          },
+          "hasErrors": {
+            "type": "boolean"
+          },
+          "degraded": {
+            "type": "boolean"
+          }
+        },
+        "required": ["diagnostics", "hasErrors", "degraded"],
+        "additionalProperties": false
+      },
+      "CustomGraphCheckRequest": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "maxLength": 131072
+          }
+        },
+        "required": ["source"],
+        "additionalProperties": false
+      },
+      "CustomGraphUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": ["string", "null"],
+            "maxLength": 500
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 131072
+          }
+        },
+        "additionalProperties": false
+      },
+      "CustomGraphRenderResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "spec": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/JsonObject"
+              },
+              {
+                "type": ["object", "null"]
+              }
+            ]
+          },
+          "error": {
+            "type": ["string", "null"]
+          },
+          "logs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "level": {
+                  "type": "string",
+                  "enum": ["info", "warn", "error"]
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": ["level", "message"],
+              "additionalProperties": false
+            }
+          },
+          "renderedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "durationMs": {
+            "type": "integer"
+          }
+        },
+        "required": ["ok", "spec", "error", "logs", "renderedAt", "durationMs"],
+        "additionalProperties": false
+      },
+      "CustomGraphRenderRequest": {
+        "type": "object",
+        "properties": {
+          "controls": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          "button": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "trigger": {
+            "type": "string",
+            "enum": ["manual", "refresh", "interaction"]
+          }
+        },
         "additionalProperties": false
       },
       "DeployRepo": {
@@ -10385,6 +10634,465 @@
           }
         },
         "operationId": "getOrgOrgIdBudgetsIdEvents"
+      }
+    },
+    "/api/org/{orgId}/custom-graphs": {
+      "get": {
+        "tags": ["Custom graphs"],
+        "summary": "List custom graphs",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Custom graphs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CustomGraphSummary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCustomGraphs",
+        "x-required-permission": "dashboards:read",
+        "description": "_Requires permission: `dashboards:read`._"
+      },
+      "post": {
+        "tags": ["Custom graphs"],
+        "summary": "Create a custom graph (paid plan required)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomGraphInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomGraphFull"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required — the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCustomGraphs",
+        "x-required-permission": "dashboards:write",
+        "description": "_Requires permission: `dashboards:write`._"
+      }
+    },
+    "/api/org/{orgId}/custom-graphs/typings": {
+      "get": {
+        "tags": ["Custom graphs"],
+        "summary": "The ambient graph.d.ts for custom-graph source",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "TypeScript declarations",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCustomGraphsTypings",
+        "x-required-permission": "dashboards:read",
+        "description": "_Requires permission: `dashboards:read`._"
+      }
+    },
+    "/api/org/{orgId}/custom-graphs/check": {
+      "post": {
+        "tags": ["Custom graphs"],
+        "summary": "Type-check custom-graph source without saving it",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomGraphCheckRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Diagnostics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomGraphCheckResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCustomGraphsCheck",
+        "x-required-permission": "dashboards:read",
+        "description": "_Requires permission: `dashboards:read`._"
+      }
+    },
+    "/api/org/{orgId}/custom-graphs/{id}": {
+      "get": {
+        "tags": ["Custom graphs"],
+        "summary": "Get a custom graph (including source)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Custom graph",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomGraphFull"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCustomGraphsId",
+        "x-required-permission": "dashboards:read",
+        "description": "_Requires permission: `dashboards:read`._"
+      },
+      "put": {
+        "tags": ["Custom graphs"],
+        "summary": "Update a custom graph (paid plan required)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomGraphUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomGraphFull"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required — the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdCustomGraphsId",
+        "x-required-permission": "dashboards:write",
+        "description": "_Requires permission: `dashboards:write`._"
+      },
+      "delete": {
+        "tags": ["Custom graphs"],
+        "summary": "Delete a custom graph (and its dashboard cards)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCustomGraphsId",
+        "x-required-permission": "dashboards:write",
+        "description": "_Requires permission: `dashboards:write`._"
+      }
+    },
+    "/api/org/{orgId}/custom-graphs/{id}/render": {
+      "post": {
+        "tags": ["Custom graphs"],
+        "summary": "Run the graph's script and return its render spec (paid plan required)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomGraphRenderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Render result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomGraphRenderResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required — the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCustomGraphsIdRender",
+        "x-required-permission": "dashboards:read",
+        "description": "_Requires permission: `dashboards:read`._"
       }
     },
     "/api/org/{orgId}/deployments/repos": {

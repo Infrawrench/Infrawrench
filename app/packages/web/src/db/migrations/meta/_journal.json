@@ -316,6 +316,13 @@
       "when": 1785334611309,
       "tag": "0044_gigantic_gateway",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1785369230314,
+      "tag": "0045_ambitious_chronomancer",
+      "breakpoints": true
     }
   ]
 }

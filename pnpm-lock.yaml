@@ -894,6 +894,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.19.13
         version: 1.19.13(hono@4.12.30)
+      '@infrawrench/client-core':
+        specifier: workspace:*
+        version: link:../client-core
       '@infrawrench/plugin-base':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/plugin-base
@@ -1091,6 +1094,9 @@ importers:
 
   app/packages/workflow-runtime:
     dependencies:
+      '@infrawrench/client-core':
+        specifier: workspace:*
+        version: link:../client-core
       '@infrawrench/plugin-base':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/plugin-base
@@ -19446,7 +19452,7 @@ snapshots:
       obug: 2.1.1
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.8(@types/node@24.12.2)(@vitest/coverage-v8@4.1.8)(jsdom@29.1.1)(vite@8.1.4(@types/node@24.12.2)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.8.3))
+      vitest: 4.1.8(@types/node@22.20.1)(@vitest/coverage-v8@4.1.8)(jsdom@29.1.1)(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.8.3))
 
   '@vitest/expect@4.1.8':
     dependencies:

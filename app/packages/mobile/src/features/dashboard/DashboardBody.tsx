@@ -6,6 +6,7 @@ import {
   orderDashboardCards,
   type BudgetWidgetConfig,
   type CostGraphConfig,
+  type CustomGraphWidgetConfig,
   type DashboardCardRef,
   type DashboardWidget,
 } from "@infrawrench/client-core";
@@ -15,6 +16,7 @@ import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { colors, spacing } from "@/lib/theme";
 import { BudgetCard } from "./BudgetCard";
 import { CostGraphCard } from "./CostGraphCard";
+import { CustomGraphCard } from "./CustomGraphCard";
 import { useBudgets } from "./useBudgets";
 import { useCostStatus } from "./useCostStatus";
 
@@ -77,7 +79,13 @@ function failedPinDetail(pinId: string, error: unknown): PinDetail {
  * it — pin probes, budget rows, collection status, and the cost queries.
  */
 export function invalidateDashboardQueries(client: QueryClient): void {
-  for (const key of ["dashboard-pin-details", "budgets", "cost-status", "cost-query"]) {
+  for (const key of [
+    "dashboard-pin-details",
+    "budgets",
+    "cost-status",
+    "cost-query",
+    "custom-graph-render",
+  ]) {
     void client.invalidateQueries({ queryKey: [key] });
   }
 }
@@ -209,7 +217,10 @@ export function DashboardBody({
             disabled={index === cards.length - 1 || editing.busy}
             onPress={() => move(1)}
           />
-          {ref.kind === "widget" ? (
+          {/* Custom graphs have no phone-side config — their script is edited
+              on web/desktop, and the card's controls live on the card. */}
+          {ref.kind === "widget" &&
+          widgets.find((w) => w.id === ref.id)?.kind !== "custom_graph" ? (
             <Button
               label="Configure"
               variant="secondary"
@@ -302,6 +313,18 @@ export function DashboardBody({
               key={widget.id}
               title={widget.title}
               config={widget.config as CostGraphConfig}
+            />,
+          );
+        }
+
+        if (widget.kind === "custom_graph") {
+          return withControls(
+            index,
+            widgetRef,
+            <CustomGraphCard
+              key={widget.id}
+              title={widget.title}
+              config={widget.config as CustomGraphWidgetConfig}
             />,
           );
         }

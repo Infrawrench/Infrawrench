@@ -20,6 +20,7 @@ import {
 } from "@/features/dashboard/DashboardBody";
 import { AddCardSheet, type AddCardChoice } from "@/features/dashboard/AddCardSheet";
 import { BudgetPickerSheet } from "@/features/dashboard/BudgetPickerSheet";
+import { CustomGraphPickerSheet } from "@/features/dashboard/CustomGraphPickerSheet";
 import { BudgetSheet } from "@/features/dashboard/BudgetSheet";
 import { CostGraphSheet } from "@/features/dashboard/CostGraphSheet";
 import { PinResourceSheet } from "@/features/dashboard/PinResourceSheet";
@@ -262,6 +263,14 @@ export default function DashboardScreen() {
           placedBudgetIds={placedBudgetIds}
           onClose={() => setSheet(null)}
           onPick={edit.addBudgetCard}
+        />
+      ) : null}
+
+      {sheet?.kind === "custom_graph" ? (
+        <CustomGraphPickerSheet
+          visible
+          onClose={() => setSheet(null)}
+          onPick={(graph) => edit.addCustomGraphCard(graph.id, graph.name)}
         />
       ) : null}
 

@@ -780,7 +780,7 @@ const HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
  * headers are dropped, and the sizes are bounded on both directions. Where the
  * request physically leaves from is the host's business (see `WorkflowHost.fetch`).
  */
-function fetchRequest(raw: unknown): WorkflowFetchRequest {
+export function fetchRequest(raw: unknown): WorkflowFetchRequest {
   const args = (raw ?? {}) as Record<string, unknown>;
 
   const rawUrl = String(args["url"] ?? "").trim();

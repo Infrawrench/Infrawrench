@@ -29,3 +29,5 @@ export {
   enrichSidecarCapabilities,
   type SidecarCapabilityProbe,
 } from "./sidecars.js";
+export { generateGraphDts } from "./graphs/codegen.js";
+export * from "./graphs/types.js";

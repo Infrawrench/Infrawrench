@@ -20,6 +20,11 @@ vi.mock("../workflows", () => ({
     { name: "w1", title: "W1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
   ],
 }));
+vi.mock("../custom-graphs", () => ({
+  customGraphTools: () => [
+    { name: "cg1", title: "CG1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
 vi.mock("../deployments", () => ({
   deploymentTools: () => [
     { name: "d1", title: "D1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
@@ -63,6 +68,7 @@ describe("getToolRegistry", () => {
     expect(names).toContain("c1");
     expect(names).toContain("k1");
     expect(names).toContain("w1");
+    expect(names).toContain("cg1");
     expect(names).toContain("d1");
     expect(names).toContain("s1");
     expect(names).toContain("h1");

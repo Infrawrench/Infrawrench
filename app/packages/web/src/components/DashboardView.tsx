@@ -37,6 +37,18 @@ import {
   type CostQueryResponse,
   type DashboardWidget,
 } from "@infrawrench/ui/cost";
+import {
+  CustomGraphCard,
+  CustomGraphEditorModal,
+  CustomGraphPickerModal,
+  type CustomGraphCheckResult,
+  type CustomGraphDetail,
+  type CustomGraphRenderRequest,
+  type CustomGraphRenderResult,
+  type CustomGraphSummary,
+  type CustomGraphWidgetConfig,
+  type CustomGraphsClient,
+} from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete, apiPatch, apiPut } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 import { SpotlightSearch } from "./SpotlightSearch";
@@ -115,6 +127,9 @@ export function DashboardView({
   const [costModal, setCostModal] = useState<{ widget: DashboardWidget | null } | null>(null);
   const [budgetModal, setBudgetModal] = useState<{ widget: DashboardWidget | null } | null>(null);
   const [budgetPickerOpen, setBudgetPickerOpen] = useState(false);
+  const [graphPickerOpen, setGraphPickerOpen] = useState(false);
+  const [graphEditorId, setGraphEditorId] = useState<string | null>(null);
+  const [graphReload, setGraphReload] = useState(0);
   const [budgets, setBudgets] = useState<Map<string, BudgetWithStatus>>(new Map());
   const [costStatus, setCostStatus] = useState<CostAccountStatus[]>([]);
   const [dashboardName, setDashboardName] = useState(initialName);
@@ -180,6 +195,36 @@ export function DashboardView({
           `/api/org/${orgId}/costs/status`,
         );
         return res.accounts;
+      },
+    }),
+    [orgId],
+  );
+
+  const customGraphsClient: CustomGraphsClient = useMemo(
+    () => ({
+      list: () => apiGet<CustomGraphSummary[]>(`/api/org/${orgId}/custom-graphs`),
+      get: (graphId: string) =>
+        apiGet<CustomGraphDetail>(`/api/org/${orgId}/custom-graphs/${graphId}`),
+      render: (graphId: string, request: CustomGraphRenderRequest) =>
+        apiPost<CustomGraphRenderResult>(
+          `/api/org/${orgId}/custom-graphs/${graphId}/render`,
+          request,
+        ),
+      create: (body) => apiPost<CustomGraphDetail>(`/api/org/${orgId}/custom-graphs`, body),
+      update: (graphId, body) =>
+        apiPut<CustomGraphDetail>(`/api/org/${orgId}/custom-graphs/${graphId}`, body),
+      remove: async (graphId) => {
+        await apiDelete(`/api/org/${orgId}/custom-graphs/${graphId}`);
+      },
+      check: (source) =>
+        apiPost<CustomGraphCheckResult>(`/api/org/${orgId}/custom-graphs/check`, { source }),
+      // Plain text, so it skips the JSON-parsing apiFetch helpers.
+      typings: async () => {
+        const res = await fetch(`/api/org/${orgId}/custom-graphs/typings`, {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Failed to load graph typings");
+        return res.text();
       },
     }),
     [orgId],
@@ -277,6 +322,18 @@ export function DashboardView({
     () => apiGet<BudgetWithStatus[]>(`/api/org/${orgId}/budgets`),
     [orgId],
   );
+
+  /** Add a card for a custom graph; a just-created one opens its editor too. */
+  async function addCustomGraphWidget(graph: CustomGraphSummary, created: boolean) {
+    const widget = await apiPost<DashboardWidget>(`/api/org/${orgId}/dashboards/widgets`, {
+      dashboardId,
+      kind: "custom_graph",
+      title: graph.name,
+      config: { version: 1, graphId: graph.id },
+    });
+    setWidgets((prev) => [...prev, widget]);
+    if (created) setGraphEditorId(graph.id);
+  }
 
   /** Show a budget that already exists on this dashboard. */
   async function addExistingBudget(budget: BudgetWithStatus) {
@@ -479,6 +536,10 @@ export function DashboardView({
                     setAddMenuOpen(false);
                     setBudgetPickerOpen(true);
                   }}
+                  onPickCustomGraph={() => {
+                    setAddMenuOpen(false);
+                    setGraphPickerOpen(true);
+                  }}
                   onClose={() => setAddMenuOpen(false)}
                 />
               )}
@@ -499,7 +560,8 @@ export function DashboardView({
                     // The wrapper is the grid item, so a cost graph's span
                     // belongs here rather than on the card.
                     className={
-                      card.kind === "widget" && card.widget.kind === "cost_graph"
+                      card.kind === "widget" &&
+                      (card.widget.kind === "cost_graph" || card.widget.kind === "custom_graph")
                         ? "col-span-2"
                         : undefined
                     }
@@ -538,6 +600,17 @@ export function DashboardView({
                         onEdit={() => setCostModal({ widget: card.widget })}
                         onRemove={() => void handleRemoveWidget(card.widget.id)}
                       />
+                    ) : card.widget.kind === "custom_graph" ? (
+                      <CustomGraphCard
+                        title={card.widget.title}
+                        config={card.widget.config as CustomGraphWidgetConfig}
+                        client={customGraphsClient}
+                        reloadToken={graphReload}
+                        onEditScript={() =>
+                          setGraphEditorId((card.widget.config as CustomGraphWidgetConfig).graphId)
+                        }
+                        onRemove={() => void handleRemoveWidget(card.widget.id)}
+                      />
                     ) : (
                       <BudgetWidgetCard
                         budget={budgets.get((card.widget.config as { budgetId: string }).budgetId)}
@@ -574,6 +647,10 @@ export function DashboardView({
                       onPickExistingBudget={() => {
                         setAddMenuOpen(false);
                         setBudgetPickerOpen(true);
+                      }}
+                      onPickCustomGraph={() => {
+                        setAddMenuOpen(false);
+                        setGraphPickerOpen(true);
                       }}
                       onClose={() => setAddMenuOpen(false)}
                     />
@@ -625,6 +702,35 @@ export function DashboardView({
           />
         )}
 
+        {graphPickerOpen && (
+          <CustomGraphPickerModal
+            client={customGraphsClient}
+            onPick={addCustomGraphWidget}
+            onEdit={(graph) => setGraphEditorId(graph.id)}
+            onDeleted={(graphId) =>
+              // The server soft-deleted every card showing this graph; drop
+              // this dashboard's copies without a refetch.
+              setWidgets((prev) =>
+                prev.filter(
+                  (w) =>
+                    w.kind !== "custom_graph" ||
+                    (w.config as CustomGraphWidgetConfig).graphId !== graphId,
+                ),
+              )
+            }
+            onClose={() => setGraphPickerOpen(false)}
+          />
+        )}
+
+        {graphEditorId && (
+          <CustomGraphEditorModal
+            client={customGraphsClient}
+            graphId={graphEditorId}
+            onClose={() => setGraphEditorId(null)}
+            onSaved={() => setGraphReload((n) => n + 1)}
+          />
+        )}
+
         {budgetPickerOpen && (
           <BudgetPickerModal
             loadBudgets={loadAllBudgets}
@@ -656,12 +762,14 @@ function AddMenu({
   onPickCostGraph,
   onPickBudget,
   onPickExistingBudget,
+  onPickCustomGraph,
   onClose,
 }: {
   onPickResource: () => void;
   onPickCostGraph: () => void;
   onPickBudget: () => void;
   onPickExistingBudget: () => void;
+  onPickCustomGraph: () => void;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -691,6 +799,9 @@ function AddMenu({
         </button>
         <button type="button" onClick={onPickExistingBudget} className={itemClass}>
           <span className="text-on-surface-faint">◕</span> Existing budget
+        </button>
+        <button type="button" onClick={onPickCustomGraph} className={itemClass}>
+          <span className="text-on-surface-faint">◈</span> Custom graph
         </button>
       </div>
     </>

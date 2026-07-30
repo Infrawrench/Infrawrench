@@ -10,6 +10,7 @@ import { genericTools } from "./generic";
 import { perPluginCreateTools } from "./per-plugin-create";
 import { connectionTools } from "./connections";
 import { costTools } from "./costs";
+import { customGraphTools } from "./custom-graphs";
 import { workflowTools } from "./workflows";
 import { deploymentTools } from "./deployments";
 import { sshKeyTools } from "./ssh-keys";
@@ -25,6 +26,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...connectionTools(),
     ...costTools(),
     ...workflowTools(),
+    ...customGraphTools(),
     ...deploymentTools(),
     ...sshKeyTools(),
     ...sshHostKeyTools(),
