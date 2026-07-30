@@ -55,7 +55,8 @@ Internal links use relative paths with `.md` extensions (e.g. `[Add an account](
 
 When you change behavior the user can see, update the docs in the same change:
 
-- **New plugin** — add `app/packages/website/src/content/docs/plugins/<plugin-id>.md`. Cover the auth method (PAT, OAuth, kubeconfig…), what resources it lists, and any quirks.
+- **New plugin** — add `app/packages/website/src/content/docs/plugins/<plugin-id>.md`. Cover the auth method (PAT, OAuth, kubeconfig…), what resources it lists, and any quirks. Also update the plugin-count claims (see below).
+- **Plugin count changed** (plugin added or removed) — the count is quoted in copy that goes stale silently. Update every claim in the same change; find them with `grep -rnE "[0-9]+\+? (plugins|providers)|All [0-9]+|and [0-9]+ more" app/packages/web/src app/packages/website/src`. Current locations: the docs plan table (`team-and-billing/billing-and-plans.md`, exact "All N"), the web onboarding plan card (`web/src/routes/onboarding.tsx`, exact "All N plugins"), and the marketing pages (`website/src/components/Hero.astro`, `website/src/data/feature-sections.ts` — which also has an "…and N more" bullet that must sum with its 8 named providers to the total — and the meta descriptions in `website/src/pages/index.astro`). Marketing copy uses a rounded-down "N+" (e.g. 47 plugins → "45+"); the docs table and onboarding card use the exact number. The count of `app/packages/website/src/content/docs/plugins/*.md` files should equal the registry in `app/packages/server-core/src/plugin-loader.ts` — that's the source of truth.
 - **New feature or significant UX change** — update or add a page under `features/`.
 - **Auth / cloud-sync / billing change** — update the relevant page under `getting-started/`, `core-concepts/`, or `team-and-billing/`.
 - **Renamed UI string or moved menu item** — search docs for the old string (`grep -r "<old name>" app/packages/website/src/content/docs`) and update.
