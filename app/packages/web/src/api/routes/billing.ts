@@ -84,6 +84,7 @@ app.post("/checkout", async (c) => {
   }
 
   const appUrl = process.env["APP_URL"] ?? "http://localhost:3000";
+  const billingUrl = `${appUrl}/org/${c.get("organizationId")}/settings/billing`;
   const chatPriceId = getStripeChatPriceId();
   const buildPriceId = getStripeBuildPriceId();
   const checkoutSession = await stripe.checkout.sessions.create({
@@ -95,8 +96,8 @@ app.post("/checkout", async (c) => {
       ...(chatPriceId ? [{ price: chatPriceId }] : []),
       ...(buildPriceId ? [{ price: buildPriceId }] : []),
     ],
-    success_url: `${appUrl}/settings/billing?success=true`,
-    cancel_url: `${appUrl}/settings/billing`,
+    success_url: `${billingUrl}?success=true`,
+    cancel_url: billingUrl,
   });
 
   if (!checkoutSession.url) return c.json({ error: "Failed to create checkout session" }, 500);
@@ -117,7 +118,7 @@ app.post("/portal", async (c) => {
   const appUrl = process.env["APP_URL"] ?? "http://localhost:3000";
   const portalSession = await stripe.billingPortal.sessions.create({
     customer: sub.stripeCustomerId,
-    return_url: `${appUrl}/settings/billing`,
+    return_url: `${appUrl}/org/${c.get("organizationId")}/settings/billing`,
   });
   return c.json({ url: portalSession.url });
 });

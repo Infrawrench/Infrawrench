@@ -28,6 +28,10 @@ Free orgs (no payment method on file) can use the [AI chat](../features/ai-chat.
 
 **Settings → Billing → Upgrade**. We use Stripe. Add a card, pick a seat count, and you are on the paid plan immediately.
 
+You are also offered the choice right after creating an organization — the onboarding flow shows the Free and Pro plans side by side. Picking **Continue with Free** costs nothing and you can upgrade later from Settings; picking **Upgrade to Pro** takes you straight to checkout.
+
+<insert [Onboarding plan-choice step showing the Free and Pro cards side by side after creating an organization] here>
+
 <insert [Billing page with plan cards and a seat count selector] here>
 
 ## Seats
