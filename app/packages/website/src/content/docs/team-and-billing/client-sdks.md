@@ -135,6 +135,10 @@ Each generated package ships its own README with language-specific detail —
 per-call options, file uploads, binary downloads, and what is deliberately
 missing.
 
+The [interactive API reference](./openapi.md#sdk-code-samples) at `/docs` shows
+a per-operation sample for every one of the nine languages, generated from the
+same naming rules as the packages themselves.
+
 ## How far each one is verified
 
 Generated code that has never been compiled is a guess. Every target is built

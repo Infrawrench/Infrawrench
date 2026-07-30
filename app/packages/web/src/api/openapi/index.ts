@@ -1,4 +1,5 @@
 import { OpenAPIRegistry, OpenApiGeneratorV31 } from "@asteasolutions/zod-to-openapi";
+import { injectSdkCodeSamples } from "../../../scripts/sdk/code-samples";
 import { buildDynamicEnums } from "./dynamic";
 import { injectInternalMarkers, toPublicDocument } from "./public-spec";
 import { API_VERSION } from "./version";
@@ -447,9 +448,19 @@ export async function getOpenApiDocument(opts: BuildOptions = {}): Promise<OpenA
  * The spec we publish — the same document with `x-internal` operations, the
  * `sessionCookie` scheme, and the tags/schemas only they used removed. This is
  * what `/openapi.json` serves and what `/docs` renders. See `./public-spec.ts`.
+ *
+ * Every published operation additionally carries `x-codeSamples` showing the
+ * call as each generated SDK spells it, so the `/docs` client picker offers
+ * the real clients instead of only generic HTTP snippets. The samples are
+ * derived from the same IR the SDK generator consumes (which is why this
+ * reaches into `scripts/sdk`); they exist only on the served document — the
+ * committed `openapi.json` stays snippet-free so its diffs show surface
+ * changes.
  */
 export async function getPublicOpenApiDocument(opts: BuildOptions = {}): Promise<OpenAPIObject> {
   if (_cachedPublic) return _cachedPublic;
-  _cachedPublic = toPublicDocument(await getOpenApiDocument(opts));
+  const doc = toPublicDocument(await getOpenApiDocument(opts));
+  injectSdkCodeSamples(doc);
+  _cachedPublic = doc;
   return _cachedPublic;
 }

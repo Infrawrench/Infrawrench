@@ -1209,6 +1209,8 @@ Staleness: each output dir carries `.sdk-stamp.json` (`apiVersion`, `specHash`, 
 
 Tests: `scripts/sdk/__tests__/ir.test.ts` (vitest `include` covers `scripts/**/*.test.ts`) runs a miniature spec through the naming rules, generates a real TypeScript package into a temp dir (since `generate()` throws on a compile error, that is the guard against the emitter producing plausible-looking garbage), and then a `describe.each` over `SDK_TARGETS` asserts the cross-language contract every target owes: declared `artifacts` all exist, `LICENSE` carries the MIT text, `APIV1Client` appears, and no internal operation leaks. Assert artifact _existence_, not truthiness — Python's `py.typed` is a PEP 561 marker whose job is to be empty.
 
+**Docs code samples**: `scripts/sdk/code-samples.ts` renders a per-operation snippet for all nine SDKs (`x-codeSamples`, the extension Scalar reads) from the same `buildSdkIr` lowering, and `getPublicOpenApiDocument` injects them into the **served** spec only — the committed `openapi.json` stays snippet-free so its diffs show surface changes. This is the one place server runtime code imports from `scripts/sdk`; the per-language spellings (argument passing, `null` for Java optionals, Go's params-struct/nil/no-arg trichotomy, enum idioms `.aws` / `PluginId::Aws`) are asserted against the emitted SDK conventions in `scripts/sdk/__tests__/code-samples.test.ts`. Go's identifier casing lives in `targets/go/naming.ts` (extracted so the renderer doesn't import the fs-reading emitter). A call-shape change in a target must change the matching renderer — the test file is the tripwire.
+
 ---
 
 ## BigQuery plugin

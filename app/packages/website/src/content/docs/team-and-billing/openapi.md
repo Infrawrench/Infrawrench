@@ -35,6 +35,14 @@ They're still in the source and in the checked-in `app/packages/web/openapi.json
 
 <insert [Screenshot of /docs Scalar reference UI showing the Resources tag expanded] here>
 
+## SDK code samples
+
+Every operation on `/docs` carries an `x-codeSamples` entry per [client SDK](./client-sdks.md), so the code panel shows the call the way each generated client actually spells it — `client.accounts.sync({ id })` in TypeScript, `client.Accounts.Sync(ctx, …)` in Go, `client.resources().secretVersions().add(…)` in Java — alongside the generic curl/HTTP snippets. Pick the language in the client selector above the example.
+
+The samples are rendered from the same intermediate representation the SDK generator consumes, so they cannot drift from the published packages: renaming a call in the generator renames it in the docs in the same commit. They exist only on the _served_ spec (`/openapi.json` and `/docs`) — the committed `app/packages/web/openapi.json` stays snippet-free so its diffs show API surface changes rather than re-rendered examples.
+
+<insert [Screenshot of a /docs operation with the client picker open, showing the nine SDK sample entries and the TypeScript sample selected] here>
+
 ## Authentication
 
 The published spec advertises a single scheme:
