@@ -21,9 +21,9 @@ export const featureSections: FeatureSection[] = [
     icon: "Globe",
     heading: "Manage everything from one place",
     description:
-      "Connect to 25+ cloud providers and manage hundreds of resource types from a single unified interface. Infrawrench discovers your infrastructure automatically and keeps it in sync every 30 seconds.",
+      "Connect to 45+ cloud providers and manage hundreds of resource types from a single unified interface. Infrawrench discovers your infrastructure automatically and keeps it in sync every 30 seconds.",
     bullets: [
-      "AWS, GCP, Azure, Cloudflare, DigitalOcean, Hetzner, Scaleway, OVH, and 17 more",
+      "AWS, GCP, Azure, Cloudflare, DigitalOcean, Hetzner, Scaleway, OVH, and 39 more",
       "Automatic resource discovery with background sync, no manual refresh",
       "Right-click context menus with provider-specific actions per resource type",
       "Drag-and-drop to attach disks, volumes, and Elastic IPs to compute resources",
