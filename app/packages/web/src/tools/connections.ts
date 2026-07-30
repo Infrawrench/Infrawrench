@@ -12,6 +12,13 @@ import { HostKeyTrustRequiredError } from "../services/ssh-host-keys";
 import { logAudit } from "../services/audit";
 import { ok, err, type ToolDefinition } from "./types";
 
+const SIDECAR_RETRY_HINT =
+  "If this is a managed-database provider (Neon, RDS, Cloud SQL, DO managed databases, …), retry with " +
+  "`pluginId` set to the SQL sidecar plugin (e.g. 'postgres', 'mysql') and `parentResourceId` set to the " +
+  "database resource id — see list_resource_sidecars for what the resource exposes.";
+
+const NO_SQL_DRIVER_HINT = `No SQL driver available for this account. ${SIDECAR_RETRY_HINT}`;
+
 export function connectionTools(): ToolDefinition[] {
   return [
     {
@@ -19,24 +26,34 @@ export function connectionTools(): ToolDefinition[] {
       title: "Run read SQL query",
       description:
         "Run a read-only SQL query (SELECT, SHOW, EXPLAIN) against an account- or per-resource SQL driver. Returns rows. " +
-        "Pass `resourceId`+`resourceTypeId` to target a per-resource database (e.g. a specific Neon branch); omit them to use the account's primary SQL connection.",
+        "Pass `resourceId`+`resourceTypeId` to target a per-resource database; omit them to use the account's primary SQL connection. " +
+        "For managed-database providers whose own plugin has no SQL driver (Neon, RDS, Cloud SQL, DO managed databases, …), pass " +
+        "`pluginId` of the SQL sidecar plugin (e.g. 'postgres', 'mysql') and `parentResourceId` = the database resource id " +
+        "(see list_resource_sidecars).",
       inputSchema: {
         accountId: z.string(),
         sql: z.string(),
         resourceId: z.string().optional(),
         resourceTypeId: z.string().optional(),
+        pluginId: z.string().optional(),
+        parentResourceId: z.string().optional(),
       },
       risk: "read",
       permission: "resources:execute",
       handler: async (input, auth) => {
-        const { accountId, sql, resourceId, resourceTypeId } = input as {
-          accountId: string;
-          sql: string;
-          resourceId?: string;
-          resourceTypeId?: string;
-        };
-        const ctx = await getClientForAccount(accountId, auth.organizationId);
-        if (!ctx) return err("Account not found");
+        const { accountId, sql, resourceId, resourceTypeId, pluginId, parentResourceId } =
+          input as {
+            accountId: string;
+            sql: string;
+            resourceId?: string;
+            resourceTypeId?: string;
+            pluginId?: string;
+            parentResourceId?: string;
+          };
+        const ctx = pluginId
+          ? await getClientForResource(pluginId, accountId, auth.organizationId, parentResourceId)
+          : await getClientForAccount(accountId, auth.organizationId);
+        if (!ctx) return err("Account or sidecar resource not found");
         const { client, plugin, credentials } = ctx;
 
         // REST-based query (BigQuery, Databricks)
@@ -75,7 +92,7 @@ export function connectionTools(): ToolDefinition[] {
           return ok({ rows: rows.slice(0, 500), truncated: rows.length > 500 });
         }
 
-        return err("No SQL driver available for this account");
+        return err(NO_SQL_DRIVER_HINT);
       },
     },
 
@@ -83,26 +100,36 @@ export function connectionTools(): ToolDefinition[] {
       name: "sql_execute",
       title: "Run write SQL statement",
       description:
-        "Execute a mutating SQL statement (INSERT/UPDATE/DELETE/DDL). Returns affectedRows. Audit-logged. The chat surface confirms before invoking.",
+        "Execute a mutating SQL statement (INSERT/UPDATE/DELETE/DDL). Returns affectedRows. Audit-logged. The chat surface confirms before invoking. " +
+        "For managed-database providers whose own plugin has no SQL driver (Neon, RDS, Cloud SQL, DO managed databases, …), pass " +
+        "`pluginId` of the SQL sidecar plugin (e.g. 'postgres', 'mysql') and `parentResourceId` = the database resource id " +
+        "(see list_resource_sidecars).",
       inputSchema: {
         accountId: z.string(),
         sql: z.string(),
         params: z.array(z.unknown()).optional(),
         resourceId: z.string().optional(),
         resourceTypeId: z.string().optional(),
+        pluginId: z.string().optional(),
+        parentResourceId: z.string().optional(),
       },
       risk: "destructive",
       permission: "resources:execute",
       handler: async (input, auth) => {
-        const { accountId, sql, params, resourceId, resourceTypeId } = input as {
-          accountId: string;
-          sql: string;
-          params?: unknown[];
-          resourceId?: string;
-          resourceTypeId?: string;
-        };
-        const ctx = await getClientForAccount(accountId, auth.organizationId);
-        if (!ctx) return err("Account not found");
+        const { accountId, sql, params, resourceId, resourceTypeId, pluginId, parentResourceId } =
+          input as {
+            accountId: string;
+            sql: string;
+            params?: unknown[];
+            resourceId?: string;
+            resourceTypeId?: string;
+            pluginId?: string;
+            parentResourceId?: string;
+          };
+        const ctx = pluginId
+          ? await getClientForResource(pluginId, accountId, auth.organizationId, parentResourceId)
+          : await getClientForAccount(accountId, auth.organizationId);
+        if (!ctx) return err("Account or sidecar resource not found");
         const { client, plugin, credentials } = ctx;
 
         const sqlSnippet = sql.slice(0, 200);
@@ -145,7 +172,7 @@ export function connectionTools(): ToolDefinition[] {
           return ok({ affectedRows: affected });
         }
 
-        return err("No SQL driver available for this account");
+        return err(NO_SQL_DRIVER_HINT);
       },
     },
 
@@ -153,15 +180,29 @@ export function connectionTools(): ToolDefinition[] {
       name: "introspect_sql_schema",
       title: "Introspect SQL schema",
       description:
-        "Return the database's table/column metadata used by the SQL editor's autocomplete. Useful before asking the model to write queries.",
-      inputSchema: { accountId: z.string() },
+        "Return the database's table/column metadata used by the SQL editor's autocomplete. Useful before asking the model to write queries. " +
+        "For managed-database providers whose own plugin has no SQL client (Neon, RDS, Cloud SQL, DO managed databases, …), pass " +
+        "`pluginId` of the SQL sidecar plugin (e.g. 'postgres', 'mysql') and `parentResourceId` = the database resource id " +
+        "(see list_resource_sidecars).",
+      inputSchema: {
+        accountId: z.string(),
+        pluginId: z.string().optional(),
+        parentResourceId: z.string().optional(),
+      },
       risk: "read",
       permission: "resources:execute",
       handler: async (input, auth) => {
-        const accountId = input["accountId"] as string;
-        const ctx = await getClientForAccount(accountId, auth.organizationId);
-        if (!ctx) return err("Account not found");
-        if (!ctx.client.introspect) return err("Plugin does not support SQL introspection");
+        const { accountId, pluginId, parentResourceId } = input as {
+          accountId: string;
+          pluginId?: string;
+          parentResourceId?: string;
+        };
+        const ctx = pluginId
+          ? await getClientForResource(pluginId, accountId, auth.organizationId, parentResourceId)
+          : await getClientForAccount(accountId, auth.organizationId);
+        if (!ctx) return err("Account or sidecar resource not found");
+        if (!ctx.client.introspect)
+          return err("Plugin does not support SQL introspection directly. " + SIDECAR_RETRY_HINT);
         const tables = await ctx.client.introspect();
         return ok(tables);
       },

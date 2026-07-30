@@ -97,6 +97,47 @@ describe("connectionTools", () => {
       const r = await tool("sql_query").handler({ accountId: "a1", sql: "x" }, auth);
       expect(r.isError).toBe(true);
       expect(r.content[0]!.text).toMatch(/No SQL driver/);
+      expect(r.content[0]!.text).toMatch(/sidecar/);
+    });
+
+    it("routes through the sidecar client when pluginId is given", async () => {
+      mockGetClientForResource.mockResolvedValue({
+        client: {},
+        plugin: {
+          manifest: { sqlDriver: { driver: "postgres", credentialKey: "connectionString" } },
+          resourceTypes: [],
+        },
+        credentials: { connectionString: "postgres://neon" },
+      });
+      mockSqlQuery.mockResolvedValue([{ a: 1 }]);
+      const r = await tool("sql_query").handler(
+        { accountId: "a1", sql: "SELECT 1", pluginId: "postgres", parentResourceId: "db1" },
+        auth,
+      );
+      expect(mockGetClientForResource).toHaveBeenCalledWith("postgres", "a1", "o1", "db1");
+      expect(mockSqlQuery).toHaveBeenCalledWith("postgres://neon", "SELECT 1");
+      expect(JSON.parse(r.content[0]!.text).rows).toEqual([{ a: 1 }]);
+    });
+  });
+
+  describe("introspect_sql_schema", () => {
+    it("errors with a sidecar hint when the account plugin lacks introspect", async () => {
+      mockGetClientForAccount.mockResolvedValue({ client: {} });
+      const r = await tool("introspect_sql_schema").handler({ accountId: "a1" }, auth);
+      expect(r.isError).toBe(true);
+      expect(r.content[0]!.text).toMatch(/pluginId/);
+      expect(r.content[0]!.text).toMatch(/parentResourceId/);
+    });
+
+    it("introspects via the sidecar client when pluginId is given", async () => {
+      const introspect = vi.fn().mockResolvedValue([{ name: "users", columns: [] }]);
+      mockGetClientForResource.mockResolvedValue({ client: { introspect } });
+      const r = await tool("introspect_sql_schema").handler(
+        { accountId: "a1", pluginId: "postgres", parentResourceId: "db1" },
+        auth,
+      );
+      expect(mockGetClientForResource).toHaveBeenCalledWith("postgres", "a1", "o1", "db1");
+      expect(JSON.parse(r.content[0]!.text)).toEqual([{ name: "users", columns: [] }]);
     });
   });
 
