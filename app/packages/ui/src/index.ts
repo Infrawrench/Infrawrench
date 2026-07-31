@@ -285,8 +285,7 @@ export {
   inferDependencyEdges,
   collectDependencyRules,
   dependencyRuleKey,
-  resourceIdentityTokens,
-  resourceReferenceTokens,
+  focusPrefilterTokens,
 } from "@infrawrench/client-core";
 export type {
   DependencyGraphNode,

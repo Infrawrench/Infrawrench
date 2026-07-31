@@ -1,9 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   collectDependencyRules,
+  focusPrefilterTokens,
   inferDependencyEdges,
-  resourceIdentityTokens,
-  resourceReferenceTokens,
   type InferenceResource,
 } from "../dependency-inference";
 
@@ -491,6 +490,50 @@ describe("matchTemplate", () => {
   });
 });
 
+describe("multiple identities for one value", () => {
+  // A resource whose `name` equals its `externalId` (azure-resource-group,
+  // aws/target-group) must stay findable under BOTH keys — indexing only the
+  // first one silently disabled any rule matching on the other.
+  it("resolves a rule matching on a key that duplicates the external id", () => {
+    const rules = collectDependencyRules([
+      {
+        id: "aws",
+        resourceTypes: [
+          {
+            id: "alb",
+            dependsOn: [
+              { fieldKey: "targetGroupName", targetTypeId: "target-group", targetKey: "name" },
+            ],
+          },
+        ],
+      },
+    ]);
+    const { edges } = inferDependencyEdges(
+      [
+        typed("tg", "target-group", { externalId: "web-tier", fields: { name: "web-tier" } }),
+        typed("alb", "alb", { fields: { targetGroupName: "web-tier" } }),
+      ],
+      { rules },
+    );
+    expect(edges).toHaveLength(1);
+    expect(edges[0]).toMatchObject({
+      providerResourceId: "tg",
+      providerOutputKey: "name",
+      kind: "declared",
+    });
+  });
+
+  it("still counts that resource as a single claimant for the guessing pass", () => {
+    // Two keys on one resource must not read as two rival claimants.
+    const { edges } = inferDependencyEdges([
+      resource("tg", { externalId: "web-tier", fields: { name: "web-tier" } }),
+      resource("alb", { fields: { someRef: "web-tier" } }),
+    ]);
+    expect(edges).toHaveLength(1);
+    expect(edges[0]).toMatchObject({ providerResourceId: "tg", providerOutputKey: "externalId" });
+  });
+});
+
 describe("index caps", () => {
   // GCP auto-mode: the VPC is named "default" and so is one subnet per region.
   // A per-token cap threw the whole token away and took the network with it.
@@ -604,24 +647,64 @@ describe("targetKey scoping", () => {
   });
 });
 
-describe("token extraction", () => {
-  it("collects identity tokens from external id, fields and outputs", () => {
-    const tokens = resourceIdentityTokens(
-      resource("db", {
-        externalId: "DB-0A1B",
-        fields: { name: "primary", region: "nyc3" },
-        outputs: { endpoint: "db.example.com" },
-      }),
-    );
-    expect(tokens.sort()).toEqual(["db-0a1b", "db.example.com", "primary"]);
+describe("focusPrefilterTokens", () => {
+  const rules = collectDependencyRules([
+    {
+      id: "aws",
+      resourceTypes: [
+        {
+          id: "lambda-function",
+          dependsOn: [{ fieldKey: "roleArn", targetTypeId: "iam-role", targetKey: "roleArn" }],
+        },
+        {
+          id: "azure-vm",
+          dependsOn: [
+            {
+              fieldKey: "subnetName",
+              targetTypeId: "subnet",
+              matchTemplate: "{networkResourceGroup}/{vnetName}/{subnetName}",
+            },
+          ],
+        },
+      ],
+    },
+  ]);
+
+  it("includes identity keys a rule names, not just the built-in ones", () => {
+    // The role's dependents store `roleArn`; without this the focused query
+    // never loads them and "Depended on by" is empty on the detail page.
+    const role = typed("role", "iam-role", {
+      externalId: "my-role",
+      outputs: { roleArn: "arn:aws:iam::1:role/my-role" },
+    });
+    expect(focusPrefilterTokens(role, rules)).toContain("arn:aws:iam::1:role/my-role");
+    // Without the rules it is invisible — `roleArn` is not a built-in identity.
+    expect(focusPrefilterTokens(role)).not.toContain("arn:aws:iam::1:role/my-role");
   });
 
-  it("collects reference tokens from non-descriptive fields only", () => {
-    const tokens = resourceReferenceTokens(
-      resource("ec2", {
-        fields: { vpcId: "vpc-0a1b2c3d", status: "running", port: 22 },
-      }),
+  it("emits list elements and never the joined whole", () => {
+    const ec2 = typed("ec2", "ec2-instance", {
+      fields: { securityGroupIds: "sg-aaaa1111, sg-bbbb2222" },
+    });
+    const tokens = focusPrefilterTokens(ec2);
+    expect(tokens).toContain("sg-aaaa1111");
+    expect(tokens).toContain("sg-bbbb2222");
+    // The joined value is the longest string present and can match no identity,
+    // so it would otherwise eat the caller's length-ordered budget.
+    expect(tokens.some((t) => t.includes(","))).toBe(false);
+  });
+
+  it("includes the value a matchTemplate rule composes", () => {
+    const vm = typed("vm", "azure-vm", {
+      fields: { networkResourceGroup: "rg", vnetName: "core", subnetName: "web" },
+    });
+    expect(focusPrefilterTokens(vm, rules)).toContain("rg/core/web");
+  });
+
+  it("returns tokens longest first", () => {
+    const tokens = focusPrefilterTokens(
+      typed("x", "thing", { externalId: "aaaa", fields: { name: "bbbbbbbb" } }),
     );
-    expect(tokens).toEqual(["vpc-0a1b2c3d"]);
+    expect(tokens).toEqual([...tokens].sort((a, b) => b.length - a.length));
   });
 });

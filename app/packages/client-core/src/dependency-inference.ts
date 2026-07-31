@@ -225,8 +225,12 @@ interface IndexEntry {
   accountId: string;
   pluginId: string | undefined;
   resourceTypeId: string | undefined;
-  /** Which identity produced the token — becomes the edge's provider output key. */
-  identityKey: string;
+  /**
+   * Every identity this resource answers to the token under — `externalId`,
+   * `name`, `endpoint`… A resource can hold the same value under several keys,
+   * and a rule may name any one of them as its `targetKey`.
+   */
+  identityKeys: string[];
 }
 
 /**
@@ -262,21 +266,35 @@ function buildIdentityIndex(
 ): Map<string, IndexEntry[]> {
   const index = new Map<string, IndexEntry[]>();
 
-  const claim = (token: string, entry: IndexEntry) => {
+  /**
+   * One entry per (token, resource), listing **every** key that resource
+   * answers to the token under. Keeping only the first key looks harmless
+   * — `externalId` wins, and it is the default `targetKey` — but it silently
+   * disables any rule matching on a key whose value equals the external id
+   * (`targetKey: "name"` against a type where `externalId === name`, which is
+   * true of `azure-resource-group` and `aws/target-group`). Merging instead
+   * keeps the claimant count at one, so the heuristic pass still sees the
+   * uniqueness it requires.
+   */
+  const claim = (token: string, base: Omit<IndexEntry, "identityKeys">, identityKey: string) => {
     if (!token) return;
     const existing = index.get(token);
     if (!existing) {
-      index.set(token, [entry]);
+      index.set(token, [{ ...base, identityKeys: [identityKey] }]);
       return;
     }
-    if (existing.some((e) => e.resourceId === entry.resourceId)) return;
+    const mine = existing.find((e) => e.resourceId === base.resourceId);
+    if (mine) {
+      if (!mine.identityKeys.includes(identityKey)) mine.identityKeys.push(identityKey);
+      return;
+    }
     if (existing.length >= MAX_TOKEN_CLAIMS) return;
     let sameType = 0;
     for (const e of existing) {
-      if (e.resourceTypeId === entry.resourceTypeId) sameType++;
+      if (e.resourceTypeId === base.resourceTypeId) sameType++;
     }
     if (sameType >= MAX_CLAIMS_PER_TYPE) return;
-    existing.push(entry);
+    existing.push({ ...base, identityKeys: [identityKey] });
   };
 
   for (const resource of resources) {
@@ -287,7 +305,7 @@ function buildIdentityIndex(
       resourceTypeId: resource.resourceTypeId,
     };
     if (resource.externalId) {
-      claim(normalize(resource.externalId), { ...base, identityKey: "externalId" });
+      claim(normalize(resource.externalId), base, "externalId");
     }
     for (const bag of [resource.fields, resource.outputs]) {
       for (const [key, value] of Object.entries(bag ?? {})) {
@@ -295,7 +313,7 @@ function buildIdentityIndex(
         // Numeric floor of 1: a rule may target a short numeric id, and the
         // heuristic pass applies its own length rules on the consumer side.
         for (const token of candidateTokens(value, 1)) {
-          claim(token, { ...base, identityKey: key });
+          claim(token, base, key);
         }
       }
     }
@@ -437,7 +455,7 @@ function resolveDeclaredTarget(
   const wantKey = (rule.targetKey ?? "externalId").toLowerCase();
   const matches = entries.filter((entry) => {
     if (entry.resourceId === consumer.id) return false;
-    if (entry.identityKey.toLowerCase() !== wantKey) return false;
+    if (!entry.identityKeys.some((key) => key.toLowerCase() === wantKey)) return false;
     if (rule.targetTypeId && entry.resourceTypeId !== rule.targetTypeId) return false;
     // An unknown plugin id on either side means the host didn't supply one;
     // don't invent a mismatch out of missing data.
@@ -525,7 +543,9 @@ export function inferDependencyEdges(
           consumerResourceId: resource.id,
           consumerFieldKey: rule.fieldKey,
           providerResourceId: target.resourceId,
-          providerOutputKey: target.identityKey,
+          // The key the rule asked to match on, not whichever one the index
+          // happened to record first.
+          providerOutputKey: rule.targetKey ?? "externalId",
           kind: "declared",
           ...(rule.label ? { label: rule.label } : {}),
         });
@@ -565,7 +585,11 @@ export function inferDependencyEdges(
           consumerResourceId: resource.id,
           consumerFieldKey: key,
           providerResourceId: target.resourceId,
-          providerOutputKey: target.identityKey,
+          // Prefer the external id when the value doubles as one, since that
+          // is the identity a reader expects to see named.
+          providerOutputKey: target.identityKeys.includes("externalId")
+            ? "externalId"
+            : (target.identityKeys[0] ?? "externalId"),
           kind: "field-match",
         });
       }
@@ -576,37 +600,64 @@ export function inferDependencyEdges(
 }
 
 /**
- * Identity tokens for one resource — what another resource's field would have
- * to contain to point at it. Hosts use this to narrow a focused query to the
- * few rows worth loading instead of scanning the org.
+ * Every token worth prefiltering a *focused* query on — the values that could
+ * link this resource to another in either direction, longest first.
+ *
+ * Both directions come from one function because both are rule-dependent, and
+ * splitting them invited the host to ask for half the answer. It covers:
+ *
+ * - **Identity** — what another resource's field must contain to point here:
+ *   the external id, the built-in identity keys, and any key a rule names as
+ *   its `targetKey` for this resource's type. Missing that last group is why an
+ *   IAM role's dependents were invisible: consumers store a `roleArn`, which is
+ *   an identity of the role but not one of the built-in keys.
+ * - **Reference** — what this resource points at: its non-descriptive fields,
+ *   the fields (or outputs) its own rules name, and the values its
+ *   `matchTemplate` rules compose.
+ *
+ * Comma-joined values contribute their **elements only**. The joined whole can
+ * never match an identity, and being the longest string present it would
+ * otherwise win the caller's length-ordered budget and crowd out the tokens
+ * that do match.
  */
-export function resourceIdentityTokens(resource: InferenceResource): string[] {
+export function focusPrefilterTokens(
+  resource: InferenceResource,
+  rules: DependencyRuleSet = {},
+): string[] {
   const tokens = new Set<string>();
+  const extra = extraIdentityKeysFrom(rules);
+  const ownRules =
+    resource.pluginId && resource.resourceTypeId
+      ? (rules[dependencyRuleKey(resource.pluginId, resource.resourceTypeId)] ?? [])
+      : [];
+
   const add = (value: unknown) => {
-    for (const token of candidateTokens(value)) {
-      if (token.length >= MIN_TOKEN_LENGTH) tokens.add(token);
+    for (const token of candidateTokens(value, 1)) {
+      // Skip the joined whole; `candidateTokens` returns it alongside the parts.
+      if (token.length < MIN_TOKEN_LENGTH || token.includes(",")) continue;
+      tokens.add(token);
     }
   };
+
   if (resource.externalId) add(resource.externalId);
   for (const bag of [resource.fields, resource.outputs]) {
     for (const [key, value] of Object.entries(bag ?? {})) {
-      if (IDENTITY_FIELD_KEYS.has(key.toLowerCase())) add(value);
+      if (isIdentityKey(key.toLowerCase(), resource, extra)) add(value);
     }
   }
-  return [...tokens];
-}
-
-/**
- * Tokens from a resource's own fields that might name something else — the
- * other half of a focused query: which resources could this one be pointing at.
- */
-export function resourceReferenceTokens(resource: InferenceResource): string[] {
-  const tokens = new Set<string>();
   for (const [key, value] of Object.entries(resource.fields ?? {})) {
-    if (NON_REFERENCE_FIELD_KEYS.has(key.toLowerCase())) continue;
-    for (const token of candidateTokens(value)) {
-      if (token.length >= MIN_TOKEN_LENGTH) tokens.add(token);
+    if (!NON_REFERENCE_FIELD_KEYS.has(key.toLowerCase())) add(value);
+  }
+  for (const rule of ownRules) {
+    const bag = rule.from === "outputs" ? resource.outputs : resource.fields;
+    if (rule.matchTemplate) {
+      for (const composed of composeMatchValues(rule.matchTemplate, bag)) add(composed);
+    } else {
+      add(bag?.[rule.fieldKey]);
     }
   }
-  return [...tokens];
+
+  // Longest first: a uuid or an arn narrows the scan, a three-letter name
+  // matches half the org, and callers cap how many they can afford.
+  return [...tokens].sort((a, b) => b.length - a.length);
 }

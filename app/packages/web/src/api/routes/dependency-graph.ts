@@ -3,10 +3,10 @@ import { eq, and, or, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import {
   collectDependencyRules,
+  focusPrefilterTokens,
   inferDependencyEdges,
-  resourceIdentityTokens,
-  resourceReferenceTokens,
   type DependencyGraphEdge,
+  type DependencyRuleSet,
   type InferenceResource,
 } from "@infrawrench/client-core";
 import { db } from "../../db/client";
@@ -45,28 +45,28 @@ function selectResources() {
 
 /**
  * How many tokens a focused query is willing to push into the candidate SQL.
- * Each token costs a couple of `ILIKE`s over the org's resource JSON, and the
- * longest tokens are the ones that actually identify something — a resource
- * with more distinct field values than this is describing itself, not pointing
- * at things.
+ * Each costs one regex match over the org's resource JSON per column, and
+ * `focusPrefilterTokens` returns them longest-first — the long ones identify
+ * something, a three-letter name matches half the org.
  */
 const MAX_FOCUS_TOKENS = 8;
 
 /**
- * LIKE patterns that find a token used as a JSON *value* rather than a key.
- * Values are quote- or comma-preceded in the serialized JSON (plugins flatten
- * lists into comma-joined strings), and numbers are colon-preceded and
- * unquoted. This only narrows the candidate rows — `inferDependencyEdges` still
- * does the exact matching — so an over-broad pattern costs time, never
- * correctness.
+ * A regex matching a token used as a JSON *value* rather than a key: values are
+ * preceded by `"` when whole, by `,` (usually `, `) when they are an element of
+ * a flattened list, and by `:` when they are an unquoted number.
+ *
+ * This is one predicate covering all three, where `LIKE` needed several and had
+ * no way to express the optional space — plugins join lists with `", "`, so the
+ * `%,token%` pattern this replaces matched only ever the *first* element and
+ * quietly dropped every dependent that listed the focus later in a list.
+ *
+ * It only narrows the candidate rows — `inferDependencyEdges` still does the
+ * exact matching — so an over-broad match costs time, never correctness.
  */
-function jsonValuePatterns(token: string): string[] {
-  // `%`, `_` and `\` are wildcards in LIKE — a provider id containing one must
-  // match literally.
-  const escaped = token.replace(/[\\%_]/g, (ch) => `\\${ch}`);
-  const patterns = [`%"${escaped}%`, `%,${escaped}%`];
-  if (/^[0-9]+$/.test(token)) patterns.push(`%:${escaped}%`);
-  return patterns;
+function jsonValuePattern(token: string): string {
+  const escaped = token.replace(/[\\^$.|?*+()[\]{}]/g, (ch) => `\\${ch}`);
+  return `[",:]\\s*${escaped}`;
 }
 
 /**
@@ -168,8 +168,21 @@ app.get("/", async (c) => {
     if (row.providerResourceId) referencedIds.add(row.providerResourceId);
   }
 
+  // Loaded before the focused fetch, not just before inference: the plugins'
+  // `dependsOn` declarations decide which values are worth prefiltering on.
+  // `loadPlugins` is memoized, so this is a map build, not a load.
+  const plugins = await loadPlugins();
+  const pluginById = new Map(plugins.map((loaded) => [loaded.plugin.manifest.id, loaded]));
+  const rules = collectDependencyRules(
+    plugins.map((loaded) => ({
+      id: loaded.plugin.manifest.id,
+      resourceTypes: loaded.plugin.resourceTypes,
+    })),
+  );
+
   const orgResources =
-    unfilteredResources ?? (await loadFocusedResources(organizationId, focusId!, referencedIds));
+    unfilteredResources ??
+    (await loadFocusedResources(organizationId, focusId!, referencedIds, rules));
   const resourceById = new Map(orgResources.map((r) => [r.id, r]));
   const accountNameById = new Map(orgAccounts.map((a) => [a.id, a.displayName]));
 
@@ -193,21 +206,9 @@ app.get("/", async (c) => {
     });
   }
 
-  // One load, indexed by manifest id — `getPlugin` is a linear scan over the
-  // same memoized list, so calling it per node re-scanned it every time and
-  // made the per-request cache below unnecessary. Loaded before inference
-  // because the plugins' `dependsOn` declarations feed it.
-  const plugins = await loadPlugins();
-  const pluginById = new Map(plugins.map((loaded) => [loaded.plugin.manifest.id, loaded]));
-
   const inferred = inferDependencyEdges(orgResources.map(toInferenceResource), {
     existingEdges: edges,
-    rules: collectDependencyRules(
-      plugins.map((loaded) => ({
-        id: loaded.plugin.manifest.id,
-        resourceTypes: loaded.plugin.resourceTypes,
-      })),
-    ),
+    rules,
     ...(focusId ? { focusResourceId: focusId } : {}),
   });
   edges.push(...inferred.edges);
@@ -270,11 +271,23 @@ function toInferenceResource(row: ResourceRow): InferenceResource {
  * never make it into the candidate set, so a token that is ambiguous org-wide
  * can look unique here. Candidates claiming the same token as the focus *are*
  * fetched, which is the collision that would actually mis-draw this graph.
+ *
+ * **Known cost.** Before inference this path was an indexed `id IN (…)` lookup
+ * of a handful of rows. Finding the resources that *mention* the focus can't be
+ * indexed the same way: a leading-wildcard regex over a jsonb cast forces a
+ * sequential scan of the org's resources, once per mount of the resource-detail
+ * page. The token budget bounds the predicate count, not the row count. The fix
+ * if this ever bites is an indexable exact-match structure — a maintained
+ * column holding each resource's field/output values as a jsonb array, GIN
+ * indexed and queried with `@>` — which matches these semantics exactly, since
+ * inference only ever wants exact values. That's a schema change and wants a
+ * measurement first, so it is deliberately not done here.
  */
 async function loadFocusedResources(
   organizationId: string,
   focusId: string,
   referencedIds: Set<string>,
+  rules: DependencyRuleSet,
 ): Promise<ResourceRow[]> {
   const [focus] = await db
     .select(resourceColumns)
@@ -287,19 +300,11 @@ async function loadFocusedResources(
       ),
     );
 
-  // Longest first: a uuid or an arn narrows the scan, a three-letter name
-  // matches half the org. Identity and reference tokens compete on the same
-  // footing — both directions of the neighbourhood matter equally.
-  const focusResource = focus ? toInferenceResource(focus) : null;
-  const tokens = focusResource
-    ? [
-        ...new Set([
-          ...resourceIdentityTokens(focusResource),
-          ...resourceReferenceTokens(focusResource),
-        ]),
-      ]
-        .sort((a, b) => b.length - a.length)
-        .slice(0, MAX_FOCUS_TOKENS)
+  // Rule-aware and already longest-first: this has to know what the plugins
+  // declared, or a rule matching on an output key (`roleArn`) contributes no
+  // token and its whole side of the neighbourhood goes unfetched.
+  const tokens = focus
+    ? focusPrefilterTokens(toInferenceResource(focus), rules).slice(0, MAX_FOCUS_TOKENS)
     : [];
 
   const predicates: (SQL | undefined)[] = [];
@@ -312,10 +317,9 @@ async function loadFocusedResources(
     // Exact external-id equality is the cheap, indexed case and also drags in
     // the rivals that make a token ambiguous.
     predicates.push(sql`lower(${resources.externalId}) = ${token}`);
-    for (const pattern of jsonValuePatterns(token)) {
-      predicates.push(sql`${resources.fieldsJson}::text ILIKE ${pattern}`);
-      predicates.push(sql`${resources.outputsJson}::text ILIKE ${pattern}`);
-    }
+    const pattern = jsonValuePattern(token);
+    predicates.push(sql`${resources.fieldsJson}::text ~* ${pattern}`);
+    predicates.push(sql`${resources.outputsJson}::text ~* ${pattern}`);
   }
 
   return db

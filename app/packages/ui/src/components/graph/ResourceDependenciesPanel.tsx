@@ -95,6 +95,7 @@ function NeighborList({
                     consumerFieldKey: neighbor.fieldKey,
                     providerOutputKey: neighbor.outputKey,
                     ...(neighbor.kind ? { kind: neighbor.kind } : {}),
+                    ...(neighbor.label ? { label: neighbor.label } : {}),
                   })}
                 </span>
               </button>
