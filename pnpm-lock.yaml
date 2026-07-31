@@ -329,9 +329,6 @@ importers:
       '@xterm/xterm':
         specifier: ^5.5.0
         version: 5.5.0
-      cron-parser:
-        specifier: ^5.5.0
-        version: 5.5.0
       electron:
         specifier: ^41.2.1
         version: 41.2.1
@@ -538,6 +535,9 @@ importers:
 
   app/packages/poller:
     dependencies:
+      '@infrawrench/client-core':
+        specifier: workspace:*
+        version: link:../client-core
       '@infrawrench/server-core':
         specifier: workspace:*
         version: link:../server-core
@@ -550,9 +550,6 @@ importers:
       cloudflare:
         specifier: ^6.1.0
         version: 6.1.0(encoding@0.1.13)
-      cron-parser:
-        specifier: ^5.5.0
-        version: 5.5.0
       dockerode:
         specifier: ^5.0.0
         version: 5.0.0
@@ -8173,10 +8170,6 @@ packages:
   crc@3.8.0:
     resolution: {integrity: sha512-iX3mfgcTMIq3ZKLIsVFAbv7+Mc10kxabAGQb8HvjA1o3T1PIYprbakQ65d3I+2HGHt6nSKkM9PYjgoJO2KcFBQ==}
 
-  cron-parser@5.5.0:
-    resolution: {integrity: sha512-oML4lKUXxizYswqmxuOCpgFS8BNUJpIu6k/2HVHyaL8Ynnf3wdf9tkns0yRdJLSIjkJ+b0DXHMZEHGpMwjnPww==}
-    engines: {node: '>=18'}
-
   cross-dirname@0.1.0:
     resolution: {integrity: sha512-+R08/oI0nl3vfPcqftZRpytksBXDzOUveBq/NBVx0sUp1axwzPQrKinNx5yd5sxPu8j1wIy8AfnVQ+5eFdha6Q==}
 
@@ -10167,10 +10160,6 @@ packages:
     deprecated: 'Deprecated: Use `@lucide/astro`'
     peerDependencies:
       astro: '>=2.7.1'
-
-  luxon@3.7.2:
-    resolution: {integrity: sha512-vtEhXh/gNjI9Yg1u4jX/0YVPMvxzHuGgCm6tC5kZyb08yjGWGnqAjGJvcXbqQR2P3MyMEFnRbpcdFS6PBcLqew==}
-    engines: {node: '>=12'}
 
   lz-string@1.5.0:
     resolution: {integrity: sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ==}
@@ -20604,7 +20593,7 @@ snapshots:
       obug: 2.1.1
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.8(@types/node@24.12.2)(@vitest/coverage-v8@4.1.8)(jsdom@29.1.1)(vite@8.1.4(@types/node@24.12.2)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.8.3))
+      vitest: 4.1.8(@types/node@22.20.1)(@vitest/coverage-v8@4.1.8)(jsdom@29.1.1)(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.8.3))
 
   '@vitest/expect@4.1.8':
     dependencies:
@@ -21842,10 +21831,6 @@ snapshots:
     dependencies:
       buffer: 5.7.1
     optional: true
-
-  cron-parser@5.5.0:
-    dependencies:
-      luxon: 3.7.2
 
   cross-dirname@0.1.0:
     optional: true
@@ -24058,8 +24043,6 @@ snapshots:
   lucide-astro@0.556.0(astro@7.0.9(@astrojs/markdown-remark@7.2.1)(@azure/identity@4.13.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@types/node@24.12.2)(ioredis@5.10.1)(jiti@2.7.0)(rollup@4.60.1)(terser@5.49.0)(tsx@4.23.1)(yaml@2.8.3)):
     dependencies:
       astro: 7.0.9(@astrojs/markdown-remark@7.2.1)(@azure/identity@4.13.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@types/node@24.12.2)(ioredis@5.10.1)(jiti@2.7.0)(rollup@4.60.1)(terser@5.49.0)(tsx@4.23.1)(yaml@2.8.3)
-
-  luxon@3.7.2: {}
 
   lz-string@1.5.0: {}
 

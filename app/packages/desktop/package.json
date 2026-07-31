@@ -165,7 +165,6 @@
     "@vitejs/plugin-react": "^4.3.4",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
-    "cron-parser": "^5.5.0",
     "electron": "^41.2.1",
     "electron-builder": "^26.10.0",
     "electron-vite": "^3.1.0",

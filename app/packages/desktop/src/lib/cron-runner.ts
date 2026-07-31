@@ -9,7 +9,7 @@
  * process (`set_crons_active`) so — like active metric pings — the app stays
  * alive in the background after the window is closed and keeps firing them.
  */
-import { CronExpressionParser } from "cron-parser";
+import { nextCronOccurrence } from "@infrawrench/client-core";
 import { invoke } from "./invoke";
 import { getDb } from "../db/client";
 import { runWorkflowById, WORKFLOWS_CHANGED_EVENT } from "./workflow-client";
@@ -43,11 +43,7 @@ export function startCronRunner(): void {
 
 function nextRunAt(expression: string, timezone: string | undefined, from: Date): Date | null {
   try {
-    const interval = CronExpressionParser.parse(expression, {
-      currentDate: from,
-      ...(timezone ? { tz: timezone } : {}),
-    });
-    return interval.next().toDate();
+    return nextCronOccurrence(expression, { from, ...(timezone ? { timezone } : {}) });
   } catch {
     return null;
   }

@@ -12,11 +12,11 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@infrawrench/client-core": "workspace:*",
     "@infrawrench/server-core": "workspace:*",
     "@kubernetes/client-node": "^1.4.0",
     "@libsql/client": "^0.14.0",
     "cloudflare": "^6.1.0",
-    "cron-parser": "^5.5.0",
     "dockerode": "^5.0.0",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.5",
