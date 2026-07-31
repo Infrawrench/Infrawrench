@@ -222,8 +222,40 @@ export type {
   RewriterContext,
 } from "./host-types.js";
 
+export type {
+  TerraformProviderRequirement,
+  TerraformVariable,
+  TerraformValue,
+  TerraformResourceBlock,
+  TerraformExportResult,
+  TerraformExportCapability,
+} from "./terraform.js";
+export { tf } from "./terraform.js";
+export {
+  sanitizeTerraformName,
+  renderTerraformValue,
+  renderTerraformBundle,
+} from "./terraform-hcl.js";
+export type {
+  TerraformProviderSection,
+  RenderedTerraformResource,
+  RenderedTerraformBundle,
+} from "./terraform-hcl.js";
+export {
+  exportResourcesToTerraform,
+  fieldString,
+  fieldNumber,
+  fieldBool,
+} from "./terraform-export.js";
+export type {
+  TerraformExportOutcome,
+  TerraformExportedResource,
+  TerraformUnsupportedResource,
+} from "./terraform-export.js";
+
 export {
   pluginManifestSchema,
+  terraformExportCapabilitySchema,
   resourceTypeDefinitionSchema,
   fieldDefinitionSchema,
   schemaNodeSchema,
