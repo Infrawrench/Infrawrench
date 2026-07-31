@@ -220,6 +220,11 @@ export {
   type InferredDependencyEdges,
 } from "./dependency-inference";
 export {
+  collapseIdenticalNodes,
+  type CollapsedDependencyGraph,
+  type CollapseOptions,
+} from "./dependency-collapse";
+export {
   buildDependencyGraph,
   directDependencies,
   collectDependents,

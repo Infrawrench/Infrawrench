@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   buildDependencyGraph,
+  collapseIdenticalNodes,
   collectDependents,
   dependencyEdgeLabel,
   layoutDependencyGraph,
@@ -50,16 +51,25 @@ function isExplicit(edge: DependencyGraphEdge): boolean {
  */
 export function DependencyGraphView({ data, onOpenResource }: DependencyGraphViewProps) {
   const [showInferred, setShowInferred] = useState(true);
+  const [groupIdentical, setGroupIdentical] = useState(true);
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const inferredCount = useMemo(() => data.edges.filter((e) => !isExplicit(e)).length, [data]);
   const explicitCount = data.edges.length - inferredCount;
 
-  const model = useMemo(
-    () =>
-      buildDependencyGraph(data.nodes, showInferred ? data.edges : data.edges.filter(isExplicit)),
-    [data, showInferred],
-  );
+  // Collapse before layout, so a fleet of identical siblings costs one column
+  // slot rather than forty. Runs on the *visible* edges: hiding the inferred
+  // ones changes what counts as identical wiring.
+  const collapsed = useMemo(() => {
+    const edges = showInferred ? data.edges : data.edges.filter(isExplicit);
+    if (!groupIdentical) {
+      return { nodes: data.nodes, edges, groups: new Map(), collapsedCount: 0 };
+    }
+    return collapseIdenticalNodes({ nodes: data.nodes, edges }, { expandedIds });
+  }, [data, showInferred, groupIdentical, expandedIds]);
+
+  const model = useMemo(() => buildDependencyGraph(collapsed.nodes, collapsed.edges), [collapsed]);
   const layout = useMemo(
     () => layoutDependencyGraph(model, { nodeWidth: NODE_WIDTH, nodeHeight: NODE_HEIGHT }),
     [model],
@@ -107,6 +117,7 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
   }
 
   const dependentCount = blastRadius ? blastRadius.size - 1 : 0;
+  const selectedGroup = selected ? collapsed.groups.get(selected.id) : undefined;
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
@@ -121,11 +132,22 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
             />
             <span className="text-on-surface truncate">{selected.displayName}</span>
             <span className="text-xs text-on-surface-muted truncate">
-              {dependentCount === 0
-                ? "Nothing depends on this resource."
-                : `Blast radius: ${dependentCount} dependent resource${dependentCount === 1 ? "" : "s"} highlighted.`}
+              {selectedGroup
+                ? `${selectedGroup.length} identical resources, wired the same way.`
+                : dependentCount === 0
+                  ? "Nothing depends on this resource."
+                  : `Blast radius: ${dependentCount} dependent resource${dependentCount === 1 ? "" : "s"} highlighted.`}
             </span>
             <span className="flex-1" />
+            {selectedGroup && (
+              <button
+                type="button"
+                onClick={() => setExpandedIds((ids) => [...ids, selected.id])}
+                className="px-3 py-1 text-xs text-on-surface-secondary border border-border-strong rounded-lg hover:border-accent transition-colors flex-shrink-0"
+              >
+                Show all {selectedGroup.length}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => onOpenResource(selected)}
@@ -159,6 +181,30 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
                 />
                 From cloud data ({inferredCount})
               </label>
+            )}
+            {(collapsed.collapsedCount > 0 || !groupIdentical) && (
+              <label className="flex items-center gap-1.5 text-xs text-on-surface-muted flex-shrink-0 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={groupIdentical}
+                  onChange={(e) => {
+                    setGroupIdentical(e.target.checked);
+                    setExpandedIds([]);
+                  }}
+                  className="accent-[var(--color-accent)]"
+                />
+                Group identical
+                {collapsed.collapsedCount > 0 ? ` (${collapsed.collapsedCount} merged)` : ""}
+              </label>
+            )}
+            {expandedIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setExpandedIds([])}
+                className="px-3 py-1 text-xs text-on-surface-muted border border-border rounded-lg hover:border-border-strong transition-colors flex-shrink-0"
+              >
+                Regroup
+              </button>
             )}
             {explicitCount > 0 && (
               <span className="text-xs text-on-surface-faint flex-shrink-0">
@@ -274,13 +320,18 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
             if (!pos) return null;
             const isSelected = selected?.id === node.id;
             const inBlast = !blastRadius || blastRadius.has(node.id);
+            const groupSize = collapsed.groups.get(node.id)?.length ?? 1;
             return (
               <g
                 key={node.id}
                 transform={`translate(${pos.x}, ${pos.y})`}
                 role="button"
                 tabIndex={0}
-                aria-label={`${node.displayName} (${node.resourceTypeLabel})`}
+                aria-label={
+                  groupSize > 1
+                    ? `${node.displayName} (${node.resourceTypeLabel}), ${groupSize} identical resources`
+                    : `${node.displayName} (${node.resourceTypeLabel})`
+                }
                 style={{ cursor: "pointer" }}
                 opacity={inBlast ? 1 : 0.35}
                 onClick={(e) => {
@@ -296,7 +347,39 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
                   }
                 }}
               >
-                <title>{`${node.displayName} — ${node.resourceTypeLabel} · ${node.accountName}`}</title>
+                <title>
+                  {groupSize > 1
+                    ? `${groupSize} × ${node.displayName} — ${node.resourceTypeLabel} · ${node.accountName}`
+                    : `${node.displayName} — ${node.resourceTypeLabel} · ${node.accountName}`}
+                </title>
+                {/* Offset backing tiles: a stack reads as "several" before
+                    the count is read. */}
+                {groupSize > 1 && (
+                  <>
+                    <rect
+                      x={6}
+                      y={6}
+                      width={NODE_WIDTH}
+                      height={NODE_HEIGHT}
+                      rx={8}
+                      fill="var(--color-surface-raised)"
+                      stroke="var(--color-border-strong)"
+                      strokeWidth={1}
+                      opacity={0.4}
+                    />
+                    <rect
+                      x={3}
+                      y={3}
+                      width={NODE_WIDTH}
+                      height={NODE_HEIGHT}
+                      rx={8}
+                      fill="var(--color-surface-raised)"
+                      stroke="var(--color-border-strong)"
+                      strokeWidth={1}
+                      opacity={0.7}
+                    />
+                  </>
+                )}
                 <rect
                   width={NODE_WIDTH}
                   height={NODE_HEIGHT}
@@ -336,6 +419,30 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
                 >
                   {truncate(`${node.resourceTypeLabel} · ${node.accountName}`, 27)}
                 </text>
+                {groupSize > 1 && (
+                  <>
+                    <rect
+                      x={NODE_WIDTH - 34}
+                      y={NODE_HEIGHT / 2 - 10}
+                      width={28}
+                      height={20}
+                      rx={10}
+                      fill="var(--color-surface-overlay)"
+                      stroke="var(--color-border-strong)"
+                      strokeWidth={1}
+                    />
+                    <text
+                      x={NODE_WIDTH - 20}
+                      y={NODE_HEIGHT / 2 + 4}
+                      fontSize={11}
+                      textAnchor="middle"
+                      fill="var(--color-on-surface-secondary)"
+                      style={{ userSelect: "none" }}
+                    >
+                      {`×${groupSize}`}
+                    </text>
+                  </>
+                )}
               </g>
             );
           })}

@@ -21,6 +21,14 @@ Providers sit on the left, and everything that consumes them fans out to the rig
 
 The **From cloud data** checkbox in the header hides everything except output references, which is how you see what is wired through Infrawrench rather than what the provider already had.
 
+## Identical resources are grouped
+
+Providers mint fleets of resources that are the same fact repeated — a GCP auto-mode VPC has one `default` subnet per region, every one of them named `default` and attached to the same network. Drawn separately they'd fill the canvas with a dozen identical tiles.
+
+The graph merges them into a single tile marked **×12**, drawn as a small stack. Grouping is deliberately conservative: resources merge only when they are indistinguishable _both_ by label and by wiring — same provider, type, account and name, attached to exactly the same neighbours in the same directions. Give one of those subnets a VM and it stops being interchangeable, so it keeps its own tile.
+
+Select a grouped tile and choose **Show all** to break it open; **Regroup** in the header puts everything back. The **Group identical** checkbox turns the behavior off entirely.
+
 <insert [Close-up of the graph header showing the line-style legend (Output reference / Belongs to / Named in a field) and the "From cloud data" checkbox with its link count] here>
 
 ## Blast radius
