@@ -25,6 +25,7 @@ import {
   computeResourceChangeEvents,
   recordResourceChanges,
   type PriorResourceSnapshot,
+  type ResourceChangeEvent,
 } from "./resource-changes";
 
 /** Returns resource types listed in the sidebar — top-level plus child types
@@ -137,8 +138,14 @@ async function loadPriorSnapshots(
 }
 
 /**
- * Diff prior vs fetched and append events to the change timeline. Wrapped so a
- * feed failure (or a snapshot-load failure upstream) can never break a sync.
+ * Diff prior vs fetched and append events to the change timeline, then hand the
+ * events to the caller's `onChanges` hook. Wrapped so a feed failure (or a
+ * snapshot-load failure upstream) can never break a sync.
+ *
+ * The hook exists rather than a direct call to the drift notifier so this
+ * module keeps knowing nothing about notification transports — the same
+ * separation `onTypeDone` gives the sync-failure pager, which the poller (not
+ * this file) wires to `notePollOutcome`.
  */
 async function recordChangeTimeline(
   organizationId: string,
@@ -146,10 +153,12 @@ async function recordChangeTimeline(
   prior: PriorResourceSnapshot[],
   fetched: ResourceInstance[],
   deletableTypeIds: string[],
+  onChanges?: (events: ResourceChangeEvent[]) => void,
 ): Promise<void> {
   try {
     const events = computeResourceChangeEvents({ prior, fetched, deletableTypeIds });
     await recordResourceChanges(organizationId, accountId, events);
+    onChanges?.(events);
   } catch (err) {
     console.error(`[sync] recording resource changes for account ${accountId} failed:`, err);
   }
@@ -208,6 +217,14 @@ interface SyncAccountOptions {
   canListType?: (typeId: string) => boolean;
   /** Called after each type completes (success OR failure). Lets callers record rate-limit usage. */
   onTypeDone?: (typeId: string, outcome: "ok" | "error" | "skipped", error?: Error) => void;
+  /**
+   * Called once with the change-timeline events this pass recorded, after they
+   * are persisted. The background poller uses it to raise batched drift
+   * notifications; a manual refresh from the UI leaves it unset and so writes
+   * the timeline without notifying, the same line `notePollOutcome` draws for
+   * sync incidents.
+   */
+  onChanges?: (events: ResourceChangeEvent[]) => void;
 }
 
 interface SyncAccountResult {
@@ -279,7 +296,14 @@ export async function syncAccountResources(
   await Promise.all(allResources.map((r) => upsertResource(organizationId, accountId, r)));
 
   if (prior) {
-    await recordChangeTimeline(organizationId, accountId, prior, allResources, succeededTypeIds);
+    await recordChangeTimeline(
+      organizationId,
+      accountId,
+      prior,
+      allResources,
+      succeededTypeIds,
+      options.onChanges,
+    );
   }
 
   // Soft-delete resources whose type succeeded but no longer exist upstream.

@@ -1,6 +1,6 @@
 ---
 title: Microsoft Teams alerts
-description: Route sync-failure incidents, budget alerts, and pages to Microsoft Teams channels, with a per-channel opt-in for each.
+description: Route sync-failure incidents, budget alerts, cost anomalies, resource drift, and pages to Microsoft Teams channels, with a per-channel opt-in for each.
 sidebar_order: 17
 ---
 
@@ -38,7 +38,7 @@ Then, in Infrawrench, go to **Settings → Notifications**, find the **Microsoft
 
 Press **Add channel**. Add as many channels as you like; each gets its own row.
 
-<insert [Settings → Notifications Microsoft Teams section with two channels listed, each showing the five trigger checkboxes and the webhook hint underneath] here>
+<insert [Settings → Notifications Microsoft Teams section with two channels listed, each showing the six trigger checkboxes with Drift unchecked, and the webhook hint underneath] here>
 
 ### The URL is a credential
 
@@ -54,22 +54,29 @@ To change a channel's URL, remove the row and add it again.
 
 Each channel opts into the alert triggers independently, so a `#finance` channel can take budget crossings without also getting every sync failure:
 
-| Trigger           | When it fires                                                                                                                                 |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Sync failures** | An account's background sync keeps failing and crosses the org's paging threshold                                                             |
-| **Budgets**       | A [budget threshold](./cloud-costs.md) is crossed                                                                                             |
-| **Anomalies**     | A [cost anomaly](./cost-anomaly-alerts.md) is detected — a provider's or service's spend spikes far above its usual baseline                  |
-| **Pages**         | Your own code raises an alert — a [workflow](./workflows.md) calling `infra.page(...)`, or a [server calling `POST /pages`](./server-push.md) |
+| Trigger           | When it fires                                                                                                                                                                                                  |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Sync failures** | An account's background sync keeps failing and crosses the org's paging threshold                                                                                                                              |
+| **Budgets**       | A [budget threshold](./cloud-costs.md) is crossed                                                                                                                                                              |
+| **Anomalies**     | A [cost anomaly](./cost-anomaly-alerts.md) is detected — a provider's or service's spend spikes far above its usual baseline                                                                                   |
+| **Drift**         | Your infrastructure drifts — resources appear or disappear between polls. Batched: one digest per organization per cooldown window, never one message per change. See [Change timeline](./change-timeline.md). |
+| **Pages**         | Your own code needs a human — a [workflow](./workflows.md) calling `infra.page(...)` or suspended on `infra.waitForApproval(...)`, or a [server calling `POST /pages`](./server-push.md)                       |
 
-A fifth checkbox, **Weekly digest**, opts the channel into the [Monday-morning summary](./weekly-digest.md) — it only sends once the digest is enabled for the org.
+A sixth checkbox, **Weekly digest**, opts the channel into the [weekly summary](./weekly-digest.md) — it only sends once the digest is enabled for the org, and it arrives on whatever day and hour the org picked.
 
-All five default to on for a newly added channel. Unlike the mobile push toggles, which each member sets for themselves, Teams routing is org-wide — it takes the **Organization settings** permission to change.
+Five of the six default to on for a newly added channel. **Drift is the exception and arrives off**: it is a continuous feed rather than an exceptional event, so turning it on should be a decision. What counts as drift, and how often a digest may go out, is configured once for the whole organization in **Settings → Notifications → Resource drift alerts**.
+
+Unlike the mobile push toggles, which each member sets for themselves, Teams routing is org-wide — it takes the **Organization settings** permission to change.
 
 Use **Send test message** to post to every channel you've added, ignoring the trigger opt-ins. If a send fails, the error from Microsoft is shown verbatim; an HTTP 404 almost always means the Workflow was deleted or switched off on the Teams side.
 
 ## What the messages look like
 
-Each alert is an Adaptive Card: the headline in bold, the alert text below it, a small context line, and — for budget alerts and pages — a **View in Infrawrench** button that deep-links to the budget, the workflow, or the org.
+Each alert is an Adaptive Card: the headline in bold, the alert text below it, a small context line, and — for budget alerts, drift digests, pages and approval requests — a **View in Infrawrench** button that deep-links to the budget, the change timeline, the workflow, or the approvals inbox.
+
+The body is plain text rather than markdown. Teams' card renderer treats `*` as markup, so the same message that reads as bold in Slack would show literal asterisks here; Infrawrench sends Teams the unmarked version instead.
+
+An **approval request** carries everything needed to decide without opening the app: what is being approved, the workflow and run that raised it, whether a person or a schedule started that run, when the request expires, and the fact that no decision counts as a denial. Its button lands on **Settings → Approvals**.
 
 ## Legacy Office 365 connectors
 

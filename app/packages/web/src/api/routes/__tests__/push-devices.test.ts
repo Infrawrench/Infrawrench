@@ -158,7 +158,9 @@ describe("push org routes", () => {
   });
 
   describe("GET /preferences", () => {
-    it("defaults to all-enabled when no row exists", async () => {
+    // Everything defaults on except resource drift, which is a continuous
+    // feed rather than an exceptional event — see server-core db/schema.ts.
+    it("defaults to all-enabled-but-drift when no row exists", async () => {
       const where = vi.fn().mockResolvedValue([]);
       const from = vi.fn().mockReturnValue({ where });
       mockSelect.mockReturnValue({ from });
@@ -167,6 +169,7 @@ describe("push org routes", () => {
         syncIncidents: true,
         budgetAlerts: true,
         anomalyAlerts: true,
+        resourceDrift: false,
         workflowPages: true,
       });
     });

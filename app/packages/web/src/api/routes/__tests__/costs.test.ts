@@ -28,6 +28,16 @@ vi.mock("@infrawrench/server-core/cost/forecast", () => ({
   forecastDaily: vi.fn().mockReturnValue([]),
 }));
 
+const mockGetAnomalySettings = vi.fn();
+const mockSetAnomalySettings = vi.fn();
+
+// Mocked rather than imported for real: the settings module reaches
+// server-core's db client, which throws at import time without DATABASE_URL.
+vi.mock("@infrawrench/server-core/cost/anomaly-settings", () => ({
+  getOrgAnomalySettings: (...args: unknown[]) => mockGetAnomalySettings(...args),
+  setOrgAnomalySettings: (...args: unknown[]) => mockSetAnomalySettings(...args),
+}));
+
 vi.mock("@/plugins/loader", () => ({
   getPlugin: vi.fn().mockResolvedValue({
     plugin: { manifest: { id: "aws", displayName: "AWS", costs: { dimensions: ["service"] } } },
@@ -68,9 +78,15 @@ const validQuery = {
   filters: [],
 };
 
+const defaultSettings = { sigmas: 3, minDeltaCents: 1000, newSourceMinCents: 2500 };
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockQueryCosts.mockResolvedValue([]);
+  mockGetAnomalySettings.mockResolvedValue(defaultSettings);
+  mockSetAnomalySettings.mockImplementation((_org: string, settings: unknown) =>
+    Promise.resolve(settings),
+  );
 });
 
 describe("POST /query", () => {
@@ -164,5 +180,90 @@ describe("GET /dimensions", () => {
     const res = await buildApp().request("/dimensions?dimension=tag-keys");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ values: ["env", "team"] });
+  });
+});
+
+describe("anomaly settings", () => {
+  function put(app: Hono, body: unknown) {
+    return app.request("/anomaly-settings", {
+      method: "PUT",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  it("reads with costs:read", async () => {
+    const res = await buildAppWithPermissions(["costs:read"]).request("/anomaly-settings");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(defaultSettings);
+  });
+
+  it("rejects a read without costs:read", async () => {
+    const res = await buildAppWithPermissions(["dashboards:read"]).request("/anomaly-settings");
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects a write to a reader — retuning needs costs:write", async () => {
+    const res = await put(buildAppWithPermissions(["costs:read"]), defaultSettings);
+    expect(res.status).toBe(403);
+    expect(mockSetAnomalySettings).not.toHaveBeenCalled();
+  });
+
+  it("saves a valid update", async () => {
+    const next = { sigmas: 2.5, minDeltaCents: 5000, newSourceMinCents: 10_000 };
+    const res = await put(buildAppWithPermissions(["costs:write"]), next);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(next);
+    expect(mockSetAnomalySettings).toHaveBeenCalledWith("org-1", next);
+  });
+
+  it("rejects a sigma of 0 — it would alert on every fluctuation", async () => {
+    const res = await put(buildAppWithPermissions(["costs:write"]), {
+      ...defaultSettings,
+      sigmas: 0,
+    });
+    expect(res.status).toBe(400);
+    expect(mockSetAnomalySettings).not.toHaveBeenCalled();
+  });
+
+  it("rejects a negative floor", async () => {
+    const res = await put(buildAppWithPermissions(["costs:write"]), {
+      ...defaultSettings,
+      minDeltaCents: -100,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a negative new-source floor", async () => {
+    const res = await put(buildAppWithPermissions(["costs:write"]), {
+      ...defaultSettings,
+      newSourceMinCents: -1,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a sigma beyond the upper bound", async () => {
+    const res = await put(buildAppWithPermissions(["costs:write"]), {
+      ...defaultSettings,
+      sigmas: 50,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a partial update — PUT replaces the whole object", async () => {
+    const res = await put(buildAppWithPermissions(["costs:write"]), { sigmas: 4 });
+    expect(res.status).toBe(400);
+  });
+
+  it("rounds sigmas to the one decimal the form offers", async () => {
+    const res = await put(buildAppWithPermissions(["costs:write"]), {
+      ...defaultSettings,
+      sigmas: 2.46,
+    });
+    expect(res.status).toBe(200);
+    expect(mockSetAnomalySettings).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({ sigmas: 2.5 }),
+    );
   });
 });

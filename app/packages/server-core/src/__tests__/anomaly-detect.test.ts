@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_ANOMALY_OPTIONS,
+  detectNewSpendSource,
   detectSpike,
   fillDailySeries,
   optionsForCurrency,
 } from "../cost/anomaly-detect";
 
-const OPTS = { sigmas: 3, minDeltaAbs: 10, minBaselineDays: 7 };
+const OPTS = { sigmas: 3, minDeltaAbs: 10, minBaselineDays: 7, minNewSourceAbs: 25 };
 
 /** A noisy-but-stable baseline around 100/day. */
 const STABLE = [98, 102, 100, 97, 103, 99, 101, 100, 96, 104, 100, 99, 101, 100];
@@ -72,6 +73,115 @@ describe("detectSpike", () => {
     expect(DEFAULT_ANOMALY_OPTIONS.sigmas).toBeGreaterThan(0);
     expect(DEFAULT_ANOMALY_OPTIONS.minDeltaAbs).toBeGreaterThan(0);
     expect(DEFAULT_ANOMALY_OPTIONS.minBaselineDays).toBeGreaterThan(0);
+    expect(DEFAULT_ANOMALY_OPTIONS.minNewSourceAbs).toBeGreaterThan(0);
+  });
+
+  /* ---------------------------------------------------------------- *
+   * Per-org tuning — the thresholds are parameters, not constants.
+   * ---------------------------------------------------------------- */
+
+  // mean 100, stddev 10 — so 2σ is 120 and 3σ is 130, far enough apart to
+  // show a sigma change moving the bar rather than the floor doing the work.
+  const VOLATILE = [90, 110, 90, 110, 90, 110, 90, 110, 90, 110];
+
+  it("catches a smaller spike at a lower sigma setting", () => {
+    expect(detectSpike(VOLATILE, 125, OPTS)).toBeNull();
+    expect(detectSpike(VOLATILE, 125, { ...OPTS, sigmas: 2 })).not.toBeNull();
+  });
+
+  it("ignores a spike a higher sigma setting no longer considers unusual", () => {
+    expect(detectSpike(VOLATILE, 135, OPTS)).not.toBeNull();
+    expect(detectSpike(VOLATILE, 135, { ...OPTS, sigmas: 10 })).toBeNull();
+  });
+
+  it("respects a raised absolute floor even when the sigma bar is cleared", () => {
+    const flat = new Array(10).fill(50);
+    // +25 over a flat baseline: many sigmas out (stddev 0) and over the $10
+    // floor, but under a $50 one.
+    expect(detectSpike(flat, 75, OPTS)).not.toBeNull();
+    expect(detectSpike(flat, 75, { ...OPTS, minDeltaAbs: 50 })).toBeNull();
+  });
+
+  it("lets a lowered floor through what the default floor filtered", () => {
+    const pennies = new Array(10).fill(0.5);
+    expect(detectSpike(pennies, 3, OPTS)).toBeNull();
+    expect(detectSpike(pennies, 3, { ...OPTS, minDeltaAbs: 1 })).not.toBeNull();
+  });
+
+  it("honours a relaxed baseline-day minimum", () => {
+    const sparse = [0, 0, 0, 0, 0, 20, 22, 21];
+    expect(detectSpike(sparse, 500, OPTS)).toBeNull();
+    expect(detectSpike(sparse, 500, { ...OPTS, minBaselineDays: 3 })).not.toBeNull();
+  });
+});
+
+describe("detectNewSpendSource", () => {
+  const EMPTY_WINDOW = new Array(28).fill(0);
+
+  it("flags a key that goes from nothing to real money", () => {
+    const found = detectNewSpendSource(EMPTY_WINDOW, 5000, OPTS);
+    expect(found).not.toBeNull();
+    expect(found!.actual).toBe(5000);
+    expect(found!.baselineTotal).toBe(0);
+    expect(found!.mean).toBe(0);
+    expect(found!.threshold).toBe(OPTS.minNewSourceAbs);
+  });
+
+  it("catches exactly what the sigma detector cannot", () => {
+    // The whole point: an all-zero baseline has no mean or deviation to
+    // exceed, and the observed-days guard silences it besides.
+    expect(detectSpike(EMPTY_WINDOW, 5000, OPTS)).toBeNull();
+    expect(detectNewSpendSource(EMPTY_WINDOW, 5000, OPTS)).not.toBeNull();
+  });
+
+  it("stays quiet below the new-source floor", () => {
+    expect(detectNewSpendSource(EMPTY_WINDOW, 0.02, OPTS)).toBeNull();
+    expect(detectNewSpendSource(EMPTY_WINDOW, OPTS.minNewSourceAbs - 0.01, OPTS)).toBeNull();
+    expect(detectNewSpendSource(EMPTY_WINDOW, OPTS.minNewSourceAbs, OPTS)).not.toBeNull();
+  });
+
+  it("tolerates rounding dust in the baseline", () => {
+    // $0.30 of trial usage across a month is not a baseline.
+    const dust = EMPTY_WINDOW.slice();
+    dust[3] = 0.1;
+    dust[9] = 0.2;
+    expect(detectNewSpendSource(dust, 5000, OPTS)).not.toBeNull();
+  });
+
+  it("does not call an established key new", () => {
+    const established = new Array(28).fill(40);
+    expect(detectNewSpendSource(established, 5000, OPTS)).toBeNull();
+  });
+
+  it("refuses to judge a window shorter than the baseline minimum", () => {
+    // Too little history to claim there was no prior spend — every key would
+    // read as new the day collection started.
+    expect(detectNewSpendSource([0, 0, 0], 5000, OPTS)).toBeNull();
+    expect(detectNewSpendSource([], 5000, OPTS)).toBeNull();
+  });
+
+  it("honours a per-org new-source floor", () => {
+    expect(detectNewSpendSource(EMPTY_WINDOW, 100, OPTS)).not.toBeNull();
+    expect(detectNewSpendSource(EMPTY_WINDOW, 100, { ...OPTS, minNewSourceAbs: 500 })).toBeNull();
+  });
+
+  it("scales the floor with the series currency", () => {
+    const yen = optionsForCurrency("JPY", OPTS);
+    // ¥1,000 is ~$7 — a new source, but not a material one.
+    expect(detectNewSpendSource(new Array(28).fill(0), 1000, yen)).toBeNull();
+    // ¥500,000 is ~$3,300.
+    expect(detectNewSpendSource(new Array(28).fill(0), 500_000, yen)).not.toBeNull();
+  });
+
+  it("never fires alongside a spike for the same day", () => {
+    // Any baseline big enough for detectSpike to judge is far too big to read
+    // as "no prior spend", so the two can't both return evidence.
+    for (const actual of [50, 200, 5000]) {
+      const both =
+        detectSpike(STABLE, actual, OPTS) !== null &&
+        detectNewSpendSource(STABLE, actual, OPTS) !== null;
+      expect(both).toBe(false);
+    }
   });
 });
 

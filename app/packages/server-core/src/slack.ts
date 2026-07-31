@@ -3,10 +3,10 @@
  *
  * An org installs the Infrawrench Slack app through the standard "Add to Slack"
  * OAuth flow; we keep the resulting bot token and post alerts into whichever
- * channels the org picked. The three triggers a channel can opt into are the
- * same three mobile push has — sync incidents, budget alerts, and workflow
- * pages — so a channel can take budget crossings without also taking every
- * sync failure.
+ * channels the org picked. A channel opts into each trigger independently — the
+ * five mobile push has (sync incidents, budget alerts, cost anomalies, resource
+ * drift, workflow pages) plus the channel-only weekly digest — so a channel can
+ * take budget crossings without also taking every sync failure.
  *
  * Config (env):
  *   SLACK_CLIENT_ID      — the Slack app's client id
@@ -434,6 +434,7 @@ const TRIGGER_COLUMN = {
   syncIncidents: slackChannels.syncIncidents,
   budgetAlerts: slackChannels.budgetAlerts,
   anomalyAlerts: slackChannels.anomalyAlerts,
+  resourceDrift: slackChannels.resourceDrift,
   workflowPages: slackChannels.workflowPages,
   weeklyDigest: slackChannels.weeklyDigest,
 } as const;

@@ -365,6 +365,27 @@
       "when": 1785503019449,
       "tag": "0051_hard_blonde_phantom",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1785526950603,
+      "tag": "0052_acoustic_skullbuster",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1785528186336,
+      "tag": "0053_overrated_dazzler",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1785530144663,
+      "tag": "0054_brainy_owl",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 ---
 title: Change timeline
-description: A cross-provider drift feed — see every resource that appeared, changed, or disappeared between polls, org-wide or per resource.
+description: A cross-provider drift feed — see every resource that appeared, changed, or disappeared between polls, org-wide or per resource, with optional batched drift alerts.
 ---
 
 The change timeline is a drift feed for your whole inventory. Every time the cloud poller re-fetches an account, it compares what the provider returned against the last stored snapshot and records anything that differs:
@@ -55,6 +55,37 @@ Two things deliberately do **not** produce events:
 - **Fields the lister stopped returning.** Synced state merges over stored state, so a user-supplied value the provider never echoes back (for example a root password set at create time) survives — and is not reported as removed on every cycle.
 - **Absences during provider errors.** If a resource type's list call fails, its resources are left untouched and nothing is reported as disappeared. Only a successful list that omits a known resource counts.
 
+## Drift alerts
+
+The feed is a place you go and look. If you'd rather be told, turn the **Drift** trigger on for a [Slack channel](./slack-alerts.md), a [Microsoft Teams channel](./teams-alerts.md), or your [phone](./mobile-push-notifications.md).
+
+It is the only alert trigger that arrives **off**, and the only one that is batched rather than sent per event — both for the same reason. A budget crossing or a [cost anomaly](./cost-anomaly-alerts.md) is exceptional by construction; drift is continuous, and a single sync pass on a busy organization can record hundreds of changes. One message per change would be unreadable within a day and muted within two.
+
+So drift alerting works like a digest:
+
+- **One message per organization per cooldown window.** Not one per change, not one per account, not one per sync pass. The default window is 60 minutes, so the worst case is 24 messages a day no matter how much moves.
+- **Each message covers everything since the last one.** A window with nothing worth saying isn't a window you miss out on — its changes roll into the next message.
+- **Each message is bounded.** It leads with the counts, then names the first dozen changes — appearances and disappearances first — and links to the feed for the rest. A window with more changes than it can read reports "500+" rather than pretending to an exact number.
+
+### Choosing what counts
+
+**Settings → Notifications → Resource drift alerts** configures this once for the whole organization. It needs the **Organization settings** permission, and it is separate from the per-channel toggles above: those decide _who_ hears, this decides _what_ and _how often_.
+
+| Setting                    | Default    | What it does                                                                                                                                      |
+| -------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Resources appearing**    | on         | Alert when a resource shows up that Infrawrench hadn't seen                                                                                       |
+| **Resources disappearing** | on         | Alert when a known resource stops being returned                                                                                                  |
+| **Field changes**          | **off**    | Alert on per-field updates. These are the bulk of the volume and are usually a provider restating a value, so they start silent                   |
+| **Cooldown**               | 60 minutes | The least time between drift messages. Floored at 5 minutes — below the poller's own cycle the message rate would just follow the sync rate again |
+| **Minimum changes**        | 1          | Skip windows smaller than this                                                                                                                    |
+| **Accounts to watch**      | all        | Leave every box unchecked to watch everything, or tick the accounts worth being woken up for                                                      |
+
+<insert [Settings → Notifications page showing the Resource drift alerts card: the three change-kind checkboxes with Field changes unchecked, the cooldown and minimum-changes fields, and the account checkboxes] here>
+
+Only the background poller raises drift alerts. A manual refresh from the UI still records events in the feed but never notifies — the same rule sync-failure incidents follow, and for the same reason: you are already looking at the result.
+
+Drift alerts do **not** send SMS. Twilio is reserved for things that should interrupt a human — sync incidents, budget crossings, pages, and approval requests — and a drift digest is a thing to read, not a thing to be woken by.
+
 ## How far back it goes
 
 Change events are kept for **90 days**, then deleted. The cloud poller trims the feed once an hour, so the oldest rows you can reach are always within about an hour of that window — scrolling (or asking the API for a `from` date) past 90 days returns nothing, even for a resource that has existed for years.
@@ -65,7 +96,7 @@ If you need a permanent record of a change, export it while it is still in the w
 
 ## Requirements
 
-- The feed needs the `resources:read` permission.
+- The feed needs the `resources:read` permission; the drift alert settings need `org:settings:write`.
 - Events accumulate from the first poll after your org picks up this feature; there is no retroactive history.
 - History is capped at the 90-day retention window described above.
 

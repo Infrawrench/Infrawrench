@@ -93,7 +93,7 @@ infrawrench costs --group-by account --json
 
 Accounts whose daily cost collection is failing are called out above the chart, with the provider link that fixes the cause; `--json` carries them as `collectionFailures`. Accounts that collected without error but have no spend to show yet are listed the same way, as `awaitingData`. See [when collection fails](./cloud-costs.md#when-collection-fails) and [when there is nothing to collect yet](./cloud-costs.md#when-there-is-nothing-to-collect-yet).
 
-`--anomalies` turns the same command into the [spend-anomaly](./cost-anomaly-alerts.md) list — the days one provider or service cleared its own trailing baseline, with the actual spend, the baseline, and the percentage change:
+`--anomalies` turns the same command into the [spend-anomaly](./cost-anomaly-alerts.md) list — the days one provider or service cleared its own trailing baseline, with the actual spend, the baseline, and the percentage change. Rows marked `[new source]` are providers or services that had no spend at all across the window and then billed a material amount; they print `none` for a baseline and `new` for a change, since there is nothing for them to be up from:
 
 ```
 infrawrench costs --anomalies

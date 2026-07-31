@@ -165,8 +165,9 @@ const DIMENSION_LABELS: Record<CostAnomaly["dimension"], string> = {
 
 /**
  * Recent spend anomalies — days where one provider's or service's spend cleared
- * its own trailing baseline. Detection runs server-side after each cost
- * collection, so this is a read: there is nothing to configure from here.
+ * its own trailing baseline, and days where one started spending with no
+ * history at all. Detection runs server-side after each cost collection, so
+ * this is a read; the thresholds it uses are tuned from the Costs panel.
  */
 export async function cmdCostAnomalies(ctx: CliContext, range: RangeFlags): Promise<void> {
   if (ctx.flags.local) {
@@ -195,7 +196,7 @@ export async function cmdCostAnomalies(ctx: CliContext, range: RangeFlags): Prom
   if (anomalies.length === 0) {
     println(
       c.dim(
-        "No anomalies. Each day's spend per provider and per service is compared against its own trailing 28-day baseline — nothing cleared the bar.",
+        "No anomalies. Each day's spend per provider and per service is compared against its own trailing 28-day baseline — nothing cleared the bar, and nothing started spending from scratch.",
       ),
     );
     return;
@@ -205,7 +206,10 @@ export async function cmdCostAnomalies(ctx: CliContext, range: RangeFlags): Prom
     { header: "day", value: (a) => a.day },
     {
       header: "what spiked",
-      value: (a) => `${c.bold(a.dimensionKey)} ${c.dim(DIMENSION_LABELS[a.dimension])}`,
+      value: (a) => {
+        const what = `${c.bold(a.dimensionKey)} ${c.dim(DIMENSION_LABELS[a.dimension])}`;
+        return a.kind === "new_source" ? `${what} ${c.yellow("[new source]")}` : what;
+      },
     },
     {
       header: "actual",
@@ -214,13 +218,16 @@ export async function cmdCostAnomalies(ctx: CliContext, range: RangeFlags): Prom
     },
     {
       header: "baseline/day",
-      value: (a) => c.dim(formatMoney(a.baselineCents / 100, a.currency)),
+      // A new source has no baseline; printing "$0.00" invites the reader to
+      // treat it as a measurement rather than an absence.
+      value: (a) =>
+        c.dim(a.kind === "new_source" ? "none" : formatMoney(a.baselineCents / 100, a.currency)),
       align: "right",
     },
     {
       header: "change",
       value: (a) => {
-        const delta = anomalyDeltaPercent(a.actualCents, a.baselineCents);
+        const delta = anomalyDeltaPercent(a.actualCents, a.baselineCents, a.kind);
         return delta === null ? c.yellow("new") : c.red(delta);
       },
       align: "right",
@@ -234,7 +241,7 @@ export async function cmdCostAnomalies(ctx: CliContext, range: RangeFlags): Prom
   println();
   println(
     c.dim(
-      "Baseline is the trailing 28-day mean for that provider or service; a day clears the bar at mean + 3 standard deviations. Un-notified rows were detected while no alert channel was connected, or inside another anomaly's cooldown.",
+      "Baseline is the trailing 28-day mean for that provider or service; a day clears the bar at mean + N standard deviations. Rows marked [new source] had no spend at all across that window and cleared an absolute floor instead. Both thresholds are per-org, tuned from the Costs panel. Un-notified rows were detected while no alert channel was connected, or inside another anomaly's cooldown.",
     ),
   );
 }

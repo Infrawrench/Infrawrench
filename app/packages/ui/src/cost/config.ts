@@ -9,11 +9,13 @@
  */
 import { z } from "zod";
 import {
+  COST_ANOMALY_LIMITS,
   COST_BINNINGS,
   COST_CHART_TYPES,
   COST_DIMENSIONS,
   COST_RANGE_PRESETS,
   type BudgetInput,
+  type CostAnomalySettings,
   type BudgetThreshold,
   type BudgetWidgetConfig,
   type CostFilter,
@@ -28,10 +30,13 @@ export {
   COST_RANGE_PRESETS,
   COST_CHART_TYPES,
   COST_BINNINGS,
+  COST_ANOMALY_LIMITS,
   DASHBOARD_WIDGET_KINDS,
   OTHER_GROUP_KEY,
   DEFAULT_COST_GRAPH_CONFIG,
   DEFAULT_BUDGET_INPUT,
+  DEFAULT_COST_ANOMALY_SETTINGS,
+  type CostAnomalySettings,
   COST_CHART_TYPE_LABELS,
   COST_BINNING_LABELS,
   COST_RANGE_PRESET_LABELS,
@@ -110,6 +115,37 @@ export const budgetInputSchema = z.object({
   thresholds: z.array(budgetThresholdSchema).min(1).max(10),
 });
 
+/**
+ * Per-org anomaly tuning (PUT /costs/anomaly-settings).
+ *
+ * The bounds are the point of this schema, not a formality. A `sigmas` of 0
+ * makes "mean + 0σ" the bar, so every day a cent above average pages someone;
+ * anything under 1σ flags roughly a third of ordinary days. A floor of zero or
+ * less removes the noise filter that keeps $0.02 spends quiet. The upper
+ * bounds stop a typo (a floor of "100000" meaning dollars, not cents) from
+ * silently switching detection off.
+ *
+ * `sigmas` is rounded to one decimal so the stored value matches what the
+ * form's step shows — an org cannot end up with 2.9999999999 and wonder why.
+ */
+export const costAnomalySettingsSchema = z.object({
+  sigmas: z
+    .number()
+    .min(COST_ANOMALY_LIMITS.sigmasMin)
+    .max(COST_ANOMALY_LIMITS.sigmasMax)
+    .transform((v) => Math.round(v * 10) / 10),
+  minDeltaCents: z
+    .number()
+    .int()
+    .min(COST_ANOMALY_LIMITS.minDeltaCentsMin)
+    .max(COST_ANOMALY_LIMITS.minDeltaCentsMax),
+  newSourceMinCents: z
+    .number()
+    .int()
+    .min(COST_ANOMALY_LIMITS.newSourceMinCentsMin)
+    .max(COST_ANOMALY_LIMITS.newSourceMinCentsMax),
+});
+
 /** A custom-graph widget is a dashboard view onto a custom_graphs row. */
 export const customGraphWidgetConfigSchema = z.object({
   version: z.literal(1),
@@ -151,6 +187,7 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof budgetWidgetConfigSchema>, BudgetWidgetConfig>,
   Exact<z.infer<typeof budgetThresholdSchema>, BudgetThreshold>,
   Exact<z.infer<typeof budgetInputSchema>, BudgetInput>,
+  Exact<z.infer<typeof costAnomalySettingsSchema>, CostAnomalySettings>,
   Exact<z.infer<typeof costQueryRequestSchema>, CostQueryRequest>,
   Exact<z.infer<typeof customGraphWidgetConfigSchema>, CustomGraphWidgetConfig>,
 ];

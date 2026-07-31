@@ -40,6 +40,7 @@ async function resolveTargets(
     syncIncidents: pushPreferences.syncIncidents,
     budgetAlerts: pushPreferences.budgetAlerts,
     anomalyAlerts: pushPreferences.anomalyAlerts,
+    resourceDrift: pushPreferences.resourceDrift,
     workflowPages: pushPreferences.workflowPages,
   }[trigger];
   return db

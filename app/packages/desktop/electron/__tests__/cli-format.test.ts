@@ -75,6 +75,17 @@ describe("anomalyDeltaPercent", () => {
   it("keeps the sign explicit for a small rise", () => {
     expect(anomalyDeltaPercent(1050, 1000)).toBe("+5%");
   });
+
+  it("is null for a new spend source however its baseline rounded", () => {
+    // A near-zero 28-day window rounds to a cent; a percentage off that is
+    // arithmetically enormous and tells the reader nothing.
+    expect(anomalyDeltaPercent(500_000, 1, "new_source")).toBeNull();
+    expect(anomalyDeltaPercent(500_000, 0, "new_source")).toBeNull();
+  });
+
+  it("still reports a percentage for a spike with the same numbers", () => {
+    expect(anomalyDeltaPercent(500_000, 1, "spike")).not.toBeNull();
+  });
 });
 
 describe("formatChangeTime", () => {

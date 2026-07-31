@@ -73,3 +73,53 @@ export function summarizeChange(entry: Pick<ResourceChangeEntry, "changeKind" | 
   const base = shown.join(", ");
   return rest > 0 ? `${base} and ${rest} more` : base;
 }
+
+/* ------------------------------------------------------------------ *
+ * Drift alert settings
+ * ------------------------------------------------------------------ */
+
+/**
+ * Per-org filtering and throttling for resource-drift notifications. Server
+ * contract: `GET|PUT /api/org/:orgId/changes/alert-settings` (web
+ * `api/routes/resource-changes.ts`), backed by `org_drift_alert_settings`.
+ *
+ * The trigger itself is opted into per channel and per device (the
+ * `resourceDrift` flag on Slack channels, Teams webhooks and push
+ * preferences); this is the filter that decides what counts as drift worth
+ * notifying about at all, and how often.
+ */
+export interface DriftAlertSettings {
+  /** Alert on resources that appeared. */
+  notifyCreated: boolean;
+  /** Alert on field-level updates. Off by default — the noisy kind. */
+  notifyUpdated: boolean;
+  /** Alert on resources that disappeared. */
+  notifyDeleted: boolean;
+  /** Least time between drift notifications for this org. */
+  cooldownMinutes: number;
+  /** Fewest matching changes in a window worth notifying about. */
+  minChanges: number;
+  /** Account ids to alert on; empty means every account. */
+  accountIds: string[];
+  /** When this org last had a drift digest delivered; null if never. */
+  lastNotifiedAt: string | null;
+}
+
+export type DriftAlertSettingsPatch = Partial<Omit<DriftAlertSettings, "lastNotifiedAt">>;
+
+/** Bounds the API enforces. Mirrors server-core `drift/settings.ts`. */
+export const DRIFT_ALERT_LIMITS = {
+  cooldownMinutes: { min: 5, max: 24 * 60 },
+  minChanges: { min: 1, max: 1000 },
+  maxAccountIds: 200,
+} as const;
+
+export const DEFAULT_DRIFT_ALERT_SETTINGS: DriftAlertSettings = {
+  notifyCreated: true,
+  notifyUpdated: false,
+  notifyDeleted: true,
+  cooldownMinutes: 60,
+  minChanges: 1,
+  accountIds: [],
+  lastNotifiedAt: null,
+};

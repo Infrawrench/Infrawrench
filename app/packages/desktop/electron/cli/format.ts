@@ -71,11 +71,18 @@ export function renderTree(
  * ------------------------------------------------------------------ */
 
 /**
- * "+173%" over baseline. Null when the baseline is zero — a key with no
- * trailing spend has no percentage to be up by, and reads as "new" rather than
- * as an infinite jump. Same rule as the web/desktop Anomalies section.
+ * "+173%" over baseline. Null when there is no baseline to be up from — a key
+ * with no trailing spend reads as "new" rather than as an infinite jump — and
+ * null for a new-spend-source row whatever its baseline rounds to, since a
+ * near-zero window rounds to a cent and would print a meaningless six-figure
+ * percentage. Same rule as the web/desktop Anomalies section.
  */
-export function anomalyDeltaPercent(actualCents: number, baselineCents: number): string | null {
+export function anomalyDeltaPercent(
+  actualCents: number,
+  baselineCents: number,
+  kind: "spike" | "new_source" = "spike",
+): string | null {
+  if (kind === "new_source") return null;
   if (baselineCents <= 0) return null;
   const pct = ((actualCents - baselineCents) / baselineCents) * 100;
   return `+${Math.round(pct)}%`;

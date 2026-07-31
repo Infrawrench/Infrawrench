@@ -346,6 +346,11 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /costs/query": "costs:read",
   "GET /costs/dimensions": "costs:read",
   "GET /costs/status": "costs:read",
+  "GET /costs/anomalies": "costs:read",
+  "GET /costs/anomaly-settings": "costs:read",
+  // Retuning detection changes what the org's whole cost feed alerts on, so it
+  // rides the cost write scope rather than the budget one.
+  "PUT /costs/anomaly-settings": "costs:write",
   "POST /costs/rows": "costs:write",
   // pages
   "POST /pages": "pages:write",

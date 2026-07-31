@@ -81,6 +81,15 @@ const CostAccountStatus = strict({
 const CostAnomaly = strict({
   id: Uuid,
   day: IsoDate.describe("The anomalous UTC day."),
+  kind: z
+    .enum(["spike", "new_source"])
+    .describe(
+      "Which detection produced the row. `spike` is spend far above the key's own trailing " +
+        "baseline; `new_source` is a provider or service with no spend at all across the " +
+        "trailing window that suddenly has material spend — it can never be a `spike`, since " +
+        "a zero baseline has no mean or deviation to exceed. Rows written before new-source " +
+        "detection existed read as `spike`.",
+    ),
   dimension: z.enum(["provider", "service"]),
   dimensionKey: z.string().describe("The dimension's value — a plugin id or a service name."),
   currency: z.string(),
@@ -88,17 +97,55 @@ const CostAnomaly = strict({
   baselineCents: z
     .number()
     .int()
-    .describe("Mean daily spend over the trailing 28-day baseline, in cents."),
+    .describe(
+      "Mean daily spend over the trailing 28-day baseline, in cents. Zero, or near it, for a " +
+        "`new_source` — clients must not compute a percentage change from it.",
+    ),
   thresholdCents: z
     .number()
     .int()
-    .describe("The detection bar the day cleared (baseline mean + N·stddev), in cents."),
+    .describe(
+      "The detection bar the day cleared, in cents: baseline mean + N·stddev for a `spike`, " +
+        "the new-source floor for a `new_source`.",
+    ),
   detectedAt: IsoDateTime,
   notifiedAt: IsoDateTime.nullable().describe(
     "When the anomaly was delivered to a notification channel; null when delivery " +
       "failed or a recent anomaly for the same key suppressed it.",
   ),
 }).openapi("CostAnomaly");
+
+const CostAnomalySettings = strict({
+  sigmas: z
+    .number()
+    .min(1)
+    .max(10)
+    .describe(
+      "Standard deviations above a key's own trailing mean that count as a spike. " +
+        "Lower is more sensitive. Bounded at 1 — below that roughly a third of ordinary " +
+        "days clear the bar — and at 10, above which nothing short of a 10x jump fires. " +
+        "Defaults to 3.",
+    ),
+  minDeltaCents: z
+    .number()
+    .int()
+    .min(100)
+    .max(10_000_000)
+    .describe(
+      "Minimum rise over the baseline mean before a spike alerts, in USD cents (converted " +
+        "per series, so it means the same real amount in every currency). Defaults to 1000 ($10).",
+    ),
+  newSourceMinCents: z
+    .number()
+    .int()
+    .min(100)
+    .max(10_000_000)
+    .describe(
+      "Minimum first-day spend before a new spend source alerts, in USD cents. A key with no " +
+        "prior spend has no statistical bar to clear, so this absolute floor is the only thing " +
+        "keeping a new $0.02/day service quiet. Defaults to 2500 ($25).",
+    ),
+}).openapi("CostAnomalySettings");
 
 const PushedCostRow = strict({
   date: IsoDate.describe("UTC day the spend belongs to."),
@@ -237,10 +284,12 @@ export function registerCostPaths(ctx: BuildContext) {
     tags: ["Costs"],
     summary: "List recently detected cost anomalies",
     description:
-      "Spend anomalies detected by the daily background pass: days where a provider's or " +
-      "service's spend exceeded its trailing 28-day baseline by a statistical threshold " +
-      "(mean + N·stddev, with an absolute floor to ignore penny-scale noise). " +
-      "Newest day first, capped at 200 rows.",
+      "Spend anomalies detected by the daily background pass. Two kinds share the list: a " +
+      "`spike`, where a provider's or service's spend exceeded its trailing 28-day baseline " +
+      "by a statistical threshold (mean + N·stddev, with an absolute floor to ignore " +
+      "penny-scale noise), and a `new_source`, where a provider or service with no spend at " +
+      "all across that window suddenly billed a material amount. Thresholds are per " +
+      "organization — see GET /costs/anomaly-settings. Newest day first, capped at 200 rows.",
     request: {
       params: OrgIdParam,
       query: strict({
@@ -257,6 +306,46 @@ export function registerCostPaths(ctx: BuildContext) {
         content: {
           "application/json": { schema: strict({ anomalies: z.array(CostAnomaly) }) },
         },
+      },
+      400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/costs/anomaly-settings",
+    tags: ["Costs"],
+    summary: "Get the organization's anomaly detection thresholds",
+    description:
+      "The tunable part of cost anomaly detection. Everything else about the model — the " +
+      "28-day baseline, the 7-day notification cooldown, the minimum history a baseline needs " +
+      "— is fixed. An organization that has never changed a threshold reads back the defaults.",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "Anomaly settings",
+        content: { "application/json": { schema: CostAnomalySettings } },
+      },
+    },
+  });
+
+  registry.registerPath({
+    method: "put",
+    path: "/api/org/{orgId}/costs/anomaly-settings",
+    tags: ["Costs"],
+    summary: "Update the organization's anomaly detection thresholds",
+    description:
+      "Takes effect on the next detection pass (which runs after each cost collection). " +
+      "Anomalies already stored are not re-judged. All three fields are required — this is a " +
+      "PUT of the whole settings object, not a patch.",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: CostAnomalySettings } }, required: true },
+    },
+    responses: {
+      200: {
+        description: "The updated settings",
+        content: { "application/json": { schema: CostAnomalySettings } },
       },
       400: ErrorResponses[400],
     },

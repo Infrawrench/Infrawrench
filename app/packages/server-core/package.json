@@ -48,8 +48,15 @@
     "./cost/budget-eval": "./src/cost/budget-eval.ts",
     "./cost/anomaly-detect": "./src/cost/anomaly-detect.ts",
     "./cost/anomaly-eval": "./src/cost/anomaly-eval.ts",
+    "./cost/anomaly-settings": "./src/cost/anomaly-settings.ts",
+    "./drift/alerts": "./src/drift/alerts.ts",
+    "./drift/settings": "./src/drift/settings.ts",
+    "./drift/summary": "./src/drift/summary.ts",
     "./digest/compose": "./src/digest/compose.ts",
     "./digest/weekly": "./src/digest/weekly.ts",
+    "./digest/narrative": "./src/digest/narrative.ts",
+    "./digest/recipients": "./src/digest/recipients.ts",
+    "./email": "./src/email.ts",
     "./cost/workflow-costs": "./src/cost/workflow-costs.ts",
     "./cost/workflow-cost-ids": "./src/cost/workflow-cost-ids.ts",
     "./cost/external-costs": "./src/cost/external-costs.ts",
@@ -71,6 +78,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.96.0",
     "@clickhouse/client": "^1.13.0",
     "@infrawrench/client-core": "workspace:*",
     "@infrawrench/plugin-anthropic": "workspace:*",

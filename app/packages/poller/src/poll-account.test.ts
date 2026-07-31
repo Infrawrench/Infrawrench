@@ -33,6 +33,11 @@ vi.mock("@infrawrench/server-core/twilio-pager", () => ({
   notePollOutcome: (...a: unknown[]) => notePollOutcome(...a),
 }));
 
+const notifyResourceDrift = vi.fn();
+vi.mock("@infrawrench/server-core/drift/alerts", () => ({
+  notifyResourceDrift: (...a: unknown[]) => notifyResourceDrift(...a),
+}));
+
 import { pollAccount, type PollAccountRow } from "./poll-account";
 import { TokenBucketRegistry } from "./token-bucket";
 
@@ -55,6 +60,7 @@ beforeEach(() => {
   vi.setSystemTime(1_000_000);
   getPlugin.mockResolvedValue(null);
   notePollOutcome.mockResolvedValue(undefined);
+  notifyResourceDrift.mockResolvedValue({ status: "no-changes" });
   // default: a clean sync with no error
   syncAccountResources.mockResolvedValue({ firstError: null });
 });

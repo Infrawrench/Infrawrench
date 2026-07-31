@@ -6,7 +6,15 @@
  *
  * The maths live in `anomaly-detect.ts` (pure, unit-tested); this module reads
  * the series from ClickHouse, persists what was flagged, and fans out through
- * the existing notification transports under the `anomalyAlerts` trigger.
+ * the existing notification transports under the `anomalyAlerts` trigger. The
+ * thresholds it judges against are per-org (`anomaly-settings.ts`), read once
+ * per pass — the detector itself stays pure and takes them as arguments.
+ *
+ * Two findings share this pipeline: a statistical `spike`, and a `new_source`
+ * — a provider or service with no prior spend that suddenly costs money, which
+ * no sigma bar can catch. They share the table, the dedup index, the cooldown,
+ * the list endpoint and the fan-out, and differ only in a `kind` discriminator
+ * and the wording of the alert.
  *
  * Dedup happens in two layers:
  * - The unique index on cost_anomalies (org, day, dimension, key, currency)
@@ -34,12 +42,13 @@ import { sendPushToOrg } from "../push/dispatch";
 import { sendSlackToOrg } from "../slack";
 import { sendMsTeamsToOrg } from "../msteams";
 import {
-  DEFAULT_ANOMALY_OPTIONS,
+  detectNewSpendSource,
   detectSpike,
   fillDailySeries,
   optionsForCurrency,
   type AnomalyDetectionOptions,
 } from "./anomaly-detect";
+import { anomalyOptionsForOrg } from "./anomaly-settings";
 import { isoDay, addDays } from "./dates";
 
 /** Days of history the baseline is computed over (excluding the day itself). */
@@ -101,15 +110,53 @@ function formatAmount(amount: number, currency: string): string {
   }
 }
 
+type AnomalyKind = "spike" | "new_source";
+
 interface PendingAnomaly {
   id: string;
   day: string;
+  kind: AnomalyKind;
   dimension: AnomalyDimension;
   dimensionKey: string;
   currency: string;
   actual: number;
   mean: number;
   threshold: number;
+}
+
+/** What one of the two detectors found, flattened to what a row needs. */
+interface Finding {
+  kind: AnomalyKind;
+  actual: number;
+  mean: number;
+  threshold: number;
+}
+
+/**
+ * Judge one day for one key. Spikes take precedence: a key with a baseline
+ * worth measuring against is never also a "new source", and running them in a
+ * fixed order is what makes each (day, key) exactly one kind of finding rather
+ * than two rows racing for the same unique index.
+ */
+function judgeDay(
+  baseline: number[],
+  actual: number,
+  options: AnomalyDetectionOptions,
+): Finding | null {
+  const spike = detectSpike(baseline, actual, options);
+  if (spike) {
+    return { kind: "spike", actual: spike.actual, mean: spike.mean, threshold: spike.threshold };
+  }
+  const fresh = detectNewSpendSource(baseline, actual, options);
+  if (fresh) {
+    return {
+      kind: "new_source",
+      actual: fresh.actual,
+      mean: fresh.mean,
+      threshold: fresh.threshold,
+    };
+  }
+  return null;
 }
 
 /**
@@ -155,9 +202,15 @@ async function detectForDimension(
     for (const day of days) {
       const baseline = fillDailySeries(byDay, addDays(day, -BASELINE_DAYS), addDays(day, -1));
       const actual = byDay.get(day) ?? 0;
-      const spike = detectSpike(baseline, actual, scoped);
-      if (!spike) continue;
+      const finding = judgeDay(baseline, actual, scoped);
+      if (!finding) continue;
 
+      const amounts = {
+        kind: finding.kind,
+        actualAmountCents: Math.round(finding.actual * 100),
+        baselineAmountCents: Math.round(finding.mean * 100),
+        thresholdAmountCents: Math.round(finding.threshold * 100),
+      };
       const [row] = await db
         .insert(costAnomalies)
         .values({
@@ -167,9 +220,7 @@ async function detectForDimension(
           dimension,
           dimensionKey: group.key,
           currency: group.currency,
-          actualAmountCents: Math.round(spike.actual * 100),
-          baselineAmountCents: Math.round(spike.mean * 100),
-          thresholdAmountCents: Math.round(spike.threshold * 100),
+          ...amounts,
         })
         .onConflictDoUpdate({
           target: [
@@ -179,11 +230,10 @@ async function detectForDimension(
             costAnomalies.dimensionKey,
             costAnomalies.currency,
           ],
-          set: {
-            actualAmountCents: Math.round(spike.actual * 100),
-            baselineAmountCents: Math.round(spike.mean * 100),
-            thresholdAmountCents: Math.round(spike.threshold * 100),
-          },
+          // `kind` is refreshed with the amounts for the same reason they are:
+          // a day re-judged once more of its data has landed is the more
+          // accurate reading of it, including which detection it belongs to.
+          set: amounts,
         })
         .returning({ id: costAnomalies.id, notifiedAt: costAnomalies.notifiedAt });
       if (!row || row.notifiedAt) continue; // already delivered for this day
@@ -191,12 +241,13 @@ async function detectForDimension(
       pending.push({
         id: row.id,
         day,
+        kind: finding.kind,
         dimension,
         dimensionKey: group.key,
         currency: group.currency,
-        actual: spike.actual,
-        mean: spike.mean,
-        threshold: spike.threshold,
+        actual: finding.actual,
+        mean: finding.mean,
+        threshold: finding.threshold,
       });
     }
   }
@@ -238,13 +289,19 @@ async function inCooldown(organizationId: string, anomaly: PendingAnomaly): Prom
 export async function detectCostAnomaliesForOrg(
   organizationId: string,
   now = new Date(),
-  options: AnomalyDetectionOptions = DEFAULT_ANOMALY_OPTIONS,
+  options?: AnomalyDetectionOptions,
   force = false,
 ): Promise<void> {
   const at = now.getTime();
   const last = lastEvaluatedAt.get(organizationId);
   if (!force && last !== undefined && at - last < MIN_EVAL_INTERVAL_MS) return;
   lastEvaluatedAt.set(organizationId, at);
+
+  // Thresholds are per-org (`org_cost_anomaly_settings`), read once per pass
+  // rather than per key: an org that has never opened the form gets the
+  // shipped defaults. An explicit `options` argument wins, which is what a
+  // test or a one-off caller wants.
+  const tuning = options ?? (await anomalyOptionsForOrg(organizationId));
 
   // Yesterday is the latest day worth judging — today is still accruing and
   // would read as a dip, never a spike — back through the restatement window,
@@ -258,7 +315,7 @@ export async function detectCostAnomaliesForOrg(
   for (const dimension of DIMENSIONS) {
     let pending: PendingAnomaly[];
     try {
-      pending = await detectForDimension(organizationId, dimension, days, options);
+      pending = await detectForDimension(organizationId, dimension, days, tuning);
     } catch (err) {
       console.error(`[anomaly-eval] ${dimension} detection failed for org ${organizationId}:`, err);
       continue;
@@ -269,11 +326,22 @@ export async function detectCostAnomaliesForOrg(
         if (await inCooldown(organizationId, anomaly)) continue;
 
         const label = dimension === "provider" ? "provider" : "service";
-        const title = `Cost anomaly: ${anomaly.dimensionKey}`;
+        // A new source has no baseline to compare against, so saying it "cost
+        // $5,000 against a $0/day baseline" buries the lede. Lead with the
+        // fact that the thing is new.
+        const title =
+          anomaly.kind === "new_source"
+            ? `New spend source: ${anomaly.dimensionKey}`
+            : `Cost anomaly: ${anomaly.dimensionKey}`;
         const body =
-          `infrawrench spend anomaly: ${label} "${anomaly.dimensionKey}" cost ` +
-          `${formatAmount(anomaly.actual, anomaly.currency)} on ${anomaly.day}, against a ` +
-          `${formatAmount(anomaly.mean, anomaly.currency)}/day baseline over the prior ${BASELINE_DAYS} days`;
+          anomaly.kind === "new_source"
+            ? `infrawrench new spend source: ${label} "${anomaly.dimensionKey}" cost ` +
+              `${formatAmount(anomaly.actual, anomaly.currency)} on ${anomaly.day}, with no ` +
+              `spend at all in the prior ${BASELINE_DAYS} days`
+            : `infrawrench spend anomaly: ${label} "${anomaly.dimensionKey}" cost ` +
+              `${formatAmount(anomaly.actual, anomaly.currency)} on ${anomaly.day}, against a ` +
+              `${formatAmount(anomaly.mean, anomaly.currency)}/day baseline over the prior ${BASELINE_DAYS} days`;
+        const context = `${anomaly.day} · ${label}${anomaly.kind === "new_source" ? " · new" : ""}`;
 
         const pushed = await sendPushToOrg(organizationId, "anomalyAlerts", {
           title,
@@ -282,6 +350,7 @@ export async function detectCostAnomaliesForOrg(
             type: "cost_anomaly",
             orgId: organizationId,
             day: anomaly.day,
+            kind: anomaly.kind,
             dimension,
             dimensionKey: anomaly.dimensionKey,
           },
@@ -290,13 +359,13 @@ export async function detectCostAnomaliesForOrg(
         const slacked = await sendSlackToOrg(organizationId, "anomalyAlerts", {
           title,
           body,
-          context: `${anomaly.day} · ${label}`,
+          context,
           ...(url ? { url } : {}),
         });
         const teamed = await sendMsTeamsToOrg(organizationId, "anomalyAlerts", {
           title,
           body,
-          context: `${anomaly.day} · ${label}`,
+          context,
           ...(url ? { url } : {}),
         });
         if (pushed.succeeded > 0 || slacked.succeeded > 0 || teamed.succeeded > 0) {

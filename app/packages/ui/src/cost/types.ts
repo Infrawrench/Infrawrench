@@ -2,6 +2,7 @@ import type {
   BudgetWithStatus,
   CostAccountStatus,
   CostAnomaly,
+  CostAnomalySettings,
   CostDimensionOption,
 } from "@infrawrench/client-core";
 import type { BudgetInput, CostQueryRequest, CostQueryResponse } from "./config.js";
@@ -18,6 +19,9 @@ export type {
   /** A detected spend anomaly, as listed on the Costs panel. */
   CostAnomaly,
   CostAnomalyDimension,
+  CostAnomalyKind,
+  /** The per-org detection thresholds the Anomalies section edits. */
+  CostAnomalySettings,
   /** One selectable value in a dimension picker. */
   CostDimensionOption,
 } from "@infrawrench/client-core";
@@ -58,6 +62,17 @@ export interface CostsClient extends CostApi {
    * simply doesn't render the anomalies section.
    */
   listAnomalies?(days?: number): Promise<CostAnomaly[]>;
+  /**
+   * The org's detection thresholds. Optional like `listAnomalies`; a host that
+   * hasn't wired it shows the list without the tuning controls.
+   */
+  getAnomalySettings?(): Promise<CostAnomalySettings>;
+  /**
+   * Save the thresholds. Omitted for a viewer without `costs:write`, and the
+   * controls then render read-only rather than failing on save — the same rule
+   * the budget half of this client follows.
+   */
+  updateAnomalySettings?(settings: CostAnomalySettings): Promise<CostAnomalySettings>;
   listDashboards(): Promise<CostsPanelDashboard[]>;
   createBudget?(input: BudgetInput): Promise<{ id: string }>;
   updateBudget?(budgetId: string, input: BudgetInput): Promise<void>;

@@ -28,14 +28,15 @@ If you want some alerts to be loud and others not, use the per-organization trig
 
 ## Per-organization preferences
 
-Notification triggers are toggled per user, per organization, in **Settings → Notifications** — on the web app or in the mobile app's settings. Everything defaults to **on**; each member manages their own toggles. The triggers:
+Notification triggers are toggled per user, per organization, in **Settings → Notifications** — on the web app or in the mobile app's settings. Everything defaults to **on** except resource drift, which defaults to off; each member manages their own toggles. The triggers:
 
-| Trigger            | When it fires                                                                                                                                 |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Sync incidents** | An account's background sync keeps failing and crosses the org's paging threshold                                                             |
-| **Budget alerts**  | A [budget threshold](./cloud-costs.md) is crossed                                                                                             |
-| **Cost anomalies** | A [cost anomaly](./cost-anomaly-alerts.md) is detected — a provider's or service's spend spikes far above its usual baseline                  |
-| **Pages**          | Your own code raises an alert — a [workflow](./workflows.md) calling `infra.page(...)`, or a [server calling `POST /pages`](./server-push.md) |
+| Trigger            | When it fires                                                                                                                                                                            |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Sync incidents** | An account's background sync keeps failing and crosses the org's paging threshold                                                                                                        |
+| **Budget alerts**  | A [budget threshold](./cloud-costs.md) is crossed                                                                                                                                        |
+| **Cost anomalies** | A [cost anomaly](./cost-anomaly-alerts.md) is detected — a provider's or service's spend spikes far above its usual baseline                                                             |
+| **Resource drift** | Resources appeared or disappeared between polls. Batched into one digest per organization per cooldown window — see [Change timeline](./change-timeline.md). **Off by default.**         |
+| **Pages**          | Your own code needs a human — a [workflow](./workflows.md) calling `infra.page(...)` or suspended on `infra.waitForApproval(...)`, or a [server calling `POST /pages`](./server-push.md) |
 
 <insert [Web Settings → Notifications page showing the push trigger toggles, a registered device row, and the Send test push button] here>
 
@@ -54,11 +55,21 @@ Tapping a sync-incident notification deep-links straight to the failing account'
 
 Budget threshold breaches notify **at most once per budget, per threshold, per calendar month** — the same dedupe as the budget badge and SMS. Budget pushes are independent of the org's Twilio settings: they deliver even if paging/SMS is not set up at all. Tapping one opens the **Costs** tab, which lists every budget in the org with its month-to-date spend — whether or not a dashboard shows that budget.
 
-### Pages
+### Resource drift
+
+The [change timeline](./change-timeline.md) records every resource that appears, changes, or disappears between polls — hundreds of rows in a single sync pass on a busy organization. A notification per change would be unreadable, so drift is the one trigger that is **batched rather than per event**: at most one digest per organization per cooldown window (**default: 60 minutes**), covering everything since the previous one, with the counts and the first dozen changes named and the rest linked.
+
+It is also the one trigger that is **off by default**, on phones and on channels alike, for the same reason: it is a continuous feed rather than an exceptional event. Which changes count — appearances, disappearances, field updates (off by default, they are the bulk of the volume), which accounts, and how few changes are too few to bother with — is set once for the whole organization under **Settings → Notifications → Resource drift alerts**, and it takes the **Organization settings** permission.
+
+Tapping a drift notification opens the **Changes** feed for the window it covered.
+
+### Pages and approval requests
 
 Your own code can raise an alert — a [workflow](./workflows.md) calling `infra.page(...)` ("page me if any pod's restart count goes above 5" is a cron workflow that does exactly this), or a server outside Infrawrench [calling `POST /pages`](./server-push.md). Unlike the two triggers above, the condition is whatever its author wrote, so the dedupe is author-controlled: every page carries a **key** and repeats under the same key are suppressed for a cooldown (**default: 60 minutes**) the caller can set per call or clear when the condition recovers.
 
-Pages deliver over both channels — mobile push, and SMS to the Twilio recipient list when credentials are configured. The caller can additionally request a **voice call** for something genuinely worth waking up for. Tapping a workflow's page opens that workflow in the app, where its recent runs and logs show what tripped it; a page pushed over the API opens the org home.
+Pages deliver over every channel — mobile push, any Slack or Teams channel opted into **Pages**, and SMS to the Twilio recipient list when credentials are configured. The caller can additionally request a **voice call** for something genuinely worth waking up for. Tapping a workflow's page opens that workflow in the app, where its recent runs and logs show what tripped it; a page pushed over the API opens the org home.
+
+A run suspended on [`infra.waitForApproval(...)`](./workflows.md) shares this trigger, because an approval request is a workflow asking for a human just as a page is. It goes to the same places — push, Slack, Teams and SMS — and there is exactly one per request, so it needs no cooldown of its own: the request either gets decided or times out.
 
 ## The Notifications settings page
 

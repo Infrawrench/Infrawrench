@@ -52,7 +52,7 @@ Every threshold fires at most once per calendar month. Alerts show up as a badge
 
 <insert [Budget card showing a progress bar at 72% with threshold ticks, a forecast marker, and an alert badge] here>
 
-Budgets alert on totals you chose. For spikes you didn't see coming — a provider or service suddenly spending far above its own baseline — see [cost anomaly alerts](./cost-anomaly-alerts.md), which need no configuration at all.
+Budgets alert on totals you chose. For spend you didn't see coming — a provider or service suddenly billing far above its own baseline, or one that had never billed at all — see [cost anomaly alerts](./cost-anomaly-alerts.md), which work with no configuration and can be [tuned](./cost-anomaly-alerts.md#tuning-detection) if the defaults are too loud or too quiet.
 
 ## The Costs panel
 

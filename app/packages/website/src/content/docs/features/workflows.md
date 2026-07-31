@@ -343,7 +343,7 @@ if (stale.length > 0) {
 }
 ```
 
-While the run is suspended, the request shows up as a **pending approval card on the workflow's run view** with **Approve** and **Deny** buttons, and everyone opted into workflow alerts gets a push notification. Approving lets the run continue within a few seconds; the call resolves with `{ approved: true, decidedBy, decidedAt }` so you can log who signed off.
+While the run is suspended, the request shows up as a **pending approval card on the workflow's run view** with **Approve** and **Deny** buttons, and it is announced on every channel the organization has set up (see below). Approving lets the run continue within a few seconds; the call resolves with `{ approved: true, decidedBy, decidedAt }` so you can log who signed off.
 
 <insert [Screenshot of the Workflows tab with a run suspended on an approval: the amber pending-approval card above the run log showing the request title, message, expiry time, and Approve/Deny buttons] here>
 
@@ -351,10 +351,18 @@ While the run is suspended, the request shows up as a **pending approval card on
 
 | Option           | Default             | What it does                                               |
 | ---------------- | ------------------- | ---------------------------------------------------------- |
-| `title`          | the workflow's name | Headline of the approval card and the push notification.   |
+| `title`          | the workflow's name | Headline of the approval card and of every notification.   |
 | `timeoutMinutes` | `60`                | How long to wait before the request expires and is denied. |
 
 Time spent waiting for a decision doesn't count against the run's execution budget (like SSH waits and `infra.prompt`), so a run can wait out a long approval without hitting its timeout.
+
+##### Who hears about it
+
+An approval request goes out over every transport the organization has configured — mobile push, any [Slack](./slack-alerts.md) or [Microsoft Teams](./teams-alerts.md) channel opted into **Pages**, and SMS to the Twilio recipient list when credentials are set up. It shares the **Pages** opt-in rather than having one of its own, because an approval is a workflow asking for a human just as `infra.page(...)` is, and nobody wants to discover they opted out of one but not the other.
+
+The message carries enough to decide on: what is being approved, the workflow and the run id, whether a person or a schedule started that run, when the request expires, and the fact that no decision counts as a denial. Slack and Teams also get a button straight to the approvals inbox.
+
+There is no cooldown, and there does not need to be one: unlike a page — which a cron workflow can raise on every tick until the condition clears — a `waitForApproval` call sends exactly one notification and then waits. SMS is included for the same reason it is included for pages and excluded for [drift digests](./change-timeline.md): a blocked production run is a thing that should interrupt someone. It is SMS-only, never a voice call — `infra.page` rings a phone only when the author asks for `voice: true`, and an approval has no such knob.
 
 Approvals can also be listed and decided over the HTTP API — `GET /api/org/{orgId}/workflow-approvals?status=pending` and `POST /api/org/{orgId}/workflow-approvals/{id}/approve` (or `/deny`) — so a chat-ops bot or an external tool can land the decision. Listing needs `workflows:read`; deciding needs `workflows:approve` (see [Roles and permissions](../team-and-billing/roles-and-permissions.md)).
 

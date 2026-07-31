@@ -94,6 +94,7 @@ app.get("/status", async (c) => {
               syncIncidents: ch.syncIncidents,
               budgetAlerts: ch.budgetAlerts,
               anomalyAlerts: ch.anomalyAlerts,
+              resourceDrift: ch.resourceDrift,
               workflowPages: ch.workflowPages,
               weeklyDigest: ch.weeklyDigest,
             },
@@ -156,6 +157,7 @@ interface ChannelBody {
   syncIncidents?: boolean;
   budgetAlerts?: boolean;
   anomalyAlerts?: boolean;
+  resourceDrift?: boolean;
   workflowPages?: boolean;
   weeklyDigest?: boolean;
 }
@@ -182,6 +184,9 @@ app.post("/channels", async (c) => {
   const syncIncidents = body.syncIncidents ?? true;
   const budgetAlerts = body.budgetAlerts ?? true;
   const anomalyAlerts = body.anomalyAlerts ?? true;
+  // Drift is the one trigger that defaults off — it is continuous and
+  // high-volume where the others are exceptional. See server-core db/schema.ts.
+  const resourceDrift = body.resourceDrift ?? false;
   const workflowPages = body.workflowPages ?? true;
   const weeklyDigest = body.weeklyDigest ?? true;
   const now = new Date();
@@ -197,6 +202,7 @@ app.post("/channels", async (c) => {
       syncIncidents,
       budgetAlerts,
       anomalyAlerts,
+      resourceDrift,
       workflowPages,
       weeklyDigest,
     })
@@ -208,6 +214,7 @@ app.post("/channels", async (c) => {
         syncIncidents,
         budgetAlerts,
         anomalyAlerts,
+        resourceDrift,
         workflowPages,
         weeklyDigest,
         updatedAt: now,
@@ -221,6 +228,7 @@ interface ChannelPatchBody {
   syncIncidents?: boolean;
   budgetAlerts?: boolean;
   anomalyAlerts?: boolean;
+  resourceDrift?: boolean;
   workflowPages?: boolean;
   weeklyDigest?: boolean;
 }
@@ -235,6 +243,7 @@ app.patch("/channels/:id", async (c) => {
   if (body.syncIncidents != null) patch.syncIncidents = body.syncIncidents;
   if (body.budgetAlerts != null) patch.budgetAlerts = body.budgetAlerts;
   if (body.anomalyAlerts != null) patch.anomalyAlerts = body.anomalyAlerts;
+  if (body.resourceDrift != null) patch.resourceDrift = body.resourceDrift;
   if (body.workflowPages != null) patch.workflowPages = body.workflowPages;
   if (body.weeklyDigest != null) patch.weeklyDigest = body.weeklyDigest;
 

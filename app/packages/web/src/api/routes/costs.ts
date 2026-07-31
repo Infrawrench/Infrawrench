@@ -1,5 +1,9 @@
 import { Hono } from "hono";
-import { costQueryRequestSchema } from "@infrawrench/ui/cost/config";
+import { costAnomalySettingsSchema, costQueryRequestSchema } from "@infrawrench/ui/cost/config";
+import {
+  getOrgAnomalySettings,
+  setOrgAnomalySettings,
+} from "@infrawrench/server-core/cost/anomaly-settings";
 import {
   CostQueryError,
   getOrgCostStatus,
@@ -74,6 +78,35 @@ app.get("/anomalies", async (c) => {
   }
 
   return c.json({ anomalies: await listRecentCostAnomalies(organizationId, days) });
+});
+
+/**
+ * GET /api/org/:orgId/costs/anomaly-settings — the org's detection thresholds.
+ * An org that has never changed them reads as the shipped defaults.
+ */
+app.get("/anomaly-settings", async (c) => {
+  requirePermission(c, "costs:read");
+  const organizationId = c.get("organizationId");
+  return c.json(await getOrgAnomalySettings(organizationId));
+});
+
+/**
+ * PUT /api/org/:orgId/costs/anomaly-settings — retune detection.
+ *
+ * Gated on `costs:write`, the permission the other mutating cost route
+ * (`POST /costs/rows`) uses. It is not a budget, so `budgets:write` would be
+ * the wrong family: this changes what the org's whole cost feed alerts on.
+ */
+app.put("/anomaly-settings", async (c) => {
+  requirePermission(c, "costs:write");
+  const organizationId = c.get("organizationId");
+
+  const parsed = costAnomalySettingsSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: "Invalid anomaly settings", issues: parsed.error.issues }, 400);
+  }
+
+  return c.json(await setOrgAnomalySettings(organizationId, parsed.data));
 });
 
 /**

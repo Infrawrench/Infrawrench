@@ -4,6 +4,7 @@ import { accounts } from "@infrawrench/server-core/db/schema";
 import { syncAccountResources } from "@infrawrench/server-core/sync-resources";
 import { getPlugin } from "@infrawrench/server-core/plugin-loader";
 import { notePollOutcome } from "@infrawrench/server-core/twilio-pager";
+import { notifyResourceDrift } from "@infrawrench/server-core/drift/alerts";
 import { TokenBucketRegistry, defaultBucketConfig, type BucketConfig } from "./token-bucket";
 import { isRateLimitError, isTransientError } from "./error-classification";
 
@@ -33,6 +34,15 @@ export async function pollAccount(
 
   const result = await syncAccountResources(account.id, account.organizationId, {
     canListType: () => buckets.tryTake(account.pluginId, account.id, config),
+    // Poller-driven syncs are the only ones that raise drift notifications; a
+    // manual refresh from the UI still writes the change timeline but stays
+    // silent, the same line notePollOutcome draws for sync incidents.
+    //
+    // Fire-and-forget: the notifier swallows its own errors and rate-limits
+    // itself per org, so it can never block or break the poll loop.
+    onChanges: (events) => {
+      void notifyResourceDrift(account.organizationId, account.id, events);
+    },
     onTypeDone: (typeId, outcome, err) => {
       if (outcome === "error" && err && isTransientError(err)) {
         transientFailure = true;

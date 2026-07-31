@@ -2,10 +2,9 @@
  * Microsoft Teams as an alert transport.
  *
  * An org adds one or more Teams *webhook URLs*; we POST an Adaptive Card to
- * each one whose trigger opt-ins match. The three triggers a webhook can opt
- * into are the same three mobile push and Slack have — sync incidents, budget
- * alerts, and workflow pages — so a channel can take budget crossings without
- * also taking every sync failure.
+ * each one whose trigger opt-ins match. A webhook opts into each trigger
+ * independently — the same set Slack channels have — so a channel can take
+ * budget crossings without also taking every sync failure.
  *
  * Why webhooks and not an "Add to Teams" OAuth flow like Slack
  * -----------------------------------------------------------
@@ -162,6 +161,9 @@ export async function addMsTeamsWebhook(
   const syncIncidents = args.syncIncidents ?? true;
   const budgetAlerts = args.budgetAlerts ?? true;
   const anomalyAlerts = args.anomalyAlerts ?? true;
+  // Drift is the one trigger that defaults off — it is continuous and
+  // high-volume where the others are exceptional. See db/schema.ts.
+  const resourceDrift = args.resourceDrift ?? false;
   const workflowPages = args.workflowPages ?? true;
   const weeklyDigest = args.weeklyDigest ?? true;
   const now = new Date();
@@ -180,6 +182,7 @@ export async function addMsTeamsWebhook(
       syncIncidents,
       budgetAlerts,
       anomalyAlerts,
+      resourceDrift,
       workflowPages,
       weeklyDigest,
       createdByUserId: userId,
@@ -197,6 +200,7 @@ export async function addMsTeamsWebhook(
         syncIncidents,
         budgetAlerts,
         anomalyAlerts,
+        resourceDrift,
         workflowPages,
         weeklyDigest,
         updatedAt: now,
@@ -216,6 +220,7 @@ function toRecord(row: typeof msteamsWebhooks.$inferSelect): MsTeamsWebhookRecor
     syncIncidents: row.syncIncidents,
     budgetAlerts: row.budgetAlerts,
     anomalyAlerts: row.anomalyAlerts,
+    resourceDrift: row.resourceDrift,
     workflowPages: row.workflowPages,
     weeklyDigest: row.weeklyDigest,
   };
@@ -381,6 +386,7 @@ const TRIGGER_COLUMN = {
   syncIncidents: msteamsWebhooks.syncIncidents,
   budgetAlerts: msteamsWebhooks.budgetAlerts,
   anomalyAlerts: msteamsWebhooks.anomalyAlerts,
+  resourceDrift: msteamsWebhooks.resourceDrift,
   workflowPages: msteamsWebhooks.workflowPages,
   weeklyDigest: msteamsWebhooks.weeklyDigest,
 } as const;

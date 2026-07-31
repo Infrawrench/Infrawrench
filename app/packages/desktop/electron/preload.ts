@@ -142,6 +142,8 @@ const INVOKE_CHANNELS = [
   "cloud_costs_dimensions",
   "cloud_costs_status",
   "cloud_costs_anomalies",
+  "cloud_costs_anomaly_settings",
+  "cloud_costs_update_anomaly_settings",
   "cloud_orphans_list",
   "local_orphans_list",
   "cloud_changes_list",

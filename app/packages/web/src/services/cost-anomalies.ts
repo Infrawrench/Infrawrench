@@ -30,6 +30,7 @@ export async function listRecentCostAnomalies(
   return rows.map((row) => ({
     id: row.id,
     day: row.day,
+    kind: row.kind,
     dimension: row.dimension,
     dimensionKey: row.dimensionKey,
     currency: row.currency,

@@ -1,6 +1,6 @@
 ---
 title: Slack alerts
-description: Route sync-failure incidents, budget alerts, and pages to Slack channels, with a per-channel opt-in for each.
+description: Route sync-failure incidents, budget alerts, cost anomalies, resource drift, and pages to Slack channels, with a per-channel opt-in for each.
 sidebar_order: 16
 ---
 
@@ -33,24 +33,29 @@ Press **Add a channel** and pick from the list — it's fetched live from your w
 
 Each channel opts into the alert triggers independently, so a `#finance` channel can take budget crossings without also getting every sync failure:
 
-| Trigger           | When it fires                                                                                                                                 |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Sync failures** | An account's background sync keeps failing and crosses the org's paging threshold                                                             |
-| **Budgets**       | A [budget threshold](./cloud-costs.md) is crossed                                                                                             |
-| **Anomalies**     | A [cost anomaly](./cost-anomaly-alerts.md) is detected — a provider's or service's spend spikes far above its usual baseline                  |
-| **Pages**         | Your own code raises an alert — a [workflow](./workflows.md) calling `infra.page(...)`, or a [server calling `POST /pages`](./server-push.md) |
+| Trigger           | When it fires                                                                                                                                                                                                  |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Sync failures** | An account's background sync keeps failing and crosses the org's paging threshold                                                                                                                              |
+| **Budgets**       | A [budget threshold](./cloud-costs.md) is crossed                                                                                                                                                              |
+| **Anomalies**     | A [cost anomaly](./cost-anomaly-alerts.md) is detected — a provider's or service's spend spikes far above its usual baseline                                                                                   |
+| **Drift**         | Your infrastructure drifts — resources appear or disappear between polls. Batched: one digest per organization per cooldown window, never one message per change. See [Change timeline](./change-timeline.md). |
+| **Pages**         | Your own code needs a human — a [workflow](./workflows.md) calling `infra.page(...)` or suspended on `infra.waitForApproval(...)`, or a [server calling `POST /pages`](./server-push.md)                       |
 
-A fifth checkbox, **Weekly digest**, opts the channel into the [Monday-morning summary](./weekly-digest.md) — it only sends once the digest is enabled for the org.
+A sixth checkbox, **Weekly digest**, opts the channel into the [weekly summary](./weekly-digest.md) — it only sends once the digest is enabled for the org, and it arrives on whatever day and hour the org picked.
 
-All five default to on for a newly added channel. Unlike the mobile push toggles, which each member sets for themselves, Slack routing is org-wide — it takes the **Organization settings** permission to change.
+Five of the six default to on for a newly added channel. **Drift is the exception and arrives off**: sync failures, budget crossings and anomalies are exceptional events, while drift is a continuous feed whose volume is set by how busy your infrastructure is — turning it on should be a decision, not something that happens to a channel you added for budgets. What counts as drift, and how often a digest may go out, is configured once for the whole organization in **Settings → Notifications → Resource drift alerts**.
 
-<insert [Settings → Notifications Slack section with a workspace connected and two channels listed, each showing the five trigger checkboxes] here>
+Unlike the mobile push toggles, which each member sets for themselves, Slack routing is org-wide — it takes the **Organization settings** permission to change.
+
+<insert [Settings → Notifications Slack section with a workspace connected and two channels listed, each showing the six trigger checkboxes with Drift unchecked] here>
 
 **Private channels need an invite.** `chat:write.public` covers public channels, but Slack won't let any app post into a private channel it isn't a member of. Invite the Infrawrench app to the channel first (`/invite @Infrawrench` in Slack), then add it here. If you skip that step, delivery fails with `not_in_channel` — the **Send test message** button surfaces that error verbatim so you can tell it apart from a genuine outage.
 
 ## What the messages look like
 
-Each alert is a short block: the headline in bold, the alert text below it, and — for budget alerts and pages — a **View in Infrawrench** button that deep-links to the budget, the workflow, or the org. Link previews are suppressed so an alert about a URL doesn't drag an unfurled card into the channel.
+Each alert is a short block: the headline in bold, the alert text below it, and — for budget alerts, drift digests, pages and approval requests — a **View in Infrawrench** button that deep-links to the budget, the change timeline, the workflow, or the approvals inbox. Link previews are suppressed so an alert about a URL doesn't drag an unfurled card into the channel.
+
+An **approval request** carries everything needed to decide without opening the app: what is being approved, the workflow and run that raised it, whether a person or a schedule started that run, when the request expires, and the fact that no decision counts as a denial. Its button lands on **Settings → Approvals**, which is where the Approve and Deny buttons live.
 
 ## Turning it off
 
@@ -60,4 +65,4 @@ Disconnecting here does not uninstall the app from Slack. To remove it on the Sl
 
 ## Interaction with the paging switch
 
-Sync-failure incidents respect the org's master **Paging enabled** switch on the same settings page — turning it off silences incidents on every transport, Slack included. Budget alerts and pages are independent of it, exactly as they are for mobile push.
+Sync-failure incidents respect the org's master **Paging enabled** switch on the same settings page — turning it off silences incidents on every transport, Slack included. Budget alerts, anomalies, drift digests, pages and approval requests are independent of it, exactly as they are for mobile push.

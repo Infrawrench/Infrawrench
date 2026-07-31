@@ -3,6 +3,7 @@ import {
   text,
   boolean,
   integer,
+  doublePrecision,
   timestamp,
   index,
   uniqueIndex,
@@ -400,12 +401,19 @@ export const changeFreezes = pgTable(
 
 /**
  * Detected spend anomalies: a day whose spend for one (dimension, key) —
- * a provider or a service — cleared the trailing-window statistical threshold
- * (see `cost/anomaly-detect.ts`). The unique index makes each (org, day,
+ * a provider or a service — cleared the trailing-window statistical threshold,
+ * or where a key with no prior spend at all started costing money (see
+ * `cost/anomaly-detect.ts`). The unique index makes each (org, day,
  * dimension, key, currency) fire at most once no matter how many cost passes
  * re-run that day: evaluation inserts with `onConflictDoNothing` and only a
  * fresh insert can notify. `notifiedAt` stays null when delivery failed or the
  * anomaly was suppressed by the cross-day cooldown.
+ *
+ * `kind` is deliberately *not* part of the unique index. The two detections
+ * are mutually exclusive for a (day, key) — a key with a baseline worth a
+ * sigma bar is not a new source, and one without cannot clear a sigma bar —
+ * so adding it would only let the same day be reported twice under two names,
+ * which is exactly what the cooldown and the dedup index exist to prevent.
  */
 export const costAnomalies = pgTable(
   "cost_anomalies",
@@ -416,15 +424,23 @@ export const costAnomalies = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     /** The anomalous day, "YYYY-MM-DD" (UTC). */
     day: text("day").notNull(),
+    /**
+     * Which detection produced the row. Defaults to `spike` so rows written
+     * before new-source detection existed keep their original meaning.
+     */
+    kind: text("kind").$type<"spike" | "new_source">().notNull().default("spike"),
     /** Which breakdown flagged it. */
     dimension: text("dimension").$type<"provider" | "service">().notNull(),
     /** The dimension's value — a plugin id or a service name. */
     dimensionKey: text("dimension_key").notNull(),
     currency: text("currency").notNull(),
     actualAmountCents: integer("actual_amount_cents").notNull(),
-    /** Trailing-window mean, in cents. */
+    /** Trailing-window mean, in cents. ~0 for a `new_source`. */
     baselineAmountCents: integer("baseline_amount_cents").notNull(),
-    /** The bar the day cleared (mean + N·stddev), in cents. */
+    /**
+     * The bar the day cleared, in cents: mean + N·stddev for a `spike`, the
+     * new-source floor for a `new_source`.
+     */
     thresholdAmountCents: integer("threshold_amount_cents").notNull(),
     detectedAt: timestamp("detected_at").notNull().defaultNow(),
     notifiedAt: timestamp("notified_at"),
@@ -727,6 +743,13 @@ export const slackChannels = pgTable(
     budgetAlerts: boolean("budget_alerts").notNull().default(true),
     /** Statistical spend-spike alerts (see `cost/anomaly-eval.ts`). */
     anomalyAlerts: boolean("anomaly_alerts").notNull().default(true),
+    /**
+     * Batched resource-drift digests (see `drift/alerts.ts`). The one trigger
+     * that defaults **off**: drift is continuous and high-volume where the
+     * other alerts are exceptional, so shipping it default-on would start
+     * posting into every channel an org already connected.
+     */
+    resourceDrift: boolean("resource_drift").notNull().default(false),
     /** Alerts raised by a workflow calling `infra.page(...)`. */
     workflowPages: boolean("workflow_pages").notNull().default(true),
     /**
@@ -786,6 +809,8 @@ export const msteamsWebhooks = pgTable(
     budgetAlerts: boolean("budget_alerts").notNull().default(true),
     /** Statistical spend-spike alerts (see `cost/anomaly-eval.ts`). */
     anomalyAlerts: boolean("anomaly_alerts").notNull().default(true),
+    /** Batched resource-drift digests. Defaults off — see `slackChannels`. */
+    resourceDrift: boolean("resource_drift").notNull().default(false),
     /** Alerts raised by a workflow calling `infra.page(...)`. */
     workflowPages: boolean("workflow_pages").notNull().default(true),
     /**
@@ -808,23 +833,164 @@ export const msteamsWebhooks = pgTable(
 );
 
 /**
- * Per-org weekly-digest settings and last-sent bookkeeping. One row per org
- * that has ever touched the feature; no row means disabled.
+ * Per-org weekly-digest settings, schedule, and delivery bookkeeping. One row
+ * per org that has ever touched the feature; no row means disabled.
  *
- * `lastSentWeekStart` is the Monday (ISO `YYYY-MM-DD`, UTC) of the week the
- * last digest *covered*, not the day it was sent. The scheduler claims due
- * orgs with a single conditional UPDATE on this column, so any number of
- * poller replicas — or a restart mid-Monday — can never double-send: only the
- * instance whose UPDATE actually moved the column forward delivers.
+ * `lastSentWeekStart` is the Monday (ISO `YYYY-MM-DD`) of the week the last
+ * digest *covered*, not the day it was sent, and it is expressed in the org's
+ * own `timezone` — the window is the org's local Monday-to-Sunday calendar
+ * week. The scheduler claims due orgs with a single conditional UPDATE on this
+ * column, so any number of poller replicas — or a restart mid-morning — can
+ * never double-send: only the instance whose UPDATE actually moved the column
+ * forward delivers. The column only ever moves *forward*, which is what makes
+ * the invariant hold even when an org changes its timezone.
+ *
+ * The retry columns are deliberately separate state rather than a rollback of
+ * the claim: reverting `lastSentWeekStart` would let two replicas race back
+ * into the same slot. `nextAttemptAt` is its own claimable gate (the retry
+ * UPDATE nulls it in the same statement), `attemptCount` bounds the retries,
+ * and `lastStatus`/`lastError` give the settings UI something to show so a
+ * failing digest is never silent.
  */
 export const orgDigestSettings = pgTable("org_digest_settings", {
   organizationId: text("organization_id")
     .primaryKey()
     .references(() => organizations.id, { onDelete: "cascade" }),
   enabled: boolean("enabled").notNull().default(false),
-  /** Monday (ISO day, UTC) of the last week a digest was sent for. */
+  /** Monday (ISO day, in `timezone`) of the last week a digest was claimed for. */
   lastSentWeekStart: text("last_sent_week_start"),
+  /** When a digest last actually went out. Null while only failures have happened. */
   lastSentAt: timestamp("last_sent_at"),
+  /**
+   * IANA zone the schedule and the week boundary are expressed in, e.g.
+   * `Europe/Berlin`. `UTC` preserves the original behaviour for every org that
+   * predates the column. Validated server-side against `Intl`.
+   */
+  timezone: text("timezone").notNull().default("UTC"),
+  /** ISO day of week the digest fires on: 1 = Monday … 7 = Sunday. */
+  sendDay: integer("send_day").notNull().default(1),
+  /** Local hour (0–23) in `timezone` the digest fires at. */
+  sendHour: integer("send_hour").notNull().default(7),
+  /** Opt-in AI-written summary paragraph above the deterministic content. */
+  narrativeEnabled: boolean("narrative_enabled").notNull().default(false),
+  /** Attempts made for `lastSentWeekStart`'s window, including the first. */
+  attemptCount: integer("attempt_count").notNull().default(0),
+  /** When the last attempt (successful or not) ran. */
+  lastAttemptAt: timestamp("last_attempt_at"),
+  /** `pending` | `succeeded` | `partial` | `failed` | `no_targets`. */
+  lastStatus: text("last_status"),
+  /** Human-readable reason for the last non-success, for the settings UI. */
+  lastError: text("last_error"),
+  /**
+   * Retry gate. Set only after a *total* delivery failure and only while
+   * attempts remain; the retry claim clears it, so concurrent replicas cannot
+   * both pick the same retry up.
+   */
+  nextAttemptAt: timestamp("next_attempt_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * Email addresses an org routes its weekly digest to — the third digest
+ * transport alongside Slack channels and Teams webhooks.
+ *
+ * Recipients are an **org-level address list**, not a per-member opt-in, for
+ * the same reason `slack_channels` and `msteams_webhooks` are: the digest is a
+ * `ChannelTrigger`, a scheduled summary sent to a destination an admin picked,
+ * not a per-user alert. An address list also reaches a finance alias or an
+ * exec who has no Infrawrench login, which a member opt-in never could.
+ * `push_preferences` stays the precedent for the four *alert* triggers only.
+ */
+export const digestEmailRecipients = pgTable(
+  "digest_email_recipients",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Stored lowercased so the unique index also dedupes case variants. */
+    email: text("email").notNull(),
+    createdByUserId: text("created_by_user_id"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("digest_email_recipients_org_idx").on(t.organizationId),
+    orgEmailUnique: uniqueIndex("digest_email_recipients_org_email_unique").on(
+      t.organizationId,
+      t.email,
+    ),
+  }),
+);
+
+/**
+ * Per-org tuning for cost anomaly detection. One row per org that has ever
+ * changed a knob; no row means the shipped defaults, the same way
+ * `org_digest_settings` treats a missing row as disabled.
+ *
+ * Money is stored in USD cents and converted per series by
+ * `cost/anomaly-detect.ts`, so one number means the same real amount against a
+ * provider that bills in dollars and one that bills in yen. The values are
+ * bounded by the API (`COST_ANOMALY_LIMITS`) — a sigma of 0 would alert on
+ * every fluctuation and a negative floor is meaningless — so nothing here can
+ * store a setting that turns detection into a pager storm.
+ */
+export const orgCostAnomalySettings = pgTable("org_cost_anomaly_settings", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  /** Standard deviations above the trailing mean that count as a spike. */
+  sigmas: doublePrecision("sigmas").notNull().default(3),
+  /** Minimum rise over the baseline before a spike alerts, in USD cents. */
+  minDeltaCents: integer("min_delta_cents").notNull().default(1000),
+  /** Minimum first-day spend before a new spend source alerts, in USD cents. */
+  newSourceMinCents: integer("new_source_min_cents").notNull().default(2500),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * Per-org filtering and throttling for resource-drift alerts, plus the claim
+ * column that makes the throttle exactly-once across poller replicas. One row
+ * per org that has either tuned the settings or been alerted; no row means the
+ * shipped defaults.
+ *
+ * Drift is the highest-volume signal in the product — a single sync pass can
+ * record hundreds of `resource_changes` rows — so this table exists to make the
+ * *notification* rate independent of the change rate:
+ *
+ * - `lastNotifiedAt` is a claim, not bookkeeping. `drift/alerts.ts` advances it
+ *   with one conditional UPDATE (`last_notified_at IS NULL OR <= now -
+ *   cooldown`), exactly like `org_digest_settings.last_sent_week_start` and the
+ *   `workflow_pages` cooldown row: whoever wins the statement sends, everyone
+ *   else is suppressed, so N poller replicas still produce one message. It is
+ *   rolled back when every transport reached nobody, so a message no one got
+ *   does not start a quiet period.
+ * - `notifyUpdated` defaults **off** while created/deleted default on. A
+ *   resource appearing or disappearing is news; a field moving is usually the
+ *   provider restating a timestamp, and it is the bulk of the volume.
+ * - `accountIds` (empty = every account) scopes alerting to the accounts worth
+ *   waking up for, and `minChanges` suppresses windows too small to be worth a
+ *   message.
+ */
+export const orgDriftAlertSettings = pgTable("org_drift_alert_settings", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  /** Alert on resources that appeared since the last window. */
+  notifyCreated: boolean("notify_created").notNull().default(true),
+  /** Alert on field-level updates. Off by default — this is the noisy kind. */
+  notifyUpdated: boolean("notify_updated").notNull().default(false),
+  /** Alert on resources that disappeared since the last window. */
+  notifyDeleted: boolean("notify_deleted").notNull().default(true),
+  /** Least time between drift notifications for this org. */
+  cooldownMinutes: integer("cooldown_minutes").notNull().default(60),
+  /** Fewest matching changes in a window worth notifying about. */
+  minChanges: integer("min_changes").notNull().default(1),
+  /** Account ids to alert on; an empty array means every account. */
+  accountIds: jsonb("account_ids").$type<string[]>().notNull().default([]),
+  /** The cooldown claim — when this org last had a drift digest delivered. */
+  lastNotifiedAt: timestamp("last_notified_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -940,6 +1106,8 @@ export const pushPreferences = pgTable(
     budgetAlerts: boolean("budget_alerts").notNull().default(true),
     /** Statistical spend-spike alerts (see `cost/anomaly-eval.ts`). */
     anomalyAlerts: boolean("anomaly_alerts").notNull().default(true),
+    /** Batched resource-drift digests. Defaults off — see `slackChannels`. */
+    resourceDrift: boolean("resource_drift").notNull().default(false),
     /** Alerts raised by a workflow calling `infra.page(...)`. */
     workflowPages: boolean("workflow_pages").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),

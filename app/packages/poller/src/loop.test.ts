@@ -24,6 +24,18 @@ vi.mock("@infrawrench/server-core/db/schema", () => ({
   slackChannels: { id: "id" },
   slackInstallations: { id: "id" },
   msteamsWebhooks: { id: "id" },
+  // The digest's claim columns are read at module scope (`DUE_COLUMNS` in
+  // `digest/weekly.ts`), so they have to exist on the mock even though this
+  // suite only asserts that the digest pass is called.
+  orgDigestSettings: {
+    organizationId: "organizationId",
+    timezone: "timezone",
+    sendDay: "sendDay",
+    sendHour: "sendHour",
+    narrativeEnabled: "narrativeEnabled",
+    attemptCount: "attemptCount",
+    lastSentWeekStart: "lastSentWeekStart",
+  },
 }));
 
 vi.mock("drizzle-orm", () => ({

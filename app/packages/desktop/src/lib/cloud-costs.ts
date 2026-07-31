@@ -8,6 +8,7 @@ import type {
   BudgetWithStatus,
   CostAccountStatus,
   CostAnomaly,
+  CostAnomalySettings,
   CostDimensionOption,
   CostQueryRequest,
   CostQueryResponse,
@@ -42,6 +43,17 @@ export async function loadCloudCostStatus(orgId: string): Promise<CostAccountSta
 export async function listCloudCostAnomalies(orgId: string, days = 30): Promise<CostAnomaly[]> {
   const res = await invoke<{ anomalies: CostAnomaly[] }>("cloud_costs_anomalies", { orgId, days });
   return res?.anomalies ?? [];
+}
+
+export async function loadCloudAnomalySettings(orgId: string): Promise<CostAnomalySettings> {
+  return invoke("cloud_costs_anomaly_settings", { orgId });
+}
+
+export async function saveCloudAnomalySettings(
+  orgId: string,
+  settings: CostAnomalySettings,
+): Promise<CostAnomalySettings> {
+  return invoke("cloud_costs_update_anomaly_settings", { orgId, settings });
 }
 
 export async function listCloudBudgets(orgId: string): Promise<BudgetWithStatus[]> {

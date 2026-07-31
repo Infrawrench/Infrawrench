@@ -37,6 +37,20 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle("cloud_costs_anomaly_settings", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetch(orgId, "/costs/anomaly-settings");
+});
+
+ipcMain.handle(
+  "cloud_costs_update_anomaly_settings",
+  async (_e, { orgId, settings }: { orgId: string; settings: unknown }) => {
+    return cloudFetch(orgId, "/costs/anomaly-settings", {
+      method: "PUT",
+      body: JSON.stringify(settings),
+    });
+  },
+);
+
 ipcMain.handle("cloud_list_budgets", async (_e, { orgId }: { orgId: string }) => {
   return (await cloudFetch(orgId, "/budgets")) ?? [];
 });

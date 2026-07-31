@@ -18,9 +18,14 @@ const PushPreferences = strict({
   anomalyAlerts: z
     .boolean()
     .openapi({ description: "Statistical spend-spike (cost anomaly) alerts" }),
-  workflowPages: z
-    .boolean()
-    .openapi({ description: "Alerts raised by a workflow calling infra.page(...)" }),
+  resourceDrift: z.boolean().openapi({
+    description:
+      "Batched resource-drift digests from the change timeline. Defaults to false — drift is continuous where the other triggers are exceptional.",
+  }),
+  workflowPages: z.boolean().openapi({
+    description:
+      "Pages and approval requests raised by a workflow (infra.page / infra.waitForApproval) or by POST /pages",
+  }),
 }).openapi("PushPreferences");
 
 // Registered under its own name — `.partial()` on a registered schema would
@@ -30,6 +35,7 @@ const PushPreferencesUpdate = strict({
   syncIncidents: z.boolean().optional(),
   budgetAlerts: z.boolean().optional(),
   anomalyAlerts: z.boolean().optional(),
+  resourceDrift: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
 }).openapi("PushPreferencesUpdate");
 
@@ -40,6 +46,7 @@ const PushRecipient = strict({
   syncIncidents: z.boolean(),
   budgetAlerts: z.boolean(),
   anomalyAlerts: z.boolean(),
+  resourceDrift: z.boolean(),
   workflowPages: z.boolean(),
   devices: z.array(
     strict({
@@ -117,7 +124,8 @@ export function registerPushPaths(ctx: BuildContext) {
     path: "/api/org/{orgId}/push/preferences",
     tags: ["Push"],
     summary: "Get the caller's push preferences for this organization",
-    description: "Absent preferences default to all triggers enabled.",
+    description:
+      "Absent preferences default to every trigger enabled except resourceDrift, which defaults to false.",
     request: { params: OrgIdParam },
     responses: {
       200: {

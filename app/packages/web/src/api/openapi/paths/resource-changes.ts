@@ -45,6 +45,39 @@ const ResourceChangeListResponse = strict({
   entries: z.array(ResourceChangeEntry),
 }).openapi("ResourceChangeListResponse");
 
+const DriftAlertSettings = strict({
+  notifyCreated: z.boolean().openapi({ description: "Alert on resources that appeared." }),
+  notifyUpdated: z.boolean().openapi({
+    description:
+      "Alert on field-level updates. Defaults to false — updates are the bulk of the volume and are usually a provider restating a value.",
+  }),
+  notifyDeleted: z.boolean().openapi({ description: "Alert on resources that disappeared." }),
+  cooldownMinutes: z.number().int().min(5).max(1440).openapi({
+    description:
+      "Least time between drift notifications for this organization. One notification per window, no matter how many changes or accounts it covers.",
+  }),
+  minChanges: z.number().int().min(1).max(1000).openapi({
+    description: "Fewest matching changes in a window worth notifying about.",
+  }),
+  accountIds: z.array(Uuid).openapi({
+    description: "Accounts to alert on. An empty array means every account.",
+  }),
+  lastNotifiedAt: IsoDateTime.nullable().openapi({
+    description: "When this organization last had a drift digest delivered.",
+  }),
+}).openapi("DriftAlertSettings");
+
+// Registered under its own name — `.partial()` on a registered schema would
+// otherwise collapse back into the full $ref in the generated document.
+const DriftAlertSettingsUpdate = strict({
+  notifyCreated: z.boolean().optional(),
+  notifyUpdated: z.boolean().optional(),
+  notifyDeleted: z.boolean().optional(),
+  cooldownMinutes: z.number().int().min(5).max(1440).optional(),
+  minChanges: z.number().int().min(1).max(1000).optional(),
+  accountIds: z.array(Uuid).max(200).optional(),
+}).openapi("DriftAlertSettingsUpdate");
+
 export function registerResourceChangePaths(ctx: BuildContext) {
   ctx.registry.registerPath({
     method: "get",
@@ -86,6 +119,47 @@ export function registerResourceChangePaths(ctx: BuildContext) {
       200: {
         description: "Change events, newest first",
         content: { "application/json": { schema: ResourceChangeFeedResponse } },
+      },
+      400: ErrorResponses[400],
+    },
+  });
+
+  ctx.registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/changes/alert-settings",
+    tags: ["Changes"],
+    summary: "Get the organization's resource-drift alert filter",
+    description:
+      "Drift notifications are batched: at most one message per organization per `cooldownMinutes`, " +
+      "covering every change since the previous one. These settings decide which changes count and " +
+      "how often a message may go out. Who receives it is the `resourceDrift` opt-in on push " +
+      "preferences, Slack channels and Teams webhooks — off by default on all three.",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "Drift alert settings (defaults when the organization never saved any)",
+        content: { "application/json": { schema: DriftAlertSettings } },
+      },
+    },
+  });
+
+  ctx.registry.registerPath({
+    method: "put",
+    path: "/api/org/{orgId}/changes/alert-settings",
+    tags: ["Changes"],
+    summary: "Update the organization's resource-drift alert filter",
+    description:
+      "Every field is optional so a single toggle can be saved on its own. `cooldownMinutes` is " +
+      "floored at 5: below the poller's own cycle the notification rate would follow the sync rate " +
+      "again, which is what the batching exists to prevent.",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: DriftAlertSettingsUpdate } } },
+    },
+    responses: {
+      200: {
+        description: "Updated settings",
+        content: { "application/json": { schema: DriftAlertSettings } },
       },
       400: ErrorResponses[400],
     },
