@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.18.0",
+    "version": "0.19.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -949,6 +949,69 @@
           "outputsJson",
           "parentResourceId"
         ],
+        "additionalProperties": false
+      },
+      "TerraformExport": {
+        "type": "object",
+        "properties": {
+          "hcl": {
+            "type": "string"
+          },
+          "exported": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/components/schemas/ResourceId"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "pluginId": {
+                  "type": "string"
+                },
+                "resourceTypeId": {
+                  "type": "string"
+                },
+                "address": {
+                  "type": "string"
+                },
+                "importId": {
+                  "type": "string"
+                }
+              },
+              "required": ["id", "displayName", "pluginId", "resourceTypeId", "address"],
+              "additionalProperties": false
+            }
+          },
+          "unsupported": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/components/schemas/ResourceId"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "pluginId": {
+                  "type": "string"
+                },
+                "resourceTypeId": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": ["id", "displayName", "pluginId", "resourceTypeId", "reason"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["hcl", "exported", "unsupported"],
         "additionalProperties": false
       },
       "SyncResponse": {
@@ -3879,6 +3942,9 @@
               "$ref": "#/components/schemas/CredentialFormat"
             }
           },
+          "supportsTerraformExport": {
+            "type": "boolean"
+          },
           "hasManifestEditor": {
             "type": "boolean"
           },
@@ -3961,6 +4027,7 @@
           "canEdit",
           "editableFields",
           "credentialFormats",
+          "supportsTerraformExport",
           "hasManifestEditor",
           "hasSecretVersions",
           "resourceDisplayName",
@@ -4397,6 +4464,21 @@
           }
         },
         "required": ["resourceId", "accountId", "formatId"],
+        "additionalProperties": false
+      },
+      "ExportTerraformRequest": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "required": ["resourceId", "accountId"],
         "additionalProperties": false
       },
       "CreateResourceResponse": {
@@ -8969,6 +9051,60 @@
         "description": "_Requires permission: `resources:read`._"
       }
     },
+    "/api/org/{orgId}/accounts/{id}/export-terraform": {
+      "get": {
+        "tags": ["Accounts"],
+        "summary": "Generate Terraform HCL for the account's stored inventory",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Generated Terraform configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TerraformExport"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAccountsIdExportTerraform",
+        "x-required-permission": "resources:read",
+        "description": "_Requires permission: `resources:read`._"
+      }
+    },
     "/api/org/{orgId}/accounts/{id}/sync": {
       "post": {
         "tags": ["Accounts"],
@@ -13304,6 +13440,86 @@
         "operationId": "postOrgOrgIdResourcesPluginIdTypeIdExportCredential",
         "x-required-permission": "secrets:read",
         "description": "_Requires permission: `secrets:read`._"
+      }
+    },
+    "/api/org/{orgId}/resources/{pluginId}/{typeId}/export-terraform": {
+      "post": {
+        "tags": ["Resources"],
+        "summary": "Generate Terraform HCL for a resource (and its direct children) from stored state",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/PluginId"
+            },
+            "required": true,
+            "name": "pluginId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ResourceTypeId"
+            },
+            "required": true,
+            "name": "typeId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportTerraformRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Generated Terraform configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TerraformExport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdResourcesPluginIdTypeIdExportTerraform",
+        "x-required-permission": "resources:read",
+        "description": "_Requires permission: `resources:read`._"
       }
     },
     "/api/org/{orgId}/resources/create": {

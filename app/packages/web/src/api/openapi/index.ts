@@ -231,6 +231,7 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /accounts/{id}/credentials": "secrets:write",
   "GET /accounts/{id}/resources": "resources:read",
   "POST /accounts/{id}/sync": "resources:read",
+  "GET /accounts/{id}/export-terraform": "resources:read",
   "GET /accounts/{id}/detail": "accounts:read",
   "POST /accounts/{id}/sync-type/{typeId}": "resources:read",
   // deployments
@@ -293,6 +294,7 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /resources/nosql-command": "resources:execute",
   "POST /resources/attach": "resources:write",
   "POST /resources/{pluginId}/{typeId}/export-credential": "secrets:read",
+  "POST /resources/{pluginId}/{typeId}/export-terraform": "resources:read",
   "POST /resources/create": "resources:write",
   "POST /resources/create-config": "resources:write",
   "POST /resources/picker-resources": "resources:read",

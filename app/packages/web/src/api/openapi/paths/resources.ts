@@ -84,6 +84,7 @@ const ResourceDetailResponse = strict({
   canEdit: z.boolean(),
   editableFields: z.array(EditableField),
   credentialFormats: z.array(CredentialFormat),
+  supportsTerraformExport: z.boolean(),
   hasManifestEditor: z.boolean(),
   hasSecretVersions: z.boolean(),
   resourceDisplayName: z.string(),
@@ -238,6 +239,38 @@ const CredentialExport = strict({
     .optional(),
   warning: z.string().optional(),
 }).openapi("CredentialExport");
+
+const ExportTerraformRequest = strict({
+  resourceId: ResourceId,
+  accountId: Uuid,
+}).openapi("ExportTerraformRequest");
+
+export const TerraformExport = strict({
+  /** The generated HCL document — empty string when nothing could be mapped. */
+  hcl: z.string(),
+  exported: z.array(
+    strict({
+      id: ResourceId,
+      displayName: z.string(),
+      pluginId: z.string(),
+      resourceTypeId: z.string(),
+      /** Terraform address, e.g. `hcloud_server.web_1`. */
+      address: z.string(),
+      /** `terraform import` ID when known. */
+      importId: z.string().optional(),
+    }),
+  ),
+  /** Resources that have no Terraform mapping yet, with the reason. */
+  unsupported: z.array(
+    strict({
+      id: ResourceId,
+      displayName: z.string(),
+      pluginId: z.string(),
+      resourceTypeId: z.string(),
+      reason: z.string(),
+    }),
+  ),
+}).openapi("TerraformExport");
 
 const CreateRequest = strict({
   accountId: Uuid,
@@ -678,6 +711,28 @@ export function registerResourcePaths(ctx: BuildContext) {
       200: {
         description: "Credential file",
         content: { "application/json": { schema: CredentialExport } },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/resources/{pluginId}/{typeId}/export-terraform",
+    tags: ["Resources"],
+    summary: "Generate Terraform HCL for a resource (and its direct children) from stored state",
+    request: {
+      params: pluginTypeParams,
+      body: {
+        content: { "application/json": { schema: ExportTerraformRequest } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "Generated Terraform configuration",
+        content: { "application/json": { schema: TerraformExport } },
       },
       400: ErrorResponses[400],
       404: ErrorResponses[404],

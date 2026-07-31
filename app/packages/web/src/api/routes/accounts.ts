@@ -7,6 +7,7 @@ import { refreshAllowlistById } from "@infrawrench/server-core/bastion/registry"
 import { encrypt, decrypt, buildAad } from "../../services/encryption";
 import { loadPlugins, getPlugin } from "../../plugins/loader";
 import { syncAccountResources, syncAccountResourceType } from "../../services/sync-resources";
+import { exportStoredResourcesToTerraform } from "../../services/terraform-export";
 import { requirePermission } from "../../auth/permissions";
 import { planAccess, FREE_PLAN_LIMITS } from "../../services/entitlements";
 import { logAudit } from "../../services/audit";
@@ -352,6 +353,54 @@ app.get("/:id/resources", async (c) => {
     .from(resources)
     .where(and(...conditions));
   return c.json(rows);
+});
+
+/** GET /api/accounts/:id/export-terraform — generate Terraform HCL for the
+ * account's stored inventory. Resources without a mapping are listed as
+ * unsupported rather than dropped silently. */
+app.get("/:id/export-terraform", async (c) => {
+  requirePermission(c, "resources:read");
+  const organizationId = c.get("organizationId");
+  const accountId = c.req.param("id");
+  const [account] = await db
+    .select({ id: accounts.id, pluginId: accounts.pluginId })
+    .from(accounts)
+    .where(
+      and(
+        eq(accounts.id, accountId),
+        eq(accounts.organizationId, organizationId),
+        isNull(accounts.deletedAt),
+      ),
+    )
+    .limit(1);
+  if (!account) return c.json({ error: "Account not found" }, 404);
+  const rows = await db
+    .select({
+      id: resources.id,
+      pluginId: resources.pluginId,
+      resourceTypeId: resources.resourceTypeId,
+      accountId: resources.accountId,
+      displayName: resources.displayName,
+      externalId: resources.externalId,
+      fieldsJson: resources.fieldsJson,
+      outputsJson: resources.outputsJson,
+      parentResourceId: resources.parentResourceId,
+    })
+    .from(resources)
+    .where(
+      and(
+        eq(resources.accountId, accountId),
+        eq(resources.organizationId, organizationId),
+        isNull(resources.deletedAt),
+      ),
+    );
+  // Stable ordering: top-level resources before children, then by id.
+  const ordered = [...rows].sort(
+    (a, b) =>
+      (a.parentResourceId ? 1 : 0) - (b.parentResourceId ? 1 : 0) || a.id.localeCompare(b.id),
+  );
+  const outcome = await exportStoredResourcesToTerraform(ordered);
+  return c.json(outcome);
 });
 
 /** POST /api/accounts/:id/sync — sync resources from plugin API */

@@ -1,7 +1,9 @@
 import type { Hono } from "hono";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull, or } from "drizzle-orm";
 import { db } from "../../../db/client";
 import { resources } from "../../../db/schema";
+import { getPlugin } from "../../../plugins/loader";
+import { exportStoredResourcesToTerraform } from "../../../services/terraform-export";
 import {
   getClientForAccount,
   getClientForResource,
@@ -393,6 +395,54 @@ export function registerActionRoutes(app: Hono): void {
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : "Credential export failed" }, 400);
     }
+  });
+
+  /** POST /api/resources/:pluginId/:typeId/export-terraform — generate HCL
+   * for one stored resource (plus its direct children, e.g. a zone's DNS
+   * records). Mapping runs from persisted state — no provider API calls. */
+  app.post("/:pluginId/:typeId/export-terraform", async (c) => {
+    requirePermission(c, "resources:read");
+    const organizationId = c.get("organizationId");
+    const pluginId = c.req.param("pluginId");
+    const input = await c.req.json<{ resourceId: string; accountId: string }>();
+    if (!input.resourceId || !input.accountId) {
+      return c.json({ error: "Missing resourceId or accountId" }, 400);
+    }
+    const loaded = await getPlugin(pluginId);
+    if (!loaded) return c.json({ error: "Plugin not found" }, 404);
+    if (!loaded.plugin.terraformExport) {
+      return c.json({ error: "Plugin does not support Terraform export" }, 400);
+    }
+    const rows = await db
+      .select({
+        id: resources.id,
+        pluginId: resources.pluginId,
+        resourceTypeId: resources.resourceTypeId,
+        accountId: resources.accountId,
+        displayName: resources.displayName,
+        externalId: resources.externalId,
+        fieldsJson: resources.fieldsJson,
+        outputsJson: resources.outputsJson,
+        parentResourceId: resources.parentResourceId,
+      })
+      .from(resources)
+      .where(
+        and(
+          eq(resources.organizationId, organizationId),
+          eq(resources.accountId, input.accountId),
+          isNull(resources.deletedAt),
+          or(eq(resources.id, input.resourceId), eq(resources.parentResourceId, input.resourceId)),
+        ),
+      );
+    if (!rows.some((r) => r.id === input.resourceId)) {
+      return c.json({ error: "Resource not found" }, 404);
+    }
+    // The requested resource's block leads the file; children follow.
+    const ordered = [...rows].sort((a, b) =>
+      a.id === input.resourceId ? -1 : b.id === input.resourceId ? 1 : a.id.localeCompare(b.id),
+    );
+    const outcome = await exportStoredResourcesToTerraform(ordered);
+    return c.json(outcome);
   });
 
   /** POST /api/resources/:pluginId/:typeId/peer-panes */

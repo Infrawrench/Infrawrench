@@ -10,6 +10,7 @@ import {
   ResourceId,
 } from "../common";
 import type { BuildContext } from "../context";
+import { TerraformExport } from "./resources";
 
 const CredentialFieldRegion = strict({
   id: z.string(),
@@ -294,6 +295,23 @@ export function registerAccountPaths(ctx: BuildContext) {
         description: "Resources",
         content: { "application/json": { schema: z.array(Resource) } },
       },
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/accounts/{id}/export-terraform",
+    tags: ["Accounts"],
+    summary: "Generate Terraform HCL for the account's stored inventory",
+    request: {
+      params: OrgIdParam.extend({ id: Uuid.openapi({ param: { name: "id", in: "path" } }) }),
+    },
+    responses: {
+      200: {
+        description: "Generated Terraform configuration",
+        content: { "application/json": { schema: TerraformExport } },
+      },
+      404: ErrorResponses[404],
     },
   });
 
