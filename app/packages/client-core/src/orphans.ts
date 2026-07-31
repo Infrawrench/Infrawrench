@@ -4,56 +4,49 @@
  * Potential savings section of Costs, and the `infrawrench orphans` CLI
  * subcommand.
  *
- * Classification itself lives in plugin-base (`orphanRule` on resource types,
- * evaluated by `evaluateOrphanRule`); these types only describe how the host
- * aggregates the matches per organization.
+ * Both the classification and the aggregation live in plugin-base
+ * (`orphanRule` on resource types, `evaluateOrphanRule`, `collectOrphanGroups`)
+ * because the hosts that *run* the scan — the web server over the org's synced
+ * rows, desktop and the CLI over the local SQLite workspace — all load plugins
+ * anyway. The types are re-exported from here, type-only, so clients that only
+ * ever read the JSON (the web app, mobile) keep one import site and never pull
+ * plugin-base into their bundle.
  */
+import type { OrphanListResponse } from "@infrawrench/plugin-base";
 
-/** Best-effort spend attributed to one flagged resource. */
-export interface OrphanCostAnnotation {
-  /** Spend over the trailing cost window, in `currency`. */
-  amount: number;
-  /** ISO 4217 code, e.g. "USD". */
-  currency: string;
-}
+import type { CloudFetch } from "./fetch";
 
-export interface OrphanedResource {
-  /** Infrawrench resource id. */
-  id: string;
-  pluginId: string;
-  resourceTypeId: string;
-  /** Display name of the resource type, e.g. "EBS Volume". */
-  resourceTypeName: string;
-  displayName: string;
-  /** Provider-native id, when known. */
-  externalId: string | null;
-  /** Plugin-authored explanation, e.g. "Volume is not attached to any Droplet". */
-  reason: string;
-  /**
-   * Trailing spend matched against the org's collected cost rows, or null
-   * when no per-resource cost rows exist for it (most providers). The flag
-   * itself never depends on cost data.
-   */
-  cost: OrphanCostAnnotation | null;
-  /** Last time this resource's state was synced from the provider, if ever. */
-  lastSyncedAt: string | null;
-}
+export type {
+  OrphanCostAnnotation,
+  OrphanCostBasis,
+  OrphanedResource,
+  OrphanAccountGroup,
+  OrphanListResponse,
+} from "@infrawrench/plugin-base";
 
-export interface OrphanAccountGroup {
-  accountId: string;
-  accountName: string;
-  pluginId: string;
-  /** Plugin display name, e.g. "DigitalOcean". */
-  pluginName: string;
-  resources: OrphanedResource[];
-}
-
-export interface OrphanListResponse {
-  /** Groups sorted by account name; empty when nothing is flagged. */
-  accounts: OrphanAccountGroup[];
-  /** Total flagged resources across all groups. */
-  totalCount: number;
-  /** Days of trailing spend the cost annotations cover. */
-  costWindowDays: number;
-  generatedAt: string;
+/**
+ * Scan an organization's synced resources for likely waste
+ * (`GET /api/org/:orgId/orphans`, permission `resources:read`).
+ *
+ * Cheap and side-effect free: the server classifies rows it already has, makes
+ * no provider API calls, and annotates cost best-effort — a caller without
+ * `costs:read`, or an org with no per-resource billing rows, gets the same
+ * flags with `cost: null` rather than an error.
+ *
+ * Note the import above is `import type`: this module must stay free of a
+ * *runtime* dependency on plugin-base, which would pull zod and the provider
+ * SDKs' crypto helpers into the mobile bundle for the sake of five interfaces.
+ */
+export async function fetchOrphans(api: CloudFetch, orgId: string): Promise<OrphanListResponse> {
+  const res = await api.org<OrphanListResponse>(orgId, "/orphans");
+  // The route always answers 200 with a body; `org` maps a 204 to null, and an
+  // empty scan is exactly what that would mean.
+  return (
+    res ?? {
+      accounts: [],
+      totalCount: 0,
+      costWindowDays: 0,
+      generatedAt: new Date().toISOString(),
+    }
+  );
 }

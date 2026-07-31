@@ -52,7 +52,7 @@ Every threshold fires at most once per calendar month. Alerts show up as a badge
 
 <insert [Budget card showing a progress bar at 72% with threshold ticks, a forecast marker, and an alert badge] here>
 
-Budgets alert on totals you chose. For spikes you didn't see coming — a provider or service suddenly spending far above its own baseline — see [cost anomaly alerts](./cost-anomaly-alerts.md), which need no configuration at all.
+Budgets alert on totals you chose. For spend you didn't see coming — a provider or service suddenly billing far above its own baseline, or one that had never billed at all — see [cost anomaly alerts](./cost-anomaly-alerts.md), which work with no configuration and can be [tuned](./cost-anomaly-alerts.md#tuning-detection) if the defaults are too loud or too quiet. Anomalies can text the same on-call recipients as a budget crossing, but unlike budgets they [do not until you ask them to](./cost-anomaly-alerts.md#paging-by-sms).
 
 ## The Costs panel
 
@@ -90,7 +90,7 @@ The same budget can appear on as many dashboards as you like — one budget, man
 
 ### Potential savings
 
-Below the budgets, **Potential savings** lists resources that look orphaned or idle — volumes attached to nothing, IPs assigned to nothing — with the trailing 30-day spend where the provider reports cost per resource. It reads the state your accounts last synced, so it costs no provider API calls. See [Orphan & idle resource finder](./orphan-finder.md) for what each provider flags.
+Below the budgets, **Potential savings** lists resources that look orphaned or idle — volumes attached to nothing, IPs assigned to nothing — with the trailing 30-day spend where the provider reports cost per resource. It reads the state your accounts last synced, so it costs no provider API calls. The section also appears in local-only desktop mode, scanning this machine's workspace without a cost column. See [Orphan & idle resource finder](./orphan-finder.md) for what each provider flags.
 
 ## On your phone
 

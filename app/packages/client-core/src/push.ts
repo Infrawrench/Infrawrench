@@ -39,11 +39,20 @@ export type PushNotificationData =
       thresholdPercent: number;
     }
   | {
-      /** A statistical spend spike detected against the trailing baseline. */
+      /**
+       * A spend anomaly: either a statistical spike against the trailing
+       * baseline or a provider/service that started spending from nothing.
+       */
       type: "cost_anomaly";
       orgId: string;
       /** The anomalous day, YYYY-MM-DD (UTC). */
       day: string;
+      /**
+       * Which detection fired. Optional: notifications sent before new-source
+       * detection existed carry no `kind`, and a reader should treat its
+       * absence as `"spike"`.
+       */
+      kind?: "spike" | "new_source";
       dimension: "provider" | "service";
       dimensionKey: string;
     }
@@ -53,6 +62,30 @@ export type PushNotificationData =
       workflowId: string;
       /** The run that raised the page, so the app can open its logs. */
       runId?: string;
+    }
+  | {
+      /**
+       * A batched digest of the change timeline: every resource that appeared,
+       * changed or disappeared since the previous drift notification. Never one
+       * notification per change — the server batches a whole window into this
+       * single payload (see server-core `drift/alerts.ts`).
+       *
+       * Target route: the mobile **Changes** screen,
+       * `/org/{orgId}/changes` — scoped to `accountId` when present and, ideally,
+       * filtered to `createdAt > since` so the screen opens on exactly the
+       * window the notification described.
+       */
+      type: "resource_drift";
+      orgId: string;
+      /**
+       * Changes in the window. Capped at the server's read ceiling (500), so a
+       * larger window reports the ceiling rather than the true total.
+       */
+      changeCount: number;
+      /** ISO timestamp of the window start — the `from` filter for the feed. */
+      since: string;
+      /** Present only when every change in the window came from one account. */
+      accountId?: string;
     }
   | {
       /** A run is suspended on `infra.waitForApproval(...)` and needs a decision. */
@@ -98,8 +131,14 @@ export interface PushPreferences {
   /** Statistical spend-spike (cost anomaly) alerts. */
   anomalyAlerts: boolean;
   /**
-   * Alerts raised by your own code — a workflow calling `infra.page(...)` or a
-   * server calling `POST /api/org/{orgId}/pages`.
+   * Batched resource-drift digests from the change timeline. Defaults **off**:
+   * drift is continuous where the other alerts are exceptional.
+   */
+  resourceDrift: boolean;
+  /**
+   * Alerts raised by your own code — a workflow calling `infra.page(...)`, a
+   * run suspended on `infra.waitForApproval(...)`, or a server calling
+   * `POST /api/org/{orgId}/pages`.
    */
   workflowPages: boolean;
 }
@@ -110,6 +149,7 @@ export async function getPushPreferences(api: CloudFetch, orgId: string): Promis
       syncIncidents: true,
       budgetAlerts: true,
       anomalyAlerts: true,
+      resourceDrift: false,
       workflowPages: true,
     }
   );

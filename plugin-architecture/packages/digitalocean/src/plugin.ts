@@ -11,6 +11,7 @@ import { DomainResourceType } from "./resources/domain.js";
 import { DnsRecordResourceType } from "./resources/dns-record.js";
 import { VolumeResourceType } from "./resources/volume.js";
 import { VpcResourceType } from "./resources/vpc.js";
+import { ReservedIpResourceType } from "./resources/reserved-ip.js";
 import { SnapshotResourceType } from "./resources/snapshot.js";
 import { ImageResourceType } from "./resources/image.js";
 import { NfsShareResourceType } from "./resources/nfs-share.js";
@@ -80,6 +81,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   DnsRecordResourceType,
   VolumeResourceType,
   VpcResourceType,
+  ReservedIpResourceType,
   SnapshotResourceType,
   ImageResourceType,
   NfsShareResourceType,

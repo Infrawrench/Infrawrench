@@ -32,6 +32,18 @@ export default function AccountsScreen() {
 
   return (
     <Screen onRefresh={() => void accounts.refetch()} refreshing={accounts.isRefetching}>
+      {/*
+        The change timeline is org-wide but it is about resources, so it hangs
+        off this tab rather than earning a seventh one — the tab bar is already
+        at the width where labels ellipsize.
+      */}
+      <Card list>
+        <Row
+          title="Changes"
+          subtitle="What appeared, changed or disappeared"
+          onPress={() => router.push(`/org/${orgId}/changes`)}
+        />
+      </Card>
       <Card list>
         {list.map((a) => (
           <Row

@@ -66,6 +66,22 @@ function volumeStatusDot(attached: boolean): StatusDotNode {
 }
 
 /**
+ * Reserved IPs have no status field either (schema `reserved_ip`: ip, region,
+ * droplet, locked, project_id). `locked` means DO has an action still running;
+ * an unassigned address is operational but costs money, so it gets the
+ * "degraded" dot to make it visible in a long sidebar list — which is the same
+ * thing the orphan finder flags on the Costs page.
+ */
+function reservedIpStatusDot(fields: Record<string, string | number | boolean>): StatusDotNode {
+  if (fields["locked"] === true || String(fields["locked"] ?? "") === "true") {
+    return { kind: "status-dot", status: "provisioning", label: "Pending action" };
+  }
+  return String(fields["dropletId"] ?? "")
+    ? { kind: "status-dot", status: "healthy", label: "Assigned" }
+    : { kind: "status-dot", status: "degraded", label: "Unassigned" };
+}
+
+/**
  * Map a DO managed-database `status` value to a host status-dot.
  * Source enum: creating / online / resizing / migrating / forking
  * (per database_cluster_read.yml in digitalocean/openapi).
@@ -148,6 +164,8 @@ export function doStatusDot(resource: ResourceInstance): StatusDotNode {
       return nfsShareStatusDot(String(fields["status"] ?? ""));
     case "volume":
       return volumeStatusDot(!!String(fields["dropletIds"] ?? ""));
+    case "reserved-ip":
+      return reservedIpStatusDot(fields);
     case "domain":
       return { kind: "status-dot", status: "healthy", label: "Active" };
     case "gen-ai-agent": {

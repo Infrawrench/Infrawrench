@@ -16,7 +16,12 @@ app_env = {
   # Core
   DATABASE_URL          = "postgres://...@....neon.tech/infrawrench?sslmode=require"
   ENCRYPTION_MASTER_KEY = "<openssl rand -base64 32>"
-  APP_URL               = "https://app.infrawrench.com"
+  # Public origin of the web app, no trailing slash. Required in production:
+  # every Slack/Teams alert (sync incidents, budgets, cost anomalies, resource
+  # drift, workflow pages and approval requests) loses its "View in
+  # Infrawrench" button without it, and the Slack OAuth redirect below is built
+  # from it.
+  APP_URL = "https://app.infrawrench.com"
 
   # WorkOS
   WORKOS_API_KEY         = "sk_live_..."
@@ -70,6 +75,29 @@ app_env = {
   # secret is needed; there are no events, slash commands, or interactivity.
   SLACK_CLIENT_ID     = "1234567890.1234567890"
   SLACK_CLIENT_SECRET = "..."
+
+  # Optional: transactional email via Mailgun, used only by the weekly digest's
+  # email recipients. The first three are required together — with any missing,
+  # email delivery is a logged no-op and the digest still reaches Slack and
+  # Teams. There is no other email in the product; WorkOS sends its own
+  # verification and invitation mail.
+  #
+  # Mailgun rather than something Google-native because there is nothing
+  # Google-native to use: GCP has no first-party transactional mail service,
+  # its own "sending email from an instance" guide names Mailgun, SendGrid and
+  # Mailjet, and outbound port 25 is blocked from the cluster — so a hosted
+  # provider over HTTPS is the only shape that works here.
+  #
+  # MAILGUN_API_KEY is a domain sending key (Send → Domain settings → Sending
+  # keys), preferred over the account key because it can only post messages for
+  # its one domain. MAILGUN_DOMAIN is the verified sending domain — usually a
+  # subdomain like mg.infrawrench.com, and until its DNS verifies every send is
+  # rejected. EMAIL_FROM must be an address on that domain. MAILGUN_API_BASE is
+  # only set for EU-region Mailgun accounts, which live on a different host.
+  MAILGUN_API_KEY = "..."
+  MAILGUN_DOMAIN  = "mg.infrawrench.com"
+  EMAIL_FROM      = "Infrawrench <digest@mg.infrawrench.com>"
+  # MAILGUN_API_BASE = "https://api.eu.mailgun.net"
 
   # Workflow and chat outbound HTTP. `fetch()` inside a workflow, and the chat
   # agent's `web_fetch` tool, are both performed by the egress proxy Worker
@@ -128,7 +156,10 @@ app_env = {
   #
   # ANTHROPIC_API_KEY is what enables the Claude models in the picker. Without
   # it, picking one returns a configuration error and chat falls back to
-  # nothing — leave it set unless you intend Gemini-only.
+  # nothing — leave it set unless you intend Gemini-only. The same key also
+  # backs the weekly digest's opt-in AI summary paragraph (read by the poller
+  # as well as web); without it that paragraph is skipped with a log line and
+  # the digest still sends its deterministic content.
   # Optional
   # ANTHROPIC_API_KEY    = "..."
   # OPENAI_API_KEY       = "..."

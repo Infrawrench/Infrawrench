@@ -6,7 +6,12 @@
  */
 import type { ChatMessage, ChatStreamEvent, HostServices } from "@infrawrench/plugin-base";
 import { streamOpenAiSseChat } from "@infrawrench/plugin-base";
-import { type ActionContext, executeDropletCommand, executeVolumeCommand } from "./actions.js";
+import {
+  type ActionContext,
+  executeDropletCommand,
+  executeReservedIpCommand,
+  executeVolumeCommand,
+} from "./actions.js";
 import { safeParseJson } from "./detail-renderers/shared.js";
 
 /** The slice of `DigitalOceanClient` the console needs. */
@@ -38,6 +43,9 @@ export async function executeDoNoSqlCommand(
   }
   if (typeId === "volume") {
     return executeVolumeCommand(ctx.actionCtx, resourceId, accountId, command, args);
+  }
+  if (typeId === "reserved-ip") {
+    return executeReservedIpCommand(ctx.actionCtx, resourceId, accountId, command, args);
   }
   if (typeId === "managed-database" && command === "make-db-user") {
     // Mint a DB user and persist whatever credential DO surfaces once at

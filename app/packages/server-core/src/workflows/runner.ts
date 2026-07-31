@@ -67,6 +67,12 @@ export interface OrgWorkflowHostExtras {
   workflowName?: string;
   /** The run raising a page, so its notification can deep-link to the logs. */
   runId?: string;
+  /**
+   * What started this run. Approval requests quote it so the notification can
+   * say who is asking — `workflow_runs` records no user, so the trigger source
+   * is the honest answer available.
+   */
+  triggerSource?: string;
   /** Provided when storage object reads should be supported for this run. */
   readStorageObject?: (accountId: string, bucket: string, key: string) => Promise<Uint8Array>;
   /** Debugger line hook (instrumented runs); blocks per line until continued. */
@@ -345,6 +351,7 @@ export function buildOrgWorkflowHost(
           workflowId,
           workflowName: extras.workflowName ?? "Workflow",
           ...(extras.runId ? { runId: extras.runId } : {}),
+          ...(extras.triggerSource ? { triggerSource: extras.triggerSource } : {}),
           ...(extras.signal ? { signal: extras.signal } : {}),
         },
         spec,
@@ -427,6 +434,7 @@ export async function runOrgWorkflow(opts: RunOrgWorkflowOptions): Promise<RunOr
   const host = buildOrgWorkflowHost(opts.organizationId, wf.id, {
     workflowName: wf.name,
     runId,
+    triggerSource: opts.triggerSource,
     ...(opts.prompt ? { prompt: opts.prompt } : {}),
     ...(opts.readStorageObject ? { readStorageObject: opts.readStorageObject } : {}),
     ...(opts.line ? { line: opts.line } : {}),

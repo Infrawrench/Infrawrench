@@ -4,9 +4,11 @@
  *
  * A run suspended on `infra.waitForApproval(...)` writes a pending
  * `workflow_approvals` row and polls it; these routes are how a human lands
- * the decision. Listing takes `dashboards:read`, deciding takes
- * `dashboards:write` — the same permissions the workflow routes use (dedicated
- * `workflows:*` permissions remain a follow-up there too).
+ * the decision. Listing takes `workflows:read` — the same permission that opens
+ * the Workflows tab — while approving or denying takes `workflows:approve`,
+ * deliberately NOT `workflows:write`: the point of an approval step is that a
+ * second person signs off, so a role can grant authorship without sign-off (or
+ * sign-off without authorship).
  */
 import { Hono, type Context } from "hono";
 import { eq } from "drizzle-orm";
@@ -30,7 +32,7 @@ function orgId(c: Context): string {
 const STATUSES: WorkflowApprovalStatus[] = ["pending", "approved", "denied", "expired"];
 
 app.get("/", async (c) => {
-  requirePermission(c, "dashboards:read");
+  requirePermission(c, "workflows:read");
   const rawStatus = c.req.query("status");
   if (rawStatus !== undefined && !STATUSES.includes(rawStatus as WorkflowApprovalStatus)) {
     return c.json({ error: `status must be one of: ${STATUSES.join(", ")}` }, 400);
@@ -44,7 +46,7 @@ app.get("/", async (c) => {
 });
 
 async function decide(c: Context, decision: "approved" | "denied") {
-  requirePermission(c, "dashboards:write");
+  requirePermission(c, "workflows:approve");
   const approvalId = c.req.param("id");
   if (!approvalId) return c.json({ error: "Not found" }, 404);
   const session = c.get("session") as { userId?: string } | undefined;

@@ -54,6 +54,8 @@ export async function listDoResources(
       return listVolumes(ctx, accountId);
     case "vpc":
       return listVpcs(ctx, accountId);
+    case "reserved-ip":
+      return listReservedIps(ctx, accountId);
     case "snapshot":
       return listSnapshots(ctx, accountId);
     case "image":
@@ -1072,6 +1074,60 @@ async function listVolumes(ctx: DoListerContext, accountId: string): Promise<Res
       ...(parentResourceId ? { parentResourceId } : {}),
       createdAt: String(v["created_at"] ?? new Date().toISOString()),
       updatedAt: String(v["created_at"] ?? new Date().toISOString()),
+    };
+  });
+}
+
+/**
+ * Reserved IPs. `GET /v2/reserved_ips` returns `{ reserved_ips: [...] }` with
+ * the standard page/per_page pagination; each element carries `ip`, the full
+ * `region` object, the full `droplet` object (or `null`), `locked` and
+ * `project_id` (verified against digitalocean/openapi, schema `reserved_ip`).
+ *
+ * The address doubles as the identifier — every other reserved-IP endpoint is
+ * `/v2/reserved_ips/{ip}` — so `externalId` is the dotted-quad.
+ *
+ * Unlike volumes/droplets this doesn't need the project-URN map: the payload
+ * carries `project_id` directly (it needs the token's `project:read` scope;
+ * without it the field is absent and the address simply lists un-parented).
+ *
+ * `dropletId` is always written — `""` when unassigned — because the orphan
+ * rule compares it with `equals: ""`.
+ */
+async function listReservedIps(
+  ctx: DoListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
+  const data = await ctx.fetch<{ reserved_ips?: Array<Record<string, unknown>> | null }>(
+    "/reserved_ips?per_page=200",
+  );
+  return (data.reserved_ips ?? []).map((r) => {
+    const ip = String(r["ip"] ?? "");
+    const droplet = (r["droplet"] ?? null) as Record<string, unknown> | null;
+    const dropletId = droplet?.["id"] != null ? String(droplet["id"]) : "";
+    const projectId = String(r["project_id"] ?? "");
+    const now = new Date().toISOString();
+    return {
+      id: `${accountId}:reserved-ip:${ip}`,
+      pluginId: "digitalocean",
+      resourceTypeId: "reserved-ip",
+      accountId,
+      displayName: ip,
+      fields: {
+        ip,
+        region: String((r["region"] as Record<string, unknown>)?.["slug"] ?? ""),
+        dropletId,
+        dropletName: droplet ? String(droplet["name"] ?? "") : "",
+        locked: r["locked"] === true,
+        projectId,
+      },
+      resolvedOutputs: { ...(ip ? { ip } : {}) },
+      secretStates: [],
+      externalId: ip,
+      ...(projectId ? { parentResourceId: `${accountId}:project:${projectId}` } : {}),
+      // DO doesn't timestamp reserved IPs on the list payload.
+      createdAt: now,
+      updatedAt: now,
     };
   });
 }

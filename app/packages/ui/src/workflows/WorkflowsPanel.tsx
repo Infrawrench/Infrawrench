@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 
+import { ApprovalCard } from "./ApprovalCard.js";
 import { WorkflowEditorView } from "./WorkflowEditorView.js";
 import type {
   BudgetIntegration,
@@ -1093,6 +1094,10 @@ function MetricsEditor({
  * Pending `infra.waitForApproval(...)` requests for the selected workflow's
  * runs, each with Approve/Deny. Approving lets the suspended run continue
  * within a few seconds; denying (or letting the timeout pass) fails it.
+ *
+ * The rows themselves are {@link ApprovalCard}, shared with the org-wide
+ * approvals inbox — the workflow is already obvious from context here, so it
+ * is the one thing this surface leaves off.
  */
 function PendingApprovalsPanel({
   approvals,
@@ -1106,35 +1111,7 @@ function PendingApprovalsPanel({
   return (
     <div className="border-t border-amber-400/30 bg-amber-400/5">
       {approvals.map((a) => (
-        <div key={a.id} className="px-3 py-2 flex items-start gap-3 border-b border-white/5">
-          <div className="flex-1 min-w-0">
-            <div className="text-xs font-semibold text-amber-300">
-              Approval needed: {a.title}
-              <span className="ml-2 font-normal opacity-60">
-                expires {new Date(a.expiresAt).toLocaleTimeString()}
-              </span>
-            </div>
-            <div className="text-xs opacity-80 whitespace-pre-wrap break-words">{a.message}</div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              disabled={decidingId === a.id}
-              onClick={() => onDecide(a.id, "approve")}
-              className="px-2 py-1 text-xs rounded bg-green-500/20 text-green-300 hover:bg-green-500/30 disabled:opacity-50"
-            >
-              Approve
-            </button>
-            <button
-              type="button"
-              disabled={decidingId === a.id}
-              onClick={() => onDecide(a.id, "deny")}
-              className="px-2 py-1 text-xs rounded bg-red-500/20 text-red-300 hover:bg-red-500/30 disabled:opacity-50"
-            >
-              Deny
-            </button>
-          </div>
-        </div>
+        <ApprovalCard key={a.id} approval={a} deciding={decidingId === a.id} onDecide={onDecide} />
       ))}
     </div>
   );

@@ -1,6 +1,7 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useState } from "react";
 import { apiPost } from "../lib/api";
+import { usePermissions } from "@/auth/permissions-context";
 
 export const Route = createFileRoute("/org/$orgId/settings")({
   component: SettingsLayout,
@@ -9,6 +10,7 @@ export const Route = createFileRoute("/org/$orgId/settings")({
 function SettingsLayout() {
   const { orgId } = Route.useParams();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { has } = usePermissions();
   const [signingOut, setSigningOut] = useState(false);
 
   async function signOut() {
@@ -31,6 +33,11 @@ function SettingsLayout() {
     { to: `/org/${orgId}/settings/bastions`, label: "Bastions" },
     { to: `/org/${orgId}/settings/api-keys`, label: "API Keys" },
     { to: `/org/${orgId}/settings/freezes`, label: "Change Freezes" },
+    // Hidden outright without `workflows:read` — the page would only be able to
+    // tell them they can't see it.
+    ...(has("workflows:read")
+      ? [{ to: `/org/${orgId}/settings/approvals`, label: "Approvals" }]
+      : []),
     { to: `/org/${orgId}/settings/paging`, label: "Notifications" },
     { to: `/org/${orgId}/settings/billing`, label: "Billing" },
     { to: `/org/${orgId}/settings/audit-log`, label: "Audit Log" },

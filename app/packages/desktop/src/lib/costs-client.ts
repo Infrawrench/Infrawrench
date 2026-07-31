@@ -1,5 +1,10 @@
 import { useUIStore } from "@infrawrench/ui";
-import type { BudgetInput, CostsClient, CostsPanelDashboard } from "@infrawrench/ui/cost";
+import type {
+  BudgetInput,
+  CostAnomalySettings,
+  CostsClient,
+  CostsPanelDashboard,
+} from "@infrawrench/ui/cost";
 import {
   createCloudBudget,
   createCloudWidget,
@@ -7,9 +12,11 @@ import {
   deleteCloudWidget,
   listCloudBudgets,
   listCloudCostAnomalies,
+  loadCloudAnomalySettings,
   loadCloudCostDimensionValues,
   loadCloudCostStatus,
   queryCloudCosts,
+  saveCloudAnomalySettings,
   updateCloudBudget,
 } from "./cloud-costs";
 import { listCloudDashboards } from "./cloud-dashboards";
@@ -41,6 +48,13 @@ export function createDesktopCostsClient(): CostsClient {
     },
     listBudgets: () => listCloudBudgets(requireOrgId()),
     listAnomalies: (days?: number) => listCloudCostAnomalies(requireOrgId(), days),
+    // Desktop gets the tuning editor too: the Costs panel is the same
+    // component in both hosts, and the settings are org-level cloud state
+    // either way — leaving it out would make the desktop panel quietly less
+    // capable than the web one for no reason a user could work out.
+    getAnomalySettings: () => loadCloudAnomalySettings(requireOrgId()),
+    updateAnomalySettings: (settings: CostAnomalySettings) =>
+      saveCloudAnomalySettings(requireOrgId(), settings),
     listDashboards: async (): Promise<CostsPanelDashboard[]> => {
       const rows = await listCloudDashboards(requireOrgId());
       return rows.map((d) => ({ id: d.id, name: d.name }));

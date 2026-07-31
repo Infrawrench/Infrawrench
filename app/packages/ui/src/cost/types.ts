@@ -2,6 +2,8 @@ import type {
   BudgetWithStatus,
   CostAccountStatus,
   CostAnomaly,
+  CostAnomalySettings,
+  CostAnomalySettingsView,
   CostDimensionOption,
 } from "@infrawrench/client-core";
 import type { BudgetInput, CostQueryRequest, CostQueryResponse } from "./config.js";
@@ -18,6 +20,13 @@ export type {
   /** A detected spend anomaly, as listed on the Costs panel. */
   CostAnomaly,
   CostAnomalyDimension,
+  CostAnomalyKind,
+  /** The per-org detection thresholds the Anomalies section edits. */
+  CostAnomalySettings,
+  /** Those thresholds plus whether SMS paging could actually be delivered. */
+  CostAnomalySettingsView,
+  /** Which anomaly kinds page by SMS: off / new sources only / everything. */
+  CostAnomalySmsMode,
   /** One selectable value in a dimension picker. */
   CostDimensionOption,
 } from "@infrawrench/client-core";
@@ -58,6 +67,20 @@ export interface CostsClient extends CostApi {
    * simply doesn't render the anomalies section.
    */
   listAnomalies?(days?: number): Promise<CostAnomaly[]>;
+  /**
+   * The org's detection thresholds, plus the derived `smsConfigured` fact the
+   * SMS control needs to tell the truth about what turning it on would do.
+   * Optional like `listAnomalies`; a host that hasn't wired it shows the list
+   * without the tuning controls.
+   */
+  getAnomalySettings?(): Promise<CostAnomalySettingsView>;
+  /**
+   * Save the thresholds. Takes the stored settings only — `smsConfigured` is
+   * derived server-side and is not the caller's to set. Omitted for a viewer
+   * without `costs:write`, and the controls then render read-only rather than
+   * failing on save — the same rule the budget half of this client follows.
+   */
+  updateAnomalySettings?(settings: CostAnomalySettings): Promise<CostAnomalySettingsView>;
   listDashboards(): Promise<CostsPanelDashboard[]>;
   createBudget?(input: BudgetInput): Promise<{ id: string }>;
   updateBudget?(budgetId: string, input: BudgetInput): Promise<void>;

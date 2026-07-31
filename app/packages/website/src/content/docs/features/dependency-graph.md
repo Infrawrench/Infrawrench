@@ -52,6 +52,16 @@ Each entry links to the neighbor's detail page.
 
 <insert [A resource detail page with the Dependencies tab open, showing a "Depends on" list and a "Depended on by" list with field ← output captions on each row] here>
 
+## On your phone
+
+The [mobile app](./mobile-app.md) has the per-resource half, not the canvas. Every resource page carries a **Dependencies** section with the same two lists and the same captions, and each entry opens its neighbor.
+
+**Blast radius** on that section opens a screen for the focused resource: what it depends on and what depends on it, both as indented trees that follow the chain rather than stopping at direct neighbors, headed with the count of everything that transitively depends on it. A `↺` marks a link back to a resource already on the branch, and `…` marks a branch stopped at the depth limit — the same conventions the CLI uses.
+
+The org-wide canvas stays on web and desktop. Its value is seeing a whole topology at once, which is exactly what a phone screen can't give you; the question you actually have on a phone — what does this touch, and what breaks with it — is what the trees answer.
+
+<insert [Mobile resource page showing the Dependencies section with "Depends on" and "Depended on by" lists and the Blast radius button, next to the blast-radius screen showing the two indented trees and the affected-resource count] here>
+
 ## Where the data comes from
 
 Four sources, all of them already in the app — nothing to configure:
@@ -67,7 +77,28 @@ Not every provider declares its links yet — the ones that don't still get the 
 
 Very large organizations can produce more links than the canvas can usefully draw. When that happens the graph says so in a banner and shows a partial view — a single resource's **Dependencies** tab still shows its complete neighbourhood.
 
-On the web app the graph covers everything in your organization. On desktop it covers the resources stored on that machine, and switches to the organization-wide view when you're signed into cloud sync.
+On the web app the graph covers everything in your organization. On desktop it covers the resources stored on that machine, and switches to the organization-wide view when you're signed into cloud sync. On mobile there is no canvas — see [on your phone](#on-your-phone) above.
+
+## From the CLI
+
+The [desktop CLI](./cli.md) draws the same topology as an ASCII tree:
+
+```sh
+infrawrench graph                      # the whole organization as a forest
+infrawrench graph --resource <id>      # one resource: what it needs, and its blast radius
+infrawrench graph <id>                 # same thing, positionally
+infrawrench graph --json               # the node and edge lists, for scripting
+```
+
+Without a focus, roots are the resources nothing depends on, and each child is something its parent depends on — so reading down a branch walks toward the things everything else is built on. A `↺` marks a link back to a resource already on the branch (references can be circular), and `…` marks a branch stopped at the depth cap.
+
+With `--resource`, the output is the terminal's version of the **Dependencies** tab: a **Depends on** tree and a **Depended on by** tree, the second headed with the blast-radius count — every resource that transitively depends on this one.
+
+<insert [Terminal showing `infrawrench graph --resource` output: the focused resource, a "Depends on" ASCII tree, and a "Depended on by" tree headed with a blast-radius count] here>
+
+`--json` emits the graph itself — `nodes` and `edges`, plus `truncated` — and, when focused, adds the direct `dependsOn` / `dependedOnBy` neighbour lists and a `blastRadius` array of resource ids.
+
+The command reads the organization's graph, so it needs cloud sync; the desktop app's **Graph** tile is what covers a local-only workspace.
 
 ## API
 

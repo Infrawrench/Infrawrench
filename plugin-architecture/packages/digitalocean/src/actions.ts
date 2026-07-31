@@ -2,11 +2,13 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { decodePromptArgs } from "@infrawrench/plugin-base";
 
 /**
- * Action handlers for DigitalOcean's two action endpoints:
+ * Action handlers for DigitalOcean's action endpoints:
  *  - POST /v2/droplets/{id}/actions
  *  - POST /v2/volumes/{id}/actions
+ *  - POST /v2/reserved_ips/{ip}/actions
  *
  * Parameterless actions go through `invokeDropletAction` / `invokeVolumeAction`
+ * / `invokeReservedIpAction`
  * — the host calls them from a `plugin-action` host action with a confirmation
  * dialog. Parameterised actions (snapshot name, resize size, rebuild image…)
  * arrive via `executeNoSqlCommand`, dispatched from `prompt-nosql-command` actions
@@ -297,6 +299,68 @@ export async function invokeVolumeAction(
     return;
   }
   throw new Error(`DigitalOcean plugin: unsupported volume action "${actionId}"`);
+}
+
+/**
+ * Parameterless reserved-IP action: unassign the address from whichever
+ * Droplet currently holds it. `POST /v2/reserved_ips/{ip}/actions` with
+ * `{ type: "unassign" }` — no other body fields (per
+ * `reserved_ip_action_unassign` in digitalocean/openapi).
+ *
+ * The address itself survives; only the Droplet binding goes away. That is
+ * also the moment DO starts billing it, which the detail view spells out in
+ * the confirmation copy.
+ */
+export async function invokeReservedIpAction(
+  ctx: ActionContext,
+  resourceId: string,
+  accountId: string,
+  actionId: string,
+): Promise<void> {
+  const ip = externalIdOf(resourceId);
+  if (actionId !== "reserved-ip-unassign") {
+    throw new Error(`DigitalOcean plugin: unsupported reserved IP action "${actionId}"`);
+  }
+  const reservedIp = await ctx.getResource("reserved-ip", resourceId, accountId);
+  if (!String(reservedIp.fields["dropletId"] ?? "")) {
+    throw new Error("Reserved IP is not assigned to any Droplet");
+  }
+  const resp = await ctx.fetch<unknown>(`/reserved_ips/${ip}/actions`, {
+    method: "POST",
+    body: JSON.stringify({ type: "unassign" }),
+  });
+  await awaitAction(ctx, resp);
+}
+
+/**
+ * Parameterised reserved-IP command: assign the address to a Droplet picked
+ * in the prompt modal. `{ type: "assign", droplet_id: <int> }` per
+ * `reserved_ip_action_assign`; DO rejects a Droplet outside the address's
+ * region, so the picker is pre-filtered to the region and we re-check here
+ * for the case where the enrichment list went stale.
+ */
+export async function executeReservedIpCommand(
+  ctx: ActionContext,
+  resourceId: string,
+  _accountId: string,
+  command: string,
+  args: (string | number)[],
+): Promise<unknown> {
+  const ip = externalIdOf(resourceId);
+  const values = decodePromptArgs(args);
+  if (command !== "reserved-ip-assign") {
+    throw new Error(`DigitalOcean plugin: unknown reserved IP command "${command}"`);
+  }
+  const dropletId = Number((values["dropletId"] ?? "").trim());
+  if (!Number.isFinite(dropletId) || dropletId <= 0) {
+    throw new Error("Pick a Droplet to assign this reserved IP to");
+  }
+  const resp = await ctx.fetch<unknown>(`/reserved_ips/${ip}/actions`, {
+    method: "POST",
+    body: JSON.stringify({ type: "assign", droplet_id: dropletId }),
+  });
+  await awaitAction(ctx, resp);
+  return null;
 }
 
 export async function executeVolumeCommand(

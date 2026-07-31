@@ -136,20 +136,19 @@ function renderPanel(
           onOpenDashboard={(dashboardId) =>
             void navigate(getWorkspaceNavigateArgs(dashboardTabTarget(dashboardId)))
           }
-          // The orphan finder reads org-scoped cloud state, so in local-only
-          // mode there is nothing to query and the section is left out.
-          {...(activeCloudOrgId
-            ? {
-                orphans: getOrphansClient(),
-                onOpenResource: (r, accountId) => {
-                  void navigate(
-                    getWorkspaceNavigateArgs(
-                      resourceTabTarget(accountId, r.id, r.pluginId, r.resourceTypeId),
-                    ),
-                  );
-                },
-              }
-            : {})}
+          // Available in both modes: the orphan rules are declarative and the
+          // scan runs over stored state, so local mode classifies this
+          // machine's workspace (without cost annotation) rather than
+          // dropping the section. The client picks the store — see
+          // lib/orphans-client.ts.
+          orphans={getOrphansClient()}
+          onOpenResource={(r, accountId) => {
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(accountId, r.id, r.pluginId, r.resourceTypeId),
+              ),
+            );
+          }}
         />
       );
     case "graph":

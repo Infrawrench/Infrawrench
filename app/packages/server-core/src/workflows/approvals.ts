@@ -26,9 +26,43 @@ import {
 import { db } from "../db/client";
 import { workflowApprovals, workflows } from "../db/schema";
 import { sendPushToOrg } from "../push/dispatch";
+import { sendSlackToOrg } from "../slack";
+import { sendMsTeamsToOrg } from "../msteams";
+import { sendOneShotPage } from "../twilio-pager";
+import { workflowPageCooldownStore } from "./paging";
 
 /** How often the suspended run re-reads its approval row. */
 const POLL_INTERVAL_MS = 2500;
+
+/**
+ * Reserved `workflow_pages` key for the SMS leg of the approval fan-out.
+ *
+ * Namespaced with underscores because an author's `infra.page({ key })` is a
+ * free-form string: a collision would let a workflow's own paging throttle its
+ * approvals (or the reverse), and this shape is not one anybody types.
+ */
+const APPROVAL_PAGE_KEY = "__approval__";
+
+/**
+ * How long one approval SMS suppresses the next for the same workflow.
+ *
+ * Keyed per **workflow**, not per run, and deliberately: the flood this exists
+ * to stop is a workflow that raises approvals in a loop, and the two shapes
+ * that takes — one run looping over N items, and a run that keeps being
+ * re-triggered — are only both covered by the workflow-wide key. `workflow_pages`
+ * is already keyed that way for `infra.page`, for the same reason.
+ *
+ * Fifteen minutes rather than the hour `infra.page` defaults to: an approval is
+ * a live question with a deadline (`DEFAULT_APPROVAL_TIMEOUT_MINUTES` is 60), so
+ * a window that is a meaningful fraction of the timeout would mute a second,
+ * genuinely different request for most of its life. Fifteen collapses a loop —
+ * which fires far faster than that — while a distinct approval raised later
+ * still reaches a phone.
+ *
+ * The *first* request is never suppressed: with no row for the key, the claim
+ * is an insert, which always wins.
+ */
+const APPROVAL_PAGE_COOLDOWN_MINUTES = 15;
 
 /** Which run is asking, threaded from the runner's host extras. */
 export interface WorkflowApprovalContext {
@@ -38,8 +72,163 @@ export interface WorkflowApprovalContext {
   workflowName: string;
   /** The suspended run. Required — an approval must be visible on a run. */
   runId?: string;
+  /**
+   * What started the run, so the request can say who is asking. The schema has
+   * no user on `workflow_runs`, so this is the honest answer available: a
+   * person at a keyboard ("manual") reads very differently from a 3am cron.
+   */
+  triggerSource?: string;
   /** Abort (Stop): expires the pending request and rejects. */
   signal?: AbortSignal;
+}
+
+/** Human phrasing for a run's trigger source, for the notification body. */
+function requesterText(triggerSource: string | undefined): string {
+  switch (triggerSource) {
+    case "manual":
+      return "started manually by a team member";
+    case "cron":
+      return "started on its schedule";
+    case "git":
+      return "started by a Git push";
+    case "api":
+      return "started over the API";
+    case "budget":
+      return "started by a budget trigger";
+    default:
+      return "started by an automated trigger";
+  }
+}
+
+/**
+ * The approvals inbox, or null when the server has no `APP_URL`. Deliberately
+ * the inbox rather than the run view: the message exists to get a decision
+ * landed, and that is the screen with the buttons on it.
+ */
+function approvalsUrl(organizationId: string): string | null {
+  const base = process.env["APP_URL"];
+  if (!base) return null;
+  return `${base.replace(/\/$/, "")}/org/${organizationId}/settings/approvals`;
+}
+
+function formatExpiry(expiresAt: Date, timeoutMinutes: number): string {
+  const unit = timeoutMinutes === 1 ? "minute" : "minutes";
+  return `expires in ${timeoutMinutes} ${unit} (${expiresAt.toISOString().replace("T", " ").slice(0, 16)} UTC)`;
+}
+
+/**
+ * Fan an approval request out over every transport the org has configured.
+ *
+ * Reuses the `workflowPages` trigger rather than adding a sixth column to three
+ * tables, for the reason API pages do: an approval *is* a workflow asking for a
+ * human, the opt-in a member or channel already made is the same one, and the
+ * user-facing label ("Pages") already covers it. The `workflow_pages` columns
+ * on `slack_channels` and `msteams_webhooks` predate this change — only the
+ * push transport was wired, which is what the follow-up was about.
+ *
+ * SMS rides `sendOneShotPage` (the same one-shot path budget alerts and
+ * `infra.page` use), SMS-only: an approval blocks a run until a human answers,
+ * which is the definition of page-worthy. It is gated by the org's Twilio
+ * enabled flag, each recipient's SMS opt-in, and — unlike the other three —
+ * a cooldown on {@link APPROVAL_PAGE_KEY}. One message per `waitForApproval`
+ * call is not a bound: `waitForApproval` is a call a workflow can make in a
+ * loop, and N iterations would be N texts to everyone's phone at whatever rate
+ * the loop turns. Voice is not used: `infra.page` makes calls only when the
+ * author asks for `voice: true`, and an approval has no such knob, so ringing a
+ * phone would be a decision made on the author's behalf.
+ *
+ * **Only SMS is throttled.** Push, Slack and Teams stay one-per-request on
+ * purpose: each approval is a *distinct* decision that blocks the run until
+ * someone makes it, and collapsing those messages would hide requests nobody
+ * then goes and decides. SMS is the "someone should look now" signal rather
+ * than the list — one is enough per window, and it is the leg that costs money
+ * and wakes people. The approvals inbox always holds every row regardless of
+ * what was or was not delivered.
+ *
+ * Never throws — every transport swallows its own errors, and a notification
+ * outage must not fail the run that is waiting on the decision.
+ */
+async function notifyApprovalRequest(args: {
+  ctx: WorkflowApprovalContext;
+  approvalId: string;
+  runId: string;
+  title: string;
+  message: string;
+  expiresAt: Date;
+  timeoutMinutes: number;
+}): Promise<void> {
+  const { ctx, approvalId, runId, title, message, expiresAt, timeoutMinutes } = args;
+  const requester = requesterText(ctx.triggerSource);
+  const expiry = formatExpiry(expiresAt, timeoutMinutes);
+
+  const detail =
+    `${message}\n\n` +
+    `Workflow: ${ctx.workflowName} · run ${runId}\n` +
+    `Requested by: the run, ${requester}\n` +
+    `Timeout: ${expiry} — no decision counts as a denial.`;
+  const context = `${ctx.workflowName} · run ${runId} · ${expiry}`;
+  const url = approvalsUrl(ctx.organizationId);
+
+  await sendPushToOrg(ctx.organizationId, "workflowPages", {
+    title: `Approval needed: ${title}`,
+    body: message,
+    data: {
+      type: "workflow_approval",
+      orgId: ctx.organizationId,
+      workflowId: ctx.workflowId,
+      runId,
+      approvalId,
+    },
+  });
+
+  // Slack renders `*bold*`; the Teams Adaptive Card escaper turns `*` into a
+  // literal asterisk, so it gets the same text with the markup left out — the
+  // split the weekly digest and drift alerts already use.
+  await sendSlackToOrg(ctx.organizationId, "workflowPages", {
+    title: `Approval needed: ${title}`,
+    body:
+      `*${ctx.workflowName}* needs a decision before run \`${runId}\` can continue.\n\n` + detail,
+    context,
+    ...(url ? { url } : {}),
+  });
+  await sendMsTeamsToOrg(ctx.organizationId, "workflowPages", {
+    title: `Approval needed: ${title}`,
+    body: `${ctx.workflowName} needs a decision before run ${runId} can continue.\n\n` + detail,
+    context,
+    ...(url ? { url } : {}),
+  });
+
+  await pageAboutApproval(
+    ctx,
+    `infrawrench approval needed: ${title} — ${message} (${ctx.workflowName}, ${expiry})`,
+  );
+}
+
+/**
+ * The SMS leg, behind the workflow's approval cooldown.
+ *
+ * Same protocol as `paging/deliver.ts`: read the prior row, take the slot with
+ * one conditional statement (so two replicas racing the same window still text
+ * once), and roll the claim back when the message reached nobody — an SMS
+ * nobody received must not start a quiet period. A losing claim is silence, not
+ * an error: the request is already in the inbox and the other three transports
+ * have already carried it.
+ */
+async function pageAboutApproval(ctx: WorkflowApprovalContext, body: string): Promise<void> {
+  const store = workflowPageCooldownStore(
+    {
+      organizationId: ctx.organizationId,
+      workflowId: ctx.workflowId,
+      workflowName: ctx.workflowName,
+      ...(ctx.runId ? { runId: ctx.runId } : {}),
+    },
+    APPROVAL_PAGE_KEY,
+  );
+  const prior = await store.read();
+  if (!(await store.claim(body, APPROVAL_PAGE_COOLDOWN_MINUTES))) return;
+
+  const sms = await sendOneShotPage(ctx.organizationId, body);
+  if (sms.succeeded === 0) await store.release(prior);
 }
 
 export type WorkflowApprovalStatus = "pending" | "approved" | "denied" | "expired";
@@ -99,20 +288,24 @@ export async function requestApprovalAndWait(
     expiresAt,
   });
 
-  // Notify through the existing push pipeline. Reuses the workflowPages
-  // opt-in category (an approval is a workflow asking for a human, like a
-  // page); sendPushToOrg never throws, so a push outage can't fail the run.
-  await sendPushToOrg(ctx.organizationId, "workflowPages", {
-    title: `Approval needed: ${title}`,
-    body: spec.message,
-    data: {
-      type: "workflow_approval",
-      orgId: ctx.organizationId,
-      workflowId: ctx.workflowId,
-      runId: ctx.runId,
+  // Notify every transport the org has configured, under the workflowPages
+  // opt-in. Each of them already swallows its own errors; the outer catch is
+  // the belt to that braces, because the request is *already recorded* by this
+  // point — the approvals inbox can decide it whether or not anyone was told,
+  // so failing the run over a notification would be strictly worse.
+  try {
+    await notifyApprovalRequest({
+      ctx,
       approvalId,
-    },
-  });
+      runId: ctx.runId,
+      title,
+      message: spec.message,
+      expiresAt,
+      timeoutMinutes,
+    });
+  } catch (err) {
+    console.error(`[approvals] notifying about approval ${approvalId} failed:`, err);
+  }
 
   for (;;) {
     if (ctx.signal?.aborted) {

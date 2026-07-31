@@ -44,7 +44,12 @@ import {
   doCreateResource,
   estimateDoDatabaseMonthlyPrice,
 } from "./create-handlers.js";
-import { type ActionContext, invokeDropletAction, invokeVolumeAction } from "./actions.js";
+import {
+  type ActionContext,
+  invokeDropletAction,
+  invokeReservedIpAction,
+  invokeVolumeAction,
+} from "./actions.js";
 import {
   applyGenAiModelRouterDetail,
   applyManagedDatabaseDetail,
@@ -56,6 +61,7 @@ import {
   applySnapshotDetail,
   applyImageDetail,
   applyNfsShareDetail,
+  applyReservedIpDetail,
   renderDomainDetail,
   renderDnsRecordDetail,
 } from "./detail-renderers.js";
@@ -886,6 +892,14 @@ export class DigitalOceanClient implements PluginClient {
       case "volume":
         await this.fetch<unknown>(`/volumes/${externalId}`, { method: "DELETE" });
         break;
+      case "reserved-ip":
+        // The address itself is the id. DELETE releases it back to the pool —
+        // irreversible, you don't get the same address again. DO returns 422
+        // while the IP is still assigned to a Droplet; that message surfaces
+        // to the user verbatim, which reads better than pre-unassigning
+        // behind their back.
+        await this.fetch<unknown>(`/reserved_ips/${externalId}`, { method: "DELETE" });
+        break;
       case "snapshot":
         // /v2/snapshots/{id} covers both droplet and volume snapshots — DO
         // uses the same endpoint family regardless of source type.
@@ -1224,6 +1238,34 @@ export class DigitalOceanClient implements PluginClient {
       });
       return;
     }
+    if (sourceTypeId === "reserved-ip" && targetTypeId === "droplet") {
+      // Drag a reserved IP onto a Droplet to assign it. The type declares
+      // `matchField: "region"` so the host already rejects cross-region drops,
+      // but re-check here: `attachResource` is also reachable from the API and
+      // DO's own error for this ("Droplet is not in the same region") gives no
+      // hint about which side is wrong.
+      const [reservedIp, droplet] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const ipRegion = String(reservedIp.fields["region"] ?? "");
+      const dropletRegion = String(droplet.fields["region"] ?? "");
+      if (ipRegion && dropletRegion && ipRegion !== dropletRegion) {
+        throw new Error(
+          `Reserved IP region ${ipRegion} does not match droplet region ${dropletRegion} — DigitalOcean reserved IPs can only be assigned to Droplets in the region they are reserved to.`,
+        );
+      }
+      const ip = reservedIp.externalId ?? sourceResourceId.split(":").pop();
+      const dropletId = Number(droplet.externalId ?? targetResourceId.split(":").pop());
+      if (!ip || !Number.isFinite(dropletId)) {
+        throw new Error("Cannot determine reserved IP or droplet id for assignment");
+      }
+      await this.fetch(`/reserved_ips/${ip}/actions`, {
+        method: "POST",
+        body: JSON.stringify({ type: "assign", droplet_id: dropletId }),
+      });
+      return;
+    }
     if (sourceTypeId === "nfs-share" && targetTypeId === "droplet") {
       // DO scopes NFS access at VPC level (per nfs_actions.yml: `attach`
       // takes `vpc_id`). Resolve the droplet's vpc_uuid and register
@@ -1383,6 +1425,9 @@ export class DigitalOceanClient implements PluginClient {
     if (typeId === "volume") {
       return invokeVolumeAction(this.actionCtx, resourceId, accountId, actionId);
     }
+    if (typeId === "reserved-ip") {
+      return invokeReservedIpAction(this.actionCtx, resourceId, accountId, actionId);
+    }
     if (typeId === "gen-ai-agent") {
       const agentUuid = resourceId.split(":").slice(2).join(":");
       if (actionId === "make-public" || actionId === "make-private") {
@@ -1512,6 +1557,17 @@ export class DigitalOceanClient implements PluginClient {
           { label: "Region", value: String(f["region"] ?? "") },
           { label: "Size", value: `${String(f["sizeGb"] ?? 0)} GB` },
           ...(f["dropletIds"] ? [{ label: "Attached", value: "Yes" }] : []),
+        ];
+      case "reserved-ip":
+        return [
+          { label: "IP", value: String(f["ip"] ?? "") },
+          { label: "Region", value: String(f["region"] ?? "") },
+          {
+            label: "Assigned",
+            value: f["dropletId"]
+              ? String(f["dropletName"] ?? f["dropletId"])
+              : "No — billed while idle",
+          },
         ];
       case "doks-cluster":
         return [
@@ -1657,6 +1713,8 @@ export class DigitalOceanClient implements PluginClient {
       applyImageDetail(detail, resource);
     } else if (resource.resourceTypeId === "nfs-share") {
       applyNfsShareDetail(detail, resource);
+    } else if (resource.resourceTypeId === "reserved-ip") {
+      applyReservedIpDetail(detail, resource);
     }
 
     if (resource.resourceTypeId === "spaces-bucket") {

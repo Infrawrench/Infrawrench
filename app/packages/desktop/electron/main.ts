@@ -24,6 +24,7 @@ import { validateSql, validateParams, classifyMutation } from "./db-guard";
 import { registerKubeconfigClusterEndpoints } from "./k8s-endpoints";
 import { getShellCommandStatus, installShellCommand, uninstallShellCommand } from "./shell-command";
 import { readLocalDeploys } from "./deploy-history";
+import { listLocalOrphans } from "./local-orphans";
 import {
   getEncryptionKey,
   encryptValue,
@@ -668,6 +669,11 @@ ipcMain.handle("cli_uninstall_shell_command", () => uninstallShellCommand());
 // it is a file rather than a table. Read-only from the renderer: only the CLI
 // ever deploys locally, so only the CLI writes.
 ipcMain.handle("local_deploy_history", () => readLocalDeploys());
+
+// Potential savings without an org: the same orphan scan the cloud runs over
+// synced rows, run over the local workspace. Credential-free — see
+// electron/local-orphans.ts. The cloud counterpart is `cloud_orphans_list`.
+ipcMain.handle("local_orphans_list", () => listLocalOrphans());
 
 // Native clipboard image read. The renderer cannot use
 // navigator.clipboard.read() — Electron fails its permission check and the

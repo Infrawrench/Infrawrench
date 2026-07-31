@@ -37,8 +37,19 @@ export interface WorkflowPageContext {
   runId?: string;
 }
 
-/** The `workflow_pages` row for one (workflow, key) pair. */
-function cooldownStore(ctx: WorkflowPageContext, key: string): PageCooldownStore {
+/**
+ * The `workflow_pages` row for one (workflow, key) pair.
+ *
+ * Exported because `infra.page` is not the only thing a workflow can emit that
+ * needs damping: `workflows/approvals.ts` throttles the SMS leg of its approval
+ * fan-out on a reserved key in this same table, so that a looping workflow
+ * cannot turn one approval gate into fifty text messages. Same row, same
+ * conditional-claim protocol, different key.
+ */
+export function workflowPageCooldownStore(
+  ctx: WorkflowPageContext,
+  key: string,
+): PageCooldownStore {
   const where = and(eq(workflowPages.workflowId, ctx.workflowId), eq(workflowPages.key, key));
   return {
     async read(): Promise<PriorPage | null> {
@@ -113,7 +124,7 @@ export async function pageFromWorkflow(
   spec: PageSpec,
 ): Promise<PageResult> {
   const { key } = pageKeyAndCooldown(spec);
-  return deliverPage(audienceFor(ctx), cooldownStore(ctx, key), spec);
+  return deliverPage(audienceFor(ctx), workflowPageCooldownStore(ctx, key), spec);
 }
 
 /**

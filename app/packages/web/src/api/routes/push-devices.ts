@@ -114,6 +114,7 @@ interface PreferencesPayload {
   syncIncidents: boolean;
   budgetAlerts: boolean;
   anomalyAlerts: boolean;
+  resourceDrift: boolean;
   workflowPages: boolean;
 }
 
@@ -121,8 +122,22 @@ const PREFERENCE_KEYS = [
   "syncIncidents",
   "budgetAlerts",
   "anomalyAlerts",
+  "resourceDrift",
   "workflowPages",
 ] as const;
+
+/**
+ * What an absent preference row (or an absent field on a PUT) means per
+ * trigger. Everything is on by default except resource drift, which is
+ * continuous rather than exceptional — see `db/schema.ts`.
+ */
+const PREFERENCE_DEFAULTS: PreferencesPayload = {
+  syncIncidents: true,
+  budgetAlerts: true,
+  anomalyAlerts: true,
+  resourceDrift: false,
+  workflowPages: true,
+};
 
 pushOrgRoutes.get("/preferences", async (c) => {
   const session = c.get("session");
@@ -137,10 +152,11 @@ pushOrgRoutes.get("/preferences", async (c) => {
       ),
     );
   const payload: PreferencesPayload = {
-    syncIncidents: row?.syncIncidents ?? true,
-    budgetAlerts: row?.budgetAlerts ?? true,
-    anomalyAlerts: row?.anomalyAlerts ?? true,
-    workflowPages: row?.workflowPages ?? true,
+    syncIncidents: row?.syncIncidents ?? PREFERENCE_DEFAULTS.syncIncidents,
+    budgetAlerts: row?.budgetAlerts ?? PREFERENCE_DEFAULTS.budgetAlerts,
+    anomalyAlerts: row?.anomalyAlerts ?? PREFERENCE_DEFAULTS.anomalyAlerts,
+    resourceDrift: row?.resourceDrift ?? PREFERENCE_DEFAULTS.resourceDrift,
+    workflowPages: row?.workflowPages ?? PREFERENCE_DEFAULTS.workflowPages,
   };
   return c.json(payload);
 });
@@ -163,10 +179,11 @@ pushOrgRoutes.put("/preferences", async (c) => {
       id: randomUUID(),
       userId: session.userId,
       organizationId,
-      syncIncidents: body.syncIncidents ?? true,
-      budgetAlerts: body.budgetAlerts ?? true,
-      anomalyAlerts: body.anomalyAlerts ?? true,
-      workflowPages: body.workflowPages ?? true,
+      syncIncidents: body.syncIncidents ?? PREFERENCE_DEFAULTS.syncIncidents,
+      budgetAlerts: body.budgetAlerts ?? PREFERENCE_DEFAULTS.budgetAlerts,
+      anomalyAlerts: body.anomalyAlerts ?? PREFERENCE_DEFAULTS.anomalyAlerts,
+      resourceDrift: body.resourceDrift ?? PREFERENCE_DEFAULTS.resourceDrift,
+      workflowPages: body.workflowPages ?? PREFERENCE_DEFAULTS.workflowPages,
     })
     .onConflictDoUpdate({
       target: [pushPreferences.userId, pushPreferences.organizationId],
@@ -174,6 +191,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
         ...(body.syncIncidents != null ? { syncIncidents: body.syncIncidents } : {}),
         ...(body.budgetAlerts != null ? { budgetAlerts: body.budgetAlerts } : {}),
         ...(body.anomalyAlerts != null ? { anomalyAlerts: body.anomalyAlerts } : {}),
+        ...(body.resourceDrift != null ? { resourceDrift: body.resourceDrift } : {}),
         ...(body.workflowPages != null ? { workflowPages: body.workflowPages } : {}),
         updatedAt: now,
       },
@@ -189,6 +207,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
       syncIncidents: body.syncIncidents,
       budgetAlerts: body.budgetAlerts,
       anomalyAlerts: body.anomalyAlerts,
+      resourceDrift: body.resourceDrift,
       workflowPages: body.workflowPages,
     },
   });
@@ -214,6 +233,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
       syncIncidents: pushPreferences.syncIncidents,
       budgetAlerts: pushPreferences.budgetAlerts,
       anomalyAlerts: pushPreferences.anomalyAlerts,
+      resourceDrift: pushPreferences.resourceDrift,
       workflowPages: pushPreferences.workflowPages,
     })
     .from(organizationMembers)
@@ -240,6 +260,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
       syncIncidents: boolean;
       budgetAlerts: boolean;
       anomalyAlerts: boolean;
+      resourceDrift: boolean;
       workflowPages: boolean;
       devices: Array<{ id: string; platform: string; deviceName: string | null }>;
     }
@@ -251,10 +272,11 @@ pushOrgRoutes.get("/recipients", async (c) => {
         userId: r.userId,
         email: r.email,
         displayName: r.displayName,
-        syncIncidents: r.syncIncidents ?? true,
-        budgetAlerts: r.budgetAlerts ?? true,
-        anomalyAlerts: r.anomalyAlerts ?? true,
-        workflowPages: r.workflowPages ?? true,
+        syncIncidents: r.syncIncidents ?? PREFERENCE_DEFAULTS.syncIncidents,
+        budgetAlerts: r.budgetAlerts ?? PREFERENCE_DEFAULTS.budgetAlerts,
+        anomalyAlerts: r.anomalyAlerts ?? PREFERENCE_DEFAULTS.anomalyAlerts,
+        resourceDrift: r.resourceDrift ?? PREFERENCE_DEFAULTS.resourceDrift,
+        workflowPages: r.workflowPages ?? PREFERENCE_DEFAULTS.workflowPages,
         devices: [],
       };
       byUser.set(r.userId, entry);

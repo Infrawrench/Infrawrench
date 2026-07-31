@@ -9,6 +9,27 @@ import {
   systemRolePermissions,
 } from "./system-roles";
 
+/**
+ * Permissions for one role row. System rows resolve from code (the stored
+ * array is ignored); custom rows are their stored list, verbatim.
+ *
+ * Nothing is expanded here, deliberately. Grants written before workflows had
+ * permissions of their own were rewritten in place by migration
+ * `0055_grandfather_workflow_permissions`, so a stored array already says
+ * everything the role grants — and a role written after that means exactly
+ * what it says, including one that hands out `workflows:write` while
+ * withholding `workflows:approve`.
+ */
+function rolePermissions(row: {
+  isSystem: boolean;
+  systemKey: string | null;
+  permissions: string[] | null;
+}): readonly string[] {
+  const systemKey = isSystemRoleKey(row.systemKey) ? row.systemKey : null;
+  if (row.isSystem && systemKey) return systemRolePermissions(systemKey) ?? [];
+  return row.permissions ?? [];
+}
+
 export interface ResolvedRole {
   id: string;
   name: string;
@@ -116,8 +137,7 @@ export async function resolveEffectivePermissions(
     if (r) {
       const isSystem = r.isSystem;
       const systemKey = isSystemRoleKey(r.systemKey) ? r.systemKey : null;
-      const permissions =
-        isSystem && systemKey ? (systemRolePermissions(systemKey) ?? []) : (r.permissions ?? []);
+      const permissions = rolePermissions(r);
       return {
         permissions,
         role: {
@@ -170,8 +190,7 @@ export async function backfillMembershipRole(
     const r = existing[0];
     if (r) {
       const systemKey = isSystemRoleKey(r.systemKey) ? r.systemKey : null;
-      const permissions =
-        r.isSystem && systemKey ? (systemRolePermissions(systemKey) ?? []) : (r.permissions ?? []);
+      const permissions = rolePermissions(r);
       return {
         id: r.id,
         name: r.name,

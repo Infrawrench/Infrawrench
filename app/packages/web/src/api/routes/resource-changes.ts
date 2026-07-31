@@ -1,5 +1,11 @@
 import { Hono } from "hono";
 import { desc, eq, and, gte, lte, sql } from "drizzle-orm";
+import {
+  getDriftAlertSettings,
+  updateDriftAlertSettings,
+  type DriftAlertSettings,
+  type DriftAlertSettingsPatch,
+} from "@infrawrench/server-core/drift/settings";
 import { db } from "../../db/client";
 import { resourceChanges, accounts } from "../../db/schema";
 import { requirePermission } from "../../auth/permissions";
@@ -74,6 +80,73 @@ app.get("/", async (c) => {
   const countResult = countRows[0];
 
   return c.json({ entries, total: countResult?.count ?? 0 });
+});
+
+/* ------------------------ drift alert settings ------------------------ *
+ *
+ * Registered before `/resource` only for readability; Hono matches on the
+ * literal path either way. `org:settings:write` rather than `resources:read`:
+ * these decide who the org's channels and phones hear from, which is the same
+ * trust level as the Slack/Teams/digest settings next to them.
+ */
+
+function toWire(s: DriftAlertSettings) {
+  return {
+    notifyCreated: s.notifyCreated,
+    notifyUpdated: s.notifyUpdated,
+    notifyDeleted: s.notifyDeleted,
+    cooldownMinutes: s.cooldownMinutes,
+    minChanges: s.minChanges,
+    accountIds: s.accountIds,
+    lastNotifiedAt: s.lastNotifiedAt ? s.lastNotifiedAt.toISOString() : null,
+  };
+}
+
+/** The org's drift alert filter; an org that never saved reads the defaults. */
+app.get("/alert-settings", async (c) => {
+  requirePermission(c, "org:settings:write");
+  return c.json(toWire(await getDriftAlertSettings(c.get("organizationId"))));
+});
+
+/**
+ * Update the drift alert filter. Every field is optional so a single toggle can
+ * be saved on its own. Bounds live in server-core so the API and the poller
+ * cannot disagree about what a valid cooldown is.
+ */
+app.put("/alert-settings", async (c) => {
+  requirePermission(c, "org:settings:write");
+  const body = await c.req.json<Record<string, unknown>>();
+  const patch: DriftAlertSettingsPatch = {};
+
+  for (const key of ["notifyCreated", "notifyUpdated", "notifyDeleted"] as const) {
+    const value = body[key];
+    if (value === undefined) continue;
+    if (typeof value !== "boolean") return c.json({ error: `${key} must be a boolean` }, 400);
+    patch[key] = value;
+  }
+  for (const key of ["cooldownMinutes", "minChanges"] as const) {
+    const value = body[key];
+    if (value === undefined) continue;
+    if (typeof value !== "number") return c.json({ error: `${key} must be a number` }, 400);
+    patch[key] = value;
+  }
+  if (body["accountIds"] !== undefined) {
+    const value = body["accountIds"];
+    if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
+      return c.json({ error: "accountIds must be an array of account ids" }, 400);
+    }
+    patch.accountIds = value as string[];
+  }
+  if (Object.keys(patch).length === 0) {
+    return c.json({ error: "No settings supplied" }, 400);
+  }
+
+  try {
+    return c.json(toWire(await updateDriftAlertSettings(c.get("organizationId"), patch)));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to save drift alert settings";
+    return c.json({ error: message }, 400);
+  }
 });
 
 /**

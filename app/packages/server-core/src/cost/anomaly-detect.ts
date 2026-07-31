@@ -4,12 +4,23 @@
  * persists whatever it flags. Kept separate so the statistics are unit-testable
  * without a database.
  *
- * The model is deliberately simple for an MVP: a day's spend for a
- * (dimension, key) is an anomaly when it exceeds the trailing window's
- * mean + `sigmas`·stddev AND exceeds the mean by at least `minDeltaAbs`
- * units of that series' currency. The absolute floor keeps penny-noise quiet:
- * a $0.02 day against a $0.001 baseline is many sigmas out and still not worth
- * waking anyone for.
+ * Two findings live here, and they are mutually exclusive by construction:
+ *
+ * - `detectSpike` — a day's spend for a (dimension, key) exceeds the trailing
+ *   window's mean + `sigmas`·stddev AND exceeds the mean by at least
+ *   `minDeltaAbs` units of that series' currency. The absolute floor keeps
+ *   penny-noise quiet: a $0.02 day against a $0.001 baseline is many sigmas
+ *   out and still not worth waking anyone for.
+ * - `detectNewSpendSource` — a key that spent (effectively) nothing across the
+ *   whole trailing window suddenly costs real money. No sigma bar can catch
+ *   this: with an all-zero baseline the mean and stddev are both zero, so
+ *   "mean + 3σ" is $0 and the observed-days guard silences the key anyway. It
+ *   is also the single most valuable thing to catch — $0 to $5,000 is how a
+ *   leaked key or a fat-fingered instance type shows up — so it gets its own
+ *   absolute floor instead of a statistical one.
+ *
+ * Both take their thresholds as parameters. The per-org settings that supply
+ * them are read in `anomaly-eval.ts`; nothing in this file touches a database.
  */
 
 export interface AnomalyDetectionOptions {
@@ -25,11 +36,28 @@ export interface AnomalyDetectionOptions {
    */
   minDeltaAbs: number;
   /**
-   * Minimum number of days in the baseline with any spend. A key that has
-   * existed for fewer days has no baseline worth trusting, so it is skipped —
-   * brand-new services announce themselves in the cost graphs instead.
+   * Minimum number of days in the baseline with any spend before a *spike* is
+   * judged at all. A key that has existed for fewer days has no baseline worth
+   * trusting, so `detectSpike` skips it; `detectNewSpendSource` is what
+   * catches the interesting half of that population.
+   *
+   * It doubles as the least *collection coverage* — days of cost data the org
+   * holds at all — `detectNewSpendSource` will call "no prior spend" over.
+   * Note the two readings differ on purpose: a spike needs days on which this
+   * key spent, a new source needs days on which we were *looking* and it did
+   * not. Counting spending days for the second would silence it always, since
+   * a genuine new source has an all-zero baseline by definition.
    */
   minBaselineDays: number;
+  /**
+   * Minimum first-day spend before a new spend source is reported, in the
+   * units of the series being judged. A key that has never billed before and
+   * now bills $0.02/day is not news.
+   *
+   * Stated in USD in `DEFAULT_ANOMALY_OPTIONS`, converted per series by
+   * `optionsForCurrency` like `minDeltaAbs`.
+   */
+  minNewSourceAbs: number;
 }
 
 export const DEFAULT_ANOMALY_OPTIONS: AnomalyDetectionOptions = {
@@ -37,6 +65,8 @@ export const DEFAULT_ANOMALY_OPTIONS: AnomalyDetectionOptions = {
   /** ~$10. Denominated in USD — `optionsForCurrency` converts per series. */
   minDeltaAbs: 10,
   minBaselineDays: 7,
+  /** ~$25. Higher than the spike floor — a new source has no history backing it. */
+  minNewSourceAbs: 25,
 };
 
 /**
@@ -86,7 +116,7 @@ const UNITS_PER_USD: Readonly<Record<string, number>> = {
 };
 
 /**
- * `options` with its USD-denominated noise floor restated in `currency`, so a
+ * `options` with its USD-denominated noise floors restated in `currency`, so a
  * series billed in JPY or IDR is held to the same real threshold as one billed
  * in USD. Everything else (sigmas, baseline-day minimum) is dimensionless and
  * passes through untouched.
@@ -97,7 +127,11 @@ export function optionsForCurrency(
 ): AnomalyDetectionOptions {
   const scale = UNITS_PER_USD[currency.toUpperCase()] ?? 1;
   if (scale === 1) return options;
-  return { ...options, minDeltaAbs: options.minDeltaAbs * scale };
+  return {
+    ...options,
+    minDeltaAbs: options.minDeltaAbs * scale,
+    minNewSourceAbs: options.minNewSourceAbs * scale,
+  };
 }
 
 /** What made a day anomalous, in the same currency units as the inputs. */
@@ -154,6 +188,79 @@ export function detectSpike(
   if (actual <= threshold) return null;
   if (delta < options.minDeltaAbs) return null;
   return { actual, mean, stddev, threshold, delta };
+}
+
+/** What made a day a new spend source, in the same currency units as the inputs. */
+export interface DetectedNewSource {
+  /** The observed amount on the day the key started spending. */
+  actual: number;
+  /** Everything the key spent across the whole trailing window (≈ 0). */
+  baselineTotal: number;
+  /** Trailing-window mean, kept so the stored row reads like a spike's. */
+  mean: number;
+  /** The bar the day cleared: `minNewSourceAbs`. */
+  threshold: number;
+}
+
+/**
+ * Decide whether `actual` is a *new spend source* against `baseline` (the same
+ * zero-filled trailing series `detectSpike` takes). Returns the evidence or
+ * null.
+ *
+ * "Effectively zero baseline" is defined as: the key spent less across the
+ * *entire* trailing window than the floor for a single qualifying day. That
+ * phrasing does two useful things a strict `=== 0` test does not. It tolerates
+ * the rounding dust and sub-cent trial usage real billing data is full of — a
+ * key that billed $0.30 over 28 days has no baseline in any meaningful sense —
+ * and it scales with the floor, so it means the same thing in every currency
+ * once `optionsForCurrency` has run.
+ *
+ * `baselineCoverageDays` is how many days of cost collection the org has
+ * behind that window: the whole days between the org's first observed cost day
+ * and the day being judged. Below `minBaselineDays` of it this returns null,
+ * because "nothing spent here before" is then a statement about how little
+ * data we hold rather than about the key, and *every* key would read as new on
+ * the day collection started.
+ *
+ * That fact has to be passed in because it cannot be recovered from
+ * `baseline`. Callers zero-fill (`fillDailySeries`), so the array is the full
+ * window wide whether or not any of it was collected, and "the key spent $0
+ * that day" and "we hold no data for that day" arrive as the same `0`. Reading
+ * `baseline.length` instead — as this function once did — is a guard that can
+ * never fire. Counting non-zero entries, the way `detectSpike` legitimately
+ * does, would be worse: a real new spend source has an all-zero baseline by
+ * definition, so that test never passes and the detector never fires.
+ *
+ * Note the guard is a property of the *org's* collection history, not of the
+ * key: a key first appearing yesterday inside a long-established org is
+ * precisely what this detector exists to catch, and must still fire.
+ *
+ * Callers must judge `detectSpike` first and only fall through to this when it
+ * returns null. In practice the two can never both fire — a baseline this
+ * small has fewer than `minBaselineDays` observed days, or a mean so near zero
+ * that the sigma bar is meaningless — but the ordering is what makes a
+ * (day, key) exactly one kind of finding rather than a race between two.
+ */
+export function detectNewSpendSource(
+  baseline: number[],
+  actual: number,
+  baselineCoverageDays: number,
+  options: AnomalyDetectionOptions = DEFAULT_ANOMALY_OPTIONS,
+): DetectedNewSource | null {
+  if (baseline.length === 0) return null;
+  if (baselineCoverageDays < options.minBaselineDays) return null;
+  if (actual < options.minNewSourceAbs) return null;
+
+  let baselineTotal = 0;
+  for (const v of baseline) baselineTotal += v;
+  if (baselineTotal >= options.minNewSourceAbs) return null;
+
+  return {
+    actual,
+    baselineTotal,
+    mean: meanOf(baseline),
+    threshold: options.minNewSourceAbs,
+  };
 }
 
 /**

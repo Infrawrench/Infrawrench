@@ -4,9 +4,9 @@ import type { CloudFetch } from "./fetch";
  * Slack connection + per-channel alert routing. Server contract: org-scoped
  * `/api/org/:orgId/slack/*` routes (see web `api/routes/slack.ts`).
  *
- * A channel opts into each of the three alert triggers independently — the
- * same three mobile push has — so a channel can take budget crossings without
- * also taking every sync failure.
+ * A channel opts into each alert trigger independently — the five mobile push
+ * has, plus the channel-only weekly digest — so a channel can take budget
+ * crossings without also taking every sync failure.
  */
 
 export interface SlackInstallation {
@@ -28,7 +28,9 @@ export interface SlackChannel {
   budgetAlerts: boolean;
   /** Statistical spend-spike (cost anomaly) alerts. */
   anomalyAlerts: boolean;
-  /** Alerts raised by a workflow calling `infra.page(...)`. */
+  /** Batched resource-drift digests from the change timeline. Defaults off. */
+  resourceDrift: boolean;
+  /** Pages and approval requests raised by a workflow or by `POST /pages`. */
   workflowPages: boolean;
   /** The Monday-morning weekly summary (only sends when the org enables it). */
   weeklyDigest: boolean;
@@ -90,6 +92,7 @@ export interface AddSlackChannelArgs {
   syncIncidents?: boolean;
   budgetAlerts?: boolean;
   anomalyAlerts?: boolean;
+  resourceDrift?: boolean;
   workflowPages?: boolean;
   weeklyDigest?: boolean;
 }
@@ -107,7 +110,12 @@ export async function addSlackChannel(
 
 export type SlackChannelTriggers = Pick<
   SlackChannel,
-  "syncIncidents" | "budgetAlerts" | "anomalyAlerts" | "workflowPages" | "weeklyDigest"
+  | "syncIncidents"
+  | "budgetAlerts"
+  | "anomalyAlerts"
+  | "resourceDrift"
+  | "workflowPages"
+  | "weeklyDigest"
 >;
 
 export async function updateSlackChannel(

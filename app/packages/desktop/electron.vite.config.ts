@@ -89,6 +89,10 @@ export default defineConfig({
           "@infrawrench/plugin-turso",
           "@infrawrench/plugin-vercel",
           "@infrawrench/ui",
+          // ESM-only, and the CLI's dependency-graph command imports it at
+          // runtime. Bundling resolves the dynamic import into a chunk instead
+          // of leaving a CJS main process to import an ESM package at runtime.
+          "@infrawrench/client-core",
         ],
       }),
       copyQuickJsWasm(),

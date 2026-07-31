@@ -10,6 +10,7 @@ export type {
   OrphanAccountGroup,
   OrphanedResource,
   OrphanCostAnnotation,
+  OrphanCostBasis,
 } from "@infrawrench/client-core";
 
 /**

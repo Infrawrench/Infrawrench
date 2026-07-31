@@ -2,6 +2,7 @@ import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useState, useEffect, useId, isValidElement, cloneElement } from "react";
 import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from "@/lib/api";
 import type {
+  DriftAlertSettings,
   MsTeamsWebhook,
   PushDeviceSummary,
   PushPreferences,
@@ -11,6 +12,7 @@ import type {
   SlackInstallation,
   SlackStatus,
 } from "@infrawrench/ui";
+import { DRIFT_ALERT_LIMITS } from "@infrawrench/ui";
 import { WeeklyDigestSection } from "@/components/WeeklyDigestSection";
 
 interface PagingSettings {
@@ -68,16 +70,19 @@ function PagingPage() {
         <h1 className="text-xl font-semibold">Notifications</h1>
         <p className="text-sm text-on-surface-muted mt-1">
           Alert your team when a resource type fails to sync repeatedly, a budget threshold is
-          crossed, or a workflow calls <code>infra.page()</code>. Incidents are triggered by the
-          background poller; manual syncs from the UI never page. Delivery goes to mobile push (the
-          Infrawrench app), any Slack or Microsoft Teams channels you connect below, and — when
-          Twilio credentials are configured — SMS and voice calls.
+          crossed, your infrastructure drifts, or a workflow calls <code>infra.page()</code> or{" "}
+          <code>infra.waitForApproval()</code>. Incidents are triggered by the background poller;
+          manual syncs from the UI never page. Delivery goes to mobile push (the Infrawrench app),
+          any Slack or Microsoft Teams channels you connect below, and — when Twilio credentials are
+          configured — SMS and voice calls.
         </p>
       </div>
 
       <SlackSection orgId={orgId} />
 
       <MsTeamsSection orgId={orgId} />
+
+      <DriftAlertsSection orgId={orgId} />
 
       <WeeklyDigestSection orgId={orgId} />
 
@@ -395,17 +400,217 @@ function RecipientsPanel({
 
 /**
  * The triggers a channel can opt into, shared by the Slack and Teams sections.
- * The first four are the alert triggers mobile push also has; the weekly
+ * The first five are the alert triggers mobile push also has; the weekly
  * digest is channel-only (it goes to a team channel, not a phone) and only
  * sends once the org enables it in the Weekly digest section below.
+ *
+ * Drift is the one that arrives off: adding a channel opts it into everything
+ * else, but drift is a continuous feed and turning it on has to be a decision.
  */
 const ALERT_TRIGGERS = [
   { key: "syncIncidents", label: "Sync failures" },
   { key: "budgetAlerts", label: "Budgets" },
   { key: "anomalyAlerts", label: "Anomalies" },
+  { key: "resourceDrift", label: "Drift" },
   { key: "workflowPages", label: "Pages" },
   { key: "weeklyDigest", label: "Weekly digest" },
 ] as const;
+
+interface AccountOption {
+  id: string;
+  displayName: string;
+}
+
+/**
+ * What counts as drift worth notifying about, and how often. Separate from the
+ * per-channel `resourceDrift` opt-in above it: that decides *who* hears, this
+ * decides *what* and *how often*.
+ *
+ * The section exists because drift is the one alert whose volume is set by the
+ * infrastructure rather than by an exceptional event — a sync pass can record
+ * hundreds of changes — so the filter is not a nicety, it is the difference
+ * between a digest and a muted integration.
+ */
+function DriftAlertsSection({ orgId }: { orgId: string }) {
+  const [settings, setSettings] = useState<DriftAlertSettings | null>(null);
+  const [accounts, setAccounts] = useState<AccountOption[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [forbidden, setForbidden] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const s = await apiGet<DriftAlertSettings>(`/api/org/${orgId}/changes/alert-settings`);
+        if (!cancelled) setSettings(s);
+      } catch {
+        // Non-admins get a 403 — hide the section rather than show an error.
+        if (!cancelled) setForbidden(true);
+        return;
+      }
+      try {
+        const rows = await apiGet<AccountOption[]>(`/api/org/${orgId}/accounts`);
+        if (!cancelled) setAccounts(rows);
+      } catch {
+        // The scope picker degrades to "all accounts"; the rest still works.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId]);
+
+  async function save(patch: Partial<DriftAlertSettings>) {
+    if (!settings) return;
+    const previous = settings;
+    setSettings({ ...settings, ...patch });
+    setError(null);
+    try {
+      const saved = await apiPut<DriftAlertSettings>(
+        `/api/org/${orgId}/changes/alert-settings`,
+        patch,
+      );
+      setSettings(saved);
+    } catch (e) {
+      setSettings(previous);
+      setError(e instanceof Error ? e.message : "Failed to save drift alert settings");
+    }
+  }
+
+  function toggleAccount(accountId: string, checked: boolean) {
+    if (!settings) return;
+    const next = checked
+      ? [...settings.accountIds, accountId]
+      : settings.accountIds.filter((id) => id !== accountId);
+    void save({ accountIds: next });
+  }
+
+  if (forbidden || !settings) return null;
+
+  const { min: cooldownMin, max: cooldownMax } = DRIFT_ALERT_LIMITS.cooldownMinutes;
+  const { min: minChangesMin, max: minChangesMax } = DRIFT_ALERT_LIMITS.minChanges;
+
+  return (
+    <section className="border border-border rounded-xl p-5 space-y-4">
+      <div>
+        <h2 className="text-sm font-semibold text-on-surface-secondary">Resource drift alerts</h2>
+        <p className="text-xs text-on-surface-muted mt-1">
+          One batched digest of the{" "}
+          <a href={`/org/${orgId}/changes`} className="underline">
+            change timeline
+          </a>{" "}
+          per organization per cooldown window — never one message per change. Turn the{" "}
+          <strong>Drift</strong> trigger on for a Slack channel, a Teams channel or your phone above
+          to receive it; it is off by default everywhere.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-on-surface-secondary">
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={settings.notifyCreated}
+            onChange={(e) => void save({ notifyCreated: e.target.checked })}
+          />
+          <span>Resources appearing</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={settings.notifyDeleted}
+            onChange={(e) => void save({ notifyDeleted: e.target.checked })}
+          />
+          <span>Resources disappearing</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={settings.notifyUpdated}
+            onChange={(e) => void save({ notifyUpdated: e.target.checked })}
+          />
+          <span>Field changes</span>
+        </label>
+      </div>
+      <p className="text-xs text-on-surface-tertiary">
+        Field changes are off by default: they are the bulk of the volume and are usually a provider
+        restating a value rather than someone changing something.
+      </p>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Field
+          label="Cooldown (minutes)"
+          hint={`At most one drift message per ${cooldownMin}–${cooldownMax} minute window.`}
+        >
+          <input
+            type="number"
+            min={cooldownMin}
+            max={cooldownMax}
+            value={settings.cooldownMinutes}
+            onChange={(e) =>
+              setSettings({ ...settings, cooldownMinutes: Number(e.target.value) || cooldownMin })
+            }
+            onBlur={(e) =>
+              void save({
+                cooldownMinutes: Math.min(
+                  Math.max(parsePositiveInt(e.target.value), cooldownMin),
+                  cooldownMax,
+                ),
+              })
+            }
+            className={inputClass}
+          />
+        </Field>
+        <Field label="Minimum changes" hint="Skip windows smaller than this.">
+          <input
+            type="number"
+            min={minChangesMin}
+            max={minChangesMax}
+            value={settings.minChanges}
+            onChange={(e) =>
+              setSettings({ ...settings, minChanges: Number(e.target.value) || minChangesMin })
+            }
+            onBlur={(e) =>
+              void save({
+                minChanges: Math.min(
+                  Math.max(parsePositiveInt(e.target.value), minChangesMin),
+                  minChangesMax,
+                ),
+              })
+            }
+            className={inputClass}
+          />
+        </Field>
+      </div>
+
+      {accounts.length > 0 && (
+        <div>
+          <p className="text-xs text-on-surface-tertiary mb-2">
+            Accounts to watch — leave every box unchecked to watch all {accounts.length}.
+          </p>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-on-surface-secondary">
+            {accounts.map((a) => (
+              <label key={a.id} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={settings.accountIds.includes(a.id)}
+                  onChange={(e) => toggleAccount(a.id, e.target.checked)}
+                />
+                <span>{a.displayName}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {settings.lastNotifiedAt && (
+        <p className="text-xs text-on-surface-tertiary">
+          Last drift digest sent {new Date(settings.lastNotifiedAt).toLocaleString()}.
+        </p>
+      )}
+      {error && <p className="text-xs text-red-400">{error}</p>}
+    </section>
+  );
+}
 
 /** The Microsoft Teams glyph, in the Teams brand purple. */
 function TeamsMark({ className }: { className?: string }) {
@@ -1192,7 +1397,7 @@ function PushPreferencesSection({ orgId }: { orgId: string }) {
         device; these toggles apply to this organization only.
       </p>
 
-      <div className="flex items-center gap-6 text-sm text-on-surface-secondary">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-on-surface-secondary">
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -1216,6 +1421,14 @@ function PushPreferencesSection({ orgId }: { orgId: string }) {
             onChange={(e) => void updatePref({ anomalyAlerts: e.target.checked })}
           />
           <span>Cost anomalies</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={prefs.resourceDrift}
+            onChange={(e) => void updatePref({ resourceDrift: e.target.checked })}
+          />
+          <span>Resource drift</span>
         </label>
         <label className="flex items-center gap-2">
           <input
@@ -1283,6 +1496,7 @@ interface PushRecipientRow {
   syncIncidents: boolean;
   budgetAlerts: boolean;
   anomalyAlerts: boolean;
+  resourceDrift: boolean;
   workflowPages: boolean;
   devices: Array<{ id: string; platform: string; deviceName: string | null }>;
 }
@@ -1319,6 +1533,7 @@ function PushRosterSection({ orgId }: { orgId: string }) {
                   r.syncIncidents && "incidents",
                   r.budgetAlerts && "budgets",
                   r.anomalyAlerts && "anomalies",
+                  r.resourceDrift && "drift",
                   r.workflowPages && "pages",
                 ]
                   .filter(Boolean)

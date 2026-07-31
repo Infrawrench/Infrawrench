@@ -1,51 +1,11 @@
 import { useEffect, useState } from "react";
-import {
-  CHANGE_KIND_LABELS,
-  formatChangeValue,
-  type ResourceChangeEntry,
-  type ResourceChangeKind,
-} from "@infrawrench/ui";
+import { ChangeDiffList, ChangeKindBadge, type ResourceChangeEntry } from "@infrawrench/ui";
 import { apiGet } from "@/lib/api";
 
-const KIND_BADGE_CLASSES: Record<ResourceChangeKind, string> = {
-  created: "bg-green-500/10 text-green-400",
-  updated: "bg-blue-500/10 text-blue-400",
-  deleted: "bg-red-500/10 text-red-400",
-};
-
-/** Small pill showing the change kind — shared by the tab and the org feed. */
-export function ChangeKindBadge({ kind }: { kind: ResourceChangeKind }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${KIND_BADGE_CLASSES[kind]}`}
-    >
-      {CHANGE_KIND_LABELS[kind]}
-    </span>
-  );
-}
-
-/** Per-field before → after rows for an "updated" event. */
-export function ChangeDiffList({ entry }: { entry: ResourceChangeEntry }) {
-  if (entry.changeKind !== "updated" || entry.diff.length === 0) return null;
-  return (
-    <div className="mt-1.5 space-y-1">
-      {entry.diff.map((d) => (
-        <div key={d.field} className="flex flex-wrap items-baseline gap-x-2 text-xs">
-          <span className="font-mono text-on-surface-secondary">{d.field}</span>
-          <span className="font-mono text-on-surface-faint line-through break-all">
-            {formatChangeValue(d.from)}
-          </span>
-          <span className="text-on-surface-faint" aria-hidden>
-            →
-          </span>
-          <span className="font-mono text-on-surface-tertiary break-all">
-            {formatChangeValue(d.to)}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
+// The badge and the diff list moved to `@infrawrench/ui` when desktop grew a
+// Changes page — one definition of how a change reads. Re-exported here so the
+// existing web imports keep working.
+export { ChangeDiffList, ChangeKindBadge };
 
 interface ResourceChangesPanelProps {
   orgId: string;

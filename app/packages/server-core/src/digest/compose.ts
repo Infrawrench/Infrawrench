@@ -4,8 +4,10 @@
  * database, a clock, or a network. Gathering the inputs and delivering the
  * result live in `./weekly.ts`.
  *
- * The digest is deterministic by design: a well-formatted summary of real
- * numbers ships now; an AI-written narrative is a follow-up, not a dependency.
+ * The digest is deterministic by design and stays LLM-free: the AI narrative
+ * (`./narrative.ts`) is a separate step that takes the *composed* digest as
+ * input and is threaded back in here only as an opaque paragraph of text, so a
+ * missing or failed narrative costs nothing but the paragraph.
  */
 
 /** One grouped daily cost series, shaped like ClickHouse's `queryCosts` output. */
@@ -16,7 +18,10 @@ export interface DigestCostGroup {
   points: Array<{ bucket: string; amount: number }>;
 }
 
-/** The two adjacent Monday-to-Sunday weeks a digest compares. All ISO days, UTC. */
+/**
+ * The two adjacent Monday-to-Sunday weeks a digest compares. All ISO days in
+ * the org's local calendar (see {@link digestWindow}).
+ */
 export interface DigestWindow {
   /** Monday of the reported (last complete) week. */
   weekStart: string;
@@ -72,47 +77,185 @@ export interface WeeklyDigest {
   resourcesRemoved: number;
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_MOVERS = 3;
 /** Don't call something a "mover" over pocket change. */
 const MIN_MOVER_DELTA = 0.01;
 
-function isoDay(d: Date): string {
-  return d.toISOString().slice(0, 10);
+// --- Schedule and week-boundary math ---
+//
+// Everything below works on *civil* values — a `YYYY-MM-DD` date plus an
+// integer local hour — and never on instants. That is the whole trick, and it
+// is what makes DST structurally irrelevant rather than something to patch
+// around:
+//
+//   * The window is a run of calendar dates. Day arithmetic happens on the
+//     Y/M/D triple, so a 23- or 25-hour local day cannot shift it — a week is
+//     always seven dated days, whatever their length in milliseconds.
+//   * "Is it due" compares (localDate, localHour) against (dueDate, sendHour)
+//     lexicographically. On a spring-forward day the local hour skips 02:00
+//     entirely, so a `sendHour` of 2 is reached the moment the clock reads 03
+//     — late, never skipped. On a fall-back day the hour repeats, and the
+//     `last_sent_week_start` claim absorbs the duplicate.
+//   * `last_sent_week_start` is the window's own `weekStart`, so the claim key,
+//     the composed window, and the due check are all derived from one local
+//     civil date and cannot disagree.
+//
+// Zones with non-hour offsets (Asia/Kolkata, +05:30) and zones across the date
+// line (Pacific/Kiritimati at +14, Pacific/Niue at −11) need no special case:
+// `Intl` reports the local civil date directly, and every later step is
+// calendar arithmetic on that date.
+
+/** ISO day of week: 1 = Monday … 7 = Sunday. */
+export type IsoWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+/** A per-org send schedule. Defaults reproduce the original Monday 07:00 UTC. */
+export interface DigestSchedule {
+  /** IANA zone, e.g. `America/New_York`. */
+  timezone: string;
+  sendDay: IsoWeekday;
+  /** Local hour, 0–23. */
+  sendHour: number;
+}
+
+export const DEFAULT_DIGEST_SCHEDULE: DigestSchedule = {
+  timezone: "UTC",
+  sendDay: 1,
+  sendHour: 7,
+};
+
+/**
+ * Whether `tz` is a zone this runtime knows. `Intl.DateTimeFormat` throws a
+ * `RangeError` on an unknown identifier, which is the only check that stays
+ * correct as the tz database grows — an allowlist would go stale.
+ */
+export function isValidTimeZone(tz: string): boolean {
+  if (!tz) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const ISO_DOW: Record<string, IsoWeekday> = {
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+  Sun: 7,
+};
+
+/** The civil (wall-clock) date, hour, and weekday in `timeZone` at `now`. */
+export interface CivilMoment {
+  /** ISO `YYYY-MM-DD` as the local calendar reads it. */
+  date: string;
+  /** Local hour, 0–23. */
+  hour: number;
+  isoDow: IsoWeekday;
 }
 
 /**
- * The digest window as of `now`: the last complete Monday-to-Sunday week
- * (UTC), and the week before it. On a Monday this is the week that just
- * ended — which is exactly when the scheduler fires.
+ * Read the wall clock in `timeZone`. Uses `Intl.DateTimeFormat` rather than a
+ * timezone library — the platform already ships the tz database, and the repo
+ * has no date dependency to reuse. `hourCycle: "h23"` avoids the "24" that
+ * `hour12: false` reports at midnight in some ICU versions.
+ *
+ * An unknown zone falls back to UTC rather than throwing: this runs inside the
+ * poller, and a bad row must not stop every other org's digest. The API rejects
+ * unknown zones on the way in, so this is a backstop, not the guard.
  */
-export function digestWindow(now: Date): DigestWindow {
-  // getUTCDay: Sunday 0 … Saturday 6. Days since the most recent Monday:
-  const sinceMonday = (now.getUTCDay() + 6) % 7;
-  const thisMonday = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - sinceMonday),
-  );
-  const weekStartDate = new Date(thisMonday.getTime() - 7 * DAY_MS);
+export function civilMoment(now: Date, timeZone: string): CivilMoment {
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      weekday: "short",
+    }).formatToParts(now);
+  } catch {
+    parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "UTC",
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      weekday: "short",
+    }).formatToParts(now);
+  }
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? "";
   return {
-    weekStart: isoDay(weekStartDate),
-    weekEnd: isoDay(new Date(thisMonday.getTime() - DAY_MS)),
-    prevWeekStart: isoDay(new Date(weekStartDate.getTime() - 7 * DAY_MS)),
-    prevWeekEnd: isoDay(new Date(weekStartDate.getTime() - DAY_MS)),
+    date: `${get("year")}-${get("month")}-${get("day")}`,
+    hour: Number.parseInt(get("hour"), 10) % 24,
+    isoDow: ISO_DOW[get("weekday")] ?? 1,
   };
 }
 
-/** Hour of Monday (UTC) after which the digest for the just-ended week is due. */
-export const DIGEST_SEND_HOUR_UTC = 7;
+/** Shift an ISO calendar date by whole days. Pure Y/M/D arithmetic — no DST. */
+export function addDays(isoDate: string, days: number): string {
+  const [y, m, d] = isoDate.split("-").map((n) => Number.parseInt(n, 10));
+  // Date.UTC is used only as a civil-calendar calculator here (leap years,
+  // month lengths). No instant is derived from it, so no offset applies.
+  const shifted = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + days));
+  return shifted.toISOString().slice(0, 10);
+}
 
 /**
- * Whether a digest covering `window` is due at `now`. True from Monday
- * 07:00 UTC after the reported week onward — so a poller that was down on
- * Monday still sends on Tuesday, and the conditional-UPDATE claim in
+ * The digest window as of `now`: the last complete Monday-to-Sunday week in
+ * `timeZone`, and the week before it. On the org's Monday this is the week
+ * that just ended — which is when the default schedule fires.
+ *
+ * The window is always Monday-to-Sunday regardless of `sendDay`: the send day
+ * chooses *when the message arrives*, not what a week is. An org that reads its
+ * digest on Wednesday still gets a Mon–Sun recap, which is the unit its cost
+ * dashboards and everyone else's calendar agree on.
+ */
+export function digestWindow(now: Date, timeZone = "UTC"): DigestWindow {
+  const { date, isoDow } = civilMoment(now, timeZone);
+  const thisMonday = addDays(date, -(isoDow - 1));
+  const weekStart = addDays(thisMonday, -7);
+  return {
+    weekStart,
+    weekEnd: addDays(thisMonday, -1),
+    prevWeekStart: addDays(weekStart, -7),
+    prevWeekEnd: addDays(weekStart, -1),
+  };
+}
+
+/**
+ * The local calendar date the digest for `window` is due on: the first
+ * occurrence of `sendDay` on or after the Monday that follows the window.
+ * `sendDay: 1` is that Monday itself; `sendDay: 7` is the Sunday six days later.
+ */
+export function digestDueDate(window: DigestWindow, sendDay: IsoWeekday): string {
+  const mondayAfter = addDays(window.weekEnd, 1);
+  return addDays(mondayAfter, sendDay - 1);
+}
+
+/**
+ * Whether a digest covering `window` is due at `now`. True from the org's
+ * chosen local day and hour onward — so a poller that was down at the send
+ * time still sends later that week, and the conditional-UPDATE claim in
  * `weekly.ts` keeps it to once per week regardless.
  */
-export function isDigestDue(now: Date, window: DigestWindow): boolean {
-  const monday = new Date(`${window.weekEnd}T00:00:00.000Z`).getTime() + DAY_MS;
-  return now.getTime() >= monday + DIGEST_SEND_HOUR_UTC * 60 * 60 * 1000;
+export function isDigestDue(
+  now: Date,
+  window: DigestWindow,
+  schedule: DigestSchedule = DEFAULT_DIGEST_SCHEDULE,
+): boolean {
+  const dueDate = digestDueDate(window, schedule.sendDay);
+  const { date, hour } = civilMoment(now, schedule.timezone);
+  if (date > dueDate) return true;
+  if (date < dueDate) return false;
+  return hour >= schedule.sendHour;
 }
 
 /** Sum a group's points that fall inside an inclusive ISO-day range. */
@@ -230,55 +373,202 @@ export function digestTitle(digest: WeeklyDigest): string {
 }
 
 /**
- * The digest body as plain-text lines, shared by both transports. Slack wraps
- * headline lines in mrkdwn bold; Teams keeps them plain (its card escaper
- * would show literal asterisks otherwise).
+ * One run of text within a digest line, and whether the transport should
+ * emphasise it.
  *
- * `bold` wraps a fragment in the transport's bold markup, or returns it
- * unchanged for plain text.
+ * The body is modelled as segments rather than as pre-marked-up strings for one
+ * reason: a renderer has to be able to tell *its own* markup apart from the
+ * text it is rendering, and it cannot do that once both are in the same string.
+ * The AI narrative is arbitrary model output that goes into the body verbatim,
+ * so a scheme that recovered the markup by pattern-matching the rendered line
+ * (splitting on `<strong>`, say) would hand the model a way to smuggle markup
+ * past the escaper. Here the structure is never destroyed in the first place:
+ * `text` is always literal text, and only `bold: true` asks for markup.
  */
-export function digestLines(digest: WeeklyDigest, bold: (s: string) => string): string[] {
-  const lines: string[] = [];
+export interface DigestSegment {
+  text: string;
+  bold: boolean;
+}
+
+/** A line of the digest body. An empty array is a blank line. */
+export type DigestLine = DigestSegment[];
+
+const plain = (text: string): DigestLine => [{ text, bold: false }];
+const strong = (text: string): DigestLine => [{ text, bold: true }];
+/** A blank separator line. */
+const BLANK: DigestLine = [];
+
+/**
+ * The digest body as structured lines, shared by every transport. Every
+ * renderer builds from this, so the three transports can never drift in what
+ * they report — and none of them has to guess which part of a line is markup.
+ *
+ * `narrative` is the optional AI-written paragraph; it goes above the
+ * deterministic content as a single non-bold segment and is strictly additive —
+ * omitting it changes nothing else about the message.
+ */
+export function digestSegments(digest: WeeklyDigest, narrative?: string | null): DigestLine[] {
+  const lines: DigestLine[] = [];
+
+  if (narrative) {
+    lines.push(plain(narrative));
+    lines.push(BLANK);
+  }
 
   if (digest.totals.length === 0) {
     lines.push(
-      "No cost data was recorded for last week. Connect a provider account with cost collection to see spend here.",
+      plain(
+        "No cost data was recorded for last week. Connect a provider account with cost collection to see spend here.",
+      ),
     );
   } else {
     for (const t of digest.totals) {
       const suffix = digest.totals.length > 1 ? ` (${t.currency})` : "";
-      lines.push(
-        `${bold(`Spend${suffix}: ${formatAmount(t.currentAmount, t.currency)}`)} — ${formatDelta(t.delta, t.currency)} (${formatPct(t.deltaPct)}) vs ${formatAmount(t.previousAmount, t.currency)} the week before`,
-      );
+      lines.push([
+        { text: `Spend${suffix}: ${formatAmount(t.currentAmount, t.currency)}`, bold: true },
+        {
+          text: ` — ${formatDelta(t.delta, t.currency)} (${formatPct(t.deltaPct)}) vs ${formatAmount(t.previousAmount, t.currency)} the week before`,
+          bold: false,
+        },
+      ]);
     }
     if (digest.topProviderMovers.length > 0) {
-      lines.push("");
-      lines.push(bold("Top movers by provider"));
-      for (const m of digest.topProviderMovers) lines.push(`• ${moverLine(m)}`);
+      lines.push(BLANK);
+      lines.push(strong("Top movers by provider"));
+      for (const m of digest.topProviderMovers) lines.push(plain(`• ${moverLine(m)}`));
     }
     if (digest.topServiceMovers.length > 0) {
-      lines.push("");
-      lines.push(bold("Top movers by service"));
-      for (const m of digest.topServiceMovers) lines.push(`• ${moverLine(m)}`);
+      lines.push(BLANK);
+      lines.push(strong("Top movers by service"));
+      for (const m of digest.topServiceMovers) lines.push(plain(`• ${moverLine(m)}`));
     }
   }
 
-  lines.push("");
-  lines.push(
-    `${bold("Reliability")}: ${pluralize(digest.syncIncidentsOpened, "sync incident")} opened`,
-  );
-  lines.push(
-    `${bold("Resources")}: ${digest.resourcesAdded} added, ${digest.resourcesRemoved} removed`,
-  );
+  lines.push(BLANK);
+  lines.push([
+    { text: "Reliability", bold: true },
+    { text: `: ${pluralize(digest.syncIncidentsOpened, "sync incident")} opened`, bold: false },
+  ]);
+  lines.push([
+    { text: "Resources", bold: true },
+    { text: `: ${digest.resourcesAdded} added, ${digest.resourcesRemoved} removed`, bold: false },
+  ]);
   return lines;
 }
 
-/** Slack mrkdwn body. `slack.ts` escapes `&<>` and leaves `*bold*` intact. */
-export function formatDigestSlackBody(digest: WeeklyDigest): string {
-  return digestLines(digest, (s) => `*${s}*`).join("\n");
+/**
+ * {@link digestSegments} flattened to plain-text lines. Slack wraps headline
+ * fragments in mrkdwn bold; Teams and email text keep them plain (the Teams
+ * card escaper would show literal asterisks otherwise).
+ *
+ * `bold` wraps a fragment in the transport's bold markup, or returns it
+ * unchanged for plain text. Only use this for transports whose markup is a
+ * plain-string convention; the HTML renderer works off the segments directly,
+ * because it has to escape everything the segments did *not* ask to be markup.
+ */
+export function digestLines(
+  digest: WeeklyDigest,
+  bold: (s: string) => string,
+  narrative?: string | null,
+): string[] {
+  return digestSegments(digest, narrative).map((line) =>
+    line.map((seg) => (seg.bold ? bold(seg.text) : seg.text)).join(""),
+  );
 }
 
-/** Teams plain-text body — the Adaptive Card escaper strips markdown anyway. */
-export function formatDigestTeamsBody(digest: WeeklyDigest): string {
-  return digestLines(digest, (s) => s).join("\n\n");
+/**
+ * Slack mrkdwn body. `slack.ts` escapes `&<>` in the whole body before it goes
+ * up, which is what keeps narrative text from forging a Slack link or a
+ * `<!channel>` mention; the `*` this adds survives because mrkdwn has no escape
+ * for it. A narrative that contains a stray asterisk can therefore only
+ * mis-emphasise its own paragraph — it cannot reach out of the text.
+ */
+export function formatDigestSlackBody(digest: WeeklyDigest, narrative?: string | null): string {
+  return digestLines(digest, (s) => `*${s}*`, narrative).join("\n");
+}
+
+/**
+ * Teams plain-text body — no markup added here at all, because `msteams.ts`
+ * escapes `\ * _ [ ]` on the whole card text. That escaper is also what
+ * neutralises card markdown in narrative text; it is applied to the body
+ * wholesale, so it cannot be stepped around from in here.
+ */
+export function formatDigestTeamsBody(digest: WeeklyDigest, narrative?: string | null): string {
+  return digestLines(digest, (s) => s, narrative).join("\n\n");
+}
+
+// --- Email rendering ---
+//
+// Email is its own format rather than a reuse of the Slack or Teams body:
+// mrkdwn asterisks would show literally, and a mail client needs both a
+// plain-text part (for text-only readers and spam scoring) and an HTML one.
+// Both are built from the same `digestSegments` output so the three transports
+// can never drift in what they report.
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** The plain-text part: the shared lines, unadorned. */
+export function formatDigestEmailText(
+  digest: WeeklyDigest,
+  narrative?: string | null,
+  url?: string | null,
+): string {
+  const lines = [digestTitle(digest), "", ...digestLines(digest, (s) => s, narrative)];
+  if (url) {
+    lines.push("");
+    lines.push(`View in Infrawrench: ${url}`);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * The HTML part. Hand-rolled rather than templated — the markup is a handful
+ * of tags and a templating dependency would buy nothing. Styles are inline
+ * because mail clients strip `<style>` blocks, and the palette is deliberately
+ * neutral so it reads in both light and dark clients.
+ *
+ * Every character of every segment is escaped, and the only markup in the body
+ * is the `<strong>` this function writes around segments that asked for it.
+ * That is why the body is built from {@link digestSegments} rather than from
+ * the flattened lines: text and markup are never mixed into one string, so
+ * there is nothing to un-mix afterwards and no input — model-written narrative
+ * included — that can arrive already looking like markup.
+ */
+export function formatDigestEmailHtml(
+  digest: WeeklyDigest,
+  narrative?: string | null,
+  url?: string | null,
+): string {
+  const body = digestSegments(digest, narrative)
+    .filter((line) => line.length > 0)
+    .map((line) => {
+      const html = line
+        .map((seg) =>
+          seg.bold ? `<strong>${escapeHtml(seg.text)}</strong>` : escapeHtml(seg.text),
+        )
+        .join("");
+      const bullet = line[0]?.text.startsWith("•") ?? false;
+      return `<p style="margin:0 0 8px;${bullet ? "padding-left:12px;" : ""}">${html}</p>`;
+    })
+    .join("\n");
+
+  const button = url
+    ? `<p style="margin:24px 0 0;"><a href="${escapeHtml(url)}" style="display:inline-block;padding:10px 16px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">View in Infrawrench</a></p>`
+    : "";
+
+  return [
+    `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;color:#1f2937;max-width:640px;">`,
+    `<h1 style="font-size:18px;margin:0 0 16px;">${escapeHtml(digestTitle(digest))}</h1>`,
+    body,
+    button,
+    `</div>`,
+  ]
+    .filter((s) => s !== "")
+    .join("\n");
 }

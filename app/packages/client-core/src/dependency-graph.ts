@@ -12,7 +12,14 @@
  * Everything here is host-agnostic and side-effect free so web, desktop and
  * future hosts render the same topology. Re-exported from `@infrawrench/ui`
  * per the shared-contract convention.
+ *
+ * `fetchDependencyGraph` at the bottom is the one function that talks to a
+ * server: Bearer hosts (mobile) read the endpoint through it, while web goes
+ * through `apiGet` and desktop through its cloud IPC. It is a plain call, not
+ * module state — importing this file still does nothing.
  */
+
+import type { CloudFetch } from "./fetch";
 
 export interface DependencyGraphNode {
   /** Resource id (`pluginId:accountId:externalId` on the cloud). */
@@ -71,6 +78,29 @@ export interface DependencyGraphData {
  * How an edge reads in the UI. Containment has no field/output pair worth
  * showing — the interesting fact is that one resource lives inside the other.
  */
+/**
+ * Read `GET /api/org/{orgId}/dependency-graph`.
+ *
+ * With `resourceId` the server answers with that resource's **direct**
+ * neighbourhood only — cheap enough to run on every resource-detail mount, but
+ * one hop deep, so a model built from it can produce the Dependencies lists and
+ * nothing transitive. Anything that needs a blast radius has to ask for the
+ * org-wide graph and walk it locally, which is exactly what the CLI's `graph
+ * --resource` does.
+ */
+export async function fetchDependencyGraph(
+  api: CloudFetch,
+  orgId: string,
+  options?: { resourceId?: string | undefined },
+): Promise<DependencyGraphData> {
+  const focus = options?.resourceId;
+  const path = focus
+    ? `/dependency-graph?resourceId=${encodeURIComponent(focus)}`
+    : "/dependency-graph";
+  const data = await api.org<DependencyGraphData>(orgId, path);
+  return data ?? { nodes: [], edges: [] };
+}
+
 export function dependencyEdgeLabel(edge: {
   consumerFieldKey: string;
   providerOutputKey: string;

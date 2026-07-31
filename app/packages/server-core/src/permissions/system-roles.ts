@@ -39,6 +39,15 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       "storage:read",
       "dashboards:read",
       "dashboards:write",
+      // Workflows used to ride on `dashboards:*`, so members have always been
+      // able to write, run, and approve them. All three land here to keep that
+      // exactly as it was — carving `workflows:approve` out of the default
+      // would silently 403 members who approve today. The split earns its keep
+      // through custom roles: withholding `workflows:approve` from the authors
+      // is now expressible, which is the whole point of an approval gate.
+      "workflows:read",
+      "workflows:write",
+      "workflows:approve",
       // Three levels, because previewing and shipping are genuinely different
       // risks. `read` is the history and the declared environments — inert.
       // `plan` runs the repo's plan() against the org's host, so it IS code

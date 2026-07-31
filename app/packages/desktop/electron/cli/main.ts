@@ -13,8 +13,10 @@ import { setColorEnabled, printErr, println, c } from "./output";
 import { cmdLogin, cmdLogout, cmdWhoami } from "./commands/auth";
 import { cmdOrgs, cmdAccounts, cmdResources, cmdResource } from "./commands/listing";
 import { cmdMetrics } from "./commands/metrics";
-import { cmdCosts } from "./commands/costs";
+import { cmdCosts, cmdCostAnomalies } from "./commands/costs";
 import { cmdOrphans } from "./commands/orphans";
+import { cmdChanges } from "./commands/changes";
+import { cmdGraph } from "./commands/graph";
 import { cmdPage, cmdCostsPush } from "./commands/push";
 import { cmdCli } from "./commands/cli-install";
 import { cmdDeploy } from "./commands/deploy";
@@ -36,8 +38,13 @@ COMMANDS
   resource <id>       show one resource's fields & outputs
   metrics <id>        metric charts for a resource   [--last 6h] [--series cpu] [--local]
   costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource]
+  costs --anomalies   days a provider or service spiked past its own baseline   [--days 30]
   costs push          push your own cost rows   --source <name> [--file rows.json | stdin]
   orphans             likely-wasted resources (unattached volumes, idle IPs) with reasons + cost
+                      (--local scans this machine's workspace; no cost column without the cloud)
+  changes             what appeared / changed / disappeared across your providers
+                      [--last 7d] [--limit 50] [--kind created|updated|deleted] [-a <account>] [--resource <id>]
+  graph               resource dependency tree   [--resource <id>: what it needs + its blast radius]
   page <message>      alert the org's on-call transports   --source <name> [--key k] [--voice]
   page clear          drop a page key's cooldown after a recovery   --source <name> [--key k]
   deploy              build & ship this project via its Infrafile   [-e <env>] [--plan]
@@ -56,7 +63,11 @@ FLAGS
   --local             scope to the local (desktop) workspace
   -a, --account <x>   account id or name for resource commands
   --json / --text     output mode (default: text)
-  --last / --from / --to   time range for metrics & costs
+  --last / --from / --to   time range for metrics, costs & changes
+  --days <n>          whole-day window for costs --anomalies and changes
+  --limit <n>         row cap for changes (max 200)
+  --kind <k>          changes filter: created | updated | deleted
+  --resource <id>     focus one resource (graph) / filter to it (changes)
   --type <typeId>     filter resources by resource type
   --source <name>     who is pushing (required by page and costs push)
   --key <k>           page throttle key   --title <t>   --cooldown <min>   --voice
@@ -206,10 +217,22 @@ export async function runCli(): Promise<void> {
           await cmdCostsPush(ctx, parsed.push);
           break;
         }
+        if (parsed.anomalies) {
+          await cmdCostAnomalies(ctx, parsed.range);
+          break;
+        }
         await cmdCosts(ctx, parsed.range);
         break;
       case "orphans":
         await cmdOrphans(ctx);
+        break;
+      case "changes":
+        await cmdChanges(ctx, parsed.range);
+        break;
+      case "graph":
+        // `infrawrench graph <resource-id>` is the same as --resource; a
+        // resource id is the only positional this command could take.
+        await cmdGraph(ctx, rest[0] ? { ...parsed.range, resource: rest[0] } : parsed.range);
         break;
       case "page":
         await cmdPage(ctx, rest, parsed.push);

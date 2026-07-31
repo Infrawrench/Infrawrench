@@ -5,6 +5,7 @@ import { createDashboard } from "../lib/pins";
 import {
   CHAT_CONVERSATIONS_CHANGED_EVENT,
   DEFAULT_CHAT_MODEL,
+  ChangesIcon,
   DeployIcon,
   GraphIcon,
   DroppableDashboardItem,
@@ -168,9 +169,10 @@ export function SidebarDashboards() {
 
   // Deploy is here in both modes: with an org it is the full deploy screen,
   // and without one it is the history of what `infrawrench deploy` did on this
-  // machine. Costs has no local half — spend is collected server-side — so the
-  // grid is four tiles locally and five with an org; SidebarNavGrid squares
-  // off the odd count itself.
+  // machine. Costs and Changes have no local half — spend is collected
+  // server-side, change events are recorded by the cloud poller — so the grid
+  // is four tiles locally and six with an org; SidebarNavGrid squares off an
+  // odd count itself.
   const navTiles: SidebarNavTileDef[] = [
     {
       key: "agents",
@@ -201,6 +203,15 @@ export function SidebarDashboards() {
             icon: <CostsIcon />,
             onClick: () =>
               void navigateToWorkspaceTarget(navigate, costsTabTarget(), { label: "Costs" }),
+          },
+          // Cloud-only for the same reason as Costs: change events are recorded
+          // by the cloud poller, and there is no poller in local-only mode.
+          // Not a workspace tab — same as web, a plain route.
+          {
+            key: "changes",
+            label: "Changes",
+            icon: <ChangesIcon />,
+            onClick: () => void navigate({ to: "/changes" }),
           },
         ]
       : []),

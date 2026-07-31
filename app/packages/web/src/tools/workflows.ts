@@ -9,7 +9,9 @@
  * rejected with diagnostics instead of being persisted and failing at 3am.
  *
  * Everything routes through services/workflows.ts, the same module behind the
- * HTTP routes, so the two surfaces can't drift.
+ * HTTP routes, so the two surfaces can't drift — including the permissions:
+ * reads take `workflows:read`, and writing/running/deleting take
+ * `workflows:write`, exactly as the matching routes do.
  */
 import { z } from "zod";
 
@@ -153,9 +155,9 @@ export function workflowTools(): ToolDefinition[] {
         "get_workflow for that.",
       inputSchema: {},
       risk: "read",
-      permission: "dashboards:read",
+      permission: "workflows:read",
       handler: async (_input, auth) => {
-        const denied = await denyUnlessPermitted(auth, "dashboards:read");
+        const denied = await denyUnlessPermitted(auth, "workflows:read");
         if (denied) return denied;
         const rows = await listWorkflows(auth.organizationId);
         return ok(rows.map((wf) => summarize(wf, false)));
@@ -173,9 +175,9 @@ export function workflowTools(): ToolDefinition[] {
         runLimit: z.number().optional().describe("How many recent runs to include. Default 5."),
       },
       risk: "read",
-      permission: "dashboards:read",
+      permission: "workflows:read",
       handler: async (input, auth) => {
-        const denied = await denyUnlessPermitted(auth, "dashboards:read");
+        const denied = await denyUnlessPermitted(auth, "workflows:read");
         if (denied) return denied;
         const id = input["workflowId"] as string;
         try {
@@ -216,9 +218,9 @@ export function workflowTools(): ToolDefinition[] {
         metrics: metricsSchema.optional(),
       },
       risk: "read",
-      permission: "dashboards:read",
+      permission: "workflows:read",
       handler: async (input, auth) => {
-        const denied = await denyUnlessPermitted(auth, "dashboards:read");
+        const denied = await denyUnlessPermitted(auth, "workflows:read");
         if (denied) return denied;
         const workflowId = input["workflowId"] as string | undefined;
         try {
@@ -256,9 +258,9 @@ export function workflowTools(): ToolDefinition[] {
         metrics: metricsSchema.optional(),
       },
       risk: "read",
-      permission: "dashboards:read",
+      permission: "workflows:read",
       handler: async (input, auth) => {
-        const denied = await denyUnlessPermitted(auth, "dashboards:read");
+        const denied = await denyUnlessPermitted(auth, "workflows:read");
         if (denied) return denied;
         try {
           let metrics = (input["metrics"] as MetricDef[] | undefined) ?? [];
@@ -313,9 +315,9 @@ export function workflowTools(): ToolDefinition[] {
           .describe("Save even when the source has type errors. Use only when deliberate."),
       },
       risk: "write",
-      permission: "dashboards:write",
+      permission: "workflows:write",
       handler: async (input, auth) => {
-        const denied = await denyUnlessPermitted(auth, "dashboards:write");
+        const denied = await denyUnlessPermitted(auth, "workflows:write");
         if (denied) return denied;
         const workflowId = input["workflowId"] as string | undefined;
 
@@ -413,9 +415,9 @@ export function workflowTools(): ToolDefinition[] {
       // arbitrary user code that can, so it gets the same confirmation as
       // invoke_action / apply_manifest.
       risk: "destructive",
-      permission: "dashboards:write",
+      permission: "workflows:write",
       handler: async (input, auth) => {
-        const denied = await denyUnlessPermitted(auth, "dashboards:write");
+        const denied = await denyUnlessPermitted(auth, "workflows:write");
         if (denied) return denied;
         const id = input["workflowId"] as string;
         try {
@@ -449,9 +451,9 @@ export function workflowTools(): ToolDefinition[] {
         "surface confirms with the user before invoking.",
       inputSchema: { workflowId: z.string() },
       risk: "destructive",
-      permission: "dashboards:write",
+      permission: "workflows:write",
       handler: async (input, auth) => {
-        const denied = await denyUnlessPermitted(auth, "dashboards:write");
+        const denied = await denyUnlessPermitted(auth, "workflows:write");
         if (denied) return denied;
         const id = input["workflowId"] as string;
         try {

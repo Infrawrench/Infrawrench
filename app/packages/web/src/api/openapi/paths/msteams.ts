@@ -14,9 +14,14 @@ const MsTeamsWebhook = strict({
   anomalyAlerts: z
     .boolean()
     .openapi({ description: "Statistical spend-spike (cost anomaly) alerts" }),
-  workflowPages: z
-    .boolean()
-    .openapi({ description: "Alerts raised by a workflow calling infra.page(...)" }),
+  resourceDrift: z.boolean().openapi({
+    description:
+      "Batched resource-drift digests from the change timeline. Defaults to false when a channel is added — drift is continuous where the other triggers are exceptional.",
+  }),
+  workflowPages: z.boolean().openapi({
+    description:
+      "Pages and approval requests raised by a workflow (infra.page / infra.waitForApproval) or by POST /pages",
+  }),
   weeklyDigest: z.boolean().openapi({
     description:
       "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest).",
@@ -36,6 +41,7 @@ const MsTeamsWebhookCreate = strict({
   syncIncidents: z.boolean().optional(),
   budgetAlerts: z.boolean().optional(),
   anomalyAlerts: z.boolean().optional(),
+  resourceDrift: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
   weeklyDigest: z.boolean().optional(),
 }).openapi("MsTeamsWebhookCreate");
@@ -47,6 +53,7 @@ const MsTeamsWebhookUpdate = strict({
   syncIncidents: z.boolean().optional(),
   budgetAlerts: z.boolean().optional(),
   anomalyAlerts: z.boolean().optional(),
+  resourceDrift: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
   weeklyDigest: z.boolean().optional(),
 }).openapi("MsTeamsWebhookUpdate");
