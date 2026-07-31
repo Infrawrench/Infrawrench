@@ -15,15 +15,6 @@ export interface GlobalTabBarProps {
   rootRef?: React.Ref<HTMLDivElement>;
   /** Whether to show the "drag to pin" hint when empty. Default: false. */
   showEmptyHint?: boolean | undefined;
-  /**
-   * Controls pinned to the right of the bar, outside the scrolling tab strip
-   * so they stay reachable however many tabs are open. Web puts Settings here;
-   * desktop passes nothing, since org settings are a cloud-only surface.
-   *
-   * Supplying this also keeps the bar mounted when there are no tabs — an
-   * always-visible control can't live in a bar that disappears.
-   */
-  trailingActions?: React.ReactNode;
 }
 
 export function GlobalTabBar({
@@ -36,12 +27,11 @@ export function GlobalTabBar({
   className,
   rootRef,
   showEmptyHint = false,
-  trailingActions,
 }: GlobalTabBarProps) {
   const baseId = useId();
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
-  if (!showEmptyHint && !trailingActions && tabs.length === 0) return null;
+  if (!showEmptyHint && tabs.length === 0) return null;
 
   const focusTab = (index: number) => {
     const target = tabRefs.current[index];
@@ -71,62 +61,46 @@ export function GlobalTabBar({
   return (
     <div
       ref={rootRef}
-      className={`h-9 shrink-0 border-b border-border bg-surface flex items-stretch ${className ?? ""}`}
+      role="tablist"
+      aria-label="Workspace tabs"
+      aria-orientation="horizontal"
+      className={`h-9 shrink-0 border-b border-border bg-surface flex items-end gap-0 overflow-x-auto overflow-y-hidden ${className ?? ""}`}
       style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
     >
-      {/* Only the tab strip scrolls; trailingActions sits outside it. */}
-      <div className="min-w-0 flex-1 flex items-end gap-0 overflow-x-auto overflow-y-hidden">
-        {tabs.length === 0 && showEmptyHint && (
-          <div className="px-4 pb-2 text-xs text-on-surface-faint">
-            Drag dashboards, accounts, or resources here to pin tabs
-          </div>
-        )}
-        {/* The tablist wraps the tabs alone — the "+" button is not a tab, and
-            an empty tablist is invalid, which web now reaches whenever no tabs
-            are pinned (trailingActions keeps the bar mounted). */}
-        {tabs.length > 0 && (
-          <div
-            role="tablist"
-            aria-label="Workspace tabs"
-            aria-orientation="horizontal"
-            className="min-w-0 flex items-end gap-0"
-          >
-            {tabs.map((tab, index) => {
-              const item = (
-                <TabBarItem
-                  key={tab.id}
-                  tab={tab}
-                  active={tab.id === activeTabId}
-                  onActivate={onActivate}
-                  onClose={onClose}
-                  tabId={`${baseId}-tab-${tab.id}`}
-                  panelId={`${baseId}-panel-${tab.id}`}
-                  tabIndex={tab.id === activeTabId ? 0 : -1}
-                  onKeyDown={(e) => onTabKeyDown(e, index)}
-                  buttonRef={(el) => {
-                    tabRefs.current[index] = el;
-                  }}
-                />
-              );
-              return renderTabWrapper ? renderTabWrapper(tab, item) : item;
-            })}
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={onNew}
-          className="ml-1 self-center size-5 flex items-center justify-center rounded text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-colors text-base leading-none"
-          aria-label="New tab"
-          title="New tab"
-        >
-          +
-        </button>
-      </div>
-      {trailingActions ? (
-        <div className="flex shrink-0 items-center gap-1 self-center pl-2 pr-2">
-          {trailingActions}
+      {tabs.length === 0 && showEmptyHint ? (
+        <div className="px-4 pb-2 text-xs text-on-surface-faint">
+          Drag dashboards, accounts, or resources here to pin tabs
         </div>
-      ) : null}
+      ) : (
+        tabs.map((tab, index) => {
+          const item = (
+            <TabBarItem
+              key={tab.id}
+              tab={tab}
+              active={tab.id === activeTabId}
+              onActivate={onActivate}
+              onClose={onClose}
+              tabId={`${baseId}-tab-${tab.id}`}
+              panelId={`${baseId}-panel-${tab.id}`}
+              tabIndex={tab.id === activeTabId ? 0 : -1}
+              onKeyDown={(e) => onTabKeyDown(e, index)}
+              buttonRef={(el) => {
+                tabRefs.current[index] = el;
+              }}
+            />
+          );
+          return renderTabWrapper ? renderTabWrapper(tab, item) : item;
+        })
+      )}
+      <button
+        type="button"
+        onClick={onNew}
+        className="ml-1 self-center size-5 flex items-center justify-center rounded text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-colors text-base leading-none"
+        aria-label="New tab"
+        title="New tab"
+      >
+        +
+      </button>
     </div>
   );
 }

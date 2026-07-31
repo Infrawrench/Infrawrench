@@ -128,37 +128,6 @@ function RootLayout() {
   return <AuthenticatedShell />;
 }
 
-/**
- * Org settings, pinned to the right of the workspace tab bar.
- *
- * Settings is not a workspace tab — it renders through the layout <Outlet/>,
- * so it gets a control beside the tabs rather than one of the tabs itself.
- */
-function SettingsTabBarButton({ orgId, active }: { orgId: string; active: boolean }) {
-  const navigate = useNavigate();
-
-  return (
-    <button
-      type="button"
-      onClick={() => void navigate({ to: "/org/$orgId/settings", params: { orgId } })}
-      title="Settings"
-      aria-current={active ? "page" : undefined}
-      className={`flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
-        active
-          ? "bg-surface-overlay text-on-surface"
-          : "text-on-surface-muted hover:bg-surface-overlay/50 hover:text-on-surface-secondary"
-      }`}
-    >
-      {/* U+FE0E forces text presentation — some platforms render a bare ⚙ as a
-          colour emoji, which ignores the greyscale active/inactive colours. */}
-      <span aria-hidden="true" className="text-sm leading-none">
-        &#9881;&#xFE0E;
-      </span>
-      Settings
-    </button>
-  );
-}
-
 function AuthenticatedShell() {
   const [tunnelAttach, setTunnelAttach] = useState<TunnelAttachState | null>(null);
   const navigate = useNavigate();
@@ -349,14 +318,6 @@ function AuthenticatedShell() {
           onActivate={handleActivateTab}
           onClose={handleCloseTab}
           onNew={handleNewTab}
-          trailingActions={
-            orgId ? (
-              <SettingsTabBarButton
-                orgId={orgId}
-                active={/^\/org\/[^/]+\/settings/.test(pathname)}
-              />
-            ) : null
-          }
         />
         {orgId && <ChangeFreezeBanner orgId={orgId} />}
         <div className="flex flex-1 overflow-hidden">
