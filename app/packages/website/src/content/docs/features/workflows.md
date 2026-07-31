@@ -325,6 +325,41 @@ A server that runs outside Infrawrench can raise the same page over HTTP — see
 
 In a **local** desktop workflow there are no Twilio, push, Slack, or Teams recipients — those connections are org-level things the cloud holds — so a page becomes a native OS notification on the machine running the workflow. The key and cooldown behave exactly the same. An organization's workflows page the full set of transports whether you run them from the web or the desktop app.
 
+### Pausing for a human approval
+
+Some steps shouldn't run just because a script reached them. `infra.waitForApproval(...)` suspends the run mid-flight until a member of your organization approves or denies it:
+
+```ts
+// Cron: nightly cleanup, but a human signs off before anything is deleted.
+const gcp = infra.accounts.gcp.getByName("production");
+const stale = (await gcp.gkeClusters.list()).filter((c) => c.displayName.startsWith("dev-"));
+
+if (stale.length > 0) {
+  await infra.waitForApproval(`Delete ${stale.length} dev cluster(s)?`, {
+    title: "Nightly dev cleanup",
+    timeoutMinutes: 120,
+  });
+  for (const cluster of stale) await cluster.delete();
+}
+```
+
+While the run is suspended, the request shows up as a **pending approval card on the workflow's run view** with **Approve** and **Deny** buttons, and everyone opted into workflow alerts gets a push notification. Approving lets the run continue within a few seconds; the call resolves with `{ approved: true, decidedBy, decidedAt }` so you can log who signed off.
+
+<insert [Screenshot of the Workflows tab with a run suspended on an approval: the amber pending-approval card above the run log showing the request title, message, expiry time, and Approve/Deny buttons] here>
+
+**Denial and timeout throw.** If someone denies the request — or nobody decides before the timeout (60 minutes by default, up to 24 hours) — the `waitForApproval` call throws and the run fails, unless you catch the error to take a fallback path. There is no "approve by silence": an unattended request is always treated as denied.
+
+| Option           | Default             | What it does                                               |
+| ---------------- | ------------------- | ---------------------------------------------------------- |
+| `title`          | the workflow's name | Headline of the approval card and the push notification.   |
+| `timeoutMinutes` | `60`                | How long to wait before the request expires and is denied. |
+
+Time spent waiting for a decision doesn't count against the run's execution budget (like SSH waits and `infra.prompt`), so a run can wait out a long approval without hitting its timeout.
+
+Approvals can also be listed and decided over the HTTP API — `GET /api/org/{orgId}/workflow-approvals?status=pending` and `POST /api/org/{orgId}/workflow-approvals/{id}/approve` (or `/deny`) — so a chat-ops bot or an external tool can land the decision. Deciding needs the same write permission as running a workflow.
+
+Approvals are org-level records with notifications, so they're **cloud-only**: `infra.waitForApproval` is unavailable in the desktop app's local workflows, and the generated types mark it as such so you catch it while editing.
+
 ### Reporting your own cost data
 
 Infrawrench collects spend from every provider that has a billing API, but plenty of money doesn't come from one — a SaaS invoice, an internal chargeback, a colo bill, a provider with no plugin yet. A workflow can report those numbers itself, and they land in exactly the same place provider-collected spend does: [cost graphs](./cloud-costs.md), dimension filters, and budgets.
