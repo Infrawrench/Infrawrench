@@ -63,8 +63,12 @@ function NeighborList({
         <p className="text-sm text-on-surface-muted">{emptyText}</p>
       ) : (
         <ul className="space-y-2">
-          {neighbors.map((neighbor, i) => (
-            <li key={`${neighbor.node.id}:${neighbor.fieldKey}:${i}`}>
+          {/*
+            Edges are deduped by (consumer, field) in buildDependencyGraph, so
+            node id + field key is already unique in both neighbor lists.
+          */}
+          {neighbors.map((neighbor) => (
+            <li key={`${neighbor.node.id}:${neighbor.fieldKey}`}>
               <button
                 type="button"
                 onClick={() => onOpenResource(neighbor.node)}

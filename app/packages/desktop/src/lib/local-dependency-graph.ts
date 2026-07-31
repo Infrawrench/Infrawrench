@@ -11,7 +11,7 @@ import type {
   DependencyGraphNode,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
-import { getPlugin } from "../plugins/loader";
+import { loadPlugins } from "../plugins/loader";
 
 interface ResourceRow {
   id: string;
@@ -31,21 +31,28 @@ interface EdgeRow {
 export async function loadLocalDependencyGraph(): Promise<DependencyGraphData> {
   const db = await getDb();
 
-  const resourceRows = await db.select<ResourceRow[]>(
-    `SELECT id, plugin_id, resource_type_id, account_id, display_name
-     FROM resources WHERE deleted_at IS NULL`,
-  );
+  // Four independent reads — nothing here feeds anything else's query, so
+  // they go out together instead of waterfalling over the IPC boundary.
+  const [resourceRows, associationRows, refStateRows, accountRows] = await Promise.all([
+    db.select<ResourceRow[]>(
+      `SELECT id, plugin_id, resource_type_id, account_id, display_name
+       FROM resources WHERE deleted_at IS NULL`,
+    ),
+    db.select<EdgeRow[]>(
+      `SELECT consumer_resource_id, consumer_field_key, provider_resource_id, provider_output_key
+       FROM associations WHERE deleted_at IS NULL`,
+    ),
+    db.select<EdgeRow[]>(
+      `SELECT resource_id AS consumer_resource_id, field_key AS consumer_field_key,
+              source_resource_id AS provider_resource_id, source_output_key AS provider_output_key
+       FROM secret_field_states WHERE resolution_kind = 'output-ref'`,
+    ),
+    db.select<{ id: string; display_name: string }[]>(
+      `SELECT id, display_name FROM accounts WHERE deleted_at IS NULL`,
+    ),
+  ]);
   const resourceById = new Map(resourceRows.map((r) => [r.id, r]));
-
-  const associationRows = await db.select<EdgeRow[]>(
-    `SELECT consumer_resource_id, consumer_field_key, provider_resource_id, provider_output_key
-     FROM associations WHERE deleted_at IS NULL`,
-  );
-  const refStateRows = await db.select<EdgeRow[]>(
-    `SELECT resource_id AS consumer_resource_id, field_key AS consumer_field_key,
-            source_resource_id AS provider_resource_id, source_output_key AS provider_output_key
-     FROM secret_field_states WHERE resolution_kind = 'output-ref'`,
-  );
+  const accountNameById = new Map(accountRows.map((a) => [a.id, a.display_name]));
 
   // Associations first — canonical topology rows; first edge per (consumer,
   // field) wins, matching the shared model's dedupe rule.
@@ -73,16 +80,17 @@ export async function loadLocalDependencyGraph(): Promise<DependencyGraphData> {
     connectedIds.add(edge.providerResourceId);
   }
 
-  const accountRows = await db.select<{ id: string; display_name: string }[]>(
-    `SELECT id, display_name FROM accounts WHERE deleted_at IS NULL`,
+  // One load, indexed by manifest id — `getPlugin` is a linear scan over the
+  // same memoized list, so calling it per node re-scanned it every time.
+  const pluginById = new Map(
+    (await loadPlugins()).map((loaded) => [loaded.plugin.manifest.id, loaded]),
   );
-  const accountNameById = new Map(accountRows.map((a) => [a.id, a.display_name]));
 
   const nodes: DependencyGraphNode[] = [];
   for (const id of connectedIds) {
     const r = resourceById.get(id);
     if (!r) continue;
-    const loaded = await getPlugin(r.plugin_id);
+    const loaded = pluginById.get(r.plugin_id);
     nodes.push({
       id: r.id,
       displayName: r.display_name,

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { eq, and, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
 import { accounts, associations, resources, secretFieldStates } from "../../db/schema";
-import { getPlugin } from "../../plugins/loader";
+import { loadPlugins } from "../../plugins/loader";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
@@ -30,54 +30,61 @@ app.get("/", async (c) => {
   requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
 
-  const orgResources = await db
-    .select({
-      id: resources.id,
-      pluginId: resources.pluginId,
-      resourceTypeId: resources.resourceTypeId,
-      accountId: resources.accountId,
-      displayName: resources.displayName,
-    })
-    .from(resources)
-    .where(and(eq(resources.organizationId, organizationId), isNull(resources.deletedAt)));
+  // Four independent reads — none feeds another's query, so they go to the
+  // pool together instead of waterfalling. The consumer join scopes both edge
+  // sources to the org; provider ids are then validated against the org's
+  // resource set below (buildDependencyGraph does it again client-side, but
+  // there's no reason to ship foreign ids).
+  const [orgResources, associationRows, refStateRows, orgAccounts] = await Promise.all([
+    db
+      .select({
+        id: resources.id,
+        pluginId: resources.pluginId,
+        resourceTypeId: resources.resourceTypeId,
+        accountId: resources.accountId,
+        displayName: resources.displayName,
+      })
+      .from(resources)
+      .where(and(eq(resources.organizationId, organizationId), isNull(resources.deletedAt))),
+    db
+      .select({
+        consumerResourceId: associations.consumerResourceId,
+        consumerFieldKey: associations.consumerFieldKey,
+        providerResourceId: associations.providerResourceId,
+        providerOutputKey: associations.providerOutputKey,
+      })
+      .from(associations)
+      .innerJoin(resources, eq(associations.consumerResourceId, resources.id))
+      .where(
+        and(
+          eq(resources.organizationId, organizationId),
+          isNull(resources.deletedAt),
+          isNull(associations.deletedAt),
+        ),
+      ),
+    db
+      .select({
+        consumerResourceId: secretFieldStates.resourceId,
+        consumerFieldKey: secretFieldStates.fieldKey,
+        providerResourceId: secretFieldStates.sourceResourceId,
+        providerOutputKey: secretFieldStates.sourceOutputKey,
+      })
+      .from(secretFieldStates)
+      .innerJoin(resources, eq(secretFieldStates.resourceId, resources.id))
+      .where(
+        and(
+          eq(resources.organizationId, organizationId),
+          isNull(resources.deletedAt),
+          eq(secretFieldStates.resolutionKind, "output-ref"),
+        ),
+      ),
+    db
+      .select({ id: accounts.id, displayName: accounts.displayName })
+      .from(accounts)
+      .where(and(eq(accounts.organizationId, organizationId), isNull(accounts.deletedAt))),
+  ]);
   const resourceById = new Map(orgResources.map((r) => [r.id, r]));
-
-  // Consumer join scopes both edge sources to the org; provider ids are then
-  // validated against the org's resource set below (buildDependencyGraph does
-  // it again client-side, but there's no reason to ship foreign ids).
-  const associationRows = await db
-    .select({
-      consumerResourceId: associations.consumerResourceId,
-      consumerFieldKey: associations.consumerFieldKey,
-      providerResourceId: associations.providerResourceId,
-      providerOutputKey: associations.providerOutputKey,
-    })
-    .from(associations)
-    .innerJoin(resources, eq(associations.consumerResourceId, resources.id))
-    .where(
-      and(
-        eq(resources.organizationId, organizationId),
-        isNull(resources.deletedAt),
-        isNull(associations.deletedAt),
-      ),
-    );
-
-  const refStateRows = await db
-    .select({
-      consumerResourceId: secretFieldStates.resourceId,
-      consumerFieldKey: secretFieldStates.fieldKey,
-      providerResourceId: secretFieldStates.sourceResourceId,
-      providerOutputKey: secretFieldStates.sourceOutputKey,
-    })
-    .from(secretFieldStates)
-    .innerJoin(resources, eq(secretFieldStates.resourceId, resources.id))
-    .where(
-      and(
-        eq(resources.organizationId, organizationId),
-        isNull(resources.deletedAt),
-        eq(secretFieldStates.resolutionKind, "output-ref"),
-      ),
-    );
+  const accountNameById = new Map(orgAccounts.map((a) => [a.id, a.displayName]));
 
   // Associations first: they are the canonical topology rows, and the shared
   // model keeps the first edge it sees per (consumer, field).
@@ -109,47 +116,28 @@ app.get("/", async (c) => {
     connectedIds.add(edge.providerResourceId);
   }
 
-  const orgAccounts = await db
-    .select({ id: accounts.id, displayName: accounts.displayName })
-    .from(accounts)
-    .where(and(eq(accounts.organizationId, organizationId), isNull(accounts.deletedAt)));
-  const accountNameById = new Map(orgAccounts.map((a) => [a.id, a.displayName]));
-
-  const pluginCache = new Map<
-    string,
-    { logoSvg: string; displayName: string; resourceTypes: Map<string, string> }
-  >();
-  const pluginMeta = async (pluginId: string) => {
-    let meta = pluginCache.get(pluginId);
-    if (!meta) {
-      const loaded = await getPlugin(pluginId);
-      meta = loaded
-        ? {
-            logoSvg: loaded.plugin.manifest.logoSvg,
-            displayName: loaded.plugin.manifest.displayName,
-            resourceTypes: new Map(
-              loaded.plugin.resourceTypes.map((rt) => [rt.id, rt.displayName]),
-            ),
-          }
-        : { logoSvg: "", displayName: pluginId, resourceTypes: new Map<string, string>() };
-      pluginCache.set(pluginId, meta);
-    }
-    return meta;
-  };
+  // One load, indexed by manifest id — `getPlugin` is a linear scan over the
+  // same memoized list, so calling it per node re-scanned it every time and
+  // made the per-request cache below unnecessary.
+  const pluginById = new Map(
+    (await loadPlugins()).map((loaded) => [loaded.plugin.manifest.id, loaded]),
+  );
 
   const nodes = [];
   for (const id of connectedIds) {
     const r = resourceById.get(id);
     if (!r) continue;
-    const meta = await pluginMeta(r.pluginId);
+    const loaded = pluginById.get(r.pluginId);
     nodes.push({
       id: r.id,
       displayName: r.displayName,
       pluginId: r.pluginId,
-      pluginDisplayName: meta.displayName,
-      pluginLogoSvg: meta.logoSvg,
+      pluginDisplayName: loaded?.plugin.manifest.displayName ?? r.pluginId,
+      pluginLogoSvg: loaded?.plugin.manifest.logoSvg ?? "",
       resourceTypeId: r.resourceTypeId,
-      resourceTypeLabel: meta.resourceTypes.get(r.resourceTypeId) ?? r.resourceTypeId,
+      resourceTypeLabel:
+        loaded?.plugin.resourceTypes.find((rt) => rt.id === r.resourceTypeId)?.displayName ??
+        r.resourceTypeId,
       accountId: r.accountId,
       accountName: accountNameById.get(r.accountId) ?? "",
     });

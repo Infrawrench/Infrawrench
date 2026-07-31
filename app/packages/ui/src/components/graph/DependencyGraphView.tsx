@@ -96,15 +96,22 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
         )}
       </div>
 
-      {/* Canvas */}
+      {/*
+        Canvas. `role="group"`, not `role="img"` — the nodes are focusable
+        buttons, and `img` would prune the whole subtree out of the
+        accessibility tree. Escape clears the selection while focus is on a
+        node; the transparent backdrop rect below does the same for the mouse.
+      */}
       <div className="flex-1 overflow-auto min-h-0">
         <svg
           width={layout.width}
           height={layout.height}
           viewBox={`0 0 ${layout.width} ${layout.height}`}
-          role="img"
+          role="group"
           aria-label="Resource dependency graph"
-          onClick={() => setSelectedId(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setSelectedId(null);
+          }}
           className="block"
         >
           <defs>
@@ -131,6 +138,21 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
               <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-accent)" />
             </marker>
           </defs>
+
+          {/*
+            Mouse-only backdrop: clicking empty canvas clears the selection.
+            A sibling of the nodes rather than a wrapper around them, so the
+            node buttons keep their own semantics and focus behavior. Keyboard
+            users clear via Escape or the "Clear" button in the header.
+          */}
+          <rect
+            width={layout.width}
+            height={layout.height}
+            fill="transparent"
+            pointerEvents="all"
+            aria-hidden="true"
+            onClick={() => setSelectedId(null)}
+          />
 
           {/* Edges under nodes */}
           {model.edges.map((edge) => {
