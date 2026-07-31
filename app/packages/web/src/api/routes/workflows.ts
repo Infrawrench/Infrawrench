@@ -23,6 +23,7 @@ import { requirePermission } from "../../auth/permissions";
 import {
   WorkflowError,
   checkWorkflowSource,
+  clearWorkflowSchedule,
   createWorkflow,
   generateWorkflowTypings,
   getWorkflow,
@@ -30,9 +31,12 @@ import {
   listWorkflowRuns,
   listWorkflows,
   redactWorkflow,
+  setWorkflowSchedule,
   softDeleteWorkflow,
   updateWorkflow,
+  workflowScheduleView,
   type WorkflowBody,
+  type WorkflowScheduleBody,
 } from "../../services/workflows";
 import { runWorkflowById } from "../../services/workflow-runner";
 
@@ -92,6 +96,39 @@ app.delete("/:id", async (c) => {
   requirePermission(c, "workflows:write");
   try {
     await softDeleteWorkflow(orgId(c), c.req.param("id"));
+    return c.json({ ok: true });
+  } catch (e) {
+    return fail(c, e);
+  }
+});
+
+// --- Cron schedule sub-resource (the workflow's cron trigger) ---
+
+app.get("/:id/schedule", async (c) => {
+  requirePermission(c, "dashboards:read");
+  const wf = await load(c, c.req.param("id"));
+  if (!wf) return c.json({ error: "Not found" }, 404);
+  return c.json({ schedule: workflowScheduleView(wf) });
+});
+
+app.put("/:id/schedule", async (c) => {
+  requirePermission(c, "dashboards:write");
+  const body = (await c.req.json().catch(() => null)) as WorkflowScheduleBody | null;
+  if (!body || typeof body.expression !== "string") {
+    return c.json({ error: "Body must be JSON with an `expression` string." }, 400);
+  }
+  try {
+    const wf = await setWorkflowSchedule(orgId(c), c.req.param("id"), body);
+    return c.json({ schedule: workflowScheduleView(wf) });
+  } catch (e) {
+    return fail(c, e);
+  }
+});
+
+app.delete("/:id/schedule", async (c) => {
+  requirePermission(c, "dashboards:write");
+  try {
+    await clearWorkflowSchedule(orgId(c), c.req.param("id"));
     return c.json({ ok: true });
   } catch (e) {
     return fail(c, e);

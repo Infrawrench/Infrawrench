@@ -19,6 +19,7 @@ import { registerBudgetPaths } from "./paths/budgets";
 import { registerChangeFreezePaths } from "./paths/change-freezes";
 import { registerCustomGraphPaths } from "./paths/custom-graphs";
 import { registerWorkflowApprovalPaths } from "./paths/workflow-approvals";
+import { registerWorkflowPaths } from "./paths/workflows";
 import { registerDeploymentPaths } from "./paths/deployments";
 import { registerPagePaths } from "./paths/pages";
 import { registerResourcePaths } from "./paths/resources";
@@ -98,6 +99,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerChangeFreezePaths(ctx);
   registerCustomGraphPaths(ctx);
   registerWorkflowApprovalPaths(ctx);
+  registerWorkflowPaths(ctx);
   registerDeploymentPaths(ctx);
   registerPagePaths(ctx);
   registerResourcePaths(ctx);
@@ -157,8 +159,9 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       {
         name: "Workflows",
         description:
-          "Workflow (runbook) surface exposed over HTTP — currently the approval requests " +
-          "raised by infra.waitForApproval(...) inside runs.",
+          "Workflow (runbook) surface exposed over HTTP — the approval requests " +
+          "raised by infra.waitForApproval(...) inside runs, and the cron-schedule " +
+          "sub-resource. Full workflow CRUD is managed in the app.",
       },
       {
         name: "Resources",
@@ -307,6 +310,10 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /custom-graphs/{id}": "dashboards:write",
   "DELETE /custom-graphs/{id}": "dashboards:write",
   "POST /custom-graphs/{id}/render": "dashboards:read",
+  // workflows (share the dashboards permissions, like custom graphs)
+  "GET /workflows/{id}/schedule": "dashboards:read",
+  "PUT /workflows/{id}/schedule": "dashboards:write",
+  "DELETE /workflows/{id}/schedule": "dashboards:write",
   // agents
   "GET /agents/accounts": "accounts:read",
   "GET /agents/settings": "accounts:read",

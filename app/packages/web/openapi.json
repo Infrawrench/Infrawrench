@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.27.0",
+    "version": "0.28.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -58,7 +58,7 @@
     },
     {
       "name": "Workflows",
-      "description": "Workflow (runbook) surface exposed over HTTP — currently the approval requests raised by infra.waitForApproval(...) inside runs."
+      "description": "Workflow (runbook) surface exposed over HTTP — the approval requests raised by infra.waitForApproval(...) inside runs, and the cron-schedule sub-resource. Full workflow CRUD is managed in the app."
     },
     {
       "name": "Resources",
@@ -3482,6 +3482,85 @@
           "decidedByName",
           "createdAt"
         ],
+        "additionalProperties": false
+      },
+      "WorkflowSchedule": {
+        "type": ["object", "null"],
+        "properties": {
+          "expression": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Standard 5-field cron expression (minute hour day-of-month month day-of-week). Supports `*`, lists, ranges, and steps; 3-letter month/weekday names; `7` as Sunday. When both day fields are restricted, a date matches if either does (POSIX).",
+            "example": "0 9 * * 1"
+          },
+          "timezone": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "IANA timezone the expression's wall times are evaluated in. Omit or null for UTC.",
+            "example": "Europe/London"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Mirrors the workflow's enabled flag — a disabled workflow's schedule never fires."
+          },
+          "lastRunAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "When the workflow last finished a run (any trigger source)."
+          },
+          "nextRunAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "The persisted next fire time the scheduler will claim. Null while disabled, or when the expression never matches."
+          },
+          "nextRuns": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Preview of the next few fire times, computed at read time."
+          }
+        },
+        "required": ["expression", "timezone", "enabled", "lastRunAt", "nextRunAt", "nextRuns"],
+        "additionalProperties": false,
+        "description": "Null when the workflow's trigger is not cron."
+      },
+      "WorkflowScheduleResponse": {
+        "type": "object",
+        "properties": {
+          "schedule": {
+            "$ref": "#/components/schemas/WorkflowSchedule"
+          }
+        },
+        "required": ["schedule"],
+        "additionalProperties": false
+      },
+      "WorkflowScheduleInput": {
+        "type": "object",
+        "properties": {
+          "expression": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Standard 5-field cron expression (minute hour day-of-month month day-of-week). Supports `*`, lists, ranges, and steps; 3-letter month/weekday names; `7` as Sunday. When both day fields are restricted, a date matches if either does (POSIX).",
+            "example": "0 9 * * 1"
+          },
+          "timezone": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "IANA timezone the expression's wall times are evaluated in. Omit or null for UTC.",
+            "example": "Europe/London"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Also set the workflow's enabled flag. Omit to leave it unchanged."
+          }
+        },
+        "required": ["expression"],
         "additionalProperties": false
       },
       "DeployRepo": {
@@ -12880,6 +12959,187 @@
         },
         "operationId": "postOrgOrgIdWorkflowApprovalsIdDeny",
         "x-required-permission": "workflows:approve"
+      }
+    },
+    "/api/org/{orgId}/workflows/{id}/schedule": {
+      "get": {
+        "tags": ["Workflows"],
+        "summary": "Get a workflow's cron schedule",
+        "description": "The schedule view of the workflow's trigger, with the next few computed fire times. `schedule` is null when the workflow is triggered some other way (manual, git, budget).\n\n_Requires permission: `dashboards:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Workflow id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedule (or null when the trigger is not cron)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowScheduleResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdWorkflowsIdSchedule",
+        "x-required-permission": "dashboards:read"
+      },
+      "put": {
+        "tags": ["Workflows"],
+        "summary": "Create or replace a workflow's cron schedule",
+        "description": "Sets the workflow's trigger to cron with the given expression and timezone, validating both, and computes the next fire time. The workflow fires at the schedule's next occurrence — never immediately on save.\n\n_Requires permission: `dashboards:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Workflow id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowScheduleInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The stored schedule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowScheduleResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdWorkflowsIdSchedule",
+        "x-required-permission": "dashboards:write"
+      },
+      "delete": {
+        "tags": ["Workflows"],
+        "summary": "Remove a workflow's cron schedule",
+        "description": "Reverts the workflow's trigger to manual and clears the pending fire time. A no-op when the trigger is not cron.\n\n_Requires permission: `dashboards:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Workflow id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdWorkflowsIdSchedule",
+        "x-required-permission": "dashboards:write"
       }
     },
     "/api/org/{orgId}/deployments/repos": {
