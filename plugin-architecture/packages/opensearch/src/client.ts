@@ -836,6 +836,7 @@ function buildIndicesTable(indices: CatIndex[]): TableNode {
       action: {
         type: "plugin-action",
         actionId: `delete-index:${idx.index}`,
+        destructive: true,
         confirmMessage: `Delete index "${idx.index}"? This permanently destroys all documents inside.`,
         successMessage: `Deleted index "${idx.index}".`,
       },
@@ -938,6 +939,7 @@ function buildReposTable(repos: Record<string, { type: string }>): TableNode {
           action: {
             type: "plugin-action",
             actionId: `delete-repo:${name}`,
+            destructive: true,
             confirmMessage: `Unregister repository "${name}"? Snapshots already inside the repo are not deleted from the underlying storage.`,
             successMessage: `Unregistered repository "${name}".`,
           },
