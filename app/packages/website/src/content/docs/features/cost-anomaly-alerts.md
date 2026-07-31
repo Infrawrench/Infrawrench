@@ -51,6 +51,11 @@ measuring against is judged as a spike, and only a key with no baseline can be a
   than the **new-source floor** ($25/day by default) is reported as a new spend source instead.
   "Effectively nothing" means it spent less over the entire window than that floor covers for a
   single day, which tolerates the sub-cent trial usage real bills are full of.
+- New spend sources need **7 days of cost collection** behind them before any are reported.
+  On the day you connect your first account every provider and every service is technically
+  new, and that is a fact about how long we have been looking rather than about your spend.
+  This is measured across the organization, so a genuinely new provider or service inside an
+  established organization still alerts the day it appears.
 - Detection is per currency. Mixed-currency orgs get independent baselines per currency,
   the same way cost graphs never merge currencies, and every floor is converted so it means the
   same real amount whether a provider bills in dollars or yen.

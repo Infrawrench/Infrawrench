@@ -170,6 +170,44 @@ describe("resolveEffectivePermissions — user", () => {
     expect(out.role?.systemKey).toBeNull();
   });
 
+  /**
+   * Regression guard for the `dashboards:*` → `workflows:*` split. Workflows
+   * used to ride on `dashboards:write`, and the grandfathering of grants that
+   * predate the split ran once, in migration
+   * `0055_grandfather_workflow_permissions` — never here. A role written after
+   * that migration therefore means exactly what it says, which is the entire
+   * point of giving `workflows:approve` its own entry: "may edit the
+   * automation, may not land the decision on someone else's
+   * `infra.waitForApproval(...)`" has to be expressible.
+   */
+  it("does not grant workflows:approve to a role that grants dashboards:write", async () => {
+    selectResults.push([{ roleId: "r-authors", legacyRole: null }]); // membership
+    selectResults.push([
+      {
+        id: "r-authors",
+        name: "Workflow authors",
+        description: null,
+        isSystem: false,
+        systemKey: null,
+        // Deliberately withholds approve while granting everything around it.
+        permissions: ["dashboards:read", "dashboards:write", "workflows:read", "workflows:write"],
+        updatedAt: new Date("2020-01-01T00:00:00Z"), // long "before" any cutover
+      },
+    ]);
+    const out = await resolver.resolveEffectivePermissions("org1", {
+      kind: "user",
+      userId: "u1",
+    });
+    expect(out.permissions).toEqual([
+      "dashboards:read",
+      "dashboards:write",
+      "workflows:read",
+      "workflows:write",
+    ]);
+    expect(out.permissions).not.toContain("workflows:approve");
+    expect(out.role?.permissions).not.toContain("workflows:approve");
+  });
+
   it("uses in-code permissions for a system role (ignoring stale stored perms)", async () => {
     selectResults.push([{ roleId: "r-owner", legacyRole: null }]); // membership
     selectResults.push([

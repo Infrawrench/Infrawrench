@@ -90,7 +90,10 @@ export class PollerLoop extends TickLoop {
 
     // Fourth pass: weekly digests. A no-op outside the Monday-morning send
     // window; the conditional-UPDATE claim inside makes it replica- and
-    // restart-safe. Defensive like the others.
+    // restart-safe, and it claims a bounded batch per call (see
+    // `DIGESTS_PER_TICK`) so a morning where every org comes due at once drains
+    // over several ticks instead of stalling this one. Defensive like the
+    // others.
     await this.tickDigests();
 
     // Fifth pass: retention. Rate-limited to once an hour per process and

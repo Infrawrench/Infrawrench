@@ -373,66 +373,126 @@ export function digestTitle(digest: WeeklyDigest): string {
 }
 
 /**
- * The digest body as plain-text lines, shared by every transport. Slack wraps
- * headline lines in mrkdwn bold; Teams and email keep them plain (the Teams
+ * One run of text within a digest line, and whether the transport should
+ * emphasise it.
+ *
+ * The body is modelled as segments rather than as pre-marked-up strings for one
+ * reason: a renderer has to be able to tell *its own* markup apart from the
+ * text it is rendering, and it cannot do that once both are in the same string.
+ * The AI narrative is arbitrary model output that goes into the body verbatim,
+ * so a scheme that recovered the markup by pattern-matching the rendered line
+ * (splitting on `<strong>`, say) would hand the model a way to smuggle markup
+ * past the escaper. Here the structure is never destroyed in the first place:
+ * `text` is always literal text, and only `bold: true` asks for markup.
+ */
+export interface DigestSegment {
+  text: string;
+  bold: boolean;
+}
+
+/** A line of the digest body. An empty array is a blank line. */
+export type DigestLine = DigestSegment[];
+
+const plain = (text: string): DigestLine => [{ text, bold: false }];
+const strong = (text: string): DigestLine => [{ text, bold: true }];
+/** A blank separator line. */
+const BLANK: DigestLine = [];
+
+/**
+ * The digest body as structured lines, shared by every transport. Every
+ * renderer builds from this, so the three transports can never drift in what
+ * they report — and none of them has to guess which part of a line is markup.
+ *
+ * `narrative` is the optional AI-written paragraph; it goes above the
+ * deterministic content as a single non-bold segment and is strictly additive —
+ * omitting it changes nothing else about the message.
+ */
+export function digestSegments(digest: WeeklyDigest, narrative?: string | null): DigestLine[] {
+  const lines: DigestLine[] = [];
+
+  if (narrative) {
+    lines.push(plain(narrative));
+    lines.push(BLANK);
+  }
+
+  if (digest.totals.length === 0) {
+    lines.push(
+      plain(
+        "No cost data was recorded for last week. Connect a provider account with cost collection to see spend here.",
+      ),
+    );
+  } else {
+    for (const t of digest.totals) {
+      const suffix = digest.totals.length > 1 ? ` (${t.currency})` : "";
+      lines.push([
+        { text: `Spend${suffix}: ${formatAmount(t.currentAmount, t.currency)}`, bold: true },
+        {
+          text: ` — ${formatDelta(t.delta, t.currency)} (${formatPct(t.deltaPct)}) vs ${formatAmount(t.previousAmount, t.currency)} the week before`,
+          bold: false,
+        },
+      ]);
+    }
+    if (digest.topProviderMovers.length > 0) {
+      lines.push(BLANK);
+      lines.push(strong("Top movers by provider"));
+      for (const m of digest.topProviderMovers) lines.push(plain(`• ${moverLine(m)}`));
+    }
+    if (digest.topServiceMovers.length > 0) {
+      lines.push(BLANK);
+      lines.push(strong("Top movers by service"));
+      for (const m of digest.topServiceMovers) lines.push(plain(`• ${moverLine(m)}`));
+    }
+  }
+
+  lines.push(BLANK);
+  lines.push([
+    { text: "Reliability", bold: true },
+    { text: `: ${pluralize(digest.syncIncidentsOpened, "sync incident")} opened`, bold: false },
+  ]);
+  lines.push([
+    { text: "Resources", bold: true },
+    { text: `: ${digest.resourcesAdded} added, ${digest.resourcesRemoved} removed`, bold: false },
+  ]);
+  return lines;
+}
+
+/**
+ * {@link digestSegments} flattened to plain-text lines. Slack wraps headline
+ * fragments in mrkdwn bold; Teams and email text keep them plain (the Teams
  * card escaper would show literal asterisks otherwise).
  *
  * `bold` wraps a fragment in the transport's bold markup, or returns it
- * unchanged for plain text. `narrative` is the optional AI-written paragraph;
- * it goes above the deterministic content and is strictly additive — omitting
- * it changes nothing else about the message.
+ * unchanged for plain text. Only use this for transports whose markup is a
+ * plain-string convention; the HTML renderer works off the segments directly,
+ * because it has to escape everything the segments did *not* ask to be markup.
  */
 export function digestLines(
   digest: WeeklyDigest,
   bold: (s: string) => string,
   narrative?: string | null,
 ): string[] {
-  const lines: string[] = [];
-
-  if (narrative) {
-    lines.push(narrative);
-    lines.push("");
-  }
-
-  if (digest.totals.length === 0) {
-    lines.push(
-      "No cost data was recorded for last week. Connect a provider account with cost collection to see spend here.",
-    );
-  } else {
-    for (const t of digest.totals) {
-      const suffix = digest.totals.length > 1 ? ` (${t.currency})` : "";
-      lines.push(
-        `${bold(`Spend${suffix}: ${formatAmount(t.currentAmount, t.currency)}`)} — ${formatDelta(t.delta, t.currency)} (${formatPct(t.deltaPct)}) vs ${formatAmount(t.previousAmount, t.currency)} the week before`,
-      );
-    }
-    if (digest.topProviderMovers.length > 0) {
-      lines.push("");
-      lines.push(bold("Top movers by provider"));
-      for (const m of digest.topProviderMovers) lines.push(`• ${moverLine(m)}`);
-    }
-    if (digest.topServiceMovers.length > 0) {
-      lines.push("");
-      lines.push(bold("Top movers by service"));
-      for (const m of digest.topServiceMovers) lines.push(`• ${moverLine(m)}`);
-    }
-  }
-
-  lines.push("");
-  lines.push(
-    `${bold("Reliability")}: ${pluralize(digest.syncIncidentsOpened, "sync incident")} opened`,
+  return digestSegments(digest, narrative).map((line) =>
+    line.map((seg) => (seg.bold ? bold(seg.text) : seg.text)).join(""),
   );
-  lines.push(
-    `${bold("Resources")}: ${digest.resourcesAdded} added, ${digest.resourcesRemoved} removed`,
-  );
-  return lines;
 }
 
-/** Slack mrkdwn body. `slack.ts` escapes `&<>` and leaves `*bold*` intact. */
+/**
+ * Slack mrkdwn body. `slack.ts` escapes `&<>` in the whole body before it goes
+ * up, which is what keeps narrative text from forging a Slack link or a
+ * `<!channel>` mention; the `*` this adds survives because mrkdwn has no escape
+ * for it. A narrative that contains a stray asterisk can therefore only
+ * mis-emphasise its own paragraph — it cannot reach out of the text.
+ */
 export function formatDigestSlackBody(digest: WeeklyDigest, narrative?: string | null): string {
   return digestLines(digest, (s) => `*${s}*`, narrative).join("\n");
 }
 
-/** Teams plain-text body — the Adaptive Card escaper strips markdown anyway. */
+/**
+ * Teams plain-text body — no markup added here at all, because `msteams.ts`
+ * escapes `\ * _ [ ]` on the whole card text. That escaper is also what
+ * neutralises card markdown in narrative text; it is applied to the body
+ * wholesale, so it cannot be stepped around from in here.
+ */
 export function formatDigestTeamsBody(digest: WeeklyDigest, narrative?: string | null): string {
   return digestLines(digest, (s) => s, narrative).join("\n\n");
 }
@@ -442,7 +502,7 @@ export function formatDigestTeamsBody(digest: WeeklyDigest, narrative?: string |
 // Email is its own format rather than a reuse of the Slack or Teams body:
 // mrkdwn asterisks would show literally, and a mail client needs both a
 // plain-text part (for text-only readers and spam scoring) and an HTML one.
-// Both are built from the same `digestLines` output so the three transports
+// Both are built from the same `digestSegments` output so the three transports
 // can never drift in what they report.
 
 function escapeHtml(s: string): string {
@@ -472,26 +532,30 @@ export function formatDigestEmailText(
  * of tags and a templating dependency would buy nothing. Styles are inline
  * because mail clients strip `<style>` blocks, and the palette is deliberately
  * neutral so it reads in both light and dark clients.
+ *
+ * Every character of every segment is escaped, and the only markup in the body
+ * is the `<strong>` this function writes around segments that asked for it.
+ * That is why the body is built from {@link digestSegments} rather than from
+ * the flattened lines: text and markup are never mixed into one string, so
+ * there is nothing to un-mix afterwards and no input — model-written narrative
+ * included — that can arrive already looking like markup.
  */
 export function formatDigestEmailHtml(
   digest: WeeklyDigest,
   narrative?: string | null,
   url?: string | null,
 ): string {
-  const body = digestLines(digest, (s) => `<strong>${escapeHtml(s)}</strong>`, narrative)
+  const body = digestSegments(digest, narrative)
+    .filter((line) => line.length > 0)
     .map((line) => {
-      if (line === "") return "";
-      // digestLines only marks up the fragments it passed to `bold`, so
-      // everything outside those <strong> spans still needs escaping. Split on
-      // the tags and escape the gaps.
       const html = line
-        .split(/(<strong>.*?<\/strong>)/)
-        .map((chunk) => (chunk.startsWith("<strong>") ? chunk : escapeHtml(chunk)))
+        .map((seg) =>
+          seg.bold ? `<strong>${escapeHtml(seg.text)}</strong>` : escapeHtml(seg.text),
+        )
         .join("");
-      const bullet = line.startsWith("•");
+      const bullet = line[0]?.text.startsWith("•") ?? false;
       return `<p style="margin:0 0 8px;${bullet ? "padding-left:12px;" : ""}">${html}</p>`;
     })
-    .filter((p) => p !== "")
     .join("\n");
 
   const button = url

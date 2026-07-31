@@ -41,9 +41,12 @@ export interface AnomalyDetectionOptions {
    * trusting, so `detectSpike` skips it; `detectNewSpendSource` is what
    * catches the interesting half of that population.
    *
-   * It doubles as the shortest window `detectNewSpendSource` will call "no
-   * prior spend" over: concluding a key is brand new from three days of
-   * history would flag every key the moment cost collection started.
+   * It doubles as the least *collection coverage* — days of cost data the org
+   * holds at all — `detectNewSpendSource` will call "no prior spend" over.
+   * Note the two readings differ on purpose: a spike needs days on which this
+   * key spent, a new source needs days on which we were *looking* and it did
+   * not. Counting spending days for the second would silence it always, since
+   * a genuine new source has an all-zero baseline by definition.
    */
   minBaselineDays: number;
   /**
@@ -212,9 +215,25 @@ export interface DetectedNewSource {
  * and it scales with the floor, so it means the same thing in every currency
  * once `optionsForCurrency` has run.
  *
- * A window shorter than `minBaselineDays` returns null: with too little
- * history, "no prior spend" is a statement about the data we hold rather than
- * about the key, and every key would read as new the day collection started.
+ * `baselineCoverageDays` is how many days of cost collection the org has
+ * behind that window: the whole days between the org's first observed cost day
+ * and the day being judged. Below `minBaselineDays` of it this returns null,
+ * because "nothing spent here before" is then a statement about how little
+ * data we hold rather than about the key, and *every* key would read as new on
+ * the day collection started.
+ *
+ * That fact has to be passed in because it cannot be recovered from
+ * `baseline`. Callers zero-fill (`fillDailySeries`), so the array is the full
+ * window wide whether or not any of it was collected, and "the key spent $0
+ * that day" and "we hold no data for that day" arrive as the same `0`. Reading
+ * `baseline.length` instead — as this function once did — is a guard that can
+ * never fire. Counting non-zero entries, the way `detectSpike` legitimately
+ * does, would be worse: a real new spend source has an all-zero baseline by
+ * definition, so that test never passes and the detector never fires.
+ *
+ * Note the guard is a property of the *org's* collection history, not of the
+ * key: a key first appearing yesterday inside a long-established org is
+ * precisely what this detector exists to catch, and must still fire.
  *
  * Callers must judge `detectSpike` first and only fall through to this when it
  * returns null. In practice the two can never both fire — a baseline this
@@ -225,9 +244,11 @@ export interface DetectedNewSource {
 export function detectNewSpendSource(
   baseline: number[],
   actual: number,
+  baselineCoverageDays: number,
   options: AnomalyDetectionOptions = DEFAULT_ANOMALY_OPTIONS,
 ): DetectedNewSource | null {
-  if (baseline.length < options.minBaselineDays) return null;
+  if (baseline.length === 0) return null;
+  if (baselineCoverageDays < options.minBaselineDays) return null;
   if (actual < options.minNewSourceAbs) return null;
 
   let baselineTotal = 0;

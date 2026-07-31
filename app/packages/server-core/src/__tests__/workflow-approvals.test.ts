@@ -12,6 +12,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *    being approved, the workflow and run, who asked, when it expires;
  *  - Slack gets mrkdwn, Teams gets plain text (its card escaper would show a
  *    literal asterisk), SMS gets one short line;
+ *  - the SMS leg — and only that leg — is damped by a per-workflow cooldown, so
+ *    a workflow raising approvals in a loop cannot text everybody N times;
  *  - a transport outage cannot fail the run that is waiting.
  */
 
@@ -60,6 +62,17 @@ vi.mock("../slack", () => ({ sendSlackToOrg: (...a: unknown[]) => sendSlackToOrg
 vi.mock("../msteams", () => ({ sendMsTeamsToOrg: (...a: unknown[]) => sendMsTeamsToOrg(...a) }));
 vi.mock("../twilio-pager", () => ({ sendOneShotPage: (...a: unknown[]) => sendOneShotPage(...a) }));
 
+/** The `workflow_pages` cooldown row the SMS leg claims. */
+const pageStore = {
+  read: vi.fn(),
+  claim: vi.fn(),
+  release: vi.fn(),
+};
+const workflowPageCooldownStore = vi.fn((..._a: unknown[]) => pageStore);
+vi.mock("../workflows/paging", () => ({
+  workflowPageCooldownStore: (...a: unknown[]) => workflowPageCooldownStore(...a),
+}));
+
 import { requestApprovalAndWait } from "../workflows/approvals";
 
 const ORG = "org1";
@@ -81,6 +94,11 @@ beforeEach(() => {
   sendSlackToOrg.mockResolvedValue({ attempted: 1, succeeded: 1, failed: 0 });
   sendMsTeamsToOrg.mockResolvedValue({ attempted: 1, succeeded: 1, failed: 0 });
   sendOneShotPage.mockResolvedValue({ attempted: 1, succeeded: 1, failed: 0 });
+  workflowPageCooldownStore.mockReturnValue(pageStore);
+  // No row for the key yet: the claim is an insert, which always wins.
+  pageStore.read.mockResolvedValue(null);
+  pageStore.claim.mockResolvedValue(true);
+  pageStore.release.mockResolvedValue(undefined);
   process.env["APP_URL"] = "https://app.example.com";
 });
 
@@ -172,5 +190,79 @@ describe("approval request fan-out", () => {
     await expect(requestApprovalAndWait(CTX, SPEC)).resolves.toMatchObject({ approved: true });
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
+  });
+});
+
+/**
+ * The SMS cooldown. "One message per `waitForApproval` call" bounds nothing on
+ * its own — `waitForApproval` is a call a workflow can make in a loop — so the
+ * SMS leg claims a reserved `workflow_pages` key before it sends.
+ *
+ * The trade-off these tests pin down: damp a loop, never mute the first
+ * request, and never let a suppressed *text* hide an approval — Slack, Teams
+ * and push stay one-per-request because each approval is a separate decision
+ * somebody has to go and make.
+ */
+describe("approval SMS cooldown", () => {
+  it("throttles on a reserved key scoped to the workflow, not the run", async () => {
+    // Per-workflow is what covers both flood shapes: one run looping over N
+    // items, and a workflow that keeps being re-triggered.
+    await requestApprovalAndWait(CTX, SPEC);
+    expect(workflowPageCooldownStore).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationId: ORG, workflowId: "wf1" }),
+      "__approval__",
+    );
+    expect(pageStore.claim).toHaveBeenCalledWith(
+      expect.stringContaining("infrawrench approval needed"),
+      15,
+    );
+  });
+
+  it("lets the first request through — a blocked run must interrupt someone", async () => {
+    await requestApprovalAndWait(CTX, SPEC);
+    expect(sendOneShotPage).toHaveBeenCalledTimes(1);
+    expect(pageStore.release).not.toHaveBeenCalled();
+  });
+
+  it("damps a loop: a request inside the window sends no SMS", async () => {
+    pageStore.claim.mockResolvedValue(false);
+    await requestApprovalAndWait(CTX, SPEC);
+    expect(sendOneShotPage).not.toHaveBeenCalled();
+  });
+
+  it("still notifies Slack, Teams and push when the SMS is suppressed", async () => {
+    // The cooldown damps the phone call, not the request. Collapsing these too
+    // would leave a distinct pending approval with nothing pointing at it.
+    pageStore.claim.mockResolvedValue(false);
+    await requestApprovalAndWait(CTX, SPEC);
+    expect(sendPushToOrg).toHaveBeenCalledTimes(1);
+    expect(sendSlackToOrg).toHaveBeenCalledTimes(1);
+    expect(sendMsTeamsToOrg).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not mute a different workflow's approval", async () => {
+    await requestApprovalAndWait(CTX, SPEC);
+    await requestApprovalAndWait({ ...CTX, workflowId: "wf2", workflowName: "billing-run" }, SPEC);
+    const scopes = workflowPageCooldownStore.mock.calls.map(
+      (c) => (c as unknown[])[0] as { workflowId: string },
+    );
+    expect(scopes.map((s) => s.workflowId)).toEqual(["wf1", "wf2"]);
+  });
+
+  it("rolls the claim back when the SMS reached nobody", async () => {
+    // An SMS nobody received must not start a quiet period — the same rule
+    // paging/deliver.ts applies to a page.
+    const prior = { lastPagedAt: new Date("2026-07-31T09:00:00.000Z") };
+    pageStore.read.mockResolvedValue(prior);
+    sendOneShotPage.mockResolvedValue({ attempted: 1, succeeded: 0, failed: 1 });
+
+    await requestApprovalAndWait(CTX, SPEC);
+
+    expect(pageStore.release).toHaveBeenCalledWith(prior);
+  });
+
+  it("keeps the claim when the SMS landed", async () => {
+    await requestApprovalAndWait(CTX, SPEC);
+    expect(pageStore.release).not.toHaveBeenCalled();
   });
 });

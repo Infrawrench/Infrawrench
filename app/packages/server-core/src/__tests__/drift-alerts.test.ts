@@ -8,7 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *  - the cheap guards, which must not touch the cooldown row;
  *  - the cooldown claim, which is the hard cap of one message per org per
  *    window and must lose gracefully when a second replica wins it;
- *  - the rollback, so a window nobody received is not spent;
+ *  - the rollback, so a window nobody received is not spent — including when
+ *    the digest *throws*, since a kept claim moves the next digest's `since`
+ *    past changes nobody was ever told about;
  *  - the read window, which must start at the previous notification rather
  *    than at this sync pass.
  *
@@ -38,12 +40,16 @@ vi.mock("../db/schema", () => ({
 
 /** Rows the window query resolves to. */
 let changeRows: unknown[] = [];
+/** When set, the window query rejects with this instead of resolving. */
+let changeRowsError: Error | null = null;
 /** What the claim's `returning()` yields — a non-empty array means claimed. */
 let claimResult: unknown[] = [];
 /** `limit(n)` argument of the most recent select. */
 let lastLimit: number | undefined;
 /** `set(...)` arguments of every update, i.e. the releases. */
 let releases: unknown[] = [];
+/** When set, the release UPDATE rejects with this. */
+let releaseError: Error | null = null;
 
 vi.mock("../db/client", () => {
   const selectChain = () => {
@@ -53,7 +59,11 @@ vi.mock("../db/client", () => {
       lastLimit = n;
       return self;
     };
-    self["then"] = (resolve: (v: unknown) => unknown) => Promise.resolve(changeRows).then(resolve);
+    self["then"] = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+      (changeRowsError ? Promise.reject(changeRowsError) : Promise.resolve(changeRows)).then(
+        resolve,
+        reject,
+      );
     return self;
   };
   const insertChain = () => {
@@ -68,7 +78,8 @@ vi.mock("../db/client", () => {
       releases.push(s);
       return self;
     };
-    self["where"] = () => Promise.resolve(undefined);
+    self["where"] = () =>
+      releaseError ? Promise.reject(releaseError) : Promise.resolve(undefined);
     return self;
   };
   return {
@@ -149,8 +160,10 @@ function changeRow(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   changeRows = [changeRow()];
+  changeRowsError = null;
   claimResult = [{ organizationId: ORG }];
   releases = [];
+  releaseError = null;
   lastLimit = undefined;
   getDriftAlertSettings.mockResolvedValue(settings());
   sendPushToOrg.mockResolvedValue({ attempted: 1, succeeded: 1 });
@@ -282,13 +295,113 @@ describe("window and payload", () => {
 });
 
 describe("failure containment", () => {
+  const PRIOR = new Date("2026-07-31T08:00:00.000Z");
+
+  /** Quiet the module's own logging; every test here goes down an error path. */
+  function hushErrors() {
+    return vi.spyOn(console, "error").mockImplementation(() => {});
+  }
+
   it("swallows a transport throwing rather than failing the sync", async () => {
     sendSlackToOrg.mockRejectedValue(new Error("slack exploded"));
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW)).toEqual({
-      status: "no-changes",
+    const spy = hushErrors();
+    expect(await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW)).toMatchObject({
+      status: "failed",
     });
     expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("reports a failure as its own status, not as a quiet window", async () => {
+    // "no-changes" means nothing happened. A reader has to be able to tell that
+    // apart from a window that broke, or a silent outage looks like calm.
+    changeRowsError = new Error("window query exploded");
+    const spy = hushErrors();
+    expect(await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW)).toEqual({
+      status: "failed",
+      error: "window query exploded",
+      released: true,
+    });
+    spy.mockRestore();
+  });
+
+  it("releases the claimed window when the read throws, so the changes are not lost", async () => {
+    // The claim already advanced last_notified_at. Keeping it would move the
+    // next digest's `since` past every change in this window — dropped forever.
+    getDriftAlertSettings.mockResolvedValue(settings({ lastNotifiedAt: PRIOR }));
+    changeRowsError = new Error("window query exploded");
+    const spy = hushErrors();
+
+    const result = await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW);
+
+    expect(result).toMatchObject({ status: "failed", released: true });
+    expect(releases).toEqual([{ lastNotifiedAt: PRIOR }]);
+    spy.mockRestore();
+  });
+
+  it("releases when the first transport throws — nothing was delivered", async () => {
+    getDriftAlertSettings.mockResolvedValue(settings({ lastNotifiedAt: PRIOR }));
+    sendPushToOrg.mockRejectedValue(new Error("expo exploded"));
+    const spy = hushErrors();
+
+    expect(await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW)).toMatchObject({
+      released: true,
+    });
+    expect(releases).toEqual([{ lastNotifiedAt: PRIOR }]);
+    spy.mockRestore();
+  });
+
+  it("keeps the claim when a transport throws after another already delivered", async () => {
+    // Push landed, so the window's changes *were* reported. Rewinding here
+    // would re-send them in the next window; the release rule is the same one
+    // the `undelivered` branch uses — spend the window iff somebody heard.
+    getDriftAlertSettings.mockResolvedValue(settings({ lastNotifiedAt: PRIOR }));
+    sendPushToOrg.mockResolvedValue({ attempted: 1, succeeded: 1 });
+    sendSlackToOrg.mockRejectedValue(new Error("slack exploded"));
+    const spy = hushErrors();
+
+    expect(await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW)).toMatchObject({
+      status: "failed",
+      released: false,
+    });
+    expect(releases).toEqual([]);
+    spy.mockRestore();
+  });
+
+  it("does not let a failing release mask the error that caused it", async () => {
+    changeRowsError = new Error("window query exploded");
+    releaseError = new Error("database is down");
+    const spy = hushErrors();
+
+    expect(await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW)).toEqual({
+      status: "failed",
+      error: "window query exploded",
+      released: false,
+    });
+    spy.mockRestore();
+  });
+
+  it("releases exactly once on the throw path", async () => {
+    getDriftAlertSettings.mockResolvedValue(settings({ lastNotifiedAt: PRIOR }));
+    changeRowsError = new Error("window query exploded");
+    const spy = hushErrors();
+
+    await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW);
+
+    expect(releases).toHaveLength(1);
+    spy.mockRestore();
+  });
+
+  it("has nothing to roll back when the failure predates the claim", async () => {
+    getDriftAlertSettings.mockRejectedValue(new Error("settings unreadable"));
+    const spy = hushErrors();
+
+    expect(await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW)).toEqual({
+      status: "failed",
+      error: "settings unreadable",
+      released: false,
+    });
+    expect(releases).toEqual([]);
     spy.mockRestore();
   });
 });

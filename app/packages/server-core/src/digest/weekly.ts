@@ -4,8 +4,14 @@
  * touches the database, ClickHouse, and the Slack/Teams/email transports.
  *
  * Scheduling piggybacks on the poller's tick loop (`poller/src/loop.ts` calls
- * `runWeeklyDigests()` every tick) rather than adding a scheduler process.
- * Restart- and replica-safety come from two conditional UPDATEs:
+ * `runWeeklyDigests()` every tick) rather than adding a scheduler process. That
+ * makes the pass a *shared* resource: it runs in the same 15s tick as account
+ * polling and cost collection, so it is claimed in bounded batches
+ * (`DIGESTS_PER_TICK`) and each batch runs concurrently. See that constant for
+ * why an unbounded pass is a problem and why deferring is free.
+ *
+ * Restart- and replica-safety come from conditional UPDATEs — one per claimed
+ * org, so bounding the batch does not weaken them:
  *
  *   * `claimDueDigestOrgs` moves `last_sent_week_start` forward and returns
  *     only the rows it actually changed, so of any number of concurrent
@@ -63,6 +69,25 @@ export const MAX_DIGEST_ATTEMPTS = 3;
 
 /** Backoff before attempt 2 and attempt 3, in minutes. */
 const RETRY_BACKOFF_MINUTES = [15, 60];
+
+/**
+ * How many orgs one tick will claim, per phase (scheduled sends, then retries).
+ * The claimed orgs of a phase run concurrently, so this is both the batch size
+ * and the fan-out width.
+ *
+ * It exists because the digest shares the poller's 15s tick with account
+ * polling, cost collection and workflow scheduling, and one org's digest is not
+ * cheap: two ClickHouse queries, an optional Anthropic call bounded at 30s, and
+ * a fan-out to Slack, Teams and one request per email recipient. Every org on
+ * the default Monday 07:00 UTC schedule comes due in the *same* tick, so an
+ * unbounded pass is a pile-up that stalls everything queued behind it.
+ *
+ * Deferring is free and cannot starve anyone: claiming moves the claim column
+ * forward, so a claimed org drops out of the due set and the next tick's batch
+ * is the next `DIGESTS_PER_TICK` orgs that still owe a digest. A weekly summary
+ * that lands a few ticks later is not a summary anyone notices is late.
+ */
+export const DIGESTS_PER_TICK = 4;
 
 /** Deep link to the org's cost dashboards, for the message button. */
 function costsUrl(organizationId: string): string | null {
@@ -329,26 +354,43 @@ const DUE_COLUMNS = {
  *
  * Because each org's window and due time depend on its own timezone and
  * schedule, the *predicate* is per-row and cannot be expressed in one SQL
- * comparison. It is computed here instead: `dueWeekStartFor` maps a row to the
- * week it owes right now (or null), and the UPDATE is issued per claimed org
- * with that org's own `weekStart`. Each UPDATE is still a single conditional
+ * comparison. It is computed here instead: the due check maps a row to the week
+ * it owes right now (or nothing), and the UPDATE is issued per claimed org with
+ * that org's own `weekStart`. Each UPDATE is still a single conditional
  * statement, so the exactly-once guarantee is unchanged — only the batching is.
+ *
+ * At most `limit` orgs are claimed; the rest ride the next tick (see
+ * {@link DIGESTS_PER_TICK}). Deferring cannot starve an org: a claim moves
+ * `last_sent_week_start` forward, so every org this pass claimed fails the
+ * pre-filter next time and the batch after it is drawn from the orgs that are
+ * still owed one. The stable `organizationId` ordering makes that drain
+ * deterministic rather than dependent on whatever order the planner returns.
  */
 export async function claimDueDigestOrgs(
   now: Date,
+  limit = DIGESTS_PER_TICK,
 ): Promise<Array<DueOrgRow & { weekStart: string }>> {
   const candidates = await db
     .select({ ...DUE_COLUMNS, lastSentWeekStart: orgDigestSettings.lastSentWeekStart })
     .from(orgDigestSettings)
-    .where(eq(orgDigestSettings.enabled, true));
+    .where(eq(orgDigestSettings.enabled, true))
+    .orderBy(orgDigestSettings.organizationId);
 
   const claimed: Array<DueOrgRow & { weekStart: string }> = [];
+  let deferred = 0;
   for (const row of candidates) {
     const schedule = scheduleFromRow(row);
     const window = digestWindow(now, schedule.timezone);
     if (!isDigestDue(now, window, schedule)) continue;
     // Cheap pre-filter so a settled org costs a comparison, not a write.
     if (row.lastSentWeekStart !== null && row.lastSentWeekStart >= window.weekStart) continue;
+    // Over budget for this tick. Keep counting so the log can say how far
+    // behind the send is, but claim nothing more — an unclaimed org is
+    // untouched state, which is exactly what makes deferring safe.
+    if (claimed.length >= limit) {
+      deferred += 1;
+      continue;
+    }
 
     const [won] = await db
       .update(orgDigestSettings)
@@ -374,44 +416,78 @@ export async function claimDueDigestOrgs(
       .returning(DUE_COLUMNS);
     if (won) claimed.push({ ...won, weekStart: window.weekStart });
   }
+  if (deferred > 0) {
+    console.log(
+      `[digest] claimed ${claimed.length} due org(s) this tick; ${deferred} more are due and will be claimed by a later tick.`,
+    );
+  }
   return claimed;
 }
 
 /**
- * Atomically claim every org whose last attempt failed outright and whose
- * backoff has elapsed. Nulling `next_attempt_at` inside the same UPDATE is
- * what makes this a claim rather than a query — two replicas arriving at once
- * cannot both take the row, so a retry is one send attempt, not two.
+ * Atomically claim up to `limit` orgs whose last attempt failed outright and
+ * whose backoff has elapsed. Nulling `next_attempt_at` inside the same UPDATE
+ * is what makes this a claim rather than a query — two replicas arriving at
+ * once cannot both take the row, so a retry is one send attempt, not two.
  *
  * Only rows whose `lastStatus` is `failed` are eligible, so a partial delivery
  * is structurally excluded from ever being retried.
+ *
+ * Like the weekly claim this is a bounded select followed by one conditional
+ * UPDATE per candidate, rather than a single UPDATE over everything that
+ * matches. The reason is the bound: a claimed retry *must* be attempted (its
+ * gate is gone and its attempt is spent), so the batch has to be limited at
+ * claim time and not afterwards. Splitting it per row leaves the claim itself
+ * untouched — the WHERE still requires the gate to be set and in the past, so
+ * whichever replica's UPDATE lands first is the only one that gets the row.
+ *
+ * Ordering by the gate means the longest-waiting retry goes first, so a backlog
+ * drains oldest-first instead of leaving the same tail behind every tick.
  */
 export async function claimRetryDigestOrgs(
   now: Date,
+  limit = DIGESTS_PER_TICK,
 ): Promise<Array<DueOrgRow & { weekStart: string }>> {
-  const rows = await db
-    .update(orgDigestSettings)
-    .set({
-      attemptCount: sql`${orgDigestSettings.attemptCount} + 1`,
-      lastAttemptAt: now,
-      lastStatus: "pending",
-      nextAttemptAt: null,
-      updatedAt: now,
-    })
-    .where(
-      and(
-        eq(orgDigestSettings.enabled, true),
-        eq(orgDigestSettings.lastStatus, "failed"),
-        isNotNull(orgDigestSettings.nextAttemptAt),
-        lte(orgDigestSettings.nextAttemptAt, now),
-        lt(orgDigestSettings.attemptCount, MAX_DIGEST_ATTEMPTS),
-      ),
-    )
-    .returning({ ...DUE_COLUMNS, lastSentWeekStart: orgDigestSettings.lastSentWeekStart });
-
-  return rows.flatMap((row) =>
-    row.lastSentWeekStart ? [{ ...row, weekStart: row.lastSentWeekStart }] : [],
+  const eligible = and(
+    eq(orgDigestSettings.enabled, true),
+    eq(orgDigestSettings.lastStatus, "failed"),
+    isNotNull(orgDigestSettings.nextAttemptAt),
+    lte(orgDigestSettings.nextAttemptAt, now),
+    lt(orgDigestSettings.attemptCount, MAX_DIGEST_ATTEMPTS),
   );
+
+  const candidates = await db
+    .select({ ...DUE_COLUMNS, lastSentWeekStart: orgDigestSettings.lastSentWeekStart })
+    .from(orgDigestSettings)
+    .where(eligible)
+    .orderBy(orgDigestSettings.nextAttemptAt)
+    .limit(limit);
+
+  const claimed: Array<DueOrgRow & { weekStart: string }> = [];
+  for (const candidate of candidates) {
+    // Belt to the LIMIT's brace: the batch is bounded here too, so the cap
+    // holds even if the select ever stops honouring it.
+    if (claimed.length >= limit) break;
+    // A retry re-sends the week the failed attempt claimed. Without that key
+    // there is nothing to re-send, so the row is left for the weekly claim.
+    if (!candidate.lastSentWeekStart) continue;
+
+    const [won] = await db
+      .update(orgDigestSettings)
+      .set({
+        attemptCount: sql`${orgDigestSettings.attemptCount} + 1`,
+        lastAttemptAt: now,
+        lastStatus: "pending",
+        nextAttemptAt: null,
+        updatedAt: now,
+      })
+      .where(and(eq(orgDigestSettings.organizationId, candidate.organizationId), eligible))
+      // The week comes back from the winning UPDATE, not from the select: the
+      // row that was claimed is the authority on which week it owes.
+      .returning({ ...DUE_COLUMNS, lastSentWeekStart: orgDigestSettings.lastSentWeekStart });
+    if (won?.lastSentWeekStart) claimed.push({ ...won, weekStart: won.lastSentWeekStart });
+  }
+  return claimed;
 }
 
 /** Record what an attempt did. Never throws — bookkeeping must not mask the send. */
@@ -484,26 +560,37 @@ async function runOneDigest(
 }
 
 /**
- * One scheduler pass: claim and send every org whose digest has come due in its
- * own timezone, then pick up any bounded retries whose backoff has elapsed.
- * Called from the poller's tick loop; safe to call as often as you like.
+ * One scheduler pass: claim and send up to `limit` orgs whose digest has come
+ * due in their own timezone, then pick up to `limit` bounded retries whose
+ * backoff has elapsed. Called from the poller's tick loop; safe to call as
+ * often as you like.
+ *
+ * The pass is bounded in both directions. The claim caps how many orgs a tick
+ * takes on, so a Monday-morning pile-up drains over several ticks instead of
+ * blocking the account, cost and workflow passes behind it; and each phase's
+ * claimed orgs run concurrently, so the tick costs one org's latency rather
+ * than four. The two phases stay sequential: an org can in principle be due for
+ * this week *and* owe a retry for last week, and running both at once would
+ * have two attempts writing the same status row.
  */
-export async function runWeeklyDigests(now = new Date()): Promise<void> {
+export async function runWeeklyDigests(now = new Date(), limit = DIGESTS_PER_TICK): Promise<void> {
   let due: Array<DueOrgRow & { weekStart: string }> = [];
   try {
-    due = await claimDueDigestOrgs(now);
+    due = await claimDueDigestOrgs(now, limit);
   } catch (err) {
     console.error("[digest] failed to claim due orgs:", err);
   }
-  for (const row of due) await runOneDigest(row, now, "attempt");
+  // `runOneDigest` swallows its own errors; `allSettled` is the belt to that
+  // brace, so one org can never take the rest of the batch down with it.
+  await Promise.allSettled(due.map((row) => runOneDigest(row, now, "attempt")));
 
   let retries: Array<DueOrgRow & { weekStart: string }> = [];
   try {
-    retries = await claimRetryDigestOrgs(now);
+    retries = await claimRetryDigestOrgs(now, limit);
   } catch (err) {
     console.error("[digest] failed to claim retries:", err);
   }
-  for (const row of retries) await runOneDigest(row, now, "retry");
+  await Promise.allSettled(retries.map((row) => runOneDigest(row, now, "retry")));
 }
 
 // --- Settings ---

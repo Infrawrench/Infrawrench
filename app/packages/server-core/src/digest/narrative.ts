@@ -55,7 +55,13 @@ const SYSTEM_PROMPT = [
   "Write ONE paragraph of at most three sentences that says what actually mattered. Lead with the thing a reader would want to know first — usually the direction and size of the spend change, or the single mover that explains it. Name the specific provider or service responsible when the numbers point at one. If the week was unremarkable, say so plainly in a sentence rather than manufacturing significance.",
   "",
   "Rules:",
+  // Defence in depth only. The renderers treat this paragraph as literal text
+  // and escape it for whatever transport it lands in (`compose.ts` builds the
+  // body from segments precisely so a paragraph that looks like markup cannot
+  // become markup), so a model that ignores these two lines still cannot inject
+  // anything. They are here to keep the output *readable*, not to keep it safe.
   "- Plain prose. No markdown, no headings, no bullet points, no emoji.",
+  "- No HTML, XML or any other markup, and no tags of any kind: the paragraph is rendered as literal text, so anything that looks like a tag is shown to the reader verbatim.",
   "- Do not restate every number — the exact figures are printed directly beneath your paragraph, so repeating them wastes the reader's time. Cite a figure only when it carries the point.",
   "- Do not speculate about causes you cannot see in the data. You do not know what the team deployed, and guessing reads as noise.",
   "- Do not give advice, recommend actions, or ask questions.",

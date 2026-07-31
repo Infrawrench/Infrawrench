@@ -6,7 +6,6 @@ import { apiKeys, organizationMembers } from "@/db/schema";
 import { keyedHash, legacySha256Hex } from "@/services/encryption";
 import { workos, clientId } from "./workos";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
-import { grandfatherWorkflowPermissionsIfLegacy } from "@infrawrench/server-core/permissions/legacy-workflows";
 
 /** Domain label for HMAC sub-key derivation when hashing API keys. Must
  * match the value used in `api/routes/api-keys.ts`. */
@@ -23,17 +22,15 @@ interface ApiAuthResult {
 /**
  * Map deprecated scope strings onto their new equivalents.
  *
- * Two separate migrations run here. `sync:*` → `resources:*` is a rename: the
- * old string disappears. The `dashboards:*` → `workflows:*` expansion is
- * additive and only applies to keys minted before workflows had permissions of
- * their own — pass the key's `createdAt` to enable it (see
- * `permissions/legacy-workflows.ts`). Omitting the timestamp skips it, which is
- * what a caller that only wants the rename should do.
+ * This is a pure rename — `sync:read`/`sync:write` become
+ * `resources:read`/`resources:write` and the old strings disappear — which is
+ * why the result is safe to persist back onto the row (see
+ * {@link authenticateApiRequest}). Nothing else is expanded here: the one-off
+ * `dashboards:*` → `workflows:*` grandfathering was applied to stored scopes by
+ * migration `0055_grandfather_workflow_permissions`, so a key's stored array
+ * already says everything the key grants.
  */
-export function migrateScopes(
-  scopes: string[] | null | undefined,
-  createdAt?: Date | null,
-): string[] {
+export function migrateScopes(scopes: string[] | null | undefined): string[] {
   if (!scopes) return [];
   let changed = false;
   const out: string[] = [];
@@ -48,10 +45,12 @@ export function migrateScopes(
       out.push(s);
     }
   }
-  // Deduplicate while preserving order.
+  if (!changed) return out;
+  // A rename can collide with a scope the key already held; deduplicate while
+  // preserving order. Untouched arrays are returned as-is so a key that stores
+  // duplicates is not rewritten for cosmetics.
   const seen = new Set<string>();
-  const deduped = out.filter((s) => (seen.has(s) ? false : (seen.add(s), true)));
-  return grandfatherWorkflowPermissionsIfLegacy(changed ? deduped : out, createdAt);
+  return out.filter((s) => (seen.has(s) ? false : (seen.add(s), true)));
 }
 
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
@@ -155,8 +154,11 @@ export async function authenticateApiRequest(request: Request): Promise<ApiAuthR
       .limit(1);
     if (!membership) return null;
 
+    // Only a genuine rename ever lands back on the row: `migrateScopes` is a
+    // one-for-one substitution, so persisting it cannot widen the key beyond
+    // the scopes its creator ticked.
     const storedScopes = (key.scopes as string[]) ?? [];
-    const migrated = migrateScopes(storedScopes, key.createdAt);
+    const migrated = migrateScopes(storedScopes);
     const scopesChanged =
       migrated.length !== storedScopes.length || migrated.some((s, i) => s !== storedScopes[i]);
 

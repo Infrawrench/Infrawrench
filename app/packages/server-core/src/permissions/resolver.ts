@@ -8,23 +8,26 @@ import {
   isSystemRoleKey,
   systemRolePermissions,
 } from "./system-roles";
-import { grandfatherWorkflowPermissionsIfLegacy } from "./legacy-workflows";
 
 /**
  * Permissions for one role row. System rows resolve from code (the stored
- * array is ignored); custom rows use their stored list, expanded for the
- * `dashboards:*` → `workflows:*` split when it was last written before those
- * permissions existed — see `legacy-workflows.ts`.
+ * array is ignored); custom rows are their stored list, verbatim.
+ *
+ * Nothing is expanded here, deliberately. Grants written before workflows had
+ * permissions of their own were rewritten in place by migration
+ * `0055_grandfather_workflow_permissions`, so a stored array already says
+ * everything the role grants — and a role written after that means exactly
+ * what it says, including one that hands out `workflows:write` while
+ * withholding `workflows:approve`.
  */
 function rolePermissions(row: {
   isSystem: boolean;
   systemKey: string | null;
   permissions: string[] | null;
-  updatedAt: Date | null;
 }): readonly string[] {
   const systemKey = isSystemRoleKey(row.systemKey) ? row.systemKey : null;
   if (row.isSystem && systemKey) return systemRolePermissions(systemKey) ?? [];
-  return grandfatherWorkflowPermissionsIfLegacy(row.permissions ?? [], row.updatedAt);
+  return row.permissions ?? [];
 }
 
 export interface ResolvedRole {

@@ -29,9 +29,40 @@ import { sendPushToOrg } from "../push/dispatch";
 import { sendSlackToOrg } from "../slack";
 import { sendMsTeamsToOrg } from "../msteams";
 import { sendOneShotPage } from "../twilio-pager";
+import { workflowPageCooldownStore } from "./paging";
 
 /** How often the suspended run re-reads its approval row. */
 const POLL_INTERVAL_MS = 2500;
+
+/**
+ * Reserved `workflow_pages` key for the SMS leg of the approval fan-out.
+ *
+ * Namespaced with underscores because an author's `infra.page({ key })` is a
+ * free-form string: a collision would let a workflow's own paging throttle its
+ * approvals (or the reverse), and this shape is not one anybody types.
+ */
+const APPROVAL_PAGE_KEY = "__approval__";
+
+/**
+ * How long one approval SMS suppresses the next for the same workflow.
+ *
+ * Keyed per **workflow**, not per run, and deliberately: the flood this exists
+ * to stop is a workflow that raises approvals in a loop, and the two shapes
+ * that takes — one run looping over N items, and a run that keeps being
+ * re-triggered — are only both covered by the workflow-wide key. `workflow_pages`
+ * is already keyed that way for `infra.page`, for the same reason.
+ *
+ * Fifteen minutes rather than the hour `infra.page` defaults to: an approval is
+ * a live question with a deadline (`DEFAULT_APPROVAL_TIMEOUT_MINUTES` is 60), so
+ * a window that is a meaningful fraction of the timeout would mute a second,
+ * genuinely different request for most of its life. Fifteen collapses a loop —
+ * which fires far faster than that — while a distinct approval raised later
+ * still reaches a phone.
+ *
+ * The *first* request is never suppressed: with no row for the key, the claim
+ * is an insert, which always wins.
+ */
+const APPROVAL_PAGE_COOLDOWN_MINUTES = 15;
 
 /** Which run is asking, threaded from the runner's host extras. */
 export interface WorkflowApprovalContext {
@@ -97,11 +128,22 @@ function formatExpiry(expiresAt: Date, timeoutMinutes: number): string {
  *
  * SMS rides `sendOneShotPage` (the same one-shot path budget alerts and
  * `infra.page` use), SMS-only: an approval blocks a run until a human answers,
- * which is the definition of page-worthy, and it is bounded — exactly one
- * message per `waitForApproval` call, gated by the org's Twilio enabled flag
- * and each recipient's SMS opt-in. Voice is not used: `infra.page` makes calls
- * only when the author asks for `voice: true`, and an approval has no such
- * knob, so ringing a phone would be a decision made on the author's behalf.
+ * which is the definition of page-worthy. It is gated by the org's Twilio
+ * enabled flag, each recipient's SMS opt-in, and — unlike the other three —
+ * a cooldown on {@link APPROVAL_PAGE_KEY}. One message per `waitForApproval`
+ * call is not a bound: `waitForApproval` is a call a workflow can make in a
+ * loop, and N iterations would be N texts to everyone's phone at whatever rate
+ * the loop turns. Voice is not used: `infra.page` makes calls only when the
+ * author asks for `voice: true`, and an approval has no such knob, so ringing a
+ * phone would be a decision made on the author's behalf.
+ *
+ * **Only SMS is throttled.** Push, Slack and Teams stay one-per-request on
+ * purpose: each approval is a *distinct* decision that blocks the run until
+ * someone makes it, and collapsing those messages would hide requests nobody
+ * then goes and decides. SMS is the "someone should look now" signal rather
+ * than the list — one is enough per window, and it is the leg that costs money
+ * and wakes people. The approvals inbox always holds every row regardless of
+ * what was or was not delivered.
  *
  * Never throws — every transport swallows its own errors, and a notification
  * outage must not fail the run that is waiting on the decision.
@@ -156,10 +198,37 @@ async function notifyApprovalRequest(args: {
     ...(url ? { url } : {}),
   });
 
-  await sendOneShotPage(
-    ctx.organizationId,
+  await pageAboutApproval(
+    ctx,
     `infrawrench approval needed: ${title} — ${message} (${ctx.workflowName}, ${expiry})`,
   );
+}
+
+/**
+ * The SMS leg, behind the workflow's approval cooldown.
+ *
+ * Same protocol as `paging/deliver.ts`: read the prior row, take the slot with
+ * one conditional statement (so two replicas racing the same window still text
+ * once), and roll the claim back when the message reached nobody — an SMS
+ * nobody received must not start a quiet period. A losing claim is silence, not
+ * an error: the request is already in the inbox and the other three transports
+ * have already carried it.
+ */
+async function pageAboutApproval(ctx: WorkflowApprovalContext, body: string): Promise<void> {
+  const store = workflowPageCooldownStore(
+    {
+      organizationId: ctx.organizationId,
+      workflowId: ctx.workflowId,
+      workflowName: ctx.workflowName,
+      ...(ctx.runId ? { runId: ctx.runId } : {}),
+    },
+    APPROVAL_PAGE_KEY,
+  );
+  const prior = await store.read();
+  if (!(await store.claim(body, APPROVAL_PAGE_COOLDOWN_MINUTES))) return;
+
+  const sms = await sendOneShotPage(ctx.organizationId, body);
+  if (sms.succeeded === 0) await store.release(prior);
 }
 
 export type WorkflowApprovalStatus = "pending" | "approved" | "denied" | "expired";

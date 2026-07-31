@@ -37,7 +37,7 @@ import { and, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { db } from "../db/client";
 import { costAnomalies } from "../db/schema";
-import { queryCosts } from "../clickhouse/cost-readers";
+import { getCostCoverage, queryCosts } from "../clickhouse/cost-readers";
 import { sendPushToOrg } from "../push/dispatch";
 import { sendSlackToOrg } from "../slack";
 import { sendMsTeamsToOrg } from "../msteams";
@@ -49,7 +49,7 @@ import {
   type AnomalyDetectionOptions,
 } from "./anomaly-detect";
 import { anomalyOptionsForOrg } from "./anomaly-settings";
-import { isoDay, addDays } from "./dates";
+import { isoDay, addDays, daysBetween } from "./dates";
 
 /** Days of history the baseline is computed over (excluding the day itself). */
 const BASELINE_DAYS = 28;
@@ -133,21 +133,54 @@ interface Finding {
 }
 
 /**
+ * The org's earliest cost day, or null when it has none at all.
+ *
+ * This is the org's *collection coverage*, and `detectNewSpendSource` cannot
+ * work without it: the baselines below are zero-filled to a fixed width, so a
+ * day nobody collected and a day the key spent $0 are the same `0` by the time
+ * the detector sees them, and a brand-new org would read as an all-zero
+ * 28-day history for every provider and every service at once.
+ *
+ * Read once per pass, from the existing per-account coverage aggregate. It
+ * costs one extra ClickHouse read per org per pass (an hour apart at worst),
+ * which is the price of the fact being exact. Deriving it instead from the
+ * window `detectForDimension` already fetches would be free but wrong in one
+ * direction that matters: that window only reaches back
+ * `BASELINE_DAYS + EVALUATION_DAYS`, so an established org that spent nothing
+ * at all for a month and then started again would look brand new and have its
+ * genuine new source suppressed.
+ */
+async function firstCostDayForOrg(organizationId: string): Promise<string | null> {
+  const coverage = await getCostCoverage(organizationId);
+  let first: string | null = null;
+  // ISO days sort lexicographically, so plain `<` is the right comparison.
+  for (const { firstDay } of coverage.values()) {
+    if (firstDay && (first === null || firstDay < first)) first = firstDay;
+  }
+  return first;
+}
+
+/**
  * Judge one day for one key. Spikes take precedence: a key with a baseline
  * worth measuring against is never also a "new source", and running them in a
  * fixed order is what makes each (day, key) exactly one kind of finding rather
  * than two rows racing for the same unique index.
+ *
+ * `coverageDays` is org-wide on purpose. It gates only the org's own first
+ * days of collection; a key that genuinely appeared for the first time
+ * yesterday within an established org still fires, which is the whole feature.
  */
 function judgeDay(
   baseline: number[],
   actual: number,
+  coverageDays: number,
   options: AnomalyDetectionOptions,
 ): Finding | null {
   const spike = detectSpike(baseline, actual, options);
   if (spike) {
     return { kind: "spike", actual: spike.actual, mean: spike.mean, threshold: spike.threshold };
   }
-  const fresh = detectNewSpendSource(baseline, actual, options);
+  const fresh = detectNewSpendSource(baseline, actual, coverageDays, options);
   if (fresh) {
     return {
       kind: "new_source",
@@ -176,6 +209,7 @@ async function detectForDimension(
   dimension: AnomalyDimension,
   days: string[],
   options: AnomalyDetectionOptions,
+  firstCostDay: string | null,
 ): Promise<PendingAnomaly[]> {
   const newest = days[days.length - 1];
   const oldest = days[0];
@@ -202,7 +236,10 @@ async function detectForDimension(
     for (const day of days) {
       const baseline = fillDailySeries(byDay, addDays(day, -BASELINE_DAYS), addDays(day, -1));
       const actual = byDay.get(day) ?? 0;
-      const finding = judgeDay(baseline, actual, scoped);
+      // Days of collection behind this day — 0 when the org has no cost data
+      // at all, which can only mean there is nothing here worth judging.
+      const coverageDays = firstCostDay === null ? 0 : daysBetween(firstCostDay, day);
+      const finding = judgeDay(baseline, actual, coverageDays, scoped);
       if (!finding) continue;
 
       const amounts = {
@@ -312,10 +349,21 @@ export async function detectCostAnomaliesForOrg(
     addDays(newest, -(EVALUATION_DAYS - 1 - i)),
   );
 
+  // How far back the org's cost data goes, read once per pass and shared by
+  // both dimensions. A failure here degrades rather than aborts: spikes still
+  // detect, and only new-source findings — the ones that need this fact — go
+  // quiet for the pass.
+  let firstCostDay: string | null = null;
+  try {
+    firstCostDay = await firstCostDayForOrg(organizationId);
+  } catch (err) {
+    console.error(`[anomaly-eval] cost coverage read failed for org ${organizationId}:`, err);
+  }
+
   for (const dimension of DIMENSIONS) {
     let pending: PendingAnomaly[];
     try {
-      pending = await detectForDimension(organizationId, dimension, days, tuning);
+      pending = await detectForDimension(organizationId, dimension, days, tuning, firstCostDay);
     } catch (err) {
       console.error(`[anomaly-eval] ${dimension} detection failed for org ${organizationId}:`, err);
       continue;

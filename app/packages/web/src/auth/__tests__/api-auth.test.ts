@@ -181,15 +181,23 @@ describe("authenticateApiRequest", () => {
     expect(set).toHaveBeenCalledWith(
       expect.objectContaining({ hashedKey: "hmac-hash", legacyHashSunsetAt: null }),
     );
+    // A rename is a rename: the new strings replace the old ones on the row.
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({ scopes: ["resources:read", "resources:write"] }),
+    );
   });
 
   /**
-   * Workflows rode on `dashboards:*` until they got their own permissions, so
-   * a key minted before the cutover with `dashboards:write` could write, run,
-   * and approve workflows. Dropping that on upgrade would be a silent break,
-   * so the stored scopes are expanded (and written back) on first use.
+   * Regression guard for the `dashboards:*` → `workflows:*` split. The
+   * grandfathering ran once, in migration
+   * `0055_grandfather_workflow_permissions`; authentication must not expand
+   * anything on top of what the row stores. Expanding here would be bad twice
+   * over: the widened set is written straight back to `api_keys.scopes` (so the
+   * key would permanently hold scopes its creator never ticked, and the key
+   * listing would show them), and a key minted *after* the split to
+   * deliberately exclude workflow access would silently gain it.
    */
-  it("grandfathers dashboards scopes onto workflows for a pre-cutover key", async () => {
+  it("returns a dashboards-scoped key exactly as stored, and persists no expansion", async () => {
     mockSelect.mockReturnValueOnce(
       selectReturning([
         {
@@ -205,38 +213,11 @@ describe("authenticateApiRequest", () => {
     );
     mockSelect.mockReturnValueOnce(membershipReturning(MEMBER));
     const { set } = updateChain();
-    const result = await authenticateApiRequest(req({ authorization: "Bearer iwk_old_dash" }));
-    expect(result?.scopes).toEqual([
-      "dashboards:read",
-      "dashboards:write",
-      "workflows:read",
-      "workflows:write",
-      "workflows:approve",
-    ]);
-    // Persisted, so the expansion is visible to the admin in the key listing.
-    expect(set).toHaveBeenCalledWith(
-      expect.objectContaining({ scopes: expect.arrayContaining(["workflows:approve"]) }),
-    );
-  });
-
-  it("leaves a key minted after the cutover with exactly its stored scopes", async () => {
-    mockSelect.mockReturnValueOnce(
-      selectReturning([
-        {
-          id: "k5",
-          userId: "u5",
-          organizationId: "o5",
-          scopes: ["dashboards:write"],
-          createdAt: new Date("2027-01-01T00:00:00Z"),
-          expiresAt: null,
-          legacyHashSunsetAt: null,
-        },
-      ]),
-    );
-    mockSelect.mockReturnValueOnce(membershipReturning(MEMBER));
-    updateChain();
-    const result = await authenticateApiRequest(req({ authorization: "Bearer iwk_new_dash" }));
-    expect(result?.scopes).toEqual(["dashboards:write"]);
+    const result = await authenticateApiRequest(req({ authorization: "Bearer iwk_dash" }));
+    expect(result?.scopes).toEqual(["dashboards:read", "dashboards:write"]);
+    // Touching `lastUsedAt` is expected; rewriting `scopes` is not.
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(set.mock.calls[0]![0]).not.toHaveProperty("scopes");
   });
 
   it("rejects a legacy-hash hit past its sunset", async () => {

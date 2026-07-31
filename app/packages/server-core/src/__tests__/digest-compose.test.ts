@@ -5,6 +5,7 @@ import {
   composeWeeklyDigest,
   digestDueDate,
   digestLines,
+  digestSegments,
   digestTitle,
   digestWindow,
   formatDigestEmailHtml,
@@ -462,5 +463,88 @@ describe("email rendering", () => {
   it("escapes the narrative paragraph too", () => {
     const html = formatDigestEmailHtml(digest(), "5 < 6 & <b>bold</b>");
     expect(html).toContain("5 &lt; 6 &amp; &lt;b&gt;bold&lt;/b&gt;");
+  });
+});
+
+/**
+ * The narrative is model output that goes into the body verbatim, and the
+ * system prompt is not a security boundary — a paragraph that happens to
+ * contain HTML must come out as text on every transport.
+ *
+ * The regression: the HTML part used to recover its own markup by splitting the
+ * rendered line on `/(<strong>.*?<\/strong>)/` and passing the matches through
+ * unescaped. A narrative containing `<strong>` therefore reached the mail body
+ * raw — and because the pattern is non-greedy across the whole line, so did
+ * everything sitting between two such tags. The renderers now build from
+ * `digestSegments`, so markup and text are never in the same string.
+ */
+describe("a narrative that contains markup", () => {
+  const digest = () => composeWeeklyDigest(input({ byProvider: [group("aws", "USD", 100, 150)] }));
+
+  /** Both halves of the old hole: the tag itself, and the payload it smuggled. */
+  const HOSTILE =
+    "<strong>lead</strong><script>alert(1)</script><img src=x onerror=alert(1)><strong>tail</strong> and 5 < 6";
+
+  it("escapes every tag in the HTML mail body, including the smuggled payload", () => {
+    const html = formatDigestEmailHtml(digest(), HOSTILE);
+    // Nothing from the paragraph survives as markup.
+    expect(html).not.toContain("<script");
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("onerror=alert(1)>");
+    expect(html).toContain("&lt;strong&gt;lead&lt;/strong&gt;");
+    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(html).toContain("&lt;strong&gt;tail&lt;/strong&gt;");
+    expect(html).toContain("5 &lt; 6");
+    // The digest's own emphasis is still real markup.
+    expect(html).toContain("<strong>Spend: $150.00</strong>");
+  });
+
+  it("escapes a bare angle bracket rather than opening a tag", () => {
+    const html = formatDigestEmailHtml(digest(), "Spend < last week, and A&B rose");
+    expect(html).toContain("Spend &lt; last week, and A&amp;B rose");
+  });
+
+  it("counts the paragraph's own <strong> as text, not as a bold segment", () => {
+    const segments = digestSegments(digest(), HOSTILE);
+    expect(segments[0]).toEqual([{ text: HOSTILE, bold: false }]);
+    // Only fragments the composer marked up ask for emphasis, and none of them
+    // carry markup characters of their own.
+    for (const line of segments) {
+      for (const seg of line) {
+        if (seg.bold) expect(seg.text).not.toMatch(/[<>]/);
+      }
+    }
+  });
+
+  it("does not break the Slack or Teams renderers", () => {
+    // Slack and Teams take the paragraph as literal text; their transports
+    // escape it (`&<>` in slack.ts, `\ * _ [ ]` in msteams.ts) on the way out,
+    // so the renderers must pass it through unmangled and keep the
+    // deterministic content intact underneath it.
+    const withMarkup = `${HOSTILE} *not really bold*`;
+    const slack = formatDigestSlackBody(digest(), withMarkup);
+    expect(slack.startsWith(withMarkup)).toBe(true);
+    expect(slack).toContain("*Spend: $150.00*");
+    expect(slack).toContain("*Top movers by provider*");
+    expect(slack).toContain("• aws: $150.00 (+$50.00 vs last week)");
+
+    const teams = formatDigestTeamsBody(digest(), withMarkup);
+    expect(teams.startsWith(withMarkup)).toBe(true);
+    expect(teams).toContain("Spend: $150.00");
+    expect(teams).not.toContain("*Spend");
+
+    const text = formatDigestEmailText(digest(), withMarkup);
+    expect(text).toContain(withMarkup);
+    expect(text).toContain("Spend: $150.00");
+  });
+
+  it("renders the same body whether or not the paragraph looks like markup", () => {
+    // The paragraph is the only thing that changes: swapping it for plain prose
+    // must not move a single line of the deterministic content.
+    const strip = (s: string) => s.split("\n").slice(2).join("\n");
+    expect(strip(formatDigestSlackBody(digest(), HOSTILE))).toBe(
+      strip(formatDigestSlackBody(digest(), "Nothing unusual happened.")),
+    );
   });
 });
