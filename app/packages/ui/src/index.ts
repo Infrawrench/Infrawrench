@@ -288,6 +288,8 @@ export type {
 
 export { CredentialExportModal } from "./components/CredentialExportModal.js";
 export type { CredentialExportModalProps } from "./components/CredentialExportModal.js";
+export { TerraformExportModal } from "./components/TerraformExportModal.js";
+export type { TerraformExportModalProps } from "./components/TerraformExportModal.js";
 export { useCreateResourceForm } from "./hooks/useCreateResourceForm.js";
 export { useWorkspaceTabHandlers } from "./hooks/useWorkspaceTabHandlers.js";
 export { useWorkspaceTabDocumentTitle } from "./hooks/useDocumentTitle.js";

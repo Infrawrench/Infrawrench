@@ -4,6 +4,7 @@ import {
   ResourcePill,
   ConfirmDeleteModal,
   EditCredentialsModal,
+  TerraformExportModal,
   dispatchResourcesChanged,
   AccountResourceSections,
   type DraggableResource,
@@ -13,6 +14,7 @@ import {
   formatErrorMessage,
   toast,
 } from "@infrawrench/ui";
+import type { TerraformExportOutcome } from "@infrawrench/plugin-base";
 import { apiDelete, apiGet, apiPatch, apiPut } from "@/lib/api";
 import { fetchPluginCatalog } from "@/lib/plugin-catalog";
 import { useOrgId } from "@/lib/useOrgId";
@@ -65,6 +67,7 @@ export function AccountDetailView({
   const navigate = useNavigate();
   const orgId = useOrgId();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showTerraformExport, setShowTerraformExport] = useState(false);
   const [createTarget, setCreateTarget] = useState<ResourceTypeInfo | null>(null);
   const [editCredsState, setEditCredsState] = useState<{
     plugin: PluginInfo;
@@ -199,6 +202,13 @@ export function AccountDetailView({
               >
                 Update credentials
               </button>
+              <button
+                type="button"
+                onClick={() => setShowTerraformExport(true)}
+                className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay rounded transition-colors"
+              >
+                Export to Terraform
+              </button>
             </>
           )}
           <button
@@ -217,6 +227,18 @@ export function AccountDetailView({
           name={account.displayName}
           onConfirm={handleDeleteAccount}
           onClose={() => setConfirmDelete(false)}
+        />
+      )}
+
+      {showTerraformExport && (
+        <TerraformExportModal
+          subjectDisplayName={`${account.displayName} — full inventory`}
+          generate={() =>
+            apiGet<TerraformExportOutcome>(
+              `/api/org/${orgId}/accounts/${account.id}/export-terraform`,
+            )
+          }
+          onClose={() => setShowTerraformExport(false)}
         />
       )}
 
