@@ -129,6 +129,19 @@ describe("connectionTools", () => {
       expect(r.content[0]!.text).toMatch(/parentResourceId/);
     });
 
+    it("prefers introspectResource when resourceId is given (REST databases)", async () => {
+      const introspectResource = vi.fn().mockResolvedValue([{ name: "events", columns: [] }]);
+      const introspect = vi.fn();
+      mockGetClientForAccount.mockResolvedValue({ client: { introspectResource, introspect } });
+      const r = await tool("introspect_sql_schema").handler(
+        { accountId: "a1", resourceId: "svc1" },
+        auth,
+      );
+      expect(introspectResource).toHaveBeenCalledWith("svc1", "a1");
+      expect(introspect).not.toHaveBeenCalled();
+      expect(JSON.parse(r.content[0]!.text)).toEqual([{ name: "events", columns: [] }]);
+    });
+
     it("introspects via the sidecar client when pluginId is given", async () => {
       const introspect = vi.fn().mockResolvedValue([{ name: "users", columns: [] }]);
       mockGetClientForResource.mockResolvedValue({ client: { introspect } });

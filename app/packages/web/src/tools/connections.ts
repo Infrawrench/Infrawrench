@@ -181,19 +181,22 @@ export function connectionTools(): ToolDefinition[] {
       title: "Introspect SQL schema",
       description:
         "Return the database's table/column metadata used by the SQL editor's autocomplete. Useful before asking the model to write queries. " +
-        "For managed-database providers whose own plugin has no SQL client (Neon, RDS, Cloud SQL, DO managed databases, …), pass " +
-        "`pluginId` of the SQL sidecar plugin (e.g. 'postgres', 'mysql') and `parentResourceId` = the database resource id " +
-        "(see list_resource_sidecars).",
+        "For REST-queried databases (ClickHouse services, BigQuery datasets, Databricks, Cloudflare D1), pass `resourceId` of the " +
+        "database resource. For managed-database providers whose own plugin has no SQL client (Neon, RDS, Cloud SQL, DO managed " +
+        "databases, …), pass `pluginId` of the SQL sidecar plugin (e.g. 'postgres', 'mysql') and `parentResourceId` = the database " +
+        "resource id (see list_resource_sidecars).",
       inputSchema: {
         accountId: z.string(),
+        resourceId: z.string().optional(),
         pluginId: z.string().optional(),
         parentResourceId: z.string().optional(),
       },
       risk: "read",
       permission: "resources:execute",
       handler: async (input, auth) => {
-        const { accountId, pluginId, parentResourceId } = input as {
+        const { accountId, resourceId, pluginId, parentResourceId } = input as {
           accountId: string;
+          resourceId?: string;
           pluginId?: string;
           parentResourceId?: string;
         };
@@ -201,8 +204,17 @@ export function connectionTools(): ToolDefinition[] {
           ? await getClientForResource(pluginId, accountId, auth.organizationId, parentResourceId)
           : await getClientForAccount(accountId, auth.organizationId);
         if (!ctx) return err("Account or sidecar resource not found");
+        if (resourceId && ctx.client.introspectResource) {
+          const tables = await ctx.client.introspectResource(resourceId, accountId);
+          return ok(tables);
+        }
         if (!ctx.client.introspect)
-          return err("Plugin does not support SQL introspection directly. " + SIDECAR_RETRY_HINT);
+          return err(
+            "Plugin does not support SQL introspection directly. For REST-queried databases " +
+              "(ClickHouse, BigQuery, Databricks, D1), retry with `resourceId` set to the database " +
+              "resource id. " +
+              SIDECAR_RETRY_HINT,
+          );
         const tables = await ctx.client.introspect();
         return ok(tables);
       },

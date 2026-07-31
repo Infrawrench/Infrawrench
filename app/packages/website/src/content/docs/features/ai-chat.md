@@ -34,7 +34,7 @@ Everything the UI exposes. The chat shares the [MCP server](./mcp.md)'s tool reg
 
 - **Resource lifecycle** — list, search, get, create, delete, attach, invoke action, apply manifest.
 - **Sidecars** — operate inside the peer plugins managed resources expose: ask "what's running in my DOKS cluster?" and the agent discovers the cluster's `kubernetes` sidecar (`list_resource_sidecars`) and lists deployments/pods/services through it; same for managed databases (`postgres`/`mysql`/`redis`/`mongodb`).
-- **SQL** — `sql_query` (read), `sql_execute` (write), `introspect_sql_schema`. Targets the account's primary database, a per-resource SQL driver, or — for managed-database providers whose own plugin has no SQL driver (Neon, RDS, Cloud SQL, DO managed databases, …) — the database's SQL sidecar (`postgres`/`mysql`), the same way the sidecar tools above do.
+- **SQL** — `sql_query` (read), `sql_execute` (write), `introspect_sql_schema`. Targets the account's primary database, a per-resource SQL driver (including REST-queried databases like ClickHouse services and BigQuery datasets), or — for managed-database providers whose own plugin has no SQL driver (Neon, RDS, Cloud SQL, DO managed databases, …) — the database's SQL sidecar (`postgres`/`mysql`), the same way the sidecar tools above do.
 - **KV** — `kv_command` for Redis/Memcached/MongoDB-style verbs.
 - **Docker** — `docker_command` for container ops on a Docker-enabled account.
 - **SSH** — `ssh_exec` for one-shot remote commands. For plugins that natively expose SSH (Fly, Hetzner) the plugin's config is used; otherwise pass an SSH key id and host.
