@@ -117,12 +117,30 @@ async function claimWindow(
   return rows.length > 0;
 }
 
-/** Undo a claim whose digest reached nobody, restoring the previous value. */
-async function releaseWindow(organizationId: string, prior: Date | null): Promise<void> {
+/**
+ * Undo a claim whose digest reached nobody, restoring the previous value.
+ *
+ * Conditional on still *owning* the claim. `claimWindow` stamps `lastNotifiedAt`
+ * with its own `now`, so that value is the ownership token: the rollback only
+ * fires while the row still carries it. Without the check a replica that hangs
+ * past the cooldown — a wedged Slack call is enough — would come back and rewind
+ * a *later* replica's claim, re-reporting a window that had already been sent.
+ * Losing the race means someone else owns the window now, which is not an error.
+ */
+async function releaseWindow(
+  organizationId: string,
+  claimed: Date,
+  prior: Date | null,
+): Promise<void> {
   await db
     .update(orgDriftAlertSettings)
     .set({ lastNotifiedAt: prior })
-    .where(eq(orgDriftAlertSettings.organizationId, organizationId));
+    .where(
+      and(
+        eq(orgDriftAlertSettings.organizationId, organizationId),
+        eq(orgDriftAlertSettings.lastNotifiedAt, claimed),
+      ),
+    );
 }
 
 /**
@@ -199,13 +217,14 @@ interface WindowDelivery {
  */
 async function releaseUnlessDelivered(
   organizationId: string,
+  claimed: Date,
   prior: Date | null,
   delivery: WindowDelivery,
 ): Promise<boolean> {
   if (delivery.succeeded > 0) return false;
   if (delivery.release !== null) return delivery.release;
   try {
-    await releaseWindow(organizationId, prior);
+    await releaseWindow(organizationId, claimed, prior);
     delivery.release = true;
   } catch (err) {
     console.error(`[drift] rolling back the claimed window for org ${organizationId} failed:`, err);
@@ -320,10 +339,10 @@ export async function notifyResourceDrift(
       return {
         status: "failed",
         error: err instanceof Error ? err.message : String(err),
-        released: await releaseUnlessDelivered(organizationId, prior, delivery),
+        released: await releaseUnlessDelivered(organizationId, now, prior, delivery),
       };
     } finally {
-      await releaseUnlessDelivered(organizationId, prior, delivery);
+      await releaseUnlessDelivered(organizationId, now, prior, delivery);
     }
   } catch (err) {
     // Nothing was claimed on this path — settings, the guards, or the claim

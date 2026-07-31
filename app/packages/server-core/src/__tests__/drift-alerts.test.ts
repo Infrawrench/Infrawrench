@@ -48,6 +48,8 @@ let claimResult: unknown[] = [];
 let lastLimit: number | undefined;
 /** `set(...)` arguments of every update, i.e. the releases. */
 let releases: unknown[] = [];
+/** `where(...)` arguments of every release, for asserting claim ownership. */
+let releaseWheres: unknown[] = [];
 /** When set, the release UPDATE rejects with this. */
 let releaseError: Error | null = null;
 
@@ -78,8 +80,10 @@ vi.mock("../db/client", () => {
       releases.push(s);
       return self;
     };
-    self["where"] = () =>
-      releaseError ? Promise.reject(releaseError) : Promise.resolve(undefined);
+    self["where"] = (w: unknown) => {
+      releaseWheres.push(w);
+      return releaseError ? Promise.reject(releaseError) : Promise.resolve(undefined);
+    };
     return self;
   };
   return {
@@ -163,6 +167,7 @@ beforeEach(() => {
   changeRowsError = null;
   claimResult = [{ organizationId: ORG }];
   releases = [];
+  releaseWheres = [];
   releaseError = null;
   lastLimit = undefined;
   getDriftAlertSettings.mockResolvedValue(settings());
@@ -378,6 +383,25 @@ describe("failure containment", () => {
       error: "window query exploded",
       released: false,
     });
+    spy.mockRestore();
+  });
+
+  it("scopes the rollback to the claim it owns, not just the org", async () => {
+    // `claimWindow` stamps `lastNotifiedAt` with its own `now`, so that value is
+    // the ownership token. A replica that wedges past the cooldown would come
+    // back to find a *later* replica holding the window; an org-only UPDATE
+    // would rewind that replica's claim and re-send a window already delivered.
+    getDriftAlertSettings.mockResolvedValue(settings({ lastNotifiedAt: PRIOR }));
+    changeRowsError = new Error("window query exploded");
+    const spy = hushErrors();
+
+    await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW);
+
+    expect(releases).toEqual([{ lastNotifiedAt: PRIOR }]);
+    expect(releaseWheres).toHaveLength(1);
+    // The predicate is a drizzle expression tree; the claim instant appearing in
+    // it is what distinguishes an owned rollback from a blind one.
+    expect(JSON.stringify(releaseWheres[0])).toContain(NOW.toISOString());
     spy.mockRestore();
   });
 

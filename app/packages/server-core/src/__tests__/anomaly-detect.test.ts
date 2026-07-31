@@ -263,6 +263,21 @@ describe("daysBetween", () => {
 
   it("fails closed on malformed input", () => {
     expect(daysBetween("not-a-date", "2026-07-01")).toBe(0);
+    expect(daysBetween("2026-07-01", "")).toBe(0);
+    expect(daysBetween("2026-7-1", "2026-07-08")).toBe(0);
+    expect(daysBetween("2026-07-01T00:00:00Z", "2026-07-08")).toBe(0);
+  });
+
+  it("fails closed on a day that does not exist, rather than rolling it over", () => {
+    // `new Date("2024-02-30T00:00:00Z")` is February 30th rolled to March 1st,
+    // not an Invalid Date — so a NaN check alone would accept it and report a
+    // day *more* coverage than reality, which fails open.
+    expect(daysBetween("2024-02-30", "2024-03-08")).toBe(0);
+    expect(daysBetween("2026-02-29", "2026-03-08")).toBe(0);
+    expect(daysBetween("2024-13-01", "2024-13-08")).toBe(0);
+    expect(daysBetween("2026-04-31", "2026-05-08")).toBe(0);
+    // A real leap day still counts.
+    expect(daysBetween("2024-02-29", "2024-03-07")).toBe(7);
   });
 });
 
