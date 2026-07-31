@@ -180,6 +180,9 @@ const TabTarget = strict({
     "resource",
     "agents",
     "costs",
+    // "savings" is retired — the panel is a section of Costs now — but stays
+    // accepted here: an older client still sends it, and a strict enum would
+    // reject that client's whole tab list rather than the one dead tab.
     "savings",
     "workflows",
     "deployments",

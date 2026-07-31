@@ -16,7 +16,7 @@ import { ResourcePanel } from "@/routes/resource.$accountId.$resourceId";
 import { getWorkspaceNavigateArgs, syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
 import { AgentsPanel, type AgentClient } from "@infrawrench/ui/agents";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
-import { SavingsPanel, resourceTabTarget, type OrphansClient } from "@infrawrench/ui";
+import { resourceTabTarget, type OrphansClient } from "@infrawrench/ui";
 import { createDesktopCostsClient } from "@/lib/costs-client";
 import { createDesktopOrphansClient } from "@/lib/orphans-client";
 import { createDesktopAgentClient } from "@/lib/agent-client";
@@ -127,36 +127,28 @@ function renderPanel(
     case "costs":
       return (
         <CostsPanel
+          // Keyed by org so switching org refetches rather than showing the
+          // previous org's budgets and flagged resources.
+          key={activeCloudOrgId ?? "local"}
           client={getCostsClient()}
           onOpenDashboard={(dashboardId) =>
             void navigate(getWorkspaceNavigateArgs(dashboardTabTarget(dashboardId)))
           }
+          // The orphan finder reads org-scoped cloud state, so in local-only
+          // mode there is nothing to query and the section is left out.
+          {...(activeCloudOrgId
+            ? {
+                orphans: getOrphansClient(),
+                onOpenResource: (r, accountId) => {
+                  void navigate(
+                    getWorkspaceNavigateArgs(
+                      resourceTabTarget(accountId, r.id, r.pluginId, r.resourceTypeId),
+                    ),
+                  );
+                },
+              }
+            : {})}
         />
-      );
-    case "savings":
-      // The orphan finder reads org-scoped cloud state, so a restored tab or a
-      // direct /savings navigation in local-only mode has nothing to query.
-      return activeCloudOrgId ? (
-        <SavingsPanel
-          // Keyed by org so switching org refetches rather than showing the
-          // previous org's flagged resources.
-          key={activeCloudOrgId}
-          client={getOrphansClient()}
-          onOpenResource={(r, accountId) => {
-            void navigate(
-              getWorkspaceNavigateArgs(
-                resourceTabTarget(accountId, r.id, r.pluginId, r.resourceTypeId),
-              ),
-            );
-          }}
-        />
-      ) : (
-        <div className="h-full flex items-center justify-center p-6">
-          <p className="text-sm text-on-surface-muted max-w-sm text-center">
-            Potential savings runs through Infrawrench Cloud. Sign in and select an organization to
-            see resources your accounts flagged as orphaned or idle.
-          </p>
-        </div>
       );
     case "chat":
       return <CloudChatPanel conversationId={t.conversationId} />;

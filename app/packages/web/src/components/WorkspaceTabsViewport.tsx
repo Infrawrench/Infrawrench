@@ -23,7 +23,7 @@ import { WebWorkflowsPanel } from "./WebWorkflowsPanel";
 import { WebAgentsPanel } from "./WebAgentsPanel";
 import { WebChatPanel } from "./WebChatPanel";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
-import { SavingsPanel, type OrphansClient } from "@infrawrench/ui";
+import type { OrphansClient } from "@infrawrench/ui";
 import { createWebOrphansClient } from "@/lib/orphans-client";
 
 interface WebWorkspaceTabsViewportProps {
@@ -158,19 +158,15 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
     case "costs":
       return (
         <CostsPanel
+          // Keyed by org so switching org remounts the panel and refetches
+          // rather than showing the previous org's budgets and flagged
+          // resources.
+          key={orgId}
           client={getCostsClient(orgId)}
           onOpenDashboard={(dashboardId) =>
             void navigate(getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId }))
           }
-        />
-      );
-    case "savings":
-      return (
-        <SavingsPanel
-          // Keyed by org so switching org remounts the panel and refetches
-          // rather than showing the previous org's flagged resources.
-          key={orgId}
-          client={getOrphansClient(orgId)}
+          orphans={getOrphansClient(orgId)}
           onOpenResource={(r, accountId) => {
             if (!r.id) return;
             void navigate(

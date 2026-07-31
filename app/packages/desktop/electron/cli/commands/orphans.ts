@@ -1,9 +1,9 @@
 // `infrawrench orphans` — likely-wasted resources (unattached volumes,
 // unassigned IPs) across the org's accounts, backed by the same /orphans API
-// the web + desktop Potential savings pages use.
+// the web + desktop Costs panels' Potential savings section uses.
 //
 // The response shape comes from `@infrawrench/client-core` — the same
-// definition the web and desktop savings panels use — so a server-side change
+// definition the web and desktop savings sections use — so a server-side change
 // breaks the CLI's build instead of its output. The import is type-only, so
 // the CLI still ships zero new runtime dependencies.
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";

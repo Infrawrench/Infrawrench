@@ -7,7 +7,6 @@ import {
   DEFAULT_CHAT_MODEL,
   DeployIcon,
   DroppableDashboardItem,
-  SavingsIcon,
   emitChatConversationsChanged,
   SidebarNavGrid,
   useUIStore,
@@ -19,7 +18,6 @@ import { CostsIcon } from "@infrawrench/ui/cost";
 import {
   agentsTabTarget,
   costsTabTarget,
-  savingsTabTarget,
   chatTabTarget,
   dashboardTabTarget,
   deploymentsTabTarget,
@@ -200,15 +198,6 @@ export function SidebarDashboards() {
             icon: <CostsIcon />,
             onClick: () =>
               void navigateToWorkspaceTarget(navigate, costsTabTarget(), { label: "Costs" }),
-          },
-          // Savings shares Costs' cloud-only guard: classification runs
-          // server-side over the org's synced resources.
-          {
-            key: "savings",
-            label: "Savings",
-            icon: <SavingsIcon />,
-            onClick: () =>
-              void navigateToWorkspaceTarget(navigate, savingsTabTarget(), { label: "Savings" }),
           },
         ]
       : []),

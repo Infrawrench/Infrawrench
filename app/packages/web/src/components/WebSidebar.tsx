@@ -14,7 +14,7 @@ import {
 } from "@infrawrench/ui";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
-import { DeployIcon, SavingsIcon } from "@infrawrench/ui";
+import { DeployIcon } from "@infrawrench/ui";
 import { CHAT_CONVERSATIONS_CHANGED_EVENT, type ConversationSummary } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { chatTabTarget, navigateToWorkspaceTarget } from "@/lib/workspace-tabs";
@@ -468,13 +468,6 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <CostsIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/costs", params: { orgId: orgId! } }),
-              },
-              {
-                key: "savings",
-                label: "Savings",
-                icon: <SavingsIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/savings", params: { orgId: orgId! } }),
               },
             ]}
           />

@@ -261,7 +261,6 @@ export {
   accountTabTarget,
   agentsTabTarget,
   costsTabTarget,
-  savingsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,

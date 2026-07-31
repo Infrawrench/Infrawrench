@@ -6,7 +6,6 @@ export type WorkspaceTabTarget =
   | { kind: "account"; accountId: string }
   | { kind: "agents" }
   | { kind: "costs" }
-  | { kind: "savings" }
   | { kind: "workflows"; workflowId?: string }
   | { kind: "deployments"; repo?: string }
   | { kind: "chat"; conversationId?: string }
@@ -51,8 +50,6 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "agents";
     case "costs":
       return "costs";
-    case "savings":
-      return "savings";
     case "workflows":
       return target.workflowId ? `workflows:${target.workflowId}` : "workflows";
     case "deployments":
@@ -82,8 +79,6 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Agents";
     case "costs":
       return "Costs";
-    case "savings":
-      return "Savings";
     case "workflows":
       return "Workflows";
     case "deployments":
@@ -108,7 +103,6 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
       return a.accountId === (b as { accountId: string }).accountId;
     case "agents":
     case "costs":
-    case "savings":
       return true;
     case "deployments":
       // Compared even though the tab *id* ignores it: the id keeps a second
@@ -145,6 +139,58 @@ function createWorkspaceTab(target: WorkspaceTabTarget, title?: string, id?: str
           }
         : target,
     title: title?.trim() || getWorkspaceTabFallbackTitle(target),
+  };
+}
+
+/** Bumped whenever a stored tab shape stops being renderable. See migrateWorkspaceTabs. */
+const PERSISTED_TABS_VERSION = 1;
+
+interface PersistedWorkspaceTabs {
+  workspaceTabs: WorkspaceTab[];
+  activeWorkspaceTabId: string | null;
+  activeCloudOrgId: string | null;
+}
+
+/**
+ * `savings` was its own tab kind until the panel became a section of Costs.
+ * Stored tabs are typed as current targets, so the dead kind needs a widening
+ * cast to be recognised at all.
+ */
+function isRetiredSavingsTab(tab: WorkspaceTab): boolean {
+  return (tab.target as { kind: string }).kind === "savings";
+}
+
+/**
+ * v1: fold any open Savings tab into Costs. Without this the tab rehydrates
+ * with a kind no viewport case renders — a permanently blank tab the user can
+ * only close.
+ */
+export function migrateWorkspaceTabs(persisted: unknown, version: number): PersistedWorkspaceTabs {
+  const state = persisted as PersistedWorkspaceTabs;
+  if (version >= PERSISTED_TABS_VERSION || !Array.isArray(state?.workspaceTabs)) return state;
+
+  const retired = state.workspaceTabs.filter(isRetiredSavingsTab);
+  if (retired.length === 0) return state;
+
+  // Retarget the first one in place so it keeps its position in the strip, and
+  // drop the rest — duplicate ids would break tab selection. If Costs is
+  // already open there is nothing to retarget onto.
+  const hasCosts = state.workspaceTabs.some((tab) => tab.target.kind === "costs");
+  const workspaceTabs = state.workspaceTabs.flatMap((tab) => {
+    if (!isRetiredSavingsTab(tab)) return [tab];
+    if (hasCosts || tab !== retired[0]) return [];
+    return [createWorkspaceTab({ kind: "costs" })];
+  });
+
+  const wasActive = retired.some((tab) => tab.id === state.activeWorkspaceTabId);
+  return {
+    ...state,
+    workspaceTabs,
+    activeWorkspaceTabId: wasActive
+      ? (workspaceTabs.find((tab) => tab.target.kind === "costs")?.id ??
+        workspaceTabs[0]?.id ??
+        null)
+      : state.activeWorkspaceTabId,
   };
 }
 
@@ -452,6 +498,8 @@ export const useUIStore = create<UIState>()(
     {
       name: WORKSPACE_TABS_STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
+      version: PERSISTED_TABS_VERSION,
+      migrate: migrateWorkspaceTabs,
       partialize: (state) => ({
         workspaceTabs: state.workspaceTabs,
         activeWorkspaceTabId: state.activeWorkspaceTabId,

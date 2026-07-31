@@ -8,13 +8,17 @@ The orphan finder scans the resources Infrawrench has already synced from your c
 
 No extra provider API calls are made — the finder runs entirely over data your accounts already list, so opening the page is instant and free.
 
-## The Potential savings page
+## Where to find it
 
-Open **Potential savings** in the sidebar. Flagged resources are grouped by account, each row showing the resource, its type, and the reason it was flagged. Where Infrawrench collects cost data for the account, rows are annotated with the resource's spend over the last 30 days.
+Open **Costs** in the sidebar and scroll to **Potential savings**, below the month-to-date chart and your budgets — what you're spending and what of it is wasted read together on one page.
 
-<insert [Potential savings page listing flagged resources grouped by account, each row showing resource name, type badge, reason string, and a 30-day cost figure on the right] here>
+Flagged resources are grouped by account, each row showing the resource, its type, and the reason it was flagged. Where Infrawrench collects cost data for the account, rows are annotated with the resource's spend over the last 30 days.
+
+<insert [Costs page scrolled to the Potential savings section, showing flagged resources grouped by account — each row with resource name, type badge, reason string, and a 30-day cost figure on the right] here>
 
 Click any row to jump to the resource's detail page, where you can confirm it really is unused and delete it in place.
+
+The section is available in the web app and in the desktop app when signed in to an organization — the heuristics run server-side over your organization's synced resources, so local-only desktop mode has nothing to scan.
 
 ## What gets flagged
 

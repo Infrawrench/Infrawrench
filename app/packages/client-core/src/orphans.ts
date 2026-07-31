@@ -1,7 +1,8 @@
 /**
  * Orphan & idle resource finder — the wire contract for
  * `GET /api/org/:orgId/orphans`, shared by the web app, the desktop app's
- * savings panel, and the `infrawrench orphans` CLI subcommand.
+ * Potential savings section of Costs, and the `infrawrench orphans` CLI
+ * subcommand.
  *
  * Classification itself lives in plugin-base (`orphanRule` on resource types,
  * evaluated by `evaluateOrphanRule`); these types only describe how the host

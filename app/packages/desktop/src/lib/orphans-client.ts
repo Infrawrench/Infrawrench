@@ -4,7 +4,7 @@ import { invoke } from "./invoke";
 /**
  * The orphan finder is cloud-only: classification runs server-side over the
  * org's synced resources. Resolves the active org at call time (not at client
- * construction) so switching org under a mounted Savings tab reaches the new
+ * construction) so switching org under a mounted Costs tab reaches the new
  * org's data — same convention as the costs client.
  */
 export function createDesktopOrphansClient(): OrphansClient {

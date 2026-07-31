@@ -13,7 +13,7 @@ export type {
 } from "@infrawrench/client-core";
 
 /**
- * Host-injected data access for the savings panel. Web wraps `apiGet`;
+ * Host-injected data access for the Potential savings section. Web wraps `apiGet`;
  * desktop (cloud mode) wraps its cloud-api helpers — the component stays
  * platform-agnostic.
  */

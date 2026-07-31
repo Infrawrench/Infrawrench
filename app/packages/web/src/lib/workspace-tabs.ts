@@ -5,7 +5,6 @@ import {
   accountTabTarget,
   agentsTabTarget,
   costsTabTarget,
-  savingsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -78,12 +77,6 @@ export function getWorkspaceNavigateArgs(
     case "costs":
       return {
         to: "/org/$orgId/costs",
-        params: { orgId },
-        ...(replace ? { replace: true } : {}),
-      };
-    case "savings":
-      return {
-        to: "/org/$orgId/savings",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -185,11 +178,11 @@ export function syncWorkspaceRouteFromPath(
   if (s[0] === "agents") {
     return agentsTabTarget();
   }
-  if (s[0] === "costs") {
+  // /savings was the standalone potential-savings page; it is now a section of
+  // Costs. Old bookmarks and links keep working by landing on the tab that
+  // carries the content.
+  if (s[0] === "costs" || s[0] === "savings") {
     return costsTabTarget();
-  }
-  if (s[0] === "savings") {
-    return savingsTabTarget();
   }
   if (s[0] === "chat") {
     // /chat is the conversation list; /chat/{id} is one conversation. Each

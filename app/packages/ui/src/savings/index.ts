@@ -1,3 +1,2 @@
 export * from "./types.js";
-export { SavingsPanel, type SavingsPanelProps } from "./SavingsPanel.js";
-export { SavingsIcon } from "./SavingsIcon.js";
+export { SavingsSection, type SavingsSectionProps } from "./SavingsSection.js";

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 
 import { Modal } from "../components/Modal.js";
+import { SavingsSection } from "../savings/SavingsSection.js";
+import type { OrphanedResource, OrphansClient } from "../savings/types.js";
 import { BudgetCard } from "./BudgetCard.js";
 import { BudgetConfigModal, DEFAULT_BUDGET_INPUT } from "./BudgetConfigModal.js";
 import { CostGraphCard } from "./CostGraphCard.js";
@@ -54,11 +56,19 @@ export interface CostsPanelProps {
   client: CostsClient;
   /** Open a dashboard by id — the placement list links to them. */
   onOpenDashboard?: ((dashboardId: string) => void) | undefined;
+  /**
+   * Data access for the "Potential savings" section. Omitted when the host
+   * can't answer the query at all — desktop in local-only mode has no org to
+   * classify — and the section is then left out rather than shown empty.
+   */
+  orphans?: OrphansClient | undefined;
+  /** Open a flagged resource's detail view from the savings section. */
+  onOpenResource?: ((resource: OrphanedResource, accountId: string) => void) | undefined;
 }
 
 /**
- * Org-level home for spend and budgets, a sibling of the Agents and Workflows
- * panels.
+ * Org-level home for spend, budgets and waste, a sibling of the Agents and
+ * Workflows panels.
  *
  * A budget is an org object, not a dashboard object: it keeps evaluating and
  * alerting whether or not any dashboard shows it. Before this panel existed the
@@ -67,7 +77,7 @@ export interface CostsPanelProps {
  * views onto the rows listed here, and each row says which dashboards it
  * appears on.
  */
-export function CostsPanel({ client, onOpenDashboard }: CostsPanelProps) {
+export function CostsPanel({ client, onOpenDashboard, orphans, onOpenResource }: CostsPanelProps) {
   const uid = useId();
   const [budgets, setBudgets] = useState<BudgetWithStatus[] | null>(null);
   const [statuses, setStatuses] = useState<CostAccountStatus[]>([]);
@@ -245,6 +255,8 @@ export function CostsPanel({ client, onOpenDashboard }: CostsPanelProps) {
             ))}
           </div>
         </section>
+
+        {orphans && <SavingsSection client={orphans} onOpenResource={onOpenResource} />}
       </div>
 
       {editing && (

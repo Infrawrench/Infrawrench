@@ -54,7 +54,7 @@ Every threshold fires at most once per calendar month. Alerts show up as a badge
 
 ## The Costs panel
 
-**Costs** in the sidebar opens month-to-date spend for the whole org — broken down by provider, account, or service — and below it every budget you have.
+**Costs** in the sidebar opens month-to-date spend for the whole org — broken down by provider, account, or service — then every budget you have, and finally the resources that look wasted.
 
 A budget belongs to the org, not to a dashboard. It keeps evaluating and keeps alerting whether or not anything is showing it, which is why the panel exists: it is the one place a budget is always reachable. Each row says which dashboards carry a card for it, or **On no dashboard** when none do.
 
@@ -85,6 +85,10 @@ A dashboard's **+** tile offers both halves:
 The same budget can appear on as many dashboards as you like — one budget, many views of it.
 
 <insert [Costs panel showing the month-to-date spend chart at the top and two budget cards below, one labelled "On no dashboard"] here>
+
+### Potential savings
+
+Below the budgets, **Potential savings** lists resources that look orphaned or idle — volumes attached to nothing, IPs assigned to nothing — with the trailing 30-day spend where the provider reports cost per resource. It reads the state your accounts last synced, so it costs no provider API calls. See [Orphan & idle resource finder](./orphan-finder.md) for what each provider flags.
 
 ## On your phone
 

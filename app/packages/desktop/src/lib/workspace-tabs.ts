@@ -5,7 +5,6 @@ import {
   accountTabTarget,
   agentsTabTarget,
   costsTabTarget,
-  savingsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -22,7 +21,6 @@ export {
   accountTabTarget,
   agentsTabTarget,
   costsTabTarget,
-  savingsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -66,8 +64,6 @@ export function getWorkspaceNavigateArgs(
       };
     case "costs":
       return { to: "/costs", ...(replace ? { replace: true } : {}) };
-    case "savings":
-      return { to: "/savings", ...(replace ? { replace: true } : {}) };
     case "chat":
       // Always pass search explicitly: navigating from a conversation
       // (?conversation=x) to the list must CLEAR the param, or the route
@@ -144,11 +140,11 @@ export function syncWorkspaceRouteFromPath(
   if (segments[0] === "agents") {
     return agentsTabTarget();
   }
-  if (segments[0] === "costs") {
+  // /savings was the standalone potential-savings page; it is now a section of
+  // Costs. Old links keep working by landing on the tab that carries the
+  // content.
+  if (segments[0] === "costs" || segments[0] === "savings") {
     return costsTabTarget();
-  }
-  if (segments[0] === "savings") {
-    return savingsTabTarget();
   }
   if (segments[0] === "chat") {
     const params = new URLSearchParams(search ?? "");
