@@ -57,8 +57,7 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
         <div>
           <h2 className="text-sm font-semibold text-on-surface">Potential savings</h2>
           <p className="mt-1 text-xs text-on-surface-secondary">
-            Resources that look orphaned or idle, based on the state your accounts last synced — no
-            extra provider calls.
+            Resources that look orphaned or idle, based on the state your accounts last synced.
           </p>
         </div>
         <button
