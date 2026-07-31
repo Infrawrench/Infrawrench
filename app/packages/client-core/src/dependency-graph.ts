@@ -46,10 +46,17 @@ export interface DependencyGraphData {
 }
 
 export interface DependencyGraphModel {
-  /** Nodes that survived edge validation, in input order. */
+  /**
+   * Nodes with at least one valid edge, in input order. Isolated nodes are
+   * dropped — this is the set to render.
+   */
   nodes: DependencyGraphNode[];
-  /** Deduped edges whose two endpoints both exist in `nodes`. */
+  /** Deduped edges whose two endpoints both exist in `nodesById`. */
   edges: DependencyGraphEdge[];
+  /**
+   * Every input node by id, isolated ones included — an index for lookup, not
+   * for iteration. Iterate `nodes`.
+   */
   nodesById: Map<string, DependencyGraphNode>;
   /** node id → edges where the node is the consumer (what it depends on). */
   dependsOn: Map<string, DependencyGraphEdge[]>;
@@ -98,8 +105,17 @@ export function buildDependencyGraph(
     else dependedOnBy.set(edge.providerResourceId, [edge]);
   }
 
+  // Only nodes with at least one valid edge. The graph is about wiring, not
+  // inventory: an isolated node has no depth to compute, so it would land in
+  // layer 0 and render as a floating tile with nothing attached. Both current
+  // hosts already pre-filter, but this is a public export and the next caller
+  // may well hand over a full resource list.
+  const connected = [...nodesById.values()].filter(
+    (n) => dependsOn.has(n.id) || dependedOnBy.has(n.id),
+  );
+
   return {
-    nodes: [...nodesById.values()],
+    nodes: connected,
     edges: validEdges,
     nodesById,
     dependsOn,
@@ -248,8 +264,22 @@ export function layoutDependencyGraph(
     return depth;
   };
 
+  // Normalize so the shallowest node sits in layer 0. When every node is on a
+  // cycle, the back-edge guard hands out 0 only to the node the walk broke on
+  // — which then gets a real depth once its own recursion unwinds — so no node
+  // ends up at 0 and layer 0 renders as a blank column. Subtracting the
+  // minimum is a no-op for any graph that has a genuine root.
+  let minDepth = Infinity;
   let maxDepth = 0;
-  for (const node of model.nodes) maxDepth = Math.max(maxDepth, depthOf(node.id));
+  for (const node of model.nodes) {
+    const d = depthOf(node.id);
+    if (d < minDepth) minDepth = d;
+    if (d > maxDepth) maxDepth = d;
+  }
+  if (minDepth > 0 && minDepth !== Infinity) {
+    for (const [id, d] of depths) depths.set(id, d - minDepth);
+    maxDepth -= minDepth;
+  }
 
   const layers: string[][] = [];
   for (let i = 0; i <= maxDepth; i++) layers.push([]);

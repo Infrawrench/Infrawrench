@@ -19,9 +19,14 @@ interface WebGraphPanelProps {
 export function WebGraphPanel({ orgId, openResource }: WebGraphPanelProps) {
   const [data, setData] = useState<DependencyGraphData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    // Clear on org change: without this the previous org's topology stays on
+    // screen until the new fetch resolves, which reads as this org's graph.
+    setData(null);
+    setError(null);
     function load() {
       apiGet<DependencyGraphData>(`/api/org/${orgId}/dependency-graph`)
         .then((d) => {
@@ -31,6 +36,8 @@ export function WebGraphPanel({ orgId, openResource }: WebGraphPanelProps) {
           }
         })
         .catch((e: unknown) => {
+          // A failed *refresh* must not blank a graph that is already drawn —
+          // surface it as a banner over the existing render instead.
           if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load graph");
         });
     }
@@ -40,12 +47,19 @@ export function WebGraphPanel({ orgId, openResource }: WebGraphPanelProps) {
       cancelled = true;
       window.removeEventListener(RESOURCES_CHANGED_EVENT, load);
     };
-  }, [orgId]);
+  }, [orgId, reloadKey]);
 
-  if (error) {
+  if (error && !data) {
     return (
       <div className="p-6">
         <p className="text-red-400 text-sm">{error}</p>
+        <button
+          type="button"
+          onClick={() => setReloadKey((k) => k + 1)}
+          className="mt-3 rounded-md border border-border px-2.5 py-1 text-xs text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+        >
+          Retry
+        </button>
       </div>
     );
   }
@@ -60,6 +74,11 @@ export function WebGraphPanel({ orgId, openResource }: WebGraphPanelProps) {
         <p className="text-sm text-on-surface-muted mt-0.5">
           How your resources are wired together through output references.
         </p>
+        {error && (
+          <p className="mt-2 text-xs text-red-400">
+            Couldn&rsquo;t refresh — showing the last loaded graph. {error}
+          </p>
+        )}
       </div>
       <DependencyGraphView data={data} onOpenResource={openResource} />
     </div>

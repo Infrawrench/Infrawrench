@@ -22,9 +22,15 @@ export function DesktopGraphPanel({ openResource }: DesktopGraphPanelProps) {
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const [data, setData] = useState<DependencyGraphData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    // Clear on mode/org change: without this the previous org's topology (or
+    // the local graph after signing in) stays on screen until the new fetch
+    // resolves, which reads as the current context's graph.
+    setData(null);
+    setError(null);
     function load() {
       const promise = activeCloudOrgId
         ? fetchCloudDependencyGraph(activeCloudOrgId)
@@ -37,6 +43,8 @@ export function DesktopGraphPanel({ openResource }: DesktopGraphPanelProps) {
           }
         })
         .catch((e: unknown) => {
+          // A failed *refresh* must not blank a graph that is already drawn —
+          // surface it as a banner over the existing render instead.
           if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load graph");
         });
     }
@@ -46,12 +54,19 @@ export function DesktopGraphPanel({ openResource }: DesktopGraphPanelProps) {
       cancelled = true;
       window.removeEventListener(RESOURCES_CHANGED_EVENT, load);
     };
-  }, [activeCloudOrgId]);
+  }, [activeCloudOrgId, reloadKey]);
 
-  if (error) {
+  if (error && !data) {
     return (
       <div className="p-6">
         <p className="text-red-400 text-sm">{error}</p>
+        <button
+          type="button"
+          onClick={() => setReloadKey((k) => k + 1)}
+          className="mt-3 rounded-md border border-border px-2.5 py-1 text-xs text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+        >
+          Retry
+        </button>
       </div>
     );
   }
@@ -66,6 +81,11 @@ export function DesktopGraphPanel({ openResource }: DesktopGraphPanelProps) {
         <p className="text-sm text-on-surface-muted mt-0.5">
           How your resources are wired together through output references.
         </p>
+        {error && (
+          <p className="mt-2 text-xs text-red-400">
+            Couldn&rsquo;t refresh — showing the last loaded graph. {error}
+          </p>
+        )}
       </div>
       <DependencyGraphView data={data} onOpenResource={openResource} />
     </div>

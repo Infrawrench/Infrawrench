@@ -40,7 +40,16 @@ export function registerDependencyGraphPaths(ctx: BuildContext) {
     path: "/api/org/{orgId}/dependency-graph",
     tags: ["Associations"],
     summary: "The org's resource dependency graph, built from output references",
-    request: { params: OrgIdParam },
+    request: {
+      params: OrgIdParam,
+      query: strict({
+        resourceId: ResourceId.optional().openapi({
+          description:
+            "Narrow the graph to this resource's direct neighbourhood — only edges with it at " +
+            "one end, and only the nodes those edges touch. Omit for the whole org.",
+        }),
+      }),
+    },
     responses: {
       200: {
         description: "Nodes and depends-on edges",

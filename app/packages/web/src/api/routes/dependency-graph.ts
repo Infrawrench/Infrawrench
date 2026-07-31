@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, or, inArray, isNull } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { db } from "../../db/client";
 import { accounts, associations, resources, secretFieldStates } from "../../db/schema";
 import { loadPlugins } from "../../plugins/loader";
@@ -23,29 +24,37 @@ const app = new Hono();
  * the org resources that participate in at least one edge — the graph is
  * about references, so unreferenced resources stay off the canvas.
  *
+ * `?resourceId=` narrows the answer to one resource's direct neighbourhood:
+ * only edges with that resource at one end, and only the nodes those edges
+ * touch. The Dependencies tab on the resource-detail page asks for exactly
+ * that and discards everything else, so without the filter the busiest page
+ * in the app would pull the org's entire topology on every mount.
+ *
  * Fully generic over the reference data: no plugin ever contributes edges
  * directly, so the host stays free of provider-specific topology code.
  */
 app.get("/", async (c) => {
   requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
+  const focusId = c.req.query("resourceId")?.trim() || null;
 
-  // Four independent reads — none feeds another's query, so they go to the
-  // pool together instead of waterfalling. The consumer join scopes both edge
-  // sources to the org; provider ids are then validated against the org's
-  // resource set below (buildDependencyGraph does it again client-side, but
-  // there's no reason to ship foreign ids).
-  const [orgResources, associationRows, refStateRows, orgAccounts] = await Promise.all([
-    db
-      .select({
-        id: resources.id,
-        pluginId: resources.pluginId,
-        resourceTypeId: resources.resourceTypeId,
-        accountId: resources.accountId,
-        displayName: resources.displayName,
-      })
-      .from(resources)
-      .where(and(eq(resources.organizationId, organizationId), isNull(resources.deletedAt))),
+  // Restricts both edge sources to rows touching the focused resource. `and()`
+  // drops undefined, so the unfiltered org-wide read is the same query minus
+  // this clause.
+  const touchesFocus = (consumer: AnyPgColumn, provider: AnyPgColumn) =>
+    focusId ? or(eq(consumer, focusId), eq(provider, focusId)) : undefined;
+
+  // Independent reads — none feeds another's query, so they go to the pool
+  // together instead of waterfalling. The consumer join scopes both edge
+  // sources to the org; provider ids are then validated against the resource
+  // set below (buildDependencyGraph does it again client-side, but there's no
+  // reason to ship foreign ids).
+  //
+  // The resource read is the one exception. Org-wide it runs in the same
+  // batch; focused, the ids worth fetching are only known once the edges are
+  // back, and a second small keyed read beats scanning every resource in the
+  // org to answer a question about one of them.
+  const [associationRows, refStateRows, orgAccounts, unfilteredResources] = await Promise.all([
     db
       .select({
         consumerResourceId: associations.consumerResourceId,
@@ -60,6 +69,7 @@ app.get("/", async (c) => {
           eq(resources.organizationId, organizationId),
           isNull(resources.deletedAt),
           isNull(associations.deletedAt),
+          touchesFocus(associations.consumerResourceId, associations.providerResourceId),
         ),
       ),
     db
@@ -76,13 +86,51 @@ app.get("/", async (c) => {
           eq(resources.organizationId, organizationId),
           isNull(resources.deletedAt),
           eq(secretFieldStates.resolutionKind, "output-ref"),
+          touchesFocus(secretFieldStates.resourceId, secretFieldStates.sourceResourceId),
         ),
       ),
     db
       .select({ id: accounts.id, displayName: accounts.displayName })
       .from(accounts)
       .where(and(eq(accounts.organizationId, organizationId), isNull(accounts.deletedAt))),
+    focusId
+      ? Promise.resolve(null)
+      : db
+          .select({
+            id: resources.id,
+            pluginId: resources.pluginId,
+            resourceTypeId: resources.resourceTypeId,
+            accountId: resources.accountId,
+            displayName: resources.displayName,
+          })
+          .from(resources)
+          .where(and(eq(resources.organizationId, organizationId), isNull(resources.deletedAt))),
   ]);
+
+  let orgResources = unfilteredResources;
+  if (!orgResources) {
+    const wanted = new Set<string>([focusId!]);
+    for (const row of [...associationRows, ...refStateRows]) {
+      wanted.add(row.consumerResourceId);
+      if (row.providerResourceId) wanted.add(row.providerResourceId);
+    }
+    orgResources = await db
+      .select({
+        id: resources.id,
+        pluginId: resources.pluginId,
+        resourceTypeId: resources.resourceTypeId,
+        accountId: resources.accountId,
+        displayName: resources.displayName,
+      })
+      .from(resources)
+      .where(
+        and(
+          eq(resources.organizationId, organizationId),
+          isNull(resources.deletedAt),
+          inArray(resources.id, [...wanted]),
+        ),
+      );
+  }
   const resourceById = new Map(orgResources.map((r) => [r.id, r]));
   const accountNameById = new Map(orgAccounts.map((a) => [a.id, a.displayName]));
 

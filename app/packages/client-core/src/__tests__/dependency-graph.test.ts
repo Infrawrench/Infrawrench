@@ -150,3 +150,50 @@ describe("layoutDependencyGraph", () => {
     expect(layout.positions.size).toBe(3);
   });
 });
+
+describe("isolated nodes", () => {
+  it("drops nodes with no edges from `nodes` but keeps them in `nodesById`", () => {
+    const model = buildDependencyGraph(
+      [node("db"), node("api"), node("orphan")],
+      [edge("api", "db")],
+    );
+    expect(model.nodes.map((n) => n.id).sort()).toEqual(["api", "db"]);
+    // Still resolvable by id — the index is for lookup, not iteration.
+    expect(model.nodesById.get("orphan")?.id).toBe("orphan");
+  });
+
+  it("keeps a node whose only edge is inbound", () => {
+    const model = buildDependencyGraph([node("db"), node("api")], [edge("api", "db")]);
+    expect(model.nodes.map((n) => n.id).sort()).toEqual(["api", "db"]);
+  });
+
+  it("drops a node whose only edge was invalid", () => {
+    // Edge points at an id that isn't a node, so it never validates.
+    const model = buildDependencyGraph([node("api")], [edge("api", "missing")]);
+    expect(model.nodes).toEqual([]);
+    expect(model.edges).toEqual([]);
+  });
+});
+
+describe("cyclic layouts", () => {
+  it("puts a fully cyclic graph in layers starting at 0", () => {
+    const model = buildDependencyGraph(
+      [node("a"), node("b"), node("c")],
+      [edge("a", "b"), edge("b", "c"), edge("c", "a")],
+    );
+    const layout = layoutDependencyGraph(model);
+    // Every node placed, and no empty leading layer padding the canvas.
+    expect(layout.positions.size).toBe(3);
+    expect(layout.layers[0]?.length).toBeGreaterThan(0);
+    expect(layout.layers.every((l) => l.length > 0)).toBe(true);
+  });
+
+  it("still roots an acyclic graph at layer 0", () => {
+    const model = buildDependencyGraph(
+      [node("db"), node("api"), node("web")],
+      [edge("api", "db"), edge("web", "api")],
+    );
+    const layout = layoutDependencyGraph(model);
+    expect(layout.layers[0]).toEqual(["db"]);
+  });
+});

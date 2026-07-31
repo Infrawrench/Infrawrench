@@ -1,8 +1,15 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-ipcMain.handle("cloud_dependency_graph", async (_e, { orgId }: { orgId: string }) =>
-  cloudFetch(orgId, "/dependency-graph"),
+ipcMain.handle(
+  "cloud_dependency_graph",
+  async (_e, { orgId, resourceId }: { orgId: string; resourceId?: string }) =>
+    cloudFetch(
+      orgId,
+      resourceId
+        ? `/dependency-graph?resourceId=${encodeURIComponent(resourceId)}`
+        : "/dependency-graph",
+    ),
 );
 
 ipcMain.handle(

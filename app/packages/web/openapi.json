@@ -16335,6 +16335,21 @@
             "required": true,
             "name": "orgId",
             "in": "path"
+          },
+          {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/ResourceId"
+                },
+                {
+                  "description": "Narrow the graph to this resource's direct neighbourhood — only edges with it at one end, and only the nodes those edges touch. Omit for the whole org."
+                }
+              ]
+            },
+            "required": false,
+            "name": "resourceId",
+            "in": "query"
           }
         ],
         "responses": {

@@ -14,6 +14,7 @@ import {
   NAVIGATE_TO_RESOURCE_EVENT,
   formatErrorMessage,
   toast,
+  RESOURCES_CHANGED_EVENT,
   buildDependencyGraph,
   directDependencies,
   type DependencyGraphData,
@@ -240,17 +241,27 @@ export function ResourceDetailClient({
   const [dependencies, setDependencies] = useState<ResourceDependencies | null>(null);
   useEffect(() => {
     let cancelled = false;
-    apiGet<DependencyGraphData>(`/api/org/${orgId}/dependency-graph`)
-      .then((graph) => {
-        if (cancelled) return;
-        const model = buildDependencyGraph(graph.nodes, graph.edges);
-        setDependencies(directDependencies(model, resourceId));
-      })
-      .catch(() => {
-        if (!cancelled) setDependencies(null);
-      });
+    function load() {
+      apiGet<DependencyGraphData>(
+        `/api/org/${orgId}/dependency-graph?resourceId=${encodeURIComponent(resourceId)}`,
+      )
+        .then((graph) => {
+          if (cancelled) return;
+          const model = buildDependencyGraph(graph.nodes, graph.edges);
+          setDependencies(directDependencies(model, resourceId));
+        })
+        .catch(() => {
+          if (!cancelled) setDependencies(null);
+        });
+    }
+    load();
+    // Switching a field to (or off) an output reference happens on this very
+    // page, so without this the tab keeps showing the pre-change neighbours
+    // until the user navigates away and back.
+    window.addEventListener(RESOURCES_CHANGED_EVENT, load);
     return () => {
       cancelled = true;
+      window.removeEventListener(RESOURCES_CHANGED_EVENT, load);
     };
   }, [orgId, resourceId]);
   const handleOpenDependency = useCallback(
