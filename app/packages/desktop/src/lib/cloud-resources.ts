@@ -1,6 +1,10 @@
 import type { AssociationSource } from "@infrawrench/plugin-base";
-import type { ResourcePickerOption } from "@infrawrench/ui";
+import type { DependencyGraphData, ResourcePickerOption } from "@infrawrench/ui";
 import { invoke } from "./invoke";
+
+export async function fetchCloudDependencyGraph(orgId: string): Promise<DependencyGraphData> {
+  return invoke("cloud_dependency_graph", { orgId });
+}
 
 export async function getCloudResourceDetail(
   orgId: string,

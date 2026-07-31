@@ -6,6 +6,7 @@ import {
   CHAT_CONVERSATIONS_CHANGED_EVENT,
   DEFAULT_CHAT_MODEL,
   DeployIcon,
+  GraphIcon,
   DroppableDashboardItem,
   emitChatConversationsChanged,
   SidebarNavGrid,
@@ -18,6 +19,7 @@ import { CostsIcon } from "@infrawrench/ui/cost";
 import {
   agentsTabTarget,
   costsTabTarget,
+  graphTabTarget,
   chatTabTarget,
   dashboardTabTarget,
   deploymentsTabTarget,
@@ -201,6 +203,14 @@ export function SidebarDashboards() {
           },
         ]
       : []),
+    // Graph has a local half — output references live in the local SQLite —
+    // so unlike Costs the tile shows in both modes.
+    {
+      key: "graph",
+      label: "Graph",
+      icon: <GraphIcon />,
+      onClick: () => void navigateToWorkspaceTarget(navigate, graphTabTarget(), { label: "Graph" }),
+    },
   ];
 
   return (

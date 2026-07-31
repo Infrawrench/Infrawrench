@@ -4,6 +4,7 @@ import { useRouterState } from "@tanstack/react-router";
 import {
   WorkspaceTabsViewport as BaseViewport,
   dashboardTabTarget,
+  resourceTabTarget,
   DeploymentsPanel,
   useUIStore,
   workspaceTabTargetsEqual,
@@ -23,6 +24,7 @@ import { createDesktopAgentClient } from "@/lib/agent-client";
 import { createDesktopDeploymentClient } from "@/lib/cloud-deployments";
 import { CloudChatPanel } from "@/components/CloudChatPanel";
 import { DesktopWorkflowsPanel } from "@/components/DesktopWorkflowsPanel";
+import { DesktopGraphPanel } from "@/components/DesktopGraphPanel";
 import { LocalDeploymentsPanel } from "@/components/LocalDeploymentsPanel";
 
 let agentClient: AgentClient | null = null;
@@ -148,6 +150,18 @@ function renderPanel(
                 },
               }
             : {})}
+        />
+      );
+    case "graph":
+      return (
+        <DesktopGraphPanel
+          openResource={(node) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(node.accountId, node.id, node.pluginId, node.resourceTypeId),
+              ),
+            )
+          }
         />
       );
     case "chat":

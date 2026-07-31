@@ -1,6 +1,10 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
+ipcMain.handle("cloud_dependency_graph", async (_e, { orgId }: { orgId: string }) =>
+  cloudFetch(orgId, "/dependency-graph"),
+);
+
 ipcMain.handle(
   "cloud_tunnel_ssh_attach",
   async (_e, { orgId, body }: { orgId: string; body: unknown }) =>
