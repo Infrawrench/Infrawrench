@@ -950,6 +950,14 @@ The sidebar and account page both listen for `iw:resources-changed` and re-fetch
 
 ---
 
+## Orphan & idle resource finder ("Potential savings")
+
+Plugins declare waste heuristics **declaratively**: an optional `orphanRule` on `ResourceTypeDefinition` (plugin-base) — all-of field conditions (`empty` / `equals` / `notEquals`) plus a plugin-authored reason string. `evaluateOrphanRule` (plugin-base) is the single evaluator, so classification needs no plugin client, no credentials, and no provider API calls — it runs over already-synced `fields`. Semantics worth knowing: `empty` matches absent **or** `""` (but not `0`/`false`); `equals`/`notEquals` are case-insensitive and never match an absent field — the GCP `gce-disk` rule uses `equals: ""` on `attachedTo` deliberately, so rows synced before the lister populated that field are never falsely flagged. Only write rules over fields the lister actually sets (GCP `static-ip` declares `attachedVmName` but never populates it — a rule on it would flag everything).
+
+Aggregation is `GET /api/org/:orgId/orphans` (`web/src/services/orphans.ts`, permission `resources:read`), grouped by account. Cost annotation is best-effort: `getResourceCostTotals` (server-core cost-readers) sums 30 trailing days of `cost_daily` grouped by provider-native `resource_id`, matched in memory against `resources.externalId` — only plugins emitting per-resource cost rows produce matches, mixed-currency matches are dropped, and a ClickHouse failure silently yields `cost: null` (the flag never depends on billing). Wire types live in `client-core/src/orphans.ts`; `@infrawrench/ui/savings` re-exports them plus the shared `SavingsPanel` (host-injected `OrphansClient`), wired on web (`savings` workspace tab, sidebar tile) and desktop (cloud-only tile, `cloud_orphans_list` IPC). CLI: `infrawrench orphans` (`--json`/text, cloud-only). First release ships rules in digitalocean (volumes), hetzner (volumes, floating/primary IPs), aws (EBS `available`, unassociated EIPs), gcp (RESERVED external static IPs, unattached READY disks).
+
+---
+
 ## SSH terminal flow
 
 1. User selects key in `SshQuickConnectPanel` → reads private key from `~/.ssh/` or decrypts saved key

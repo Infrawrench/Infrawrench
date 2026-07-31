@@ -72,6 +72,25 @@ const attachTargetSchema = z.object({
   verb: z.string().optional(),
 });
 
+const orphanConditionSchema = z
+  .object({
+    fieldKey: z.string().min(1),
+    when: z.enum(["empty", "equals", "notEquals"]),
+    value: z.string().optional(),
+  })
+  // `evaluateOrphanRule` falls back to comparing against "" when `value` is
+  // absent, so an author who forgets it would silently get a rule that matches
+  // empty-valued fields instead of a manifest error.
+  .refine((c) => c.when === "empty" || c.value !== undefined, {
+    message: "orphan condition requires `value` when `when` is 'equals' or 'notEquals'",
+    path: ["value"],
+  });
+
+const orphanRuleSchema = z.object({
+  conditions: z.array(orphanConditionSchema).min(1),
+  reason: z.string().min(1),
+});
+
 export const resourceTypeDefinitionSchema = z.object({
   id: z.string().min(1),
   displayName: z.string().min(1),
@@ -86,4 +105,5 @@ export const resourceTypeDefinitionSchema = z.object({
   secretExportTemplates: z.array(secretExportTemplateSchema).optional(),
   attachTargets: z.array(attachTargetSchema).optional(),
   supportsMetrics: z.boolean().optional(),
+  orphanRule: orphanRuleSchema.optional(),
 });

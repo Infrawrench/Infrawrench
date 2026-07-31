@@ -24,6 +24,11 @@ export const VolumeResourceType = rt({
   outputs: [],
   supportsCreate: true,
   iconKey: "volume",
+  // The lister always sets serverId ("" when the volume is detached).
+  orphanRule: {
+    conditions: [{ fieldKey: "serverId", when: "empty" }],
+    reason: "Volume is not attached to any server",
+  },
   attachTargets: [
     {
       pluginId: "hetzner",

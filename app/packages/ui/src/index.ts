@@ -261,6 +261,7 @@ export {
   accountTabTarget,
   agentsTabTarget,
   costsTabTarget,
+  savingsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -450,6 +451,7 @@ export {
 } from "@infrawrench/client-core";
 
 export * from "./cost/index.js";
+export * from "./savings/index.js";
 
 export * from "./custom-graphs/index.js";
 

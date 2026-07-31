@@ -14,6 +14,7 @@ import { registerInvitationPaths } from "./paths/invitations";
 import { registerAccountPaths } from "./paths/accounts";
 import { registerDashboardPaths } from "./paths/dashboards";
 import { registerCostPaths } from "./paths/costs";
+import { registerOrphanPaths } from "./paths/orphans";
 import { registerBudgetPaths } from "./paths/budgets";
 import { registerCustomGraphPaths } from "./paths/custom-graphs";
 import { registerDeploymentPaths } from "./paths/deployments";
@@ -87,6 +88,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerAccountPaths(ctx);
   registerDashboardPaths(ctx);
   registerCostPaths(ctx);
+  registerOrphanPaths(ctx);
   registerBudgetPaths(ctx);
   registerCustomGraphPaths(ctx);
   registerDeploymentPaths(ctx);
@@ -152,6 +154,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       },
       { name: "Associations", description: "Output-reference wiring between resources." },
       { name: "Search", description: "Cross-account resource search." },
+      {
+        name: "Orphans",
+        description:
+          "Likely-orphaned and idle resources flagged by plugin heuristics, with best-effort cost.",
+      },
       { name: "Connect", description: "Helpers for shipping credentials into other services." },
       { name: "Storage", description: "Object storage helpers (uploads via API key)." },
       { name: "SFTP", description: "SFTP helpers (uploads via API key)." },
@@ -335,6 +342,8 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /v1/sftp/download": "storage:read",
   // search
   "GET /search": "resources:read",
+  // orphans
+  "GET /orphans": "resources:read",
   // ssh keys
   "GET /ssh-keys": "ssh-keys:read",
   "POST /ssh-keys": "ssh-keys:write",

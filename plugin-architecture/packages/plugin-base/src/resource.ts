@@ -309,6 +309,77 @@ export interface ResourceTypeDefinition {
    * also match between source and target (e.g. matching zone).
    */
   attachTargets?: AttachTarget[];
+  /**
+   * Declarative "this resource is probably wasted" heuristic — e.g. an
+   * unattached volume or a reserved IP that isn't assigned to anything.
+   *
+   * The rule matches when ALL conditions hold against the instance's stored
+   * `fields`. Hosts evaluate it over already-synced resources via
+   * {@link evaluateOrphanRule} — no plugin client, credentials, or extra API
+   * calls involved — and surface matches on the "Potential savings" page and
+   * the `infrawrench orphans` CLI. Only declare rules over fields the type's
+   * lister already populates; a condition on a field the lister never sets
+   * simply never matches (empty-string and absent are distinct: `empty`
+   * matches both, `equals`/`notEquals` never match an absent field).
+   */
+  orphanRule?: OrphanRule;
+}
+
+/** One predicate inside an {@link OrphanRule}. All conditions must hold. */
+export interface OrphanCondition {
+  /** Key into the instance's `fields` map. */
+  fieldKey: string;
+  /**
+   * - `empty` — field is absent, `""`, `0` is NOT empty (a count of zero is a
+   *   real value; use `equals` with `"0"` for that).
+   * - `equals` / `notEquals` — string comparison against `value`
+   *   (case-insensitive; numbers/booleans are stringified). An absent field
+   *   never matches either.
+   */
+  when: "empty" | "equals" | "notEquals";
+  /** Comparison operand for `equals` / `notEquals`. */
+  value?: string;
+}
+
+/**
+ * Declares when an instance of this type is likely orphaned or idle, and why.
+ * Kept declarative (rather than a client method) so hosts can evaluate it
+ * against stored resources without provider credentials.
+ */
+export interface OrphanRule {
+  /** All must hold for the resource to be flagged. At least one required. */
+  conditions: OrphanCondition[];
+  /**
+   * Human-readable explanation shown next to the flagged resource, e.g.
+   * "Volume is not attached to any Droplet". Written by the plugin — the one
+   * place that knows what the fields mean.
+   */
+  reason: string;
+}
+
+/**
+ * Evaluate a type's {@link OrphanRule} against a resource instance's stored
+ * fields. Returns the reason string when the resource is flagged, or `null`
+ * when it isn't (or the type declares no rule).
+ *
+ * Shared by the web server's orphan aggregation and the desktop CLI so the
+ * classification behaves identically everywhere.
+ */
+export function evaluateOrphanRule(
+  rule: OrphanRule | undefined,
+  fields: Record<string, string | number | boolean> | undefined,
+): string | null {
+  if (!rule || rule.conditions.length === 0) return null;
+  const matches = rule.conditions.every((cond) => {
+    const raw = fields?.[cond.fieldKey];
+    if (cond.when === "empty") return raw == null || raw === "";
+    if (raw == null) return false;
+    const actual = String(raw).toLowerCase();
+    const expected = (cond.value ?? "").toLowerCase();
+    if (cond.when === "equals") return actual === expected;
+    return actual !== expected;
+  });
+  return matches ? rule.reason : null;
 }
 
 export interface AgentVmCapability {

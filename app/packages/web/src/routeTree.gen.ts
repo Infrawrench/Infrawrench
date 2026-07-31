@@ -17,6 +17,7 @@ import { Route as DeploySplatRouteImport } from './routes/deploy.$'
 import { Route as OrgOrgIdIndexRouteImport } from './routes/org.$orgId.index'
 import { Route as OrgOrgIdWorkflowsRouteImport } from './routes/org.$orgId.workflows'
 import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settings'
+import { Route as OrgOrgIdSavingsRouteImport } from './routes/org.$orgId.savings'
 import { Route as OrgOrgIdDeploymentsRouteImport } from './routes/org.$orgId.deployments'
 import { Route as OrgOrgIdCostsRouteImport } from './routes/org.$orgId.costs'
 import { Route as OrgOrgIdChatRouteImport } from './routes/org.$orgId.chat'
@@ -75,6 +76,11 @@ const OrgOrgIdWorkflowsRoute = OrgOrgIdWorkflowsRouteImport.update({
 const OrgOrgIdSettingsRoute = OrgOrgIdSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdSavingsRoute = OrgOrgIdSavingsRouteImport.update({
+  id: '/savings',
+  path: '/savings',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdDeploymentsRoute = OrgOrgIdDeploymentsRouteImport.update({
@@ -190,6 +196,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
+  '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
@@ -217,6 +224,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
+  '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
   '/org/$orgId': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
@@ -246,6 +254,7 @@ export interface FileRoutesById {
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
+  '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
@@ -277,6 +286,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/chat'
     | '/org/$orgId/costs'
     | '/org/$orgId/deployments'
+    | '/org/$orgId/savings'
     | '/org/$orgId/settings'
     | '/org/$orgId/workflows'
     | '/org/$orgId/'
@@ -304,6 +314,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/agents'
     | '/org/$orgId/costs'
     | '/org/$orgId/deployments'
+    | '/org/$orgId/savings'
     | '/org/$orgId/workflows'
     | '/org/$orgId'
     | '/org/$orgId/accounts/$accountId'
@@ -332,6 +343,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/chat'
     | '/org/$orgId/costs'
     | '/org/$orgId/deployments'
+    | '/org/$orgId/savings'
     | '/org/$orgId/settings'
     | '/org/$orgId/workflows'
     | '/org/$orgId/'
@@ -416,6 +428,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/org/$orgId/settings'
       preLoaderRoute: typeof OrgOrgIdSettingsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/savings': {
+      id: '/org/$orgId/savings'
+      path: '/savings'
+      fullPath: '/org/$orgId/savings'
+      preLoaderRoute: typeof OrgOrgIdSavingsRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/deployments': {
@@ -602,6 +621,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdChatRoute: typeof OrgOrgIdChatRouteWithChildren
   OrgOrgIdCostsRoute: typeof OrgOrgIdCostsRoute
   OrgOrgIdDeploymentsRoute: typeof OrgOrgIdDeploymentsRoute
+  OrgOrgIdSavingsRoute: typeof OrgOrgIdSavingsRoute
   OrgOrgIdSettingsRoute: typeof OrgOrgIdSettingsRouteWithChildren
   OrgOrgIdWorkflowsRoute: typeof OrgOrgIdWorkflowsRoute
   OrgOrgIdIndexRoute: typeof OrgOrgIdIndexRoute
@@ -615,6 +635,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdChatRoute: OrgOrgIdChatRouteWithChildren,
   OrgOrgIdCostsRoute: OrgOrgIdCostsRoute,
   OrgOrgIdDeploymentsRoute: OrgOrgIdDeploymentsRoute,
+  OrgOrgIdSavingsRoute: OrgOrgIdSavingsRoute,
   OrgOrgIdSettingsRoute: OrgOrgIdSettingsRouteWithChildren,
   OrgOrgIdWorkflowsRoute: OrgOrgIdWorkflowsRoute,
   OrgOrgIdIndexRoute: OrgOrgIdIndexRoute,

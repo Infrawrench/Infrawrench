@@ -3,6 +3,7 @@
 import "./accounts";
 import "./chat";
 import "./costs";
+import "./orphans";
 import "./custom-graphs";
 import "./dashboards";
 import "./deployments";

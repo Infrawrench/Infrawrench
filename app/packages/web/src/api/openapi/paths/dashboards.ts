@@ -180,6 +180,7 @@ const TabTarget = strict({
     "resource",
     "agents",
     "costs",
+    "savings",
     "workflows",
     "deployments",
     "chat",

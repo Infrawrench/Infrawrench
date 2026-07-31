@@ -30,6 +30,7 @@ import { adminRoutes } from "./routes/admin";
 
 import { dashboardRoutes } from "./routes/dashboards";
 import { costRoutes } from "./routes/costs";
+import { orphanRoutes } from "./routes/orphans";
 import { costIngestRoutes } from "./routes/cost-ingest";
 import { pageRoutes } from "./routes/pages";
 import { budgetRoutes } from "./routes/budgets";
@@ -206,6 +207,7 @@ orgScoped.use("*", permissionsMiddleware);
 
 orgScoped.route("/dashboards", dashboardRoutes);
 orgScoped.route("/costs", costRoutes);
+orgScoped.route("/orphans", orphanRoutes);
 orgScoped.route("/budgets", budgetRoutes);
 orgScoped.route("/custom-graphs", customGraphRoutes);
 orgScoped.route("/workflows", workflowRoutes);

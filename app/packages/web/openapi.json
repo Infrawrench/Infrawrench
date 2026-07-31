@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.18.0",
+    "version": "0.19.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -71,6 +71,10 @@
     {
       "name": "Search",
       "description": "Cross-account resource search."
+    },
+    {
+      "name": "Orphans",
+      "description": "Likely-orphaned and idle resources flagged by plugin heuristics, with best-effort cost."
     },
     {
       "name": "Connect",
@@ -1917,6 +1921,7 @@
               "resource",
               "agents",
               "costs",
+              "savings",
               "workflows",
               "deployments",
               "chat"
@@ -2532,6 +2537,125 @@
           "costPollError",
           "coverage"
         ],
+        "additionalProperties": false
+      },
+      "OrphanCostAnnotation": {
+        "type": ["object", "null"],
+        "properties": {
+          "amount": {
+            "type": "number",
+            "description": "Spend over the trailing cost window."
+          },
+          "currency": {
+            "type": "string",
+            "example": "USD"
+          }
+        },
+        "required": ["amount", "currency"],
+        "additionalProperties": false,
+        "description": "Best-effort trailing spend matched from collected per-resource cost rows; null when the provider reports no per-resource cost. The flag itself never depends on billing data."
+      },
+      "OrphanedResource": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Infrawrench resource id."
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string",
+            "example": "EBS Volume"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": ["string", "null"],
+            "description": "Provider-native id, when known."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Plugin-authored explanation of why this resource looks wasted.",
+            "example": "Volume is not attached to any Droplet"
+          },
+          "cost": {
+            "$ref": "#/components/schemas/OrphanCostAnnotation"
+          },
+          "lastSyncedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "pluginId",
+          "resourceTypeId",
+          "resourceTypeName",
+          "displayName",
+          "externalId",
+          "reason",
+          "cost",
+          "lastSyncedAt"
+        ],
+        "additionalProperties": false
+      },
+      "OrphanAccountGroup": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string",
+            "example": "DigitalOcean"
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrphanedResource"
+            }
+          }
+        },
+        "required": ["accountId", "accountName", "pluginId", "pluginName", "resources"],
+        "additionalProperties": false
+      },
+      "OrphanListResponse": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrphanAccountGroup"
+            },
+            "description": "Groups sorted by account name."
+          },
+          "totalCount": {
+            "type": "integer"
+          },
+          "costWindowDays": {
+            "type": "integer",
+            "description": "Days of trailing spend the annotations cover."
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["accounts", "totalCount", "costWindowDays", "generatedAt"],
         "additionalProperties": false
       },
       "BudgetCostFilter": {
@@ -10336,6 +10460,40 @@
         },
         "operationId": "getOrgOrgIdCostsStatus",
         "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/orphans": {
+      "get": {
+        "tags": ["Orphans"],
+        "summary": "List likely-orphaned and idle resources",
+        "description": "Scans the organization's already-synced resources against each plugin's declarative orphan heuristics — unattached volumes, unassigned floating/elastic IPs, reserved-but-unused static IPs — and returns the matches grouped by account, each with the plugin's reason. Purely a read over stored state: no provider API calls are made, so results reflect the last sync. Where the org's collected cost data has per-resource rows, matches are annotated with trailing spend.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Flagged resources grouped by account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrphanListResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdOrphans",
+        "x-required-permission": "resources:read"
       }
     },
     "/api/org/{orgId}/budgets": {

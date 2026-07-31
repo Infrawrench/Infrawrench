@@ -5,6 +5,7 @@ import {
   accountTabTarget,
   agentsTabTarget,
   costsTabTarget,
+  savingsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -21,6 +22,7 @@ export {
   accountTabTarget,
   agentsTabTarget,
   costsTabTarget,
+  savingsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -64,6 +66,8 @@ export function getWorkspaceNavigateArgs(
       };
     case "costs":
       return { to: "/costs", ...(replace ? { replace: true } : {}) };
+    case "savings":
+      return { to: "/savings", ...(replace ? { replace: true } : {}) };
     case "chat":
       // Always pass search explicitly: navigating from a conversation
       // (?conversation=x) to the list must CLEAR the param, or the route
@@ -142,6 +146,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "costs") {
     return costsTabTarget();
+  }
+  if (segments[0] === "savings") {
+    return savingsTabTarget();
   }
   if (segments[0] === "chat") {
     const params = new URLSearchParams(search ?? "");

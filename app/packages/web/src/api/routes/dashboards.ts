@@ -674,6 +674,7 @@ app.post("/validate-tabs", async (c) => {
     if (
       target.kind === "agents" ||
       target.kind === "costs" ||
+      target.kind === "savings" ||
       target.kind === "workflows" ||
       target.kind === "deployments"
     ) {

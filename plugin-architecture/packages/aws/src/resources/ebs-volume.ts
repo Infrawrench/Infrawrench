@@ -20,6 +20,12 @@ export const EBSVolumeResourceType = rt({
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "volume",
+  // "available" is EC2's word for "detached but still billed". Matching on
+  // state (not attachedTo) avoids flagging volumes mid-create/mid-delete.
+  orphanRule: {
+    conditions: [{ fieldKey: "state", when: "equals", value: "available" }],
+    reason: "EBS volume is detached (state: available) but still billed",
+  },
   attachTargets: [
     {
       pluginId: "aws",
