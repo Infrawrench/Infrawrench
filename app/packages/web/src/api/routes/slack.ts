@@ -80,21 +80,25 @@ app.get("/status", async (c) => {
       teamId: i.teamId,
       teamName: i.teamName,
     })),
-    channels: channels
-      // Hide channels whose install has been disconnected; the rows stay so a
-      // re-install restores them.
-      .filter((ch) => installs.some((i) => i.id === ch.installationId))
-      .map((ch) => ({
-        id: ch.id,
-        installationId: ch.installationId,
-        channelId: ch.channelId,
-        channelName: ch.channelName,
-        isPrivate: ch.isPrivate,
-        syncIncidents: ch.syncIncidents,
-        budgetAlerts: ch.budgetAlerts,
-        workflowPages: ch.workflowPages,
-        weeklyDigest: ch.weeklyDigest,
-      })),
+    // Hide channels whose install has been disconnected; the rows stay so a
+    // re-install restores them.
+    channels: channels.flatMap((ch) =>
+      installs.some((i) => i.id === ch.installationId)
+        ? [
+            {
+              id: ch.id,
+              installationId: ch.installationId,
+              channelId: ch.channelId,
+              channelName: ch.channelName,
+              isPrivate: ch.isPrivate,
+              syncIncidents: ch.syncIncidents,
+              budgetAlerts: ch.budgetAlerts,
+              workflowPages: ch.workflowPages,
+              weeklyDigest: ch.weeklyDigest,
+            },
+          ]
+        : [],
+    ),
   });
 });
 
