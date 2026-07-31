@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { CostAnomaliesSection } from "../cost/CostAnomaliesSection.js";
-import type { CostAnomaly, CostAnomalySettings, CostsClient } from "../cost/types.js";
+import type {
+  CostAnomaly,
+  CostAnomalySettings,
+  CostAnomalySettingsView,
+  CostsClient,
+} from "../cost/types.js";
 
 function anomaly(overrides: Partial<CostAnomaly> = {}): CostAnomaly {
   return {
@@ -24,7 +29,11 @@ const DEFAULTS: CostAnomalySettings = {
   sigmas: 3,
   minDeltaCents: 1000,
   newSourceMinCents: 2500,
+  smsAlerts: "off",
 };
+
+/** What the settings endpoint answers with: the stored fields plus the derived one. */
+const VIEW: CostAnomalySettingsView = { ...DEFAULTS, smsConfigured: true };
 
 function makeClient(rows: CostAnomaly[], overrides: Partial<CostsClient> = {}): CostsClient {
   return {
@@ -76,9 +85,12 @@ describe("CostAnomaliesSection", () => {
   });
 
   it("saves edited thresholds through the host client", async () => {
-    const updateAnomalySettings = vi.fn(async (s: CostAnomalySettings) => s);
+    const updateAnomalySettings = vi.fn(async (s: CostAnomalySettings) => ({
+      ...s,
+      smsConfigured: true,
+    }));
     const client = makeClient([anomaly()], {
-      getAnomalySettings: vi.fn(async () => DEFAULTS),
+      getAnomalySettings: vi.fn(async () => VIEW),
       updateAnomalySettings,
     });
 
@@ -95,9 +107,12 @@ describe("CostAnomaliesSection", () => {
   });
 
   it("edits the new-source floor in dollars and sends cents", async () => {
-    const updateAnomalySettings = vi.fn(async (s: CostAnomalySettings) => s);
+    const updateAnomalySettings = vi.fn(async (s: CostAnomalySettings) => ({
+      ...s,
+      smsConfigured: true,
+    }));
     const client = makeClient([], {
-      getAnomalySettings: vi.fn(async () => DEFAULTS),
+      getAnomalySettings: vi.fn(async () => VIEW),
       updateAnomalySettings,
     });
 
@@ -118,7 +133,7 @@ describe("CostAnomaliesSection", () => {
   });
 
   it("renders the tuning panel read-only without a save call", async () => {
-    const client = makeClient([], { getAnomalySettings: vi.fn(async () => DEFAULTS) });
+    const client = makeClient([], { getAnomalySettings: vi.fn(async () => VIEW) });
     render(<CostAnomaliesSection client={client} />);
     fireEvent.click(await screen.findByText("Tune detection"));
 
@@ -127,10 +142,57 @@ describe("CostAnomaliesSection", () => {
     expect(screen.queryByText("Save")).toBeNull();
   });
 
-  it("refuses to save a sigma outside the bounds the API enforces", async () => {
-    const updateAnomalySettings = vi.fn(async (s: CostAnomalySettings) => s);
+  it("defaults the SMS control to off and saves the chosen mode", async () => {
+    const updateAnomalySettings = vi.fn(async (s: CostAnomalySettings) => ({
+      ...s,
+      smsConfigured: true,
+    }));
     const client = makeClient([], {
-      getAnomalySettings: vi.fn(async () => DEFAULTS),
+      getAnomalySettings: vi.fn(async () => VIEW),
+      updateAnomalySettings,
+    });
+
+    render(<CostAnomaliesSection client={client} />);
+    fireEvent.click(await screen.findByText("Tune detection"));
+
+    const sms = (await screen.findByLabelText(/Text the on-call list/)) as HTMLSelectElement;
+    expect(sms.value).toBe("off");
+    fireEvent.change(sms, { target: { value: "new_source" } });
+    fireEvent.click(screen.getByText("Save"));
+
+    await waitFor(() =>
+      // `smsConfigured` is derived server-side and must not be echoed back.
+      expect(updateAnomalySettings).toHaveBeenCalledWith({ ...DEFAULTS, smsAlerts: "new_source" }),
+    );
+  });
+
+  it("says so when the org can't actually receive an SMS", async () => {
+    const client = makeClient([], {
+      getAnomalySettings: vi.fn(async () => ({ ...VIEW, smsConfigured: false })),
+      updateAnomalySettings: vi.fn(async (s: CostAnomalySettings) => ({
+        ...s,
+        smsConfigured: false,
+      })),
+    });
+
+    render(<CostAnomaliesSection client={client} />);
+    fireEvent.click(await screen.findByText("Tune detection"));
+
+    const sms = (await screen.findByLabelText(/Text the on-call list/)) as HTMLSelectElement;
+    // Nothing is wrong until the org asks for texts it cannot receive.
+    expect(screen.queryByText(/can.t receive SMS/)).toBeNull();
+
+    fireEvent.change(sms, { target: { value: "all" } });
+    expect(await screen.findByText(/can.t receive SMS/)).toBeTruthy();
+  });
+
+  it("refuses to save a sigma outside the bounds the API enforces", async () => {
+    const updateAnomalySettings = vi.fn(async (s: CostAnomalySettings) => ({
+      ...s,
+      smsConfigured: true,
+    }));
+    const client = makeClient([], {
+      getAnomalySettings: vi.fn(async () => VIEW),
       updateAnomalySettings,
     });
 

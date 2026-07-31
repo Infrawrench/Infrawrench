@@ -83,6 +83,8 @@ The org settings page formerly titled **Paging** is now **Notifications** (the n
 - **Members receiving push** — an admin-only roster (requires the `org:settings:write` permission) of org members who have at least one active device, so you can see at a glance who would actually hear an incident.
 - **SMS & voice** — last on the page, since it is opt-in: one card holding the whole Twilio setup — account SID, auth token, from-number, the threshold/window/cooldown knobs, the on-call recipient roster, and a **Send test page** button.
 
+What actually texts that roster, once it is set up: sync-failure incidents, [budget](./cloud-costs.md) threshold crossings, [workflow pages](./workflows.md#paging-a-human) and approval requests, and — only if the organization opts in — [cost anomalies](./cost-anomaly-alerts.md#paging-by-sms). [Drift digests](./change-timeline.md) never do. Voice calls are placed only for sync incidents and for a workflow page that asked for `voice: true`.
+
 ## Test it
 
 Use **Send test push** on the Notifications page (or in the mobile app's settings) after signing in on your phone. It reports how many of your devices the test reached — if it says you have no registered devices, sign in on the mobile app first.

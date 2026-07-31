@@ -61,7 +61,8 @@ export function CostAnomaliesSection() {
 
       {rows.length > 0 && (
         <Text style={styles.footnote}>
-          Detection thresholds are per organization; tune them from the web or desktop app.
+          Detection thresholds — and whether anomalies also text the on-call list — are per
+          organization; tune them from the web or desktop app.
         </Text>
       )}
     </>

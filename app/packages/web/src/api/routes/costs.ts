@@ -4,6 +4,7 @@ import {
   getOrgAnomalySettings,
   setOrgAnomalySettings,
 } from "@infrawrench/server-core/cost/anomaly-settings";
+import { isSmsPagingConfigured } from "@infrawrench/server-core/twilio-pager";
 import {
   CostQueryError,
   getOrgCostStatus,
@@ -83,11 +84,21 @@ app.get("/anomalies", async (c) => {
 /**
  * GET /api/org/:orgId/costs/anomaly-settings — the org's detection thresholds.
  * An org that has never changed them reads as the shipped defaults.
+ *
+ * `smsConfigured` rides along because `smsAlerts` alone cannot tell a form the
+ * truth: an org can ask for texts while having no Twilio credentials or no
+ * recipient opted into SMS, and nothing would be sent. The Twilio routes that
+ * hold that fact are `org:settings:write`, which a `costs:read` member does not
+ * have — so the answer is derived here rather than fetched by the client.
  */
 app.get("/anomaly-settings", async (c) => {
   requirePermission(c, "costs:read");
   const organizationId = c.get("organizationId");
-  return c.json(await getOrgAnomalySettings(organizationId));
+  const [settings, smsConfigured] = await Promise.all([
+    getOrgAnomalySettings(organizationId),
+    isSmsPagingConfigured(organizationId),
+  ]);
+  return c.json({ ...settings, smsConfigured });
 });
 
 /**
@@ -106,7 +117,11 @@ app.put("/anomaly-settings", async (c) => {
     return c.json({ error: "Invalid anomaly settings", issues: parsed.error.issues }, 400);
   }
 
-  return c.json(await setOrgAnomalySettings(organizationId, parsed.data));
+  const [settings, smsConfigured] = await Promise.all([
+    setOrgAnomalySettings(organizationId, parsed.data),
+    isSmsPagingConfigured(organizationId),
+  ]);
+  return c.json({ ...settings, smsConfigured });
 });
 
 /**

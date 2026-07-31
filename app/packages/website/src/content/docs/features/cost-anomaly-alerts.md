@@ -1,6 +1,6 @@
 ---
 title: Cost anomaly alerts
-description: Automatic detection of unusual spend spikes and brand-new spend sources per provider and per service, with alerts through push, Slack, and Microsoft Teams.
+description: Automatic detection of unusual spend spikes and brand-new spend sources per provider and per service, with alerts through push, Slack, Microsoft Teams, and optional SMS.
 ---
 
 Infrawrench watches your collected spend for anomalies. Once a day, after cost
@@ -62,14 +62,15 @@ measuring against is judged as a spike, and only a key with no baseline can be a
 
 ## Tuning detection
 
-The **Tune detection** button on the Costs panel's Anomalies section opens three controls,
+The **Tune detection** button on the Costs panel's Anomalies section opens four controls,
 stored per organization:
 
-| Control              | What it does                                                                               | Default | Range         |
-| -------------------- | ------------------------------------------------------------------------------------------ | ------- | ------------- |
-| **Sensitivity (σ)**  | Standard deviations above a key's own average before a day is a spike. Lower catches more. | 3       | 1 – 10        |
-| **Spike floor**      | The minimum rise over the baseline a spike must also clear, in USD.                        | $10     | $1 – $100,000 |
-| **New-source floor** | The minimum first-day spend before a provider or service with no history alerts, in USD.   | $25     | $1 – $100,000 |
+| Control                   | What it does                                                                               | Default | Range                                |
+| ------------------------- | ------------------------------------------------------------------------------------------ | ------- | ------------------------------------ |
+| **Sensitivity (σ)**       | Standard deviations above a key's own average before a day is a spike. Lower catches more. | 3       | 1 – 10                               |
+| **Spike floor**           | The minimum rise over the baseline a spike must also clear, in USD.                        | $10     | $1 – $100,000                        |
+| **New-source floor**      | The minimum first-day spend before a provider or service with no history alerts, in USD.   | $25     | $1 – $100,000                        |
+| **Text the on-call list** | Whether anomalies also send an SMS — see [Paging by SMS](#paging-by-sms).                  | Never   | Never / New sources only / Every one |
 
 The bounds are enforced by the server, not just the form. A sensitivity of 0 would flag every
 day a cent above average, and anything under 1σ flags roughly a third of ordinary days; a floor
@@ -89,11 +90,11 @@ whole cost feed alerts on. A member without it sees what detection is tuned to, 
 controls.
 
 Tuning is a web and desktop feature. The mobile app lists anomalies but does not edit the
-thresholds: they are organization-wide settings that change what everyone's alerts look like,
-and the control you actually want on a phone — turning the notifications off for yourself — is
-the "Cost anomalies" toggle in the app's notification settings.
+thresholds or the SMS setting: they are organization-wide settings that change what everyone's
+alerts look like, and the control you actually want on a phone — turning the notifications off
+for yourself — is the "Cost anomalies" toggle in the app's notification settings.
 
-<insert [Costs panel Anomalies section with the tuning panel expanded, showing the Sensitivity, Spike floor, and New-source floor inputs with their default values] here>
+<insert [Costs panel Anomalies section with the tuning panel expanded, showing the Sensitivity, Spike floor, and New-source floor inputs with their default values, and the "Text the on-call list" dropdown set to Never] here>
 
 ## Deduplication and cooldown
 
@@ -162,6 +163,44 @@ own opt-in toggle everywhere those channels are configured:
 All toggles default to on. Slack and Teams messages carry a "View in Infrawrench" button that
 opens the Costs panel.
 
+## Paging by SMS
+
+Anomalies can also text your on-call list through the org's Twilio credentials. It is **off by
+default** and turned on with the **Text the on-call list** control in the tuning panel, which
+offers three settings:
+
+| Setting                    | What gets texted                                                                                                              |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **Never** (default)        | Nothing. Push, Slack and Teams are unaffected.                                                                                |
+| **New spend sources only** | Only a provider or service that started spending from nothing — the shape a leaked key or a mistakenly enabled service takes. |
+| **Every anomaly**          | New sources and spikes on existing lines.                                                                                     |
+
+It defaults to off deliberately: an organization that already configured Twilio for budget
+alerts and sync incidents should not start receiving a new category of text message because a
+release shipped.
+
+**One text per detection pass, not one per anomaly.** A single pass can flag many anomalies at
+once — detection runs per provider _and_ per service, so the day one account's spend jumps you
+get a provider anomaly plus one for every service underneath it. The text summarizes what that
+pass alerted on: the day, the three largest findings by detection order, and a count of the
+rest ("and 9 more"). The Costs panel has the full list.
+
+**At most one text every six hours** per organization, on top of the [7-day per-key
+cooldown](#deduplication-and-cooldown). The evaluation pass itself can run hourly, and the
+per-key cooldown only stops the _same_ provider or service alerting again — without a second
+bound, a trickle of different services crossing the threshold as late-restated data lands could
+text somebody all day. A suppressed text loses nothing: the anomalies are still stored, still
+listed, and still delivered to push, Slack and Teams.
+
+**Never a voice call.** Twilio voice is reserved for [workflow pages](./workflows.md) that ask
+for it. An anomaly is worth a text, not a ringing phone at 3am.
+
+Texts need paging enabled for the organization with Twilio credentials and a from-number under
+**Settings → Notifications**, and at least one recipient opted into SMS. If none of that is set
+up, the tuning panel says so rather than accepting the setting and silently delivering nothing.
+
+<insert [Tuning panel with "Text the on-call list" set to "Every anomaly" on an org with no Twilio credentials, showing the amber warning that the organization can't receive SMS yet] here>
+
 ## API
 
 Recent anomalies are available over the HTTP API:
@@ -184,6 +223,12 @@ PUT /api/org/{orgId}/costs/anomaly-settings
 
 `GET` needs `costs:read` and answers with the defaults for an organization that has never
 changed them. `PUT` needs `costs:write` and replaces the whole object — `sigmas`,
-`minDeltaCents`, and `newSourceMinCents` are all required, and out-of-range values are rejected
-with a 400 rather than clamped. See the [API reference](../team-and-billing/openapi.md) for the
-full schema.
+`minDeltaCents`, `newSourceMinCents`, and `smsAlerts` (`off` | `new_source` | `all`) are all
+required, and out-of-range values are rejected with a 400 rather than clamped. `smsAlerts`
+deliberately has no server-side default: a client that omits it is rejected rather than
+silently switching an organization's SMS paging back off.
+
+Both responses also carry a read-only `smsConfigured` boolean — whether a text raised right now
+could actually be delivered (paging enabled, Twilio credentials stored, at least one recipient
+opted into SMS). It is derived, and is not accepted on `PUT`. See the
+[API reference](../team-and-billing/openapi.md) for the full schema.

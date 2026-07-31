@@ -397,6 +397,26 @@ export async function listCostAnomalies(
  * into the currency of the series it is judging, so one setting means the same
  * real amount whether a provider bills in dollars or yen.
  */
+/**
+ * Which anomalies, if any, also page the org's Twilio recipients by SMS.
+ *
+ * Deliberately one nested choice rather than two orthogonal booleans. The three
+ * values order themselves — off ⊂ new sources ⊂ everything — so there is never
+ * a combination that needs two different text messages out of one evaluation
+ * pass, and the middle value is the one worth having: a spend source appearing
+ * from nothing is what a leaked key or a fat-fingered instance type looks like,
+ * while a spike on an existing line is usually a busy day.
+ */
+export type CostAnomalySmsMode = "off" | "new_source" | "all";
+
+export const COST_ANOMALY_SMS_MODES = ["off", "new_source", "all"] as const;
+
+export const COST_ANOMALY_SMS_MODE_LABELS: Record<CostAnomalySmsMode, string> = {
+  off: "Never",
+  new_source: "New spend sources only",
+  all: "Every anomaly",
+};
+
 export interface CostAnomalySettings {
   /**
    * How many standard deviations above its own trailing mean a day's spend
@@ -415,6 +435,35 @@ export interface CostAnomalySettings {
    * never clear a sigma bar, so it gets its own absolute floor instead.
    */
   newSourceMinCents: number;
+  /**
+   * Whether anomalies also text the org's Twilio recipients, and which kinds.
+   * Defaults to `off`: every org with Twilio configured for budgets would
+   * otherwise start receiving anomaly texts the day this shipped.
+   *
+   * One batched SMS per evaluation pass summarises whatever that pass alerted
+   * on, so turning this on cannot turn a day where thirty services jump into
+   * thirty text messages.
+   */
+  smsAlerts: CostAnomalySmsMode;
+}
+
+/**
+ * What `GET`/`PUT /costs/anomaly-settings` answer with: the stored settings
+ * plus one derived, read-only fact.
+ *
+ * `smsAlerts` on its own is not enough for a form to tell the truth — an org
+ * can select "every anomaly" while having no Twilio credentials, or none of its
+ * recipients opted into SMS, and nothing would ever be sent. The server knows;
+ * the client cannot (the Twilio settings routes are `org:settings:write`, which
+ * a `costs:read` member does not hold), so it is answered here.
+ */
+export interface CostAnomalySettingsView extends CostAnomalySettings {
+  /**
+   * True when a page raised right now could actually be delivered: paging is
+   * enabled for the org, Twilio credentials and a from-number are stored, and
+   * at least one recipient opted into SMS.
+   */
+  smsConfigured: boolean;
 }
 
 /**
@@ -452,6 +501,8 @@ export const DEFAULT_COST_ANOMALY_SETTINGS: CostAnomalySettings = {
    * worth more before it wakes anyone.
    */
   newSourceMinCents: 2500,
+  /** Opt-in. Turning an existing Twilio setup into a new pager is a surprise. */
+  smsAlerts: "off",
 };
 
 /* ------------------------------------------------------------------ *

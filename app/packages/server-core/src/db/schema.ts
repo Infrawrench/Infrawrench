@@ -934,6 +934,13 @@ export const digestEmailRecipients = pgTable(
  * bounded by the API (`COST_ANOMALY_LIMITS`) — a sigma of 0 would alert on
  * every fluctuation and a negative floor is meaningless — so nothing here can
  * store a setting that turns detection into a pager storm.
+ *
+ * The last two columns are the Twilio half, and they are a pair: `sms_alerts`
+ * is the opt-in (default `'off'`, because every org that already has Twilio set
+ * up for budgets would otherwise start getting anomaly texts), and
+ * `sms_last_paged_at` is the *claim* that bounds their rate, in the same
+ * protocol `org_drift_alert_settings.last_notified_at` uses — one conditional
+ * UPDATE, whoever wins it sends, rolled back when the text reached nobody.
  */
 export const orgCostAnomalySettings = pgTable("org_cost_anomaly_settings", {
   organizationId: text("organization_id")
@@ -945,6 +952,20 @@ export const orgCostAnomalySettings = pgTable("org_cost_anomaly_settings", {
   minDeltaCents: integer("min_delta_cents").notNull().default(1000),
   /** Minimum first-day spend before a new spend source alerts, in USD cents. */
   newSourceMinCents: integer("new_source_min_cents").notNull().default(2500),
+  /**
+   * Which anomaly kinds also text the org's Twilio recipients:
+   * `'off'` (default) | `'new_source'` | `'all'`. Nested rather than two
+   * booleans — see `CostAnomalySmsMode` in `client-core/src/costs.ts`.
+   */
+  smsAlerts: text("sms_alerts", { enum: ["off", "new_source", "all"] })
+    .notNull()
+    .default("off"),
+  /**
+   * When the org last sent an anomaly SMS. A claim, not bookkeeping: the send
+   * is gated on one conditional UPDATE of this column, so two poller replicas
+   * evaluating the same org produce one text.
+   */
+  smsLastPagedAt: timestamp("sms_last_paged_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

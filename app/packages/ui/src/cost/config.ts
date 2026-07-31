@@ -10,6 +10,7 @@
 import { z } from "zod";
 import {
   COST_ANOMALY_LIMITS,
+  COST_ANOMALY_SMS_MODES,
   COST_BINNINGS,
   COST_CHART_TYPES,
   COST_DIMENSIONS,
@@ -31,12 +32,16 @@ export {
   COST_CHART_TYPES,
   COST_BINNINGS,
   COST_ANOMALY_LIMITS,
+  COST_ANOMALY_SMS_MODES,
+  COST_ANOMALY_SMS_MODE_LABELS,
   DASHBOARD_WIDGET_KINDS,
   OTHER_GROUP_KEY,
   DEFAULT_COST_GRAPH_CONFIG,
   DEFAULT_BUDGET_INPUT,
   DEFAULT_COST_ANOMALY_SETTINGS,
   type CostAnomalySettings,
+  type CostAnomalySettingsView,
+  type CostAnomalySmsMode,
   COST_CHART_TYPE_LABELS,
   COST_BINNING_LABELS,
   COST_RANGE_PRESET_LABELS,
@@ -144,6 +149,13 @@ export const costAnomalySettingsSchema = z.object({
     .int()
     .min(COST_ANOMALY_LIMITS.newSourceMinCentsMin)
     .max(COST_ANOMALY_LIMITS.newSourceMinCentsMax),
+  /**
+   * SMS paging is the one setting here that costs money and wakes people, so it
+   * is an explicit enum with no default: a PUT that omits it is rejected rather
+   * than quietly resolving to "off" (which would let an older client silently
+   * switch a deliberate opt-in back off on every save).
+   */
+  smsAlerts: z.enum(COST_ANOMALY_SMS_MODES),
 });
 
 /** A custom-graph widget is a dashboard view onto a custom_graphs row. */

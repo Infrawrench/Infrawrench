@@ -24,6 +24,12 @@
  *   passes re-examine the day, while leaving a stored-but-undelivered anomaly
  *   (no transports configured, or a transient Slack/Expo failure) eligible for
  *   a later pass to pick up instead of losing it permanently.
+ *
+ * Twilio is the one transport that does not fan out inside that loop. It is
+ * opt-in per org (`org_cost_anomaly_settings.sms_alerts`, default off) and
+ * batched: the loop collects what it alerted on and one text summarising the
+ * whole pass goes out afterwards, rate-bounded to one per org per six hours.
+ * `anomaly-sms.ts` holds that machinery and the reasoning behind it.
  * - A cross-day cooldown: a sustained level shift is anomalous against the
  *   trailing window for several days running, and re-alerting each morning
  *   about the same jump is noise. An anomaly for a key that was *notified*
@@ -48,7 +54,13 @@ import {
   optionsForCurrency,
   type AnomalyDetectionOptions,
 } from "./anomaly-detect";
-import { anomalyOptionsForOrg } from "./anomaly-settings";
+import {
+  anomalyOptionsFor,
+  getOrgAnomalySettings,
+  smsWantsKind,
+  type CostAnomalySmsMode,
+} from "./anomaly-settings";
+import { pageAboutAnomalies, type AnomalySmsItem } from "./anomaly-sms";
 import { isoDay, addDays, daysBetween } from "./dates";
 
 /** Days of history the baseline is computed over (excluding the day itself). */
@@ -334,11 +346,14 @@ export async function detectCostAnomaliesForOrg(
   if (!force && last !== undefined && at - last < MIN_EVAL_INTERVAL_MS) return;
   lastEvaluatedAt.set(organizationId, at);
 
-  // Thresholds are per-org (`org_cost_anomaly_settings`), read once per pass
-  // rather than per key: an org that has never opened the form gets the
-  // shipped defaults. An explicit `options` argument wins, which is what a
-  // test or a one-off caller wants.
-  const tuning = options ?? (await anomalyOptionsForOrg(organizationId));
+  // Per-org settings (`org_cost_anomaly_settings`), read once per pass rather
+  // than per key: an org that has never opened the form gets the shipped
+  // defaults. The thresholds become detector options — an explicit `options`
+  // argument wins, which is what a test or a one-off caller wants — and the
+  // SMS opt-in is read from the same row, so a caller that supplies its own
+  // thresholds still pages the way the org asked to be paged.
+  const settings = await getOrgAnomalySettings(organizationId);
+  const tuning = options ?? anomalyOptionsFor(settings);
 
   // Yesterday is the latest day worth judging — today is still accruing and
   // would read as a dip, never a spike — back through the restatement window,
@@ -359,6 +374,12 @@ export async function detectCostAnomaliesForOrg(
   } catch (err) {
     console.error(`[anomaly-eval] cost coverage read failed for org ${organizationId}:`, err);
   }
+
+  // Everything this pass alerted on, for the one batched SMS sent after both
+  // dimensions have run. `delivered` records whether another transport already
+  // stamped `notifiedAt`, so an org whose *only* transport is Twilio still gets
+  // its rows stamped — by the text itself, once it lands.
+  const paged: Array<{ anomaly: PendingAnomaly; delivered: boolean }> = [];
 
   for (const dimension of DIMENSIONS) {
     let pending: PendingAnomaly[];
@@ -416,15 +437,63 @@ export async function detectCostAnomaliesForOrg(
           context,
           ...(url ? { url } : {}),
         });
-        if (pushed.succeeded > 0 || slacked.succeeded > 0 || teamed.succeeded > 0) {
+        const delivered = pushed.succeeded > 0 || slacked.succeeded > 0 || teamed.succeeded > 0;
+        if (delivered) {
           await db
             .update(costAnomalies)
             .set({ notifiedAt: new Date() })
             .where(eq(costAnomalies.id, anomaly.id));
         }
+        paged.push({ anomaly, delivered });
       } catch (err) {
         console.error(`[anomaly-eval] notify failed for anomaly ${anomaly.id}:`, err);
       }
     }
+  }
+
+  await pageAnomaliesBatch(organizationId, settings.smsAlerts, paged, now);
+}
+
+/**
+ * The pass's single SMS, sent after both dimensions rather than inside the
+ * loop — see `anomaly-sms.ts` for why one text per anomaly is a flood.
+ *
+ * Stamping is the subtle half. An anomaly the text named but no other transport
+ * delivered has no `notifiedAt` yet; leaving it unstamped would re-alert it on
+ * the next pass even though somebody's phone already buzzed, and would also
+ * leave the 7-day per-key cooldown (which counts only notified rows) never
+ * starting. So a landed text stamps what it carried. Nothing here can throw
+ * into the caller, and none of it runs before the other transports have already
+ * stamped what *they* delivered.
+ */
+async function pageAnomaliesBatch(
+  organizationId: string,
+  mode: CostAnomalySmsMode,
+  paged: Array<{ anomaly: PendingAnomaly; delivered: boolean }>,
+  now: Date,
+): Promise<void> {
+  if (mode === "off" || paged.length === 0) return;
+  try {
+    const items: AnomalySmsItem[] = paged.map(({ anomaly }) => ({
+      day: anomaly.day,
+      kind: anomaly.kind,
+      dimension: anomaly.dimension,
+      dimensionKey: anomaly.dimensionKey,
+      currency: anomaly.currency,
+      actual: anomaly.actual,
+      mean: anomaly.mean,
+    }));
+    const outcome = await pageAboutAnomalies(organizationId, mode, items, now);
+    if (outcome.status !== "sent") return;
+
+    for (const { anomaly, delivered } of paged) {
+      if (delivered || !smsWantsKind(mode, anomaly.kind)) continue;
+      await db
+        .update(costAnomalies)
+        .set({ notifiedAt: new Date() })
+        .where(eq(costAnomalies.id, anomaly.id));
+    }
+  } catch (err) {
+    console.error(`[anomaly-eval] anomaly SMS for org ${organizationId} failed:`, err);
   }
 }

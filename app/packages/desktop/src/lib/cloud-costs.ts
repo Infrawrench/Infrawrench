@@ -9,6 +9,7 @@ import type {
   CostAccountStatus,
   CostAnomaly,
   CostAnomalySettings,
+  CostAnomalySettingsView,
   CostDimensionOption,
   CostQueryRequest,
   CostQueryResponse,
@@ -45,14 +46,14 @@ export async function listCloudCostAnomalies(orgId: string, days = 30): Promise<
   return res?.anomalies ?? [];
 }
 
-export async function loadCloudAnomalySettings(orgId: string): Promise<CostAnomalySettings> {
+export async function loadCloudAnomalySettings(orgId: string): Promise<CostAnomalySettingsView> {
   return invoke("cloud_costs_anomaly_settings", { orgId });
 }
 
 export async function saveCloudAnomalySettings(
   orgId: string,
   settings: CostAnomalySettings,
-): Promise<CostAnomalySettings> {
+): Promise<CostAnomalySettingsView> {
   return invoke("cloud_costs_update_anomaly_settings", { orgId, settings });
 }
 

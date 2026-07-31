@@ -275,6 +275,44 @@ export async function sendOneShotPage(
 }
 
 /**
+ * Whether a one-shot SMS raised right now could actually reach anybody: paging
+ * enabled for the org, credentials and a from-number stored, and at least one
+ * recipient opted into SMS.
+ *
+ * Answered without decrypting anything — the ciphertext columns being present
+ * is the fact being asked about, and this runs on read paths (the anomaly
+ * settings form) that have no business handling credentials. Never throws: a
+ * settings screen that cannot answer "can we text you?" should say no rather
+ * than fail to load.
+ */
+export async function isSmsPagingConfigured(organizationId: string): Promise<boolean> {
+  try {
+    const [row] = await db
+      .select({
+        enabled: twilioSettings.enabled,
+        accountSid: twilioSettings.encryptedAccountSid,
+        authToken: twilioSettings.encryptedAuthToken,
+        fromNumber: twilioSettings.fromNumber,
+      })
+      .from(twilioSettings)
+      .where(eq(twilioSettings.organizationId, organizationId));
+    if (!row?.enabled || !row.accountSid || !row.authToken || !row.fromNumber) return false;
+
+    const [recipient] = await db
+      .select({ id: twilioRecipients.id })
+      .from(twilioRecipients)
+      .where(
+        and(eq(twilioRecipients.organizationId, organizationId), eq(twilioRecipients.sms, true)),
+      )
+      .limit(1);
+    return recipient !== undefined;
+  } catch (err) {
+    console.error("[twilio-pager] SMS configuration check failed:", err);
+    return false;
+  }
+}
+
+/**
  * SMS-only one-shot page for budget alerts. Voice is intentionally not used for
  * budgets. Returns true when at least one SMS was delivered to Twilio.
  */

@@ -92,7 +92,7 @@ So drift alerting works like a digest:
 
 Only the background poller raises drift alerts. A manual refresh from the UI still records events in the feed but never notifies — the same rule sync-failure incidents follow, and for the same reason: you are already looking at the result.
 
-Drift alerts do **not** send SMS. Twilio is reserved for things that should interrupt a human — sync incidents, budget crossings, pages, and approval requests — and a drift digest is a thing to read, not a thing to be woken by.
+Drift alerts do **not** send SMS. Twilio is reserved for things that should interrupt a human — sync incidents, budget crossings, pages, approval requests, and (opt-in) [cost anomalies](./cost-anomaly-alerts.md#paging-by-sms) — and a drift digest is a thing to read, not a thing to be woken by.
 
 On the [mobile app](./mobile-app.md), **Settings → Notifications** carries your personal **Resource drift** push toggle, so you can mute or unmute the feed from the phone it arrives on. The organization-wide filters in the table above are set on the web app: they decide what everyone in the org hears, and retuning a shared threshold is not a thing to do one-handed.
 

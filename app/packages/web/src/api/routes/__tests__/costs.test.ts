@@ -38,6 +38,13 @@ vi.mock("@infrawrench/server-core/cost/anomaly-settings", () => ({
   setOrgAnomalySettings: (...args: unknown[]) => mockSetAnomalySettings(...args),
 }));
 
+const mockIsSmsPagingConfigured = vi.fn();
+
+// Same reason as above: the pager module reaches server-core's db client.
+vi.mock("@infrawrench/server-core/twilio-pager", () => ({
+  isSmsPagingConfigured: (...args: unknown[]) => mockIsSmsPagingConfigured(...args),
+}));
+
 vi.mock("@/plugins/loader", () => ({
   getPlugin: vi.fn().mockResolvedValue({
     plugin: { manifest: { id: "aws", displayName: "AWS", costs: { dimensions: ["service"] } } },
@@ -78,12 +85,18 @@ const validQuery = {
   filters: [],
 };
 
-const defaultSettings = { sigmas: 3, minDeltaCents: 1000, newSourceMinCents: 2500 };
+const defaultSettings = {
+  sigmas: 3,
+  minDeltaCents: 1000,
+  newSourceMinCents: 2500,
+  smsAlerts: "off",
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockQueryCosts.mockResolvedValue([]);
   mockGetAnomalySettings.mockResolvedValue(defaultSettings);
+  mockIsSmsPagingConfigured.mockResolvedValue(false);
   mockSetAnomalySettings.mockImplementation((_org: string, settings: unknown) =>
     Promise.resolve(settings),
   );
@@ -192,10 +205,16 @@ describe("anomaly settings", () => {
     });
   }
 
-  it("reads with costs:read", async () => {
+  it("reads with costs:read, and says whether an SMS could be delivered", async () => {
     const res = await buildAppWithPermissions(["costs:read"]).request("/anomaly-settings");
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual(defaultSettings);
+    expect(await res.json()).toEqual({ ...defaultSettings, smsConfigured: false });
+  });
+
+  it("reports SMS as reachable when Twilio is set up with a recipient", async () => {
+    mockIsSmsPagingConfigured.mockResolvedValue(true);
+    const res = await buildAppWithPermissions(["costs:read"]).request("/anomaly-settings");
+    expect(await res.json()).toEqual({ ...defaultSettings, smsConfigured: true });
   });
 
   it("rejects a read without costs:read", async () => {
@@ -210,11 +229,32 @@ describe("anomaly settings", () => {
   });
 
   it("saves a valid update", async () => {
-    const next = { sigmas: 2.5, minDeltaCents: 5000, newSourceMinCents: 10_000 };
+    const next = {
+      sigmas: 2.5,
+      minDeltaCents: 5000,
+      newSourceMinCents: 10_000,
+      smsAlerts: "new_source",
+    };
     const res = await put(buildAppWithPermissions(["costs:write"]), next);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual(next);
+    expect(await res.json()).toEqual({ ...next, smsConfigured: false });
     expect(mockSetAnomalySettings).toHaveBeenCalledWith("org-1", next);
+  });
+
+  it("rejects an unknown SMS mode", async () => {
+    const res = await put(buildAppWithPermissions(["costs:write"]), {
+      ...defaultSettings,
+      smsAlerts: "everything",
+    });
+    expect(res.status).toBe(400);
+    expect(mockSetAnomalySettings).not.toHaveBeenCalled();
+  });
+
+  it("rejects an update that omits smsAlerts rather than silently paging off", async () => {
+    const { smsAlerts: _omitted, ...withoutSms } = defaultSettings;
+    const res = await put(buildAppWithPermissions(["costs:write"]), withoutSms);
+    expect(res.status).toBe(400);
+    expect(mockSetAnomalySettings).not.toHaveBeenCalled();
   });
 
   it("rejects a sigma of 0 — it would alert on every fluctuation", async () => {

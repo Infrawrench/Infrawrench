@@ -145,7 +145,33 @@ const CostAnomalySettings = strict({
         "prior spend has no statistical bar to clear, so this absolute floor is the only thing " +
         "keeping a new $0.02/day service quiet. Defaults to 2500 ($25).",
     ),
+  smsAlerts: z
+    .enum(["off", "new_source", "all"])
+    .describe(
+      "Which anomalies also text the organization's Twilio recipients. Defaults to `off` — " +
+        "an organization with Twilio configured for budgets does not start receiving anomaly " +
+        "texts until it asks to. `new_source` texts only about spend appearing from nothing, " +
+        "which is what a leaked key looks like on a bill; `all` adds spikes on existing lines. " +
+        "Delivery is batched — one SMS per detection pass summarizing what it alerted on, at " +
+        "most one every six hours per organization — and never places a voice call. Push, " +
+        "Slack and Teams delivery is unaffected by this setting.",
+    ),
 }).openapi("CostAnomalySettings");
+
+/**
+ * What the settings routes answer with: the stored object plus one derived
+ * fact, so a client can tell "SMS is on" from "SMS is on and would actually
+ * reach somebody" without holding `org:settings:write`.
+ */
+const CostAnomalySettingsView = CostAnomalySettings.extend({
+  smsConfigured: z
+    .boolean()
+    .describe(
+      "Whether an SMS raised right now could be delivered: paging enabled for the " +
+        "organization, Twilio credentials and a from-number stored, and at least one recipient " +
+        "opted into SMS. Read-only and derived — it is not accepted on PUT.",
+    ),
+}).openapi("CostAnomalySettingsView");
 
 const PushedCostRow = strict({
   date: IsoDate.describe("UTC day the spend belongs to."),
@@ -319,12 +345,13 @@ export function registerCostPaths(ctx: BuildContext) {
     description:
       "The tunable part of cost anomaly detection. Everything else about the model — the " +
       "28-day baseline, the 7-day notification cooldown, the minimum history a baseline needs " +
-      "— is fixed. An organization that has never changed a threshold reads back the defaults.",
+      "— is fixed. An organization that has never changed a threshold reads back the defaults. " +
+      "The response also carries the derived, read-only `smsConfigured`.",
     request: { params: OrgIdParam },
     responses: {
       200: {
         description: "Anomaly settings",
-        content: { "application/json": { schema: CostAnomalySettings } },
+        content: { "application/json": { schema: CostAnomalySettingsView } },
       },
     },
   });
@@ -336,8 +363,11 @@ export function registerCostPaths(ctx: BuildContext) {
     summary: "Update the organization's anomaly detection thresholds",
     description:
       "Takes effect on the next detection pass (which runs after each cost collection). " +
-      "Anomalies already stored are not re-judged. All three fields are required — this is a " +
-      "PUT of the whole settings object, not a patch.",
+      "Anomalies already stored are not re-judged. All four fields are required — this is a " +
+      "PUT of the whole settings object, not a patch — and `smsAlerts` deliberately has no " +
+      "server-side default, so a client that omits it is rejected rather than silently " +
+      "switching an organization's SMS paging back off. `smsConfigured` is derived and is not " +
+      "accepted here.",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: CostAnomalySettings } }, required: true },
@@ -345,7 +375,7 @@ export function registerCostPaths(ctx: BuildContext) {
     responses: {
       200: {
         description: "The updated settings",
-        content: { "application/json": { schema: CostAnomalySettings } },
+        content: { "application/json": { schema: CostAnomalySettingsView } },
       },
       400: ErrorResponses[400],
     },

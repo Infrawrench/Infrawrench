@@ -1,13 +1,21 @@
 import {
   COST_ANOMALY_DIMENSION_LABELS,
   COST_ANOMALY_LIMITS,
+  COST_ANOMALY_SMS_MODES,
+  COST_ANOMALY_SMS_MODE_LABELS,
   DEFAULT_COST_ANOMALY_SETTINGS,
   costAnomalyDeltaPercent,
 } from "@infrawrench/client-core";
 import { useEffect, useId, useState } from "react";
 
 import { formatMoney } from "./transform.js";
-import type { CostAnomaly, CostAnomalySettings, CostsClient } from "./types.js";
+import type {
+  CostAnomaly,
+  CostAnomalySettings,
+  CostAnomalySettingsView,
+  CostAnomalySmsMode,
+  CostsClient,
+} from "./types.js";
 
 /** How far back the section looks, in days. */
 const WINDOW_DAYS = 30;
@@ -173,8 +181,8 @@ function toDollars(cents: number): number {
  */
 function AnomalyTuningPanel({ client }: { client: CostsClient }) {
   const uid = useId();
-  const [draft, setDraft] = useState<CostAnomalySettings | null>(null);
-  const [saved, setSaved] = useState<CostAnomalySettings | null>(null);
+  const [draft, setDraft] = useState<CostAnomalySettingsView | null>(null);
+  const [saved, setSaved] = useState<CostAnomalySettingsView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -231,7 +239,14 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
     setBusy(true);
     setSaveError(null);
     try {
-      const next = await update(draft);
+      // `smsConfigured` is derived server-side and the PUT body is strict, so
+      // the stored fields are named out rather than the whole draft sent back.
+      const next = await update({
+        sigmas: draft.sigmas,
+        minDeltaCents: draft.minDeltaCents,
+        newSourceMinCents: draft.newSourceMinCents,
+        smsAlerts: draft.smsAlerts,
+      });
       setDraft(next);
       setSaved(next);
       setJustSaved(true);
@@ -261,7 +276,15 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
   const dirty =
     draft.sigmas !== saved.sigmas ||
     draft.minDeltaCents !== saved.minDeltaCents ||
-    draft.newSourceMinCents !== saved.newSourceMinCents;
+    draft.newSourceMinCents !== saved.newSourceMinCents ||
+    draft.smsAlerts !== saved.smsAlerts;
+
+  /**
+   * Asking for texts an org cannot receive. Twilio is configured on a page a
+   * `costs:read` member cannot open, so this says what is missing instead of
+   * accepting the setting and delivering nothing.
+   */
+  const smsUnreachable = draft.smsAlerts !== "off" && !draft.smsConfigured;
 
   function set(patch: Partial<CostAnomalySettings>) {
     setJustSaved(false);
@@ -341,6 +364,38 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
           </span>
         </label>
       </div>
+
+      <label className="flex flex-col gap-1" htmlFor={`${uid}-sms`}>
+        <span className="text-xs font-medium text-on-surface-secondary">Text the on-call list</span>
+        <select
+          id={`${uid}-sms`}
+          disabled={!canEdit || busy}
+          value={draft.smsAlerts}
+          onChange={(e) => set({ smsAlerts: e.target.value as CostAnomalySmsMode })}
+          className="w-full rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500 disabled:opacity-60 sm:w-72"
+        >
+          {COST_ANOMALY_SMS_MODES.map((mode) => (
+            <option key={mode} value={mode}>
+              {COST_ANOMALY_SMS_MODE_LABELS[mode]}
+            </option>
+          ))}
+        </select>
+        <span className="text-[11px] text-on-surface-faint">
+          Off by default. When on, each detection pass sends at most{" "}
+          <strong className="font-medium">one</strong> SMS to your Twilio recipients summarizing
+          what it alerted on — a day where thirty services jump is one text, not thirty — and no
+          more than one every six hours. Push, Slack and Teams are unaffected and have their own
+          toggles.
+        </span>
+      </label>
+
+      {smsUnreachable && (
+        <div role="alert" className="text-xs text-amber-500">
+          This organization can&rsquo;t receive SMS yet. Anomaly texts need paging enabled with
+          Twilio credentials and at least one recipient opted into SMS, under Settings &rarr;
+          Notifications. Until then this setting is saved but nothing is sent.
+        </div>
+      )}
 
       {saveError !== null && (
         <div role="alert" className="text-sm text-red-500">
