@@ -14,6 +14,7 @@ import { cmdLogin, cmdLogout, cmdWhoami } from "./commands/auth";
 import { cmdOrgs, cmdAccounts, cmdResources, cmdResource } from "./commands/listing";
 import { cmdMetrics } from "./commands/metrics";
 import { cmdCosts } from "./commands/costs";
+import { cmdOrphans } from "./commands/orphans";
 import { cmdPage, cmdCostsPush } from "./commands/push";
 import { cmdCli } from "./commands/cli-install";
 import { cmdDeploy } from "./commands/deploy";
@@ -36,6 +37,7 @@ COMMANDS
   metrics <id>        metric charts for a resource   [--last 6h] [--series cpu] [--local]
   costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource]
   costs push          push your own cost rows   --source <name> [--file rows.json | stdin]
+  orphans             likely-wasted resources (unattached volumes, idle IPs) with reasons + cost
   page <message>      alert the org's on-call transports   --source <name> [--key k] [--voice]
   page clear          drop a page key's cooldown after a recovery   --source <name> [--key k]
   deploy              build & ship this project via its Infrafile   [-e <env>] [--plan]
@@ -205,6 +207,9 @@ export async function runCli(): Promise<void> {
           break;
         }
         await cmdCosts(ctx, parsed.range);
+        break;
+      case "orphans":
+        await cmdOrphans(ctx);
         break;
       case "page":
         await cmdPage(ctx, rest, parsed.push);
