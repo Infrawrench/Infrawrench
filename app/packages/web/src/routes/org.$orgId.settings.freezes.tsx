@@ -2,7 +2,7 @@ import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
 import { usePermissions } from "@/auth/permissions-context";
-import { dispatchChangeFreezeChanged } from "@/components/ChangeFreezeBanner";
+import { dispatchChangeFreezeChanged } from "@/lib/change-freeze-events";
 
 export const Route = createFileRoute("/org/$orgId/settings/freezes")({
   component: ChangeFreezesPage,

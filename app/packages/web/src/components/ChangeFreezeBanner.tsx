@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { apiGet } from "@/lib/api";
+import { CHANGE_FREEZE_CHANGED_EVENT } from "@/lib/change-freeze-events";
 
 export interface ActiveChangeFreeze {
   id: string;
@@ -8,16 +9,6 @@ export interface ActiveChangeFreeze {
   reason: string | null;
   startsAt: string;
   endsAt: string | null;
-}
-
-/**
- * Custom event name the freeze settings page dispatches after creating or
- * ending a freeze so the banner updates without waiting for the next poll.
- */
-export const CHANGE_FREEZE_CHANGED_EVENT = "infrawrench:change-freeze-changed";
-
-export function dispatchChangeFreezeChanged(): void {
-  window.dispatchEvent(new Event(CHANGE_FREEZE_CHANGED_EVENT));
 }
 
 const POLL_INTERVAL_MS = 60_000;
