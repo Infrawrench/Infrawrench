@@ -22,8 +22,9 @@ import { createWebAgentClient } from "@/lib/agent-client";
 import { WebWorkflowsPanel } from "./WebWorkflowsPanel";
 import { WebAgentsPanel } from "./WebAgentsPanel";
 import { WebChatPanel } from "./WebChatPanel";
+import { WebGraphPanel } from "./WebGraphPanel";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
-import type { OrphansClient } from "@infrawrench/ui";
+import { resourceTabTarget, type OrphansClient } from "@infrawrench/ui";
 import { createWebOrphansClient } from "@/lib/orphans-client";
 
 interface WebWorkspaceTabsViewportProps {
@@ -180,6 +181,19 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
               }),
             );
           }}
+        />
+      );
+    case "graph":
+      return (
+        <WebGraphPanel
+          orgId={orgId}
+          openResource={(node) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(node.accountId, node.id, node.pluginId, node.resourceTypeId),
+              ),
+            )
+          }
         />
       );
     case "chat":
