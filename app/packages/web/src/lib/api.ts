@@ -63,6 +63,42 @@ export class SeatLimitReachedClientError extends Error {
   }
 }
 
+/** Payload of the structured 423 returned while an org change freeze blocks an action. */
+export interface ChangeFreezeBlockedPayload {
+  error: string;
+  code: "change_freeze_active";
+  freeze: {
+    id: string;
+    name: string;
+    reason: string | null;
+    startsAt: string;
+    endsAt: string | null;
+  };
+}
+
+function isChangeFreezeBlockedResponse(parsed: unknown): parsed is ChangeFreezeBlockedPayload {
+  return (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    (parsed as { code?: unknown }).code === "change_freeze_active"
+  );
+}
+
+/**
+ * Error thrown by `apiFetch` for the structured `change_freeze_active` 423.
+ * Callers can `catch` it to explain the freeze (name/end time) and, for
+ * admins, offer an explicit override retry with the
+ * `x-change-freeze-override: true` header.
+ */
+export class ChangeFreezeBlockedClientError extends Error {
+  readonly payload: ChangeFreezeBlockedPayload;
+  constructor(payload: ChangeFreezeBlockedPayload) {
+    super(payload.error || "Blocked by an active change freeze");
+    this.name = "ChangeFreezeBlockedClientError";
+    this.payload = payload;
+  }
+}
+
 /**
  * Error thrown by `apiFetch` for any 402 — the organization's plan does not
  * include the attempted action. Callers can `catch` it to render an upgrade
@@ -106,6 +142,9 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     }
     if (res.status === 409 && isSeatLimitResponse(parsed)) {
       throw new SeatLimitReachedClientError(parsed);
+    }
+    if (res.status === 423 && isChangeFreezeBlockedResponse(parsed)) {
+      throw new ChangeFreezeBlockedClientError(parsed);
     }
     // Step-up: the server accepted who we are but wants a fresher sign-in
     // before allowing this change. Treated like the 401 path — bounce through

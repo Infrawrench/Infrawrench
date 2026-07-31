@@ -53,6 +53,9 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       "deployments:plan",
       "costs:read",
       "budgets:read",
+      // Members can see freeze windows (the banner needs the status), but
+      // declaring, ending, and overriding freezes stays with admins/owners.
+      "freezes:read",
       "team:read",
       "audit:read",
       "ssh-keys:read",

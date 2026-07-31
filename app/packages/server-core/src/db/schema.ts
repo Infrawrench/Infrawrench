@@ -362,6 +362,42 @@ export const budgetAlertEvents = pgTable(
   }),
 );
 
+/**
+ * Org-level change freeze windows. While a freeze is in effect (active, started,
+ * and not yet past `endsAt`), destructive mutations — resource deletion,
+ * destructive plugin actions, secret-version destroys, deployment rollbacks —
+ * are refused with a 423 unless the caller holds `freezes:override` and
+ * explicitly opts in. Both blocks and overrides land in `audit_logs`.
+ */
+export const changeFreezes = pgTable(
+  "change_freezes",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    reason: text("reason"),
+    startsAt: timestamp("starts_at").notNull().defaultNow(),
+    /** Null = open-ended; the freeze holds until someone ends it. */
+    endsAt: timestamp("ends_at"),
+    /** Cleared when the freeze is ended early (or deleted logically). */
+    active: boolean("active").notNull().default(true),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    endedByUserId: text("ended_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("change_freezes_org_idx").on(t.organizationId),
+    orgActiveIdx: index("change_freezes_org_active_idx").on(t.organizationId, t.active),
+  }),
+);
+
 export const sshKeys = pgTable(
   "ssh_keys",
   {

@@ -30,6 +30,7 @@ function SettingsLayout() {
     { to: `/org/${orgId}/settings/ssh-host-keys`, label: "Trusted SSH Hosts" },
     { to: `/org/${orgId}/settings/bastions`, label: "Bastions" },
     { to: `/org/${orgId}/settings/api-keys`, label: "API Keys" },
+    { to: `/org/${orgId}/settings/freezes`, label: "Change Freezes" },
     { to: `/org/${orgId}/settings/paging`, label: "Notifications" },
     { to: `/org/${orgId}/settings/billing`, label: "Billing" },
     { to: `/org/${orgId}/settings/audit-log`, label: "Audit Log" },

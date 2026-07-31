@@ -16,6 +16,7 @@ import { registerDashboardPaths } from "./paths/dashboards";
 import { registerCostPaths } from "./paths/costs";
 import { registerOrphanPaths } from "./paths/orphans";
 import { registerBudgetPaths } from "./paths/budgets";
+import { registerChangeFreezePaths } from "./paths/change-freezes";
 import { registerCustomGraphPaths } from "./paths/custom-graphs";
 import { registerWorkflowApprovalPaths } from "./paths/workflow-approvals";
 import { registerDeploymentPaths } from "./paths/deployments";
@@ -93,6 +94,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerCostPaths(ctx);
   registerOrphanPaths(ctx);
   registerBudgetPaths(ctx);
+  registerChangeFreezePaths(ctx);
   registerCustomGraphPaths(ctx);
   registerWorkflowApprovalPaths(ctx);
   registerDeploymentPaths(ctx);
@@ -190,6 +192,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       { name: "Team", description: "Members and invitations." },
       { name: "Billing", description: "Stripe checkout and portal." },
       { name: "Audit", description: "Audit log access." },
+      {
+        name: "Change Freezes",
+        description:
+          "Org-level change freeze windows. While one is in effect, destructive actions are blocked (423) unless explicitly overridden by an admin.",
+      },
       { name: "API keys", description: "Programmatic access tokens." },
       { name: "WebSocket", description: "Auth tokens for the WebSocket gateway." },
       { name: "Sync", description: "Bi-directional resource sync (used by the desktop app)." },
@@ -404,6 +411,13 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /billing/portal": "billing:write",
   // audit
   "GET /audit-logs": "audit:read",
+  // change freezes
+  "GET /change-freezes": "freezes:read",
+  "GET /change-freezes/status": "freezes:read",
+  "POST /change-freezes": "freezes:write",
+  "PUT /change-freezes/{id}": "freezes:write",
+  "POST /change-freezes/{id}/end": "freezes:write",
+  "DELETE /change-freezes/{id}": "freezes:write",
   // api keys
   "POST /api-keys": "apikeys:write",
   "GET /api-keys": "apikeys:read",
