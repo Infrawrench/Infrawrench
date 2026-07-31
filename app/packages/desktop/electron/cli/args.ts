@@ -52,11 +52,18 @@ export interface DeployFlags {
   created: boolean;
 }
 
+/** Flags for `export`. */
+export interface ExportFlags {
+  /** Export format. Only "terraform" today; validated in the command. */
+  format?: string | undefined;
+}
+
 export interface ParsedCli {
   flags: CliFlags;
   range: RangeFlags;
   push: PushFlags;
   deploy: DeployFlags;
+  exportFlags: ExportFlags;
   positionals: string[];
   version: boolean;
 }
@@ -92,6 +99,8 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         cooldown: { type: "string" },
         voice: { type: "boolean", default: false },
         file: { type: "string", short: "f" },
+        // Export flags (`export`).
+        format: { type: "string" },
         // Deploy flags (`deploy`).
         env: { type: "string", short: "e" },
         plan: { type: "boolean", default: false },
@@ -165,6 +174,9 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       toRun: str("to-run"),
       deleteCreated: values["delete-created"] === true,
       created: values.created === true,
+    },
+    exportFlags: {
+      format: str("format"),
     },
     push: {
       source: str("source"),

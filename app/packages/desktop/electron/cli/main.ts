@@ -13,6 +13,7 @@ import { setColorEnabled, printErr, println, c } from "./output";
 import { cmdLogin, cmdLogout, cmdWhoami } from "./commands/auth";
 import { cmdOrgs, cmdAccounts, cmdResources, cmdResource } from "./commands/listing";
 import { cmdMetrics } from "./commands/metrics";
+import { cmdExport } from "./commands/export";
 import { cmdCosts } from "./commands/costs";
 import { cmdPage, cmdCostsPush } from "./commands/push";
 import { cmdCli } from "./commands/cli-install";
@@ -34,6 +35,7 @@ COMMANDS
   resources           list an account's resources   --account <id|name>
   resource <id>       show one resource's fields & outputs
   metrics <id>        metric charts for a resource   [--last 6h] [--series cpu] [--local]
+  export              eject an account's inventory as Terraform HCL   --account <id|name> [--format terraform]
   costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource]
   costs push          push your own cost rows   --source <name> [--file rows.json | stdin]
   page <message>      alert the org's on-call transports   --source <name> [--key k] [--voice]
@@ -56,6 +58,7 @@ FLAGS
   --json / --text     output mode (default: text)
   --last / --from / --to   time range for metrics & costs
   --type <typeId>     filter resources by resource type
+  --format <fmt>      export format (default: terraform)
   --source <name>     who is pushing (required by page and costs push)
   --key <k>           page throttle key   --title <t>   --cooldown <min>   --voice
   -f, --file <path>   JSON rows for costs push (stdin when omitted)
@@ -198,6 +201,9 @@ export async function runCli(): Promise<void> {
         break;
       case "metrics":
         await cmdMetrics(ctx, rest[0] ?? "", parsed.range);
+        break;
+      case "export":
+        await cmdExport(ctx, parsed.exportFlags.format);
         break;
       case "costs":
         if (rest[0] === "push") {
