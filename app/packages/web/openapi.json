@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.23.0",
+    "version": "0.24.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -2454,6 +2454,66 @@
           }
         },
         "required": ["values"],
+        "additionalProperties": false
+      },
+      "CostAnomaly": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "day": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "The anomalous UTC day.",
+            "example": "2026-07-01"
+          },
+          "dimension": {
+            "type": "string",
+            "enum": ["provider", "service"]
+          },
+          "dimensionKey": {
+            "type": "string",
+            "description": "The dimension's value — a plugin id or a service name."
+          },
+          "currency": {
+            "type": "string"
+          },
+          "actualCents": {
+            "type": "integer"
+          },
+          "baselineCents": {
+            "type": "integer",
+            "description": "Mean daily spend over the trailing 28-day baseline, in cents."
+          },
+          "thresholdCents": {
+            "type": "integer",
+            "description": "The detection bar the day cleared (baseline mean + N·stddev), in cents."
+          },
+          "detectedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "notifiedAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "When the anomaly was delivered to a notification channel; null when delivery failed or a recent anomaly for the same key suppressed it."
+          }
+        },
+        "required": [
+          "id",
+          "day",
+          "dimension",
+          "dimensionKey",
+          "currency",
+          "actualCents",
+          "baselineCents",
+          "thresholdCents",
+          "detectedAt",
+          "notifiedAt"
+        ],
         "additionalProperties": false
       },
       "CostAccountStatus": {
@@ -7528,12 +7588,16 @@
           "budgetAlerts": {
             "type": "boolean"
           },
+          "anomalyAlerts": {
+            "type": "boolean",
+            "description": "Statistical spend-spike (cost anomaly) alerts"
+          },
           "workflowPages": {
             "type": "boolean",
             "description": "Alerts raised by a workflow calling infra.page(...)"
           }
         },
-        "required": ["syncIncidents", "budgetAlerts", "workflowPages"],
+        "required": ["syncIncidents", "budgetAlerts", "anomalyAlerts", "workflowPages"],
         "additionalProperties": false
       },
       "PushPreferencesUpdate": {
@@ -7543,6 +7607,9 @@
             "type": "boolean"
           },
           "budgetAlerts": {
+            "type": "boolean"
+          },
+          "anomalyAlerts": {
             "type": "boolean"
           },
           "workflowPages": {
@@ -7567,6 +7634,9 @@
             "type": "boolean"
           },
           "budgetAlerts": {
+            "type": "boolean"
+          },
+          "anomalyAlerts": {
             "type": "boolean"
           },
           "workflowPages": {
@@ -7599,6 +7669,7 @@
           "displayName",
           "syncIncidents",
           "budgetAlerts",
+          "anomalyAlerts",
           "workflowPages",
           "devices"
         ],
@@ -7648,6 +7719,10 @@
           "budgetAlerts": {
             "type": "boolean"
           },
+          "anomalyAlerts": {
+            "type": "boolean",
+            "description": "Statistical spend-spike (cost anomaly) alerts"
+          },
           "workflowPages": {
             "type": "boolean",
             "description": "Alerts raised by a workflow calling infra.page(...)"
@@ -7665,6 +7740,7 @@
           "isPrivate",
           "syncIncidents",
           "budgetAlerts",
+          "anomalyAlerts",
           "workflowPages",
           "weeklyDigest"
         ],
@@ -7730,6 +7806,9 @@
           "budgetAlerts": {
             "type": "boolean"
           },
+          "anomalyAlerts": {
+            "type": "boolean"
+          },
           "workflowPages": {
             "type": "boolean"
           },
@@ -7747,6 +7826,9 @@
             "type": "boolean"
           },
           "budgetAlerts": {
+            "type": "boolean"
+          },
+          "anomalyAlerts": {
             "type": "boolean"
           },
           "workflowPages": {
@@ -7778,6 +7860,10 @@
           "budgetAlerts": {
             "type": "boolean"
           },
+          "anomalyAlerts": {
+            "type": "boolean",
+            "description": "Statistical spend-spike (cost anomaly) alerts"
+          },
           "workflowPages": {
             "type": "boolean",
             "description": "Alerts raised by a workflow calling infra.page(...)"
@@ -7793,6 +7879,7 @@
           "urlHint",
           "syncIncidents",
           "budgetAlerts",
+          "anomalyAlerts",
           "workflowPages",
           "weeklyDigest"
         ],
@@ -7828,6 +7915,9 @@
           "budgetAlerts": {
             "type": "boolean"
           },
+          "anomalyAlerts": {
+            "type": "boolean"
+          },
           "workflowPages": {
             "type": "boolean"
           },
@@ -7848,6 +7938,9 @@
             "type": "boolean"
           },
           "budgetAlerts": {
+            "type": "boolean"
+          },
+          "anomalyAlerts": {
             "type": "boolean"
           },
           "workflowPages": {
@@ -10831,6 +10924,70 @@
         },
         "operationId": "getOrgOrgIdCostsDimensions",
         "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/costs/anomalies": {
+      "get": {
+        "tags": ["Costs"],
+        "summary": "List recently detected cost anomalies",
+        "description": "Spend anomalies detected by the daily background pass: days where a provider's or service's spend exceeded its trailing 28-day baseline by a statistical threshold (mean + N·stddev, with an absolute floor to ignore penny-scale noise). Newest day first, capped at 200 rows.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+$",
+              "description": "Window in days over anomalous days, 1-90. Defaults to 30."
+            },
+            "required": false,
+            "description": "Window in days over anomalous days, 1-90. Defaults to 30.",
+            "name": "days",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Anomalies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "anomalies": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CostAnomaly"
+                      }
+                    }
+                  },
+                  "required": ["anomalies"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostsAnomalies"
       }
     },
     "/api/org/{orgId}/costs/status": {
