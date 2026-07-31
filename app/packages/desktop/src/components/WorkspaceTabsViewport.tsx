@@ -16,7 +16,9 @@ import { ResourcePanel } from "@/routes/resource.$accountId.$resourceId";
 import { getWorkspaceNavigateArgs, syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
 import { AgentsPanel, type AgentClient } from "@infrawrench/ui/agents";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
+import { SavingsPanel, resourceTabTarget, type OrphansClient } from "@infrawrench/ui";
 import { createDesktopCostsClient } from "@/lib/costs-client";
+import { createDesktopOrphansClient } from "@/lib/orphans-client";
 import { createDesktopAgentClient } from "@/lib/agent-client";
 import { createDesktopDeploymentClient } from "@/lib/cloud-deployments";
 import { CloudChatPanel } from "@/components/CloudChatPanel";
@@ -41,6 +43,12 @@ let costsClient: CostsClient | null = null;
 function getCostsClient(): CostsClient {
   if (!costsClient) costsClient = createDesktopCostsClient();
   return costsClient;
+}
+
+let orphansClient: OrphansClient | null = null;
+function getOrphansClient(): OrphansClient {
+  if (!orphansClient) orphansClient = createDesktopOrphansClient();
+  return orphansClient;
 }
 
 // Desktop-side glue between WorkspaceTabsViewport (in @infrawrench/ui) and the
@@ -123,6 +131,23 @@ function renderPanel(
           onOpenDashboard={(dashboardId) =>
             void navigate(getWorkspaceNavigateArgs(dashboardTabTarget(dashboardId)))
           }
+        />
+      );
+    case "savings":
+      return (
+        <SavingsPanel
+          // Keyed by org so switching org refetches rather than showing the
+          // previous org's flagged resources.
+          key={activeCloudOrgId ?? "local"}
+          client={getOrphansClient()}
+          onOpenResource={(r) => {
+            const accountId = r.id.split(":")[0] ?? "";
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(accountId, r.id, r.pluginId, r.resourceTypeId),
+              ),
+            );
+          }}
         />
       );
     case "chat":

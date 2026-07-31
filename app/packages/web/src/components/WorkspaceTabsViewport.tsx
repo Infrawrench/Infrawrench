@@ -23,6 +23,8 @@ import { WebWorkflowsPanel } from "./WebWorkflowsPanel";
 import { WebAgentsPanel } from "./WebAgentsPanel";
 import { WebChatPanel } from "./WebChatPanel";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
+import { SavingsPanel, type OrphansClient } from "@infrawrench/ui";
+import { createWebOrphansClient } from "@/lib/orphans-client";
 
 interface WebWorkspaceTabsViewportProps {
   orgId: string;
@@ -118,6 +120,16 @@ function getCostsClient(orgId: string): CostsClient {
   return client;
 }
 
+const orphansClients = new Map<string, OrphansClient>();
+function getOrphansClient(orgId: string): OrphansClient {
+  let client = orphansClients.get(orgId);
+  if (!client) {
+    client = createWebOrphansClient(orgId);
+    orphansClients.set(orgId, client);
+  }
+  return client;
+}
+
 function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<typeof useNavigate>) {
   const t = tab.target;
   switch (t.kind) {
@@ -150,6 +162,26 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           onOpenDashboard={(dashboardId) =>
             void navigate(getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId }))
           }
+        />
+      );
+    case "savings":
+      return (
+        <SavingsPanel
+          client={getOrphansClient(orgId)}
+          onOpenResource={(r) => {
+            if (!r.id) return;
+            const accountId = r.id.split(":")[0] ?? "";
+            void navigate(
+              getWorkspaceNavigateArgs({
+                kind: "resource",
+                accountId,
+                resourceId: r.id,
+                view: "details",
+                pluginId: r.pluginId,
+                resourceTypeId: r.resourceTypeId,
+              }),
+            );
+          }}
         />
       );
     case "chat":

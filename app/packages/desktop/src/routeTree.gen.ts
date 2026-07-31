@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkflowsRouteImport } from './routes/workflows'
+import { Route as SavingsRouteImport } from './routes/savings'
 import { Route as DeploymentsRouteImport } from './routes/deployments'
 import { Route as CostsRouteImport } from './routes/costs'
 import { Route as ChatRouteImport } from './routes/chat'
@@ -22,6 +23,11 @@ import { Route as ResourceAccountIdResourceIdRouteImport } from './routes/resour
 const WorkflowsRoute = WorkflowsRouteImport.update({
   id: '/workflows',
   path: '/workflows',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SavingsRoute = SavingsRouteImport.update({
+  id: '/savings',
+  path: '/savings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DeploymentsRoute = DeploymentsRouteImport.update({
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/chat': typeof ChatRoute
   '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
+  '/savings': typeof SavingsRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
   '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/chat': typeof ChatRoute
   '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
+  '/savings': typeof SavingsRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
   '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/chat': typeof ChatRoute
   '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
+  '/savings': typeof SavingsRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
   '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
@@ -108,6 +117,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/costs'
     | '/deployments'
+    | '/savings'
     | '/workflows'
     | '/accounts/$accountId'
     | '/dashboard/$dashboardId'
@@ -119,6 +129,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/costs'
     | '/deployments'
+    | '/savings'
     | '/workflows'
     | '/accounts/$accountId'
     | '/dashboard/$dashboardId'
@@ -130,6 +141,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/costs'
     | '/deployments'
+    | '/savings'
     | '/workflows'
     | '/accounts/$accountId'
     | '/dashboard/$dashboardId'
@@ -142,6 +154,7 @@ export interface RootRouteChildren {
   ChatRoute: typeof ChatRoute
   CostsRoute: typeof CostsRoute
   DeploymentsRoute: typeof DeploymentsRoute
+  SavingsRoute: typeof SavingsRoute
   WorkflowsRoute: typeof WorkflowsRoute
   AccountsAccountIdRoute: typeof AccountsAccountIdRoute
   DashboardDashboardIdRoute: typeof DashboardDashboardIdRoute
@@ -155,6 +168,13 @@ declare module '@tanstack/react-router' {
       path: '/workflows'
       fullPath: '/workflows'
       preLoaderRoute: typeof WorkflowsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/savings': {
+      id: '/savings'
+      path: '/savings'
+      fullPath: '/savings'
+      preLoaderRoute: typeof SavingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/deployments': {
@@ -222,6 +242,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRoute,
   CostsRoute: CostsRoute,
   DeploymentsRoute: DeploymentsRoute,
+  SavingsRoute: SavingsRoute,
   WorkflowsRoute: WorkflowsRoute,
   AccountsAccountIdRoute: AccountsAccountIdRoute,
   DashboardDashboardIdRoute: DashboardDashboardIdRoute,
