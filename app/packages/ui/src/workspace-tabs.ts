@@ -41,6 +41,10 @@ export function costsTabTarget(): WorkspaceTabTarget {
   return { kind: "costs" };
 }
 
+export function graphTabTarget(): WorkspaceTabTarget {
+  return { kind: "graph" };
+}
+
 export function chatTabTarget(conversationId?: string): WorkspaceTabTarget {
   return { kind: "chat", ...(conversationId ? { conversationId } : {}) };
 }
