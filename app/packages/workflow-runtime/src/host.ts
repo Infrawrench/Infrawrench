@@ -10,11 +10,15 @@
 
 import {
   ALLOWED_FETCH_METHODS,
+  DEFAULT_APPROVAL_TIMEOUT_MINUTES,
   DEFAULT_FETCH_MAX_BYTES,
   DEFAULT_FETCH_TIMEOUT_MS,
   DEFAULT_PAGE_COOLDOWN_MINUTES,
   DEFAULT_PAGE_KEY,
   FORBIDDEN_FETCH_HEADERS,
+  MAX_APPROVAL_MESSAGE_LENGTH,
+  MAX_APPROVAL_TIMEOUT_MINUTES,
+  MAX_APPROVAL_TITLE_LENGTH,
   MAX_FETCH_BODY_BYTES,
   MAX_FETCH_HEADER_NAME_LENGTH,
   MAX_FETCH_HEADER_VALUE_LENGTH,
@@ -23,6 +27,8 @@ import {
   MAX_FETCH_TIMEOUT_MS,
 } from "./types.js";
 import type {
+  ApprovalResult,
+  ApprovalSpec,
   LogLevel,
   MetricValue,
   PageResult,
@@ -304,6 +310,16 @@ export interface WorkflowHost {
    * that the condition it alerted on has recovered.
    */
   clearPage?(key: string): Promise<void>;
+
+  /**
+   * Suspend the run until a human approves or denies (powers
+   * `infra.waitForApproval`). The host persists a pending approval, notifies
+   * the org, and blocks until a decision lands or the timeout passes. Denial
+   * and timeout MUST reject — that is what fails the step. Cloud-only: hosts
+   * without an approvals surface omit it and the call raises a
+   * {@link WorkflowCapabilityError}.
+   */
+  waitForApproval?(spec: ApprovalSpec): Promise<ApprovalResult>;
 
   /**
    * Make one outbound HTTP request on the workflow's behalf (powers the
@@ -752,6 +768,28 @@ function pageSpec(raw: unknown): PageSpec {
     key: String(spec["key"] || DEFAULT_PAGE_KEY).slice(0, 200),
     cooldownMinutes: Number.isFinite(cooldown) && cooldown > 0 ? cooldown : 0,
     ...(spec["voice"] ? { voice: true } : {}),
+  };
+}
+
+/**
+ * Marshal + validate the `infra.waitForApproval(...)` argument. Defaults and
+ * caps are applied here so every host sees the same normalized spec; a blank
+ * message is rejected outright — nobody can decide on an empty request.
+ */
+function approvalSpec(raw: unknown): ApprovalSpec {
+  const spec = (raw ?? {}) as Record<string, unknown>;
+  const message = String(spec["message"] ?? "").trim();
+  if (!message) {
+    throw new Error("infra.waitForApproval() needs a message describing what to approve.");
+  }
+  const timeout = Number(spec["timeoutMinutes"] ?? DEFAULT_APPROVAL_TIMEOUT_MINUTES);
+  return {
+    message: message.slice(0, MAX_APPROVAL_MESSAGE_LENGTH),
+    ...(spec["title"] ? { title: String(spec["title"]).slice(0, MAX_APPROVAL_TITLE_LENGTH) } : {}),
+    timeoutMinutes:
+      Number.isFinite(timeout) && timeout > 0
+        ? Math.min(timeout, MAX_APPROVAL_TIMEOUT_MINUTES)
+        : DEFAULT_APPROVAL_TIMEOUT_MINUTES,
   };
 }
 
@@ -1276,6 +1314,12 @@ export async function dispatch(
 
     case "page":
       return requireMethod(host.page, "page").call(host, pageSpec(args["spec"]));
+
+    case "approval.wait":
+      return requireMethod(host.waitForApproval, "waitForApproval").call(
+        host,
+        approvalSpec(args["spec"]),
+      );
 
     case "page.clear":
       await requireMethod(host.clearPage, "clearPage").call(

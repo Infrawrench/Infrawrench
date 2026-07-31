@@ -24,6 +24,8 @@ import type {
   WorkflowHost,
 } from "./host.js";
 import type {
+  ApprovalResult,
+  ApprovalSpec,
   MetricValue,
   PageResult,
   PageSpec,
@@ -103,6 +105,12 @@ export interface ClientHostDeps {
   page?(spec: PageSpec): Promise<PageResult>;
   /** Re-arm a page key so the next page under it delivers immediately. */
   clearPage?(key: string): Promise<void>;
+
+  /**
+   * Block until a human approves (resolve) or denies / times out (reject) —
+   * powers `infra.waitForApproval`. Cloud-only.
+   */
+  waitForApproval?(spec: ApprovalSpec): Promise<ApprovalResult>;
 
   /** Debugger line hook (instrumented runs); may block to pause at a breakpoint. */
   line?(line: number): Promise<void>;
@@ -362,6 +370,7 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
     ...(deps.fetch ? { fetch: deps.fetch } : {}),
     ...(deps.page ? { page: deps.page } : {}),
     ...(deps.clearPage ? { clearPage: deps.clearPage } : {}),
+    ...(deps.waitForApproval ? { waitForApproval: deps.waitForApproval } : {}),
     ...(deps.line ? { line: deps.line } : {}),
   };
 }
