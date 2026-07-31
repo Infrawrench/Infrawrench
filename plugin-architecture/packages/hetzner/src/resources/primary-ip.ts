@@ -16,5 +16,15 @@ export const PrimaryIpResourceType = rt({
   ],
   outputs: [o("ip", "IP Address"), o("primaryIpId", "Primary IP ID")],
   iconKey: "network",
+  // Unassigned primary IPs cost money. autoDelete=true ones vanish with their
+  // server, so only flag the ones that will linger (autoDelete stringifies to
+  // "false" in evaluateOrphanRule's comparison).
+  orphanRule: {
+    conditions: [
+      { fieldKey: "assigneeId", when: "empty" },
+      { fieldKey: "autoDelete", when: "equals", value: "false" },
+    ],
+    reason: "Primary IP is not assigned to any server and won't auto-delete",
+  },
   attachTargets: [{ pluginId: "hetzner", resourceTypeId: "server", verb: "Assign" }],
 });

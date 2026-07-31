@@ -67,6 +67,10 @@ export async function listGceDisks(
     const name = String(disk["name"]);
     const zone_ = String(disk["zone"]).split("/").pop() ?? "";
     const type = String(disk["type"]).split("/").pop() ?? "";
+    // `users` is the list of instance self-links this disk is attached to —
+    // already present in the aggregated payload, no extra API call.
+    const users = Array.isArray(disk["users"]) ? (disk["users"] as string[]) : [];
+    const attachedTo = users.map((u) => u.split("/").pop() ?? "").join(",");
     return {
       id: ctx.id(accountId, "gce-disk", `${p}/${zone_}/${name}`),
       pluginId: "gcp",
@@ -79,6 +83,7 @@ export async function listGceDisks(
         sizeGb: Number(disk["sizeGb"] ?? 0),
         type,
         status: String(disk["status"] ?? ""),
+        attachedTo,
       },
       resolvedOutputs: {},
       secretStates: [],

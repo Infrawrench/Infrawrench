@@ -23,6 +23,11 @@ export const VolumeResourceType = rt({
   showInSidebar: true,
   supportsCreate: true,
   iconKey: "volume",
+  // The lister always sets dropletIds (joined droplet_ids, "" when detached).
+  orphanRule: {
+    conditions: [{ fieldKey: "dropletIds", when: "empty" }],
+    reason: "Volume is not attached to any Droplet",
+  },
   attachTargets: [
     {
       pluginId: "digitalocean",
