@@ -663,18 +663,27 @@ function WeeklyDigestSection({ orgId }: { orgId: string }) {
     null,
   );
 
-  async function load() {
-    try {
-      setSettings(await apiGet<DigestSettings>(`/api/org/${orgId}/digest`));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load digest settings");
-    }
-  }
+  // Bumped to re-run the load effect after a "Send now" refreshes `lastSentAt`.
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId]);
+    // `cancelled` drops a response that lands after `orgId` changed, so a
+    // slower earlier request can't overwrite the newer org's settings.
+    let cancelled = false;
+    void (async () => {
+      try {
+        const next = await apiGet<DigestSettings>(`/api/org/${orgId}/digest`);
+        if (!cancelled) setSettings(next);
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Failed to load digest settings");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, reloadNonce]);
 
   async function handleToggle(enabled: boolean) {
     if (!settings) return;
@@ -700,7 +709,7 @@ function WeeklyDigestSection({ orgId }: { orgId: string }) {
         kind: "ok",
         text: `Sent to ${r.succeeded}/${r.attempted} channel(s).`,
       });
-      void load();
+      setReloadNonce((n) => n + 1);
     } catch (e) {
       setSendMessage({ kind: "error", text: e instanceof Error ? e.message : "Send failed" });
     } finally {
@@ -1225,23 +1234,33 @@ function PushPreferencesSection({ orgId }: { orgId: string }) {
   );
   const [testBusy, setTestBusy] = useState(false);
 
-  async function load() {
-    try {
-      const [p, d] = await Promise.all([
-        apiGet<PushPreferences>(`/api/org/${orgId}/push/preferences`),
-        apiGet<PushDeviceSummary[]>(`/api/push/devices`),
-      ]);
-      setPrefs(p);
-      setDevices(d);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load push settings");
-    }
-  }
+  // Bumped to re-run the load effect after removing a device.
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId]);
+    // `cancelled` drops a response that lands after `orgId` changed, so a
+    // slower earlier request can't overwrite the newer org's preferences.
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [p, d] = await Promise.all([
+          apiGet<PushPreferences>(`/api/org/${orgId}/push/preferences`),
+          apiGet<PushDeviceSummary[]>(`/api/push/devices`),
+        ]);
+        if (!cancelled) {
+          setPrefs(p);
+          setDevices(d);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Failed to load push settings");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, reloadNonce]);
 
   async function updatePref(patch: Partial<PushPreferences>) {
     if (!prefs) return;
@@ -1257,7 +1276,7 @@ function PushPreferencesSection({ orgId }: { orgId: string }) {
 
   async function handleRemoveDevice(id: string) {
     await apiDelete(`/api/push/devices/${id}`);
-    void load();
+    setReloadNonce((n) => n + 1);
   }
 
   async function handleTest() {
