@@ -57,7 +57,7 @@ Recipients are an organization-level list rather than a per-member setting, and 
 
 <insert [The email recipient list in the Weekly digest section with two addresses listed and the add-recipient field below] here>
 
-If your deployment has no mail provider configured, the section says so and email recipients receive nothing. Self-hosters: this needs `RESEND_API_KEY` and `EMAIL_FROM` set on the server. Without them, email delivery is skipped with a log line and the digest still reaches Slack and Teams.
+If your deployment has no mail provider configured, the section says so and email recipients receive nothing. Self-hosters: email goes out through [Mailgun](https://www.mailgun.com/), so this needs `MAILGUN_API_KEY`, `MAILGUN_DOMAIN` and `EMAIL_FROM` set on the server — plus `MAILGUN_API_BASE` if your Mailgun account is in the EU region. Without them, email delivery is skipped with a log line and the digest still reaches Slack and Teams.
 
 ## The AI summary paragraph
 

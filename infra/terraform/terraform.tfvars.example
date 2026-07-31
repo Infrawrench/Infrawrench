@@ -76,15 +76,28 @@ app_env = {
   SLACK_CLIENT_ID     = "1234567890.1234567890"
   SLACK_CLIENT_SECRET = "..."
 
-  # Optional: transactional email, used only by the weekly digest's email
-  # recipients. Both keys are required together — with either missing, email
-  # delivery is a logged no-op and the digest still reaches Slack and Teams.
-  # There is no other email in the product; WorkOS sends its own verification
-  # and invitation mail. The key is created at resend.com → API Keys (starts
-  # `re_`), and EMAIL_FROM must be an address on a domain verified in that same
-  # Resend account, or every send is rejected.
-  RESEND_API_KEY = "re_..."
-  EMAIL_FROM     = "Infrawrench <digest@infrawrench.com>"
+  # Optional: transactional email via Mailgun, used only by the weekly digest's
+  # email recipients. The first three are required together — with any missing,
+  # email delivery is a logged no-op and the digest still reaches Slack and
+  # Teams. There is no other email in the product; WorkOS sends its own
+  # verification and invitation mail.
+  #
+  # Mailgun rather than something Google-native because there is nothing
+  # Google-native to use: GCP has no first-party transactional mail service,
+  # its own "sending email from an instance" guide names Mailgun, SendGrid and
+  # Mailjet, and outbound port 25 is blocked from the cluster — so a hosted
+  # provider over HTTPS is the only shape that works here.
+  #
+  # MAILGUN_API_KEY is a domain sending key (Send → Domain settings → Sending
+  # keys), preferred over the account key because it can only post messages for
+  # its one domain. MAILGUN_DOMAIN is the verified sending domain — usually a
+  # subdomain like mg.infrawrench.com, and until its DNS verifies every send is
+  # rejected. EMAIL_FROM must be an address on that domain. MAILGUN_API_BASE is
+  # only set for EU-region Mailgun accounts, which live on a different host.
+  MAILGUN_API_KEY = "..."
+  MAILGUN_DOMAIN  = "mg.infrawrench.com"
+  EMAIL_FROM      = "Infrawrench <digest@mg.infrawrench.com>"
+  # MAILGUN_API_BASE = "https://api.eu.mailgun.net"
 
   # Workflow and chat outbound HTTP. `fetch()` inside a workflow, and the chat
   # agent's `web_fetch` tool, are both performed by the egress proxy Worker

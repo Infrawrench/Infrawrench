@@ -200,16 +200,18 @@ export interface DigestDeliveryResult {
  * the `weeklyDigest` trigger, and to every address on the org's digest email
  * list. Never throws (all three transports already swallow and log).
  *
- * `idempotencySuffix` distinguishes a scheduled send from a manual one so a
- * "Send now" is never suppressed as a duplicate of the week's scheduled mail,
- * while a *retry* of the same scheduled send reuses the key and cannot
- * double-deliver.
+ * `origin` labels the send — scheduled vs. a "Send now" — in the per-message
+ * trace key, so Mailgun's logs distinguish the week's automatic mail from a
+ * manual one. It is a breadcrumb only: Mailgun has no idempotency keys, and
+ * nothing here relies on the provider collapsing duplicates. What actually
+ * prevents a double-delivery is `classifyDelivery`, which only marks an attempt
+ * retryable when *no* destination succeeded.
  */
 export async function deliverWeeklyDigest(
   organizationId: string,
   digest: WeeklyDigest,
   narrative: string | null = null,
-  idempotencySuffix = "scheduled",
+  origin = "scheduled",
 ): Promise<DigestDeliveryResult> {
   const [org] = await db
     .select({ displayName: organizations.displayName })
@@ -236,7 +238,7 @@ export async function deliverWeeklyDigest(
     subject: title,
     text,
     html,
-    idempotencyKey: `digest:${organizationId}:${digest.window.weekStart}:${idempotencySuffix}:${r.email}`,
+    traceKey: `digest:${organizationId}:${digest.window.weekStart}:${origin}:${r.email}`,
   }));
 
   const [slack, teams, email] = await Promise.all([
@@ -605,7 +607,7 @@ export interface DigestSettingsRecord {
   narrativeEnabled: boolean;
   /** Whether this deployment can write narratives at all (ANTHROPIC_API_KEY). */
   narrativeAvailable: boolean;
-  /** Whether this deployment can send mail at all (RESEND_API_KEY + EMAIL_FROM). */
+  /** Whether this deployment can send mail (MAILGUN_API_KEY + MAILGUN_DOMAIN + EMAIL_FROM). */
   emailAvailable: boolean;
   attemptCount: number;
   lastAttemptAt: Date | null;

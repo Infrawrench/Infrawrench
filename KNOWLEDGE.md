@@ -2232,9 +2232,14 @@ concurrent replicas can't both take a retry. `MAX_DIGEST_ATTEMPTS` = 3 with 15/6
 then parked until next week. The classification is the load-bearing part (`classifyDelivery`):
 `succeeded` (all landed), **`partial` (some landed) is never retried** — a resend would post the
 digest into Slack twice — `failed` (nothing landed, and build errors) is retryable, and
-`no_targets` (nothing routed at all) is surfaced but not retried. Email is exempt from the
-duplication risk anyway because each message carries a Resend `Idempotency-Key` of
-`digest:<org>:<weekStart>:<scheduled|manual-…>:<addr>`. `last_sent_at` now moves only when a digest
+`no_targets` (nothing routed at all) is surfaced but not retried. That classification is the _only_
+thing preventing a double-delivery, and it is enough: `failed` means zero destinations succeeded,
+address-level email fan-out included, so there is nothing to duplicate. Do not weaken it on the
+assumption the mail provider dedups — Mailgun has no idempotency keys (a long-standing open feature
+request). Each message does carry `v:infrawrench-key` =
+`digest:<org>:<weekStart>:<scheduled|manual-…>:<addr>`, but that is a Mailgun custom variable for
+tracing a send in their logs, not a dedup token; it is named `traceKey` in the code to keep that
+honest. `last_sent_at` now moves only when a digest
 actually reached someone — claiming no longer stamps it, which it used to. All of this is exposed
 through `GET /digest` and rendered in `WeeklyDigestSection`, deliberately: KNOWLEDGE's standing note
 about poller error invisibility applies here, and a digest that silently stopped arriving is the
@@ -2247,10 +2252,18 @@ fake whose `drizzle-orm` mock turns predicates into functions, so the real WHERE
 exercised rather than stubbed.
 
 **Email is the third transport, and the first email in the codebase.** `server-core/src/email.ts`,
-Resend's `POST https://api.resend.com/emails` over plain `fetch` — zero new dependencies, same
-env-gated no-op shape as Slack. WorkOS was _not_ reused: it composes and sends its own
-verification/invitation mail and exposes no general send API. Env: `RESEND_API_KEY` + `EMAIL_FROM`,
-both required together, both in `.env.example` and the tfvars `app_env` map; unset ⇒ logged no-op and
+Mailgun's `POST {base}/v3/{domain}/messages` over plain `fetch` — zero new dependencies, same
+env-gated no-op shape as Slack. Basic auth (`api:<key>`) and a `multipart/form-data` body built with
+the runtime's own `FormData`, which is what Mailgun documents; do **not** set `Content-Type` by hand,
+as that strips the boundary `fetch` generates. **There is no Google-native option to migrate to** —
+GCP has no first-party transactional mail service, its own "sending email from an instance" guide
+names Mailgun/SendGrid/Mailjet, and outbound port 25 is blocked, so a hosted provider over HTTPS is
+the only shape that works from the cluster; Workspace SMTP relay would need a Workspace subscription
+and an SMTP client dependency. WorkOS was _not_ reused: it composes and sends its own
+verification/invitation mail and exposes no general send API. Env: `MAILGUN_API_KEY` +
+`MAILGUN_DOMAIN` + `EMAIL_FROM` all required together, plus optional `MAILGUN_API_BASE` for
+EU-region accounts (a different host, not a path); all in `.env.example` and the tfvars `app_env`
+map; unset ⇒ logged no-op and
 the digest still reaches Slack/Teams. One request per address (a shared `to:` would leak the list and
 one bounce would take the whole send). Recipients are an **org-level address list**
 (`digest_email_recipients`), _not_ a per-member opt-in: the digest is a `ChannelTrigger`, so its

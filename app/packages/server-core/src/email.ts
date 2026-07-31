@@ -9,29 +9,54 @@
  * the Slack one: a couple of env vars, a plain `fetch` to a documented HTTP
  * endpoint, and a no-op with a clear log line when it isn't configured.
  *
- * Provider: Resend (`POST https://api.resend.com/emails`). Chosen for the same
- * reason the CLI hand-rolls its ANSI output — it needs no dependency at all.
- * The whole API is one JSON POST with a bearer token, so the SDK would be a
- * package to audit and upgrade in exchange for nothing.
+ * Provider: Mailgun (`POST {base}/v3/{domain}/messages`). Google Cloud has no
+ * first-party transactional mail service — its own "sending email from an
+ * instance" guide points at SendGrid, Mailgun or Mailjet, and blocks outbound
+ * port 25 — so on GKE the choice is which of those to carry, not whether to
+ * carry one. Mailgun is one of the three Google documents.
+ *
+ * No SDK, for the same reason the CLI hand-rolls its ANSI output: the whole
+ * API is one form POST with basic auth, so a package would be something to
+ * audit and upgrade in exchange for nothing. The body is `multipart/form-data`
+ * via the runtime's own `FormData`, which is what Mailgun documents.
  *
  * Config (env):
- *   RESEND_API_KEY — the API key (`re_…`) from resend.com → API Keys
- *   EMAIL_FROM     — the verified sender, e.g. `Infrawrench <digest@yourdomain>`
+ *   MAILGUN_API_KEY  — a domain sending key (preferred) or the account key
+ *   MAILGUN_DOMAIN   — the verified sending domain, e.g. `mg.yourdomain.com`
+ *   EMAIL_FROM       — the sender, e.g. `Infrawrench <digest@mg.yourdomain.com>`
+ *   MAILGUN_API_BASE — optional; `https://api.eu.mailgun.net` for an EU account
  *
- * Without *both*, `isEmailConfigured()` is false and every send here is a
- * logged no-op. That is the same shape as Slack: a self-hosted deployment that
- * never sets up a mail provider simply doesn't get email delivery, rather than
- * erroring or — worse — failing silently.
+ * Without the first three, `isEmailConfigured()` is false and every send here
+ * is a logged no-op. That is the same shape as Slack: a self-hosted deployment
+ * that never sets up a mail provider simply doesn't get email delivery, rather
+ * than erroring or — worse — failing silently.
+ *
+ * **Mailgun has no idempotency keys** (an open feature request for years), so
+ * unlike some providers it cannot collapse a duplicate send for us. That costs
+ * nothing here because the digest never retries a send that partly landed:
+ * `classifyDelivery` only marks an attempt retryable when *zero* destinations
+ * succeeded, address-level fan-out included. Dedup was belt-and-braces on top
+ * of that rule, not the thing making it safe. `traceKey` below is therefore
+ * exactly what its name says — a breadcrumb, not a guarantee.
  */
 
-const RESEND_API = "https://api.resend.com/emails";
+/** US region by default; EU accounts live on a different host entirely. */
+const DEFAULT_API_BASE = "https://api.mailgun.net";
 
 /** Abort mail requests after 10s so a hung connection can't stall the poller. */
 const EMAIL_REQUEST_TIMEOUT_MS = 10_000;
 
-/** Whether this deployment can send mail (key + from address both present). */
+/** Whether this deployment can send mail (key, domain and sender all present). */
 export function isEmailConfigured(): boolean {
-  return Boolean(process.env["RESEND_API_KEY"] && process.env["EMAIL_FROM"]);
+  return Boolean(
+    process.env["MAILGUN_API_KEY"] && process.env["MAILGUN_DOMAIN"] && process.env["EMAIL_FROM"],
+  );
+}
+
+/** The messages endpoint for the configured domain and region. */
+function messagesUrl(): string {
+  const base = (process.env["MAILGUN_API_BASE"] || DEFAULT_API_BASE).replace(/\/$/, "");
+  return `${base}/v3/${encodeURIComponent(process.env["MAILGUN_DOMAIN"] ?? "")}/messages`;
 }
 
 export interface EmailMessage {
@@ -42,12 +67,16 @@ export interface EmailMessage {
   /** HTML part. Optional; omitted messages are text-only. */
   html?: string;
   /**
-   * Optional idempotency key (max 256 chars). Resend drops a duplicate send
-   * carrying a key it has seen in the last 24 hours, which is what makes the
-   * digest's bounded retries safe: a retry after a partial provider failure
-   * cannot double-deliver to an address that already received the message.
+   * Optional correlation breadcrumb, sent as the Mailgun custom variable
+   * `v:infrawrench-key` so it comes back on the message's log entries and
+   * webhooks — enough to answer "did this org's digest for that week actually
+   * leave the building?" from Mailgun's side.
+   *
+   * Deliberately *not* called an idempotency key: Mailgun has no such feature,
+   * and this value buys no dedup. See the module header for why the digest is
+   * safe without one.
    */
-  idempotencyKey?: string;
+  traceKey?: string;
 }
 
 export interface EmailFanOutResult {
@@ -60,30 +89,31 @@ const NO_DELIVERY: EmailFanOutResult = { attempted: 0, succeeded: 0, failed: 0 }
 
 /** Send one message. Throws on failure — callers decide whether that matters. */
 async function sendOne(message: EmailMessage): Promise<void> {
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${process.env["RESEND_API_KEY"] ?? ""}`,
-    "Content-Type": "application/json",
-  };
-  if (message.idempotencyKey) {
-    headers["Idempotency-Key"] = message.idempotencyKey.slice(0, 256);
-  }
+  const form = new FormData();
+  form.set("from", process.env["EMAIL_FROM"] ?? "");
+  form.set("to", message.to);
+  form.set("subject", message.subject);
+  form.set("text", message.text);
+  if (message.html) form.set("html", message.html);
+  // `v:` prefixed fields are Mailgun custom variables: echoed back on log
+  // entries and webhooks, invisible in the delivered message.
+  if (message.traceKey) form.set("v:infrawrench-key", message.traceKey.slice(0, 256));
 
-  const res = await fetch(RESEND_API, {
+  const res = await fetch(messagesUrl(), {
     method: "POST",
     signal: AbortSignal.timeout(EMAIL_REQUEST_TIMEOUT_MS),
-    headers,
-    body: JSON.stringify({
-      from: process.env["EMAIL_FROM"],
-      to: [message.to],
-      subject: message.subject,
-      text: message.text,
-      ...(message.html ? { html: message.html } : {}),
-    }),
+    // Basic auth with the literal username `api`. No Content-Type header —
+    // `fetch` derives it from the FormData, including the multipart boundary,
+    // and setting it by hand would strip that and break the parse.
+    headers: {
+      Authorization: `Basic ${Buffer.from(`api:${process.env["MAILGUN_API_KEY"] ?? ""}`).toString("base64")}`,
+    },
+    body: form,
   });
   if (!res.ok) {
-    // Resend returns a JSON error body; the first 200 chars of it say far more
-    // than the status code (`validation_error` naming the offending field is
-    // the common one).
+    // Mailgun returns a JSON body whose `message` field is far more useful than
+    // the status — an unverified sender domain and a malformed address both
+    // surface as 400, and only the body distinguishes them.
     const detail = (await res.text().catch(() => "")).slice(0, 200).trim();
     throw new Error(`email to ${message.to}: HTTP ${res.status}${detail ? ` — ${detail}` : ""}`);
   }
@@ -105,7 +135,7 @@ export async function sendEmails(
   if (messages.length === 0) return NO_DELIVERY;
   if (!isEmailConfigured()) {
     console.warn(
-      `[email] ${context}: skipping ${messages.length} message(s) — RESEND_API_KEY and EMAIL_FROM are not both set on this deployment.`,
+      `[email] ${context}: skipping ${messages.length} message(s) — MAILGUN_API_KEY, MAILGUN_DOMAIN and EMAIL_FROM are not all set on this deployment.`,
     );
     return NO_DELIVERY;
   }
