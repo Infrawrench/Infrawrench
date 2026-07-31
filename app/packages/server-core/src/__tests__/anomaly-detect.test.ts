@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_ANOMALY_OPTIONS, detectSpike, fillDailySeries } from "../cost/anomaly-detect";
+import {
+  DEFAULT_ANOMALY_OPTIONS,
+  detectSpike,
+  fillDailySeries,
+  optionsForCurrency,
+} from "../cost/anomaly-detect";
 
 const OPTS = { sigmas: 3, minDeltaAbs: 10, minBaselineDays: 7 };
 
@@ -90,5 +95,42 @@ describe("fillDailySeries", () => {
 
   it("returns empty for malformed dates", () => {
     expect(fillDailySeries(new Map(), "not-a-date", "2026-07-01")).toEqual([]);
+  });
+});
+
+describe("optionsForCurrency", () => {
+  it("leaves a USD-scale currency untouched", () => {
+    expect(optionsForCurrency("USD", OPTS)).toEqual(OPTS);
+    expect(optionsForCurrency("EUR", OPTS).minDeltaAbs).toBe(10);
+  });
+
+  it("scales the noise floor for small-unit currencies", () => {
+    // ~$10 of yen, not 10 yen (~$0.07) — otherwise the floor filters nothing.
+    expect(optionsForCurrency("JPY", OPTS).minDeltaAbs).toBeGreaterThan(1000);
+    expect(optionsForCurrency("IDR", OPTS).minDeltaAbs).toBeGreaterThan(100_000);
+  });
+
+  it("is case-insensitive and falls back to USD scale", () => {
+    expect(optionsForCurrency("jpy", OPTS).minDeltaAbs).toBe(
+      optionsForCurrency("JPY", OPTS).minDeltaAbs,
+    );
+    expect(optionsForCurrency("ZZZ", OPTS).minDeltaAbs).toBe(OPTS.minDeltaAbs);
+  });
+
+  it("carries the dimensionless options through unchanged", () => {
+    const scoped = optionsForCurrency("JPY", OPTS);
+    expect(scoped.sigmas).toBe(OPTS.sigmas);
+    expect(scoped.minBaselineDays).toBe(OPTS.minBaselineDays);
+  });
+
+  it("keeps a genuine JPY spike detectable while filtering yen-scale noise", () => {
+    const yenBaseline = STABLE.map((v) => v * 150);
+    const opts = optionsForCurrency("JPY", OPTS);
+    // A ¥12,000 rise is ~$80 — a real spike.
+    expect(detectSpike(yenBaseline, 27_000, opts)).not.toBeNull();
+    // A ¥20 rise over a ¥15,000 baseline is pennies; the unscaled floor of
+    // 10 units would have let this through on sigmas alone.
+    const flatYen = new Array(14).fill(15_000);
+    expect(detectSpike(flatYen, 15_020, opts)).toBeNull();
   });
 });

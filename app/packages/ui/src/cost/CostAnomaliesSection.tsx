@@ -35,19 +35,25 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!client.listAnomalies) return;
+    const listAnomalies = client.listAnomalies;
+    if (!listAnomalies) return;
     let cancelled = false;
-    client
-      .listAnomalies(WINDOW_DAYS)
-      .then((rows) => {
+    // Awaited inside try/catch rather than chained off .catch(): a host's
+    // implementation may throw *synchronously* (desktop's requires cloud mode
+    // and throws when there is no active org), and a synchronous throw escapes
+    // a promise chain entirely — straight past .catch() and into the nearest
+    // error boundary, taking the app down.
+    void (async () => {
+      try {
+        const rows = await listAnomalies(WINDOW_DAYS);
         if (!cancelled) {
           setAnomalies(rows);
           setError(null);
         }
-      })
-      .catch((e: unknown) => {
+      } catch (e: unknown) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };

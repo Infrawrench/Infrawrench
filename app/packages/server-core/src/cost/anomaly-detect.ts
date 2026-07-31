@@ -4,20 +4,24 @@
  * persists whatever it flags. Kept separate so the statistics are unit-testable
  * without a database.
  *
- * The model is deliberately simple for an MVP: yesterday's spend for a
+ * The model is deliberately simple for an MVP: a day's spend for a
  * (dimension, key) is an anomaly when it exceeds the trailing window's
  * mean + `sigmas`·stddev AND exceeds the mean by at least `minDeltaAbs`
- * currency units. The absolute floor keeps penny-noise quiet: a $0.02 day
- * against a $0.001 baseline is many sigmas out and still not worth waking
- * anyone for.
+ * units of that series' currency. The absolute floor keeps penny-noise quiet:
+ * a $0.02 day against a $0.001 baseline is many sigmas out and still not worth
+ * waking anyone for.
  */
 
 export interface AnomalyDetectionOptions {
   /** How many standard deviations above the mean counts as anomalous. */
   sigmas: number;
   /**
-   * Minimum absolute rise over the baseline mean, in currency units (not
-   * cents). Below this, no spike fires no matter how many sigmas it is.
+   * Minimum absolute rise over the baseline mean, in the units of the series
+   * being judged (not cents). Below this, no spike fires no matter how many
+   * sigmas it is.
+   *
+   * `DEFAULT_ANOMALY_OPTIONS` states this in USD; a series billed in another
+   * currency needs it converted first — see `optionsForCurrency`.
    */
   minDeltaAbs: number;
   /**
@@ -30,9 +34,71 @@ export interface AnomalyDetectionOptions {
 
 export const DEFAULT_ANOMALY_OPTIONS: AnomalyDetectionOptions = {
   sigmas: 3,
+  /** ~$10. Denominated in USD — `optionsForCurrency` converts per series. */
   minDeltaAbs: 10,
   minBaselineDays: 7,
 };
+
+/**
+ * Very rough units-per-USD, used *only* to keep the noise floor meaning the
+ * same thing in every currency a provider might bill in.
+ *
+ * These are not exchange rates and must never be used as such: nothing here
+ * converts a displayed amount, and a stale entry costs nothing but a slightly
+ * wrong quiet threshold. Only the order of magnitude matters — the failure it
+ * exists to prevent is a floor of "10 units" being ~$0.07 in JPY, which lets
+ * penny noise page someone, or ~$10 in USD, which is the intent. Currencies
+ * not listed fall back to 1, i.e. treated as USD-scale.
+ */
+const UNITS_PER_USD: Readonly<Record<string, number>> = {
+  USD: 1,
+  EUR: 1,
+  GBP: 1,
+  CHF: 1,
+  CAD: 1.4,
+  AUD: 1.5,
+  NZD: 1.7,
+  SGD: 1.3,
+  ILS: 3.7,
+  PLN: 4,
+  BRL: 5,
+  CNY: 7,
+  DKK: 7,
+  HKD: 7.8,
+  SEK: 11,
+  NOK: 11,
+  MXN: 18,
+  ZAR: 18,
+  CZK: 23,
+  TWD: 32,
+  TRY: 34,
+  THB: 35,
+  PHP: 58,
+  INR: 85,
+  RUB: 90,
+  JPY: 150,
+  HUF: 380,
+  CLP: 950,
+  KRW: 1300,
+  COP: 4000,
+  IDR: 16000,
+  VND: 25000,
+};
+
+/**
+ * `options` with its USD-denominated noise floor restated in `currency`, so a
+ * series billed in JPY or IDR is held to the same real threshold as one billed
+ * in USD. Everything else (sigmas, baseline-day minimum) is dimensionless and
+ * passes through untouched.
+ */
+export function optionsForCurrency(
+  currency: string,
+  options: AnomalyDetectionOptions = DEFAULT_ANOMALY_OPTIONS,
+): AnomalyDetectionOptions {
+  const scale = UNITS_PER_USD[currency.toUpperCase()] ?? 1;
+  if (scale === 1) return options;
+  return { ...options, minDeltaAbs: options.minDeltaAbs * scale };
+}
 
 /** What made a day anomalous, in the same currency units as the inputs. */
 export interface DetectedSpike {

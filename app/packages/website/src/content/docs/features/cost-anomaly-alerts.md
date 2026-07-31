@@ -16,13 +16,18 @@ month or fifty thousand.
 
 ## How detection works
 
-- Detection runs against **yesterday** (UTC) — the most recent day provider billing data can
-  be complete for. Today is always partial and would read as a dip, never a spike.
+- Detection runs against **yesterday and the two days before it** (UTC), never today — today is
+  still accruing and would read as a dip, never a spike. Each pass re-judges that short window
+  rather than only the newest day, because a day's spend is not final when the day ends:
+  providers restate late, and your accounts collect at staggered times, so a day looked at once
+  and early can be missing most of its data. Re-judging it as it fills in is what stops a real
+  spike from being missed.
 - Each provider's and each service's spend is compared against its **trailing 28-day
   baseline**: the mean daily spend plus three standard deviations. A day above that bar is
   anomalous.
-- A **minimum absolute rise** over the baseline (about $10) filters out penny-scale noise —
-  a $0.02 day against a $0.001 baseline is many deviations out and still not worth an alert.
+- A **minimum absolute rise** over the baseline (about $10, converted for other currencies)
+  filters out penny-scale noise — a $0.02 day against a $0.001 baseline is many deviations out
+  and still not worth an alert.
 - Keys with fewer than **7 days of spend history** are skipped: a brand-new service has no
   baseline worth trusting yet.
 - Detection is per currency. Mixed-currency orgs get independent baselines per currency,
@@ -32,12 +37,17 @@ month or fifty thousand.
 
 The same anomaly never re-alerts:
 
-- Each (day, provider-or-service, currency) combination fires **at most once**, no matter how
-  many collection passes re-examine that day.
-- After an anomaly is raised for a provider or service, further anomalies for the same one are
-  **suppressed for 7 days**. A sustained price jump is anomalous against the trailing window
-  for several days running; you get told once, not every morning. The suppressed days still
-  appear in the anomalies list so the record is complete.
+- Each (day, provider-or-service, currency) combination alerts **at most once**, no matter how
+  many collection passes re-examine that day. If a day's figures are revised upward by later
+  data, the anomalies list updates to show the corrected amount, but no second alert is sent.
+- After you are **notified** about a provider or service, further anomalies for the same one
+  are **suppressed for 7 days**. A sustained price jump is anomalous against the trailing
+  window for several days running; you get told once, not every morning. The suppressed days
+  still appear in the anomalies list so the record is complete.
+- The cooldown counts only anomalies that actually reached you. An anomaly detected while no
+  channel was connected — or one whose delivery failed — does not start a quiet period, and
+  stays eligible to be sent for as long as its day is still in the evaluation window. Connect
+  Slack, Teams, or mobile push and the next collection pass delivers what is still pending.
 
 ## Where anomalies appear
 

@@ -43,7 +43,11 @@ export async function pollAccountCosts(account: PollAccountRow): Promise<void> {
     await evaluateBudgetsForOrg(account.organizationId);
 
     // Same trigger point for anomaly detection: cost data only changes when
-    // collection runs, and its dedup makes repeated same-day passes cheap.
+    // collection runs. This fires once per account, so for a multi-account org
+    // most calls are redundant — the ClickHouse reads are the expensive half
+    // and the row dedup does nothing to avoid them. detectCostAnomaliesForOrg
+    // rate-limits itself per org and returns immediately when called again
+    // inside that window.
     await detectCostAnomaliesForOrg(account.organizationId);
   } catch (e) {
     console.error(`[poller] cost collection for ${account.id} (${account.pluginId}) failed:`, e);
