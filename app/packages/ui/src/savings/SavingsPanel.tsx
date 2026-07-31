@@ -3,6 +3,11 @@ import { formatMoney } from "@infrawrench/client-core";
 import type { OrphanedResource, OrphanListResponse, OrphansClient } from "./types.js";
 
 export interface SavingsPanelProps {
+  /**
+   * Org-scoped data access. Hosts mount this panel with `key={orgId}` so an org
+   * switch remounts it — that is what clears the previous org's rows, rather
+   * than an effect resetting every state value by hand.
+   */
   client: OrphansClient;
   /**
    * Navigate to a flagged resource's detail view. `accountId` comes from the
@@ -21,8 +26,8 @@ export interface SavingsPanelProps {
 export function SavingsPanel({ client, onOpenResource }: SavingsPanelProps) {
   const [data, setData] = useState<OrphanListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Bumped per request so a response that arrives after an org switch or a
-  // later refresh can't overwrite newer state with another org's resources.
+  // Bumped per request so a slow response can't overwrite the result of a
+  // later refresh that already landed.
   const requestSeq = useRef(0);
 
   const refresh = useCallback(async () => {
@@ -37,11 +42,6 @@ export function SavingsPanel({ client, onOpenResource }: SavingsPanelProps) {
   }, [client]);
 
   useEffect(() => {
-    // A new client means a new org: drop the previous org's rows immediately
-    // rather than leaving them on screen until the refetch lands.
-    requestSeq.current++;
-    setData(null);
-    setError(null);
     void refresh();
   }, [refresh]);
 
@@ -111,6 +111,17 @@ export function SavingsPanel({ client, onOpenResource }: SavingsPanelProps) {
                       onClick={
                         onOpenResource ? () => onOpenResource(r, group.accountId) : undefined
                       }
+                      onKeyDown={
+                        onOpenResource
+                          ? (e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                onOpenResource(r, group.accountId);
+                              }
+                            }
+                          : undefined
+                      }
+                      tabIndex={onOpenResource ? 0 : undefined}
                     >
                       <td className="px-4 py-2.5 whitespace-nowrap font-medium text-on-surface">
                         {r.displayName}

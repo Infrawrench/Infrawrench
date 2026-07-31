@@ -167,6 +167,9 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
     case "savings":
       return (
         <SavingsPanel
+          // Keyed by org so switching org remounts the panel and refetches
+          // rather than showing the previous org's flagged resources.
+          key={orgId}
           client={getOrphansClient(orgId)}
           onOpenResource={(r, accountId) => {
             if (!r.id) return;
