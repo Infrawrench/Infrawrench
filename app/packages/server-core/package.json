@@ -29,6 +29,7 @@
     "./msteams": "./src/msteams.ts",
     "./plugin-loader": "./src/plugin-loader.ts",
     "./workflows/runner": "./src/workflows/runner.ts",
+    "./workflows/approvals": "./src/workflows/approvals.ts",
     "./workflows/fetch": "./src/workflows/fetch.ts",
     "./github/app": "./src/github/app.ts",
     "./permissions": "./src/permissions/index.ts",

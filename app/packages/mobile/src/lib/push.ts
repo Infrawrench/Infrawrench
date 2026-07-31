@@ -167,6 +167,10 @@ export function pushDataToPath(data: PushNotificationData): string {
       return `/org/${data.orgId}/accounts/${data.accountId}`;
     case "workflow_page":
       return `/org/${data.orgId}/workflows/${data.workflowId}`;
+    // Approvals land on the workflow too — its run list shows the suspended
+    // run. (In-app approve/deny is a follow-up; web handles the decision.)
+    case "workflow_approval":
+      return `/org/${data.orgId}/workflows/${data.workflowId}`;
     // API pages name a source Infrawrench has no page for, so the org home is
     // the closest thing to "where this alert came from".
     case "api_page":
@@ -233,6 +237,19 @@ export function parsePushData(raw: unknown): PushNotificationData | null {
         workflowId,
         ...(typeof runId === "string" ? { runId } : {}),
       };
+    }
+    case "workflow_approval": {
+      const workflowId = data["workflowId"];
+      const runId = data["runId"];
+      const approvalId = data["approvalId"];
+      if (
+        typeof workflowId !== "string" ||
+        typeof runId !== "string" ||
+        typeof approvalId !== "string"
+      ) {
+        return null;
+      }
+      return { type: "workflow_approval", orgId, workflowId, runId, approvalId };
     }
     case "api_page": {
       const source = data["source"];

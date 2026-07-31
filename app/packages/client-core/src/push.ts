@@ -46,6 +46,15 @@ export type PushNotificationData =
       runId?: string;
     }
   | {
+      /** A run is suspended on `infra.waitForApproval(...)` and needs a decision. */
+      type: "workflow_approval";
+      orgId: string;
+      workflowId: string;
+      /** The suspended run, so the app can open its view. */
+      runId: string;
+      approvalId: string;
+    }
+  | {
       /** A page a server outside Infrawrench raised over `POST /pages`. */
       type: "api_page";
       orgId: string;

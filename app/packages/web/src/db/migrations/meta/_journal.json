@@ -337,6 +337,13 @@
       "when": 1785489378008,
       "tag": "0047_swift_jack_power",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1785498558825,
+      "tag": "0048_slimy_mysterio",
+      "breakpoints": true
     }
   ]
 }
