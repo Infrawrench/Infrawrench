@@ -1,13 +1,15 @@
 /**
- * The tiles above the dashboard list — Agents, Workflows, Deploy, Costs.
+ * The tiles above the dashboard list — Agents, Workflows, Deploy, Costs, and
+ * (web) Changes and Graph.
  *
- * One 2×2 grid rather than four stacked rows: the icons are a mix of text
+ * A two-column grid rather than stacked rows: the icons are a mix of text
  * glyphs and SVGs with different natural widths, so stacked rows never quite
  * lined up. A fixed-width icon slot per tile is what actually aligns the labels.
  *
  * Shared by web and desktop, which is why the odd-count rule exists at all:
- * desktop hides the Costs tile in local mode (spend is collected server-side),
- * and three tiles in a two-column grid would otherwise leave a ragged hole.
+ * the tile list is not a fixed length. Desktop hides the Costs tile in local
+ * mode (spend is collected server-side), and an odd count in a two-column grid
+ * would otherwise leave a ragged hole.
  */
 export interface SidebarNavTileDef {
   key: string;

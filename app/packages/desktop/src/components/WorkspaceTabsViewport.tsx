@@ -17,7 +17,7 @@ import { ResourcePanel } from "@/routes/resource.$accountId.$resourceId";
 import { getWorkspaceNavigateArgs, syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
 import { AgentsPanel, type AgentClient } from "@infrawrench/ui/agents";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
-import { resourceTabTarget, type OrphansClient } from "@infrawrench/ui";
+import { type OrphansClient } from "@infrawrench/ui";
 import { createDesktopCostsClient } from "@/lib/costs-client";
 import { createDesktopOrphansClient } from "@/lib/orphans-client";
 import { createDesktopAgentClient } from "@/lib/agent-client";

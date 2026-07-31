@@ -169,7 +169,8 @@ export function SidebarDashboards() {
   // Deploy is here in both modes: with an org it is the full deploy screen,
   // and without one it is the history of what `infrawrench deploy` did on this
   // machine. Costs has no local half — spend is collected server-side — so the
-  // grid drops to three tiles, and SidebarNavGrid squares that off itself.
+  // grid is four tiles locally and five with an org; SidebarNavGrid squares
+  // off the odd count itself.
   const navTiles: SidebarNavTileDef[] = [
     {
       key: "agents",
