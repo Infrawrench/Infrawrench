@@ -52,7 +52,7 @@ export interface WorkflowBody {
 
 /**
  * Strip the signing secret from anything handed back, replacing it with a
- * boolean. A workflow row is readable with `dashboards:read`, which is a much
+ * boolean. A workflow row is readable with `workflows:read`, which is a much
  * weaker permission than the secret warrants.
  */
 export function redactWorkflow<T extends { webhookSecret?: string | null }>(

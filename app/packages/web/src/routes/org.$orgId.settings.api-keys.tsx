@@ -22,6 +22,9 @@ const AVAILABLE_SCOPES = [
   { value: "resources:write", label: "Resources (write)" },
   { value: "dashboards:read", label: "Dashboards (read)" },
   { value: "dashboards:write", label: "Dashboards (write)" },
+  { value: "workflows:read", label: "Workflows (read)" },
+  { value: "workflows:write", label: "Workflows (write)" },
+  { value: "workflows:approve", label: "Workflows (approve)" },
   { value: "chat:read", label: "Chat (read)" },
   { value: "chat:write", label: "Chat (write)" },
 ];

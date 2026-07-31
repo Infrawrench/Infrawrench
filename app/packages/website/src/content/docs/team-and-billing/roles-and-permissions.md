@@ -28,11 +28,11 @@ The `Settings → Roles` page lists the full catalogue grouped by category (Acco
 
 Every organization has three pre-seeded system roles. They cannot be edited or deleted.
 
-| Role   | Permissions                                                                                                                                                                                                                                                           |
-| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Owner  | `*` — everything, including billing and deleting the organization.                                                                                                                                                                                                    |
-| Admin  | Everything except `billing:write` and `org:settings:write`.                                                                                                                                                                                                           |
-| Member | Read everything; connect to resources (SSH/SQL/exec); use [AI chat](../features/ai-chat.md) (`chat:read`, `chat:write`); manage own dashboards; view cost graphs and budgets (`costs:read`, `budgets:read` — creating budgets needs `budgets:write`, held by Admin+). |
+| Role   | Permissions                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Owner  | `*` — everything, including billing and deleting the organization.                                                                                                                                                                                                                                                                                                                              |
+| Admin  | Everything except `billing:write` and `org:settings:write`.                                                                                                                                                                                                                                                                                                                                     |
+| Member | Read everything; connect to resources (SSH/SQL/exec); use [AI chat](../features/ai-chat.md) (`chat:read`, `chat:write`); manage own dashboards; write, run, and approve [workflows](../features/workflows.md) (`workflows:read`, `workflows:write`, `workflows:approve`); view cost graphs and budgets (`costs:read`, `budgets:read` — creating budgets needs `budgets:write`, held by Admin+). |
 
 System role permissions are computed in code, so upgrades extend them automatically when new permissions are added.
 
@@ -59,7 +59,7 @@ Use **Settings → Team → (member) → Role picker** to change a member's role
 
 ## API key scopes
 
-API keys store the same permission strings as roles. When you create a key, pick the exact scopes it should carry; the server enforces them with the same matcher used for session permissions, including wildcards. Older keys created with the deprecated `sync:read`/`sync:write` scopes are migrated automatically the next time they authenticate.
+API keys store the same permission strings as roles. When you create a key, pick the exact scopes it should carry; the server enforces them with the same matcher used for session permissions, including wildcards. Older keys created with the deprecated `sync:read`/`sync:write` scopes are migrated automatically the next time they authenticate, and keys minted before workflows had permissions of their own pick up the matching `workflows:*` scopes the first time they are used, so a `dashboards:write` key keeps the workflow access it had.
 
 A key never carries more authority than its owner. Its effective permissions are the **intersection** of its scopes and the current role of the user who created it, recomputed on every call — so demoting someone narrows their keys immediately, and a broadly-scoped key cannot outrun a role change.
 
@@ -78,6 +78,13 @@ The same permission set gates every surface, not just the web UI:
   - `deployments:write` — builds, deploys and rolls back. Admin and Owner only.
 
   The deploy WebSocket enforces the same split its HTTP routes do, so a `planOnly` run needs `deployments:plan` and a real deploy needs `deployments:write`.
+
+- **[Workflows](../features/workflows.md)** split across three permissions:
+  - `workflows:read` — list workflows, read their source, run history and metrics, and see pending approval requests. Members hold it.
+  - `workflows:write` — create, edit, delete, and run. Running sits here rather than in a permission of its own, because anyone who can edit a workflow can give it a cron or git trigger anyway. The workflow debug WebSocket enforces it too, so the editor's live-debug run is gated exactly like `POST /workflows/{id}/run`.
+  - `workflows:approve` — decide a request raised by `infra.waitForApproval(...)`. Deliberately separate: the point of an approval step is that a second person signs off, so a custom role can grant authorship without sign-off, or sign-off without authorship. All three are in the Member role, matching what members could already do — the split is there for custom roles to use.
+
+  Workflows used to be gated on `dashboards:read` / `dashboards:write`. Custom roles and API keys granted those before the split keep their workflow access automatically; grants written afterwards mean exactly what they say. Custom graphs, which really are dashboard content, stayed on the dashboard permissions.
 
 ## Audit trail
 

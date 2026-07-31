@@ -183,6 +183,62 @@ describe("authenticateApiRequest", () => {
     );
   });
 
+  /**
+   * Workflows rode on `dashboards:*` until they got their own permissions, so
+   * a key minted before the cutover with `dashboards:write` could write, run,
+   * and approve workflows. Dropping that on upgrade would be a silent break,
+   * so the stored scopes are expanded (and written back) on first use.
+   */
+  it("grandfathers dashboards scopes onto workflows for a pre-cutover key", async () => {
+    mockSelect.mockReturnValueOnce(
+      selectReturning([
+        {
+          id: "k4",
+          userId: "u4",
+          organizationId: "o4",
+          scopes: ["dashboards:read", "dashboards:write"],
+          createdAt: new Date("2026-01-01T00:00:00Z"),
+          expiresAt: null,
+          legacyHashSunsetAt: null,
+        },
+      ]),
+    );
+    mockSelect.mockReturnValueOnce(membershipReturning(MEMBER));
+    const { set } = updateChain();
+    const result = await authenticateApiRequest(req({ authorization: "Bearer iwk_old_dash" }));
+    expect(result?.scopes).toEqual([
+      "dashboards:read",
+      "dashboards:write",
+      "workflows:read",
+      "workflows:write",
+      "workflows:approve",
+    ]);
+    // Persisted, so the expansion is visible to the admin in the key listing.
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({ scopes: expect.arrayContaining(["workflows:approve"]) }),
+    );
+  });
+
+  it("leaves a key minted after the cutover with exactly its stored scopes", async () => {
+    mockSelect.mockReturnValueOnce(
+      selectReturning([
+        {
+          id: "k5",
+          userId: "u5",
+          organizationId: "o5",
+          scopes: ["dashboards:write"],
+          createdAt: new Date("2027-01-01T00:00:00Z"),
+          expiresAt: null,
+          legacyHashSunsetAt: null,
+        },
+      ]),
+    );
+    mockSelect.mockReturnValueOnce(membershipReturning(MEMBER));
+    updateChain();
+    const result = await authenticateApiRequest(req({ authorization: "Bearer iwk_new_dash" }));
+    expect(result?.scopes).toEqual(["dashboards:write"]);
+  });
+
   it("rejects a legacy-hash hit past its sunset", async () => {
     mockSelect.mockReturnValueOnce(selectReturning([])); // HMAC miss
     mockSelect.mockReturnValueOnce(

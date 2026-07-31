@@ -53,7 +53,7 @@ The `costs:write` and `pages:write` scopes gate the [push endpoints](../features
 
 `chat:write` lets a key hold a conversation — it does not widen what that conversation can do. Every tool the assistant runs is checked against the key's own scopes, so a chat-only key can talk about your infrastructure but cannot read a secret or delete a resource unless you also granted `secrets:read` or `resources:delete`.
 
-Older keys created with the deprecated `sync:read` / `sync:write` scopes are migrated automatically the next time they authenticate.
+Older keys created with the deprecated `sync:read` / `sync:write` scopes are migrated automatically the next time they authenticate. The same mechanism covers the workflow permission split: [workflows](../features/workflows.md) were gated on `dashboards:read` / `dashboards:write` until they got their own `workflows:read`, `workflows:write` and `workflows:approve` scopes, so a key minted before that picks the matching workflow scopes up the first time it is used. Keys minted since carry exactly the scopes you chose — grant `workflows:*` explicitly if a key needs to write, run, or approve workflows.
 
 ## Keys are bounded by their owner
 

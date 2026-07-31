@@ -155,6 +155,23 @@ export interface WorkflowApprovalRow {
   createdAt: string;
 }
 
+export type WorkflowApprovalStatus = WorkflowApprovalRow["status"];
+
+/**
+ * Transport for the org-wide approvals inbox, injected by the host the same way
+ * `WorkflowClient` is: the web app implements it with `fetch` against
+ * `/api/org/:orgId/workflow-approvals`, the desktop app over IPC.
+ *
+ * Separate from {@link WorkflowClient} because the inbox is org-scoped rather
+ * than workflow-scoped, and a host may surface one without the other.
+ */
+export interface ApprovalsClient {
+  /** Approval requests across the org, newest first. Filter by status. */
+  list(status?: WorkflowApprovalStatus): Promise<WorkflowApprovalRow[]>;
+  /** Land a decision. Rejects on conflict (409) — already decided or expired. */
+  decide(approvalId: string, decision: "approve" | "deny"): Promise<WorkflowApprovalRow>;
+}
+
 /** A repo a connected GitHub App installation can access (for the git-trigger picker). */
 export interface GitRepoOption {
   installationId: number;

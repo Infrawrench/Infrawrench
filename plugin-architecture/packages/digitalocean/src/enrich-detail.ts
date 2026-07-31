@@ -61,6 +61,9 @@ export async function enrichDoDetail(
   if (resource.resourceTypeId === "gen-ai-model-router") {
     return enrichGenAiModelRouter(ctx, resource);
   }
+  if (resource.resourceTypeId === "reserved-ip") {
+    return enrichReservedIp(ctx, resource);
+  }
   if (resource.resourceTypeId !== "droplet") return resource;
 
   const now = Date.now();
@@ -222,6 +225,43 @@ export async function enrichDoDetail(
       __sizes__: JSON.stringify(sizes),
       __images__: JSON.stringify(images),
       __restoreOptions__: JSON.stringify(restoreOptions),
+    },
+  };
+}
+
+/**
+ * Pre-fetch the Droplets a reserved IP could be assigned to, so the detail
+ * page's Assign prompt shows a **picker** rather than asking for a raw
+ * numeric Droplet id. Filtered to the address's own region because
+ * DigitalOcean rejects a cross-region assignment; sorted by name so the list
+ * reads the same way the sidebar does.
+ *
+ * Failures degrade to an empty list — the renderer then shows the blocked
+ * "no Droplets in this region" prompt instead of crashing the detail page.
+ */
+async function enrichReservedIp(
+  ctx: DoEnrichContext,
+  resource: ResourceInstance,
+): Promise<ResourceInstance> {
+  const region = String(resource.fields["region"] ?? "");
+  const data = await ctx
+    .fetch<{ droplets?: Array<Record<string, unknown>> | null }>("/droplets?per_page=200")
+    .catch(() => ({ droplets: [] }));
+  const droplets = (data.droplets ?? [])
+    .filter(
+      (d) => !region || String((d["region"] as Record<string, unknown>)?.["slug"] ?? "") === region,
+    )
+    .map((d) => ({
+      id: String(d["id"] ?? ""),
+      label: String(d["name"] ?? d["id"] ?? ""),
+    }))
+    .filter((d) => !!d.id)
+    .sort((a, b) => a.label.localeCompare(b.label));
+  return {
+    ...resource,
+    resolvedOutputs: {
+      ...resource.resolvedOutputs,
+      __droplets__: JSON.stringify(droplets),
     },
   };
 }

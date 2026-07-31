@@ -69,6 +69,27 @@ Very large organizations can produce more links than the canvas can usefully dra
 
 On the web app the graph covers everything in your organization. On desktop it covers the resources stored on that machine, and switches to the organization-wide view when you're signed into cloud sync.
 
+## From the CLI
+
+The [desktop CLI](./cli.md) draws the same topology as an ASCII tree:
+
+```sh
+infrawrench graph                      # the whole organization as a forest
+infrawrench graph --resource <id>      # one resource: what it needs, and its blast radius
+infrawrench graph <id>                 # same thing, positionally
+infrawrench graph --json               # the node and edge lists, for scripting
+```
+
+Without a focus, roots are the resources nothing depends on, and each child is something its parent depends on — so reading down a branch walks toward the things everything else is built on. A `↺` marks a link back to a resource already on the branch (references can be circular), and `…` marks a branch stopped at the depth cap.
+
+With `--resource`, the output is the terminal's version of the **Dependencies** tab: a **Depends on** tree and a **Depended on by** tree, the second headed with the blast-radius count — every resource that transitively depends on this one.
+
+<insert [Terminal showing `infrawrench graph --resource` output: the focused resource, a "Depends on" ASCII tree, and a "Depended on by" tree headed with a blast-radius count] here>
+
+`--json` emits the graph itself — `nodes` and `edges`, plus `truncated` — and, when focused, adds the direct `dependsOn` / `dependedOnBy` neighbour lists and a `blastRadius` array of resource ids.
+
+The command reads the organization's graph, so it needs cloud sync; the desktop app's **Graph** tile is what covers a local-only workspace.
+
 ## API
 
 Programmatic access is available at `GET /api/org/{orgId}/dependency-graph`, which returns the node and edge lists (see the [API reference](../team-and-billing/openapi.md)). Each edge carries a `kind` — `output-ref`, `declared`, `containment` or `field-match` — saying which of the four sources it came from, an optional `label` when the plugin worded the relationship, and the response's `truncated` flag says whether the graph was capped. It requires the `resources:read` permission.

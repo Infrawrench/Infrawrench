@@ -51,6 +51,11 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
     void refresh();
   }, [refresh]);
 
+  // Local mode has no collected billing rows, so every `cost` is null there.
+  // A column of dashes in a headerless table reads as "this costs nothing";
+  // drop it instead and say why below the list.
+  const showCost = data !== null && data.costBasis !== "unavailable";
+
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
@@ -87,6 +92,13 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
           Nothing looks wasted right now. Resources are flagged when a provider plugin&apos;s
           heuristic matches — unattached volumes, unassigned IPs — so an empty list is the good
           outcome.
+          {!showCost && (
+            <>
+              {" "}
+              This scan covers the resources stored in the local workspace; sign in to classify
+              everything your accounts sync.
+            </>
+          )}
         </p>
       )}
 
@@ -130,18 +142,20 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
                       </span>
                     </td>
                     <td className="px-3 py-2.5 w-full text-on-surface-secondary">{r.reason}</td>
-                    <td className="px-4 py-2.5 whitespace-nowrap text-right text-on-surface">
-                      {r.cost ? (
-                        <>
-                          {formatMoney(r.cost.amount, r.cost.currency)}
-                          <span className="ml-1 text-xs text-on-surface-faint">
-                            / {data.costWindowDays}d
-                          </span>
-                        </>
-                      ) : (
-                        <span className="text-on-surface-faint">—</span>
-                      )}
-                    </td>
+                    {showCost && (
+                      <td className="px-4 py-2.5 whitespace-nowrap text-right text-on-surface">
+                        {r.cost ? (
+                          <>
+                            {formatMoney(r.cost.amount, r.cost.currency)}
+                            <span className="ml-1 text-xs text-on-surface-faint">
+                              / {data.costWindowDays}d
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-on-surface-faint">—</span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -152,9 +166,19 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
 
       {data !== null && data.accounts.length > 0 && (
         <p className="text-xs text-on-surface-faint">
-          Cost figures are best-effort, matched from collected per-resource billing rows over the
-          last {data.costWindowDays} days; most providers don&apos;t report cost at resource
-          granularity. Confirm a resource really is unused before deleting it.
+          {showCost ? (
+            <>
+              Cost figures are best-effort, matched from collected per-resource billing rows over
+              the last {data.costWindowDays} days; most providers don&apos;t report cost at resource
+              granularity.
+            </>
+          ) : (
+            <>
+              No cost figures here: spend is collected by Infrawrench Cloud, and this workspace is
+              local. The flags themselves never depend on billing data.
+            </>
+          )}{" "}
+          Confirm a resource really is unused before deleting it.
         </p>
       )}
     </section>

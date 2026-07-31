@@ -57,6 +57,21 @@ percentage change.
 
 <insert [Costs panel showing the Anomalies section with a few detected anomalies — day, provider/service, spend vs baseline, and the red percentage-change column] here>
 
+## From the CLI
+
+The [desktop CLI](./cli.md) prints the same list:
+
+```sh
+infrawrench costs --anomalies              # the last 30 days
+infrawrench costs --anomalies --days 7     # a shorter window (1-90)
+infrawrench costs --anomalies --last 2w    # the same window, said the other way
+infrawrench costs --anomalies --json       # stable JSON for scripting
+```
+
+It is a flag on `costs` rather than a command of its own: it answers a question about the same data the chart draws. Text mode prints a table of the day, what spiked (the provider or service, and which of the two it is), the actual spend, the trailing baseline per day, and the percentage change — `new` where the key had no baseline to be up from. A `notified` column shows the day the alert was delivered, or a dash for anomalies detected while no channel was connected or inside another anomaly's cooldown.
+
+<insert [Terminal showing `infrawrench costs --anomalies` output: the table of day, what spiked, actual vs baseline spend, the red percentage-change column, and the notified column] here>
+
 ## Alerts
 
 Anomaly alerts ride the same channels as budget alerts and sync-failure incidents, with their

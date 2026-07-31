@@ -67,6 +67,40 @@ ipcMain.handle("cloud_workflow_metrics", async (_e, { orgId, id }: WorkflowIdArg
   return (await cloudFetch<unknown[]>(orgId, `/workflows/${encodeURIComponent(id)}/metrics`)) ?? [];
 });
 
+// --- Human approval steps (infra.waitForApproval) --------------------------
+//
+// Cloud-only, like the rest of this file: a suspended run lives on the server,
+// so there is nothing to approve in local mode. `workflowId` narrows the list
+// to one workflow's runs (what the panel's in-context card wants); omitting it
+// gives the org-wide inbox.
+
+ipcMain.handle(
+  "cloud_list_workflow_approvals",
+  async (
+    _e,
+    { orgId, status, workflowId }: { orgId: string; status?: string; workflowId?: string },
+  ) => {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    if (workflowId) params.set("workflowId", workflowId);
+    const query = params.size > 0 ? `?${params.toString()}` : "";
+    return (await cloudFetch<unknown[]>(orgId, `/workflow-approvals${query}`)) ?? [];
+  },
+);
+
+ipcMain.handle(
+  "cloud_decide_workflow_approval",
+  async (
+    _e,
+    { orgId, approvalId, decision }: { orgId: string; approvalId: string; decision: string },
+  ) => {
+    const verb = decision === "deny" ? "deny" : "approve";
+    return cloudFetch(orgId, `/workflow-approvals/${encodeURIComponent(approvalId)}/${verb}`, {
+      method: "POST",
+    });
+  },
+);
+
 // --- GitHub connection (git triggers) -------------------------------------
 
 ipcMain.handle("cloud_github_status", async (_e, { orgId }: { orgId: string }) => {

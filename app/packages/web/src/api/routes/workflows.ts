@@ -8,8 +8,12 @@
  * The logic lives in services/workflows.ts so the MCP/chat tool registry drives
  * exactly the same code path; this file is transport only.
  *
- * NOTE: workflows reuse the dashboards:read / dashboards:write permissions for
- * now; dedicated workflows:* permissions are a follow-up (see WORKFLOWS_PLAN.md).
+ * Reads take `workflows:read`; creating, editing, deleting, and manually
+ * running take `workflows:write`. Manual run sits with `write` rather than a
+ * permission of its own because anyone who can edit a workflow can already give
+ * it a cron or git trigger — a separate `run` would be a lock on an open door.
+ * Deciding approval requests is a genuinely different trust level and lives in
+ * `workflows:approve` (see routes/workflow-approvals.ts).
  */
 import { Hono, type Context } from "hono";
 
@@ -51,13 +55,13 @@ async function load(c: Context, id: string) {
 }
 
 app.get("/", async (c) => {
-  requirePermission(c, "dashboards:read");
+  requirePermission(c, "workflows:read");
   const rows = await listWorkflows(orgId(c));
   return c.json(rows.map(redactWorkflow));
 });
 
 app.post("/", async (c) => {
-  requirePermission(c, "dashboards:write");
+  requirePermission(c, "workflows:write");
   const body = (await c.req.json()) as WorkflowBody;
   const userId = (c.get("session") as { userId?: string } | undefined)?.userId ?? null;
   try {
@@ -68,14 +72,14 @@ app.post("/", async (c) => {
 });
 
 app.get("/:id", async (c) => {
-  requirePermission(c, "dashboards:read");
+  requirePermission(c, "workflows:read");
   const wf = await load(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
   return c.json(redactWorkflow(wf));
 });
 
 app.put("/:id", async (c) => {
-  requirePermission(c, "dashboards:write");
+  requirePermission(c, "workflows:write");
   const body = (await c.req.json()) as WorkflowBody;
   try {
     return c.json(redactWorkflow(await updateWorkflow(orgId(c), c.req.param("id"), body)));
@@ -85,7 +89,7 @@ app.put("/:id", async (c) => {
 });
 
 app.delete("/:id", async (c) => {
-  requirePermission(c, "dashboards:write");
+  requirePermission(c, "workflows:write");
   try {
     await softDeleteWorkflow(orgId(c), c.req.param("id"));
     return c.json({ ok: true });
@@ -96,7 +100,7 @@ app.delete("/:id", async (c) => {
 
 // Generated TypeScript typings for the editor
 app.get("/:id/typings", async (c) => {
-  requirePermission(c, "dashboards:read");
+  requirePermission(c, "workflows:read");
   const wf = await load(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
   const dts = await generateWorkflowTypings(orgId(c), {
@@ -108,7 +112,7 @@ app.get("/:id/typings", async (c) => {
 
 // Headless type check of a candidate source (editorless clients).
 app.post("/:id/check", async (c) => {
-  requirePermission(c, "dashboards:read");
+  requirePermission(c, "workflows:read");
   const wf = await load(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
   const body = (await c.req.json().catch(() => ({}))) as { source?: string };
@@ -121,7 +125,7 @@ app.post("/:id/check", async (c) => {
 
 // Manual run
 app.post("/:id/run", async (c) => {
-  requirePermission(c, "dashboards:write");
+  requirePermission(c, "workflows:write");
   const wf = await load(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
   const { runId, result } = await runWorkflowById({
@@ -136,7 +140,7 @@ app.post("/:id/run", async (c) => {
 
 // Run history
 app.get("/:id/runs", async (c) => {
-  requirePermission(c, "dashboards:read");
+  requirePermission(c, "workflows:read");
   const wf = await load(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
   return c.json(await listWorkflowRuns(wf.id));
@@ -144,7 +148,7 @@ app.get("/:id/runs", async (c) => {
 
 // Current metric values
 app.get("/:id/metrics", async (c) => {
-  requirePermission(c, "dashboards:read");
+  requirePermission(c, "workflows:read");
   const wf = await load(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
   return c.json(await listWorkflowMetrics(wf.id));

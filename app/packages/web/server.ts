@@ -383,7 +383,7 @@ async function start() {
               break;
             case "workflow:run":
               if (msg.workflowId) {
-                handleWorkflowSession(ws, auth.organizationId, msg.workflowId);
+                handleWorkflowSession(ws, auth.organizationId, msg.workflowId, auth.userId);
               }
               break;
             // Subsequent debugger messages are handled by the session's own

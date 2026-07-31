@@ -40,6 +40,12 @@ vi.mock("@infrawrench/server-core/workflows/runner", () => ({
   runOrgWorkflow: (...a: unknown[]) => runOrgWorkflow(...a),
 }));
 
+const pruneResourceChanges = vi.fn();
+vi.mock("@infrawrench/server-core/resource-changes", () => ({
+  pruneResourceChanges: (...a: unknown[]) => pruneResourceChanges(...a),
+  CHANGE_RETENTION_INTERVAL_MS: 60 * 60 * 1000,
+}));
+
 import { PollerLoop } from "./loop";
 
 function row(id: string) {
@@ -64,6 +70,13 @@ beforeEach(() => {
   pollAccount.mockResolvedValue(undefined);
   runOrgWorkflow.mockResolvedValue(undefined);
   updateWhere.mockResolvedValue(undefined);
+  pruneResourceChanges.mockResolvedValue({
+    cutoff: new Date(0),
+    organizationsScanned: 0,
+    deleted: 0,
+    failed: 0,
+    truncated: false,
+  });
 });
 
 afterEach(() => {
@@ -220,6 +233,61 @@ describe("PollerLoop", () => {
     const stopPromise = loop.stop();
     await vi.advanceTimersByTimeAsync(200); // drain loop
     await stopPromise;
+  });
+});
+
+describe("PollerLoop change-timeline retention", () => {
+  it("prunes on the first tick", async () => {
+    const loop = new PollerLoop();
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pruneResourceChanges).toHaveBeenCalledTimes(1);
+    await loop.stop();
+  });
+
+  it("does not prune again on every tick", async () => {
+    const loop = new PollerLoop({ tickMs: 1_000 });
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(10_000); // ten more ticks
+    expect(pruneResourceChanges).toHaveBeenCalledTimes(1);
+    await loop.stop();
+  });
+
+  it("prunes again once the hourly interval has elapsed", async () => {
+    const loop = new PollerLoop({ tickMs: 60_000 });
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pruneResourceChanges).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+    expect(pruneResourceChanges).toHaveBeenCalledTimes(2);
+    await loop.stop();
+  });
+
+  it("swallows a failing prune so account polling still runs", async () => {
+    claimDueAccounts.mockResolvedValue([row("a")]);
+    pruneResourceChanges.mockRejectedValueOnce(new Error("db down"));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const loop = new PollerLoop();
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(pollAccount).toHaveBeenCalledTimes(1);
+    expect(errSpy).toHaveBeenCalledWith("[poller] retention tick failed:", expect.any(Error));
+    errSpy.mockRestore();
+    await loop.stop();
+  });
+
+  it("does not retry a failed prune before the next interval", async () => {
+    pruneResourceChanges.mockRejectedValueOnce(new Error("db down"));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const loop = new PollerLoop({ tickMs: 1_000 });
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(pruneResourceChanges).toHaveBeenCalledTimes(1);
+    errSpy.mockRestore();
+    await loop.stop();
   });
 });
 

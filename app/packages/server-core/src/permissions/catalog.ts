@@ -20,6 +20,15 @@ export const ALL_PERMISSIONS = [
   "storage:write",
   "dashboards:read",
   "dashboards:write",
+  // Workflows are sandboxed automations, not dashboard content — they get their
+  // own family. `approve` is separate from `write` on purpose: landing the
+  // decision on someone else's `infra.waitForApproval(...)` is a different
+  // trust level from editing the automation, and separating them is what makes
+  // "can edit but cannot self-approve" (and its inverse) expressible in a
+  // custom role at all.
+  "workflows:read",
+  "workflows:write",
+  "workflows:approve",
   "deployments:read",
   "deployments:plan",
   "deployments:write",

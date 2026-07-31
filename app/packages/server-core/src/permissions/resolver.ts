@@ -8,6 +8,24 @@ import {
   isSystemRoleKey,
   systemRolePermissions,
 } from "./system-roles";
+import { grandfatherWorkflowPermissionsIfLegacy } from "./legacy-workflows";
+
+/**
+ * Permissions for one role row. System rows resolve from code (the stored
+ * array is ignored); custom rows use their stored list, expanded for the
+ * `dashboards:*` → `workflows:*` split when it was last written before those
+ * permissions existed — see `legacy-workflows.ts`.
+ */
+function rolePermissions(row: {
+  isSystem: boolean;
+  systemKey: string | null;
+  permissions: string[] | null;
+  updatedAt: Date | null;
+}): readonly string[] {
+  const systemKey = isSystemRoleKey(row.systemKey) ? row.systemKey : null;
+  if (row.isSystem && systemKey) return systemRolePermissions(systemKey) ?? [];
+  return grandfatherWorkflowPermissionsIfLegacy(row.permissions ?? [], row.updatedAt);
+}
 
 export interface ResolvedRole {
   id: string;
@@ -116,8 +134,7 @@ export async function resolveEffectivePermissions(
     if (r) {
       const isSystem = r.isSystem;
       const systemKey = isSystemRoleKey(r.systemKey) ? r.systemKey : null;
-      const permissions =
-        isSystem && systemKey ? (systemRolePermissions(systemKey) ?? []) : (r.permissions ?? []);
+      const permissions = rolePermissions(r);
       return {
         permissions,
         role: {
@@ -170,8 +187,7 @@ export async function backfillMembershipRole(
     const r = existing[0];
     if (r) {
       const systemKey = isSystemRoleKey(r.systemKey) ? r.systemKey : null;
-      const permissions =
-        r.isSystem && systemKey ? (systemRolePermissions(systemKey) ?? []) : (r.permissions ?? []);
+      const permissions = rolePermissions(r);
       return {
         id: r.id,
         name: r.name,

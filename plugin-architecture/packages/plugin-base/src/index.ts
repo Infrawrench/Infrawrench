@@ -50,6 +50,23 @@ export type {
 } from "./instance.js";
 export { normalizeResourceCreateResult } from "./instance.js";
 export { evaluatePeerIntegrationUnreachable, evaluateOrphanRule } from "./resource.js";
+
+// Orphan aggregation — the host-side scan over already-stored resources, plus
+// the shape every surface renders. Shared so the web server, the desktop app
+// and the CLI classify a workspace identically.
+export { collectOrphanGroups, countOrphans } from "./orphans.js";
+export type {
+  OrphanCostAnnotation,
+  OrphanCostBasis,
+  OrphanedResource,
+  OrphanAccountGroup,
+  OrphanListResponse,
+  OrphanScanResourceType,
+  OrphanScanPlugin,
+  OrphanScanAccount,
+  OrphanScanResource,
+  OrphanScanInput,
+} from "./orphans.js";
 export { field, output, resourceType, f, o, rt } from "./resource-builders.js";
 export type { CompactField, CompactOutput, CompactResourceType } from "./resource-builders.js";
 

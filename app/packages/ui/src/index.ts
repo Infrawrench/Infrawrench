@@ -48,6 +48,9 @@ export type {
 } from "./agents/types.js";
 
 export {
+  ApprovalCard,
+  ApprovalsInbox,
+  formatExpiry,
   PromptHost,
   requestWorkflowPrompt,
   resolveWorkflowPrompt,
@@ -58,6 +61,10 @@ export {
   WorkflowsPanel,
 } from "./workflows/index.js";
 export type {
+  ApprovalCardProps,
+  ApprovalsClient,
+  ApprovalsInboxProps,
+  WorkflowApprovalStatus,
   MetricValue,
   PromptHostProps,
   PromptSpec,
@@ -505,6 +512,19 @@ export {
 
 export * from "./cost/index.js";
 export * from "./savings/index.js";
+
+// Named rather than `export *`: the change-timeline wire types are already
+// re-exported above straight from client-core, and a star would redeclare them.
+export {
+  ChangesPanel,
+  ChangeKindBadge,
+  ChangeDiffList,
+  type ChangesPanelProps,
+  type ChangesClient,
+  type ChangeFeedQuery,
+  type ChangeFeedPage,
+  type ChangeFeedAccount,
+} from "./changes/index.js";
 
 export * from "./custom-graphs/index.js";
 

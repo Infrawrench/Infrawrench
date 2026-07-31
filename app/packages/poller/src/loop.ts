@@ -5,6 +5,10 @@ import { workflows } from "@infrawrench/server-core/db/schema";
 import { runOrgWorkflow } from "@infrawrench/server-core/workflows/runner";
 import { loadPlugins } from "@infrawrench/server-core/plugin-loader";
 import { runWeeklyDigests } from "@infrawrench/server-core/digest/weekly";
+import {
+  pruneResourceChanges,
+  CHANGE_RETENTION_INTERVAL_MS,
+} from "@infrawrench/server-core/resource-changes";
 import { TickLoop } from "@infrawrench/server-core/tick-loop";
 import { pollAccount, type PollAccountRow } from "./poll-account";
 import { pollAccountCosts } from "./cost-poll";
@@ -62,6 +66,8 @@ export class PollerLoop extends TickLoop {
   private readonly concurrency: number;
   /** Plugin IDs whose manifest declares a `costs` capability; resolved lazily on first tick. */
   private costCapablePluginIds: string[] | null = null;
+  /** Epoch ms of the last retention pass; 0 means "run on the first tick". */
+  private lastRetentionAt = 0;
 
   constructor(options: LoopOptions = {}) {
     super("poller", options.tickMs ?? DEFAULT_TICK_MS);
@@ -86,6 +92,11 @@ export class PollerLoop extends TickLoop {
     // window; the conditional-UPDATE claim inside makes it replica- and
     // restart-safe. Defensive like the others.
     await this.tickDigests();
+
+    // Fifth pass: retention. Rate-limited to once an hour per process and
+    // idempotent, so replicas and restarts just repeat cheap no-ops. Defensive
+    // like the others.
+    await this.tickRetention();
   }
 
   private async runOne(row: PollAccountRow): Promise<void> {
@@ -133,6 +144,28 @@ export class PollerLoop extends TickLoop {
       await runWeeklyDigests();
     } catch (e) {
       console.error("[poller] digest tick failed:", e);
+    }
+  }
+
+  /**
+   * Trim the change timeline back to its retention window.
+   *
+   * Unlike the digest there is no claim: the prune is idempotent and uses
+   * `SKIP LOCKED`, so several replicas running it costs a little duplicated
+   * index probing and nothing else. The in-process clock is only there to keep
+   * the work off the 15s tick — a restarted poller pruning again immediately
+   * finds nothing to delete.
+   */
+  private async tickRetention(): Promise<void> {
+    const now = Date.now();
+    if (this.lastRetentionAt !== 0 && now - this.lastRetentionAt < CHANGE_RETENTION_INTERVAL_MS) {
+      return;
+    }
+    this.lastRetentionAt = now;
+    try {
+      await pruneResourceChanges();
+    } catch (e) {
+      console.error("[poller] retention tick failed:", e);
     }
   }
 

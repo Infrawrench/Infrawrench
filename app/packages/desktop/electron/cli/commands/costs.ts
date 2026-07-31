@@ -8,11 +8,14 @@
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
 import type {
   CostAccountStatus,
+  CostAnomaly,
   CostQueryRequest,
   CostQueryResponse,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
 import type { RangeFlags } from "../args";
-import { c, printJson, println, formatMoney, seriesColor } from "../output";
+import { parseLastDays, resolveDayWindow } from "../args";
+import { c, printJson, println, printTable, formatMoney, seriesColor } from "../output";
+import { anomalyDeltaPercent } from "../format";
 import { barChart, sparkline } from "../charts";
 
 const GROUP_DIMENSIONS = ["provider", "account", "service", "region", "resource"] as const;
@@ -147,12 +150,91 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
   for (const line of barChart(items, 32)) println(line);
 }
 
-/** `--last 30d|12w|3m` for costs — day-granularity spans. */
-function parseLastDays(text: string): number {
-  const match = /^(\d+)([dwm])$/.exec(text);
-  if (!match) {
-    throw new CliError(`Invalid --last "${text}" for costs — use forms like 7d, 30d, 12w, 3m`, 2);
+/* ------------------------------------------------------------------ *
+ * `infrawrench costs --anomalies`
+ * ------------------------------------------------------------------ */
+
+/** The endpoint's own bound (`days` must be 1–90); checked before the request. */
+const MAX_ANOMALY_DAYS = 90;
+const DEFAULT_ANOMALY_DAYS = 30;
+
+const DIMENSION_LABELS: Record<CostAnomaly["dimension"], string> = {
+  provider: "provider",
+  service: "service",
+};
+
+/**
+ * Recent spend anomalies — days where one provider's or service's spend cleared
+ * its own trailing baseline. Detection runs server-side after each cost
+ * collection, so this is a read: there is nothing to configure from here.
+ */
+export async function cmdCostAnomalies(ctx: CliContext, range: RangeFlags): Promise<void> {
+  if (ctx.flags.local) {
+    throw new CliError(
+      "Anomaly detection runs on Infrawrench Cloud over your org's collected spend — there is no local cost history.",
+    );
   }
-  const n = Number(match[1]);
-  return n * { d: 1, w: 7, m: 30 }[match[2] as "d" | "w" | "m"]!;
+  const org = await resolveOrg(ctx);
+  const days = resolveDayWindow(range, DEFAULT_ANOMALY_DAYS, MAX_ANOMALY_DAYS);
+
+  const { anomalies } = await orgFetch<{ anomalies: CostAnomaly[] }>(
+    org.id,
+    `/costs/anomalies?days=${days}`,
+  );
+
+  if (ctx.flags.output === "json") {
+    printJson({ org: org.id, days, anomalies });
+    return;
+  }
+
+  println(
+    `${c.bold(org.displayName)} ${c.dim(`· spend anomalies, last ${days} day${days === 1 ? "" : "s"}`)}`,
+  );
+  println();
+
+  if (anomalies.length === 0) {
+    println(
+      c.dim(
+        "No anomalies. Each day's spend per provider and per service is compared against its own trailing 28-day baseline — nothing cleared the bar.",
+      ),
+    );
+    return;
+  }
+
+  printTable(anomalies, [
+    { header: "day", value: (a) => a.day },
+    {
+      header: "what spiked",
+      value: (a) => `${c.bold(a.dimensionKey)} ${c.dim(DIMENSION_LABELS[a.dimension])}`,
+    },
+    {
+      header: "actual",
+      value: (a) => formatMoney(a.actualCents / 100, a.currency),
+      align: "right",
+    },
+    {
+      header: "baseline/day",
+      value: (a) => c.dim(formatMoney(a.baselineCents / 100, a.currency)),
+      align: "right",
+    },
+    {
+      header: "change",
+      value: (a) => {
+        const delta = anomalyDeltaPercent(a.actualCents, a.baselineCents);
+        return delta === null ? c.yellow("new") : c.red(delta);
+      },
+      align: "right",
+    },
+    {
+      header: "notified",
+      value: (a) => (a.notifiedAt ? c.dim(a.notifiedAt.slice(0, 10)) : c.dim("—")),
+    },
+  ]);
+
+  println();
+  println(
+    c.dim(
+      "Baseline is the trailing 28-day mean for that provider or service; a day clears the bar at mean + 3 standard deviations. Un-notified rows were detected while no alert channel was connected, or inside another anomaly's cooldown.",
+    ),
+  );
 }

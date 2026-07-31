@@ -35,6 +35,7 @@
     "./github/app": "./src/github/app.ts",
     "./permissions": "./src/permissions/index.ts",
     "./permissions/catalog": "./src/permissions/catalog.ts",
+    "./permissions/legacy-workflows": "./src/permissions/legacy-workflows.ts",
     "./clickhouse/client": "./src/clickhouse/client.ts",
     "./clickhouse/migrate": "./src/clickhouse/migrate.ts",
     "./clickhouse/readers": "./src/clickhouse/readers.ts",

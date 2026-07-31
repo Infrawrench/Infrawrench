@@ -14,6 +14,9 @@
 import type { WebSocket } from "ws";
 import type { MetricValue, PromptSpec } from "@infrawrench/workflow-runtime";
 
+import { hasPermission } from "@infrawrench/server-core/permissions";
+
+import { effectivePermissions } from "../auth/effective-permissions";
 import { runWorkflowById } from "./workflow-runner";
 
 interface WorkflowRunMessage {
@@ -26,10 +29,26 @@ function send(ws: WebSocket, msg: unknown): void {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
 }
 
+/**
+ * The socket upgrade only established `resources:execute`, which every channel
+ * on `/api/ws` shares. A debug run executes the workflow for real, so without a
+ * per-frame check the websocket would be a way around `POST /workflows/:id/run`
+ * — the same reasoning `deployment-ws.ts` spells out for `deploy:run`.
+ */
+async function requireRunPermission(organizationId: string, userId?: string): Promise<void> {
+  const denied = new Error("You do not have permission to run workflows in this organization.");
+  // No identified user means nothing to resolve a role against — deny rather
+  // than fall through to an unchecked run.
+  if (!userId) throw denied;
+  const granted = await effectivePermissions({ organizationId, userId });
+  if (!hasPermission(granted, "workflows:write")) throw denied;
+}
+
 export function handleWorkflowSession(
   ws: WebSocket,
   organizationId: string,
   workflowId: string,
+  userId?: string,
 ): void {
   const abort = new AbortController();
   let stopRequested = false;
@@ -70,31 +89,34 @@ export function handleWorkflowSession(
   };
   ws.on("message", onMessage);
 
-  void runWorkflowById({
-    organizationId,
-    workflowId,
-    triggerSource: "manual",
-    interactive: true,
-    debug: true,
-    signal: abort.signal,
-    onLog: (entry) => send(ws, { type: "workflow:log", entry }),
-    prompt: (spec: PromptSpec) =>
-      new Promise<MetricValue>((resolve) => {
-        resolvePrompt = resolve;
-        send(ws, { type: "workflow:prompt", spec });
+  void requireRunPermission(organizationId, userId)
+    .then(() =>
+      runWorkflowById({
+        organizationId,
+        workflowId,
+        triggerSource: "manual",
+        interactive: true,
+        debug: true,
+        signal: abort.signal,
+        onLog: (entry) => send(ws, { type: "workflow:log", entry }),
+        prompt: (spec: PromptSpec) =>
+          new Promise<MetricValue>((resolve) => {
+            resolvePrompt = resolve;
+            send(ws, { type: "workflow:prompt", spec });
+          }),
+        line: (line: number) =>
+          new Promise<void>((resolve, reject) => {
+            // Unwind at the next line after Stop.
+            if (stopRequested) {
+              reject(new Error("Workflow stopped"));
+              return;
+            }
+            resumeLine = resolve;
+            rejectLine = reject;
+            send(ws, { type: "workflow:line", line });
+          }),
       }),
-    line: (line: number) =>
-      new Promise<void>((resolve, reject) => {
-        // Unwind at the next line after Stop.
-        if (stopRequested) {
-          reject(new Error("Workflow stopped"));
-          return;
-        }
-        resumeLine = resolve;
-        rejectLine = reject;
-        send(ws, { type: "workflow:line", line });
-      }),
-  })
+    )
     .then(({ runId, result }) => send(ws, { type: "workflow:result", runId, result }))
     .catch((e: unknown) =>
       send(ws, { type: "workflow:error", message: e instanceof Error ? e.message : String(e) }),

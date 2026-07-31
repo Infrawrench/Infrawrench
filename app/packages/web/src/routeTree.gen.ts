@@ -157,6 +157,12 @@ const OrgOrgIdSettingsFreezesRoute = OrgOrgIdSettingsFreezesRouteImport.update({
   path: '/freezes',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsApprovalsRoute =
+  OrgOrgIdSettingsApprovalsRouteImport.update({
+    id: '/approvals',
+    path: '/approvals',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsBillingRoute = OrgOrgIdSettingsBillingRouteImport.update({
   id: '/billing',
   path: '/billing',
@@ -227,6 +233,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
+  '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
@@ -257,6 +264,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
+  '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
@@ -291,6 +299,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
+  '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
@@ -326,6 +335,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
+    | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
@@ -356,6 +366,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
+    | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
@@ -389,6 +400,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
+    | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
@@ -571,6 +583,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsFreezesRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/approvals': {
+      id: '/org/$orgId/settings/approvals'
+      path: '/approvals'
+      fullPath: '/org/$orgId/settings/approvals'
+      preLoaderRoute: typeof OrgOrgIdSettingsApprovalsRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/billing': {
       id: '/org/$orgId/settings/billing'
       path: '/billing'
@@ -646,6 +665,7 @@ const OrgOrgIdChatRouteWithChildren = OrgOrgIdChatRoute._addFileChildren(
 
 interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsApiKeysRoute: typeof OrgOrgIdSettingsApiKeysRoute
+  OrgOrgIdSettingsApprovalsRoute: typeof OrgOrgIdSettingsApprovalsRoute
   OrgOrgIdSettingsAuditLogRoute: typeof OrgOrgIdSettingsAuditLogRoute
   OrgOrgIdSettingsBastionsRoute: typeof OrgOrgIdSettingsBastionsRoute
   OrgOrgIdSettingsBillingRoute: typeof OrgOrgIdSettingsBillingRoute
@@ -660,6 +680,7 @@ interface OrgOrgIdSettingsRouteChildren {
 
 const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsApiKeysRoute: OrgOrgIdSettingsApiKeysRoute,
+  OrgOrgIdSettingsApprovalsRoute: OrgOrgIdSettingsApprovalsRoute,
   OrgOrgIdSettingsAuditLogRoute: OrgOrgIdSettingsAuditLogRoute,
   OrgOrgIdSettingsBastionsRoute: OrgOrgIdSettingsBastionsRoute,
   OrgOrgIdSettingsBillingRoute: OrgOrgIdSettingsBillingRoute,

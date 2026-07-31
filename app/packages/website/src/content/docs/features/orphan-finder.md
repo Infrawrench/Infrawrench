@@ -18,7 +18,20 @@ Flagged resources are grouped by account, each row showing the resource, its typ
 
 Click any row to jump to the resource's detail page, where you can confirm it really is unused and delete it in place.
 
-The section is available in the web app and in the desktop app when signed in to an organization — the heuristics run server-side over your organization's synced resources, so local-only desktop mode has nothing to scan.
+## Cloud mode and local mode
+
+The heuristics are declarative — they read fields the provider already reported — so the same scan runs wherever your resources are stored. What differs is the store and whether cost data exists to annotate with:
+
+| Where you are                                                  | What is scanned                                        | Cost column                                                        |
+| -------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------ |
+| Web app, or desktop signed in to an organization               | Your organization's synced resources                   | Trailing 30-day spend where the provider reports per-resource cost |
+| Desktop signed out (local mode), `infrawrench orphans --local` | The resources stored in this machine's local workspace | None — see below                                                   |
+
+Local mode needs no account credentials and makes no network calls at all: it reads the workspace database on disk and applies the same plugin rules. It works offline.
+
+Its coverage is narrower, though, and worth understanding: the local workspace stores the resources you created or pinned in the desktop app, not everything your providers hold — the sidebar lists those live from the provider each time. So a local scan classifies what is on disk. Signing in to an organization is what gives the finder a complete, continuously synced inventory to work over.
+
+<insert [Desktop app in local mode, Costs panel scrolled to Potential savings, showing flagged resources with reasons and no cost column] here>
 
 ## What gets flagged
 
@@ -26,7 +39,7 @@ A resource is flagged when the provider plugin's heuristic matches the resource'
 
 | Provider     | Flagged when                                                                                                       |
 | ------------ | ------------------------------------------------------------------------------------------------------------------ |
-| DigitalOcean | Volumes attached to no Droplet                                                                                     |
+| DigitalOcean | Volumes attached to no Droplet; Reserved IPs assigned to no Droplet (free while assigned, $5/month while idle)     |
 | Hetzner      | Volumes attached to no server; Floating IPs not assigned; Primary IPs unassigned that won't auto-delete            |
 | AWS          | EBS volumes in `available` state (detached but still billed); Elastic IPs with no association                      |
 | Google Cloud | Persistent disks attached to no instance; static external IPs in `RESERVED` (unused) state — internal IPs are free |
@@ -40,14 +53,19 @@ Heuristics are declared by each plugin, so coverage grows as plugins do — a pr
 
 When an account has [cost collection](./cloud-costs.md) enabled and the provider reports per-resource cost rows, each flagged resource shows its spend over the trailing 30 days — a concrete number for what deleting it saves. Resources without matching cost rows simply show no figure; the flag itself does not depend on billing data.
 
+**Local mode has no cost column at all.** Spend is collected and stored by Infrawrench Cloud, and a local workspace never talks to it, so there is nothing to match against. Rather than print a misleading `$0.00` next to every row, the desktop section and the CLI table drop the column and say so underneath. The flags themselves are unaffected — they never depended on billing data.
+
 ## From the CLI
 
-The [desktop CLI](./cli.md) exposes the same finder for your cloud organizations:
+The [desktop CLI](./cli.md) exposes the same finder:
 
 ```sh
-infrawrench orphans                 # text table, grouped by account
+infrawrench orphans                 # your cloud organization, with cost
+infrawrench orphans --local         # this machine's workspace, no cost column
 infrawrench orphans --json          # stable JSON for scripting
 infrawrench orphans --org <org-id>  # pick an organization explicitly
 ```
+
+`--json` reports which mode produced the output: local scans carry `"costBasis": "unavailable"` and `"costWindowDays": 0`, so a script can tell "nothing was spent on this" apart from "spend is unknown here".
 
 <insert [Terminal showing `infrawrench orphans` text output: account headings with flagged resource rows, reasons, and a cost column] here>

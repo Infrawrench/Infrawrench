@@ -93,6 +93,33 @@ infrawrench costs --group-by account --json
 
 Accounts whose daily cost collection is failing are called out above the chart, with the provider link that fixes the cause; `--json` carries them as `collectionFailures`. Accounts that collected without error but have no spend to show yet are listed the same way, as `awaitingData`. See [when collection fails](./cloud-costs.md#when-collection-fails) and [when there is nothing to collect yet](./cloud-costs.md#when-there-is-nothing-to-collect-yet).
 
+`--anomalies` turns the same command into the [spend-anomaly](./cost-anomaly-alerts.md) list — the days one provider or service cleared its own trailing baseline, with the actual spend, the baseline, and the percentage change:
+
+```
+infrawrench costs --anomalies
+infrawrench costs --anomalies --days 7      # 1-90; --last 2w says the same thing
+```
+
+## What changed, and what depends on what
+
+Two read commands over the organization's own history and topology:
+
+```
+infrawrench changes                        # the drift feed, newest first
+infrawrench changes --last 7d --kind deleted
+infrawrench changes -a "Production GCP"    # one account
+infrawrench changes --resource <id>        # one resource, with before → after diffs
+
+infrawrench graph                          # the dependency tree for the whole org
+infrawrench graph --resource <id>          # what it needs, and its blast radius
+```
+
+`changes` is the [change timeline](./change-timeline.md) in a table: when an event was seen, a `+`/`~`/`-` glyph for appeared / changed / disappeared, the resource, its type, its account, and which fields moved. `--limit` caps the rows (200 max); `--json` carries the full diffs and the `total` matching your filter.
+
+`graph` prints the [dependency graph](./dependency-graph.md) as an ASCII tree rather than a picture — roots are the resources nothing depends on, and each child is something its parent depends on. Focused on one resource it becomes the terminal's **Dependencies** tab: a **Depends on** tree, and a **Depended on by** tree headed with the blast-radius count. `--json` emits the node and edge lists.
+
+Both read data the cloud poller collects, so they need an organization; `--local` says so rather than printing an empty table.
+
 ## Pushing back up
 
 The CLI is often already installed on the machine that has the news, so it wraps both [push endpoints](./server-push.md) — an on-call page, and cost rows for spend Infrawrench has no plugin for:
@@ -174,6 +201,13 @@ infrawrench resources -a do-prod --type droplet --json | jq -r '.[].displayName'
 
 # Monthly cost total per currency
 infrawrench costs --org acme --json | jq '.totals'
+
+# Anything deleted in the last day, as "account: resource"
+infrawrench changes --last 1d --kind deleted --json \
+  | jq -r '.entries[] | "\(.accountName): \(.displayName)"'
+
+# What breaks if this database goes away
+infrawrench graph --resource "$DB_ID" --json | jq -r '.blastRadius[]'
 ```
 
 `--no-color` (or the `NO_COLOR` env var, or piping output) disables ANSI colors in text mode.

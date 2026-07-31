@@ -69,7 +69,7 @@ Create tools for VM types that install an SSH key at create time (DigitalOcean D
 
 Most resource tools take an optional `parentResourceId` to target a **sidecar** — the peer plugin a managed resource exposes through its outputs. "What's running in my DOKS cluster?" is `list_resource_sidecars` on the cluster, then `list_resources { pluginId: "kubernetes", resourceTypeId: "k8s-deployment", parentResourceId: <cluster id> }` — the kubeconfig is resolved server-side from the cluster's outputs, and the same pattern drives `describe_resource`, `invoke_action`, `apply_manifest`, and the per-plugin create tools inside the cluster or database.
 
-The cost, budget, workflow, deployment, and SSH-key tools enforce the same [role permissions](../team-and-billing/roles-and-permissions.md) as the web dashboard (`costs:read`, `budgets:read`, `budgets:write`, `dashboards:read`, `dashboards:write`, `deployments:read`, `deployments:plan`, `deployments:write`, `ssh-keys:read`, `ssh-keys:write`) — a member whose role can't see spend in the UI can't read it through MCP either. Deleting another member's SSH key additionally requires `team:role:write`, matching the HTTP API.
+The cost, budget, workflow, deployment, and SSH-key tools enforce the same [role permissions](../team-and-billing/roles-and-permissions.md) as the web dashboard (`costs:read`, `budgets:read`, `budgets:write`, `dashboards:read`, `dashboards:write`, `workflows:read`, `workflows:write`, `deployments:read`, `deployments:plan`, `deployments:write`, `ssh-keys:read`, `ssh-keys:write`) — a member whose role can't see spend in the UI can't read it through MCP either. Deleting another member's SSH key additionally requires `team:role:write`, matching the HTTP API.
 
 ## Audit and safety
 

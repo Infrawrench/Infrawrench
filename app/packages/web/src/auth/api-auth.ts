@@ -6,6 +6,7 @@ import { apiKeys, organizationMembers } from "@/db/schema";
 import { keyedHash, legacySha256Hex } from "@/services/encryption";
 import { workos, clientId } from "./workos";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
+import { grandfatherWorkflowPermissionsIfLegacy } from "@infrawrench/server-core/permissions/legacy-workflows";
 
 /** Domain label for HMAC sub-key derivation when hashing API keys. Must
  * match the value used in `api/routes/api-keys.ts`. */
@@ -19,8 +20,20 @@ interface ApiAuthResult {
   scopes?: string[];
 }
 
-/** Map deprecated scope strings onto their new equivalents. */
-function migrateScopes(scopes: string[] | null | undefined): string[] {
+/**
+ * Map deprecated scope strings onto their new equivalents.
+ *
+ * Two separate migrations run here. `sync:*` → `resources:*` is a rename: the
+ * old string disappears. The `dashboards:*` → `workflows:*` expansion is
+ * additive and only applies to keys minted before workflows had permissions of
+ * their own — pass the key's `createdAt` to enable it (see
+ * `permissions/legacy-workflows.ts`). Omitting the timestamp skips it, which is
+ * what a caller that only wants the rename should do.
+ */
+export function migrateScopes(
+  scopes: string[] | null | undefined,
+  createdAt?: Date | null,
+): string[] {
   if (!scopes) return [];
   let changed = false;
   const out: string[] = [];
@@ -38,7 +51,7 @@ function migrateScopes(scopes: string[] | null | undefined): string[] {
   // Deduplicate while preserving order.
   const seen = new Set<string>();
   const deduped = out.filter((s) => (seen.has(s) ? false : (seen.add(s), true)));
-  return changed ? deduped : out;
+  return grandfatherWorkflowPermissionsIfLegacy(changed ? deduped : out, createdAt);
 }
 
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
@@ -143,7 +156,7 @@ export async function authenticateApiRequest(request: Request): Promise<ApiAuthR
     if (!membership) return null;
 
     const storedScopes = (key.scopes as string[]) ?? [];
-    const migrated = migrateScopes(storedScopes);
+    const migrated = migrateScopes(storedScopes, key.createdAt);
     const scopesChanged =
       migrated.length !== storedScopes.length || migrated.some((s, i) => s !== storedScopes[i]);
 

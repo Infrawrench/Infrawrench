@@ -356,9 +356,19 @@ While the run is suspended, the request shows up as a **pending approval card on
 
 Time spent waiting for a decision doesn't count against the run's execution budget (like SSH waits and `infra.prompt`), so a run can wait out a long approval without hitting its timeout.
 
-Approvals can also be listed and decided over the HTTP API — `GET /api/org/{orgId}/workflow-approvals?status=pending` and `POST /api/org/{orgId}/workflow-approvals/{id}/approve` (or `/deny`) — so a chat-ops bot or an external tool can land the decision. Deciding needs the same write permission as running a workflow.
+Approvals can also be listed and decided over the HTTP API — `GET /api/org/{orgId}/workflow-approvals?status=pending` and `POST /api/org/{orgId}/workflow-approvals/{id}/approve` (or `/deny`) — so a chat-ops bot or an external tool can land the decision. Listing needs `workflows:read`; deciding needs `workflows:approve` (see [Roles and permissions](../team-and-billing/roles-and-permissions.md)).
 
 Approvals are org-level records with notifications, so they're **cloud-only**: `infra.waitForApproval` is unavailable in the desktop app's local workflows, and the generated types mark it as such so you catch it while editing.
+
+#### The approvals inbox
+
+The card on a workflow's run view answers "what is this workflow waiting for". The person doing the approving usually has the opposite question — "what is waiting on me" — so **Settings → Approvals** lists every pending request across the organization in one place: what is being approved, which workflow and run raised it, when it was requested, when it expires, and **Approve** / **Deny** inline.
+
+<insert [Settings → Approvals page listing two pending approval requests from different workflows, each showing the request title, message, workflow name, run id, countdown to expiry, and the Approve/Deny buttons] here>
+
+The page is visible to anyone with `workflows:read`; the Approve and Deny buttons appear only with `workflows:approve`. It refreshes itself every few seconds, and a request that someone else decides first reports the conflict rather than silently overwriting their decision.
+
+In the desktop app the same inbox appears as a banner above the Workflows tab whenever the selected organization has pending requests, and disappears when it doesn't.
 
 ### Reporting your own cost data
 
@@ -532,7 +542,7 @@ The typings are the whole truth about `infra`: what isn't declared there doesn't
 
 `write_workflow` then runs the same type check the editor runs and returns the diagnostics (`line:column`, TypeScript error code, message) instead of saving a broken workflow — so the model can fix its own mistakes before anything is persisted. Pass `skipTypecheck` to override that deliberately.
 
-Workflow tools need the same `dashboards:read` / `dashboards:write` [permissions](../team-and-billing/roles-and-permissions.md) as the Workflows tab, and `write_workflow`, `run_workflow`, and `delete_workflow` are all audit-logged. `run_workflow` and `delete_workflow` are **destructive tools** — in chat they wait for your approval before running. Running a workflow executes arbitrary code that can create or delete infrastructure, which is why it needs the same confirmation as deleting one.
+Workflow tools need the same `workflows:read` / `workflows:write` [permissions](../team-and-billing/roles-and-permissions.md) as the Workflows tab, and `write_workflow`, `run_workflow`, and `delete_workflow` are all audit-logged. `run_workflow` and `delete_workflow` are **destructive tools** — in chat they wait for your approval before running. Running a workflow executes arbitrary code that can create or delete infrastructure, which is why it needs the same confirmation as deleting one.
 
 A workflow's code runs with your account credentials. Read the source of anything you didn't write before you enable it or hand it to `run_workflow`.
 
