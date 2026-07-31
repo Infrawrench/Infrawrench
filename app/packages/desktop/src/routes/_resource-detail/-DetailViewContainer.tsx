@@ -1,4 +1,5 @@
 import type React from "react";
+import { useEffect, useState } from "react";
 import type {
   DetailViewSchema,
   ResourceInstance,
@@ -24,18 +25,25 @@ import {
   DetailView,
   DraggableChildPill,
   FirestoreDocumentBrowser,
+  RESOURCES_CHANGED_EVENT,
+  buildDependencyGraph,
+  directDependencies,
   type ChildResource,
   type ChildResourceGroup,
+  type DependencyGraphNode,
   type KvBrowserListParams,
   type PeerPaneData,
   type QueryResult,
   type RerollSelection,
+  type ResourceDependencies,
 } from "@infrawrench/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { PeerPaneView } from "../../components/PeerPaneView";
 import { FirestoreMongoPeerBrowser } from "../../components/FirestoreMongoPeerBrowser";
 import { getPlugin } from "../../plugins/loader";
 import { navigateToWorkspaceTarget, resourceTabTarget } from "../../lib/workspace-tabs";
+import { fetchCloudDependencyGraph } from "../../lib/cloud-resources";
+import { loadLocalDependencyGraph } from "../../lib/local-dependency-graph";
 
 interface DetailViewContainerProps {
   schema: DetailViewSchema;
@@ -138,6 +146,43 @@ export function DetailViewContainer({
 }: DetailViewContainerProps) {
   const navigate = useNavigate();
   const noSqlBrowser = schema?.noSqlBrowser;
+
+  // Direct neighbors in the output-reference dependency graph — drives the
+  // "Dependencies" tab. Best-effort: on failure the tab simply doesn't show.
+  const [dependencies, setDependencies] = useState<ResourceDependencies | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    function load() {
+      const promise = activeCloudOrgId
+        ? fetchCloudDependencyGraph(activeCloudOrgId, decodedResourceId)
+        : loadLocalDependencyGraph();
+      promise
+        .then((graph) => {
+          if (cancelled) return;
+          const model = buildDependencyGraph(graph.nodes, graph.edges);
+          setDependencies(directDependencies(model, decodedResourceId));
+        })
+        .catch(() => {
+          if (!cancelled) setDependencies(null);
+        });
+    }
+    load();
+    // Switching a field to (or off) an output reference happens on this very
+    // page, so without this the tab keeps showing the pre-change neighbours
+    // until the user navigates away and back.
+    window.addEventListener(RESOURCES_CHANGED_EVENT, load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(RESOURCES_CHANGED_EVENT, load);
+    };
+  }, [activeCloudOrgId, decodedResourceId]);
+  const handleOpenDependency = (node: DependencyGraphNode) => {
+    void navigateToWorkspaceTarget(
+      navigate,
+      resourceTabTarget(node.accountId, node.id, node.pluginId, node.resourceTypeId),
+      { label: node.displayName },
+    );
+  };
 
   return (
     <div className="flex-1 overflow-hidden min-h-0">
@@ -251,6 +296,7 @@ export function DetailViewContainer({
               },
             }
           : {})}
+        {...(dependencies ? { dependencies, onOpenDependency: handleOpenDependency } : {})}
         metricSeries={metricSeries}
       />
     </div>

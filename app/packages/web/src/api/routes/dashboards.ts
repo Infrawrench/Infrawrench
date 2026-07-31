@@ -677,6 +677,7 @@ app.post("/validate-tabs", async (c) => {
       // Retired in favour of a section on Costs, but still valid for older
       // clients that have the tab open and a panel to render it with.
       target.kind === "savings" ||
+      target.kind === "graph" ||
       target.kind === "workflows" ||
       target.kind === "deployments"
     ) {

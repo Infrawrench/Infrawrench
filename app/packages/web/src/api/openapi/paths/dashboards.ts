@@ -184,6 +184,7 @@ const TabTarget = strict({
     // accepted here: an older client still sends it, and a strict enum would
     // reject that client's whole tab list rather than the one dead tab.
     "savings",
+    "graph",
     "workflows",
     "deployments",
     "chat",

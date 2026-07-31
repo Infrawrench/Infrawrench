@@ -6,6 +6,7 @@ import {
   CHAT_CONVERSATIONS_CHANGED_EVENT,
   DEFAULT_CHAT_MODEL,
   DeployIcon,
+  GraphIcon,
   DroppableDashboardItem,
   emitChatConversationsChanged,
   SidebarNavGrid,
@@ -18,6 +19,7 @@ import { CostsIcon } from "@infrawrench/ui/cost";
 import {
   agentsTabTarget,
   costsTabTarget,
+  graphTabTarget,
   chatTabTarget,
   dashboardTabTarget,
   deploymentsTabTarget,
@@ -167,7 +169,8 @@ export function SidebarDashboards() {
   // Deploy is here in both modes: with an org it is the full deploy screen,
   // and without one it is the history of what `infrawrench deploy` did on this
   // machine. Costs has no local half — spend is collected server-side — so the
-  // grid drops to three tiles, and SidebarNavGrid squares that off itself.
+  // grid is four tiles locally and five with an org; SidebarNavGrid squares
+  // off the odd count itself.
   const navTiles: SidebarNavTileDef[] = [
     {
       key: "agents",
@@ -201,6 +204,14 @@ export function SidebarDashboards() {
           },
         ]
       : []),
+    // Graph has a local half — output references live in the local SQLite —
+    // so unlike Costs the tile shows in both modes.
+    {
+      key: "graph",
+      label: "Graph",
+      icon: <GraphIcon />,
+      onClick: () => void navigateToWorkspaceTarget(navigate, graphTabTarget(), { label: "Graph" }),
+    },
   ];
 
   return (

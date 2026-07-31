@@ -113,6 +113,7 @@ const INVOKE_CHANNELS = [
   "cloud_update_account_credentials",
   "cloud_sync_account_type",
   "cloud_list_account_resources",
+  "cloud_dependency_graph",
   "cloud_get_resource_detail",
   "cloud_describe_resource",
   "cloud_create_resource",

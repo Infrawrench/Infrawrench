@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.24.0",
+    "version": "0.25.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -1934,6 +1934,7 @@
               "agents",
               "costs",
               "savings",
+              "graph",
               "workflows",
               "deployments",
               "chat"
@@ -5733,6 +5734,114 @@
           }
         },
         "required": ["resourceId", "fieldKey", "plaintextValue"],
+        "additionalProperties": false
+      },
+      "DependencyGraphNode": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "pluginDisplayName": {
+            "type": "string"
+          },
+          "pluginLogoSvg": {
+            "type": "string",
+            "description": "Inline SVG markup; may be empty."
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeLabel": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "displayName",
+          "pluginId",
+          "pluginDisplayName",
+          "pluginLogoSvg",
+          "resourceTypeId",
+          "resourceTypeLabel",
+          "accountId",
+          "accountName"
+        ],
+        "additionalProperties": false
+      },
+      "DependencyGraphEdge": {
+        "type": "object",
+        "properties": {
+          "consumerResourceId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ResourceId"
+              },
+              {
+                "description": "The resource holding the output reference — it depends on the provider."
+              }
+            ]
+          },
+          "consumerFieldKey": {
+            "type": "string",
+            "description": "The consumer field the reference fills."
+          },
+          "providerResourceId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ResourceId"
+              },
+              {
+                "description": "The resource being depended on."
+              }
+            ]
+          },
+          "providerOutputKey": {
+            "type": "string",
+            "description": "The provider output the reference reads."
+          }
+        },
+        "required": [
+          "consumerResourceId",
+          "consumerFieldKey",
+          "providerResourceId",
+          "providerOutputKey"
+        ],
+        "additionalProperties": false
+      },
+      "DependencyGraphResponse": {
+        "type": "object",
+        "properties": {
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DependencyGraphNode"
+            },
+            "description": "Org resources that participate in at least one output reference."
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DependencyGraphEdge"
+            },
+            "description": "Directed depends-on edges (consumer → provider), deduped per consumer field."
+          }
+        },
+        "required": ["nodes", "edges"],
         "additionalProperties": false
       },
       "SearchHit": {
@@ -16209,6 +16318,55 @@
         "operationId": "postOrgOrgIdAssociationsLiteral",
         "x-required-permission": "secrets:write",
         "description": "_Requires permission: `secrets:write`._"
+      }
+    },
+    "/api/org/{orgId}/dependency-graph": {
+      "get": {
+        "tags": ["Associations"],
+        "summary": "The org's resource dependency graph, built from output references",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/ResourceId"
+                },
+                {
+                  "description": "Narrow the graph to this resource's direct neighbourhood — only edges with it at one end, and only the nodes those edges touch. Omit for the whole org."
+                }
+              ]
+            },
+            "required": false,
+            "name": "resourceId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Nodes and depends-on edges",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DependencyGraphResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdDependencyGraph",
+        "x-required-permission": "resources:read",
+        "description": "_Requires permission: `resources:read`._"
       }
     },
     "/api/org/{orgId}/search": {

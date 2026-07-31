@@ -262,6 +262,7 @@ export {
   accountTabTarget,
   agentsTabTarget,
   costsTabTarget,
+  graphTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -271,6 +272,29 @@ export {
   navigateToWorkspaceTarget,
 } from "./workspace-tabs.js";
 export type { RouteNavigator } from "./workspace-tabs.js";
+
+// Dependency graph — pure model/layout in client-core (shared contract home);
+// re-exported here because web and desktop import it from `ui`.
+export {
+  buildDependencyGraph,
+  directDependencies,
+  collectDependents,
+  collectDependencies,
+  layoutDependencyGraph,
+} from "@infrawrench/client-core";
+export type {
+  DependencyGraphNode,
+  DependencyGraphEdge,
+  DependencyGraphData,
+  DependencyGraphModel,
+  DependencyNeighbor,
+  ResourceDependencies,
+  DependencyGraphLayout,
+  DependencyGraphLayoutOptions,
+} from "@infrawrench/client-core";
+export { DependencyGraphView } from "./components/graph/DependencyGraphView.js";
+export { ResourceDependenciesPanel } from "./components/graph/ResourceDependenciesPanel.js";
+export { GraphIcon } from "./components/graph/GraphIcon.js";
 
 export { CreateResourceModal } from "./components/CreateResourceModal.js";
 export type { CreateResourceModalProps } from "./components/CreateResourceModal.js";

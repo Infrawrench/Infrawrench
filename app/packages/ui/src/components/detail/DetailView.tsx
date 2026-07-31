@@ -39,6 +39,7 @@ import {
   type ArtifactListResult,
 } from "./ArtifactRegistryView.js";
 import { KvBrowserView, type KvBrowserListParams } from "./KvBrowserView.js";
+import { ResourceDependenciesPanel } from "../graph/ResourceDependenciesPanel.js";
 import { statusDotClass } from "../schema-tokens.js";
 import { useUIStore } from "../../store/ui.store.js";
 import {
@@ -48,6 +49,7 @@ import {
   dispatchRefreshResource,
 } from "../../utils.js";
 import type { HostAction } from "@infrawrench/plugin-base";
+import type { DependencyGraphNode, ResourceDependencies } from "@infrawrench/client-core";
 import type {
   ChildResource,
   ChildResourceGroup,
@@ -174,6 +176,15 @@ interface DetailViewProps {
    * plugin's `transcribeAudio`.
    */
   onTranscribeAudio?: (payload: TranscribeAudioPayload) => Promise<TranscribeAudioResult>;
+  /**
+   * Direct neighbors in the org's output-reference dependency graph. When
+   * provided (and non-empty) alongside `onOpenDependency`, a "Dependencies"
+   * tab renders the "Depends on / depended on by" panel. Hosts assemble this
+   * from the shared graph model (`directDependencies` in client-core).
+   */
+  dependencies?: ResourceDependencies;
+  /** Open a dependency neighbor's resource page. */
+  onOpenDependency?: (node: DependencyGraphNode) => void;
 }
 
 type Tab =
@@ -194,6 +205,7 @@ type Tab =
   | "chat"
   | "publish"
   | "speech"
+  | "dependencies"
   | `peer:${number}`
   | `custom:${string}`;
 
@@ -241,6 +253,8 @@ export function DetailView({
   onPublishMessage,
   onSynthesizeSpeech,
   onTranscribeAudio,
+  dependencies,
+  onOpenDependency,
 }: DetailViewProps) {
   const { rerollingField, closeReroll } = useUIStore();
   const hasSqlEditor = !!schema.sqlEditor && !!onRunQuery;
@@ -277,6 +291,12 @@ export function DetailView({
     !!schema.speechPanel &&
     ((speechModes.includes("tts") && !!onSynthesizeSpeech) ||
       (speechModes.includes("stt") && !!onTranscribeAudio));
+  // Only claim a tab when the resource participates in the graph at all — an
+  // always-empty Dependencies tab would just be tab-strip noise.
+  const hasDependencies =
+    !!dependencies &&
+    !!onOpenDependency &&
+    dependencies.dependsOn.length + dependencies.dependedOnBy.length > 0;
   const customTabs = schema.customTabs ?? [];
   const hasTabs =
     hasStorageBrowser ||
@@ -295,6 +315,7 @@ export function DetailView({
     hasChatPanel ||
     hasPublishPanel ||
     hasSpeechPanel ||
+    hasDependencies ||
     customTabs.length > 0 ||
     peerPanes.length > 0;
   const [activeTabState, setActiveTab] = useState<Tab>("overview");
@@ -321,6 +342,7 @@ export function DetailView({
   if (hasChatPanel) tabKeys.push("chat");
   if (hasPublishPanel) tabKeys.push("publish");
   if (hasSpeechPanel) tabKeys.push("speech");
+  if (hasDependencies) tabKeys.push("dependencies");
   for (const tab of customTabs) tabKeys.push(`custom:${tab.id}` as Tab);
   for (let i = 0; i < peerPanes.length; i++) tabKeys.push(`peer:${i}` as Tab);
 
@@ -575,6 +597,13 @@ export function DetailView({
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("speech")}>
                     {schema.speechPanel?.tabLabel ?? "Speech"}
+                  </TabButton>
+                );
+              }
+              if (key === "dependencies") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("dependencies")}>
+                    Dependencies
                   </TabButton>
                 );
               }
@@ -884,6 +913,21 @@ export function DetailView({
             capability={schema.speechPanel!}
             {...(onSynthesizeSpeech ? { onSynthesize: onSynthesizeSpeech } : {})}
             {...(onTranscribeAudio ? { onTranscribe: onTranscribeAudio } : {})}
+          />
+        </div>
+      )}
+
+      {hasDependencies && activeTab === "dependencies" && (
+        <div
+          role="tabpanel"
+          id={panelIdFor("dependencies")}
+          aria-labelledby={tabIdFor("dependencies")}
+          tabIndex={0}
+          className="flex-1 overflow-auto"
+        >
+          <ResourceDependenciesPanel
+            dependencies={dependencies!}
+            onOpenResource={onOpenDependency!}
           />
         </div>
       )}

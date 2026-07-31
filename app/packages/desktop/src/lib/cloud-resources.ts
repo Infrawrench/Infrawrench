@@ -1,6 +1,18 @@
 import type { AssociationSource } from "@infrawrench/plugin-base";
-import type { ResourcePickerOption } from "@infrawrench/ui";
+import type { DependencyGraphData, ResourcePickerOption } from "@infrawrench/ui";
 import { invoke } from "./invoke";
+
+/**
+ * The org dependency graph. Pass `resourceId` to get only that resource's
+ * direct neighbourhood — the Dependencies tab wants nothing else, and the
+ * whole-org answer is expensive to build and to ship.
+ */
+export async function fetchCloudDependencyGraph(
+  orgId: string,
+  resourceId?: string,
+): Promise<DependencyGraphData> {
+  return invoke("cloud_dependency_graph", resourceId ? { orgId, resourceId } : { orgId });
+}
 
 export async function getCloudResourceDetail(
   orgId: string,

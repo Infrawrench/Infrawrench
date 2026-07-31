@@ -5,6 +5,7 @@ import {
   accountTabTarget,
   agentsTabTarget,
   costsTabTarget,
+  graphTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -77,6 +78,12 @@ export function getWorkspaceNavigateArgs(
     case "costs":
       return {
         to: "/org/$orgId/costs",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "graph":
+      return {
+        to: "/org/$orgId/graph",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -183,6 +190,9 @@ export function syncWorkspaceRouteFromPath(
   // carries the content.
   if (s[0] === "costs" || s[0] === "savings") {
     return costsTabTarget();
+  }
+  if (s[0] === "graph") {
+    return graphTabTarget();
   }
   if (s[0] === "chat") {
     // /chat is the conversation list; /chat/{id} is one conversation. Each

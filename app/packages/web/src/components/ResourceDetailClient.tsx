@@ -14,6 +14,12 @@ import {
   NAVIGATE_TO_RESOURCE_EVENT,
   formatErrorMessage,
   toast,
+  RESOURCES_CHANGED_EVENT,
+  buildDependencyGraph,
+  directDependencies,
+  type DependencyGraphData,
+  type DependencyGraphNode,
+  type ResourceDependencies,
   type QueryResult,
   type KvBrowserListParams,
   type ChildResource,
@@ -229,6 +235,51 @@ export function ResourceDetailClient({
       cancelled = true;
     };
   }, [supportsMetrics, orgId, pluginId, resourceTypeId, accountId, resourceId, parentResourceId]);
+
+  // Direct neighbors in the org's output-reference graph — drives the
+  // "Dependencies" tab. Best-effort: on failure the tab simply doesn't show.
+  const [dependencies, setDependencies] = useState<ResourceDependencies | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    function load() {
+      apiGet<DependencyGraphData>(
+        `/api/org/${orgId}/dependency-graph?resourceId=${encodeURIComponent(resourceId)}`,
+      )
+        .then((graph) => {
+          if (cancelled) return;
+          const model = buildDependencyGraph(graph.nodes, graph.edges);
+          setDependencies(directDependencies(model, resourceId));
+        })
+        .catch(() => {
+          if (!cancelled) setDependencies(null);
+        });
+    }
+    load();
+    // Switching a field to (or off) an output reference happens on this very
+    // page, so without this the tab keeps showing the pre-change neighbours
+    // until the user navigates away and back.
+    window.addEventListener(RESOURCES_CHANGED_EVENT, load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(RESOURCES_CHANGED_EVENT, load);
+    };
+  }, [orgId, resourceId]);
+  const handleOpenDependency = useCallback(
+    (node: DependencyGraphNode) => {
+      void navigate({
+        to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+        params: {
+          orgId,
+          pluginId: node.pluginId,
+          resourceTypeId: node.resourceTypeId,
+          resourceId: node.id,
+        },
+        search: { accountId: node.accountId },
+      });
+    },
+    [navigate, orgId],
+  );
+
   const [wsToken, setWsToken] = useState<string | null>(null);
   const [createTarget, setCreateTarget] = useState<ChildResourceGroup | null>(null);
   const [peerCreateTarget, setPeerCreateTarget] = useState<PeerPaneResourceGroup | null>(null);
@@ -1200,6 +1251,7 @@ export function ResourceDetailClient({
                   />
                 );
               }}
+              {...(dependencies ? { dependencies, onOpenDependency: handleOpenDependency } : {})}
               childResourceGroups={childResourceGroups}
               onChildClick={handleChildClick}
               onChildCreate={handleChildCreate}

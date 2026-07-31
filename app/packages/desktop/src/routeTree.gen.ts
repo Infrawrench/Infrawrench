@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkflowsRouteImport } from './routes/workflows'
 import { Route as SavingsRouteImport } from './routes/savings'
+import { Route as GraphRouteImport } from './routes/graph'
 import { Route as DeploymentsRouteImport } from './routes/deployments'
 import { Route as CostsRouteImport } from './routes/costs'
 import { Route as ChatRouteImport } from './routes/chat'
@@ -28,6 +29,11 @@ const WorkflowsRoute = WorkflowsRouteImport.update({
 const SavingsRoute = SavingsRouteImport.update({
   id: '/savings',
   path: '/savings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GraphRoute = GraphRouteImport.update({
+  id: '/graph',
+  path: '/graph',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DeploymentsRoute = DeploymentsRouteImport.update({
@@ -78,6 +84,7 @@ export interface FileRoutesByFullPath {
   '/chat': typeof ChatRoute
   '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
+  '/graph': typeof GraphRoute
   '/savings': typeof SavingsRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
@@ -90,6 +97,7 @@ export interface FileRoutesByTo {
   '/chat': typeof ChatRoute
   '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
+  '/graph': typeof GraphRoute
   '/savings': typeof SavingsRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
@@ -103,6 +111,7 @@ export interface FileRoutesById {
   '/chat': typeof ChatRoute
   '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
+  '/graph': typeof GraphRoute
   '/savings': typeof SavingsRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
@@ -117,6 +126,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/costs'
     | '/deployments'
+    | '/graph'
     | '/savings'
     | '/workflows'
     | '/accounts/$accountId'
@@ -129,6 +139,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/costs'
     | '/deployments'
+    | '/graph'
     | '/savings'
     | '/workflows'
     | '/accounts/$accountId'
@@ -141,6 +152,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/costs'
     | '/deployments'
+    | '/graph'
     | '/savings'
     | '/workflows'
     | '/accounts/$accountId'
@@ -154,6 +166,7 @@ export interface RootRouteChildren {
   ChatRoute: typeof ChatRoute
   CostsRoute: typeof CostsRoute
   DeploymentsRoute: typeof DeploymentsRoute
+  GraphRoute: typeof GraphRoute
   SavingsRoute: typeof SavingsRoute
   WorkflowsRoute: typeof WorkflowsRoute
   AccountsAccountIdRoute: typeof AccountsAccountIdRoute
@@ -175,6 +188,13 @@ declare module '@tanstack/react-router' {
       path: '/savings'
       fullPath: '/savings'
       preLoaderRoute: typeof SavingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/graph': {
+      id: '/graph'
+      path: '/graph'
+      fullPath: '/graph'
+      preLoaderRoute: typeof GraphRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/deployments': {
@@ -242,6 +262,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRoute,
   CostsRoute: CostsRoute,
   DeploymentsRoute: DeploymentsRoute,
+  GraphRoute: GraphRoute,
   SavingsRoute: SavingsRoute,
   WorkflowsRoute: WorkflowsRoute,
   AccountsAccountIdRoute: AccountsAccountIdRoute,

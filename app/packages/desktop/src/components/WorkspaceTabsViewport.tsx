@@ -4,6 +4,7 @@ import { useRouterState } from "@tanstack/react-router";
 import {
   WorkspaceTabsViewport as BaseViewport,
   dashboardTabTarget,
+  resourceTabTarget,
   DeploymentsPanel,
   useUIStore,
   workspaceTabTargetsEqual,
@@ -16,13 +17,14 @@ import { ResourcePanel } from "@/routes/resource.$accountId.$resourceId";
 import { getWorkspaceNavigateArgs, syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
 import { AgentsPanel, type AgentClient } from "@infrawrench/ui/agents";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
-import { resourceTabTarget, type OrphansClient } from "@infrawrench/ui";
+import { type OrphansClient } from "@infrawrench/ui";
 import { createDesktopCostsClient } from "@/lib/costs-client";
 import { createDesktopOrphansClient } from "@/lib/orphans-client";
 import { createDesktopAgentClient } from "@/lib/agent-client";
 import { createDesktopDeploymentClient } from "@/lib/cloud-deployments";
 import { CloudChatPanel } from "@/components/CloudChatPanel";
 import { DesktopWorkflowsPanel } from "@/components/DesktopWorkflowsPanel";
+import { DesktopGraphPanel } from "@/components/DesktopGraphPanel";
 import { LocalDeploymentsPanel } from "@/components/LocalDeploymentsPanel";
 
 let agentClient: AgentClient | null = null;
@@ -148,6 +150,18 @@ function renderPanel(
                 },
               }
             : {})}
+        />
+      );
+    case "graph":
+      return (
+        <DesktopGraphPanel
+          openResource={(node) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(node.accountId, node.id, node.pluginId, node.resourceTypeId),
+              ),
+            )
+          }
         />
       );
     case "chat":
