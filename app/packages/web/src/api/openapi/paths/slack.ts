@@ -16,6 +16,9 @@ const SlackChannel = strict({
   isPrivate: z.boolean(),
   syncIncidents: z.boolean(),
   budgetAlerts: z.boolean(),
+  anomalyAlerts: z
+    .boolean()
+    .openapi({ description: "Statistical spend-spike (cost anomaly) alerts" }),
   workflowPages: z
     .boolean()
     .openapi({ description: "Alerts raised by a workflow calling infra.page(...)" }),
@@ -46,6 +49,7 @@ const SlackChannelCreate = strict({
   isPrivate: z.boolean().optional(),
   syncIncidents: z.boolean().optional(),
   budgetAlerts: z.boolean().optional(),
+  anomalyAlerts: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
   weeklyDigest: z.boolean().optional(),
 }).openapi("SlackChannelCreate");
@@ -55,6 +59,7 @@ const SlackChannelCreate = strict({
 const SlackChannelUpdate = strict({
   syncIncidents: z.boolean().optional(),
   budgetAlerts: z.boolean().optional(),
+  anomalyAlerts: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
   weeklyDigest: z.boolean().optional(),
 }).openapi("SlackChannelUpdate");

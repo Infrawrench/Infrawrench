@@ -7,6 +7,7 @@ import {
   listCostTagKeys,
   runCostQuery,
 } from "../../services/cost-query";
+import { listRecentCostAnomalies } from "../../services/cost-anomalies";
 import type { AuthSession } from "../auth-middleware";
 import { requirePermission } from "../../auth/permissions";
 
@@ -56,6 +57,23 @@ app.get("/dimensions", async (c) => {
     if (e instanceof CostQueryError) return c.json({ error: e.message }, 400);
     throw e;
   }
+});
+
+/**
+ * GET /api/org/:orgId/costs/anomalies?days=30 — spend anomalies detected by
+ * the poller's daily pass, newest day first.
+ */
+app.get("/anomalies", async (c) => {
+  requirePermission(c, "costs:read");
+  const organizationId = c.get("organizationId");
+
+  const raw = c.req.query("days");
+  const days = raw === undefined ? 30 : Number(raw);
+  if (!Number.isInteger(days) || days < 1 || days > 90) {
+    return c.json({ error: "days must be an integer between 1 and 90" }, 400);
+  }
+
+  return c.json({ anomalies: await listRecentCostAnomalies(organizationId, days) });
 });
 
 /**

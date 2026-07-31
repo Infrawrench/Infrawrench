@@ -11,6 +11,9 @@ const MsTeamsWebhook = strict({
   }),
   syncIncidents: z.boolean(),
   budgetAlerts: z.boolean(),
+  anomalyAlerts: z
+    .boolean()
+    .openapi({ description: "Statistical spend-spike (cost anomaly) alerts" }),
   workflowPages: z
     .boolean()
     .openapi({ description: "Alerts raised by a workflow calling infra.page(...)" }),
@@ -32,6 +35,7 @@ const MsTeamsWebhookCreate = strict({
   }),
   syncIncidents: z.boolean().optional(),
   budgetAlerts: z.boolean().optional(),
+  anomalyAlerts: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
   weeklyDigest: z.boolean().optional(),
 }).openapi("MsTeamsWebhookCreate");
@@ -42,6 +46,7 @@ const MsTeamsWebhookUpdate = strict({
   label: z.string().optional(),
   syncIncidents: z.boolean().optional(),
   budgetAlerts: z.boolean().optional(),
+  anomalyAlerts: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
   weeklyDigest: z.boolean().optional(),
 }).openapi("MsTeamsWebhookUpdate");

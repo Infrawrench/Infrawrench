@@ -113,10 +113,16 @@ const pushOrgRoutes = new Hono();
 interface PreferencesPayload {
   syncIncidents: boolean;
   budgetAlerts: boolean;
+  anomalyAlerts: boolean;
   workflowPages: boolean;
 }
 
-const PREFERENCE_KEYS = ["syncIncidents", "budgetAlerts", "workflowPages"] as const;
+const PREFERENCE_KEYS = [
+  "syncIncidents",
+  "budgetAlerts",
+  "anomalyAlerts",
+  "workflowPages",
+] as const;
 
 pushOrgRoutes.get("/preferences", async (c) => {
   const session = c.get("session");
@@ -133,6 +139,7 @@ pushOrgRoutes.get("/preferences", async (c) => {
   const payload: PreferencesPayload = {
     syncIncidents: row?.syncIncidents ?? true,
     budgetAlerts: row?.budgetAlerts ?? true,
+    anomalyAlerts: row?.anomalyAlerts ?? true,
     workflowPages: row?.workflowPages ?? true,
   };
   return c.json(payload);
@@ -158,6 +165,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
       organizationId,
       syncIncidents: body.syncIncidents ?? true,
       budgetAlerts: body.budgetAlerts ?? true,
+      anomalyAlerts: body.anomalyAlerts ?? true,
       workflowPages: body.workflowPages ?? true,
     })
     .onConflictDoUpdate({
@@ -165,6 +173,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
       set: {
         ...(body.syncIncidents != null ? { syncIncidents: body.syncIncidents } : {}),
         ...(body.budgetAlerts != null ? { budgetAlerts: body.budgetAlerts } : {}),
+        ...(body.anomalyAlerts != null ? { anomalyAlerts: body.anomalyAlerts } : {}),
         ...(body.workflowPages != null ? { workflowPages: body.workflowPages } : {}),
         updatedAt: now,
       },
@@ -179,6 +188,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
     metadata: {
       syncIncidents: body.syncIncidents,
       budgetAlerts: body.budgetAlerts,
+      anomalyAlerts: body.anomalyAlerts,
       workflowPages: body.workflowPages,
     },
   });
@@ -203,6 +213,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
       disabledAt: pushDevices.disabledAt,
       syncIncidents: pushPreferences.syncIncidents,
       budgetAlerts: pushPreferences.budgetAlerts,
+      anomalyAlerts: pushPreferences.anomalyAlerts,
       workflowPages: pushPreferences.workflowPages,
     })
     .from(organizationMembers)
@@ -228,6 +239,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
       displayName: string | null;
       syncIncidents: boolean;
       budgetAlerts: boolean;
+      anomalyAlerts: boolean;
       workflowPages: boolean;
       devices: Array<{ id: string; platform: string; deviceName: string | null }>;
     }
@@ -241,6 +253,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
         displayName: r.displayName,
         syncIncidents: r.syncIncidents ?? true,
         budgetAlerts: r.budgetAlerts ?? true,
+        anomalyAlerts: r.anomalyAlerts ?? true,
         workflowPages: r.workflowPages ?? true,
         devices: [],
       };
