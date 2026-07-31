@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 
 import { WorkflowEditorView } from "./WorkflowEditorView.js";
@@ -83,6 +83,104 @@ interface WorkflowsPanelProps {
 
 type TriggerKind = WorkflowTrigger["kind"];
 
+/**
+ * What the server knows about the selected workflow. These four values are
+ * always replaced as a set — cleared on selection, reloaded after a save or a
+ * run — so one action keeps them consistent instead of four setState calls.
+ */
+interface WorkflowDetail {
+  dts: string;
+  runs: WorkflowRunRow[];
+  metrics: WorkflowMetricRow[];
+  approvals: WorkflowApprovalRow[];
+}
+
+type WorkflowDetailAction =
+  | { kind: "cleared" }
+  | { kind: "loaded"; dts: string; runs: WorkflowRunRow[]; metrics: WorkflowMetricRow[] }
+  | { kind: "typings"; dts: string }
+  | { kind: "runsRefreshed"; runs: WorkflowRunRow[]; metrics: WorkflowMetricRow[] }
+  | { kind: "approvals"; approvals: WorkflowApprovalRow[] };
+
+const EMPTY_DETAIL: WorkflowDetail = {
+  dts: "declare const infra: any;",
+  runs: [],
+  metrics: [],
+  approvals: [],
+};
+
+function detailReducer(state: WorkflowDetail, action: WorkflowDetailAction): WorkflowDetail {
+  switch (action.kind) {
+    // A newly picked workflow keeps the old typings until the fresh ones land
+    // (the editor would flash an untyped `infra` otherwise), but its approvals
+    // belong to the previous workflow and must go immediately.
+    case "cleared":
+      return { ...state, approvals: [] };
+    case "loaded":
+      return { ...state, dts: action.dts, runs: action.runs, metrics: action.metrics };
+    case "typings":
+      return { ...state, dts: action.dts };
+    case "runsRefreshed":
+      return { ...state, runs: action.runs, metrics: action.metrics };
+    case "approvals":
+      return { ...state, approvals: action.approvals };
+  }
+}
+
+/**
+ * One in-flight run: whether it is going, what it has logged, where the
+ * debugger sits, and the result once it lands. Starting, pausing and settling
+ * each move several of these at once, so they travel as one action.
+ */
+interface RunSession {
+  running: boolean;
+  liveLogs: WorkflowRunLog[];
+  currentLine: number | null;
+  pausedLine: number | null;
+  lastRun: WorkflowRunResult | null;
+}
+
+type RunSessionAction =
+  | { kind: "cleared" }
+  | { kind: "started" }
+  | { kind: "line"; line: number }
+  | { kind: "log"; entry: WorkflowRunLog }
+  | { kind: "paused"; line: number }
+  | { kind: "resumed" }
+  | { kind: "finished"; result: WorkflowRunResult }
+  | { kind: "settled" };
+
+const IDLE_RUN: RunSession = {
+  running: false,
+  liveLogs: [],
+  currentLine: null,
+  pausedLine: null,
+  lastRun: null,
+};
+
+function runSessionReducer(state: RunSession, action: RunSessionAction): RunSession {
+  switch (action.kind) {
+    case "cleared":
+      return { ...state, lastRun: null };
+    case "started":
+      return { ...state, running: true, liveLogs: [], currentLine: null, pausedLine: null };
+    case "line":
+      return { ...state, currentLine: action.line };
+    case "log":
+      return { ...state, liveLogs: [...state.liveLogs, action.entry] };
+    case "paused":
+      return { ...state, pausedLine: action.line };
+    case "resumed":
+      return { ...state, pausedLine: null };
+    case "finished":
+      return { ...state, lastRun: action.result };
+    // The run ended (cleanly or not): stop reporting a position, but keep
+    // liveLogs so the log panel still shows what happened.
+    case "settled":
+      return { ...state, running: false, currentLine: null, pausedLine: null };
+  }
+}
+
 export function WorkflowsPanel({
   client,
   gitTriggers = false,
@@ -93,25 +191,19 @@ export function WorkflowsPanel({
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<WorkflowSummary | null>(null);
-  const [dts, setDts] = useState<string>("declare const infra: any;");
-  const [runs, setRuns] = useState<WorkflowRunRow[]>([]);
-  const [metrics, setMetrics] = useState<WorkflowMetricRow[]>([]);
   const [busy, setBusy] = useState(false);
-  const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastRun, setLastRun] = useState<WorkflowRunResult | null>(null);
-  // Logs streamed live during a run (e.g. infra.log(ssh streams)).
-  const [liveLogs, setLiveLogs] = useState<WorkflowRunLog[]>([]);
-  // Pending infra.waitForApproval(...) requests for the selected workflow's
-  // runs (cloud only — the desktop client omits the approval methods).
-  const [approvals, setApprovals] = useState<WorkflowApprovalRow[]>([]);
+  // The selected workflow's server state — typings, run history, metrics, and
+  // the pending infra.waitForApproval(...) requests for its runs (approvals are
+  // cloud only; the desktop client omits the approval methods).
+  const [detail, dispatchDetail] = useReducer(detailReducer, EMPTY_DETAIL);
+  // Logs, debugger position and result for the run in flight.
+  const [session, dispatchSession] = useReducer(runSessionReducer, IDLE_RUN);
   const [decidingApprovalId, setDecidingApprovalId] = useState<string | null>(null);
-  // Debugger state. `breakpointsRef` is the live set the running client reads
-  // (so toggles mid-run are seen); `breakpoints` mirrors it for the editor.
+  // `breakpointsRef` is the live set the running client reads (so toggles
+  // mid-run are seen); `breakpoints` mirrors it for the editor.
   const breakpointsRef = useRef<Set<number>>(new Set());
   const [breakpoints, setBreakpoints] = useState<Set<number>>(() => new Set());
-  const [currentLine, setCurrentLine] = useState<number | null>(null);
-  const [pausedLine, setPausedLine] = useState<number | null>(null);
   // The active debug session (the client fills in resume/step/stop per pause).
   const debugSessionRef = useRef<DebugSession | null>(null);
 
@@ -138,7 +230,10 @@ export function WorkflowsPanel({
     async (workflowId: string) => {
       if (!client.listPendingApprovals) return;
       try {
-        setApprovals(await client.listPendingApprovals(workflowId));
+        dispatchDetail({
+          kind: "approvals",
+          approvals: await client.listPendingApprovals(workflowId),
+        });
       } catch {
         // Approvals are decoration on the run view — never surface a poll
         // failure over whatever the user is actually doing.
@@ -153,9 +248,12 @@ export function WorkflowsPanel({
   useEffect(() => {
     if (!selectedId || !client.listPendingApprovals) return;
     void refreshApprovals(selectedId);
-    const interval = setInterval(() => void refreshApprovals(selectedId), running ? 4000 : 15000);
+    const interval = setInterval(
+      () => void refreshApprovals(selectedId),
+      session.running ? 4000 : 15000,
+    );
     return () => clearInterval(interval);
-  }, [client, refreshApprovals, selectedId, running]);
+  }, [client, refreshApprovals, selectedId, session.running]);
 
   const decideApproval = useCallback(
     async (approvalId: string, decision: "approve" | "deny") => {
@@ -176,8 +274,8 @@ export function WorkflowsPanel({
   const selectWorkflow = useCallback(
     async (id: string) => {
       setSelectedId(id);
-      setLastRun(null);
-      setApprovals([]);
+      dispatchSession({ kind: "cleared" });
+      dispatchDetail({ kind: "cleared" });
       const wf = list.find((w) => w.id === id);
       if (wf) setDraft(structuredCloneSafe(wf));
       try {
@@ -186,9 +284,7 @@ export function WorkflowsPanel({
           client.listRuns(id),
           client.listMetrics(id),
         ]);
-        setDts(typings);
-        setRuns(runRows);
-        setMetrics(metricRows);
+        dispatchDetail({ kind: "loaded", dts: typings, runs: runRows, metrics: metricRows });
       } catch (e) {
         setError(messageOf(e));
       }
@@ -231,7 +327,7 @@ export function WorkflowsPanel({
       });
       await refreshList();
       // Metrics may have changed → regenerate typings.
-      setDts(await client.getTypings(draft.id));
+      dispatchDetail({ kind: "typings", dts: await client.getTypings(draft.id) });
     } catch (e) {
       setError(messageOf(e));
     } finally {
@@ -241,31 +337,29 @@ export function WorkflowsPanel({
 
   const run = useCallback(async () => {
     if (!draft) return;
-    setRunning(true);
+    dispatchSession({ kind: "started" });
     setError(null);
-    setCurrentLine(null);
-    setPausedLine(null);
-    setLiveLogs([]);
-    const session: DebugSession = {
+    const debug: DebugSession = {
       breakpoints: breakpointsRef.current,
-      onLine: (n) => setCurrentLine(n),
-      onLog: (entry) => setLiveLogs((prev) => [...prev, entry]),
-      onPaused: (n) => setPausedLine(n),
-      onResumed: () => setPausedLine(null),
+      onLine: (n) => dispatchSession({ kind: "line", line: n }),
+      onLog: (entry) => dispatchSession({ kind: "log", entry }),
+      onPaused: (n) => dispatchSession({ kind: "paused", line: n }),
+      onResumed: () => dispatchSession({ kind: "resumed" }),
     };
-    debugSessionRef.current = session;
+    debugSessionRef.current = debug;
     try {
       await client.update(draft.id, { source: draft.source });
-      const { result } = await client.run(draft.id, session);
-      setLastRun(result);
-      setRuns(await client.listRuns(draft.id));
-      setMetrics(await client.listMetrics(draft.id));
+      const { result } = await client.run(draft.id, debug);
+      dispatchSession({ kind: "finished", result });
+      dispatchDetail({
+        kind: "runsRefreshed",
+        runs: await client.listRuns(draft.id),
+        metrics: await client.listMetrics(draft.id),
+      });
     } catch (e) {
       setError(messageOf(e));
     } finally {
-      setRunning(false);
-      setCurrentLine(null);
-      setPausedLine(null);
+      dispatchSession({ kind: "settled" });
       debugSessionRef.current = null;
     }
   }, [client, draft]);
@@ -296,9 +390,13 @@ export function WorkflowsPanel({
   // The accounts portion of the typings comes from the host (getTypings); the
   // metrics portion is overlaid live from the draft so `infra.metrics.<key>`
   // reflects edits in the metrics section immediately, before saving.
+  // Depend on the metric defs alone, not the whole draft — `draft.source`
+  // changes on every keystroke and re-overlaying the typings each time is
+  // wasted work.
+  const metricDefs = draft?.metricDefs;
   const liveDts = useMemo(
-    () => (draft ? overlayMetricTypings(dts, draft.metricDefs) : dts),
-    [dts, draft?.metricDefs],
+    () => (metricDefs ? overlayMetricTypings(detail.dts, metricDefs) : detail.dts),
+    [detail.dts, metricDefs],
   );
 
   const filteredList = useMemo(() => {
@@ -382,12 +480,16 @@ export function WorkflowsPanel({
             <button
               type="button"
               onClick={() => void run()}
-              disabled={running}
+              disabled={session.running}
               className="text-xs px-3 py-1 rounded bg-green-600 hover:bg-green-500 disabled:opacity-50"
             >
-              {running ? (pausedLine != null ? `Paused : ${pausedLine}` : "Running…") : "Run"}
+              {session.running
+                ? session.pausedLine != null
+                  ? `Paused : ${session.pausedLine}`
+                  : "Running…"
+                : "Run"}
             </button>
-            {running && pausedLine != null && (
+            {session.running && session.pausedLine != null && (
               <>
                 <button
                   type="button"
@@ -407,7 +509,7 @@ export function WorkflowsPanel({
                 </button>
               </>
             )}
-            {running && (
+            {session.running && (
               <button
                 type="button"
                 onClick={stopRun}
@@ -440,7 +542,7 @@ export function WorkflowsPanel({
 
           <MetricsEditor
             defs={draft.metricDefs}
-            values={metrics}
+            values={detail.metrics}
             onChange={(defs) => patch({ metricDefs: defs })}
           />
 
@@ -456,20 +558,24 @@ export function WorkflowsPanel({
               onSave={() => void save()}
               breakpoints={breakpoints}
               onToggleBreakpoint={toggleBreakpoint}
-              currentLine={currentLine}
-              pausedLine={pausedLine}
+              currentLine={session.currentLine}
+              pausedLine={session.pausedLine}
             />
           </div>
 
-          {approvals.length > 0 && (
+          {detail.approvals.length > 0 && (
             <PendingApprovalsPanel
-              approvals={approvals}
+              approvals={detail.approvals}
               decidingId={decidingApprovalId}
               onDecide={(id, decision) => void decideApproval(id, decision)}
             />
           )}
 
-          {running ? <LiveLogPanel logs={liveLogs} /> : lastRun && <RunResultPanel run={lastRun} />}
+          {session.running ? (
+            <LiveLogPanel logs={session.liveLogs} />
+          ) : (
+            session.lastRun && <RunResultPanel run={session.lastRun} />
+          )}
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center text-sm opacity-50">

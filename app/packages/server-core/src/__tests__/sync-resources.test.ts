@@ -63,10 +63,17 @@ vi.mock("../db/schema", () => ({
     pluginId: "pluginId",
     resourceTypeId: "resourceTypeId",
     accountId: "accountId",
+    displayName: "displayName",
     deletedAt: "deletedAt",
     lastSyncedAt: "lastSyncedAt",
     fieldsJson: "fieldsJson",
     outputsJson: "outputsJson",
+  },
+  resourceChanges: {
+    id: "id",
+    organizationId: "organizationId",
+    accountId: "accountId",
+    resourceId: "resourceId",
   },
   secretFieldStates: {
     resourceId: "resourceId",
@@ -202,6 +209,7 @@ describe("syncAccountResourceType", () => {
 
   it("upserts fetched resources and soft-deletes the rest", async () => {
     selectQueue.push([accountRow()]); // account
+    selectQueue.push([]); // change-timeline prior snapshots (none)
     const client = makeClient({ listResources: vi.fn(async () => [resourceInstance()]) });
     getPlugin.mockResolvedValue({
       plugin: fakePlugin({ createClient: vi.fn(() => client) }),
@@ -216,6 +224,7 @@ describe("syncAccountResourceType", () => {
 
   it("still issues the soft-delete update when nothing is live", async () => {
     selectQueue.push([accountRow()]);
+    selectQueue.push([]); // change-timeline prior snapshots (none)
     const client = makeClient({ listResources: vi.fn(async () => []) });
     getPlugin.mockResolvedValue({ plugin: fakePlugin({ createClient: vi.fn(() => client) }) });
     const out = await sync.syncAccountResourceType("acc-1", "org-1", "vm");
@@ -228,6 +237,7 @@ describe("syncAccountResourceType", () => {
 describe("syncAccountResources", () => {
   it("syncs all types, records counts, and writes a poll outcome", async () => {
     selectQueue.push([accountRow()]); // loadAccountClient
+    selectQueue.push([]); // change-timeline prior snapshots (none)
     selectQueue.push([]); // refreshPinnedStats -> pinned (none)
     selectQueue.push([]); // reconcileAccountReferences -> refs (none)
     const client = makeClient();
@@ -246,6 +256,7 @@ describe("syncAccountResources", () => {
 
   it("honors canListType skipping and fires onTypeDone callbacks", async () => {
     selectQueue.push([accountRow()]);
+    selectQueue.push([]); // prior snapshots
     selectQueue.push([]); // pinned
     selectQueue.push([]); // refs
     const client = makeClient();
@@ -271,6 +282,7 @@ describe("syncAccountResources", () => {
 
   it("records a type failure without aborting and surfaces firstError", async () => {
     selectQueue.push([accountRow()]);
+    selectQueue.push([]); // prior snapshots
     selectQueue.push([]); // pinned
     selectQueue.push([]); // refs
     const client = makeClient({
@@ -297,6 +309,7 @@ describe("syncAccountResources", () => {
 
   it("coerces a non-Error rejection into an Error", async () => {
     selectQueue.push([accountRow()]);
+    selectQueue.push([]); // prior snapshots
     selectQueue.push([]);
     selectQueue.push([]);
     const client = makeClient({
@@ -314,12 +327,13 @@ describe("syncAccountResources", () => {
 
   it("swallows reconcile errors so the poll cycle still completes", async () => {
     selectQueue.push([accountRow()]); // loadAccountClient (db.select #1)
+    // db.select #2 is the change-timeline prior-snapshot load.
     // refreshPinnedStats pinned uses db.selectDistinct (no select).
-    // reconcileAccountReferences refs is db.select #2 -> throw.
+    // reconcileAccountReferences refs is db.select #3 -> throw.
     let calls = 0;
     db.select.mockImplementation(() => {
       calls++;
-      if (calls === 2) throw new Error("reconcile boom");
+      if (calls === 3) throw new Error("reconcile boom");
       return makeChain();
     });
     const out = await sync.syncAccountResources("acc-1", "org-1");
@@ -335,6 +349,7 @@ describe("syncAccountResources", () => {
 describe("refreshPinnedStats", () => {
   it("writes aggregate counts for an __account__ pin", async () => {
     selectQueue.push([accountRow()]); // loadAccountClient
+    selectQueue.push([]); // prior snapshots
     selectQueue.push([{ resourceId: "r", resourceTypeId: "__account__", pluginId: "aws" }]); // pinned
     selectQueue.push([]); // refs
     const out = await sync.syncAccountResources("acc-1", "org-1");
@@ -346,6 +361,7 @@ describe("refreshPinnedStats", () => {
 
   it("fetches dashboard stats and metrics for a pinned resource", async () => {
     selectQueue.push([accountRow()]); // loadAccountClient
+    selectQueue.push([]); // prior snapshots
     selectQueue.push([{ resourceId: "r1", resourceTypeId: "vm", pluginId: "aws" }]); // pinned
     selectQueue.push([]); // refs
     const fetchDashboardStats = vi.fn(async () => [{ label: "CPU", value: 1 }]);
@@ -365,6 +381,7 @@ describe("refreshPinnedStats", () => {
 
   it("skips stats entirely when the client has no fetchDashboardStats", async () => {
     selectQueue.push([accountRow()]);
+    selectQueue.push([]); // prior snapshots
     selectQueue.push([{ resourceId: "r1", resourceTypeId: "vm", pluginId: "aws" }]); // pinned
     selectQueue.push([]); // refs
     const client = makeClient(); // no fetchDashboardStats
@@ -377,6 +394,7 @@ describe("refreshPinnedStats", () => {
 
   it("swallows a per-resource stats failure", async () => {
     selectQueue.push([accountRow()]);
+    selectQueue.push([]); // prior snapshots
     selectQueue.push([{ resourceId: "r1", resourceTypeId: "vm", pluginId: "aws" }]); // pinned
     selectQueue.push([]); // refs
     const fetchDashboardStats = vi.fn(async () => {
@@ -392,6 +410,7 @@ describe("refreshPinnedStats", () => {
 
   it("collects peer metric series when a type exposes metrics to parent", async () => {
     selectQueue.push([accountRow()]); // parent loadAccountClient
+    selectQueue.push([]); // prior snapshots
     selectQueue.push([{ resourceId: "r1", resourceTypeId: "vm", pluginId: "aws" }]); // pinned
     selectQueue.push([]); // refs
     const parentClient = makeClient({
@@ -433,6 +452,7 @@ describe("refreshPinnedStats", () => {
 
   it("skips an unreachable peer integration", async () => {
     selectQueue.push([accountRow()]);
+    selectQueue.push([]); // prior snapshots
     selectQueue.push([{ resourceId: "r1", resourceTypeId: "vm", pluginId: "aws" }]); // pinned
     selectQueue.push([]); // refs
     evaluatePeerIntegrationUnreachable.mockReturnValue(true);

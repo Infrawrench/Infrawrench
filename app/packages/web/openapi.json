@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.21.0",
+    "version": "0.22.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -63,6 +63,10 @@
     {
       "name": "Resources",
       "description": "CRUD, manifest, logs, secrets, metrics — all dispatched to plugins."
+    },
+    {
+      "name": "Changes",
+      "description": "Change timeline / drift feed — resources that appeared, changed, or disappeared between polls."
     },
     {
       "name": "Connections",
@@ -4998,6 +5002,129 @@
           }
         },
         "required": ["accountId", "resourceId"],
+        "additionalProperties": false
+      },
+      "ResourceChangeKind": {
+        "type": "string",
+        "enum": ["created", "updated", "deleted"],
+        "description": "What happened between two consecutive syncs: the resource appeared, a stored field changed, or the resource disappeared upstream."
+      },
+      "ResourceFieldChange": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "Top-level field key that changed. Resolved-output keys are prefixed `outputs.`."
+          },
+          "from": {
+            "description": "Previous value (null when the field was absent)."
+          },
+          "to": {
+            "description": "New value."
+          }
+        },
+        "required": ["field"],
+        "additionalProperties": false
+      },
+      "ResourceChangeEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "resourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Resource display name at the time of the change — survives deletion."
+          },
+          "changeKind": {
+            "$ref": "#/components/schemas/ResourceChangeKind"
+          },
+          "diff": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResourceFieldChange"
+            },
+            "description": "Changed fields for `updated` events; empty for `created` and `deleted`."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "resourceId",
+          "accountId",
+          "pluginId",
+          "resourceTypeId",
+          "displayName",
+          "changeKind",
+          "diff",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "ResourceChangeFeedEntry": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResourceChangeEntry"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "accountName": {
+                "type": ["string", "null"]
+              }
+            },
+            "required": ["accountName"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "ResourceChangeFeedResponse": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResourceChangeFeedEntry"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": ["entries", "total"],
+        "additionalProperties": false
+      },
+      "ResourceChangeListResponse": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResourceChangeEntry"
+            }
+          }
+        },
+        "required": ["entries"],
         "additionalProperties": false
       },
       "SqlQueryResponse": {
@@ -14368,6 +14495,176 @@
           }
         },
         "operationId": "postOrgOrgIdResourcesPluginIdTypeIdMetrics",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/changes": {
+      "get": {
+        "tags": ["Changes"],
+        "summary": "Org-wide change timeline (paginated, filterable)",
+        "description": "Change events recorded by the resource poller: each poll cycle diffs the freshly fetched state against the stored snapshot and records resources that appeared, changed a stored field, or disappeared upstream. Cross-provider by construction — the diff runs on the generic stored record, so every plugin's resources show up here.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "required": false,
+            "name": "page",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "pageSize",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": false,
+            "name": "accountId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "resourceId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ResourceChangeKind"
+            },
+            "required": false,
+            "name": "kind",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "required": false,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "required": false,
+            "name": "to",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Change events, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceChangeFeedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdChanges",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/changes/resource": {
+      "get": {
+        "tags": ["Changes"],
+        "summary": "Change timeline for one resource",
+        "description": "Recent change events for a single resource, newest first. The resource id travels as a query parameter because composite ids contain slashes and colons.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "resourceId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Change events for the resource, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceChangeListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdChangesResource",
         "x-required-permission": "resources:read"
       }
     },

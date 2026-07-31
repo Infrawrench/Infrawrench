@@ -65,6 +65,7 @@ vi.mock("@infrawrench/server-core/tunnel-resolver", () => ({
 vi.mock("uuid", () => ({ v4: () => "uuid-1" }));
 
 const { accountRoutes } = await import("@/api/routes/accounts");
+const { resourceChanges } = await import("@infrawrench/server-core/db/schema");
 
 const buildApp = () => buildTestApp(accountRoutes);
 
@@ -89,11 +90,12 @@ function makeResource(id: string, displayName: string) {
 }
 
 function setupSync(pluginResources: ReturnType<typeof makeResource>[]) {
-  // db.select().from().where() → account lookup, AND
+  // db.select().from().where() → account lookup first, then the
+  // change-timeline prior-snapshot load (empty), AND
   // db.select().from().innerJoin().where() → reconcileAccountReferences output-ref
   // lookup (resolves empty so the real reconcile path runs and returns early
   // instead of throwing in the catch).
-  const selectWhere = vi.fn().mockResolvedValue([ACCOUNT]);
+  const selectWhere = vi.fn().mockResolvedValueOnce([ACCOUNT]).mockResolvedValue([]);
   const reconcileWhere = vi.fn().mockResolvedValue([]);
   const reconcileInnerJoin = vi.fn().mockReturnValue({ where: reconcileWhere });
   const selectFrom = vi.fn().mockReturnValue({ where: selectWhere, innerJoin: reconcileInnerJoin });
@@ -127,7 +129,14 @@ function setupSync(pluginResources: ReturnType<typeof makeResource>[]) {
     insertCalls.push({ values: v, conflictSet: null });
     return { onConflictDoUpdate };
   });
-  mockInsert.mockReturnValue({ values });
+  // Change-timeline inserts go to their own table — keep them out of
+  // `insertCalls` so the resource-upsert assertions stay exact.
+  mockInsert.mockImplementation((table: unknown) => {
+    if (table === resourceChanges) {
+      return { values: vi.fn().mockResolvedValue(undefined) };
+    }
+    return { values };
+  });
 
   // db.update().set().where()
   updateCalls.length = 0;

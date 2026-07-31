@@ -124,6 +124,55 @@ export const resources = pgTable(
   }),
 );
 
+/**
+ * Change-timeline events — one row per observed difference between consecutive
+ * resource snapshots. Written by the shared sync path in `sync-resources.ts`
+ * whenever the poller (or a manual refresh) upserts polled state, so every
+ * provider gets a drift feed for free. Generic by construction: the diff is
+ * computed over the host's stored record (displayName, fieldsJson,
+ * outputsJson), never over provider-specific shapes.
+ *
+ * `resourceId` is deliberately not a FK — the feed is history and must keep
+ * rendering rows for resources that disappeared upstream. Cleanup rides the
+ * `accountId` cascade instead: deleting an account takes its history with it.
+ */
+export const resourceChanges = pgTable(
+  "resource_changes",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    resourceId: text("resource_id").notNull(),
+    pluginId: text("plugin_id").notNull(),
+    resourceTypeId: text("resource_type_id").notNull(),
+    /** Denormalized so deleted resources still render in the feed. */
+    displayName: text("display_name").notNull(),
+    /** "created" | "updated" | "deleted" */
+    changeKind: text("change_kind").$type<"created" | "updated" | "deleted">().notNull(),
+    /**
+     * Changed top-level fields for "updated" rows:
+     * Array<{ field, from, to }>. Empty for created/deleted rows.
+     */
+    diff: jsonb("diff")
+      .$type<{ field: string; from: unknown; to: unknown }[]>()
+      .notNull()
+      .default([]),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgCreatedIdx: index("resource_changes_org_created_idx").on(t.organizationId, t.createdAt),
+    resourceCreatedIdx: index("resource_changes_resource_created_idx").on(
+      t.resourceId,
+      t.createdAt,
+    ),
+    orgAccountIdx: index("resource_changes_org_account_idx").on(t.organizationId, t.accountId),
+  }),
+);
+
 export const secretFieldStates = pgTable(
   "secret_field_states",
   {

@@ -21,6 +21,7 @@ import { registerWorkflowApprovalPaths } from "./paths/workflow-approvals";
 import { registerDeploymentPaths } from "./paths/deployments";
 import { registerPagePaths } from "./paths/pages";
 import { registerResourcePaths } from "./paths/resources";
+import { registerResourceChangePaths } from "./paths/resource-changes";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
 import { registerAssociationPaths } from "./paths/associations";
 import { registerSearchPaths } from "./paths/search";
@@ -97,6 +98,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerDeploymentPaths(ctx);
   registerPagePaths(ctx);
   registerResourcePaths(ctx);
+  registerResourceChangePaths(ctx);
   registerConnectionFeaturePaths(ctx);
   registerAssociationPaths(ctx);
   registerSearchPaths(ctx);
@@ -157,6 +159,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       {
         name: "Resources",
         description: "CRUD, manifest, logs, secrets, metrics — all dispatched to plugins.",
+      },
+      {
+        name: "Changes",
+        description:
+          "Change timeline / drift feed — resources that appeared, changed, or disappeared between polls.",
       },
       {
         name: "Connections",
@@ -298,6 +305,9 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /agents/sessions/{id}/open": "resources:execute",
   "POST /agents/sessions/{id}/reconcile": "resources:execute",
   "DELETE /agents/sessions/{id}": "resources:delete",
+  // change timeline
+  "GET /changes": "resources:read",
+  "GET /changes/resource": "resources:read",
   // resources
   "GET /resources/{pluginId}/{typeId}/detail": "resources:read",
   "GET /resources/{pluginId}/{typeId}/manifest": "resources:read",
