@@ -1,6 +1,7 @@
-/** Create handlers for DigitalOcean domains and DNS records. */
+/** Create handlers for DigitalOcean domains, DNS records and VPCs. */
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { dnsContentField } from "@infrawrench/plugin-base";
+import { regionDisplay } from "../constants.js";
 import type { DoCreateArgs, DoCreateContext } from "./shared.js";
 
 /**
@@ -95,6 +96,61 @@ export async function networkingGetCreateConfig(
     return { fields };
   }
 
+  if (typeId === "vpc") {
+    // POST /v2/vpcs requires `name` + `region`; `description` and `ip_range`
+    // are optional (DO generates a non-conflicting /20 when ip_range is
+    // omitted). Verified against DigitalOcean's published OpenAPI spec.
+    const regionsData = await ctx.fetch<{
+      regions: Array<{ slug: string; name: string; available: boolean }>;
+    }>("/regions");
+    const regions = regionsData.regions
+      .filter((r) => r.available)
+      .map((r) => {
+        const info = regionDisplay(r.slug);
+        return {
+          id: r.slug,
+          label: r.name,
+          ...(info ? { location: info.location, flag: info.flag } : {}),
+        };
+      });
+    const firstRegion = regions[0]?.id;
+    return {
+      fields: [
+        {
+          key: "name",
+          label: "Name",
+          kind: "text",
+          required: true,
+          description: "Alphanumeric characters, dashes and periods only. Unique per account.",
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions,
+          ...(firstRegion ? { defaultValue: firstRegion } : {}),
+        },
+        {
+          key: "ipRange",
+          label: "IP Range",
+          kind: "text",
+          required: false,
+          placeholder: "10.10.10.0/24",
+          description:
+            "Private CIDR block (RFC1918), between /28 and /16. Leave blank to let DigitalOcean pick a free /20.",
+        },
+        {
+          key: "description",
+          label: "Description",
+          kind: "text",
+          required: false,
+          description: "Free-form note, up to 255 characters.",
+        },
+      ],
+    };
+  }
+
   return null;
 }
 
@@ -175,6 +231,41 @@ export async function networkingCreateResource(
       parentResourceId: `${accountId}:domain:${domainName}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+    };
+  }
+
+  if (typeId === "vpc") {
+    const data = await ctx.fetch<{ vpc: Record<string, unknown> }>("/vpcs", {
+      method: "POST",
+      body: JSON.stringify({
+        name: fields["name"],
+        region: fields["region"],
+        ...(fields["ipRange"] ? { ip_range: fields["ipRange"] } : {}),
+        ...(fields["description"] ? { description: fields["description"] } : {}),
+      }),
+    });
+    const v = data.vpc;
+    const id = String(v["id"] ?? "");
+    const createdAt = String(v["created_at"] ?? new Date().toISOString());
+    return {
+      id: `${accountId}:vpc:${id}`,
+      pluginId: "digitalocean",
+      resourceTypeId: "vpc",
+      accountId,
+      displayName: String(v["name"] ?? id),
+      fields: {
+        name: String(v["name"] ?? ""),
+        region: String(v["region"] ?? ""),
+        ipRange: String(v["ip_range"] ?? ""),
+        description: String(v["description"] ?? ""),
+        isDefault: v["default"] === true,
+        createdAt,
+      },
+      resolvedOutputs: { ...(id ? { vpcId: id } : {}) },
+      secretStates: [],
+      externalId: id,
+      createdAt,
+      updatedAt: createdAt,
     };
   }
 

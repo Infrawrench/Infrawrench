@@ -11,6 +11,8 @@ export const PubSubTopicResourceType = rt({
     f("messageRetentionDuration", "Message Retention", { required: false }),
   ],
   outputs: [],
+  // kmsKeyName is the full KMS resource path, which is exactly a kms-key externalId.
+  dependsOn: [{ fieldKey: "kmsKeyName", targetTypeId: "kms-key", label: "encrypted by" }],
   supportsCreate: true,
   supportsMetrics: true,
 });

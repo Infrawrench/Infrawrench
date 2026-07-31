@@ -27,6 +27,10 @@ export const NeonCredentialResourceType = rt({
     o("s3SecretAccessKey", "S3 Secret Access Key", { sensitive: true }),
     o("tokenId", "Token ID"),
   ],
+  dependsOn: [
+    { fieldKey: "projectId", targetTypeId: "neon-project", label: "in project" },
+    { fieldKey: "branchId", targetTypeId: "neon-branch", label: "on branch" },
+  ],
   parentTypeId: "neon-branch",
   supportsCreate: true,
   supportsDelete: true,

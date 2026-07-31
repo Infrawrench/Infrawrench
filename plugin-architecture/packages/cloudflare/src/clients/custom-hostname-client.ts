@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { asRecord, collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone, resolveZoneName } from "./shared.js";
 import type {
   CustomHostnameCreateParams,
   CustomHostnameEditParams,
@@ -25,6 +25,7 @@ function mapCustomHostname(
   h: Record<string, unknown>,
   accountId: string,
   zoneId: string,
+  zoneName: string,
 ): ResourceInstance {
   const id = String(h["id"] ?? "");
   const hostname = String(h["hostname"] ?? "");
@@ -42,6 +43,7 @@ function mapCustomHostname(
       sslMethod: String(ssl?.["method"] ?? ""),
       sslType: String(ssl?.["type"] ?? ""),
       createdAt: String(h["created_at"] ?? ""),
+      zoneName,
     },
     resolvedOutputs: {},
     secretStates: [],
@@ -58,10 +60,10 @@ export async function listAllCustomHostnames(
 ): Promise<ResourceInstance[]> {
   return collectPerZone(
     api,
-    async (zoneId) => {
+    async (zoneId, zoneName) => {
       const part: ResourceInstance[] = [];
       for await (const h of api.cf.customHostnames.list({ zone_id: zoneId })) {
-        part.push(mapCustomHostname(asRecord(h), accountId, zoneId));
+        part.push(mapCustomHostname(asRecord(h), accountId, zoneId, zoneName));
       }
       return part;
     },
@@ -87,7 +89,7 @@ export async function createCustomHostname(
     },
   };
   const ch = await api.cf.customHostnames.create(body);
-  return mapCustomHostname(asRecord(ch), accountId, zoneId);
+  return mapCustomHostname(asRecord(ch), accountId, zoneId, await resolveZoneName(api, zoneId));
 }
 
 export async function editCustomHostname(
@@ -105,7 +107,7 @@ export async function editCustomHostname(
     ssl: { method: toDcvMethod(fields["sslMethod"]), type: "dv" },
   };
   const ch = await api.cf.customHostnames.edit(hostnameId, body);
-  return mapCustomHostname(asRecord(ch), accountId, zoneId);
+  return mapCustomHostname(asRecord(ch), accountId, zoneId, await resolveZoneName(api, zoneId));
 }
 
 export async function deleteCustomHostname(api: CloudflareApi, externalId: string): Promise<void> {

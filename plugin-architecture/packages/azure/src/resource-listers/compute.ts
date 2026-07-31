@@ -1,5 +1,16 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { ARM, extractName, extractResourceGroup, type ListerContext } from "./shared.js";
+import {
+  ARM,
+  extractName,
+  extractResourceGroup,
+  joinRefs,
+  propsOf,
+  refId,
+  registryHost,
+  subnetRef,
+  userAssignedIdentityNames,
+  type ListerContext,
+} from "./shared.js";
 
 export async function listVMs(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
   // Fetch VMs with instance view (includes power state)
@@ -29,10 +40,23 @@ export async function listVMs(ctx: ListerContext, accountId: string): Promise<Re
       ? `${imageRef["publisher"] ?? ""}/${imageRef["offer"] ?? ""}/${imageRef["sku"] ?? ""}`
       : "";
 
+    // Managed disks come straight off the VM payload — no extra request.
+    const dataDisks = storageProfile?.["dataDisks"] as Array<Record<string, unknown>> | undefined;
+    const osDiskName = extractName(refId(osDisk, "managedDisk"));
+    const dataDiskNames = joinRefs(
+      (dataDisks ?? []).map((disk) => extractName(refId(disk, "managedDisk"))),
+    );
+
     // Resolve IP addresses from network interfaces
     let publicIp = "";
     let privateIp = "";
     let fqdn = "";
+    // Pointers the NIC response carries alongside the addresses.
+    let vnetName = "";
+    let subnetName = "";
+    let networkResourceGroup = "";
+    let networkSecurityGroup = "";
+    let publicIpName = "";
     const networkProfile = props?.["networkProfile"] as Record<string, unknown> | undefined;
     const nics = networkProfile?.["networkInterfaces"] as
       | Array<Record<string, unknown>>
@@ -46,6 +70,7 @@ export async function listVMs(ctx: ListerContext, accountId: string): Promise<Re
             `${ARM}${nicId}?api-version=2023-09-01`,
           );
           const nicProps = nic["properties"] as Record<string, unknown> | undefined;
+          networkSecurityGroup = extractName(refId(nicProps, "networkSecurityGroup"));
           const ipConfigs = nicProps?.["ipConfigurations"] as
             | Array<Record<string, unknown>>
             | undefined;
@@ -55,10 +80,17 @@ export async function listVMs(ctx: ListerContext, accountId: string): Promise<Re
               | Record<string, unknown>
               | undefined;
             privateIp = String(ipConfigProps?.["privateIPAddress"] ?? "");
+            const subnetParts = subnetRef(refId(ipConfigProps, "subnet")).split("/");
+            if (subnetParts.length === 3) {
+              networkResourceGroup = subnetParts[0] ?? "";
+              vnetName = subnetParts[1] ?? "";
+              subnetName = subnetParts[2] ?? "";
+            }
             const publicIpRef = ipConfigProps?.["publicIPAddress"] as
               | Record<string, unknown>
               | undefined;
             const publicIpId = String(publicIpRef?.["id"] ?? "");
+            publicIpName = extractName(publicIpId);
             if (publicIpId) {
               try {
                 const pip = await ctx.get<Record<string, unknown>>(
@@ -97,6 +129,14 @@ export async function listVMs(ctx: ListerContext, accountId: string): Promise<Re
         osType: String(osDisk?.["osType"] ?? ""),
         imageReference: imageStr,
         osDiskSizeGb: Number(osDisk?.["diskSizeGB"] ?? 0),
+        vnetName,
+        subnetName,
+        networkResourceGroup,
+        networkSecurityGroup,
+        publicIpName,
+        osDiskName,
+        dataDiskNames,
+        managedIdentities: joinRefs(userAssignedIdentityNames(vm)),
         sshUsername: String(
           (props?.["osProfile"] as Record<string, unknown> | undefined)?.["adminUsername"] ?? "",
         ),
@@ -170,6 +210,13 @@ export async function listAKSClusters(
     const firstPool = agentPools?.[0];
     const networkProfile = props?.["networkProfile"] as Record<string, unknown> | undefined;
     const powerState = props?.["powerState"] as Record<string, unknown> | undefined;
+    const addonProfiles = props?.["addonProfiles"] as Record<string, unknown> | undefined;
+    const omsConfig = (addonProfiles?.["omsagent"] as Record<string, unknown> | undefined)?.[
+      "config"
+    ] as Record<string, unknown> | undefined;
+    const kubeletIdentity = (props?.["identityProfile"] as Record<string, unknown> | undefined)?.[
+      "kubeletidentity"
+    ] as Record<string, unknown> | undefined;
 
     return {
       id: ctx.id(accountId, "azure-aks-cluster", `${rg}/${name}`),
@@ -190,6 +237,17 @@ export async function listAKSClusters(
         osDiskSizeGb: Number(firstPool?.["osDiskSizeGB"] ?? 0),
         networkPlugin: String(networkProfile?.["networkPlugin"] ?? ""),
         tier: String((cluster["sku"] as Record<string, unknown> | undefined)?.["tier"] ?? "Free"),
+        nodeResourceGroup: String(props?.["nodeResourceGroup"] ?? ""),
+        subnetRefs: joinRefs(
+          (agentPools ?? []).map((pool) => subnetRef(String(pool["vnetSubnetID"] ?? ""))),
+        ),
+        logAnalyticsWorkspace: extractName(
+          String(omsConfig?.["logAnalyticsWorkspaceResourceID"] ?? ""),
+        ),
+        managedIdentities: joinRefs([
+          ...userAssignedIdentityNames(cluster),
+          extractName(String(kubeletIdentity?.["resourceId"] ?? "")),
+        ]),
       },
       resolvedOutputs: {
         fqdn: String(props?.["fqdn"] ?? ""),
@@ -237,6 +295,9 @@ export async function listFunctionApps(
         runtimeVersion: String(siteConfig?.["netFrameworkVersion"] ?? ""),
         appServicePlan: extractName(String(props?.["serverFarmId"] ?? "")),
         httpsOnly: (props?.["httpsOnly"] as boolean) ?? false,
+        subnetRef: subnetRef(String(props?.["virtualNetworkSubnetId"] ?? "")),
+        containerRegistry: registryHost(String(siteConfig?.["linuxFxVersion"] ?? "")),
+        managedIdentities: joinRefs(userAssignedIdentityNames(fa)),
       },
       resolvedOutputs: {
         defaultHostName: String(props?.["defaultHostName"] ?? ""),
@@ -284,6 +345,9 @@ export async function listAppServices(
         appServicePlan: extractName(String(props?.["serverFarmId"] ?? "")),
         httpsOnly: (props?.["httpsOnly"] as boolean) ?? false,
         linuxFxVersion: String(siteConfig?.["linuxFxVersion"] ?? ""),
+        subnetRef: subnetRef(String(props?.["virtualNetworkSubnetId"] ?? "")),
+        containerRegistry: registryHost(String(siteConfig?.["linuxFxVersion"] ?? "")),
+        managedIdentities: joinRefs(userAssignedIdentityNames(app)),
       },
       resolvedOutputs: {
         defaultHostName: String(props?.["defaultHostName"] ?? ""),
@@ -309,8 +373,12 @@ export async function listContainerInstances(
     const azureId = String(cg["id"] ?? "");
     const rg = extractResourceGroup(azureId);
     const props = cg["properties"] as Record<string, unknown> | undefined;
-    const containers = props?.["containers"] as unknown[] | undefined;
+    const containers = props?.["containers"] as Array<Record<string, unknown>> | undefined;
     const ipAddr = props?.["ipAddress"] as Record<string, unknown> | undefined;
+    const registryCreds = props?.["imageRegistryCredentials"] as
+      | Array<Record<string, unknown>>
+      | undefined;
+    const subnetIds = props?.["subnetIds"] as Array<Record<string, unknown>> | undefined;
 
     return {
       id: ctx.id(accountId, "azure-container-instance", `${rg}/${name}`),
@@ -328,6 +396,15 @@ export async function listContainerInstances(
         containers: containers?.length ?? 0,
         ipAddress: String(ipAddr?.["ip"] ?? ""),
         fqdn: String(ipAddr?.["fqdn"] ?? ""),
+        imageRegistries: joinRefs([
+          ...(registryCreds ?? []).map((cred) => String(cred["server"] ?? "")),
+          ...(containers ?? []).map((container) =>
+            registryHost(String(propsOf(container)?.["image"] ?? "")),
+          ),
+        ]),
+        subnetRefs: joinRefs(
+          (subnetIds ?? []).map((subnet) => subnetRef(String(subnet["id"] ?? ""))),
+        ),
       },
       resolvedOutputs: {
         ipAddress: String(ipAddr?.["ip"] ?? ""),

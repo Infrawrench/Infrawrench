@@ -538,6 +538,7 @@ export async function genaiCreateResource(args: DoCreateArgs): Promise<ResourceI
         k: 0,
         status: String(deployment?.["status"] ?? "provisioning"),
         knowledgeBaseCount: 0,
+        knowledgeBaseUuids: "",
         deploymentUrl,
       },
       resolvedOutputs: deploymentUrl ? { deploymentUrl, agentEndpoint: deploymentUrl } : {},
@@ -741,6 +742,7 @@ export async function genaiCreateResource(args: DoCreateArgs): Promise<ResourceI
       fields: {
         name: String(info["name"] ?? fields["name"]),
         createdBy: String(info["created_by"] ?? ""),
+        agentUuid,
       },
       resolvedOutputs: secret ? { secretKey: secret } : {},
       secretStates: secret

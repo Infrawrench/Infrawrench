@@ -74,6 +74,63 @@ describe("attachResource", () => {
     expect(JSON.parse(put!.init?.body as string)).toEqual({ transformation: "t_thumb" });
   });
 
+  it("skips the PUT when the preset already carries the named transformation", async () => {
+    // Regression: the lister used to JSON-stringify the setting, so the stored
+    // field was `"\"t_thumb\""` and this comparison could never hold — every
+    // attach re-issued the write against an already-attached preset.
+    installFetch((url, init) => {
+      if (url.endsWith("/transformations?named=true&max_results=500")) {
+        return jsonResponse({
+          transformations: [{ name: "thumb", named: true, used: false, derived: [] }],
+        });
+      }
+      if (url.endsWith("/upload_presets?max_results=500") && init?.method !== "PUT") {
+        return jsonResponse({
+          upload_presets: [
+            { name: "unsigned_images", unsigned: true, settings: { transformation: "t_thumb" } },
+          ],
+        });
+      }
+      throw new Error(`unrouted: ${init?.method ?? "GET"} ${url}`);
+    });
+
+    await client().attachResource(
+      "transformation",
+      `${ACCOUNT}:transformation:thumb`,
+      "upload-preset",
+      `${ACCOUNT}:upload-preset:unsigned_images`,
+      ACCOUNT,
+    );
+
+    expect(calls.find((c) => c.init?.method === "PUT")).toBeUndefined();
+  });
+
+  it("stores a string transformation verbatim and a structured one as JSON", async () => {
+    installFetch((url) => {
+      if (url.includes("/upload_presets")) {
+        return jsonResponse({
+          upload_presets: [
+            { name: "named", unsigned: true, settings: { transformation: "t_thumb" } },
+            {
+              name: "structured",
+              unsigned: true,
+              settings: { transformation: [{ width: 100, crop: "fill" }] },
+            },
+          ],
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+
+    const presets = await client().listResources("upload-preset", ACCOUNT);
+    expect(presets.find((p) => p.displayName === "named")?.fields["transformation"]).toBe(
+      "t_thumb",
+    );
+    expect(presets.find((p) => p.displayName === "structured")?.fields["transformation"]).toBe(
+      '[{"width":100,"crop":"fill"}]',
+    );
+  });
+
   it("throws for an unsupported attach pair", async () => {
     await expect(
       client().attachResource(

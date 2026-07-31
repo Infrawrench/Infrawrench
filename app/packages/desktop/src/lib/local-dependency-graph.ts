@@ -1,14 +1,21 @@
 /**
- * Local-mode dependency graph assembly. The reference data lives in the same
- * tables the cloud uses — `associations` topology rows plus
- * `secret_field_states` output-ref rows — just in the desktop SQLite, so this
- * mirrors the server's `/dependency-graph` endpoint against the local DB.
- * Plugin metadata (logo, display names) comes from the renderer plugin loader.
+ * Local-mode dependency graph assembly. Mirrors the server's
+ * `/dependency-graph` endpoint against the desktop SQLite: explicit output
+ * references from the `associations` and `secret_field_states` tables, plus the
+ * edges `inferDependencyEdges` reads back out of synced cloud data (parent
+ * links and field values that name another resource's identity). Plugin
+ * metadata (logo, display names) comes from the renderer plugin loader.
+ *
+ * Local mode always assembles the whole graph — the detail page's Dependencies
+ * tab filters it client-side — so there is no focused-query path to mirror.
  */
-import type {
-  DependencyGraphData,
-  DependencyGraphEdge,
-  DependencyGraphNode,
+import {
+  collectDependencyRules,
+  inferDependencyEdges,
+  type DependencyGraphData,
+  type DependencyGraphEdge,
+  type DependencyGraphNode,
+  type InferenceResource,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins } from "../plugins/loader";
@@ -19,6 +26,10 @@ interface ResourceRow {
   resource_type_id: string;
   account_id: string;
   display_name: string;
+  external_id: string | null;
+  parent_resource_id: string | null;
+  fields_json: string;
+  outputs_json: string;
 }
 
 interface EdgeRow {
@@ -28,6 +39,16 @@ interface EdgeRow {
   provider_output_key: string | null;
 }
 
+/** SQLite stores the bags as TEXT; a row written by hand may not parse. */
+function parseBag(json: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
 export async function loadLocalDependencyGraph(): Promise<DependencyGraphData> {
   const db = await getDb();
 
@@ -35,7 +56,8 @@ export async function loadLocalDependencyGraph(): Promise<DependencyGraphData> {
   // they go out together instead of waterfalling over the IPC boundary.
   const [resourceRows, associationRows, refStateRows, accountRows] = await Promise.all([
     db.select<ResourceRow[]>(
-      `SELECT id, plugin_id, resource_type_id, account_id, display_name
+      `SELECT id, plugin_id, resource_type_id, account_id, display_name,
+              external_id, parent_resource_id, fields_json, outputs_json
        FROM resources WHERE deleted_at IS NULL`,
     ),
     db.select<EdgeRow[]>(
@@ -55,7 +77,7 @@ export async function loadLocalDependencyGraph(): Promise<DependencyGraphData> {
   const accountNameById = new Map(accountRows.map((a) => [a.id, a.display_name]));
 
   // Associations first — canonical topology rows; first edge per (consumer,
-  // field) wins, matching the shared model's dedupe rule.
+  // field, provider) wins, matching the shared model's dedupe rule.
   const edges: DependencyGraphEdge[] = [];
   const seen = new Set<string>();
   for (const row of [...associationRows, ...refStateRows]) {
@@ -63,7 +85,7 @@ export async function loadLocalDependencyGraph(): Promise<DependencyGraphData> {
     if (!resourceById.has(row.provider_resource_id)) continue;
     if (!resourceById.has(row.consumer_resource_id)) continue;
     if (row.provider_resource_id === row.consumer_resource_id) continue;
-    const key = `${row.consumer_resource_id} ${row.consumer_field_key}`;
+    const key = `${row.consumer_resource_id} ${row.consumer_field_key} ${row.provider_resource_id}`;
     if (seen.has(key)) continue;
     seen.add(key);
     edges.push({
@@ -71,20 +93,43 @@ export async function loadLocalDependencyGraph(): Promise<DependencyGraphData> {
       consumerFieldKey: row.consumer_field_key,
       providerResourceId: row.provider_resource_id,
       providerOutputKey: row.provider_output_key,
+      kind: "output-ref",
     });
   }
+
+  // One load, indexed by manifest id — `getPlugin` is a linear scan over the
+  // same memoized list, so calling it per node re-scanned it every time.
+  // Loaded before inference because the plugins' `dependsOn` declarations
+  // feed it.
+  const plugins = await loadPlugins();
+  const pluginById = new Map(plugins.map((loaded) => [loaded.plugin.manifest.id, loaded]));
+
+  const inferenceResources: InferenceResource[] = resourceRows.map((r) => ({
+    id: r.id,
+    accountId: r.account_id,
+    pluginId: r.plugin_id,
+    resourceTypeId: r.resource_type_id,
+    externalId: r.external_id,
+    parentResourceId: r.parent_resource_id,
+    fields: parseBag(r.fields_json),
+    outputs: parseBag(r.outputs_json),
+  }));
+  const inferred = inferDependencyEdges(inferenceResources, {
+    existingEdges: edges,
+    rules: collectDependencyRules(
+      plugins.map((loaded) => ({
+        id: loaded.plugin.manifest.id,
+        resourceTypes: loaded.plugin.resourceTypes,
+      })),
+    ),
+  });
+  edges.push(...inferred.edges);
 
   const connectedIds = new Set<string>();
   for (const edge of edges) {
     connectedIds.add(edge.consumerResourceId);
     connectedIds.add(edge.providerResourceId);
   }
-
-  // One load, indexed by manifest id — `getPlugin` is a linear scan over the
-  // same memoized list, so calling it per node re-scanned it every time.
-  const pluginById = new Map(
-    (await loadPlugins()).map((loaded) => [loaded.plugin.manifest.id, loaded]),
-  );
 
   const nodes: DependencyGraphNode[] = [];
   for (const id of connectedIds) {
@@ -106,5 +151,5 @@ export async function loadLocalDependencyGraph(): Promise<DependencyGraphData> {
     });
   }
 
-  return { nodes, edges };
+  return { nodes, edges, truncated: inferred.truncated };
 }

@@ -31,6 +31,12 @@ export const GroqBatchResourceType = rt({
     o("outputFileId", "Output File ID"),
     o("errorFileId", "Error File ID"),
   ],
+  // All three are `file_…` ids from `/openai/v1/files`.
+  dependsOn: [
+    { fieldKey: "inputFileId", targetTypeId: "groq-file", label: "reads" },
+    { fieldKey: "outputFileId", targetTypeId: "groq-file", label: "writes" },
+    { fieldKey: "errorFileId", targetTypeId: "groq-file", label: "errors to" },
+  ],
   // Groq exposes cancel but no delete for batches.
   supportsDelete: false,
   iconKey: "layers",

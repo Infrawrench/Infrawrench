@@ -13,6 +13,7 @@ export const UploadPresetResourceType = rt({
     f("transformation", "Transformation", { required: false }),
   ],
   outputs: [o("presetName", "Preset Name"), o("mode", "Mode")],
+  dependsOn: [{ fieldKey: "folder", targetTypeId: "folder", label: "uploads to" }],
   supportsCreate: true,
   iconKey: "preset",
 });

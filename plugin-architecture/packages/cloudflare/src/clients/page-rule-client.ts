@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { asRecord, collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone, resolveZoneName } from "./shared.js";
 import type {
   PageRuleCreateParams,
   PageRuleUpdateParams,
@@ -26,6 +26,7 @@ function mapPageRule(
   rule: Record<string, unknown>,
   accountId: string,
   zoneId: string,
+  zoneName: string,
 ): ResourceInstance {
   const id = String(rule["id"] ?? "");
   const targets = Array.isArray(rule["targets"])
@@ -54,6 +55,7 @@ function mapPageRule(
       priority: Number(rule["priority"] ?? 0),
       createdOn: String(rule["created_on"] ?? ""),
       modifiedOn: String(rule["modified_on"] ?? ""),
+      zoneName,
     },
     resolvedOutputs: {},
     secretStates: [],
@@ -70,11 +72,11 @@ export async function listAllPageRules(
 ): Promise<ResourceInstance[]> {
   return collectPerZone(
     api,
-    async (zoneId) => {
+    async (zoneId, zoneName) => {
       const part: ResourceInstance[] = [];
       const rules = await api.cf.pageRules.list({ zone_id: zoneId });
       for (const rule of rules) {
-        part.push(mapPageRule(asRecord(rule), accountId, zoneId));
+        part.push(mapPageRule(asRecord(rule), accountId, zoneId, zoneName));
       }
       return part;
     },
@@ -118,7 +120,7 @@ export async function createPageRule(
     status: DEFAULT_PAGE_RULE_STATUS,
   };
   const rule = await api.cf.pageRules.create(body as unknown as PageRuleCreateParams);
-  return mapPageRule(asRecord(rule), accountId, zoneId);
+  return mapPageRule(asRecord(rule), accountId, zoneId, await resolveZoneName(api, zoneId));
 }
 
 export async function editPageRule(
@@ -151,7 +153,7 @@ export async function editPageRule(
     ...(priority && Number.isFinite(Number(priority)) ? { priority: Number(priority) } : {}),
   };
   const rule = await api.cf.pageRules.update(ruleId, body as unknown as PageRuleUpdateParams);
-  return mapPageRule(asRecord(rule), accountId, zoneId);
+  return mapPageRule(asRecord(rule), accountId, zoneId, await resolveZoneName(api, zoneId));
 }
 
 export async function deletePageRule(api: CloudflareApi, externalId: string): Promise<void> {

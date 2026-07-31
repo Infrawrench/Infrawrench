@@ -123,6 +123,9 @@ export async function listCloudFunctions(
         serviceAccount: String(serviceConfig?.["serviceAccountEmail"] ?? ""),
         entryPoint: String(buildConfig?.["entryPoint"] ?? ""),
         sourceLocation,
+        // The bucket half of `sourceLocation`, on its own so it matches a
+        // gcs-bucket external id (which is the bare bucket name).
+        sourceBucket: bucket,
         environment: String(fn["environment"] ?? ""),
         buildId: String(buildConfig?.["build"] ?? ""),
         minInstances: String(serviceConfig?.["minInstanceCount"] ?? "0"),

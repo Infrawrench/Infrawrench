@@ -13,6 +13,11 @@ export const RedshiftClusterResourceType = rt({
     f("availabilityZone", "Availability Zone", { required: false }),
     f("encrypted", "Encrypted", { kind: "boolean", required: false }),
     f("publiclyAccessible", "Publicly Accessible", { kind: "boolean", required: false }),
+    f("vpcId", "VPC ID", { required: false }),
+    f("securityGroupIds", "Security Groups", {
+      required: false,
+      description: "Comma-separated VPC security group IDs attached to the cluster",
+    }),
   ],
   outputs: [
     o("endpoint", "Endpoint"),
@@ -23,6 +28,10 @@ export const RedshiftClusterResourceType = rt({
       sensitive: true,
       description: "PostgreSQL connection URI for Redshift (constructed from endpoint + port)",
     }),
+  ],
+  dependsOn: [
+    { fieldKey: "vpcId", targetTypeId: "vpc", label: "in VPC" },
+    { fieldKey: "securityGroupIds", targetTypeId: "security-group", label: "guarded by" },
   ],
   iconKey: "database",
   supportsCreate: true,

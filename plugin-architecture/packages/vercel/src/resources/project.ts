@@ -14,6 +14,7 @@ export const VercelProjectResourceType = rt({
     f("outputDirectory", "Output Directory", { required: false }),
     f("productionUrl", "Production URL", { required: false }),
     f("gitRepo", "Git Repository", { required: false }),
+    f("ownerId", "Owner", { required: false }),
     f("createdAt", "Created At", { required: false }),
     f("updatedAt", "Updated At", { required: false }),
     f("live", "Live", { required: false }),
@@ -23,6 +24,10 @@ export const VercelProjectResourceType = rt({
     o("projectName", "Project Name"),
     o("productionUrl", "Production URL"),
   ],
+  // Vercel calls the owner `accountId`; it holds the `team_…` id for a
+  // team-owned project and a personal user id otherwise, so the rule simply
+  // finds nothing on personal accounts.
+  dependsOn: [{ fieldKey: "ownerId", targetTypeId: "vercel-team", label: "owned by" }],
   supportsCreate: true,
   iconKey: "vercel",
   secretExportTemplates: [

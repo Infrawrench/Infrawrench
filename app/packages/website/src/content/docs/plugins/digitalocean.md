@@ -13,6 +13,7 @@ The most approachable cloud plugin — a single API token is all you need.
 - **Snapshots** — sidebar group listing every droplet _and_ volume snapshot, deletable from the detail page. Restore back into a droplet via the droplet's Actions → Restore from Backup.
 - **Custom images** — your account-owned images (uploaded ISOs, snapshots promoted to images, backups). Distribution and marketplace images are still selectable from the droplet create form.
 - **Network File Storage (NFS)** — create POSIX-compliant NFSv4.1 shares (standard or high-performance tier), pinned to a VPC, mountable across multiple Droplets and DOKS nodes. The share detail page surfaces the mount target and a ready-to-paste `mount -t nfs` command.
+- **VPCs** — list, create (name + region, with an optional CIDR range and description) and delete the private networks your Droplets, DOKS nodes, NFS shares and Dedicated Inference endpoints sit in. Each VPC shows its region, IP range, description and whether it's the region's default. A region's default VPC — and any VPC that still has members — can't be deleted; DigitalOcean rejects those with a 403.
 - **Kubernetes (DOKS)** — clusters, with kubeconfig output for the [Kubernetes plugin](./kubernetes.md).
 - **Managed databases** — Postgres, MySQL, Valkey (Redis-compatible caching), MongoDB, Kafka, OpenSearch, and Weaviate (private preview). Connection strings are outputs you can reference from the matching client plugins. DigitalOcean retired Managed Redis on 30 June 2025, so the create form provisions Valkey clusters; pre-migration Redis clusters still appear and connect through the same Redis plugin.
 - **Agent Platform** — list, create, and delete Gradient AI agents. The agent's deployment URL is surfaced as an output you can reference from other resources.
@@ -73,6 +74,16 @@ Create a share from any project's NFS sidebar group:
 After creation, the share's detail page renders the mount target and a copy-paste `sudo mount -t nfs -o nfsvers=4.1 …` command sized for the share.
 
 <insert [DigitalOcean NFS share detail page showing the mount target and mount command] here>
+
+## VPCs
+
+Every DigitalOcean account gets one default VPC per region, and everything you create lands in one whether you chose it or not. The **VPCs** sidebar group lists them all with their region, IP range, description and default flag; the uuid is the resource's external id, so it is the same value a Droplet, NFS share or Dedicated Inference endpoint records for its network.
+
+Because of that, the [dependency graph](../features/dependency-graph.md) draws a Droplet, an NFS share (one edge per VPC it's exported to) and a Dedicated Inference deployment straight onto the VPC they sit in — no wiring needed.
+
+Creating one takes a name and a region; leave **IP Range** blank and DigitalOcean assigns a free `/20` that won't collide with your other networks, or set your own between `/28` and `/16` from the RFC1918 space. Deleting is only possible once the VPC is empty and is not the region's default.
+
+<insert [DigitalOcean VPC detail page showing region, IP range and the default flag] here>
 
 ## Gradient AI Platform & Inference Engine
 

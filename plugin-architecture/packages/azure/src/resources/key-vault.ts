@@ -15,6 +15,9 @@ export const KeyVaultResourceType = rt({
     f("enableRbacAuthorization", "RBAC Auth", { kind: "boolean", required: false }),
   ],
   outputs: [o("vaultUri", "Vault URI")],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+  ],
   iconKey: "secret",
   supportsCreate: true,
   supportsMetrics: true,

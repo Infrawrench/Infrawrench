@@ -15,11 +15,24 @@ export const StorageAccountResourceType = rt({
     f("httpsOnly", "HTTPS Only", { kind: "boolean", required: false }),
     f("primaryLocation", "Primary Location", { required: false }),
     f("statusOfPrimary", "Primary Status", { required: false }),
+    f("keyVaultName", "Encryption Key Vault", {
+      required: false,
+      description: "Key Vault holding the customer-managed encryption key",
+    }),
   ],
   outputs: [
     o("primaryBlobEndpoint", "Blob Endpoint"),
     o("primaryKey", "Primary Key", { sensitive: true }),
     o("connectionString", "Connection String", { sensitive: true }),
+  ],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+    {
+      fieldKey: "keyVaultName",
+      targetTypeId: "azure-key-vault",
+      targetKey: "name",
+      label: "encrypted with",
+    },
   ],
   iconKey: "storage",
   supportsStorageBrowser: true,

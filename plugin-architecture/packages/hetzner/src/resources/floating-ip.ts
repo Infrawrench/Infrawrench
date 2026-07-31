@@ -19,6 +19,7 @@ export const FloatingIpResourceType = rt({
     f("blocked", "Blocked", { kind: "boolean", required: false }),
   ],
   outputs: [o("ip", "IP Address")],
+  dependsOn: [{ fieldKey: "serverId", targetTypeId: "server", label: "assigned to" }],
   supportsCreate: true,
   iconKey: "network",
   // Hetzner bills floating IPs whether or not they're assigned; the lister

@@ -1,5 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import type { ListerContext } from "../resource-listers.js";
+import { joinIds, type ListerContext } from "../resource-listers.js";
 
 export async function listKinesisStreams(
   ctx: ListerContext,
@@ -93,6 +93,11 @@ export async function listMSKClusters(
                 ] as Record<string, unknown>
               )?.["VolumeSize"] ?? 0)
             : 0,
+        ),
+        // Broker ENIs live in the client subnets, guarded by these groups.
+        subnetIds: joinIds((brokerNodeGroupInfo?.["ClientSubnets"] as string[] | undefined) ?? []),
+        securityGroupIds: joinIds(
+          (brokerNodeGroupInfo?.["SecurityGroups"] as string[] | undefined) ?? [],
         ),
       },
       resolvedOutputs: {
@@ -217,6 +222,7 @@ export async function listStepFunctions(
           status: String(detail["status"] ?? "ACTIVE"),
           type: String(detail["type"] ?? "STANDARD"),
           creationDate: String(detail["creationDate"] ?? ""),
+          roleArn: String(detail["roleArn"] ?? ""),
         },
         resolvedOutputs: { stateMachineArn: arn },
         secretStates: [],
@@ -237,6 +243,8 @@ export async function listStepFunctions(
           status: "ACTIVE",
           type: String(sm["type"] ?? "STANDARD"),
           creationDate: String(sm["creationDate"] ?? ""),
+          // ListStateMachines carries no role — only DescribeStateMachine does.
+          roleArn: "",
         },
         resolvedOutputs: { stateMachineArn: arn },
         secretStates: [],

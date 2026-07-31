@@ -25,6 +25,20 @@ export const CloudSqlInstanceResourceType = rt({
         },
       ],
     }),
+    f("privateNetwork", "Private VPC Network", {
+      required: false,
+      description: "Name of the VPC network serving this instance's private IP",
+    }),
+  ],
+  // The API returns a resource link; the lister keeps its last segment, which is
+  // what a vpc-network's `name` field holds.
+  dependsOn: [
+    {
+      fieldKey: "privateNetwork",
+      targetTypeId: "vpc-network",
+      targetKey: "name",
+      label: "private IP in",
+    },
   ],
   outputs: [
     o("connectionName", "Connection Name", { description: "project:region:instance" }),

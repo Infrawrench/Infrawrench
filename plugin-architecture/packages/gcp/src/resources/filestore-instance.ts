@@ -15,5 +15,8 @@ export const FilestoreInstanceResourceType = rt({
     f("ipAddress", "IP Address", { required: false }),
   ],
   outputs: [o("ipAddress", "IP Address")],
+  dependsOn: [
+    { fieldKey: "network", targetTypeId: "vpc-network", targetKey: "name", label: "in network" },
+  ],
   supportsCreate: true,
 });

@@ -1,5 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { ARM, extractResourceGroup, type ListerContext } from "./shared.js";
+import { ARM, extractResourceGroup, extractVaultName, type ListerContext } from "./shared.js";
 
 export async function listStorageAccounts(
   ctx: ListerContext,
@@ -15,6 +15,14 @@ export async function listStorageAccounts(
     const props = sa["properties"] as Record<string, unknown> | undefined;
     const primaryEndpoints = props?.["primaryEndpoints"] as Record<string, unknown> | undefined;
     const sku = sa["sku"] as Record<string, unknown> | undefined;
+    // The Storage RP spells the CMK block lowercase; accept both spellings.
+    const encryption = props?.["encryption"] as Record<string, unknown> | undefined;
+    const kvProps = (encryption?.["keyvaultproperties"] ?? encryption?.["keyVaultProperties"]) as
+      | Record<string, unknown>
+      | undefined;
+    const keyVaultName = extractVaultName(
+      String(kvProps?.["keyvaulturi"] ?? kvProps?.["keyVaultUri"] ?? ""),
+    );
 
     return {
       id: ctx.id(accountId, "azure-storage-account", `${rg}/${name}`),
@@ -33,6 +41,7 @@ export async function listStorageAccounts(
         httpsOnly: (props?.["supportsHttpsTrafficOnly"] as boolean) ?? true,
         primaryLocation: String(props?.["primaryLocation"] ?? ""),
         statusOfPrimary: String(props?.["statusOfPrimary"] ?? ""),
+        keyVaultName,
       },
       resolvedOutputs: {
         primaryBlobEndpoint: String(primaryEndpoints?.["blob"] ?? ""),

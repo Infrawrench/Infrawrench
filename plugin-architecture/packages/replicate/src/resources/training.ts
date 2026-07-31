@@ -21,6 +21,12 @@ export const TrainingResourceType = rt({
     o("destinationVersion", "Trained Version ID"),
     o("status", "Status"),
   ],
+  // Both are `owner/name` references: the trainer model the run executes, and
+  // the destination model the weights are pushed to (which must already exist).
+  dependsOn: [
+    { fieldKey: "model", targetTypeId: "model", label: "trains with" },
+    { fieldKey: "destination", targetTypeId: "model", label: "writes to" },
+  ],
   supportsDelete: false,
   iconKey: "pipeline",
 });

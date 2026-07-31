@@ -30,8 +30,27 @@ export const ServerResourceType = rt({
       required: false,
       description: "Datacenter name, e.g. fsn1-dc14",
     }),
+    f("placementGroupId", "Placement Group", {
+      required: false,
+      description: "ID of the placement group this server is spread across, if any",
+    }),
+    f("firewallIds", "Firewalls", {
+      required: false,
+      description: "Comma-separated IDs of the firewalls applied to the public interface",
+    }),
+    f("networkIds", "Networks", {
+      required: false,
+      description: "Comma-separated IDs of the private networks this server is attached to",
+    }),
   ],
   outputs: [o("ipv4", "Public IPv4"), o("ipv6", "Public IPv6"), o("ipv4Private", "Private IPv4")],
+  // All three are ids straight off the /servers payload; each target type's
+  // externalId is the same numeric id stringified.
+  dependsOn: [
+    { fieldKey: "placementGroupId", targetTypeId: "placement-group", label: "placed in" },
+    { fieldKey: "firewallIds", targetTypeId: "firewall", label: "protected by" },
+    { fieldKey: "networkIds", targetTypeId: "network", label: "attached to" },
+  ],
   iconKey: "server",
   sshEndpoint: {
     hostOutputKey: "ipv4",

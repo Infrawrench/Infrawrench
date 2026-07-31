@@ -6,13 +6,24 @@ export const AgentApiKeyResourceType = rt({
   id: "agent-api-key",
   description:
     "A bearer token scoped to a single Gradient AI agent's deployment endpoint. Used by client SDKs (OpenAI-compatible) and apps that call the agent directly. The secret is shown once at creation.",
-  fields: [f("name", "Name"), f("createdBy", "Created By", { required: false, editable: false })],
+  fields: [
+    f("name", "Name"),
+    f("createdBy", "Created By", { required: false, editable: false }),
+    f("agentUuid", "Agent UUID", {
+      required: false,
+      editable: false,
+      description: "UUID of the agent whose endpoint this key authenticates against.",
+    }),
+  ],
   outputs: [
     o("secretKey", "Secret Key", {
       sensitive: true,
       description: "Bearer token for the agent's deployment endpoint. Shown once at creation.",
     }),
   ],
+  // The lister records the owning agent uuid; an agent's externalId is that
+  // same uuid.
+  dependsOn: [{ fieldKey: "agentUuid", targetTypeId: "gen-ai-agent", label: "key for" }],
   parentTypeId: "gen-ai-agent",
   showInSidebar: false,
   supportsCreate: true,

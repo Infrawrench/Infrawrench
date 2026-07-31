@@ -17,6 +17,9 @@ export const Route53RecordSetResourceType = rt({
     f("hostedZoneId", "Hosted Zone ID"),
   ],
   outputs: [],
+  // The lister stores the zone id with the `/hostedzone/` prefix stripped,
+  // which is the same form the hosted zone reports as its external id.
+  dependsOn: [{ fieldKey: "hostedZoneId", targetTypeId: "route53-hosted-zone", label: "in zone" }],
   iconKey: "dns",
   supportsCreate: true,
   supportsUpdate: true,

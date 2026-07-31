@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { ensureArray } from "../xml.js";
-import type { ListerContext } from "../resource-listers.js";
+import { joinIds, rdsSecurityGroupIds, type ListerContext } from "../resource-listers.js";
 
 export async function listRedshiftClusters(
   ctx: ListerContext,
@@ -18,6 +18,11 @@ export async function listRedshiftClusters(
   return clusters.map((c) => {
     const clusterId = String(c["ClusterIdentifier"] ?? "");
     const endpoint = c["Endpoint"] as Record<string, unknown> | undefined;
+    // Redshift wraps its VPC groups in `VpcSecurityGroup` members (the RDS
+    // family uses `VpcSecurityGroupMembership` for the same shape).
+    const vpcSecurityGroups = ensureArray(
+      (c["VpcSecurityGroups"] as Record<string, unknown> | undefined)?.["VpcSecurityGroup"],
+    ) as Record<string, unknown>[];
     return {
       id: ctx.id(accountId, "redshift-cluster", clusterId),
       pluginId: "aws",
@@ -34,6 +39,8 @@ export async function listRedshiftClusters(
         availabilityZone: String(c["AvailabilityZone"] ?? ""),
         encrypted: c["Encrypted"] === true || c["Encrypted"] === "true",
         publiclyAccessible: c["PubliclyAccessible"] === true || c["PubliclyAccessible"] === "true",
+        vpcId: String(c["VpcId"] ?? ""),
+        securityGroupIds: joinIds(vpcSecurityGroups.map((g) => g["VpcSecurityGroupId"])),
       },
       resolvedOutputs: {
         endpoint: String(endpoint?.["Address"] ?? ""),
@@ -68,7 +75,7 @@ export async function listRDSClusters(
   return clusters.map((c) => {
     const clusterId = String(c["DBClusterIdentifier"] ?? "");
     const membersContainer = c["DBClusterMembers"] as Record<string, unknown> | undefined;
-    const members = ensureArray(membersContainer?.["DBClusterMember"]);
+    const members = ensureArray(membersContainer?.["DBClusterMember"]) as Record<string, unknown>[];
     return {
       id: ctx.id(accountId, "rds-cluster", clusterId),
       pluginId: "aws",
@@ -85,6 +92,9 @@ export async function listRDSClusters(
         storageEncrypted: String(c["StorageEncrypted"]) === "true",
         allocatedStorage: Number(c["AllocatedStorage"] ?? 0),
         dbClusterMembers: members.length,
+        // The count stays; these are the member instances themselves.
+        dbClusterMemberIds: joinIds(members.map((m) => m["DBInstanceIdentifier"])),
+        securityGroupIds: rdsSecurityGroupIds(c),
       },
       resolvedOutputs: {
         endpoint: String(c["Endpoint"] ?? ""),
@@ -124,6 +134,8 @@ export async function listOpenSearchDomains(
       const clusterConfig = ds["ClusterConfig"] as Record<string, unknown> | undefined;
       const ebsOptions = ds["EBSOptions"] as Record<string, unknown> | undefined;
       const encryptionConfig = ds["EncryptionAtRestOptions"] as Record<string, unknown> | undefined;
+      // Only present on VPC-attached domains; public domains leave it unset.
+      const vpcOptions = ds["VPCOptions"] as Record<string, unknown> | undefined;
 
       results.push({
         id: ctx.id(accountId, "opensearch-domain", domainName),
@@ -141,6 +153,11 @@ export async function listOpenSearchDomains(
           volumeType: String(ebsOptions?.["VolumeType"] ?? ""),
           volumeSize: Number(ebsOptions?.["VolumeSize"] ?? 0),
           encryptionEnabled: encryptionConfig?.["Enabled"] === true,
+          vpcId: String(vpcOptions?.["VPCId"] ?? ""),
+          subnetIds: joinIds((vpcOptions?.["SubnetIds"] as string[] | undefined) ?? []),
+          securityGroupIds: joinIds(
+            (vpcOptions?.["SecurityGroupIds"] as string[] | undefined) ?? [],
+          ),
         },
         resolvedOutputs: {
           endpoint: String(ds["Endpoint"] ?? ds["Endpoints"]?.toString() ?? ""),
@@ -187,7 +204,10 @@ export async function listNeptuneClusters(
     .map((c) => {
       const clusterId = String(c["DBClusterIdentifier"] ?? "");
       const membersContainer = c["DBClusterMembers"] as Record<string, unknown> | undefined;
-      const members = ensureArray(membersContainer?.["DBClusterMember"]);
+      const members = ensureArray(membersContainer?.["DBClusterMember"]) as Record<
+        string,
+        unknown
+      >[];
       return {
         id: ctx.id(accountId, "neptune-cluster", clusterId),
         pluginId: "aws",
@@ -203,6 +223,10 @@ export async function listNeptuneClusters(
           storageEncrypted: String(c["StorageEncrypted"]) === "true",
           multiAZ: String(c["MultiAZ"]) === "true",
           dbClusterMembers: members.length,
+          // The count stays; these are the member instances themselves, which
+          // DescribeDBInstances also lists as rds-instance resources.
+          dbClusterMemberIds: joinIds(members.map((m) => m["DBInstanceIdentifier"])),
+          securityGroupIds: rdsSecurityGroupIds(c),
         },
         resolvedOutputs: {
           endpoint: String(c["Endpoint"] ?? ""),
@@ -240,7 +264,10 @@ export async function listDocumentDBClusters(
     .map((c) => {
       const clusterId = String(c["DBClusterIdentifier"] ?? "");
       const membersContainer = c["DBClusterMembers"] as Record<string, unknown> | undefined;
-      const members = ensureArray(membersContainer?.["DBClusterMember"]);
+      const members = ensureArray(membersContainer?.["DBClusterMember"]) as Record<
+        string,
+        unknown
+      >[];
       return {
         id: ctx.id(accountId, "documentdb-cluster", clusterId),
         pluginId: "aws",
@@ -256,6 +283,10 @@ export async function listDocumentDBClusters(
           storageEncrypted: String(c["StorageEncrypted"]) === "true",
           multiAZ: String(c["MultiAZ"]) === "true",
           dbClusterMembers: members.length,
+          // The count stays; these are the member instances themselves, which
+          // DescribeDBInstances also lists as rds-instance resources.
+          dbClusterMemberIds: joinIds(members.map((m) => m["DBInstanceIdentifier"])),
+          securityGroupIds: rdsSecurityGroupIds(c),
         },
         resolvedOutputs: {
           endpoint: String(c["Endpoint"] ?? ""),

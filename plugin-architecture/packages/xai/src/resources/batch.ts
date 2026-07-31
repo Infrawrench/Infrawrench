@@ -25,5 +25,8 @@ export const BatchResourceType = rt({
     f("numCancelled", "Cancelled Requests", { kind: "number", required: false }),
   ],
   outputs: [o("batchId", "Batch ID")],
+  // `create_api_key_id` is the id of the team API key that submitted the job —
+  // the same id the management API lists keys under.
+  dependsOn: [{ fieldKey: "createApiKeyId", targetTypeId: "api-key", label: "created by" }],
   iconKey: "layers",
 });

@@ -191,6 +191,127 @@ describe("listResources", () => {
     expect(res[1]!.fields["appliedToCount"]).toBe(0);
   });
 
+  it("records the server's placement group, firewall and network ids", async () => {
+    const c = makeClient();
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        servers: [
+          {
+            id: 1,
+            name: "web",
+            status: "running",
+            public_net: {
+              ipv4: { ip: "1.2.3.4" },
+              firewalls: [{ id: 30, status: "applied" }, { id: 31 }],
+            },
+            private_net: [
+              { ip: "10.0.0.2", network: 40 },
+              { ip: "10.1.0.2", network: 41 },
+            ],
+            placement_group: { id: 50, name: "spread", type: "spread" },
+          },
+        ],
+      }),
+    );
+    const s = (await c.listResources("server", ACCOUNT))[0]!;
+    expect(s.fields["placementGroupId"]).toBe("50");
+    expect(s.fields["firewallIds"]).toBe("30, 31");
+    expect(s.fields["networkIds"]).toBe("40, 41");
+  });
+
+  it("leaves the server's link fields blank when the payload omits them", async () => {
+    const c = makeClient();
+    fetchMock.mockResolvedValueOnce(okJson({ servers: [{ id: 2, name: "bare", status: "off" }] }));
+    const s = (await c.listResources("server", ACCOUNT))[0]!;
+    expect(s.fields["placementGroupId"]).toBe("");
+    expect(s.fields["firewallIds"]).toBe("");
+    expect(s.fields["networkIds"]).toBe("");
+  });
+
+  it("collects firewall server ids from both direct and label-selector entries", async () => {
+    const c = makeClient();
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        firewalls: [
+          {
+            id: 30,
+            name: "fw",
+            applied_to: [
+              { type: "server", server: { id: 1 } },
+              {
+                type: "label_selector",
+                label_selector: { selector: "env=prod" },
+                applied_to_resources: [
+                  { type: "server", server: { id: 2 } },
+                  // Duplicate of the direct entry — must not repeat.
+                  { type: "server", server: { id: 1 } },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const fw = (await c.listResources("firewall", ACCOUNT))[0]!;
+    expect(fw.fields["appliedToCount"]).toBe(2);
+    expect(fw.fields["appliedToServerIds"]).toBe("1, 2");
+    expect(fw.fields["appliedToLabelSelectors"]).toBe("env=prod");
+  });
+
+  it("records network server/load-balancer ids and both vswitch spellings", async () => {
+    const c = makeClient();
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        networks: [
+          {
+            id: 40,
+            name: "net",
+            ip_range: "10.0.0.0/16",
+            servers: [1, 2],
+            load_balancers: [70],
+            expose_routes_to_vswitch: true,
+          },
+          { id: 41, name: "legacy", ip_range: "10.1.0.0/16" },
+        ],
+      }),
+    );
+    const [net, legacy] = await c.listResources("network", ACCOUNT);
+    expect(net!.fields["serverIds"]).toBe("1, 2");
+    expect(net!.fields["loadBalancerIds"]).toBe("70");
+    expect(net!.fields["exposesRoutesToVswitch"]).toBe(true);
+    expect(legacy!.fields["serverIds"]).toBe("");
+    expect(legacy!.fields["loadBalancerIds"]).toBe("");
+    expect(legacy!.fields["exposesRoutesToVswitch"]).toBe(false);
+  });
+
+  it("collects load-balancer target server ids and attached network ids", async () => {
+    const c = makeClient();
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        load_balancers: [
+          {
+            id: 70,
+            name: "lb",
+            targets: [
+              { type: "server", server: { id: 1, ip: "10.0.0.2" } },
+              {
+                type: "label_selector",
+                label_selector: { selector: "env=prod" },
+                targets: [{ type: "server", server: { id: 2, ip: "10.0.0.3" } }],
+              },
+              { type: "ip", ip: { ip: "203.0.113.1" } },
+            ],
+            private_net: [{ network: 40, ip: "10.0.0.9" }],
+          },
+        ],
+      }),
+    );
+    const lb = (await c.listResources("load-balancer", ACCOUNT))[0]!;
+    expect(lb.fields["targetCount"]).toBe(3);
+    expect(lb.fields["targetServerIds"]).toBe("1, 2");
+    expect(lb.fields["networkIds"]).toBe("40");
+  });
+
   it("throws on unknown type", async () => {
     const c = makeClient();
     await expect(c.listResources("nope", ACCOUNT)).rejects.toThrow(/unknown resource type/);

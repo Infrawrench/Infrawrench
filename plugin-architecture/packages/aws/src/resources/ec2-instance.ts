@@ -41,6 +41,15 @@ export const EC2InstanceResourceType = rt({
     }),
   ],
   outputs: [o("publicIp", "Public IP"), o("privateIp", "Private IP"), o("publicDns", "Public DNS")],
+  // Dependency-graph edges. The host can guess `vpc-…` ids on its own, but
+  // saying which type each field points at makes the edge exact and lets it
+  // survive an id that some other resource also mentions.
+  dependsOn: [
+    { fieldKey: "vpcId", targetTypeId: "vpc", label: "in VPC" },
+    { fieldKey: "subnetId", targetTypeId: "subnet", label: "in subnet" },
+    // Comma-separated list — one edge per group.
+    { fieldKey: "securityGroupIds", targetTypeId: "security-group", label: "guarded by" },
+  ],
   supportsMetrics: true,
   sshEndpoint: {
     hostOutputKey: "publicIp",

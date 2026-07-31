@@ -25,6 +25,16 @@ export const AKSClusterResourceType = rt({
     }),
     f("networkPlugin", "Network Plugin", { required: false }),
     f("tier", "Tier", { required: false }),
+    f("nodeResourceGroup", "Node Resource Group", {
+      required: false,
+      description: "Managed resource group AKS creates the node VMSS and disks in",
+    }),
+    f("subnetRefs", "Node Subnets", {
+      required: false,
+      description: "Subnets the agent pools are placed in",
+    }),
+    f("logAnalyticsWorkspace", "Log Analytics Workspace", { required: false }),
+    f("managedIdentities", "Managed Identities", { required: false }),
   ],
   outputs: [
     o("fqdn", "FQDN", { hidden: true, description: "API server FQDN" }),
@@ -33,6 +43,27 @@ export const AKSClusterResourceType = rt({
       hidden: true,
       description: "Cluster kubeconfig for kubectl access",
     }),
+  ],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+    {
+      fieldKey: "nodeResourceGroup",
+      targetTypeId: "azure-resource-group",
+      label: "node resources in",
+    },
+    { fieldKey: "subnetRefs", targetTypeId: "azure-subnet", label: "nodes in subnet" },
+    {
+      fieldKey: "logAnalyticsWorkspace",
+      targetTypeId: "azure-log-analytics",
+      targetKey: "name",
+      label: "logs to",
+    },
+    {
+      fieldKey: "managedIdentities",
+      targetTypeId: "azure-managed-identity",
+      targetKey: "name",
+      label: "runs as",
+    },
   ],
   iconKey: "kubernetes",
   supportsCreate: true,

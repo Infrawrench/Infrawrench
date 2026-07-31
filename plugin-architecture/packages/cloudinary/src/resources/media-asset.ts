@@ -17,6 +17,7 @@ export const MediaAssetResourceType = rt({
     f("createdAt", "Created At", { required: false }),
   ],
   outputs: [o("secureUrl", "Secure URL"), o("url", "URL"), o("publicId", "Public ID")],
+  dependsOn: [{ fieldKey: "folder", targetTypeId: "folder", label: "in folder" }],
   parentTypeId: "folder",
   iconKey: "media",
 });

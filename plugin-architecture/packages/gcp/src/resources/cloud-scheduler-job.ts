@@ -16,5 +16,15 @@ export const CloudSchedulerJobResourceType = rt({
     f("scheduleTime", "Next Run", { required: false }),
   ],
   outputs: [],
+  // targetUri holds the short topic id for Pub/Sub jobs; HTTP and App Engine
+  // jobs store a URL or a path, neither of which can name a topic.
+  dependsOn: [
+    {
+      fieldKey: "targetUri",
+      targetTypeId: "pubsub-topic",
+      targetKey: "name",
+      label: "publishes to",
+    },
+  ],
   supportsCreate: true,
 });

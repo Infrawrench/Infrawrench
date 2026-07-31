@@ -12,6 +12,14 @@ export const DocumentDBClusterResourceType = rt({
     f("storageEncrypted", "Encrypted", { kind: "boolean", required: false }),
     f("multiAZ", "Multi-AZ", { kind: "boolean", required: false }),
     f("dbClusterMembers", "Members", { kind: "number", required: false }),
+    f("dbClusterMemberIds", "Member Instances", {
+      required: false,
+      description: "Comma-separated DB instance identifiers in this cluster",
+    }),
+    f("securityGroupIds", "Security Groups", {
+      required: false,
+      description: "Comma-separated VPC security group IDs attached to the cluster",
+    }),
   ],
   outputs: [
     o("endpoint", "Writer Endpoint"),
@@ -23,6 +31,12 @@ export const DocumentDBClusterResourceType = rt({
       sensitive: true,
       description: "MongoDB connection URI for DocumentDB (constructed from endpoint + port)",
     }),
+  ],
+  // DocumentDB instances come back from the shared RDS DescribeDBInstances
+  // call, so cluster members resolve to `rds-instance` resources.
+  dependsOn: [
+    { fieldKey: "dbClusterMemberIds", targetTypeId: "rds-instance", label: "has member" },
+    { fieldKey: "securityGroupIds", targetTypeId: "security-group", label: "guarded by" },
   ],
   iconKey: "database",
   supportsCreate: true,

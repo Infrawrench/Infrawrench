@@ -1,5 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { type ListerContext } from "./shared.js";
+import { lastSegment, type ListerContext } from "./shared.js";
 import { engineInfoFromVersion } from "../cloudsql-engine.js";
 
 export async function listCloudSqlInstances(
@@ -20,6 +20,11 @@ export async function listCloudSqlInstances(
     const privateIp = String(ips.find((a) => a["type"] === "PRIVATE")?.["ipAddress"] ?? "");
     const databaseVersion = String(db["databaseVersion"] ?? "");
     const engine = engineInfoFromVersion(databaseVersion);
+    // `/projects/<p>/global/networks/<name>` — the VPC serving the private IP.
+    const ipConfiguration = (db["settings"] as Record<string, unknown> | undefined)?.[
+      "ipConfiguration"
+    ] as Record<string, unknown> | undefined;
+    const privateNetwork = lastSegment(ipConfiguration?.["privateNetwork"]);
     return {
       id: ctx.id(accountId, "cloudsql-instance", String(db["name"])),
       pluginId: "gcp",
@@ -37,6 +42,7 @@ export async function listCloudSqlInstances(
         ),
         publicIpAddress: publicIp,
         privateIpAddress: privateIp,
+        privateNetwork,
       },
       resolvedOutputs: {
         connectionName: String(db["connectionName"] ?? ""),
@@ -300,6 +306,8 @@ export async function listMemorystoreRedis(
         memorySizeGb: Number(inst["memorySizeGb"] ?? 0),
         redisVersion: String(inst["redisVersion"] ?? ""),
         state: String(inst["state"] ?? ""),
+        // Full network name (`projects/<p>/global/networks/<name>`) in the API.
+        authorizedNetwork: lastSegment(inst["authorizedNetwork"]),
       },
       resolvedOutputs: {
         host: String(inst["host"] ?? ""),
@@ -392,6 +400,9 @@ export async function listAlloyDbInstances(
         cpuCount,
         ipAddress,
         availabilityType: String(inst["availabilityType"] ?? ""),
+        // The cluster this instance was enumerated under — already in hand from
+        // the cluster listing, so the link costs nothing extra.
+        cluster: lastSegment(parentFullName),
       },
       resolvedOutputs: { ipAddress },
       secretStates: [],
@@ -438,6 +449,8 @@ export async function listMemorystoreMemcached(
         memorySizeMb: Number(nodeConfig?.["memorySizeMb"] ?? 0),
         memcacheVersion: String(inst["memcacheVersion"] ?? ""),
         discoveryEndpoint: endpoint,
+        // Full network name (`projects/<p>/global/networks/<name>`) in the API.
+        authorizedNetwork: lastSegment(inst["authorizedNetwork"]),
       },
       resolvedOutputs: { discoveryEndpoint: endpoint },
       secretStates: [],

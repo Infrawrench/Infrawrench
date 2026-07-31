@@ -16,5 +16,27 @@ export const SubnetResourceType = rt({
     f("natGateway", "NAT Gateway", { required: false }),
   ],
   outputs: [o("resourceId", "Resource ID")],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+    { fieldKey: "vnetName", targetTypeId: "azure-vnet", targetKey: "name", label: "in VNet" },
+    {
+      fieldKey: "networkSecurityGroup",
+      targetTypeId: "azure-nsg",
+      targetKey: "name",
+      label: "guarded by",
+    },
+    {
+      fieldKey: "routeTable",
+      targetTypeId: "azure-route-table",
+      targetKey: "name",
+      label: "routed by",
+    },
+    {
+      fieldKey: "natGateway",
+      targetTypeId: "azure-nat-gateway",
+      targetKey: "name",
+      label: "egress via",
+    },
+  ],
   iconKey: "network",
 });

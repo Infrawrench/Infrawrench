@@ -31,6 +31,8 @@ export const CachedContentResourceType = rt({
     o("model", "Model"),
     o("totalTokenCount", "Cached Tokens"),
   ],
+  // `model` is a full `models/{model}` name, matching the Model row's `name`.
+  dependsOn: [{ fieldKey: "model", targetTypeId: "model", targetKey: "name", label: "caches" }],
   // TTL is the one thing the API lets you change after creation
   // (PATCH with updateMask=ttl).
   supportsUpdate: true,

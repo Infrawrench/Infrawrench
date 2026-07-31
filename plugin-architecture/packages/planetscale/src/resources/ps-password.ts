@@ -20,6 +20,17 @@ export const PsPasswordResourceType = rt({
     f("lastUsedAt", "Last Used At", { required: false }),
   ],
   outputs: [o("username", "Username"), o("host", "Host")],
+  // A branch's external id is `{database}/{branch}` while `branchName` is bare —
+  // the template composes the qualified id the branch actually answers to.
+  dependsOn: [
+    { fieldKey: "databaseName", targetTypeId: "ps-database", label: "in database" },
+    {
+      fieldKey: "branchName",
+      targetTypeId: "ps-branch",
+      matchTemplate: "{databaseName}/{branchName}",
+      label: "on branch",
+    },
+  ],
   parentTypeId: "ps-branch",
   supportsCreate: true,
   supportsUpdate: true,

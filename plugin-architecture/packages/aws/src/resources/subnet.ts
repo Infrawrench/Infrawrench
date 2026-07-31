@@ -17,6 +17,7 @@ export const SubnetResourceType = rt({
     f("mapPublicIp", "Map Public IP", { kind: "boolean", required: false }),
   ],
   outputs: [o("subnetArn", "Subnet ARN")],
+  dependsOn: [{ fieldKey: "vpcId", targetTypeId: "vpc", label: "in VPC" }],
   iconKey: "network",
   supportsCreate: true,
 });

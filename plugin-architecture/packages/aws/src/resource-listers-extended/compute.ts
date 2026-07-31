@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { ensureArray } from "../xml.js";
-import type { ListerContext } from "../resource-listers.js";
+import { joinIds, type ListerContext } from "../resource-listers.js";
 import { fetchSigned } from "../signed-request.js";
 
 export async function listAutoScalingGroups(
@@ -25,6 +25,12 @@ export async function listAutoScalingGroups(
       (asg["Instances"] as Record<string, unknown> | undefined)?.["member"],
     ) as unknown[];
     const launchTemplate = asg["LaunchTemplate"] as Record<string, unknown> | undefined;
+    // VPCZoneIdentifier is AWS's own comma-joined subnet list; re-joining it
+    // normalises the separator the graph splits on.
+    const subnetIds = joinIds(String(asg["VPCZoneIdentifier"] ?? "").split(","));
+    const targetGroupArns = joinIds(
+      ensureArray((asg["TargetGroupARNs"] as Record<string, unknown> | undefined)?.["member"]),
+    );
 
     return {
       id: ctx.id(accountId, "auto-scaling-group", name),
@@ -45,6 +51,8 @@ export async function listAutoScalingGroups(
           ? `${launchTemplate["LaunchTemplateName"]}@${launchTemplate["Version"]}`
           : "",
         instanceCount: instances.length,
+        subnetIds,
+        targetGroupArns,
       },
       resolvedOutputs: {
         autoScalingGroupArn: String(asg["AutoScalingGroupARN"] ?? ""),

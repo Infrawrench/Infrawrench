@@ -16,11 +16,24 @@ export const CosmosDBAccountResourceType = rt({
     f("enableMultipleWriteLocations", "Multi-Region Writes", { kind: "boolean", required: false }),
     f("readLocations", "Read Locations", { required: false }),
     f("writeLocations", "Write Locations", { required: false }),
+    f("keyVaultName", "Encryption Key Vault", {
+      required: false,
+      description: "Key Vault holding the customer-managed encryption key",
+    }),
   ],
   outputs: [
     o("documentEndpoint", "Document Endpoint"),
     o("primaryKey", "Primary Key", { sensitive: true }),
     o("connectionString", "Connection String", { sensitive: true }),
+  ],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+    {
+      fieldKey: "keyVaultName",
+      targetTypeId: "azure-key-vault",
+      targetKey: "name",
+      label: "encrypted with",
+    },
   ],
   iconKey: "database",
   supportsCreate: true,

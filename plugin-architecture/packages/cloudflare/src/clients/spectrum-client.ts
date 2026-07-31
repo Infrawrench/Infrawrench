@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { asRecord, collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone, resolveZoneName } from "./shared.js";
 import type { AppCreateParams, AppUpdateParams } from "cloudflare/resources/spectrum/apps";
 
 /**
@@ -33,6 +33,7 @@ function mapSpectrumApplication(
   app: Record<string, unknown>,
   accountId: string,
   zoneId: string,
+  zoneName: string,
 ): ResourceInstance {
   const id = String(app["id"] ?? "");
   const protocol = String(app["protocol"] ?? "");
@@ -59,6 +60,7 @@ function mapSpectrumApplication(
       tls: String(app["tls"] ?? ""),
       createdOn: String(app["created_on"] ?? ""),
       modifiedOn: String(app["modified_on"] ?? ""),
+      zoneName,
     },
     resolvedOutputs: {},
     secretStates: [],
@@ -75,10 +77,10 @@ export async function listAllSpectrumApplications(
 ): Promise<ResourceInstance[]> {
   return collectPerZone(
     api,
-    async (zoneId) => {
+    async (zoneId, zoneName) => {
       const part: ResourceInstance[] = [];
       for await (const app of api.cf.spectrum.apps.list({ zone_id: zoneId })) {
-        part.push(mapSpectrumApplication(asRecord(app), accountId, zoneId));
+        part.push(mapSpectrumApplication(asRecord(app), accountId, zoneId, zoneName));
       }
       return part;
     },
@@ -115,7 +117,12 @@ export async function createSpectrumApplication(
     ip_firewall: fields["ipFirewall"] === "true",
   };
   const app = await api.cf.spectrum.apps.create(body);
-  return mapSpectrumApplication(asRecord(app), accountId, zoneId);
+  return mapSpectrumApplication(
+    asRecord(app),
+    accountId,
+    zoneId,
+    await resolveZoneName(api, zoneId),
+  );
 }
 
 export async function editSpectrumApplication(
@@ -147,7 +154,12 @@ export async function editSpectrumApplication(
     ...(tls ? { tls } : {}),
   };
   const app = await api.cf.spectrum.apps.update(appId, body);
-  return mapSpectrumApplication(asRecord(app), accountId, zoneId);
+  return mapSpectrumApplication(
+    asRecord(app),
+    accountId,
+    zoneId,
+    await resolveZoneName(api, zoneId),
+  );
 }
 
 export async function deleteSpectrumApplication(

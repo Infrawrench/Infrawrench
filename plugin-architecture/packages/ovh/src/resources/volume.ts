@@ -27,6 +27,9 @@ export const VolumeResourceType = rt({
       description: "Comma-separated instance IDs this volume is attached to",
     }),
   ],
+  // Comma-joined `attachedTo` — one edge per instance (multiattach volumes
+  // can hold several).
+  dependsOn: [{ fieldKey: "attachedTo", targetTypeId: "instance", label: "attached to" }],
   supportsCreate: true,
   iconKey: "volume",
   attachTargets: [

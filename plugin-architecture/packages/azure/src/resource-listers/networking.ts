@@ -1,5 +1,15 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { ARM, extractName, extractResourceGroup, type ListerContext } from "./shared.js";
+import {
+  ARM,
+  extractName,
+  extractResourceGroup,
+  extractVaultName,
+  joinRefs,
+  propsOf,
+  refId,
+  subnetRef,
+  type ListerContext,
+} from "./shared.js";
 
 export async function listVNets(
   ctx: ListerContext,
@@ -142,7 +152,7 @@ export async function listNatGateways(
     const rg = extractResourceGroup(azureId);
     const props = natGateway["properties"] as Record<string, unknown> | undefined;
     const sku = natGateway["sku"] as Record<string, unknown> | undefined;
-    const publicIps = props?.["publicIpAddresses"] as unknown[] | undefined;
+    const publicIps = props?.["publicIpAddresses"] as Array<Record<string, unknown>> | undefined;
     const subnets = props?.["subnets"] as unknown[] | undefined;
     return {
       id: ctx.id(accountId, "azure-nat-gateway", `${rg}/${name}`),
@@ -159,6 +169,9 @@ export async function listNatGateways(
         idleTimeout: Number(props?.["idleTimeoutInMinutes"] ?? 0),
         publicIpCount: publicIps?.length ?? 0,
         subnetCount: subnets?.length ?? 0,
+        publicIpNames: joinRefs(
+          (publicIps ?? []).map((pip) => extractName(String(pip["id"] ?? ""))),
+        ),
       },
       resolvedOutputs: { resourceId: azureId },
       secretStates: [],
@@ -182,12 +195,14 @@ export async function listLoadBalancers(
     const rg = extractResourceGroup(azureId);
     const props = lb["properties"] as Record<string, unknown> | undefined;
     const sku = lb["sku"] as Record<string, unknown> | undefined;
-    const frontendIps = props?.["frontendIPConfigurations"] as unknown[] | undefined;
+    const frontendIps = props?.["frontendIPConfigurations"] as
+      | Array<Record<string, unknown>>
+      | undefined;
     const backendPools = props?.["backendAddressPools"] as unknown[] | undefined;
     const rules = props?.["loadBalancingRules"] as unknown[] | undefined;
 
     // Try to get the first frontend IP
-    const firstFrontend = (frontendIps as Array<Record<string, unknown>> | undefined)?.[0];
+    const firstFrontend = frontendIps?.[0];
     const frontendProps = firstFrontend?.["properties"] as Record<string, unknown> | undefined;
     const frontendIp = String(frontendProps?.["privateIPAddress"] ?? "");
 
@@ -206,6 +221,12 @@ export async function listLoadBalancers(
         frontendIpCount: frontendIps?.length ?? 0,
         backendPoolCount: backendPools?.length ?? 0,
         ruleCount: rules?.length ?? 0,
+        publicIpNames: joinRefs(
+          (frontendIps ?? []).map((fe) => extractName(refId(propsOf(fe), "publicIPAddress"))),
+        ),
+        subnetRefs: joinRefs(
+          (frontendIps ?? []).map((fe) => subnetRef(refId(propsOf(fe), "subnet"))),
+        ),
       },
       resolvedOutputs: {
         frontendIp,
@@ -315,6 +336,10 @@ export async function listAppGateways(
     const frontendIps = props?.["frontendIPConfigurations"] as
       | Array<Record<string, unknown>>
       | undefined;
+    const gatewayIpConfigs = props?.["gatewayIPConfigurations"] as
+      | Array<Record<string, unknown>>
+      | undefined;
+    const sslCerts = props?.["sslCertificates"] as Array<Record<string, unknown>> | undefined;
     const firstFrontend = frontendIps?.[0];
     const frontendProps = firstFrontend?.["properties"] as Record<string, unknown> | undefined;
 
@@ -335,6 +360,18 @@ export async function listAppGateways(
         operationalState: String(props?.["operationalState"] ?? ""),
         backendPoolCount: backendPools?.length ?? 0,
         httpListenerCount: httpListeners?.length ?? 0,
+        publicIpNames: joinRefs(
+          (frontendIps ?? []).map((fe) => extractName(refId(propsOf(fe), "publicIPAddress"))),
+        ),
+        subnetRefs: joinRefs([
+          ...(gatewayIpConfigs ?? []).map((cfg) => subnetRef(refId(propsOf(cfg), "subnet"))),
+          ...(frontendIps ?? []).map((fe) => subnetRef(refId(propsOf(fe), "subnet"))),
+        ]),
+        keyVaults: joinRefs(
+          (sslCerts ?? []).map((cert) =>
+            extractVaultName(String(propsOf(cert)?.["keyVaultSecretId"] ?? "")),
+          ),
+        ),
       },
       resolvedOutputs: {
         frontendIp: String(frontendProps?.["privateIPAddress"] ?? ""),

@@ -27,6 +27,13 @@ export const MistralFineTuningJobResourceType = rt({
     f("modifiedAt", "Modified", { required: false }),
   ],
   outputs: [o("fineTunedModel", "Fine-Tuned Model ID"), o("jobId", "Job ID")],
+  // `model` is the base model's `/v1/models` id; both file fields are
+  // comma-joined `/v1/files` id lists.
+  dependsOn: [
+    { fieldKey: "model", targetTypeId: "mistral-model", label: "trained from" },
+    { fieldKey: "trainingFiles", targetTypeId: "mistral-file", label: "trains on" },
+    { fieldKey: "validationFiles", targetTypeId: "mistral-file", label: "validates on" },
+  ],
   supportsDelete: false,
   iconKey: "sliders",
 });

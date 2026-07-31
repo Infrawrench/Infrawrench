@@ -60,3 +60,7 @@ AWS accounts feed [cost graphs & budgets](../features/cloud-costs.md) via Cost E
 - The IAM user needs the `ce:GetCostAndUsage` action — it is **not** part of typical read-only policies, so add a small policy for it.
 - AWS charges **$0.01 per Cost Explorer request**. Infrawrench fetches once a day (plus a one-time history backfill in month-sized chunks), so expect a few cents per month per account.
 - Per-resource cost breakdown is not collected (Cost Explorer only retains it for 14 days).
+
+## Dependency graph
+
+The VPC wiring is declared, so the [dependency graph](../features/dependency-graph.md) draws it exactly rather than inferring it: EC2 instances link to their VPC, subnet and security groups, and subnets, security groups, load balancers, target groups, NAT gateways and internet gateways link to their VPC. These arrows appear as soon as the account syncs — nothing to wire by hand.

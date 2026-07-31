@@ -12,8 +12,20 @@ export const FirewallResourceType = rt({
       required: false,
       description: "Number of servers/label selectors this firewall is applied to",
     }),
+    f("appliedToServerIds", "Applied To Servers", {
+      required: false,
+      description:
+        "Comma-separated IDs of the servers this firewall is applied to, including those resolved from label selectors",
+    }),
+    f("appliedToLabelSelectors", "Label Selectors", {
+      required: false,
+      description: "Comma-separated label selectors this firewall is applied through",
+    }),
   ],
   outputs: [o("id", "Firewall ID")],
+  // Server ids off the firewall's own `applied_to` block; a server's
+  // externalId is that same numeric id stringified.
+  dependsOn: [{ fieldKey: "appliedToServerIds", targetTypeId: "server", label: "applied to" }],
   supportsCreate: true,
   iconKey: "firewall",
   attachTargets: [{ pluginId: "hetzner", resourceTypeId: "server", verb: "Apply firewall" }],

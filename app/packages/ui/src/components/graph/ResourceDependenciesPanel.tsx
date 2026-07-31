@@ -1,7 +1,8 @@
-import type {
-  DependencyGraphNode,
-  DependencyNeighbor,
-  ResourceDependencies,
+import {
+  dependencyEdgeLabel,
+  type DependencyGraphNode,
+  type DependencyNeighbor,
+  type ResourceDependencies,
 } from "@infrawrench/client-core";
 
 interface ResourceDependenciesPanelProps {
@@ -12,9 +13,10 @@ interface ResourceDependenciesPanelProps {
 
 /**
  * The per-resource "Depends on / depended on by" panel — direct neighbors in
- * the org's output-reference dependency graph. Rendered by DetailView inside
- * a "Dependencies" tab on both web and desktop; the host assembles the
- * neighbor lists (see `directDependencies` in `@infrawrench/client-core`).
+ * the org's dependency graph, whether the link is a hand-wired output reference
+ * or one read out of synced cloud data. Rendered by DetailView inside a
+ * "Dependencies" tab on both web and desktop; the host assembles the neighbor
+ * lists (see `directDependencies` in `@infrawrench/client-core`).
  */
 export function ResourceDependenciesPanel({
   dependencies,
@@ -24,16 +26,16 @@ export function ResourceDependenciesPanel({
     <div className="p-6 grid gap-6 md:grid-cols-2 items-start">
       <NeighborList
         title="Depends on"
-        hint="Outputs this resource references"
+        hint="Resources this one points at"
         neighbors={dependencies.dependsOn}
-        emptyText="This resource doesn't reference any other resource's outputs."
+        emptyText="Nothing in this resource's fields or outputs points at another resource."
         onOpenResource={onOpenResource}
       />
       <NeighborList
         title="Depended on by"
-        hint="Resources referencing this resource's outputs"
+        hint="Resources pointing at this one"
         neighbors={dependencies.dependedOnBy}
-        emptyText="No other resource references this resource's outputs."
+        emptyText="No other resource points at this one."
         onOpenResource={onOpenResource}
       />
     </div>
@@ -64,8 +66,9 @@ function NeighborList({
       ) : (
         <ul className="space-y-2">
           {/*
-            Edges are deduped by (consumer, field) in buildDependencyGraph, so
-            node id + field key is already unique in both neighbor lists.
+            Edges are deduped by (consumer, field, provider) in
+            buildDependencyGraph, and every neighbor in one list sits on the
+            same side of the edge — so node id + field key is unique here.
           */}
           {neighbors.map((neighbor) => (
             <li key={`${neighbor.node.id}:${neighbor.fieldKey}`}>
@@ -88,7 +91,11 @@ function NeighborList({
                   </span>
                 </span>
                 <span className="text-xs text-on-surface-faint font-mono flex-shrink-0">
-                  {neighbor.fieldKey} ← {neighbor.outputKey}
+                  {dependencyEdgeLabel({
+                    consumerFieldKey: neighbor.fieldKey,
+                    providerOutputKey: neighbor.outputKey,
+                    ...(neighbor.kind ? { kind: neighbor.kind } : {}),
+                  })}
                 </span>
               </button>
             </li>

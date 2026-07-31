@@ -14,6 +14,7 @@ export const SSLCertificateResourceType = rt({
     f("zoneName", "Zone", { required: false }),
   ],
   outputs: [],
+  dependsOn: [{ fieldKey: "zoneName", targetTypeId: "zone", targetKey: "name", label: "in zone" }],
   parentTypeId: "zone",
   supportsCreate: true,
   iconKey: "certificate",

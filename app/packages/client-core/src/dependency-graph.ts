@@ -28,6 +28,16 @@ export interface DependencyGraphNode {
   accountName: string;
 }
 
+/**
+ * Where an edge came from. `output-ref` is a reference someone wired by hand;
+ * the rest are read back out of synced cloud data by `inferDependencyEdges` —
+ * `declared` from a plugin's own `dependsOn` rule, `containment` from the sync
+ * path's parent/child link, `field-match` from a field value that happens to
+ * name another resource. Absent means `output-ref` (the only kind that existed
+ * first).
+ */
+export type DependencyEdgeKind = "output-ref" | "declared" | "containment" | "field-match";
+
 export interface DependencyGraphEdge {
   /** The resource holding the reference — it depends on the provider. */
   consumerResourceId: string;
@@ -37,12 +47,39 @@ export interface DependencyGraphEdge {
   providerResourceId: string;
   /** The output on the provider the reference reads. */
   providerOutputKey: string;
+  /** Provenance; defaults to `output-ref` when absent. */
+  kind?: DependencyEdgeKind;
+  /**
+   * How the relationship reads, when the plugin named it ("runs in", "routes
+   * to"). Hosts show this instead of the field/output caption.
+   */
+  label?: string;
 }
 
 /** Wire shape of the dependency-graph endpoint / local assembly. */
 export interface DependencyGraphData {
   nodes: DependencyGraphNode[];
   edges: DependencyGraphEdge[];
+  /**
+   * Set when inference hit its edge cap and the graph is a partial view. Hosts
+   * say so rather than presenting a truncated topology as the whole picture.
+   */
+  truncated?: boolean;
+}
+
+/**
+ * How an edge reads in the UI. Containment has no field/output pair worth
+ * showing — the interesting fact is that one resource lives inside the other.
+ */
+export function dependencyEdgeLabel(edge: {
+  consumerFieldKey: string;
+  providerOutputKey: string;
+  kind?: DependencyEdgeKind;
+  label?: string;
+}): string {
+  if (edge.label) return edge.label;
+  if (edge.kind === "containment") return "belongs to";
+  return `${edge.consumerFieldKey} ← ${edge.providerOutputKey}`;
 }
 
 export interface DependencyGraphModel {
@@ -66,9 +103,13 @@ export interface DependencyGraphModel {
 
 /**
  * Index the raw node/edge lists into an adjacency model. Edges are deduped by
- * (consumer, field) — the associations table and the secret-state output-ref
- * rows describe the same reference, so both sources arriving for one field
- * must collapse to one edge. Edges pointing at unknown nodes are dropped.
+ * (consumer, field, provider) — the associations table and the secret-state
+ * output-ref rows describe the same reference, so both sources arriving for one
+ * field must collapse to one edge. The provider is part of the key because a
+ * single field can legitimately name several resources: plugins flatten lists
+ * into one comma-joined value (`securityGroups: "sg-a,sg-b"`), and inference
+ * turns each part into its own edge. Edges pointing at unknown nodes are
+ * dropped.
  */
 export function buildDependencyGraph(
   nodes: DependencyGraphNode[],
@@ -91,7 +132,7 @@ export function buildDependencyGraph(
     // Self-references carry no topology information and would put the node in
     // its own blast radius.
     if (edge.consumerResourceId === edge.providerResourceId) continue;
-    const key = `${edge.consumerResourceId}|${edge.consumerFieldKey}`;
+    const key = `${edge.consumerResourceId}|${edge.consumerFieldKey}|${edge.providerResourceId}`;
     if (seen.has(key)) continue;
     seen.add(key);
     validEdges.push(edge);
@@ -129,6 +170,10 @@ export interface DependencyNeighbor {
   fieldKey: string;
   /** The provider-side output the reference reads. */
   outputKey: string;
+  /** Provenance of the link; defaults to `output-ref` when absent. */
+  kind?: DependencyEdgeKind;
+  /** Plugin-supplied wording for the relationship, when it named one. */
+  label?: string;
 }
 
 export interface ResourceDependencies {
@@ -151,6 +196,8 @@ export function directDependencies(
         node,
         fieldKey: edge.consumerFieldKey,
         outputKey: edge.providerOutputKey,
+        ...(edge.kind ? { kind: edge.kind } : {}),
+        ...(edge.label ? { label: edge.label } : {}),
       });
     }
   }
@@ -162,6 +209,8 @@ export function directDependencies(
         node,
         fieldKey: edge.consumerFieldKey,
         outputKey: edge.providerOutputKey,
+        ...(edge.kind ? { kind: edge.kind } : {}),
+        ...(edge.label ? { label: edge.label } : {}),
       });
     }
   }

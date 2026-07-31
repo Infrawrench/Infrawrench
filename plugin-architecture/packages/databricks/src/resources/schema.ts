@@ -13,6 +13,7 @@ export const SchemaResourceType = rt({
     f("tableCount", "Tables", { kind: "number", required: false }),
   ],
   outputs: [o("fullName", "Full Name")],
+  dependsOn: [{ fieldKey: "catalogName", targetTypeId: "databricks-catalog", label: "in catalog" }],
   parentTypeId: "databricks-catalog",
   supportsCreate: true,
 });

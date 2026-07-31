@@ -15,6 +15,9 @@ export const KmsKeyResourceType = rt({
     f("rotationPeriod", "Rotation Period", { required: false }),
   ],
   outputs: [],
+  dependsOn: [
+    { fieldKey: "keyRing", targetTypeId: "kms-key-ring", targetKey: "name", label: "in key ring" },
+  ],
   parentTypeId: "kms-key-ring",
   supportsCreate: true,
 });

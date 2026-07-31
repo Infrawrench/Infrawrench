@@ -16,6 +16,7 @@ export const DnsRecordResourceType = rt({
     f("comment", "Comment", { required: false }),
   ],
   outputs: [],
+  dependsOn: [{ fieldKey: "zoneName", targetTypeId: "zone", targetKey: "name", label: "in zone" }],
   parentTypeId: "zone",
   supportsCreate: true,
   supportsUpdate: true,

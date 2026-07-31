@@ -15,6 +15,13 @@ export async function listWorkers(
   const out: ResourceInstance[] = [];
   for await (const s of api.cf.workers.scripts.list({ account_id })) {
     const name = s.id ?? "";
+    // `tail_consumers` names the Workers this one streams its logs to. It is on
+    // the list response already, so surfacing it costs nothing and gives the
+    // dependency graph a worker → worker edge.
+    const tailConsumers = (s.tail_consumers ?? [])
+      .map((t) => t.service)
+      .filter(Boolean)
+      .join(", ");
     out.push({
       id: `${accountId}:worker:${name}`,
       pluginId: "cloudflare",
@@ -27,6 +34,7 @@ export async function listWorkers(
         modifiedOn: s.modified_on ?? "",
         compatibilityDate: s.compatibility_date ?? "",
         routes: "",
+        tailConsumers,
       },
       resolvedOutputs: { workerName: name },
       secretStates: [],
@@ -75,6 +83,7 @@ export async function createWorker(
       modifiedOn: now,
       compatibilityDate,
       routes: "",
+      tailConsumers: "",
     },
     resolvedOutputs: { workerName: name },
     secretStates: [],

@@ -26,6 +26,12 @@ export const EndpointResourceType = rt({
     }),
     o("baseUrl", "Inference Base URL"),
   ],
+  // `model` is a `/models` id and `hardware` a `/hardware` id — the same two
+  // catalogues the create form's pickers are built from.
+  dependsOn: [
+    { fieldKey: "model", targetTypeId: "model", label: "serves" },
+    { fieldKey: "hardware", targetTypeId: "hardware", label: "runs on" },
+  ],
   supportsCreate: true,
   supportsUpdate: true,
   iconKey: "deployment",

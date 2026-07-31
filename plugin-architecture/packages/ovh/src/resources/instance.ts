@@ -27,8 +27,26 @@ export const InstanceResourceType = rt({
     f("flavorName", "Flavor", { description: "Instance flavor name, e.g. b2-7" }),
     f("imageName", "Image", { description: "OS image name, e.g. Ubuntu 24.04" }),
     f("status", "Status", { required: false }),
+    f("networkIds", "Networks", {
+      required: false,
+      description:
+        "Comma-separated IDs of the networks this instance has an address on. Public addresses reference the shared Ext-Net, private ones a private network.",
+    }),
   ],
   outputs: [o("ipv4", "Public IPv4"), o("ipv6", "Public IPv6"), o("ipv4Private", "Private IPv4")],
+  // `ipAddresses[].networkId` is a network id — OVH hands out two ids for one
+  // private network (the project-level `pn-…` and one OpenStack id per
+  // region), so both are matched. Whichever the payload carries resolves to
+  // the same private-network resource; the Ext-Net id matches nothing.
+  dependsOn: [
+    { fieldKey: "networkIds", targetTypeId: "private-network", label: "attached to" },
+    {
+      fieldKey: "networkIds",
+      targetTypeId: "private-network",
+      targetKey: "openstackIds",
+      label: "attached to",
+    },
+  ],
   iconKey: "instance",
   sshEndpoint: {
     hostOutputKey: "ipv4",

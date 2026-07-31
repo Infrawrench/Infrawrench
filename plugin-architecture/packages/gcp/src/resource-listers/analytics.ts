@@ -148,6 +148,9 @@ async function hydrateBqTable(
     parentResourceId: ctx.id(accountId, "bigquery-dataset", `${project}:${datasetId}`),
     fields: {
       name: tableId,
+      // Fully-qualified, matching a dataset's external id: dataset names are
+      // only unique within a project, so the bare id would be ambiguous.
+      datasetId: `${project}:${datasetId}`,
       friendlyName,
       type,
       location,

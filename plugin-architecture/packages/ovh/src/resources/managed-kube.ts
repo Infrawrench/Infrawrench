@@ -31,6 +31,18 @@ export const ManagedKubeResourceType = rt({
     f("nodeCount", "Node Count", { kind: "number", required: false }),
     f("nodePoolCount", "Node Pools", { kind: "number", required: false }),
     f("nodesUrl", "Nodes URL", { required: false }),
+    f("privateNetworkId", "Private Network", {
+      required: false,
+      description: "OpenStack ID of the private network the cluster's nodes sit in, if attached",
+    }),
+    f("nodesSubnetId", "Nodes Subnet", {
+      required: false,
+      description: "OpenStack subnet ID the cluster nodes use",
+    }),
+    f("loadBalancersSubnetId", "Load Balancers Subnet", {
+      required: false,
+      description: "OpenStack subnet ID the cluster's load balancers use",
+    }),
   ],
   outputs: [
     o("kubeconfig", "Kubeconfig", {
@@ -42,6 +54,17 @@ export const ManagedKubeResourceType = rt({
       hidden: true,
       description: "HTTPS endpoint for the Kubernetes API server",
     }),
+  ],
+  // `privateNetworkId` is the network's OpenStack id (the value OVH's own
+  // tooling feeds it from `regions[].openstackid`), so it matches the private
+  // network on `openstackIds` rather than on its `pn-…` externalId.
+  dependsOn: [
+    {
+      fieldKey: "privateNetworkId",
+      targetTypeId: "private-network",
+      targetKey: "openstackIds",
+      label: "runs in",
+    },
   ],
   iconKey: "kubernetes",
   supportsCreate: true,

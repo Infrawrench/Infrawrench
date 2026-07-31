@@ -17,6 +17,9 @@ export const EBSVolumeResourceType = rt({
     f("attachedTo", "Attached To", { required: false }),
   ],
   outputs: [],
+  // The lister fills `attachedTo` from the volume's first attachment's
+  // instanceId, which is exactly an EC2 instance's external id.
+  dependsOn: [{ fieldKey: "attachedTo", targetTypeId: "ec2-instance", label: "attached to" }],
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "volume",

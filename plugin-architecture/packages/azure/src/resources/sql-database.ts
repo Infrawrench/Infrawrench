@@ -35,6 +35,9 @@ export const SQLDatabaseResourceType = rt({
     o("connectionString", "Connection String", { sensitive: true }),
     o("serverFqdn", "Server FQDN"),
   ],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+  ],
   iconKey: "database",
   supportsCreate: true,
   supportsMetrics: true,

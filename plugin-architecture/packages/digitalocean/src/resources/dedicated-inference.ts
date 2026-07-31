@@ -27,6 +27,8 @@ export const DedicatedInferenceResourceType = rt({
       description: "Private VPC HTTPS endpoint for inference requests",
     }),
   ],
+  // The lister records `vpc_uuid`; a VPC's externalId is that same uuid.
+  dependsOn: [{ fieldKey: "vpcUuid", targetTypeId: "vpc", label: "in VPC" }],
   supportsCreate: true,
   iconKey: "gpu",
 });

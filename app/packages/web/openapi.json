@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.25.0",
+    "version": "0.26.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -5792,13 +5792,13 @@
                 "$ref": "#/components/schemas/ResourceId"
               },
               {
-                "description": "The resource holding the output reference — it depends on the provider."
+                "description": "The resource holding the reference — it depends on the provider."
               }
             ]
           },
           "consumerFieldKey": {
             "type": "string",
-            "description": "The consumer field the reference fills."
+            "description": "The consumer field the reference fills. \"parent\" for containment edges, where the link is the resource hierarchy itself rather than a field."
           },
           "providerResourceId": {
             "allOf": [
@@ -5812,7 +5812,16 @@
           },
           "providerOutputKey": {
             "type": "string",
-            "description": "The provider output the reference reads."
+            "description": "The provider output or identity the reference reads — an output key for output references, the matched identity (\"externalId\", \"name\", \"endpoint\"…) for inferred edges."
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["output-ref", "declared", "containment", "field-match"],
+            "description": "Where the edge came from: `output-ref` is wired by hand, `declared` from the plugin's own `dependsOn` rule for the resource type, `containment` from the synced parent/child link, `field-match` from a field value that exactly matches another resource's identity. Absent means `output-ref`."
+          },
+          "label": {
+            "type": "string",
+            "description": "How the plugin words the relationship (\"in VPC\", \"guarded by\"), when it declared one."
           }
         },
         "required": [
@@ -5831,17 +5840,21 @@
             "items": {
               "$ref": "#/components/schemas/DependencyGraphNode"
             },
-            "description": "Org resources that participate in at least one output reference."
+            "description": "Org resources that participate in at least one edge."
           },
           "edges": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DependencyGraphEdge"
             },
-            "description": "Directed depends-on edges (consumer → provider), deduped per consumer field."
+            "description": "Directed depends-on edges (consumer → provider), deduped per consumer field and provider."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "True when inference hit its edge cap and the returned graph is a partial view of the org."
           }
         },
-        "required": ["nodes", "edges"],
+        "required": ["nodes", "edges", "truncated"],
         "additionalProperties": false
       },
       "SearchHit": {
@@ -16323,7 +16336,7 @@
     "/api/org/{orgId}/dependency-graph": {
       "get": {
         "tags": ["Associations"],
-        "summary": "The org's resource dependency graph, built from output references",
+        "summary": "The org's resource dependency graph, from synced cloud data and output references",
         "parameters": [
           {
             "schema": {

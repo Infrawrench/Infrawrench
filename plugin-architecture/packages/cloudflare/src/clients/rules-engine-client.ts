@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { asRecord, collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone, resolveZoneName } from "./shared.js";
 import type { PhaseParam, RulesetCreateParams } from "cloudflare/resources/rulesets/rulesets";
 
 /**
@@ -53,11 +53,14 @@ function mapRule(
   rule: Record<string, unknown>,
   accountId: string,
   zoneId: string,
+  zoneName: string,
   rulesetId: string,
 ): ResourceInstance {
   const id = String(rule["id"] ?? "");
   const externalIdSuffix = `${zoneId}/${rulesetId}/${id}`;
-  const fields = spec.mapFields(rule);
+  // Every phase gets `zoneName` on top of its own fields — the zone is only
+  // otherwise encoded in the external id, which the dependency graph can't read.
+  const fields = { ...spec.mapFields(rule), zoneName };
   return {
     id: `${accountId}:${spec.resourceTypeId}:${externalIdSuffix}`,
     pluginId: "cloudflare",
@@ -93,7 +96,7 @@ export async function listAllPhaseRules(
 ): Promise<ResourceInstance[]> {
   return collectPerZone(
     api,
-    async (zoneId) => {
+    async (zoneId, zoneName) => {
       const part: ResourceInstance[] = [];
       const ruleset = await findPhaseRuleset(api, zoneId, spec.phase);
       if (ruleset) {
@@ -105,7 +108,7 @@ export async function listAllPhaseRules(
         );
         const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
         for (const rule of rules) {
-          part.push(mapRule(spec, rule, accountId, zoneId, rsId));
+          part.push(mapRule(spec, rule, accountId, zoneId, zoneName, rsId));
         }
       }
       return part;
@@ -158,7 +161,7 @@ export async function createPhaseRule(
     const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
     result = rules[0] ?? full;
   }
-  return mapRule(spec, result, accountId, zoneId, rulesetId);
+  return mapRule(spec, result, accountId, zoneId, await resolveZoneName(api, zoneId), rulesetId);
 }
 
 export async function editPhaseRule(
@@ -180,7 +183,7 @@ export async function editPhaseRule(
   const full = asRecord(ruleset);
   const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
   const updated = rules.find((r) => String(r["id"]) === ruleId) ?? { ...full, id: ruleId };
-  return mapRule(spec, updated, accountId, zoneId, rulesetId);
+  return mapRule(spec, updated, accountId, zoneId, await resolveZoneName(api, zoneId), rulesetId);
 }
 
 export async function deletePhaseRule(api: CloudflareApi, externalId: string): Promise<void> {

@@ -32,6 +32,7 @@ export type {
   AssociationSource,
   ResourceOutput,
   PeerPluginIntegration,
+  ResourceDependencyRule,
   SecretExportTemplate,
   SecretExportEntry,
   CredentialFormat,

@@ -1,5 +1,26 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { paginateAggregated, type ListerContext } from "./shared.js";
+import { joinRefs, lastSegment, paginateAggregated, type ListerContext } from "./shared.js";
+
+/**
+ * `…/regions/<region>/subnetworks/<name>` → `<region>/<name>`, which is exactly
+ * the external id the subnet lister writes. Composing the region in is what
+ * makes the match usable: an auto-mode VPC names one subnet `default` in every
+ * region, so a bare `default` is ambiguous and resolves to nothing. Returns ""
+ * for anything that isn't a subnetwork reference.
+ */
+function subnetRef(selfLink: unknown): string {
+  const match = /\/regions\/([^/]+)\/subnetworks\/([^/?]+)/.exec(String(selfLink ?? ""));
+  return match ? `${match[1]}/${match[2]}` : "";
+}
+
+/**
+ * A GKE cluster's location is a region for regional clusters and a
+ * `<region>-<letter>` zone for zonal ones; its subnetwork always lives in the
+ * cluster's region either way.
+ */
+function regionOfLocation(location: string): string {
+  return /-[a-z]$/.test(location) ? location.slice(0, -2) : location;
+}
 
 export async function listGceInstances(
   ctx: ListerContext,
@@ -23,6 +44,15 @@ export async function listGceInstances(
         "natIP"
       ] as string) ?? "";
     const internalIp = (nets?.[0]?.["networkIP"] as string) ?? "";
+    // Wiring already present in the aggregated payload — no extra request. A VM
+    // can have several NICs, so these are comma-joined and the graph splits them.
+    const networkName = joinRefs((nets ?? []).map((n) => lastSegment(n["network"])));
+    const subnetwork = joinRefs((nets ?? []).map((n) => subnetRef(n["subnetwork"])));
+    const serviceAccounts = joinRefs(
+      ((inst["serviceAccounts"] as Array<Record<string, unknown>> | undefined) ?? []).map((sa) =>
+        String(sa["email"] ?? ""),
+      ),
+    );
 
     // Extract SSH username from instance metadata ssh-keys entry
     let sshUsername = "";
@@ -43,7 +73,17 @@ export async function listGceInstances(
       resourceTypeId: "gce-instance",
       accountId,
       displayName: name,
-      fields: { name, numericId, zone: zone_, machineType, status, sshUsername },
+      fields: {
+        name,
+        numericId,
+        zone: zone_,
+        machineType,
+        status,
+        sshUsername,
+        networkName,
+        subnetwork,
+        serviceAccounts,
+      },
       resolvedOutputs: { externalIp, internalIp },
       secretStates: [],
       externalId: `${p}/${zone_}/${name}`,
@@ -108,6 +148,14 @@ export async function listGkeClusters(
     const nodePool = (c["nodePools"] as Array<Record<string, unknown>> | undefined)?.[0];
     const nodeConfig = (nodePool?.["config"] as Record<string, unknown> | undefined) ?? {};
     const nodeCount = Number((nodePool?.["initialNodeCount"] as number | undefined) ?? 0);
+    // Cluster.network / Cluster.subnetwork are bare names. Subnets are keyed
+    // `<region>/<name>`, so scope the subnet by the cluster's own region.
+    const networkName = String(c["network"] ?? "");
+    const subnetName = String(c["subnetwork"] ?? "");
+    const subnetwork = subnetName ? `${regionOfLocation(location)}/${subnetName}` : "";
+    // "default" (the Compute Engine default service account) rather than an
+    // email when the node pool didn't name one — it simply won't match.
+    const serviceAccount = String(nodeConfig["serviceAccount"] ?? "");
     return {
       id: ctx.id(accountId, "gke-cluster", `${p}/${location}/${name}`),
       pluginId: "gcp",
@@ -122,6 +170,9 @@ export async function listGkeClusters(
         diskSizeGb: Number(nodeConfig["diskSizeGb"] ?? 0),
         nodeCount,
         status: String(c["status"] ?? ""),
+        networkName,
+        subnetwork,
+        serviceAccount,
       },
       resolvedOutputs: {
         clusterEndpoint: String(c["endpoint"] ?? ""),
@@ -303,6 +354,17 @@ export async function listBackendServices(
         .split("/")
         .pop() ?? "";
     const externalId = `${region || "global"}/${name}`;
+    // Both lists are fully-qualified URLs in the payload the count fields are
+    // already read from. Backends can also be network endpoint groups, whose
+    // names simply match no instance group.
+    const healthCheckNames = joinRefs(
+      (Array.isArray(healthChecks) ? healthChecks : []).map((hc) => lastSegment(hc)),
+    );
+    const backendGroups = joinRefs(
+      (Array.isArray(backends) ? (backends as Array<Record<string, unknown>>) : []).map((b) =>
+        lastSegment(b["group"]),
+      ),
+    );
     return {
       id: ctx.id(accountId, "backend-service", externalId),
       pluginId: "gcp",
@@ -320,7 +382,9 @@ export async function listBackendServices(
         timeoutSec: Number(bs["timeoutSec"] ?? 0),
         connectionDrainingTimeoutSec: Number(draining?.["drainingTimeoutSec"] ?? 0),
         healthCheckCount: Array.isArray(healthChecks) ? healthChecks.length : 0,
+        healthCheckNames,
         backendCount: Array.isArray(backends) ? backends.length : 0,
+        backendGroups,
         enableCDN: bs["enableCDN"] === true,
         sessionAffinity: String(bs["sessionAffinity"] ?? "NONE"),
       },

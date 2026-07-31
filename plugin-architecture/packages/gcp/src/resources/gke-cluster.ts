@@ -31,6 +31,28 @@ export const GkeClusterResourceType = rt({
         },
       ],
     }),
+    f("networkName", "Attached Network", {
+      required: false,
+      description: "Name of the VPC network the cluster is connected to",
+    }),
+    f("subnetwork", "Subnet", {
+      required: false,
+      description: "Subnet the cluster is connected to, as region/name",
+    }),
+  ],
+  // `serviceAccount` is a node service account email, matching that type's
+  // external id — unless the node pool left it as the literal "default", which
+  // names no synced resource and so produces no edge. `subnetwork` is scoped by
+  // the cluster's region to line up with a subnet's external id.
+  dependsOn: [
+    {
+      fieldKey: "networkName",
+      targetTypeId: "vpc-network",
+      targetKey: "name",
+      label: "in network",
+    },
+    { fieldKey: "subnetwork", targetTypeId: "subnet", label: "in subnet" },
+    { fieldKey: "serviceAccount", targetTypeId: "gcp-service-account", label: "nodes run as" },
   ],
   outputs: [
     o("clusterEndpoint", "Cluster Endpoint", { hidden: true }),

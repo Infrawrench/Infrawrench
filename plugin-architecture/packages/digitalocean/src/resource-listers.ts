@@ -52,6 +52,8 @@ export async function listDoResources(
       return listAllDnsRecords(ctx, accountId);
     case "volume":
       return listVolumes(ctx, accountId);
+    case "vpc":
+      return listVpcs(ctx, accountId);
     case "snapshot":
       return listSnapshots(ctx, accountId);
     case "image":
@@ -106,8 +108,13 @@ async function listGenAiAgents(
     const router = a["model_router"] as Record<string, unknown> | undefined;
     const deployment = a["deployment"] as Record<string, unknown> | undefined;
     const knowledgeBases = Array.isArray(a["knowledge_bases"])
-      ? (a["knowledge_bases"] as unknown[])
+      ? (a["knowledge_bases"] as Array<Record<string, unknown>>)
       : [];
+    // Each attached KB carries its own uuid (schema `apiKnowledgeBase`) — the
+    // same uuid a `gen-ai-knowledge-base` resource uses as its externalId.
+    const knowledgeBaseUuids = knowledgeBases
+      .map((kb) => String(kb?.["uuid"] ?? ""))
+      .filter(Boolean);
     const deploymentUrl = String(deployment?.["url"] ?? "");
     return {
       id: `${accountId}:gen-ai-agent:${uuid}`,
@@ -131,6 +138,7 @@ async function listGenAiAgents(
         status: String(deployment?.["status"] ?? a["status"] ?? ""),
         deploymentVisibility: String(deployment?.["visibility"] ?? ""),
         knowledgeBaseCount: knowledgeBases.length,
+        knowledgeBaseUuids: knowledgeBaseUuids.join(", "),
         deploymentUrl,
       },
       resolvedOutputs: {
@@ -420,6 +428,9 @@ async function listAgentApiKeys(
           fields: {
             name: String(k["name"] ?? ""),
             createdBy: String(k["created_by"] ?? ""),
+            // The owning agent, already known from the fan-out above. Also
+            // encoded in `parentResourceId`, but the graph reads fields.
+            agentUuid,
           },
           resolvedOutputs: {},
           // Secret isn't returned by the list endpoint — only on create
@@ -784,6 +795,9 @@ async function listDatabaseUsers(
         fields: {
           name: u.name ?? "",
           role: u.role ?? "",
+          // The owning cluster, already known from the fan-out above. Also
+          // encoded in `parentResourceId`, but the graph reads fields.
+          databaseId: clusterId,
         },
         resolvedOutputs: {},
         // The list endpoint never returns the password — only the per-user
@@ -1058,6 +1072,49 @@ async function listVolumes(ctx: DoListerContext, accountId: string): Promise<Res
       ...(parentResourceId ? { parentResourceId } : {}),
       createdAt: String(v["created_at"] ?? new Date().toISOString()),
       updatedAt: String(v["created_at"] ?? new Date().toISOString()),
+    };
+  });
+}
+
+/**
+ * VPC networks. `GET /v2/vpcs` returns `{ vpcs: [...] }` with the standard
+ * page/per_page pagination; each element carries `id`, `urn`, `name`,
+ * `description`, `region`, `ip_range`, `default` and `created_at` (verified
+ * against DigitalOcean's published OpenAPI spec, schema `vpc`).
+ *
+ * `externalId` is the bare uuid, which is exactly what a Droplet's `vpc_uuid`,
+ * an NFS share's `vpc_ids` and a Dedicated Inference endpoint's `vpc_uuid`
+ * hold — so those fields resolve to this resource without a translation step.
+ *
+ * Member counts are deliberately absent: DO exposes them only via a separate
+ * `/v2/vpcs/{id}/members` request per VPC, which listing must not spend.
+ */
+async function listVpcs(ctx: DoListerContext, accountId: string): Promise<ResourceInstance[]> {
+  const data = await ctx.fetch<{ vpcs?: Array<Record<string, unknown>> | null }>(
+    "/vpcs?per_page=200",
+  );
+  return (data.vpcs ?? []).map((v) => {
+    const id = String(v["id"] ?? "");
+    const createdAt = String(v["created_at"] ?? new Date().toISOString());
+    return {
+      id: `${accountId}:vpc:${id}`,
+      pluginId: "digitalocean",
+      resourceTypeId: "vpc",
+      accountId,
+      displayName: String(v["name"] ?? id),
+      fields: {
+        name: String(v["name"] ?? ""),
+        region: String(v["region"] ?? ""),
+        ipRange: String(v["ip_range"] ?? ""),
+        description: String(v["description"] ?? ""),
+        isDefault: v["default"] === true,
+        createdAt,
+      },
+      resolvedOutputs: { ...(id ? { vpcId: id } : {}) },
+      secretStates: [],
+      externalId: id,
+      createdAt,
+      updatedAt: createdAt,
     };
   });
 }

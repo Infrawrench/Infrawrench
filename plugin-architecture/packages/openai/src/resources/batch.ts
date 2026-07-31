@@ -47,6 +47,14 @@ export const BatchResourceType = rt({
     }),
     o("errorFileId", "Error File ID"),
   ],
+  // `input_file_id` / `output_file_id` / `error_file_id` are `file-…` ids from
+  // `/v1/files`, and `model` is a `/v1/models` id.
+  dependsOn: [
+    { fieldKey: "inputFileId", targetTypeId: "file", label: "reads" },
+    { fieldKey: "outputFileId", targetTypeId: "file", label: "writes" },
+    { fieldKey: "errorFileId", targetTypeId: "file", label: "errors to" },
+    { fieldKey: "model", targetTypeId: "model", label: "runs" },
+  ],
   iconKey: "queue",
   supportsCreate: true,
   supportsDelete: false,

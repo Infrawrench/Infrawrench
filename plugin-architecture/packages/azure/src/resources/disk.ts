@@ -27,6 +27,10 @@ export const DiskResourceType = rt({
     f("encryption", "Encryption", { required: false }),
   ],
   outputs: [],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+    { fieldKey: "managedBy", targetTypeId: "azure-vm", targetKey: "name", label: "attached to" },
+  ],
   iconKey: "volume",
   supportsCreate: true,
   supportsMetrics: true,

@@ -18,8 +18,27 @@ export const AutoScalingGroupResourceType = rt({
     f("availabilityZones", "Availability Zones", { required: false }),
     f("launchTemplate", "Launch Template", { required: false }),
     f("instanceCount", "Instance Count", { kind: "number", required: false }),
+    f("subnetIds", "Subnets", {
+      required: false,
+      description: "Comma-separated subnet IDs the group launches into (VPCZoneIdentifier)",
+    }),
+    f("targetGroupArns", "Target Groups", {
+      required: false,
+      description: "Comma-separated ARNs of the target groups instances are registered with",
+    }),
   ],
   outputs: [o("autoScalingGroupArn", "ASG ARN")],
+  // Target groups are attached by ARN; a target group's external id is its
+  // name, so match its `targetGroupArn` output instead.
+  dependsOn: [
+    { fieldKey: "subnetIds", targetTypeId: "subnet", label: "launches into" },
+    {
+      fieldKey: "targetGroupArns",
+      targetTypeId: "target-group",
+      targetKey: "targetGroupArn",
+      label: "registers with",
+    },
+  ],
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "scaling",

@@ -26,6 +26,8 @@ export const VercelDeploymentResourceType = rt({
     o("url", "Deployment URL"),
     o("inspectorUrl", "Inspector URL"),
   ],
+  // `projectId` holds the `prj_…` id the project resource uses as its external id.
+  dependsOn: [{ fieldKey: "projectId", targetTypeId: "vercel-project", label: "in project" }],
   iconKey: "deployment",
   attachTargets: [
     {

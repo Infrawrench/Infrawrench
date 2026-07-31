@@ -18,6 +18,9 @@ export const FirewallRuleResourceType = rt({
     f("disabled", "Disabled", { kind: "boolean", required: false }),
   ],
   outputs: [],
+  dependsOn: [
+    { fieldKey: "network", targetTypeId: "vpc-network", targetKey: "name", label: "in network" },
+  ],
   iconKey: "shield",
   supportsCreate: true,
   attachTargets: [{ pluginId: "gcp", resourceTypeId: "gce-instance", verb: "Apply firewall" }],

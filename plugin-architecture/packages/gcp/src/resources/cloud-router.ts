@@ -25,5 +25,8 @@ export const CloudRouterResourceType = rt({
     f("natCount", "NAT Configs", { kind: "number", required: false }),
   ],
   outputs: [o("selfLink", "Self Link")],
+  dependsOn: [
+    { fieldKey: "network", targetTypeId: "vpc-network", targetKey: "name", label: "in network" },
+  ],
   supportsCreate: true,
 });

@@ -29,6 +29,9 @@ export const MachineResourceType = rt({
     }),
   ],
   outputs: [o("privateIp", "Private IPv6 (6PN)")],
+  // `appName` is the app's own name, which is also the app resource's external
+  // id — so the edge resolves exactly rather than by guesswork.
+  dependsOn: [{ fieldKey: "appName", targetTypeId: "app", label: "in app" }],
   iconKey: "server",
   supportsCreate: true,
   supportsMetrics: true,

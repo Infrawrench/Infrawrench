@@ -24,8 +24,34 @@ export const GceInstanceResourceType = rt({
         },
       ],
     }),
+    f("networkName", "Attached Network", {
+      required: false,
+      description: "Names of the VPC networks this instance's interfaces are attached to",
+    }),
+    f("subnetwork", "Subnet", {
+      required: false,
+      description: "Subnets this instance's interfaces sit in, as region/name",
+    }),
+    f("serviceAccounts", "Service Accounts", {
+      required: false,
+      description: "Emails of the service accounts attached to this instance",
+    }),
   ],
   outputs: [o("externalIp", "External IP"), o("internalIp", "Internal IP")],
+  // The lister reduces each selfLink to the form the target is keyed by:
+  // networks are matched on their bare `name`, subnets on their `region/name`
+  // external id (auto-mode VPCs put a `default` subnet in every region, so a
+  // bare name resolves to nothing), service accounts on their email.
+  dependsOn: [
+    {
+      fieldKey: "networkName",
+      targetTypeId: "vpc-network",
+      targetKey: "name",
+      label: "in network",
+    },
+    { fieldKey: "subnetwork", targetTypeId: "subnet", label: "in subnet" },
+    { fieldKey: "serviceAccounts", targetTypeId: "gcp-service-account", label: "runs as" },
+  ],
   supportsMetrics: true,
   sshEndpoint: {
     hostOutputKey: "externalIp",

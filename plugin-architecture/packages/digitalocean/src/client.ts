@@ -574,6 +574,11 @@ export class DigitalOceanClient implements PluginClient {
       }
     }
 
+    if (typeId === "vpc" && outputKey === "vpcId") {
+      // The VPC uuid is the externalId — no API call needed.
+      return externalId;
+    }
+
     if (typeId === "domain" && outputKey === "nameservers") {
       return "ns1.digitalocean.com, ns2.digitalocean.com, ns3.digitalocean.com";
     }
@@ -872,6 +877,11 @@ export class DigitalOceanClient implements PluginClient {
       }
       case "project":
         await this.fetch<unknown>(`/projects/${externalId}`, { method: "DELETE" });
+        break;
+      case "vpc":
+        // DO refuses (403) when the VPC is a region's default or still has
+        // member resources; that error surfaces to the user verbatim.
+        await this.fetch<unknown>(`/vpcs/${externalId}`, { method: "DELETE" });
         break;
       case "volume":
         await this.fetch<unknown>(`/volumes/${externalId}`, { method: "DELETE" });

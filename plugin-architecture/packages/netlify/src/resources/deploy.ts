@@ -21,8 +21,10 @@ export const NetlifyDeployResourceType = rt({
     f("skipped", "Skipped", { kind: "boolean", required: false }),
     f("createdAt", "Created At", { required: false }),
     f("publishedAt", "Published At", { required: false }),
+    f("siteId", "Site", { required: false }),
   ],
   outputs: [o("deployId", "Deploy ID"), o("deployUrl", "Deploy URL")],
+  dependsOn: [{ fieldKey: "siteId", targetTypeId: "netlify-site", label: "deploy of" }],
   parentTypeId: "netlify-site",
   iconKey: "deployment",
   attachTargets: [

@@ -45,5 +45,11 @@ export const BatchResourceType = rt({
       description: "Files API name holding the JSONL results once the batch succeeds",
     }),
   ],
+  // Both are full resource names (`models/…`, `files/…`), which is what the
+  // Model and File rows carry in their own `name` field.
+  dependsOn: [
+    { fieldKey: "model", targetTypeId: "model", targetKey: "name", label: "runs" },
+    { fieldKey: "outputFileName", targetTypeId: "file", targetKey: "name", label: "writes" },
+  ],
   iconKey: "batch",
 });

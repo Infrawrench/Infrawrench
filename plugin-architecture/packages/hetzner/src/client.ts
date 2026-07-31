@@ -1037,6 +1037,16 @@ export class HetznerClient implements PluginClient {
     const publicIpv4 = s.public_net?.ipv4?.ip ?? "";
     const publicIpv6 = s.public_net?.ipv6?.ip ?? "";
     const privateIp = s.private_net?.[0]?.ip ?? "";
+    // All three come straight off the /servers payload: `private_net[].network`
+    // is the attached Network's id, `public_net.firewalls[].id` the Firewalls
+    // applied to the public interface, and `placement_group.id` the group the
+    // server is spread across. No extra request.
+    const networkIds = (s.private_net ?? [])
+      .map((n) => (n.network != null ? String(n.network) : ""))
+      .filter(Boolean);
+    const firewallIds = (s.public_net?.firewalls ?? [])
+      .map((fw) => (fw.id != null ? String(fw.id) : ""))
+      .filter(Boolean);
 
     return {
       id: `${accountId}:server:${s.id}`,
@@ -1051,6 +1061,9 @@ export class HetznerClient implements PluginClient {
         location: s.datacenter?.location?.name ?? "",
         image: s.image?.name ?? s.image?.description ?? "",
         datacenter: s.datacenter?.name ?? "",
+        placementGroupId: s.placement_group?.id != null ? String(s.placement_group.id) : "",
+        firewallIds: firewallIds.join(", "),
+        networkIds: networkIds.join(", "),
       },
       resolvedOutputs: {
         ipv4: publicIpv4,
@@ -1114,23 +1127,41 @@ export class HetznerClient implements PluginClient {
 
   private async listFirewalls(accountId: string): Promise<ResourceInstance[]> {
     const firewalls = await this.fetchAll<HetznerFirewall>("/firewalls", "firewalls");
-    return firewalls.map((fw) => ({
-      id: `${accountId}:firewall:${fw.id}`,
-      pluginId: "hetzner",
-      resourceTypeId: "firewall",
-      accountId,
-      displayName: fw.name,
-      fields: {
-        name: fw.name,
-        rulesCount: (fw.rules ?? []).length,
-        appliedToCount: (fw.applied_to ?? []).length,
-      },
-      resolvedOutputs: {},
-      secretStates: [],
-      externalId: String(fw.id),
-      createdAt: fw.created ?? new Date().toISOString(),
-      updatedAt: fw.created ?? new Date().toISOString(),
-    }));
+    return firewalls.map((fw) => {
+      // `applied_to` entries are either `{type:"server", server:{id}}` or
+      // `{type:"label_selector", label_selector:{selector},
+      // applied_to_resources:[{type:"server", server:{id}}]}` — collect the
+      // concrete server ids from both shapes, and keep the selectors as text.
+      const appliedTo = fw.applied_to ?? [];
+      const appliedToServerIds = new Set<string>();
+      const selectors: string[] = [];
+      for (const entry of appliedTo) {
+        if (entry.server?.id != null) appliedToServerIds.add(String(entry.server.id));
+        for (const resolved of entry.applied_to_resources ?? []) {
+          if (resolved.server?.id != null) appliedToServerIds.add(String(resolved.server.id));
+        }
+        if (entry.label_selector?.selector) selectors.push(entry.label_selector.selector);
+      }
+      return {
+        id: `${accountId}:firewall:${fw.id}`,
+        pluginId: "hetzner",
+        resourceTypeId: "firewall",
+        accountId,
+        displayName: fw.name,
+        fields: {
+          name: fw.name,
+          rulesCount: (fw.rules ?? []).length,
+          appliedToCount: appliedTo.length,
+          appliedToServerIds: [...appliedToServerIds].join(", "),
+          appliedToLabelSelectors: selectors.join(", "),
+        },
+        resolvedOutputs: {},
+        secretStates: [],
+        externalId: String(fw.id),
+        createdAt: fw.created ?? new Date().toISOString(),
+        updatedAt: fw.created ?? new Date().toISOString(),
+      };
+    });
   }
 
   private async listNetworks(accountId: string): Promise<ResourceInstance[]> {
@@ -1147,7 +1178,14 @@ export class HetznerClient implements PluginClient {
         subnetCount: (n.subnets ?? []).length,
         routeCount: (n.routes ?? []).length,
         serverCount: (n.servers ?? []).length,
-        exposesRoutesToVswitch: n.exposes_routes_to_vswitch ?? false,
+        // `servers` / `load_balancers` are plain id arrays on the payload the
+        // list call already returns.
+        serverIds: (n.servers ?? []).map((id) => String(id)).join(", "),
+        loadBalancerIds: (n.load_balancers ?? []).map((id) => String(id)).join(", "),
+        // The API field is `expose_routes_to_vswitch`; the older
+        // `exposes_routes_to_vswitch` spelling is read as a fallback so the
+        // existing field keeps working either way.
+        exposesRoutesToVswitch: n.expose_routes_to_vswitch ?? n.exposes_routes_to_vswitch ?? false,
       },
       resolvedOutputs: { networkId: String(n.id) },
       secretStates: [],
@@ -1162,32 +1200,49 @@ export class HetznerClient implements PluginClient {
       "/load_balancers",
       "load_balancers",
     );
-    return loadBalancers.map((lb) => ({
-      id: `${accountId}:load-balancer:${lb.id}`,
-      pluginId: "hetzner",
-      resourceTypeId: "load-balancer",
-      accountId,
-      displayName: lb.name,
-      fields: {
-        name: lb.name,
-        status: lb.status ?? "unknown",
-        type: lb.load_balancer_type?.name ?? "",
-        location: lb.location?.name ?? "",
-        ipv4: lb.public_net?.ipv4?.ip ?? "",
-        ipv6: lb.public_net?.ipv6?.ip ?? "",
-        targetCount: (lb.targets ?? []).length,
-        serviceCount: (lb.services ?? []).length,
-      },
-      resolvedOutputs: {
-        loadBalancerId: String(lb.id),
-        ipv4: lb.public_net?.ipv4?.ip ?? "",
-        ipv6: lb.public_net?.ipv6?.ip ?? "",
-      },
-      secretStates: [],
-      externalId: String(lb.id),
-      createdAt: lb.created ?? new Date().toISOString(),
-      updatedAt: lb.created ?? new Date().toISOString(),
-    }));
+    return loadBalancers.map((lb) => {
+      // Targets are `{type:"server", server:{id}}`, or `{type:"label_selector",
+      // targets:[{server:{id}}]}` once Hetzner has resolved the selector, or
+      // `{type:"ip"}` (no server to link). Both server-bearing shapes count.
+      const targetServerIds = new Set<string>();
+      for (const target of lb.targets ?? []) {
+        if (target.server?.id != null) targetServerIds.add(String(target.server.id));
+        for (const resolved of target.targets ?? []) {
+          if (resolved.server?.id != null) targetServerIds.add(String(resolved.server.id));
+        }
+      }
+      const networkIds = (lb.private_net ?? [])
+        .map((n) => (n.network != null ? String(n.network) : ""))
+        .filter(Boolean);
+      return {
+        id: `${accountId}:load-balancer:${lb.id}`,
+        pluginId: "hetzner",
+        resourceTypeId: "load-balancer",
+        accountId,
+        displayName: lb.name,
+        fields: {
+          name: lb.name,
+          status: lb.status ?? "unknown",
+          type: lb.load_balancer_type?.name ?? "",
+          location: lb.location?.name ?? "",
+          ipv4: lb.public_net?.ipv4?.ip ?? "",
+          ipv6: lb.public_net?.ipv6?.ip ?? "",
+          targetCount: (lb.targets ?? []).length,
+          serviceCount: (lb.services ?? []).length,
+          targetServerIds: [...targetServerIds].join(", "),
+          networkIds: networkIds.join(", "),
+        },
+        resolvedOutputs: {
+          loadBalancerId: String(lb.id),
+          ipv4: lb.public_net?.ipv4?.ip ?? "",
+          ipv6: lb.public_net?.ipv6?.ip ?? "",
+        },
+        secretStates: [],
+        externalId: String(lb.id),
+        createdAt: lb.created ?? new Date().toISOString(),
+        updatedAt: lb.created ?? new Date().toISOString(),
+      };
+    });
   }
 
   private async listPrimaryIps(accountId: string): Promise<ResourceInstance[]> {
@@ -1324,11 +1379,15 @@ interface HetznerServer {
   public_net?: {
     ipv4?: { ip: string };
     ipv6?: { ip: string };
+    /** Firewalls applied to the public interface — `{ id, status }`. */
+    firewalls?: Array<{ id?: number; status?: string }>;
   };
-  private_net?: Array<{ ip: string }>;
+  /** One entry per attached Network; `network` is the Network id. */
+  private_net?: Array<{ ip: string; network?: number }>;
   server_type?: { name: string; cores: number; memory: number; disk: number };
   datacenter?: { name: string; location?: { name: string; city: string } };
   image?: { name: string; description: string };
+  placement_group?: { id?: number; name?: string; type?: string } | null;
 }
 
 interface HetznerVolume {
@@ -1358,7 +1417,13 @@ interface HetznerFirewall {
   name: string;
   created: string;
   rules?: unknown[];
-  applied_to?: unknown[];
+  applied_to?: Array<{
+    type?: string;
+    server?: { id?: number };
+    label_selector?: { selector?: string };
+    /** Servers a label-selector entry currently resolves to. */
+    applied_to_resources?: Array<{ type?: string; server?: { id?: number } }>;
+  }>;
 }
 
 interface HetznerLocation {
@@ -1399,6 +1464,9 @@ interface HetznerNetwork {
   subnets?: unknown[];
   routes?: unknown[];
   servers?: number[];
+  load_balancers?: number[];
+  expose_routes_to_vswitch?: boolean;
+  /** Legacy spelling kept for payloads that used it. */
   exposes_routes_to_vswitch?: boolean;
   created: string;
 }
@@ -1411,7 +1479,15 @@ interface HetznerLoadBalancer {
   load_balancer_type?: { name: string };
   location?: { name: string };
   public_net?: { ipv4?: { ip: string }; ipv6?: { ip: string } };
-  targets?: unknown[];
+  /** One entry per attached Network; `network` is the Network id. */
+  private_net?: Array<{ network?: number; ip?: string }>;
+  targets?: Array<{
+    type?: string;
+    server?: { id?: number };
+    label_selector?: { selector?: string };
+    /** Servers a label-selector target currently resolves to. */
+    targets?: Array<{ type?: string; server?: { id?: number } }>;
+  }>;
   services?: unknown[];
   protection?: { delete?: boolean };
 }

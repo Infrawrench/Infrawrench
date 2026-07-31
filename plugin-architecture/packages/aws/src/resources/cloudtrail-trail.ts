@@ -14,6 +14,7 @@ export const CloudTrailTrailResourceType = rt({
     f("status", "Logging", { kind: "boolean", required: false }),
   ],
   outputs: [o("trailArn", "Trail ARN")],
+  dependsOn: [{ fieldKey: "s3BucketName", targetTypeId: "s3-bucket", label: "logs to" }],
   supportsCreate: true,
   iconKey: "log",
 });

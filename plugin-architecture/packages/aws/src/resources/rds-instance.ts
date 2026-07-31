@@ -26,6 +26,19 @@ export const RDSInstanceResourceType = rt({
     f("allocatedStorage", "Storage (GB)", { kind: "number", required: false }),
     f("availabilityZone", "Availability Zone", { required: false }),
     f("multiAZ", "Multi-AZ", { kind: "boolean", required: false }),
+    f("vpcId", "VPC ID", { required: false, description: "VPC of the instance's DB subnet group" }),
+    f("subnetIds", "Subnets", {
+      required: false,
+      description: "Comma-separated subnet IDs from the DB subnet group",
+    }),
+    f("securityGroupIds", "Security Groups", {
+      required: false,
+      description: "Comma-separated VPC security group IDs attached to the instance",
+    }),
+    f("dbClusterIdentifier", "Cluster ID", {
+      required: false,
+      description: "Aurora/DocumentDB/Neptune cluster this instance is a member of",
+    }),
     f("network", "VPC Network", {
       kind: "association",
       required: false,
@@ -49,6 +62,18 @@ export const RDSInstanceResourceType = rt({
       sensitive: true,
       description: "Database connection URI (constructed from engine + endpoint + port)",
     }),
+  ],
+  // A cluster member reports the cluster id under `DBClusterIdentifier`, which
+  // is exactly the external id of the Aurora / DocumentDB / Neptune cluster —
+  // the same DescribeDBInstances call serves all three engines, so all three
+  // are named here and only the matching one resolves.
+  dependsOn: [
+    { fieldKey: "vpcId", targetTypeId: "vpc", label: "in VPC" },
+    { fieldKey: "subnetIds", targetTypeId: "subnet", label: "in subnet" },
+    { fieldKey: "securityGroupIds", targetTypeId: "security-group", label: "guarded by" },
+    { fieldKey: "dbClusterIdentifier", targetTypeId: "rds-cluster", label: "member of" },
+    { fieldKey: "dbClusterIdentifier", targetTypeId: "documentdb-cluster", label: "member of" },
+    { fieldKey: "dbClusterIdentifier", targetTypeId: "neptune-cluster", label: "member of" },
   ],
   supportsMetrics: true,
   supportsCreate: true,

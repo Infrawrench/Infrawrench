@@ -181,6 +181,77 @@ export interface SecretExportTemplate {
   entries: SecretExportEntry[];
 }
 
+/**
+ * Declares that a field (or output) on this resource type names another
+ * resource — a dependency the host draws on the dependency graph.
+ *
+ * The host can already *guess* these: it indexes every resource by the values
+ * that identify it and looks each field value up in that index. Guessing has to
+ * be conservative, so it drops any value claimed by two resources and refuses
+ * plain names across accounts. A declaration removes the guesswork: it says
+ * which field points where, so `namespace: "default"` resolves to the namespace
+ * type instead of being thrown away as ambiguous.
+ *
+ * Declaring is optional and incremental — a type with no rules still gets the
+ * inferred edges. Nothing here is provider-specific in the host: it reads the
+ * rule and matches values, exactly as it does for the peer-integration and
+ * SSH-endpoint declarations.
+ *
+ * **Don't declare a field whose target you can't name.** A rule takes the field
+ * over: the host stops guessing about it, even when the rule matches nothing.
+ * That is the point — a match against the wrong type is worse than no edge —
+ * but it cuts both ways. `targetPluginId` defaults to the declaring plugin, so
+ * a rule for a field that points *outside* this provider (an SSH target's
+ * `host`, which names someone else's server) would both fail to match and
+ * suppress the inference that resolves it correctly today. Leave those fields
+ * undeclared.
+ */
+export interface ResourceDependencyRule {
+  /** The field on this type holding the reference (e.g. "vpcId"). */
+  fieldKey: string;
+  /**
+   * Read `fieldKey` from the resource's resolved outputs instead of its fields.
+   * Use when the pointer only exists as an output (a resolved endpoint, say).
+   */
+  from?: "fields" | "outputs";
+  /** Resource type the value names. Omit to accept any type. */
+  targetTypeId?: string;
+  /** Plugin owning the target, when the link crosses providers. Defaults to this plugin. */
+  targetPluginId?: string;
+  /**
+   * What the value is matched against on the target: `"externalId"` (default),
+   * or the name of a field/output key on the target — e.g. `"name"` when the
+   * provider references things by name rather than id.
+   */
+  targetKey?: string;
+  /**
+   * Compose the value to match from several of this resource's fields, for
+   * targets whose identity is a composite. `"{databaseName}/{branchName}"`
+   * matches a PlanetScale branch whose external id is `"{db}/{branch}"`;
+   * `"{catalogName}.{schemaName}"` matches a Databricks schema.
+   *
+   * Placeholders name fields on **this** resource (outputs when
+   * `from: "outputs"`). If any placeholder is missing or empty the rule yields
+   * nothing — a half-built key must never be matched. `fieldKey` still names
+   * the field the edge is attributed to and is what the UI captions.
+   *
+   * One placeholder may hold a comma-joined list: the template is expanded per
+   * element, so `"{namespace}/{configMaps}"` over `"a, b"` matches `prod/a`
+   * and `prod/b`. Two list-valued placeholders yield nothing rather than a
+   * cartesian product.
+   *
+   * Prefer this over matching a bare segment: a scope-qualified id composed in
+   * full stays exact, where matching just the tail goes ambiguous the moment
+   * two scopes contain the same name (`main` in five databases).
+   */
+  matchTemplate?: string;
+  /**
+   * How the edge reads in the UI (e.g. "runs in", "routes to"). Defaults to
+   * the usual `field ← key` caption.
+   */
+  label?: string;
+}
+
 export interface ResourceTypeDefinition {
   id: string;
   displayName: string;
@@ -188,6 +259,12 @@ export interface ResourceTypeDefinition {
   description: string;
   fields: FieldDefinition[];
   outputs: ResourceOutput[];
+  /**
+   * Fields on this type that point at other resources. Feeds the dependency
+   * graph; see `ResourceDependencyRule`. Values that hold a comma-separated
+   * list produce one edge per element.
+   */
+  dependsOn?: ResourceDependencyRule[];
   /** Set on child resource types — points to the parent type's id */
   parentTypeId?: string;
   /**

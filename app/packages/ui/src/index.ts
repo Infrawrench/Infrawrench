@@ -281,16 +281,27 @@ export {
   collectDependents,
   collectDependencies,
   layoutDependencyGraph,
+  dependencyEdgeLabel,
+  inferDependencyEdges,
+  collectDependencyRules,
+  dependencyRuleKey,
+  resourceIdentityTokens,
+  resourceReferenceTokens,
 } from "@infrawrench/client-core";
 export type {
   DependencyGraphNode,
   DependencyGraphEdge,
+  DependencyEdgeKind,
   DependencyGraphData,
   DependencyGraphModel,
   DependencyNeighbor,
   ResourceDependencies,
   DependencyGraphLayout,
   DependencyGraphLayoutOptions,
+  InferenceResource,
+  InferDependencyEdgesOptions,
+  InferredDependencyEdges,
+  DependencyRuleSet,
 } from "@infrawrench/client-core";
 export { DependencyGraphView } from "./components/graph/DependencyGraphView.js";
 export { ResourceDependenciesPanel } from "./components/graph/ResourceDependenciesPanel.js";

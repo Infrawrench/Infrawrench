@@ -28,6 +28,14 @@ export const MistralBatchJobResourceType = rt({
     f("completedAt", "Completed", { required: false }),
   ],
   outputs: [o("jobId", "Job ID"), o("outputFile", "Output File ID")],
+  // `model` is a `/v1/models` id; the file fields are `/v1/files` ids —
+  // `inputFiles` is a comma-joined list, one edge per entry.
+  dependsOn: [
+    { fieldKey: "model", targetTypeId: "mistral-model", label: "runs" },
+    { fieldKey: "inputFiles", targetTypeId: "mistral-file", label: "reads" },
+    { fieldKey: "outputFile", targetTypeId: "mistral-file", label: "writes" },
+    { fieldKey: "errorFile", targetTypeId: "mistral-file", label: "errors to" },
+  ],
   supportsDelete: true,
   iconKey: "layers",
 });

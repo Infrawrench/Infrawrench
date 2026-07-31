@@ -189,6 +189,28 @@ describe("listResources instance", () => {
     );
   });
 
+  it("records the deduped network ids from every address", async () => {
+    const c = makeClient();
+    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+      if (String(url).includes("/auth/time")) return okJson(1700000000);
+      return okJson([
+        {
+          id: "i-1",
+          name: "web",
+          region: "GRA11",
+          status: "ACTIVE",
+          ipAddresses: [
+            { ip: "1.2.3.4", type: "public", version: 4, networkId: "ext-net" },
+            { ip: "::1", type: "public", version: 6, networkId: "ext-net" },
+            { ip: "10.0.0.1", type: "private", version: 4, networkId: "os-net-1" },
+          ],
+        },
+      ]);
+    });
+    const res = await c.listResources("instance", ACCOUNT);
+    expect(res[0]!.fields["networkIds"]).toBe("ext-net, os-net-1");
+  });
+
   it("handles instance with no ips/flavor/image", async () => {
     const c = makeClient();
     fetchMock.mockImplementation(async (url: string | URL | Request) => {
@@ -198,6 +220,7 @@ describe("listResources instance", () => {
     const res = await c.listResources("instance", ACCOUNT);
     expect(res[0]!.fields["flavorName"]).toBe("");
     expect(res[0]!.fields["sshUsername"]).toBe("root");
+    expect(res[0]!.fields["networkIds"]).toBe("");
     expect(res[0]!.resolvedOutputs["ipv4"]).toBe("");
   });
 
@@ -311,7 +334,16 @@ describe("listResources OVH extended resources", () => {
       if (u.includes("/auth/time")) return okJson(1700000000);
       if (u.endsWith("/network/private"))
         return okJson([
-          { id: "net-1", name: "priv", regions: [{ name: "GRA11" }], vlanId: 42, status: "ACTIVE" },
+          {
+            id: "net-1",
+            name: "priv",
+            regions: [
+              { name: "GRA11", openstackId: "os-net-1" },
+              { name: "SBG5", openstackId: "os-net-2" },
+            ],
+            vlanId: 42,
+            status: "ACTIVE",
+          },
         ]);
       if (u.endsWith("/region")) return okJson([{ name: "GRA11", status: "UP" }]);
       if (u.endsWith("/region/GRA11/floatingip"))
@@ -338,7 +370,10 @@ describe("listResources OVH extended resources", () => {
       return okJson([]);
     });
 
-    expect((await c.listResources("private-network", ACCOUNT))[0]!.fields["vlanId"]).toBe(42);
+    const privateNetwork = (await c.listResources("private-network", ACCOUNT))[0]!;
+    expect(privateNetwork.fields["vlanId"]).toBe(42);
+    // The OpenStack ids are what instances and kube clusters reference.
+    expect(privateNetwork.fields["openstackIds"]).toBe("os-net-1, os-net-2");
     expect((await c.listResources("floating-ip", ACCOUNT))[0]!.resolvedOutputs["ip"]).toBe(
       "203.0.113.10",
     );
@@ -362,6 +397,9 @@ describe("listResources managed-kube", () => {
           status: "READY",
           url: "https://k8s",
           nodesUrl: "https://nodes",
+          privateNetworkId: "os-net-1",
+          nodesSubnetId: "os-subnet-1",
+          loadBalancersSubnetId: "os-subnet-2",
           createdAt: "2024-01-01T00:00:00Z",
         });
       if (u.endsWith("/kube/c-1/nodepool"))
@@ -375,6 +413,9 @@ describe("listResources managed-kube", () => {
     expect(res[0]!.fields["nodeCount"]).toBe(5);
     expect(res[0]!.fields["nodePoolCount"]).toBe(2);
     expect(res[0]!.fields["flavor"]).toBe("b3-8");
+    expect(res[0]!.fields["privateNetworkId"]).toBe("os-net-1");
+    expect(res[0]!.fields["nodesSubnetId"]).toBe("os-subnet-1");
+    expect(res[0]!.fields["loadBalancersSubnetId"]).toBe("os-subnet-2");
     expect(res[0]!.resolvedOutputs["clusterUrl"]).toBe("https://k8s");
   });
 
@@ -391,6 +432,7 @@ describe("listResources managed-kube", () => {
     const res = await c.listResources("managed-kube", ACCOUNT);
     expect(res[0]!.fields["nodeCount"]).toBe(0);
     expect(res[0]!.fields["nodePoolCount"]).toBe(0);
+    expect(res[0]!.fields["privateNetworkId"]).toBe("");
     expect(res[0]!.displayName).toBe("c-1");
   });
 });

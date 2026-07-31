@@ -21,6 +21,10 @@ export const NeonFunctionResourceType = rt({
     f("createdAt", "Created At", { required: false }),
   ],
   outputs: [o("invocationUrl", "Invocation URL"), o("functionId", "Function ID")],
+  dependsOn: [
+    { fieldKey: "projectId", targetTypeId: "neon-project", label: "in project" },
+    { fieldKey: "branchId", targetTypeId: "neon-branch", label: "on branch" },
+  ],
   parentTypeId: "neon-branch",
   supportsDelete: true,
   iconKey: "function",

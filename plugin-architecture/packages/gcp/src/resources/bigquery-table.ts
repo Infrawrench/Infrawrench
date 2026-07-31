@@ -7,6 +7,10 @@ export const BigQueryTableResourceType = rt({
   description: "A table, view, or materialized view inside a BigQuery dataset",
   fields: [
     f("name", "Table ID"),
+    f("datasetId", "Dataset", {
+      required: false,
+      description: "Fully-qualified dataset this table lives in, as project:dataset",
+    }),
     f("friendlyName", "Friendly Name", { required: false }),
     f("type", "Type", { required: false }),
     f("location", "Data location", { required: false }),
@@ -32,6 +36,9 @@ export const BigQueryTableResourceType = rt({
     f("numTimeTravelPhysicalBytes", "Time travel physical bytes", { required: false }),
   ],
   outputs: [],
+  // A dataset's external id is `project:dataset`, which is exactly what the
+  // lister stores — a bare dataset id is only unique inside its project.
+  dependsOn: [{ fieldKey: "datasetId", targetTypeId: "bigquery-dataset", label: "in dataset" }],
   parentTypeId: "bigquery-dataset",
   supportsCreate: true,
 });

@@ -17,6 +17,16 @@ export const GceDiskResourceType = rt({
     }),
   ],
   outputs: [],
+  // Comma-separated instance names — one edge per attachment. Instances are
+  // indexed by their bare `name` field; the externalId carries project/zone too.
+  dependsOn: [
+    {
+      fieldKey: "attachedTo",
+      targetTypeId: "gce-instance",
+      targetKey: "name",
+      label: "attached to",
+    },
+  ],
   supportsCreate: true,
   // equals-"" (not when:"empty") on purpose: resources synced before the
   // lister populated attachedTo have the field absent, and `equals` never

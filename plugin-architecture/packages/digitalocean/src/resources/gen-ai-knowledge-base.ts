@@ -29,6 +29,10 @@ export const GenAiKnowledgeBaseResourceType = rt({
       description: "Hybrid retrieval endpoint URL (kbaas.do-ai.run/v1/{uuid}/retrieve)",
     }),
   ],
+  dependsOn: [
+    { fieldKey: "projectId", targetTypeId: "project", label: "in project" },
+    { fieldKey: "databaseId", targetTypeId: "managed-database", label: "backed by" },
+  ],
   supportsCreate: true,
   supportsUpdate: true,
   iconKey: "knowledge-base",

@@ -72,7 +72,8 @@ export function WebGraphPanel({ orgId, openResource }: WebGraphPanelProps) {
       <div className="shrink-0 px-6 pt-6 pb-4 border-b border-border">
         <h1 className="text-xl font-semibold text-on-surface">Dependency graph</h1>
         <p className="text-sm text-on-surface-muted mt-0.5">
-          How your resources are wired together through output references.
+          How your resources are wired together — read from your synced cloud data and from output
+          references you wire yourself.
         </p>
         {error && (
           <p className="mt-2 text-xs text-red-400">

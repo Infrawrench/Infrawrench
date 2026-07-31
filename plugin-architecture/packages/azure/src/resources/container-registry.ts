@@ -24,6 +24,9 @@ export const ContainerRegistryResourceType = rt({
         "Admin docker credentials as a .dockerconfigjson document — usable directly as a kubernetes.io/dockerconfigjson pull secret.",
     }),
   ],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+  ],
   iconKey: "container-registry",
   supportsCreate: true,
   supportsMetrics: true,

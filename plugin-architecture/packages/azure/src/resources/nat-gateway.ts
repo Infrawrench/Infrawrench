@@ -13,8 +13,18 @@ export const NatGatewayResourceType = rt({
     f("idleTimeout", "Idle Timeout", { kind: "number", required: false }),
     f("publicIpCount", "Public IPs", { kind: "number", required: false }),
     f("subnetCount", "Associated Subnets", { kind: "number", required: false }),
+    f("publicIpNames", "Public IP Addresses", { required: false }),
   ],
   outputs: [o("resourceId", "Resource ID")],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+    {
+      fieldKey: "publicIpNames",
+      targetTypeId: "azure-public-ip",
+      targetKey: "name",
+      label: "SNATs via",
+    },
+  ],
   supportsMetrics: true,
   iconKey: "network",
   attachTargets: [

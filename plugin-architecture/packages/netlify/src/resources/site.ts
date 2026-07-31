@@ -32,6 +32,23 @@ export const NetlifySiteResourceType = rt({
     o("sslUrl", "SSL URL"),
     o("deployHook", "Deploy Hook URL", { sensitive: true }),
   ],
+  // A Netlify DNS zone is identified by its domain name, which the zone lister
+  // stores in `name` — the site's domains match against that, not the zone id.
+  // `domainAliases` is comma-joined, so each alias becomes its own edge.
+  dependsOn: [
+    {
+      fieldKey: "customDomain",
+      targetTypeId: "netlify-dns-zone",
+      targetKey: "name",
+      label: "in zone",
+    },
+    {
+      fieldKey: "domainAliases",
+      targetTypeId: "netlify-dns-zone",
+      targetKey: "name",
+      label: "in zone",
+    },
+  ],
   supportsCreate: true,
   iconKey: "site",
   secretExportTemplates: [

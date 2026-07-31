@@ -18,6 +18,11 @@ export const SpannerDatabaseResourceType = rt({
     f("defaultLeader", "Default leader", { required: false }),
   ],
   outputs: [],
+  dependsOn: [
+    { fieldKey: "instance", targetTypeId: "spanner-instance", label: "in instance" },
+    // encryptionConfig stores the raw kmsKeyName — a full KMS resource path.
+    { fieldKey: "encryptionConfig", targetTypeId: "kms-key", label: "encrypted by" },
+  ],
   parentTypeId: "spanner-instance",
   supportsCreate: true,
 });

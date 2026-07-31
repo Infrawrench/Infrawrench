@@ -22,6 +22,10 @@ export const NeonAuthResourceType = rt({
     o("projectId", "Project ID"),
     o("branchId", "Branch ID"),
   ],
+  dependsOn: [
+    { fieldKey: "projectId", targetTypeId: "neon-project", label: "in project" },
+    { fieldKey: "branchId", targetTypeId: "neon-branch", label: "on branch" },
+  ],
   parentTypeId: "neon-branch",
   supportsCreate: true,
   supportsDelete: true,

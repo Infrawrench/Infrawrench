@@ -16,5 +16,10 @@ export const SubnetResourceType = rt({
     f("stackType", "Stack Type", { required: false }),
   ],
   outputs: [],
+  // The lister stores the last path segment of the subnetwork's `network` URL,
+  // so it matches the VPC's `name` field rather than its `project/name` externalId.
+  dependsOn: [
+    { fieldKey: "network", targetTypeId: "vpc-network", targetKey: "name", label: "in network" },
+  ],
   supportsCreate: true,
 });

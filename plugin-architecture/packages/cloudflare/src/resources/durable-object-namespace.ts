@@ -11,6 +11,7 @@ export const DurableObjectNamespaceResourceType = rt({
     f("useSqlite", "SQLite Storage", { kind: "boolean", required: false }),
   ],
   outputs: [o("namespaceId", "Namespace ID")],
+  dependsOn: [{ fieldKey: "script", targetTypeId: "worker", label: "defined by" }],
   supportsMetrics: true,
   iconKey: "compute",
 });

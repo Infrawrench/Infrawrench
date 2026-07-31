@@ -72,6 +72,9 @@ function mapAccessPolicy(
       includeRules: formatRules(policy["include"]),
       excludeRules: formatRules(policy["exclude"]),
       requireRules: formatRules(policy["require"]),
+      // The owning application is otherwise only encoded in the composite
+      // external id, which the dependency graph can't take apart.
+      applicationId: appId,
     },
     resolvedOutputs: {},
     secretStates: [],

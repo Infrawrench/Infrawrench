@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { asRecord, collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone, resolveZoneName } from "./shared.js";
 import type {
   HealthcheckCreateParams,
   HealthcheckEditParams,
@@ -16,6 +16,7 @@ function mapHealthcheck(
   hc: Record<string, unknown>,
   accountId: string,
   zoneId: string,
+  zoneName: string,
 ): ResourceInstance {
   const id = String(hc["id"] ?? "");
   const name = String(hc["name"] ?? "");
@@ -37,6 +38,7 @@ function mapHealthcheck(
       retries: Number(hc["retries"] ?? 0),
       consecutiveFails: Number(hc["consecutive_fails"] ?? 0),
       consecutiveSuccesses: Number(hc["consecutive_successes"] ?? 0),
+      zoneName,
     },
     resolvedOutputs: {},
     secretStates: [],
@@ -53,10 +55,10 @@ export async function listAllHealthchecks(
 ): Promise<ResourceInstance[]> {
   return collectPerZone(
     api,
-    async (zoneId) => {
+    async (zoneId, zoneName) => {
       const part: ResourceInstance[] = [];
       for await (const hc of api.cf.healthchecks.list({ zone_id: zoneId })) {
-        part.push(mapHealthcheck(asRecord(hc), accountId, zoneId));
+        part.push(mapHealthcheck(asRecord(hc), accountId, zoneId, zoneName));
       }
       return part;
     },
@@ -95,7 +97,7 @@ export async function createHealthcheck(
       : {}),
   };
   const hc = await api.cf.healthchecks.create(body);
-  return mapHealthcheck(asRecord(hc), accountId, zoneId);
+  return mapHealthcheck(asRecord(hc), accountId, zoneId, await resolveZoneName(api, zoneId));
 }
 
 export async function editHealthcheck(
@@ -128,7 +130,7 @@ export async function editHealthcheck(
       : {}),
   };
   const hc = await api.cf.healthchecks.edit(checkId, body);
-  return mapHealthcheck(asRecord(hc), accountId, zoneId);
+  return mapHealthcheck(asRecord(hc), accountId, zoneId, await resolveZoneName(api, zoneId));
 }
 
 export async function deleteHealthcheck(api: CloudflareApi, externalId: string): Promise<void> {

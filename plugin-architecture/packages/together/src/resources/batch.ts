@@ -20,6 +20,13 @@ export const BatchResourceType = rt({
     f("completedAt", "Completed", { required: false }),
   ],
   outputs: [o("batchId", "Batch ID"), o("outputFileId", "Output File ID")],
+  // `model_id` is a `/models` id; the three file fields are `/files` ids.
+  dependsOn: [
+    { fieldKey: "model", targetTypeId: "model", label: "runs" },
+    { fieldKey: "inputFileId", targetTypeId: "file", label: "reads" },
+    { fieldKey: "outputFileId", targetTypeId: "file", label: "writes" },
+    { fieldKey: "errorFileId", targetTypeId: "file", label: "errors to" },
+  ],
   supportsCreate: true,
   supportsDelete: false,
   iconKey: "queue",

@@ -13,6 +13,9 @@ export const RouteTableResourceType = rt({
     f("subnetCount", "Associated Subnets", { kind: "number", required: false }),
   ],
   outputs: [o("resourceId", "Resource ID")],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+  ],
   iconKey: "network",
   attachTargets: [
     {

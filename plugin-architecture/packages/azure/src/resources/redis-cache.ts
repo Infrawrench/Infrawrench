@@ -21,6 +21,9 @@ export const RedisCacheResourceType = rt({
     o("primaryKey", "Primary Key", { sensitive: true }),
     o("connectionString", "Connection String", { sensitive: true }),
   ],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+  ],
   iconKey: "cache",
   supportsCreate: true,
   supportsMetrics: true,

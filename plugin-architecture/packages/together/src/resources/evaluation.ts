@@ -17,6 +17,11 @@ export const EvaluationResourceType = rt({
     f("updatedAt", "Updated", { required: false }),
   ],
   outputs: [o("workflowId", "Workflow ID"), o("status", "Status")],
+  // Both are `/models` ids lifted out of the job's `parameters` bag.
+  dependsOn: [
+    { fieldKey: "model", targetTypeId: "model", label: "evaluates" },
+    { fieldKey: "judgeModel", targetTypeId: "model", label: "judged by" },
+  ],
   supportsDelete: false,
   iconKey: "dashboard",
 });

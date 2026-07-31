@@ -12,6 +12,9 @@ export const DNSZoneResourceType = rt({
     f("maxNumberOfRecordSets", "Max Record Sets", { kind: "number", required: false }),
   ],
   outputs: [o("nameServers", "Name Servers")],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+  ],
   supportsMetrics: true,
   iconKey: "dns",
   supportsCreate: true,

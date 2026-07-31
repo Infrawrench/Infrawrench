@@ -14,6 +14,7 @@ export const SecurityGroupResourceType = rt({
     f("outboundRuleCount", "Outbound Rules", { kind: "number", required: false }),
   ],
   outputs: [o("groupId", "Security Group ID")],
+  dependsOn: [{ fieldKey: "vpcId", targetTypeId: "vpc", label: "in VPC" }],
   iconKey: "firewall",
   supportsCreate: true,
   attachTargets: [{ pluginId: "aws", resourceTypeId: "ec2-instance", verb: "Apply firewall" }],

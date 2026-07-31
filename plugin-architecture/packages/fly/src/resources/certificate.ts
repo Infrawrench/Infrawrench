@@ -16,6 +16,7 @@ export const CertificateResourceType = rt({
     f("dnsProvider", "DNS Provider", { required: false }),
   ],
   outputs: [o("hostname", "Hostname")],
+  dependsOn: [{ fieldKey: "appName", targetTypeId: "app", label: "in app" }],
   iconKey: "certificate",
   supportsCreate: true,
 });

@@ -210,13 +210,26 @@ export {
 } from "./speech";
 export { evaluateShowWhen, buildDefaultFields, type ShowWhenRuleLike } from "./create-fields";
 export {
+  inferDependencyEdges,
+  collectDependencyRules,
+  dependencyRuleKey,
+  resourceIdentityTokens,
+  resourceReferenceTokens,
+  type DependencyRuleSet,
+  type InferenceResource,
+  type InferDependencyEdgesOptions,
+  type InferredDependencyEdges,
+} from "./dependency-inference";
+export {
   buildDependencyGraph,
   directDependencies,
   collectDependents,
   collectDependencies,
   layoutDependencyGraph,
+  dependencyEdgeLabel,
   type DependencyGraphNode,
   type DependencyGraphEdge,
+  type DependencyEdgeKind,
   type DependencyGraphData,
   type DependencyGraphModel,
   type DependencyNeighbor,

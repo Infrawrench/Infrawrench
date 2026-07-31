@@ -24,8 +24,14 @@ export const DropletResourceType = rt({
     }),
     f("size", "Size", { description: "Droplet size slug, e.g. s-1vcpu-1gb" }),
     f("image", "Image", { description: "Image slug or ID, e.g. ubuntu-24-04-x64" }),
+    f("vpcUuid", "VPC", {
+      required: false,
+      description: "UUID of the VPC network this Droplet is attached to",
+    }),
   ],
   outputs: [o("ipv4", "Public IPv4"), o("ipv4Private", "Private IPv4"), o("ipv6", "Public IPv6")],
+  // The lister records `vpc_uuid`; a VPC's externalId is that same uuid.
+  dependsOn: [{ fieldKey: "vpcUuid", targetTypeId: "vpc", label: "in VPC" }],
   parentTypeId: "project",
   showInSidebar: true,
   supportsMetrics: true,

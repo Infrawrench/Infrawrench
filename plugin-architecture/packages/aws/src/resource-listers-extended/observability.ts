@@ -20,6 +20,18 @@ export async function listCloudWatchAlarms(
 
   return metricAlarms.map((a) => {
     const alarmName = String(a["AlarmName"] ?? "");
+    // The alarm's dimensions say what it watches (InstanceId, QueueName, …).
+    // Keep the readable summary and pull out the dimension names that name a
+    // resource type we list, so the graph can point the alarm at its subject.
+    const dimensions = ensureArray(
+      (a["Dimensions"] as Record<string, unknown> | undefined)?.["member"],
+    ) as Record<string, unknown>[];
+    const byName = new Map<string, string>();
+    for (const d of dimensions) {
+      const name = String(d["Name"] ?? "");
+      if (name) byName.set(name, String(d["Value"] ?? ""));
+    }
+    const dim = (name: string): string => byName.get(name) ?? "";
     return {
       id: ctx.id(accountId, "cloudwatch-alarm", alarmName),
       pluginId: "aws",
@@ -36,6 +48,16 @@ export async function listCloudWatchAlarms(
         threshold: Number(a["Threshold"] ?? 0),
         period: Number(a["Period"] ?? 0),
         actionsEnabled: a["ActionsEnabled"] === true || a["ActionsEnabled"] === "true",
+        dimensions: Array.from(byName, ([name, value]) => `${name}=${value}`).join(", "),
+        instanceId: dim("InstanceId"),
+        dbInstanceId: dim("DBInstanceIdentifier"),
+        dbClusterId: dim("DBClusterIdentifier"),
+        functionName: dim("FunctionName"),
+        bucketName: dim("BucketName"),
+        queueName: dim("QueueName"),
+        tableName: dim("TableName"),
+        autoScalingGroupName: dim("AutoScalingGroupName"),
+        cacheClusterId: dim("CacheClusterId"),
       },
       resolvedOutputs: {
         alarmArn: String(a["AlarmArn"] ?? ""),

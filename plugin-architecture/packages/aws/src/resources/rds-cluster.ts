@@ -13,6 +13,14 @@ export const RDSClusterResourceType = rt({
     f("storageEncrypted", "Encrypted", { kind: "boolean", required: false }),
     f("allocatedStorage", "Storage (GB)", { kind: "number", required: false }),
     f("dbClusterMembers", "Members", { kind: "number", required: false }),
+    f("dbClusterMemberIds", "Member Instances", {
+      required: false,
+      description: "Comma-separated DB instance identifiers in this cluster",
+    }),
+    f("securityGroupIds", "Security Groups", {
+      required: false,
+      description: "Comma-separated VPC security group IDs attached to the cluster",
+    }),
   ],
   outputs: [
     o("endpoint", "Writer Endpoint"),
@@ -24,6 +32,12 @@ export const RDSClusterResourceType = rt({
       sensitive: true,
       description: "Database connection URI (constructed from endpoint + port)",
     }),
+  ],
+  // Cluster members are ordinary DB instances — DescribeDBInstances lists them
+  // under their own identifier, which is what `DBClusterMembers` names.
+  dependsOn: [
+    { fieldKey: "dbClusterMemberIds", targetTypeId: "rds-instance", label: "has member" },
+    { fieldKey: "securityGroupIds", targetTypeId: "security-group", label: "guarded by" },
   ],
   iconKey: "database",
   supportsCreate: true,

@@ -2,8 +2,10 @@ import { useMemo, useState } from "react";
 import {
   buildDependencyGraph,
   collectDependents,
+  dependencyEdgeLabel,
   layoutDependencyGraph,
   type DependencyGraphData,
+  type DependencyGraphEdge,
   type DependencyGraphNode,
 } from "@infrawrench/client-core";
 
@@ -17,20 +19,51 @@ const NODE_WIDTH = 190;
 const NODE_HEIGHT = 54;
 
 /**
+ * Line style per provenance — the legend in the header explains these. Declared
+ * edges are solid like output references: the plugin stated the relationship,
+ * so it is as certain as one the user wired, and only the guessed kinds earn a
+ * broken line.
+ */
+const EDGE_DASH: Record<string, string | undefined> = {
+  "output-ref": undefined,
+  declared: undefined,
+  containment: "2 3",
+  "field-match": "5 4",
+};
+
+function isExplicit(edge: DependencyGraphEdge): boolean {
+  return (edge.kind ?? "output-ref") === "output-ref";
+}
+
+/**
  * The org-wide dependency-graph topology, hand-rolled as plain SVG — no graph
  * library. Layout comes from the shared layered algorithm in
  * `@infrawrench/client-core`; arrows point from a consumer to the provider it
  * depends on. Clicking a node highlights its blast radius (the node plus every
  * transitive dependent); clicking it again — or the "Open resource" button —
  * navigates to the resource. Shared by web and desktop.
+ *
+ * Edges arrive from two sources — hand-wired output references and links read
+ * out of synced cloud data — drawn solid and dashed respectively. The toggle
+ * hides the inferred ones, which is how you check what is actually wired
+ * through the app versus what the provider already had.
  */
 export function DependencyGraphView({ data, onOpenResource }: DependencyGraphViewProps) {
-  const model = useMemo(() => buildDependencyGraph(data.nodes, data.edges), [data]);
+  const [showInferred, setShowInferred] = useState(true);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const inferredCount = useMemo(() => data.edges.filter((e) => !isExplicit(e)).length, [data]);
+  const explicitCount = data.edges.length - inferredCount;
+
+  const model = useMemo(
+    () =>
+      buildDependencyGraph(data.nodes, showInferred ? data.edges : data.edges.filter(isExplicit)),
+    [data, showInferred],
+  );
   const layout = useMemo(
     () => layoutDependencyGraph(model, { nodeWidth: NODE_WIDTH, nodeHeight: NODE_HEIGHT }),
     [model],
   );
-  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // A stale selection (resource removed on refresh) must not keep dimming
   // the graph forever.
@@ -43,12 +76,32 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
   if (model.edges.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8 text-center">
-        <p className="text-sm text-on-surface-secondary">No output references yet.</p>
-        <p className="text-xs text-on-surface-muted max-w-md">
-          The dependency graph is built from output references — resources whose fields point at
-          another resource's outputs. Create one by picking "Output reference" on a secret field
-          when creating or editing a resource.
-        </p>
+        {inferredCount > 0 && !showInferred ? (
+          <>
+            <p className="text-sm text-on-surface-secondary">No output references yet.</p>
+            <p className="text-xs text-on-surface-muted max-w-md">
+              Nothing here is wired through an output reference, but {inferredCount} link
+              {inferredCount === 1 ? " was" : "s were"} found in your synced cloud data.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowInferred(true)}
+              className="mt-1 px-3 py-1 text-xs text-on-surface-secondary border border-border-strong rounded-lg hover:border-accent transition-colors"
+            >
+              Show links from cloud data
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-on-surface-secondary">No connections yet.</p>
+            <p className="text-xs text-on-surface-muted max-w-md">
+              The graph is built from your synced cloud data — resources that sit inside another or
+              whose fields name another resource — plus output references you wire yourself. Add an
+              account and let it sync, or pick "Output reference" on a secret field when creating a
+              resource.
+            </p>
+          </>
+        )}
       </div>
     );
   }
@@ -89,12 +142,39 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
             </button>
           </>
         ) : (
-          <span className="text-xs text-on-surface-muted">
-            Arrows point at what a resource depends on. Click a resource to highlight its blast
-            radius; click it again to open it.
-          </span>
+          <>
+            <span className="text-xs text-on-surface-muted truncate">
+              Arrows point at what a resource depends on. Click a resource to highlight its blast
+              radius; click it again to open it.
+            </span>
+            <span className="flex-1" />
+            <Legend />
+            {inferredCount > 0 && (
+              <label className="flex items-center gap-1.5 text-xs text-on-surface-muted flex-shrink-0 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showInferred}
+                  onChange={(e) => setShowInferred(e.target.checked)}
+                  className="accent-[var(--color-accent)]"
+                />
+                From cloud data ({inferredCount})
+              </label>
+            )}
+            {explicitCount > 0 && (
+              <span className="text-xs text-on-surface-faint flex-shrink-0">
+                {explicitCount} output reference{explicitCount === 1 ? "" : "s"}
+              </span>
+            )}
+          </>
         )}
       </div>
+
+      {data.truncated && (
+        <div className="shrink-0 px-4 py-1.5 border-b border-border text-xs text-amber-400">
+          Too many links to draw them all — showing a partial graph. Open a single resource's
+          Dependencies tab for its full neighbourhood.
+        </div>
+      )}
 
       {/*
         Canvas. `role="group"`, not `role="img"` — the nodes are focusable
@@ -171,17 +251,19 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
               !!blastRadius &&
               blastRadius.has(edge.consumerResourceId) &&
               blastRadius.has(edge.providerResourceId);
+            const dash = EDGE_DASH[edge.kind ?? "output-ref"];
             return (
               <path
-                key={`${edge.consumerResourceId}:${edge.consumerFieldKey}`}
+                key={`${edge.consumerResourceId}:${edge.consumerFieldKey}:${edge.providerResourceId}`}
                 d={`M ${x1} ${y1} C ${x1 - bend} ${y1}, ${x2 + bend} ${y2}, ${x2} ${y2}`}
                 fill="none"
                 stroke={active ? "var(--color-accent)" : "var(--color-border-strong)"}
                 strokeWidth={active ? 2 : 1.5}
+                strokeDasharray={dash}
                 opacity={blastRadius && !active ? 0.35 : 1}
                 markerEnd={active ? "url(#dep-arrow-active)" : "url(#dep-arrow)"}
               >
-                <title>{`${edge.consumerFieldKey} ← ${edge.providerOutputKey}`}</title>
+                <title>{dependencyEdgeLabel(edge)}</title>
               </path>
             );
           })}
@@ -260,6 +342,36 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
         </svg>
       </div>
     </div>
+  );
+}
+
+/** Line-style key: what a solid, dotted or dashed arrow means. */
+function Legend() {
+  return (
+    <span className="hidden lg:flex items-center gap-3 text-xs text-on-surface-faint flex-shrink-0">
+      {(
+        [
+          ["output-ref", "Reference or provider link"],
+          ["containment", "Belongs to"],
+          ["field-match", "Named in a field"],
+        ] as const
+      ).map(([kind, label]) => (
+        <span key={kind} className="flex items-center gap-1.5">
+          <svg width={18} height={6} aria-hidden className="flex-shrink-0">
+            <line
+              x1={0}
+              y1={3}
+              x2={18}
+              y2={3}
+              stroke="var(--color-border-strong)"
+              strokeWidth={1.5}
+              strokeDasharray={EDGE_DASH[kind]}
+            />
+          </svg>
+          {label}
+        </span>
+      ))}
+    </span>
   );
 }
 

@@ -859,6 +859,11 @@ export class OvhClient implements PluginClient {
           imageName: instance.image?.name ?? fields["imageId"] ?? "",
           status: instance.status,
           sshUsername: ovhSshUsername(instance.image?.name ?? ""),
+          networkIds: [
+            ...new Set(
+              (instance.ipAddresses ?? []).map((ip) => ip.networkId ?? "").filter(Boolean),
+            ),
+          ].join(", "),
         },
         resolvedOutputs: { ipv4: publicIp, ipv4Private: privateIp },
         secretStates: [],
@@ -930,6 +935,9 @@ export class OvhClient implements PluginClient {
           nodeCount,
           nodePoolCount,
           nodesUrl: cluster.nodesUrl ?? "",
+          privateNetworkId: cluster.privateNetworkId ?? "",
+          nodesSubnetId: cluster.nodesSubnetId ?? "",
+          loadBalancersSubnetId: cluster.loadBalancersSubnetId ?? "",
         },
         resolvedOutputs: {
           clusterUrl: cluster.url ?? "",
@@ -1530,6 +1538,13 @@ export class OvhClient implements PluginClient {
 
   private mapPrivateNetwork(network: OvhPrivateNetwork, accountId: string): ResourceInstance {
     const regions = (network.regions ?? []).map((region) => region.name ?? "").filter(Boolean);
+    // OVH addresses one network by two different ids: the project-level
+    // `pn-xxxxxxx_yy` (this resource's externalId) and one OpenStack id per
+    // region (`regions[].openstackId`). Instances and Kubernetes clusters
+    // reference the OpenStack one, so expose it for those links to match.
+    const openstackIds = (network.regions ?? [])
+      .map((region) => region.openstackId ?? "")
+      .filter(Boolean);
     const now = new Date().toISOString();
     return {
       id: `${accountId}:private-network:${network.id}`,
@@ -1540,6 +1555,7 @@ export class OvhClient implements PluginClient {
       fields: {
         name: network.name ?? "",
         regions: regions.join(","),
+        openstackIds: openstackIds.join(", "),
         vlanId: network.vlanId ?? 0,
         status: network.status ?? "",
         type: network.type ?? "",
@@ -1682,6 +1698,14 @@ export class OvhClient implements PluginClient {
         inst.ipAddresses?.find((ip) => ip.type === "public" && ip.version === 6)?.ip ?? "";
       const privateIp =
         inst.ipAddresses?.find((ip) => ip.type === "private" && ip.version === 4)?.ip ?? "";
+      // Each address carries the id of the network it belongs to. Public
+      // addresses point at the shared Ext-Net (which is not a resource we
+      // list, so it simply matches nothing); private ones point at the
+      // customer's private network. Deduped — v4 and v6 on one network repeat
+      // the id.
+      const networkIds = [
+        ...new Set((inst.ipAddresses ?? []).map((ip) => ip.networkId ?? "").filter(Boolean)),
+      ];
       return {
         id: `${accountId}:instance:${inst.id}`,
         pluginId: "ovh",
@@ -1695,6 +1719,7 @@ export class OvhClient implements PluginClient {
           imageName: inst.image?.name ?? "",
           status: inst.status,
           sshUsername: ovhSshUsername(inst.image?.name ?? ""),
+          networkIds: networkIds.join(", "),
         },
         resolvedOutputs: { ipv4: publicIp, ipv6: publicIpv6, ipv4Private: privateIp },
         secretStates: [],
@@ -1741,6 +1766,12 @@ export class OvhClient implements PluginClient {
           nodeCount: totalNodes,
           nodePoolCount: pools.length,
           nodesUrl: c.nodesUrl ?? "",
+          // The OpenStack id of the private network the cluster's nodes sit
+          // in — matched against a private network's per-region
+          // `regions[].openstackId`, not its OVH `pn-…` id.
+          privateNetworkId: c.privateNetworkId ?? "",
+          nodesSubnetId: c.nodesSubnetId ?? "",
+          loadBalancersSubnetId: c.loadBalancersSubnetId ?? "",
         },
         resolvedOutputs: {
           clusterUrl: c.url ?? "",
@@ -1789,6 +1820,8 @@ interface OvhIpAddress {
   ip: string;
   type: "public" | "private";
   version: 4 | 6;
+  /** Id of the network this address lives on (`cloud.instance.IpAddress`). */
+  networkId?: string;
 }
 
 interface OvhInstance {
@@ -1813,6 +1846,10 @@ interface OvhKubeCluster {
   nodesUrl?: string;
   createdAt?: string;
   updatedAt?: string;
+  /** OpenStack id of the private network the cluster uses, when attached. */
+  privateNetworkId?: string;
+  nodesSubnetId?: string;
+  loadBalancersSubnetId?: string;
 }
 
 interface OvhStorageContainer {
@@ -1840,7 +1877,8 @@ interface OvhLoadBalancer {
 interface OvhPrivateNetwork {
   id: string;
   name?: string;
-  regions?: Array<{ name?: string }>;
+  /** `openstackId` is the network's id inside that region's OpenStack. */
+  regions?: Array<{ name?: string; openstackId?: string }>;
   vlanId?: number;
   status?: string;
   type?: string;

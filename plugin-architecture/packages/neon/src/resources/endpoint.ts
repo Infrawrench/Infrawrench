@@ -16,6 +16,10 @@ export const NeonEndpointResourceType = rt({
     f("suspendTimeout", "Suspend Timeout (s)", { required: false }),
   ],
   outputs: [o("host", "Host"), o("endpointId", "Endpoint ID")],
+  dependsOn: [
+    { fieldKey: "projectId", targetTypeId: "neon-project", label: "in project" },
+    { fieldKey: "branchId", targetTypeId: "neon-branch", label: "on branch" },
+  ],
   parentTypeId: "neon-branch",
   supportsCreate: true,
   iconKey: "neon",

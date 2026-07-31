@@ -1098,6 +1098,7 @@ export class NetlifyClient implements PluginClient {
         skipped: d.skipped ?? false,
         createdAt: d.created_at,
         publishedAt: d.published_at ?? "",
+        siteId,
       },
       resolvedOutputs: {
         deployId: d.id,
@@ -1141,6 +1142,7 @@ export class NetlifyClient implements PluginClient {
         submissionCount: f.submission_count ?? 0,
         paths: Array.isArray(f.paths) ? f.paths.join(", ") : "",
         createdAt: f.created_at,
+        siteId,
       },
       resolvedOutputs: {
         formId: f.id,
@@ -1176,6 +1178,7 @@ export class NetlifyClient implements PluginClient {
         ipv6Enabled: z.ipv6_enabled ?? false,
         dedicated: z.dedicated ?? false,
         accountName: z.account_name ?? "",
+        siteId: z.site_id ?? "",
         createdAt: z.created_at,
         updatedAt: z.updated_at,
       },
@@ -1222,6 +1225,7 @@ export class NetlifyClient implements PluginClient {
         managed: r.managed ?? false,
         tag: r.tag ?? "",
         flag: r.flag ?? 0,
+        zoneId,
       },
       resolvedOutputs: {
         recordId: r.id,
@@ -1265,6 +1269,7 @@ export class NetlifyClient implements PluginClient {
         branch: h.branch ?? "",
         url: h.url ?? "",
         createdAt: h.created_at ?? "",
+        siteId,
       },
       resolvedOutputs: {
         hookId: h.id,
@@ -1312,6 +1317,7 @@ export class NetlifyClient implements PluginClient {
         contexts,
         isSecret: ev.is_secret ?? false,
         updatedAt: ev.updated_at ?? "",
+        siteId,
       },
       resolvedOutputs: {
         envKey: ev.key,

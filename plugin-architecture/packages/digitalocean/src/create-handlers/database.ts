@@ -397,6 +397,7 @@ export async function databaseCreateResource(args: DoCreateArgs): Promise<Resour
       fields: {
         name,
         role: String(user.role ?? ""),
+        databaseId: clusterId,
       },
       resolvedOutputs: {},
       secretStates: [{ fieldKey: "password", resolution: { kind: "plaintext", value: password } }],

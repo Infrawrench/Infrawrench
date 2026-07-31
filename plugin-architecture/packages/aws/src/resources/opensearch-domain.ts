@@ -13,11 +13,25 @@ export const OpenSearchDomainResourceType = rt({
     f("volumeType", "Volume Type", { required: false }),
     f("volumeSize", "Volume Size (GB)", { kind: "number", required: false }),
     f("encryptionEnabled", "Encryption", { kind: "boolean", required: false }),
+    f("vpcId", "VPC ID", { required: false, description: "Set on VPC-attached domains only" }),
+    f("subnetIds", "Subnets", {
+      required: false,
+      description: "Comma-separated subnet IDs the domain's ENIs live in",
+    }),
+    f("securityGroupIds", "Security Groups", {
+      required: false,
+      description: "Comma-separated security group IDs applied to the domain's ENIs",
+    }),
   ],
   outputs: [
     o("endpoint", "Endpoint"),
     o("dashboardEndpoint", "Dashboard Endpoint"),
     o("domainArn", "Domain ARN"),
+  ],
+  dependsOn: [
+    { fieldKey: "vpcId", targetTypeId: "vpc", label: "in VPC" },
+    { fieldKey: "subnetIds", targetTypeId: "subnet", label: "in subnet" },
+    { fieldKey: "securityGroupIds", targetTypeId: "security-group", label: "guarded by" },
   ],
   iconKey: "search",
   supportsCreate: true,

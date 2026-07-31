@@ -17,6 +17,9 @@ export const LogAnalyticsWorkspaceResourceType = rt({
     o("customerId", "Workspace ID"),
     o("primarySharedKey", "Primary Key", { sensitive: true }),
   ],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+  ],
   iconKey: "pipeline",
   supportsCreate: true,
   supportsMetrics: true,
