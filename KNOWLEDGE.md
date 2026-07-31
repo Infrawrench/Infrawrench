@@ -2125,3 +2125,21 @@ one-time `POST /team/invitations` response. `decrypt()` now always takes an AAD;
   `resolveFieldValue` handler it dispatches to is supplied by no screen, so it silently no-ops.
 - **`FilestoreInstanceResourceType`** is fully implemented in the GCP plugin — lister, create
   config, create, delete, resolve-output, tests — and simply never registered in the manifest.
+
+## Weekly digest
+
+The Monday-morning org summary (spend WoW + movers, sync incidents, resource churn) lives in
+`server-core/src/digest/`: `compose.ts` is pure (window math, totals/movers, both transports'
+formatting — unit-tested without mocks in `__tests__/digest-compose.test.ts`), `weekly.ts` does the
+gathering, claiming, and delivery. Scheduling is the poller's fourth tick pass (`tickDigests` in
+`poller/src/loop.ts`), due from Monday 07:00 UTC; exactly-once across replicas/restarts comes from
+one conditional UPDATE on `org_digest_settings.last_sent_week_start` — only rows the UPDATE moved
+forward are returned to send. A build/send failure after a successful claim is logged and not
+retried until next week (the claim burned the slot); `POST /digest/send` is the manual recovery.
+Delivery reuses `sendSlackToOrg`/`sendMsTeamsToOrg` with the fourth channel trigger
+`weeklyDigest` (`ChannelTrigger` in `push/types.ts` — deliberately _not_ a `PushTrigger`; the
+digest never goes to mobile push). Sync incidents are counted from `paging_incidents`, not
+`account_sync_failures` — the failure table is a rolling window the pager prunes within minutes and
+skips entirely while paging is off, so it cannot answer "how many last week". Enabling the digest
+stamps `last_sent_week_start` to the current window so the first scheduled send is next Monday, not
+the moment the toggle flips.
