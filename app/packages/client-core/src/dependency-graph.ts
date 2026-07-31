@@ -1,0 +1,333 @@
+/**
+ * Cross-provider resource dependency graph, built from output references.
+ *
+ * Nodes are resources; a directed edge consumer → provider means "consumer
+ * depends on provider" (the consumer holds an output reference to one of the
+ * provider's outputs). The raw edge rows come from the host — the
+ * `associations` topology table plus `secret_field_states` output-ref rows on
+ * the server, the same tables in desktop's local SQLite — and this module is
+ * the shared pure half: dedupe/index the graph, walk it (blast radius,
+ * neighbors), and lay it out for the hand-rolled SVG view.
+ *
+ * Everything here is host-agnostic and side-effect free so web, desktop and
+ * future hosts render the same topology. Re-exported from `@infrawrench/ui`
+ * per the shared-contract convention.
+ */
+
+export interface DependencyGraphNode {
+  /** Resource id (`pluginId:accountId:externalId` on the cloud). */
+  id: string;
+  displayName: string;
+  pluginId: string;
+  pluginDisplayName: string;
+  /** Inline SVG markup for the plugin logo; may be empty. */
+  pluginLogoSvg: string;
+  resourceTypeId: string;
+  resourceTypeLabel: string;
+  accountId: string;
+  accountName: string;
+}
+
+export interface DependencyGraphEdge {
+  /** The resource holding the reference — it depends on the provider. */
+  consumerResourceId: string;
+  /** The field on the consumer the reference fills. */
+  consumerFieldKey: string;
+  /** The resource being depended on. */
+  providerResourceId: string;
+  /** The output on the provider the reference reads. */
+  providerOutputKey: string;
+}
+
+/** Wire shape of the dependency-graph endpoint / local assembly. */
+export interface DependencyGraphData {
+  nodes: DependencyGraphNode[];
+  edges: DependencyGraphEdge[];
+}
+
+export interface DependencyGraphModel {
+  /** Nodes that survived edge validation, in input order. */
+  nodes: DependencyGraphNode[];
+  /** Deduped edges whose two endpoints both exist in `nodes`. */
+  edges: DependencyGraphEdge[];
+  nodesById: Map<string, DependencyGraphNode>;
+  /** node id → edges where the node is the consumer (what it depends on). */
+  dependsOn: Map<string, DependencyGraphEdge[]>;
+  /** node id → edges where the node is the provider (what depends on it). */
+  dependedOnBy: Map<string, DependencyGraphEdge[]>;
+}
+
+/**
+ * Index the raw node/edge lists into an adjacency model. Edges are deduped by
+ * (consumer, field) — the associations table and the secret-state output-ref
+ * rows describe the same reference, so both sources arriving for one field
+ * must collapse to one edge. Edges pointing at unknown nodes are dropped.
+ */
+export function buildDependencyGraph(
+  nodes: DependencyGraphNode[],
+  edges: DependencyGraphEdge[],
+): DependencyGraphModel {
+  const nodesById = new Map<string, DependencyGraphNode>();
+  for (const node of nodes) {
+    if (!nodesById.has(node.id)) nodesById.set(node.id, node);
+  }
+
+  const seen = new Set<string>();
+  const validEdges: DependencyGraphEdge[] = [];
+  const dependsOn = new Map<string, DependencyGraphEdge[]>();
+  const dependedOnBy = new Map<string, DependencyGraphEdge[]>();
+
+  for (const edge of edges) {
+    if (!nodesById.has(edge.consumerResourceId) || !nodesById.has(edge.providerResourceId)) {
+      continue;
+    }
+    // Self-references carry no topology information and would put the node in
+    // its own blast radius.
+    if (edge.consumerResourceId === edge.providerResourceId) continue;
+    const key = `${edge.consumerResourceId}|${edge.consumerFieldKey}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    validEdges.push(edge);
+
+    const out = dependsOn.get(edge.consumerResourceId);
+    if (out) out.push(edge);
+    else dependsOn.set(edge.consumerResourceId, [edge]);
+
+    const inc = dependedOnBy.get(edge.providerResourceId);
+    if (inc) inc.push(edge);
+    else dependedOnBy.set(edge.providerResourceId, [edge]);
+  }
+
+  return {
+    nodes: [...nodesById.values()],
+    edges: validEdges,
+    nodesById,
+    dependsOn,
+    dependedOnBy,
+  };
+}
+
+export interface DependencyNeighbor {
+  node: DependencyGraphNode;
+  /** The consumer-side field the reference fills. */
+  fieldKey: string;
+  /** The provider-side output the reference reads. */
+  outputKey: string;
+}
+
+export interface ResourceDependencies {
+  /** Direct providers this resource references. */
+  dependsOn: DependencyNeighbor[];
+  /** Direct consumers referencing this resource. */
+  dependedOnBy: DependencyNeighbor[];
+}
+
+/** Direct neighbors of one resource — the "Depends on / depended on by" panel. */
+export function directDependencies(
+  model: DependencyGraphModel,
+  resourceId: string,
+): ResourceDependencies {
+  const dependsOn: DependencyNeighbor[] = [];
+  for (const edge of model.dependsOn.get(resourceId) ?? []) {
+    const node = model.nodesById.get(edge.providerResourceId);
+    if (node) {
+      dependsOn.push({
+        node,
+        fieldKey: edge.consumerFieldKey,
+        outputKey: edge.providerOutputKey,
+      });
+    }
+  }
+  const dependedOnBy: DependencyNeighbor[] = [];
+  for (const edge of model.dependedOnBy.get(resourceId) ?? []) {
+    const node = model.nodesById.get(edge.consumerResourceId);
+    if (node) {
+      dependedOnBy.push({
+        node,
+        fieldKey: edge.consumerFieldKey,
+        outputKey: edge.providerOutputKey,
+      });
+    }
+  }
+  return { dependsOn, dependedOnBy };
+}
+
+/**
+ * Transitive consumers of a resource — its blast radius. If the given
+ * resource breaks, everything in the returned set is at risk. The set
+ * includes the starting resource itself (a node is always in its own blast
+ * radius), so it can be used directly as a highlight set.
+ */
+export function collectDependents(model: DependencyGraphModel, resourceId: string): Set<string> {
+  return walk(model.dependedOnBy, resourceId, (edge) => edge.consumerResourceId);
+}
+
+/**
+ * Transitive providers of a resource — everything it directly or indirectly
+ * depends on. Includes the starting resource itself.
+ */
+export function collectDependencies(model: DependencyGraphModel, resourceId: string): Set<string> {
+  return walk(model.dependsOn, resourceId, (edge) => edge.providerResourceId);
+}
+
+function walk(
+  adjacency: Map<string, DependencyGraphEdge[]>,
+  start: string,
+  next: (edge: DependencyGraphEdge) => string,
+): Set<string> {
+  const visited = new Set<string>([start]);
+  const queue = [start];
+  while (queue.length > 0) {
+    const current = queue.pop() as string;
+    for (const edge of adjacency.get(current) ?? []) {
+      const target = next(edge);
+      if (!visited.has(target)) {
+        visited.add(target);
+        queue.push(target);
+      }
+    }
+  }
+  return visited;
+}
+
+export interface DependencyGraphLayoutOptions {
+  nodeWidth?: number;
+  nodeHeight?: number;
+  /** Horizontal gap between layers. */
+  layerGap?: number;
+  /** Vertical gap between nodes in a layer. */
+  nodeGap?: number;
+  /** Padding around the whole drawing. */
+  padding?: number;
+}
+
+export interface DependencyGraphLayout {
+  /** node id → top-left position of its box. */
+  positions: Map<string, { x: number; y: number }>;
+  /** Node ids per layer, top-to-bottom, layers left-to-right. */
+  layers: string[][];
+  width: number;
+  height: number;
+  nodeWidth: number;
+  nodeHeight: number;
+}
+
+/**
+ * Layered ("longest-path") layout. Pure providers land in the leftmost
+ * layer and consumers to the right of everything they depend on, so
+ * dependency arrows always point left. Within a layer, a couple of
+ * barycenter sweeps against the previous layer keep edge crossings down.
+ * Cycles (possible in principle — nothing in the store forbids A→B→A) are
+ * broken by ignoring back edges during the depth pass.
+ */
+export function layoutDependencyGraph(
+  model: DependencyGraphModel,
+  options?: DependencyGraphLayoutOptions,
+): DependencyGraphLayout {
+  const nodeWidth = options?.nodeWidth ?? 180;
+  const nodeHeight = options?.nodeHeight ?? 52;
+  const layerGap = options?.layerGap ?? 90;
+  const nodeGap = options?.nodeGap ?? 18;
+  const padding = options?.padding ?? 24;
+
+  // Depth = longest chain of providers under the node. Memoized DFS with an
+  // in-progress guard so a reference cycle doesn't recurse forever.
+  const depths = new Map<string, number>();
+  const inProgress = new Set<string>();
+  const depthOf = (id: string): number => {
+    const memo = depths.get(id);
+    if (memo !== undefined) return memo;
+    if (inProgress.has(id)) return 0; // back edge — break the cycle
+    inProgress.add(id);
+    let depth = 0;
+    for (const edge of model.dependsOn.get(id) ?? []) {
+      depth = Math.max(depth, depthOf(edge.providerResourceId) + 1);
+    }
+    inProgress.delete(id);
+    depths.set(id, depth);
+    return depth;
+  };
+
+  let maxDepth = 0;
+  for (const node of model.nodes) maxDepth = Math.max(maxDepth, depthOf(node.id));
+
+  const layers: string[][] = [];
+  for (let i = 0; i <= maxDepth; i++) layers.push([]);
+  const sortedNodes = [...model.nodes].sort(
+    (a, b) => a.pluginId.localeCompare(b.pluginId) || a.displayName.localeCompare(b.displayName),
+  );
+  for (const node of sortedNodes) {
+    const layer = layers[depths.get(node.id) ?? 0];
+    if (layer) layer.push(node.id);
+  }
+
+  // Barycenter sweeps: order each layer by the mean index of its neighbors
+  // in the adjacent layer. One left-to-right pass, one right-to-left.
+  const indexIn = (layer: string[]): Map<string, number> => {
+    const index = new Map<string, number>();
+    layer.forEach((id, i) => index.set(id, i));
+    return index;
+  };
+  const sweep = (from: "left" | "right") => {
+    const order = from === "left" ? layers.keys() : [...layers.keys()].reverse();
+    let previous: Map<string, number> | null = null;
+    for (const li of order) {
+      const layer = layers[li];
+      if (!layer) continue;
+      if (previous) {
+        const prev = previous;
+        const score = (id: string): number => {
+          const edges =
+            from === "left" ? (model.dependsOn.get(id) ?? []) : (model.dependedOnBy.get(id) ?? []);
+          const neighborIndices: number[] = [];
+          for (const edge of edges) {
+            const neighborId = from === "left" ? edge.providerResourceId : edge.consumerResourceId;
+            const idx = prev.get(neighborId);
+            if (idx !== undefined) neighborIndices.push(idx);
+          }
+          if (neighborIndices.length === 0) return Number.MAX_SAFE_INTEGER;
+          return neighborIndices.reduce((a, b) => a + b, 0) / neighborIndices.length;
+        };
+        const scores = new Map<string, number>();
+        for (const id of layer) scores.set(id, score(id));
+        layer.sort((a, b) => (scores.get(a) ?? 0) - (scores.get(b) ?? 0));
+      }
+      previous = indexIn(layer);
+    }
+  };
+  sweep("left");
+  sweep("right");
+
+  // Positions: layer 0 (pure providers) on the left, each layer centered
+  // vertically against the tallest one.
+  let maxLayerCount = 0;
+  for (const layer of layers) maxLayerCount = Math.max(maxLayerCount, layer.length);
+  const contentHeight = Math.max(
+    maxLayerCount * nodeHeight + Math.max(0, maxLayerCount - 1) * nodeGap,
+    nodeHeight,
+  );
+
+  const positions = new Map<string, { x: number; y: number }>();
+  layers.forEach((layer, li) => {
+    const layerHeight = layer.length * nodeHeight + Math.max(0, layer.length - 1) * nodeGap;
+    const yStart = padding + (contentHeight - layerHeight) / 2;
+    layer.forEach((id, i) => {
+      positions.set(id, {
+        x: padding + li * (nodeWidth + layerGap),
+        y: yStart + i * (nodeHeight + nodeGap),
+      });
+    });
+  });
+
+  return {
+    positions,
+    layers,
+    width:
+      padding * 2 +
+      Math.max(1, layers.length) * nodeWidth +
+      Math.max(0, layers.length - 1) * layerGap,
+    height: padding * 2 + contentHeight,
+    nodeWidth,
+    nodeHeight,
+  };
+}

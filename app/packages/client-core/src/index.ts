@@ -210,6 +210,21 @@ export {
 } from "./speech";
 export { evaluateShowWhen, buildDefaultFields, type ShowWhenRuleLike } from "./create-fields";
 export {
+  buildDependencyGraph,
+  directDependencies,
+  collectDependents,
+  collectDependencies,
+  layoutDependencyGraph,
+  type DependencyGraphNode,
+  type DependencyGraphEdge,
+  type DependencyGraphData,
+  type DependencyGraphModel,
+  type DependencyNeighbor,
+  type ResourceDependencies,
+  type DependencyGraphLayout,
+  type DependencyGraphLayoutOptions,
+} from "./dependency-graph";
+export {
   MONGO_PAGE_SIZE,
   mongoCommands,
   formatMongoValue,
