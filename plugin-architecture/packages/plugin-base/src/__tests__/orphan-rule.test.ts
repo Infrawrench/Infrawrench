@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { evaluateOrphanRule, type OrphanRule } from "../resource.js";
+import { resourceTypeDefinitionSchema } from "../validation/index.js";
 
 const unattachedVolume: OrphanRule = {
   conditions: [{ fieldKey: "attachedTo", when: "empty" }],
@@ -72,5 +73,57 @@ describe("evaluateOrphanRule", () => {
     );
     expect(evaluateOrphanRule(rule, { instanceId: "i-123", domain: "vpc" })).toBeNull();
     expect(evaluateOrphanRule(rule, { instanceId: "", domain: "standard" })).toBeNull();
+  });
+});
+
+const resourceTypeWith = (orphanRule: unknown) => ({
+  id: "volume",
+  displayName: "Volume",
+  pluralDisplayName: "Volumes",
+  description: "A block storage volume",
+  fields: [{ key: "name", label: "Name", kind: "string", required: true }],
+  outputs: [],
+  dashboardPinnable: true,
+  orphanRule,
+});
+
+describe("orphanRule validation", () => {
+  it("accepts an `empty` condition with no value", () => {
+    expect(resourceTypeDefinitionSchema.safeParse(resourceTypeWith(unattachedVolume)).success).toBe(
+      true,
+    );
+  });
+
+  it("accepts `equals` / `notEquals` when value is present", () => {
+    for (const when of ["equals", "notEquals"] as const) {
+      const parsed = resourceTypeDefinitionSchema.safeParse(
+        resourceTypeWith({
+          conditions: [{ fieldKey: "status", when, value: "available" }],
+          reason: "r",
+        }),
+      );
+      expect(parsed.success).toBe(true);
+    }
+  });
+
+  // Without this, a forgotten `value` silently compares against "" at runtime
+  // rather than failing manifest validation.
+  it("rejects `equals` / `notEquals` with no value", () => {
+    for (const when of ["equals", "notEquals"] as const) {
+      const parsed = resourceTypeDefinitionSchema.safeParse(
+        resourceTypeWith({ conditions: [{ fieldKey: "status", when }], reason: "r" }),
+      );
+      expect(parsed.success).toBe(false);
+    }
+  });
+
+  it("accepts an explicit empty-string value for `equals`", () => {
+    const parsed = resourceTypeDefinitionSchema.safeParse(
+      resourceTypeWith({
+        conditions: [{ fieldKey: "users", when: "equals", value: "" }],
+        reason: "r",
+      }),
+    );
+    expect(parsed.success).toBe(true);
   });
 });

@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { formatMoney } from "@infrawrench/client-core";
 import type { OrphanedResource, OrphanListResponse, OrphansClient } from "./types.js";
 
 export interface SavingsPanelProps {
   client: OrphansClient;
-  /** Navigate to a flagged resource's detail view. */
-  onOpenResource?: ((resource: OrphanedResource) => void) | undefined;
+  /**
+   * Navigate to a flagged resource's detail view. `accountId` comes from the
+   * resource's account group rather than the resource id, which encodes
+   * `pluginId:accountId:externalId` and so can't be split on naively.
+   */
+  onOpenResource?: ((resource: OrphanedResource, accountId: string) => void) | undefined;
 }
 
 /**
@@ -17,17 +21,27 @@ export interface SavingsPanelProps {
 export function SavingsPanel({ client, onOpenResource }: SavingsPanelProps) {
   const [data, setData] = useState<OrphanListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Bumped per request so a response that arrives after an org switch or a
+  // later refresh can't overwrite newer state with another org's resources.
+  const requestSeq = useRef(0);
 
   const refresh = useCallback(async () => {
+    const seq = ++requestSeq.current;
     setError(null);
     try {
-      setData(await client.listOrphans());
+      const next = await client.listOrphans();
+      if (seq === requestSeq.current) setData(next);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (seq === requestSeq.current) setError(e instanceof Error ? e.message : String(e));
     }
   }, [client]);
 
   useEffect(() => {
+    // A new client means a new org: drop the previous org's rows immediately
+    // rather than leaving them on screen until the refetch lands.
+    requestSeq.current++;
+    setData(null);
+    setError(null);
     void refresh();
   }, [refresh]);
 
@@ -94,7 +108,9 @@ export function SavingsPanel({ client, onOpenResource }: SavingsPanelProps) {
                       className={`border-b border-border last:border-b-0 ${
                         onOpenResource ? "cursor-pointer hover:bg-surface-raised" : ""
                       }`}
-                      onClick={onOpenResource ? () => onOpenResource(r) : undefined}
+                      onClick={
+                        onOpenResource ? () => onOpenResource(r, group.accountId) : undefined
+                      }
                     >
                       <td className="px-4 py-2.5 whitespace-nowrap font-medium text-on-surface">
                         {r.displayName}

@@ -168,9 +168,8 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
       return (
         <SavingsPanel
           client={getOrphansClient(orgId)}
-          onOpenResource={(r) => {
+          onOpenResource={(r, accountId) => {
             if (!r.id) return;
-            const accountId = r.id.split(":")[0] ?? "";
             void navigate(
               getWorkspaceNavigateArgs({
                 kind: "resource",

@@ -39,7 +39,7 @@ When an account has [cost collection](./cloud-costs.md) enabled and the provider
 
 The [desktop CLI](./cli.md) exposes the same finder for your cloud organizations:
 
-```
+```sh
 infrawrench orphans                 # text table, grouped by account
 infrawrench orphans --json          # stable JSON for scripting
 infrawrench orphans --org <org-id>  # pick an organization explicitly
