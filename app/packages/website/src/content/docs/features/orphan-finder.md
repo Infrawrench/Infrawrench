@@ -22,9 +22,9 @@ A resource is flagged when the provider plugin's heuristic matches the resource'
 
 | Provider     | Flagged when                                                                                                       |
 | ------------ | ------------------------------------------------------------------------------------------------------------------ |
-| DigitalOcean | Volumes attached to no Droplet                                                                                      |
-| Hetzner      | Volumes attached to no server; Floating IPs not assigned; Primary IPs unassigned that won't auto-delete             |
-| AWS          | EBS volumes in `available` state (detached but still billed); Elastic IPs with no association                       |
+| DigitalOcean | Volumes attached to no Droplet                                                                                     |
+| Hetzner      | Volumes attached to no server; Floating IPs not assigned; Primary IPs unassigned that won't auto-delete            |
+| AWS          | EBS volumes in `available` state (detached but still billed); Elastic IPs with no association                      |
 | Google Cloud | Persistent disks attached to no instance; static external IPs in `RESERVED` (unused) state — internal IPs are free |
 
 Heuristics are declared by each plugin, so coverage grows as plugins do — a provider that knows another "this is idle" signal can add it without any host changes.
