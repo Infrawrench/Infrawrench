@@ -72,6 +72,17 @@ const attachTargetSchema = z.object({
   verb: z.string().optional(),
 });
 
+const orphanConditionSchema = z.object({
+  fieldKey: z.string().min(1),
+  when: z.enum(["empty", "equals", "notEquals"]),
+  value: z.string().optional(),
+});
+
+const orphanRuleSchema = z.object({
+  conditions: z.array(orphanConditionSchema).min(1),
+  reason: z.string().min(1),
+});
+
 export const resourceTypeDefinitionSchema = z.object({
   id: z.string().min(1),
   displayName: z.string().min(1),
@@ -86,4 +97,5 @@ export const resourceTypeDefinitionSchema = z.object({
   secretExportTemplates: z.array(secretExportTemplateSchema).optional(),
   attachTargets: z.array(attachTargetSchema).optional(),
   supportsMetrics: z.boolean().optional(),
+  orphanRule: orphanRuleSchema.optional(),
 });
