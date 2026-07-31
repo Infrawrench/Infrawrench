@@ -35,6 +35,36 @@ describe("GlobalTabBar", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("stays mounted with no tabs when trailing actions are supplied", () => {
+    render(
+      <GlobalTabBar
+        tabs={[]}
+        activeTabId={null}
+        onActivate={vi.fn()}
+        onClose={vi.fn()}
+        onNew={vi.fn()}
+        trailingActions={<button type="button">Settings</button>}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+    // An empty tablist is invalid ARIA, and the "+" button is not a tab.
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+  });
+
+  it("keeps the new-tab button out of the tablist", () => {
+    setup();
+    expect(screen.getByRole("tablist")).not.toContainElement(
+      screen.getByRole("button", { name: "New tab" }),
+    );
+  });
+
+  it("keeps trailing actions outside the scrolling tab strip", () => {
+    setup({ trailingActions: <button type="button">Settings</button> });
+    const tablist = screen.getByRole("tablist");
+    const settings = screen.getByRole("button", { name: "Settings" });
+    expect(tablist).not.toContainElement(settings);
+  });
+
   it("shows the empty hint when enabled and no tabs", () => {
     render(
       <GlobalTabBar

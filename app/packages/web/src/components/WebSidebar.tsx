@@ -760,7 +760,9 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
           ))}
         </div>
 
-        {/* Add account button pinned to the bottom */}
+        {/* Add account button pinned to the bottom. Settings used to live here
+            too, but it reads as part of the account list at the foot of a long
+            scroll; it is now pinned to the workspace tab bar instead. */}
         <div className="border-t border-border p-2">
           <button
             type="button"
@@ -769,14 +771,6 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
           >
             <span className="text-base leading-none">+</span>
             Add account
-          </button>
-          <button
-            type="button"
-            onClick={() => void navigate({ to: "/org/$orgId/settings", params: { orgId: orgId! } })}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
-          >
-            <span className="text-base leading-none">&#9881;</span>
-            Settings
           </button>
         </div>
       </aside>
