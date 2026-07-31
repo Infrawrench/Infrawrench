@@ -38,7 +38,7 @@ Then, in Infrawrench, go to **Settings → Notifications**, find the **Microsoft
 
 Press **Add channel**. Add as many channels as you like; each gets its own row.
 
-<insert [Settings → Notifications Microsoft Teams section with two channels listed, each showing the three trigger checkboxes and the webhook hint underneath] here>
+<insert [Settings → Notifications Microsoft Teams section with two channels listed, each showing the five trigger checkboxes and the webhook hint underneath] here>
 
 ### The URL is a credential
 
@@ -52,17 +52,18 @@ To change a channel's URL, remove the row and add it again.
 
 ## Choosing what each channel receives
 
-Each channel opts into the three alert triggers independently, so a `#finance` channel can take budget crossings without also getting every sync failure:
+Each channel opts into the alert triggers independently, so a `#finance` channel can take budget crossings without also getting every sync failure:
 
 | Trigger           | When it fires                                                                                                                                 |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Sync failures** | An account's background sync keeps failing and crosses the org's paging threshold                                                             |
 | **Budgets**       | A [budget threshold](./cloud-costs.md) is crossed                                                                                             |
+| **Anomalies**     | A [cost anomaly](./cost-anomaly-alerts.md) is detected — a provider's or service's spend spikes far above its usual baseline                  |
 | **Pages**         | Your own code raises an alert — a [workflow](./workflows.md) calling `infra.page(...)`, or a [server calling `POST /pages`](./server-push.md) |
 
-A fourth checkbox, **Weekly digest**, opts the channel into the [Monday-morning summary](./weekly-digest.md) — it only sends once the digest is enabled for the org.
+A fifth checkbox, **Weekly digest**, opts the channel into the [Monday-morning summary](./weekly-digest.md) — it only sends once the digest is enabled for the org.
 
-All four default to on for a newly added channel. Unlike the mobile push toggles, which each member sets for themselves, Teams routing is org-wide — it takes the **Organization settings** permission to change.
+All five default to on for a newly added channel. Unlike the mobile push toggles, which each member sets for themselves, Teams routing is org-wide — it takes the **Organization settings** permission to change.
 
 Use **Send test message** to post to every channel you've added, ignoring the trigger opt-ins. If a send fails, the error from Microsoft is shown verbatim; an HTTP 404 almost always means the Workflow was deleted or switched off on the Teams side.
 
