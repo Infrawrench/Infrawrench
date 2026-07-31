@@ -577,6 +577,43 @@ interface InfraPage {
 }`;
 
 /**
+ * `infra.waitForApproval` — a human gate in the middle of a run. Mirrors
+ * `ApprovalSpec` / `ApprovalResult` in types.ts.
+ */
+const APPROVAL_INTERFACES = `interface ApprovalOptions {
+  /** Short headline for the approval card. Defaults to this workflow's name. */
+  title?: string;
+  /**
+   * Minutes to wait for a decision before the request expires and is treated
+   * as denied. Defaults to 60; capped at 1440 (24 hours).
+   */
+  timeoutMinutes?: number;
+}
+
+interface ApprovalSpec extends ApprovalOptions {
+  /** What the approver is deciding — shown on the approval card. */
+  message: string;
+}
+
+interface ApprovalResult {
+  readonly approved: true;
+  /** Display name (or email) of the org member who approved. */
+  readonly decidedBy?: string;
+  /** ISO timestamp of the decision. */
+  readonly decidedAt?: string;
+}
+
+interface InfraWaitForApproval {
+  /**
+   * Pause here until an org member approves or denies. Resolves on approval;
+   * a denial or timeout **throws**, so an unhandled deny fails the run.
+   */
+  (message: string, opts?: ApprovalOptions): Promise<ApprovalResult>;
+  /** Pause for approval, passing every option in one object. */
+  (spec: ApprovalSpec): Promise<ApprovalResult>;
+}`;
+
+/**
  * The global `fetch`. Declared here rather than pulled from `lib.dom` because
  * the sandbox implements a deliberately small subset: a fully-buffered body
  * (so the reader methods can be called more than once), no `Request`/`Headers`
@@ -650,6 +687,13 @@ export interface GenerateInfraDtsInput {
    * author sees it's unavailable while editing instead of at run time.
    */
   costs?: boolean;
+  /**
+   * Whether this host supports human-approval gates (cloud only — approvals
+   * are org-level records with notifications). When false,
+   * `infra.waitForApproval` is typed `never` so a desktop author sees it's
+   * unavailable while editing instead of at run time.
+   */
+  approvals?: boolean;
   /**
    * Names of the caller's Infrawrench-managed SSH keys. Surfaced as autocomplete
    * for `ssh-key-picker` create fields and `resource.ssh`'s `sshKey` option.
@@ -774,12 +818,23 @@ export function generateInfraDts(input: GenerateInfraDtsInput): string {
     input.costs === false
       ? `  /** Unavailable here — cost reporting needs the cloud's cost store. */\n  costs: never;`
       : `  /** Report spend from a source Infrawrench has no plugin for. */\n  readonly costs: InfraCosts;`;
+  const approvalsOff = readOnly || input.approvals === false;
+  const approvalsDecl = approvalsOff
+    ? `  /** Unavailable here — approval gates need the cloud's approvals surface. */\n  waitForApproval: never;`
+    : `  /**
+   * Pause the run until an org member approves or denies. The pending request
+   * shows on the run view (and notifies the org); a denial or timeout throws,
+   * so an unhandled deny fails the run. Timeout defaults to 60 minutes.
+   */
+  readonly waitForApproval: InfraWaitForApproval;`;
 
   return `${STATIC_PREAMBLE}
 
 ${renderEventType(input.triggerKind ?? "manual")}
 
 ${input.costs === false ? "" : COSTS_INTERFACE}
+
+${approvalsOff ? "" : APPROVAL_INTERFACES}
 
 ${PAGE_INTERFACE}
 
@@ -809,6 +864,7 @@ ${promptDecl}
   readonly event: WorkflowEvent;
 ${costsDecl}
 ${pageDecl}
+${approvalsDecl}
   /** Record a JSON-serializable result for this run. */
   output(value: JsonValue): Promise<void>;
   /** Stream an SSH \`{ stdout, stderr }\` object to the run log live (stderr in red). */

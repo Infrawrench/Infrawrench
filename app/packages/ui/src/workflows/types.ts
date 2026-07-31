@@ -135,6 +135,26 @@ export interface WorkflowRunRow extends WorkflowRunResult {
   createdAt?: string;
 }
 
+/**
+ * A human-approval request raised by `infra.waitForApproval(...)` inside a
+ * run. Mirrors the `/workflow-approvals` HTTP shape (cloud only).
+ */
+export interface WorkflowApprovalRow {
+  id: string;
+  workflowId: string;
+  workflowName?: string | null;
+  /** The run suspended on this request. */
+  runId: string;
+  title: string;
+  message: string;
+  status: "pending" | "approved" | "denied" | "expired";
+  /** When a still-pending request is treated as denied (ISO). */
+  expiresAt: string;
+  decidedAt?: string | null;
+  decidedByName?: string | null;
+  createdAt: string;
+}
+
 /** A repo a connected GitHub App installation can access (for the git-trigger picker). */
 export interface GitRepoOption {
   installationId: number;
@@ -211,4 +231,12 @@ export interface WorkflowClient {
   run(id: string, debug?: DebugSession): Promise<{ runId: string; result: WorkflowRunResult }>;
   listRuns(id: string): Promise<WorkflowRunRow[]>;
   listMetrics(id: string): Promise<WorkflowMetricRow[]>;
+  /**
+   * Pending approval requests for one workflow's runs. Optional — approvals
+   * are cloud-only, so the desktop/local client omits both methods and the
+   * panel hides the approvals card.
+   */
+  listPendingApprovals?(workflowId: string): Promise<WorkflowApprovalRow[]>;
+  /** Land a decision on a pending request. Rejects on conflict (409). */
+  decideApproval?(approvalId: string, decision: "approve" | "deny"): Promise<WorkflowApprovalRow>;
 }

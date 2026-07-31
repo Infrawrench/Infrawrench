@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import workflowRoutes from "./routes/workflows.js";
+import workflowApprovalRoutes from "./routes/workflow-approvals.js";
 import deploymentRoutes from "./routes/deployments";
 import agentRoutes from "./routes/agents.js";
 import { HTTPException } from "hono/http-exception";
@@ -212,6 +213,7 @@ orgScoped.route("/orphans", orphanRoutes);
 orgScoped.route("/budgets", budgetRoutes);
 orgScoped.route("/custom-graphs", customGraphRoutes);
 orgScoped.route("/workflows", workflowRoutes);
+orgScoped.route("/workflow-approvals", workflowApprovalRoutes);
 orgScoped.route("/deployments", deploymentRoutes);
 orgScoped.route("/agents", agentRoutes);
 orgScoped.route("/github", githubRoutes);

@@ -7,6 +7,7 @@ import type {
   BudgetOption,
   DebugSession,
   GitIntegration,
+  WorkflowApprovalRow,
   WorkflowClient,
   WorkflowMetricDef,
   WorkflowMetricRow,
@@ -101,6 +102,10 @@ export function WorkflowsPanel({
   const [lastRun, setLastRun] = useState<WorkflowRunResult | null>(null);
   // Logs streamed live during a run (e.g. infra.log(ssh streams)).
   const [liveLogs, setLiveLogs] = useState<WorkflowRunLog[]>([]);
+  // Pending infra.waitForApproval(...) requests for the selected workflow's
+  // runs (cloud only — the desktop client omits the approval methods).
+  const [approvals, setApprovals] = useState<WorkflowApprovalRow[]>([]);
+  const [decidingApprovalId, setDecidingApprovalId] = useState<string | null>(null);
   // Debugger state. `breakpointsRef` is the live set the running client reads
   // (so toggles mid-run are seen); `breakpoints` mirrors it for the editor.
   const breakpointsRef = useRef<Set<number>>(new Set());
@@ -129,10 +134,50 @@ export function WorkflowsPanel({
     void refreshList();
   }, [refreshList]);
 
+  const refreshApprovals = useCallback(
+    async (workflowId: string) => {
+      if (!client.listPendingApprovals) return;
+      try {
+        setApprovals(await client.listPendingApprovals(workflowId));
+      } catch {
+        // Approvals are decoration on the run view — never surface a poll
+        // failure over whatever the user is actually doing.
+      }
+    },
+    [client],
+  );
+
+  // Keep pending approvals fresh: tight while a run is executing (its
+  // waitForApproval card should appear within a few seconds), relaxed
+  // otherwise (an automated run's request shows without reselecting).
+  useEffect(() => {
+    if (!selectedId || !client.listPendingApprovals) return;
+    void refreshApprovals(selectedId);
+    const interval = setInterval(() => void refreshApprovals(selectedId), running ? 4000 : 15000);
+    return () => clearInterval(interval);
+  }, [client, refreshApprovals, selectedId, running]);
+
+  const decideApproval = useCallback(
+    async (approvalId: string, decision: "approve" | "deny") => {
+      if (!client.decideApproval) return;
+      setDecidingApprovalId(approvalId);
+      try {
+        await client.decideApproval(approvalId, decision);
+      } catch (e) {
+        setError(messageOf(e));
+      } finally {
+        setDecidingApprovalId(null);
+        if (selectedId) void refreshApprovals(selectedId);
+      }
+    },
+    [client, refreshApprovals, selectedId],
+  );
+
   const selectWorkflow = useCallback(
     async (id: string) => {
       setSelectedId(id);
       setLastRun(null);
+      setApprovals([]);
       const wf = list.find((w) => w.id === id);
       if (wf) setDraft(structuredCloneSafe(wf));
       try {
@@ -415,6 +460,14 @@ export function WorkflowsPanel({
               pausedLine={pausedLine}
             />
           </div>
+
+          {approvals.length > 0 && (
+            <PendingApprovalsPanel
+              approvals={approvals}
+              decidingId={decidingApprovalId}
+              onDecide={(id, decision) => void decideApproval(id, decision)}
+            />
+          )}
 
           {running ? <LiveLogPanel logs={liveLogs} /> : lastRun && <RunResultPanel run={lastRun} />}
         </div>
@@ -924,6 +977,57 @@ function MetricsEditor({
           >
             ✕
           </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Pending `infra.waitForApproval(...)` requests for the selected workflow's
+ * runs, each with Approve/Deny. Approving lets the suspended run continue
+ * within a few seconds; denying (or letting the timeout pass) fails it.
+ */
+function PendingApprovalsPanel({
+  approvals,
+  decidingId,
+  onDecide,
+}: {
+  approvals: WorkflowApprovalRow[];
+  decidingId: string | null;
+  onDecide: (id: string, decision: "approve" | "deny") => void;
+}) {
+  return (
+    <div className="border-t border-amber-400/30 bg-amber-400/5">
+      {approvals.map((a) => (
+        <div key={a.id} className="px-3 py-2 flex items-start gap-3 border-b border-white/5">
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-semibold text-amber-300">
+              Approval needed: {a.title}
+              <span className="ml-2 font-normal opacity-60">
+                expires {new Date(a.expiresAt).toLocaleTimeString()}
+              </span>
+            </div>
+            <div className="text-xs opacity-80 whitespace-pre-wrap break-words">{a.message}</div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              disabled={decidingId === a.id}
+              onClick={() => onDecide(a.id, "approve")}
+              className="px-2 py-1 text-xs rounded bg-green-500/20 text-green-300 hover:bg-green-500/30 disabled:opacity-50"
+            >
+              Approve
+            </button>
+            <button
+              type="button"
+              disabled={decidingId === a.id}
+              onClick={() => onDecide(a.id, "deny")}
+              className="px-2 py-1 text-xs rounded bg-red-500/20 text-red-300 hover:bg-red-500/30 disabled:opacity-50"
+            >
+              Deny
+            </button>
+          </div>
         </div>
       ))}
     </div>

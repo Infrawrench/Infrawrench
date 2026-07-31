@@ -278,6 +278,8 @@ export async function generateWorkflowTypings(
     triggerKind,
     // Cloud runs have the cost store, so `infra.costs.write` is available.
     costs: true,
+    // Cloud runs have the approvals surface, so `infra.waitForApproval` is available.
+    approvals: true,
     sshKeyNames,
   });
 }

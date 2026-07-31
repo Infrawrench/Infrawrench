@@ -677,6 +677,8 @@ export function createDesktopWorkflowClient(): WorkflowClient {
         // Local workflows have no cost store (costs are cloud-only), so
         // `infra.costs` types as unavailable rather than failing at run time.
         costs: false,
+        // Approvals are org-level records with notifications — cloud-only too.
+        approvals: false,
         sshKeyNames,
       });
     },

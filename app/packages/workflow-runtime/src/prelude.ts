@@ -395,6 +395,17 @@ export const PRELUDE = String.raw`
   // occurrence pages immediately instead of waiting out a stale cooldown.
   page.clear = (key) => rpc("page.clear", { key });
 
+  // Suspend the run until an org member approves or denies. Accepts either
+  // waitForApproval("text", opts) or waitForApproval({ message, ... }) so the
+  // common case stays one argument. Denial/timeout reject host-side, so an
+  // unhandled deny fails the run.
+  const waitForApproval = (messageOrSpec, opts) => {
+    const spec = typeof messageOrSpec === "string"
+      ? Object.assign({}, opts || {}, { message: messageOrSpec })
+      : (messageOrSpec || {});
+    return rpc("approval.wait", { spec });
+  };
+
   globalThis.infra = {
     accounts,
     prompt: (spec) => rpc("prompt", { spec: typeof spec === "string" ? { message: spec } : spec }),
@@ -402,6 +413,7 @@ export const PRELUDE = String.raw`
     event,
     costs,
     page,
+    waitForApproval,
     output: (value) => rpc("output", { value }),
     log: infraLog,
   };

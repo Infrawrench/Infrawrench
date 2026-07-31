@@ -42,6 +42,7 @@ import { buildWorkflowFetch } from "./fetch";
 import { enrichPlugin } from "./create-fields-cache";
 import { buildSshKeyFieldResolver } from "./ssh-key-fields";
 import { clearWorkflowPage, pageFromWorkflow } from "./paging";
+import { requestApprovalAndWait } from "./approvals";
 import { staticResourceCapabilities } from "@infrawrench/workflow-runtime";
 
 // Re-exported so the cloud web host (which builds its own interactive host) can
@@ -334,6 +335,20 @@ export function buildOrgWorkflowHost(
         spec,
       ),
     clearPage: (key) => clearWorkflowPage(workflowId, key),
+    // Human gate: persists a pending approval, notifies the org, and blocks
+    // until a member decides or the timeout denies. The wait rides the paused
+    // execution budget, so it doesn't consume the run's time.
+    waitForApproval: (spec) =>
+      requestApprovalAndWait(
+        {
+          organizationId,
+          workflowId,
+          workflowName: extras.workflowName ?? "Workflow",
+          ...(extras.runId ? { runId: extras.runId } : {}),
+          ...(extras.signal ? { signal: extras.signal } : {}),
+        },
+        spec,
+      ),
     transformCreateFields: buildSshKeyFieldResolver(organizationId, async (accountId) => {
       const ctx = await getOrgAccountClient(accountId, organizationId);
       return ctx ? { client: ctx.client, pluginId: ctx.account.pluginId } : null;

@@ -26,9 +26,11 @@ import type { RunLimits, RunResult } from "./types.js";
 
 /**
  * Host RPCs whose wall-clock duration is excluded from the run's execution
- * budget: interactive prompts and SSH calls — the latter may pop a host-key
- * confirmation dialog or wait minutes for a VM to boot. A runaway pure-JS loop
- * stays bounded (its CPU time still counts); only genuine waits are paused.
+ * budget: interactive prompts, SSH calls — the latter may pop a host-key
+ * confirmation dialog or wait minutes for a VM to boot — and approval gates,
+ * which by design wait for a human (bounded host-side by the approval's own
+ * timeout). A runaway pure-JS loop stays bounded (its CPU time still counts);
+ * only genuine waits are paused.
  *
  * `fetch` is deliberately NOT here. Each call is already bounded by its own
  * timeout, and counting them keeps `while (true) await fetch(...)` inside the
@@ -41,6 +43,7 @@ export const PAUSED_METHODS: ReadonlySet<string> = new Set([
   "ssh.streamStart",
   "ssh.streamRead",
   "ssh.probe",
+  "approval.wait",
 ]);
 
 export interface IsolateEnvValues {

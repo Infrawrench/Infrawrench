@@ -157,6 +157,50 @@ export const workflowPages = pgTable(
 );
 
 /**
+ * A human-approval gate raised by `infra.waitForApproval(...)` inside a run.
+ *
+ * The run's worker inserts a `pending` row, notifies the org, and then polls
+ * this row until a decision lands or `expiresAt` passes (which counts as a
+ * denial). The decision endpoints flip `status` with a conditional UPDATE
+ * (`status = 'pending' AND expires_at > now()`), so two members racing the
+ * same request produce exactly one decision.
+ */
+export const workflowApprovals = pgTable(
+  "workflow_approvals",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workflowId: text("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
+    /** The run that is suspended on this request. */
+    runId: text("run_id")
+      .notNull()
+      .references(() => workflowRuns.id, { onDelete: "cascade" }),
+    /** Short headline for the approval card (defaults to the workflow name). */
+    title: text("title").notNull(),
+    /** What the approver is deciding. */
+    message: text("message").notNull(),
+    /** "pending" | "approved" | "denied" | "expired" */
+    status: text("status").notNull().default("pending"),
+    /** When the pending request is treated as denied. */
+    expiresAt: timestamp("expires_at").notNull(),
+    decidedAt: timestamp("decided_at"),
+    decidedByUserId: text("decided_by_user_id"),
+    /** Display name/email snapshot of the decider, for the run log and UI. */
+    decidedByName: text("decided_by_name"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgStatusIdx: index("workflow_approvals_org_status_idx").on(t.organizationId, t.status),
+    runIdx: index("workflow_approvals_run_idx").on(t.runId),
+    workflowIdx: index("workflow_approvals_workflow_idx").on(t.workflowId),
+  }),
+);
+
+/**
  * A GitHub App installation connected to an org. The github-watcher uses the
  * installation id to mint short-lived installation tokens (acting as the app /
  * bot) to list repos and read branch heads. Repos a workflow watches are stored
