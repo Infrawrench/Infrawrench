@@ -701,6 +701,37 @@ describe("focusPrefilterTokens", () => {
     expect(focusPrefilterTokens(vm, rules)).toContain("rg/core/web");
   });
 
+  it("omits short numeric values the guessing pass could never match", () => {
+    // `port: 5432` can produce no edge, but as a prefilter token it becomes
+    // `[",:]\s*5432` over every resource's JSON — matching the port field of
+    // every Postgres-family resource in the org.
+    const record = typed("dns", "dns-record", {
+      fields: { name: "api.example.com", ttl: 300, port: 5432 },
+    });
+    const tokens = focusPrefilterTokens(record);
+    expect(tokens).toContain("api.example.com");
+    expect(tokens).not.toContain("5432");
+    expect(tokens).not.toContain("300");
+  });
+
+  it("keeps a long numeric id, and a short one a rule asked for", () => {
+    // A DO droplet id is numeric and genuinely matchable.
+    expect(
+      focusPrefilterTokens(typed("v", "volume", { fields: { dropletId: 123456789 } })),
+    ).toContain("123456789");
+    const numericRules = collectDependencyRules([
+      {
+        id: "aws",
+        resourceTypes: [
+          { id: "thing", dependsOn: [{ fieldKey: "shortId", targetTypeId: "other" }] },
+        ],
+      },
+    ]);
+    expect(
+      focusPrefilterTokens(typed("t", "thing", { fields: { shortId: 4242 } }), numericRules),
+    ).toContain("4242");
+  });
+
   it("returns tokens longest first", () => {
     const tokens = focusPrefilterTokens(
       typed("x", "thing", { externalId: "aaaa", fields: { name: "bbbbbbbb" } }),

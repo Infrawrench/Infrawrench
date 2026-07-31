@@ -631,29 +631,41 @@ export function focusPrefilterTokens(
       ? (rules[dependencyRuleKey(resource.pluginId, resource.resourceTypeId)] ?? [])
       : [];
 
-  const add = (value: unknown) => {
-    for (const token of candidateTokens(value, 1)) {
+  /**
+   * `minNumericLength` must mirror whichever pass would consume the token, or
+   * the prefilter asks the database for rows no pass can use. An identity or a
+   * rule-named field is read with a floor of 1 (a rule may legitimately name a
+   * short numeric id); the generic sweep below is read by the guessing pass at
+   * the default floor, which is what keeps `port: 5432` and `ttl: 300` out. On
+   * a sequential-scan path those would each add a broad, unanchored predicate
+   * — `[",:]\s*5432` matches the port field of every Postgres-family resource
+   * in the org — and on a sparse resource they survive the length-ordered
+   * budget and balloon the candidate set the focused path exists to keep small.
+   */
+  const add = (value: unknown, minNumericLength?: number) => {
+    for (const token of candidateTokens(value, minNumericLength)) {
       // Skip the joined whole; `candidateTokens` returns it alongside the parts.
       if (token.length < MIN_TOKEN_LENGTH || token.includes(",")) continue;
       tokens.add(token);
     }
   };
 
-  if (resource.externalId) add(resource.externalId);
+  if (resource.externalId) add(resource.externalId, 1);
   for (const bag of [resource.fields, resource.outputs]) {
     for (const [key, value] of Object.entries(bag ?? {})) {
-      if (isIdentityKey(key.toLowerCase(), resource, extra)) add(value);
+      if (isIdentityKey(key.toLowerCase(), resource, extra)) add(value, 1);
     }
   }
   for (const [key, value] of Object.entries(resource.fields ?? {})) {
+    // Default numeric floor: matches what the guessing pass will tokenize.
     if (!NON_REFERENCE_FIELD_KEYS.has(key.toLowerCase())) add(value);
   }
   for (const rule of ownRules) {
     const bag = rule.from === "outputs" ? resource.outputs : resource.fields;
     if (rule.matchTemplate) {
-      for (const composed of composeMatchValues(rule.matchTemplate, bag)) add(composed);
+      for (const composed of composeMatchValues(rule.matchTemplate, bag)) add(composed, 1);
     } else {
-      add(bag?.[rule.fieldKey]);
+      add(bag?.[rule.fieldKey], 1);
     }
   }
 
