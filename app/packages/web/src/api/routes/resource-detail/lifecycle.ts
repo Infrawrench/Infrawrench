@@ -14,6 +14,7 @@ import { normalizeResourceCreateResult, parseOutputRef } from "@infrawrench/plug
 import type { OutputRefValue } from "@infrawrench/plugin-base";
 import { requirePermission } from "../../../auth/permissions";
 import { nextAssociationSyncVersion } from "../../../services/sync-versions";
+import { checkChangeFreeze } from "../../../services/change-freezes";
 
 /**
  * Lifecycle routes: create / delete / picker-resources / field-action /
@@ -41,6 +42,14 @@ export function registerLifecycleRoutes(app: Hono): void {
     if (!ctx) return c.json({ error: "Account or peer resource not found" }, 404);
     if (!ctx.client.deleteResource)
       return c.json({ error: "Plugin does not support deletion" }, 400);
+
+    const frozen = await checkChangeFreeze(c, {
+      action: "resource.delete",
+      entityType: "resource",
+      entityId: resourceId,
+      metadata: { pluginId, resourceTypeId },
+    });
+    if (frozen) return frozen;
 
     await ctx.client.deleteResource(resourceTypeId, resourceId, accountId);
     return c.json({ ok: true });

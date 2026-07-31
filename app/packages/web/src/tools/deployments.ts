@@ -27,6 +27,7 @@ import {
 } from "../services/deployments";
 import { PlanRequiredError } from "../services/entitlements";
 import { logAudit } from "../services/audit";
+import { checkChangeFreezeForTool } from "../services/change-freezes";
 import { denyUnlessPermitted } from "./permissions";
 import { ok, err, type ToolDefinition, type ToolResult } from "./types";
 
@@ -246,6 +247,13 @@ export function deploymentTools(): ToolDefinition[] {
         const denied = await denyUnlessPermitted(auth, "deployments:write");
         if (denied) return denied;
         const fromRunId = input["runId"] as string;
+        const frozen = await checkChangeFreezeForTool(auth.organizationId, auth.userId, {
+          action: "deployment.rollback",
+          entityType: "deployment_run",
+          entityId: fromRunId,
+          metadata: { source: auth.source },
+        });
+        if (frozen) return err(frozen);
         try {
           const { runId, result } = await rollbackDeployment({
             organizationId: auth.organizationId,

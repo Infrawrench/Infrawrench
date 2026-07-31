@@ -1,6 +1,7 @@
 import type { Hono } from "hono";
 import { getClientForResource } from "../../../services/plugin-clients";
 import { requirePermission } from "../../../auth/permissions";
+import { checkChangeFreeze } from "../../../services/change-freezes";
 
 /**
  * Per-resource secret-version routes. These mirror the optional
@@ -96,6 +97,18 @@ export function registerSecretVersionRoutes(app: Hono): void {
     if (!ctx) return c.json({ error: "Account or peer resource not found" }, 404);
     if (!ctx.client.modifySecretVersion)
       return c.json({ error: "Plugin does not support secret versions" }, 400);
+
+    // Destroying a secret version is irreversible — gate it behind the org's
+    // change freeze. Enable/disable stay allowed (they're recoverable).
+    if (action === "destroy") {
+      const frozen = await checkChangeFreeze(c, {
+        action: "secret_version.destroy",
+        entityType: "resource",
+        entityId: resourceId,
+        metadata: { pluginId, resourceTypeId, versionId },
+      });
+      if (frozen) return frozen;
+    }
 
     const version = await ctx.client.modifySecretVersion(
       resourceTypeId,

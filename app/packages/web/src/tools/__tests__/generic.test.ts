@@ -61,6 +61,12 @@ vi.mock("../../services/plugin-clients", () => ({
 
 vi.mock("../../services/encryption", mockEncryption);
 vi.mock("../../services/audit", () => ({ logAudit: vi.fn() }));
+// No freeze in effect by default — the freeze gate has its own tests.
+vi.mock("../../services/change-freezes", () => ({
+  checkChangeFreezeForTool: vi.fn().mockResolvedValue(null),
+  getActiveChangeFreeze: vi.fn().mockResolvedValue(null),
+  isActionDestructive: vi.fn().mockResolvedValue(false),
+}));
 vi.mock("@infrawrench/plugin-base", () => ({
   normalizeResourceCreateResult: (r: unknown) => ({ resource: r, warnings: [] }),
   evaluatePeerIntegrationUnreachable: () => null,

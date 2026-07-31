@@ -13,6 +13,11 @@ import { upsertCreatedResource } from "@infrawrench/server-core/created-resource
 import { resolveStoredSshPublicKey } from "./ssh-key-lookup";
 import { logAudit } from "../services/audit";
 import {
+  checkChangeFreezeForTool,
+  getActiveChangeFreeze,
+  isActionDestructive,
+} from "../services/change-freezes";
+import {
   evaluatePeerIntegrationUnreachable,
   normalizeResourceCreateResult,
 } from "@infrawrench/plugin-base";
@@ -773,6 +778,13 @@ export function genericTools(): ToolDefinition[] {
         );
         if (!ctx) return err("Account or peer resource not found");
         if (!ctx.client.deleteResource) return err("Plugin does not support deletion");
+        const frozen = await checkChangeFreezeForTool(auth.organizationId, auth.userId, {
+          action: "resource.delete",
+          entityType: "resource",
+          entityId: resourceId,
+          metadata: { pluginId, resourceTypeId, source: auth.source },
+        });
+        if (frozen) return err(frozen);
         try {
           await ctx.client.deleteResource(resourceTypeId, resourceId, accountId);
         } catch (e) {
@@ -819,6 +831,21 @@ export function genericTools(): ToolDefinition[] {
         );
         if (!ctx) return err("Account or peer resource not found");
         if (!ctx.client.invokeAction) return err("Plugin does not support actions");
+        // Freeze gate — only actions the plugin flags `destructive: true` in
+        // its detail schema are blocked; the schema walk only runs while a
+        // freeze is in effect.
+        if (
+          (await getActiveChangeFreeze(auth.organizationId)) &&
+          (await isActionDestructive(ctx.client, resourceTypeId, resourceId, accountId, actionId))
+        ) {
+          const frozen = await checkChangeFreezeForTool(auth.organizationId, auth.userId, {
+            action: "resource.invoke_action",
+            entityType: "resource",
+            entityId: resourceId,
+            metadata: { pluginId, resourceTypeId, actionId, source: auth.source },
+          });
+          if (frozen) return err(frozen);
+        }
         try {
           await ctx.client.invokeAction(resourceTypeId, resourceId, actionId, accountId);
         } catch (e) {
