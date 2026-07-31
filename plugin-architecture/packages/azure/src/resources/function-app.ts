@@ -26,6 +26,16 @@ export const FunctionAppResourceType = rt({
     { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
     { fieldKey: "subnetRef", targetTypeId: "azure-subnet", label: "VNet integrated with" },
     {
+      // `appServicePlan` holds the bare plan name (extractName over
+      // `serverFarmId`), and a plan can live in a different resource group than
+      // the app it hosts — so match the plan's `name` rather than its rg/name
+      // external id.
+      fieldKey: "appServicePlan",
+      targetTypeId: "azure-app-service-plan",
+      targetKey: "name",
+      label: "runs on",
+    },
+    {
       fieldKey: "containerRegistry",
       targetTypeId: "azure-container-registry",
       targetKey: "loginServer",

@@ -28,6 +28,7 @@ export {
   listOpenSearchDomains,
   listNeptuneClusters,
   listDocumentDBClusters,
+  listDBSubnetGroups,
   listEFSFileSystems,
 } from "./resource-listers-extended/database.js";
 export {

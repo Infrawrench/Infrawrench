@@ -6,7 +6,7 @@ sidebar_order: 2
 
 ## What you can manage
 
-- **Compute** — Virtual Machines, App Service, Function Apps.
+- **Compute** — Virtual Machines, App Service, Function Apps, App Service Plans.
 - **Kubernetes** — AKS clusters (links to the [Kubernetes plugin](./kubernetes.md)).
 - **Databases** — SQL Database, CosmosDB.
 - **Storage** — Storage accounts (Blob, File, Queue, Table).
@@ -33,6 +33,16 @@ Create a service principal (Azure Portal → Microsoft Entra ID → App registra
 - **Secret export to K8s** for SQL Database and Storage accounts.
 - **Read-only manifest view** on every resource.
 - **Send test messages** to queues or topics inside a Service Bus namespace, and events into hubs inside an Event Hub namespace, from a **Send** tab on the detail page — see [Send test messages](../features/send-test-message.md). The service principal needs the **Azure Service Bus Data Sender** or **Azure Event Hubs Data Sender** role on the namespace.
+
+## App Service Plans
+
+App Service Plans are listed read-only — Infrawrench does not create them. Each plan shows its SKU, tier and size, the instance count it is scaled to, whether its workers are Linux or Windows, and how many apps are assigned to it. Plans are the billing unit for App Service and Functions, so a dedicated plan with zero apps assigned is flagged by the [orphan finder](../features/orphan-finder.md). Free and Functions consumption tiers bill per execution rather than per instance, so they are never flagged.
+
+Web apps and function apps link to the plan they run on in the [dependency graph](../features/dependency-graph.md), so opening a plan shows everything it hosts.
+
+A **Metrics** tab reports the plan-wide CPU and memory percentage, disk and HTTP queue length, and data in/out — these are the numbers to scale on, since an individual app's metrics don't show plan-level saturation.
+
+<insert [Azure App Service Plan detail page showing the SKU/tier/instances fields and the dependency graph with two web apps pointing at the plan] here>
 
 ## Tips & limits
 

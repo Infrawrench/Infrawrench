@@ -56,6 +56,14 @@ const METRICS_BY_TYPE: Record<string, MetricDescriptor[]> = {
     { name: "AverageMemoryWorkingSet", label: "Memory working set" },
     { name: "Http5xx", label: "HTTP 5xx" },
   ],
+  "azure-app-service-plan": [
+    { name: "CpuPercentage", label: "CPU" },
+    { name: "MemoryPercentage", label: "Memory" },
+    { name: "DiskQueueLength", label: "Disk queue length" },
+    { name: "HttpQueueLength", label: "HTTP queue length" },
+    { name: "BytesReceived", label: "Data in" },
+    { name: "BytesSent", label: "Data out" },
+  ],
   "azure-container-instance": [
     { name: "CpuUsage", label: "CPU" },
     { name: "MemoryUsage", label: "Memory" },

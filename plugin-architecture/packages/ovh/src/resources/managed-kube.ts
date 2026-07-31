@@ -55,9 +55,12 @@ export const ManagedKubeResourceType = rt({
       description: "HTTPS endpoint for the Kubernetes API server",
     }),
   ],
-  // `privateNetworkId` is the network's OpenStack id (the value OVH's own
-  // tooling feeds it from `regions[].openstackid`), so it matches the private
-  // network on `openstackIds` rather than on its `pn-…` externalId.
+  // `privateNetworkId` is the network's OpenStack id — `cloud.kube.Cluster` in
+  // https://eu.api.ovh.com/1.0/cloud.json documents it as "OpenStack private
+  // network ID that the cluster will use", and OVH's own control panel resolves
+  // it via `regions[].openstackId` (pci-kubernetes `getPrivateNetworkName`). So
+  // it matches on `openstackIds`, not on the `pn-…` externalId — unlike an
+  // instance's `networkIds`, which does carry the `pn-…` form.
   dependsOn: [
     {
       fieldKey: "privateNetworkId",

@@ -1100,19 +1100,25 @@ export async function listCloudFrontDistributions(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.jsonGet<{
-    DistributionList?: { Items?: Record<string, unknown>[] };
+  // CloudFront is a REST-XML API — `ListDistributions` answers with a
+  // `<DistributionList>` document, never JSON, so this has to go through the
+  // XML transport. `parseXml` strips the single root element, which means what
+  // lands here is the *body* of `<DistributionList>`: an `<Items>` container
+  // holding one `<DistributionSummary>` per distribution (absent entirely when
+  // the account has none).
+  const data = await ctx.xmlGet<{
+    Items?: { DistributionSummary?: Record<string, unknown> | Record<string, unknown>[] };
   }>("cloudfront", "/2020-05-31/distribution");
 
-  const items = data.DistributionList?.Items ?? [];
+  const items = ensureArray(data.Items?.DistributionSummary);
   return items.map((dist) => {
     const distId = String(dist["Id"] ?? "");
-    // Origins ship with the distribution summary. `Items` is a bare array in
-    // the JSON shape and an `Origin`-wrapped container in the XML one.
+    // Origins ship with the distribution summary as
+    // `<Origins><Items><Origin>…</Origin></Items></Origins>`; `ensureArray`
+    // covers the single-origin case, which parses to a bare object.
     const originsContainer = dist["Origins"] as Record<string, unknown> | undefined;
     const origins = ensureArray(
-      (originsContainer?.["Items"] as Record<string, unknown> | undefined)?.["Origin"] ??
-        originsContainer?.["Items"],
+      (originsContainer?.["Items"] as Record<string, unknown> | undefined)?.["Origin"],
     ) as Record<string, unknown>[];
     const originDomains = origins.map((origin) => String(origin["DomainName"] ?? ""));
     // An S3 origin's domain is `<bucket>.s3[.-]<region>.amazonaws.com`; the

@@ -21,6 +21,10 @@ export const RDSClusterResourceType = rt({
       required: false,
       description: "Comma-separated VPC security group IDs attached to the cluster",
     }),
+    f("dbSubnetGroupName", "DB Subnet Group", {
+      required: false,
+      description: "Name of the DB subnet group holding the cluster's VPC and subnets",
+    }),
   ],
   outputs: [
     o("endpoint", "Writer Endpoint"),
@@ -38,6 +42,11 @@ export const RDSClusterResourceType = rt({
   dependsOn: [
     { fieldKey: "dbClusterMemberIds", targetTypeId: "rds-instance", label: "has member" },
     { fieldKey: "securityGroupIds", targetTypeId: "security-group", label: "guarded by" },
+    {
+      fieldKey: "dbSubnetGroupName",
+      targetTypeId: "db-subnet-group",
+      label: "placed in",
+    },
   ],
   iconKey: "database",
   supportsCreate: true,

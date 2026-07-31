@@ -315,6 +315,7 @@ export class AzureClient implements PluginClient {
     "azure-storage-account": listers.listStorageAccounts,
     "azure-function-app": listers.listFunctionApps,
     "azure-app-service": listers.listAppServices,
+    "azure-app-service-plan": listers.listAppServicePlans,
     "azure-container-instance": listers.listContainerInstances,
     "azure-key-vault": listers.listKeyVaults,
     "azure-redis-cache": listers.listRedisCaches,

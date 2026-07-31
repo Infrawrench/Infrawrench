@@ -361,6 +361,61 @@ export async function listAppServices(
   });
 }
 
+/**
+ * App Service plans (`Microsoft.Web/serverfarms`) at subscription scope.
+ *
+ * The subscription-scope list returns a subset of the plan properties unless
+ * `detailed=true` is passed; everything surfaced here (sku, status, worker and
+ * site counts, `reserved`) is in that default subset, so the type costs exactly
+ * one request and no extra latency.
+ */
+export async function listAppServicePlans(
+  ctx: ListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
+  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+    `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Web/serverfarms?api-version=2023-01-01`,
+  );
+  return (data.value ?? []).map((plan) => {
+    const name = String(plan["name"] ?? "");
+    const azureId = String(plan["id"] ?? "");
+    const rg = extractResourceGroup(azureId);
+    const props = plan["properties"] as Record<string, unknown> | undefined;
+    const sku = plan["sku"] as Record<string, unknown> | undefined;
+
+    return {
+      id: ctx.id(accountId, "azure-app-service-plan", `${rg}/${name}`),
+      pluginId: "azure",
+      resourceTypeId: "azure-app-service-plan",
+      accountId,
+      displayName: name,
+      fields: {
+        name,
+        resourceGroup: rg,
+        location: String(plan["location"] ?? ""),
+        kind: String(plan["kind"] ?? ""),
+        sku: String(sku?.["name"] ?? ""),
+        tier: String(sku?.["tier"] ?? ""),
+        size: String(sku?.["size"] ?? ""),
+        capacity: Number(sku?.["capacity"] ?? 0),
+        workerCount: Number(props?.["numberOfWorkers"] ?? 0),
+        maximumWorkers: Number(props?.["maximumNumberOfWorkers"] ?? 0),
+        // `reserved` is ARM's Linux flag on a server farm — true means Linux
+        // workers, false (the default) means Windows.
+        operatingSystem: props?.["reserved"] === true ? "Linux" : "Windows",
+        siteCount: Number(props?.["numberOfSites"] ?? 0),
+        status: String(props?.["status"] ?? ""),
+        provisioningState: String(props?.["provisioningState"] ?? ""),
+      },
+      resolvedOutputs: { resourceId: azureId },
+      secretStates: [],
+      externalId: `${rg}/${name}`,
+      createdAt: ctx.now(),
+      updatedAt: ctx.now(),
+    };
+  });
+}
+
 export async function listContainerInstances(
   ctx: ListerContext,
   accountId: string,

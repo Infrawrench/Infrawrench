@@ -95,6 +95,10 @@ export async function listRDSClusters(
         // The count stays; these are the member instances themselves.
         dbClusterMemberIds: joinIds(members.map((m) => m["DBInstanceIdentifier"])),
         securityGroupIds: rdsSecurityGroupIds(c),
+        // Cluster describes report only the subnet group's *name* (instance
+        // describes inline the whole group). The db-subnet-group resource
+        // resolves it to the vpc and subnets it stands for.
+        dbSubnetGroupName: String(c["DBSubnetGroup"] ?? ""),
       },
       resolvedOutputs: {
         endpoint: String(c["Endpoint"] ?? ""),
@@ -227,6 +231,10 @@ export async function listNeptuneClusters(
           // DescribeDBInstances also lists as rds-instance resources.
           dbClusterMemberIds: joinIds(members.map((m) => m["DBInstanceIdentifier"])),
           securityGroupIds: rdsSecurityGroupIds(c),
+          // Cluster describes report only the subnet group's *name* (instance
+          // describes inline the whole group). The db-subnet-group resource
+          // resolves it to the vpc and subnets it stands for.
+          dbSubnetGroupName: String(c["DBSubnetGroup"] ?? ""),
         },
         resolvedOutputs: {
           endpoint: String(c["Endpoint"] ?? ""),
@@ -287,6 +295,10 @@ export async function listDocumentDBClusters(
           // DescribeDBInstances also lists as rds-instance resources.
           dbClusterMemberIds: joinIds(members.map((m) => m["DBInstanceIdentifier"])),
           securityGroupIds: rdsSecurityGroupIds(c),
+          // Cluster describes report only the subnet group's *name* (instance
+          // describes inline the whole group). The db-subnet-group resource
+          // resolves it to the vpc and subnets it stands for.
+          dbSubnetGroupName: String(c["DBSubnetGroup"] ?? ""),
         },
         resolvedOutputs: {
           endpoint: String(c["Endpoint"] ?? ""),
@@ -346,6 +358,63 @@ export async function listEFSFileSystems(
       secretStates: [],
       externalId: fsId,
       createdAt: String(fs["CreationTime"] ?? ctx.now()),
+      updatedAt: ctx.now(),
+    };
+  });
+}
+
+/**
+ * RDS DB subnet groups.
+ *
+ * The RDS-family cluster APIs (`DescribeDBClusters`, and the DocumentDB /
+ * Neptune variants of it) report a cluster's network placement as nothing but
+ * the subnet group's *name* — unlike `DescribeDBInstances`, which inlines the
+ * whole group. Listing the groups as their own resource turns that bare name
+ * into a real edge, and gives clusters the `→ vpc` / `→ subnet` reach they
+ * otherwise have no route to.
+ *
+ * `externalId` is the group name so the `DBSubnetGroupName` values already
+ * stored on the clusters match without any translation.
+ */
+export async function listDBSubnetGroups(
+  ctx: ListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
+  const data = await ctx.ec2Query<Record<string, unknown>>(
+    "rds",
+    "DescribeDBSubnetGroups",
+    "2014-10-31",
+  );
+  const result = data["DescribeDBSubnetGroupsResult"] as Record<string, unknown> | undefined;
+  const groups = ensureArray(
+    (result?.["DBSubnetGroups"] as Record<string, unknown> | undefined)?.["DBSubnetGroup"],
+  ) as Record<string, unknown>[];
+
+  return groups.map((g) => {
+    const name = String(g["DBSubnetGroupName"] ?? "");
+    const subnets = ensureArray(
+      (g["Subnets"] as Record<string, unknown> | undefined)?.["Subnet"],
+    ) as Record<string, unknown>[];
+    return {
+      id: ctx.id(accountId, "db-subnet-group", name),
+      pluginId: "aws",
+      resourceTypeId: "db-subnet-group",
+      accountId,
+      displayName: name,
+      fields: {
+        name,
+        region: ctx.region,
+        vpcId: String(g["VpcId"] ?? ""),
+        subnetIds: joinIds(subnets.map((s) => s["SubnetIdentifier"])),
+        status: String(g["SubnetGroupStatus"] ?? ""),
+        description: String(g["DBSubnetGroupDescription"] ?? ""),
+      },
+      resolvedOutputs: {
+        subnetGroupArn: String(g["DBSubnetGroupArn"] ?? ""),
+      },
+      secretStates: [],
+      externalId: name,
+      createdAt: ctx.now(),
       updatedAt: ctx.now(),
     };
   });

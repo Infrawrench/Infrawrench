@@ -49,6 +49,7 @@ export { CloudTrailTrailResourceType } from "./resources/cloudtrail-trail.js";
 export { MSKClusterResourceType } from "./resources/msk-cluster.js";
 export { NeptuneClusterResourceType } from "./resources/neptune-cluster.js";
 export { DocumentDBClusterResourceType } from "./resources/documentdb-cluster.js";
+export { DBSubnetGroupResourceType } from "./resources/db-subnet-group.js";
 export { MQBrokerResourceType } from "./resources/mq-broker.js";
 export { BatchJobQueueResourceType } from "./resources/batch-job-queue.js";
 export { SageMakerEndpointResourceType } from "./resources/sagemaker-endpoint.js";

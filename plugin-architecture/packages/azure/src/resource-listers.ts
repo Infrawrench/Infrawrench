@@ -8,6 +8,7 @@ export {
   listAKSClusters,
   listFunctionApps,
   listAppServices,
+  listAppServicePlans,
   listContainerInstances,
   listContainerRegistries,
 } from "./resource-listers/compute.js";

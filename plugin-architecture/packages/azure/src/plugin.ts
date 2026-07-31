@@ -12,6 +12,7 @@ import { CosmosDBAccountResourceType } from "./resources/cosmos-db.js";
 import { StorageAccountResourceType } from "./resources/storage-account.js";
 import { FunctionAppResourceType } from "./resources/function-app.js";
 import { AppServiceResourceType } from "./resources/app-service.js";
+import { AppServicePlanResourceType } from "./resources/app-service-plan.js";
 import { ContainerInstanceResourceType } from "./resources/container-instance.js";
 import { KeyVaultResourceType } from "./resources/key-vault.js";
 import { RedisCacheResourceType } from "./resources/redis-cache.js";
@@ -98,6 +99,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   StorageAccountResourceType,
   FunctionAppResourceType,
   AppServiceResourceType,
+  AppServicePlanResourceType,
   ContainerInstanceResourceType,
   KeyVaultResourceType,
   RedisCacheResourceType,

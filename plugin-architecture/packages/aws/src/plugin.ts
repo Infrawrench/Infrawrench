@@ -51,6 +51,7 @@ import { CloudTrailTrailResourceType } from "./resources/cloudtrail-trail.js";
 import { MSKClusterResourceType } from "./resources/msk-cluster.js";
 import { NeptuneClusterResourceType } from "./resources/neptune-cluster.js";
 import { DocumentDBClusterResourceType } from "./resources/documentdb-cluster.js";
+import { DBSubnetGroupResourceType } from "./resources/db-subnet-group.js";
 import { MQBrokerResourceType } from "./resources/mq-broker.js";
 import { BatchJobQueueResourceType } from "./resources/batch-job-queue.js";
 import { SageMakerEndpointResourceType } from "./resources/sagemaker-endpoint.js";
@@ -125,6 +126,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   OpenSearchDomainResourceType,
   NeptuneClusterResourceType,
   DocumentDBClusterResourceType,
+  DBSubnetGroupResourceType,
   // Networking
   VPCResourceType,
   SubnetResourceType,

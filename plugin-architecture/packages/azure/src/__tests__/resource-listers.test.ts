@@ -674,6 +674,78 @@ describe("function-app vs app-service filtering by kind", () => {
   });
 });
 
+describe("listAppServicePlans", () => {
+  const planId = "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Web/serverfarms/plan1";
+
+  it("maps sku, worker/site counts and the rg/name external id", async () => {
+    const urls: string[] = [];
+    const ctx = makeCtx(() => ({
+      value: [
+        {
+          id: planId,
+          name: "plan1",
+          type: "Microsoft.Web/serverfarms",
+          kind: "linux",
+          location: "East US",
+          properties: {
+            status: "Ready",
+            maximumNumberOfWorkers: 20,
+            numberOfWorkers: 3,
+            numberOfSites: 4,
+            reserved: true,
+            provisioningState: "Succeeded",
+          },
+          sku: { name: "P1v3", tier: "PremiumV3", size: "P1v3", family: "Pv3", capacity: 3 },
+        },
+      ],
+    }));
+    const spy = ctx.get as unknown as { mock: { calls: [string][] } };
+    const out = await listers.listAppServicePlans(ctx, ACCT);
+    urls.push(...spy.mock.calls.map((c) => c[0]));
+
+    expect(urls).toEqual([
+      "https://management.azure.com/subscriptions/sub1/providers/Microsoft.Web/serverfarms?api-version=2023-01-01",
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      resourceTypeId: "azure-app-service-plan",
+      displayName: "plan1",
+      externalId: "rg1/plan1",
+      fields: {
+        name: "plan1",
+        resourceGroup: "rg1",
+        location: "East US",
+        kind: "linux",
+        sku: "P1v3",
+        tier: "PremiumV3",
+        size: "P1v3",
+        capacity: 3,
+        workerCount: 3,
+        maximumWorkers: 20,
+        operatingSystem: "Linux",
+        siteCount: 4,
+        status: "Ready",
+        provisioningState: "Succeeded",
+      },
+    });
+    expect(out[0]!.resolvedOutputs["resourceId"]).toBe(planId);
+  });
+
+  it("reports Windows when `reserved` is absent or false", async () => {
+    const ctx = makeCtx(() => ({
+      value: [{ id: planId, name: "plan1", properties: { status: "Ready" }, sku: { name: "S1" } }],
+    }));
+    const out = await listers.listAppServicePlans(ctx, ACCT);
+    expect(out[0]!.fields["operatingSystem"]).toBe("Windows");
+    expect(out[0]!.fields["siteCount"]).toBe(0);
+  });
+
+  it("handles a missing value array", async () => {
+    const ctx = makeCtx(() => ({}));
+    expect(await listers.listAppServicePlans(ctx, ACCT)).toEqual([]);
+  });
+});
+
 describe("listContainerInstances", () => {
   it("maps container count and ip address", async () => {
     const ctx = makeCtx(() => ({

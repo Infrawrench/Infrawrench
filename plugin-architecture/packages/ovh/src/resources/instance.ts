@@ -34,19 +34,18 @@ export const InstanceResourceType = rt({
     }),
   ],
   outputs: [o("ipv4", "Public IPv4"), o("ipv6", "Public IPv6"), o("ipv4Private", "Private IPv4")],
-  // `ipAddresses[].networkId` is a network id — OVH hands out two ids for one
-  // private network (the project-level `pn-…` and one OpenStack id per
-  // region), so both are matched. Whichever the payload carries resolves to
-  // the same private-network resource; the Ext-Net id matches nothing.
-  dependsOn: [
-    { fieldKey: "networkIds", targetTypeId: "private-network", label: "attached to" },
-    {
-      fieldKey: "networkIds",
-      targetTypeId: "private-network",
-      targetKey: "openstackIds",
-      label: "attached to",
-    },
-  ],
+  // `ipAddresses[].networkId` (`cloud.instance.IpAddress` in
+  // https://eu.api.ovh.com/1.0/cloud.json) holds the project-level `pn-…` id,
+  // which is this plugin's `private-network.externalId` — so the default
+  // `targetKey` is the match, not `openstackIds`. Verified against OVH's own
+  // control panel, which pairs the two by that id in both places it does so:
+  // `instances.service.js` filters `/network/private` entries whose `id`
+  // appears in the instance's private `ipAddresses[].networkId`, and
+  // pci-public-ip's `useInstance.ts` compares `ipAddress.networkId` to the
+  // `network.id` returned by `getPrivateNetworkIdFromGateway`. The Ext-Net id
+  // carried by public addresses names no listed resource, so it matches
+  // nothing.
+  dependsOn: [{ fieldKey: "networkIds", targetTypeId: "private-network", label: "attached to" }],
   iconKey: "instance",
   sshEndpoint: {
     hostOutputKey: "ipv4",

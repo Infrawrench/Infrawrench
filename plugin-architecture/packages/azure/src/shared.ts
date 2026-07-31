@@ -60,6 +60,7 @@ export const AZURE_ARM_SPECS: Record<string, ArmResourceSpec> = {
   },
   "azure-function-app": { provider: "Microsoft.Web/sites", apiVersion: "2023-01-01" },
   "azure-app-service": { provider: "Microsoft.Web/sites", apiVersion: "2023-01-01" },
+  "azure-app-service-plan": { provider: "Microsoft.Web/serverfarms", apiVersion: "2023-01-01" },
   "azure-container-instance": {
     provider: "Microsoft.ContainerInstance/containerGroups",
     apiVersion: "2023-05-01",
