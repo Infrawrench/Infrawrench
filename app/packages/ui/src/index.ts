@@ -407,6 +407,8 @@ export type {
   MsTeamsWebhookTriggers,
   MsTeamsTestResult,
   AddMsTeamsWebhookArgs,
+  DigestSettings,
+  DigestSendResult,
   PushDeviceSummary,
   PushPreferences,
   PushNotificationData,

@@ -43,6 +43,7 @@ interface WebhookBody {
   syncIncidents?: boolean;
   budgetAlerts?: boolean;
   workflowPages?: boolean;
+  weeklyDigest?: boolean;
 }
 
 /**
@@ -66,6 +67,7 @@ app.post("/webhooks", async (c) => {
       ...(body.syncIncidents != null ? { syncIncidents: body.syncIncidents } : {}),
       ...(body.budgetAlerts != null ? { budgetAlerts: body.budgetAlerts } : {}),
       ...(body.workflowPages != null ? { workflowPages: body.workflowPages } : {}),
+      ...(body.weeklyDigest != null ? { weeklyDigest: body.weeklyDigest } : {}),
     });
     return c.json(webhook);
   } catch (err) {
@@ -79,6 +81,7 @@ interface WebhookPatchBody {
   syncIncidents?: boolean;
   budgetAlerts?: boolean;
   workflowPages?: boolean;
+  weeklyDigest?: boolean;
 }
 
 /** Rename a channel or change which alerts it receives. The URL is immutable. */
@@ -97,6 +100,7 @@ app.patch("/webhooks/:id", async (c) => {
   if (body.syncIncidents != null) patch.syncIncidents = body.syncIncidents;
   if (body.budgetAlerts != null) patch.budgetAlerts = body.budgetAlerts;
   if (body.workflowPages != null) patch.workflowPages = body.workflowPages;
+  if (body.weeklyDigest != null) patch.weeklyDigest = body.weeklyDigest;
 
   const result = await db
     .update(msteamsWebhooks)
@@ -112,6 +116,7 @@ app.patch("/webhooks/:id", async (c) => {
     syncIncidents: row.syncIncidents,
     budgetAlerts: row.budgetAlerts,
     workflowPages: row.workflowPages,
+    weeklyDigest: row.weeklyDigest,
   });
 });
 

@@ -49,6 +49,13 @@ export {
   type AddMsTeamsWebhookArgs,
 } from "./msteams";
 export {
+  getDigestSettings,
+  updateDigestSettings,
+  sendDigestNow,
+  type DigestSettings,
+  type DigestSendResult,
+} from "./digest";
+export {
   fetchProfile,
   updateProfile,
   createPasswordResetLink,

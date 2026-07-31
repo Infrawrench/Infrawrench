@@ -41,6 +41,7 @@ import { registerAdminPaths } from "./paths/admin";
 import { registerPushPaths } from "./paths/push";
 import { registerSlackPaths } from "./paths/slack";
 import { registerMsTeamsPaths } from "./paths/msteams";
+import { registerDigestPaths } from "./paths/digest";
 
 interface BuildOptions {
   /** Server URL(s) to advertise in the spec. */
@@ -115,6 +116,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerPushPaths(ctx);
   registerSlackPaths(ctx);
   registerMsTeamsPaths(ctx);
+  registerDigestPaths(ctx);
 
   const generator = new OpenApiGeneratorV31(registry.definitions);
 

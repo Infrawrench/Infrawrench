@@ -55,6 +55,7 @@ import { bastionRoutes } from "./routes/bastions";
 import { twilioRoutes } from "./routes/twilio";
 import { slackRoutes, slackOauthRoute } from "./routes/slack";
 import { msteamsRoutes } from "./routes/msteams";
+import { digestRoutes } from "./routes/digest";
 import { pushDeviceRoutes, pushOrgRoutes } from "./routes/push-devices";
 
 // API-key-authed; handles its own auth.
@@ -234,6 +235,7 @@ orgScoped.route("/bastions", bastionRoutes);
 orgScoped.route("/twilio", twilioRoutes);
 orgScoped.route("/slack", slackRoutes);
 orgScoped.route("/msteams", msteamsRoutes);
+orgScoped.route("/digest", digestRoutes);
 orgScoped.route("/push", pushOrgRoutes);
 
 api.route("/api/org/:orgId", orgScoped);

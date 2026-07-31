@@ -28,6 +28,8 @@ export interface SlackChannel {
   budgetAlerts: boolean;
   /** Alerts raised by a workflow calling `infra.page(...)`. */
   workflowPages: boolean;
+  /** The Monday-morning weekly summary (only sends when the org enables it). */
+  weeklyDigest: boolean;
 }
 
 export interface SlackStatus {
@@ -86,6 +88,7 @@ export interface AddSlackChannelArgs {
   syncIncidents?: boolean;
   budgetAlerts?: boolean;
   workflowPages?: boolean;
+  weeklyDigest?: boolean;
 }
 
 export async function addSlackChannel(
@@ -101,7 +104,7 @@ export async function addSlackChannel(
 
 export type SlackChannelTriggers = Pick<
   SlackChannel,
-  "syncIncidents" | "budgetAlerts" | "workflowPages"
+  "syncIncidents" | "budgetAlerts" | "workflowPages" | "weeklyDigest"
 >;
 
 export async function updateSlackChannel(
