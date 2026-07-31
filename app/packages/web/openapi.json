@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.20.0",
+    "version": "0.21.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -55,6 +55,10 @@
     {
       "name": "Custom graphs",
       "description": "Script-defined dashboard charts run in a server-side sandbox."
+    },
+    {
+      "name": "Workflows",
+      "description": "Workflow (runbook) surface exposed over HTTP — currently the approval requests raised by infra.waitForApproval(...) inside runs."
     },
     {
       "name": "Resources",
@@ -3191,6 +3195,71 @@
             "enum": ["manual", "refresh", "interaction"]
           }
         },
+        "additionalProperties": false
+      },
+      "WorkflowApprovalStatus": {
+        "type": "string",
+        "enum": ["pending", "approved", "denied", "expired"]
+      },
+      "WorkflowApproval": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "workflowId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "workflowName": {
+            "type": ["string", "null"]
+          },
+          "runId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "title": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkflowApprovalStatus"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "decidedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "decidedByName": {
+            "type": ["string", "null"]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "workflowId",
+          "workflowName",
+          "runId",
+          "title",
+          "message",
+          "status",
+          "expiresAt",
+          "decidedAt",
+          "decidedByName",
+          "createdAt"
+        ],
         "additionalProperties": false
       },
       "DeployRepo": {
@@ -11341,6 +11410,209 @@
         "operationId": "postOrgOrgIdCustomGraphsIdRender",
         "x-required-permission": "dashboards:read",
         "description": "_Requires permission: `dashboards:read`._"
+      }
+    },
+    "/api/org/{orgId}/workflow-approvals": {
+      "get": {
+        "tags": ["Workflows"],
+        "summary": "List workflow approval requests",
+        "description": "Approval requests raised by `infra.waitForApproval(...)` inside workflow runs, newest first. Filter with `status=pending` to build an approvals inbox.\n\n_Requires permission: `dashboards:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/WorkflowApprovalStatus"
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": false,
+            "name": "workflowId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": false,
+            "name": "runId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approval requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowApproval"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdWorkflowApprovals",
+        "x-required-permission": "dashboards:read"
+      }
+    },
+    "/api/org/{orgId}/workflow-approvals/{id}/approve": {
+      "post": {
+        "tags": ["Workflows"],
+        "summary": "Approve a pending workflow approval request",
+        "description": "The suspended run resumes within a few seconds of the decision landing.\n\n_Requires permission: `dashboards:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The decided request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowApproval"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdWorkflowApprovalsIdApprove",
+        "x-required-permission": "dashboards:write"
+      }
+    },
+    "/api/org/{orgId}/workflow-approvals/{id}/deny": {
+      "post": {
+        "tags": ["Workflows"],
+        "summary": "Deny a pending workflow approval request",
+        "description": "Denial fails the waiting `infra.waitForApproval(...)` call in the run.\n\n_Requires permission: `dashboards:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The decided request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowApproval"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdWorkflowApprovalsIdDeny",
+        "x-required-permission": "dashboards:write"
       }
     },
     "/api/org/{orgId}/deployments/repos": {

@@ -17,6 +17,7 @@ import { registerCostPaths } from "./paths/costs";
 import { registerOrphanPaths } from "./paths/orphans";
 import { registerBudgetPaths } from "./paths/budgets";
 import { registerCustomGraphPaths } from "./paths/custom-graphs";
+import { registerWorkflowApprovalPaths } from "./paths/workflow-approvals";
 import { registerDeploymentPaths } from "./paths/deployments";
 import { registerPagePaths } from "./paths/pages";
 import { registerResourcePaths } from "./paths/resources";
@@ -92,6 +93,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerOrphanPaths(ctx);
   registerBudgetPaths(ctx);
   registerCustomGraphPaths(ctx);
+  registerWorkflowApprovalPaths(ctx);
   registerDeploymentPaths(ctx);
   registerPagePaths(ctx);
   registerResourcePaths(ctx);
@@ -145,6 +147,12 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       {
         name: "Custom graphs",
         description: "Script-defined dashboard charts run in a server-side sandbox.",
+      },
+      {
+        name: "Workflows",
+        description:
+          "Workflow (runbook) surface exposed over HTTP — currently the approval requests " +
+          "raised by infra.waitForApproval(...) inside runs.",
       },
       {
         name: "Resources",
@@ -269,6 +277,10 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /dashboards/probe": "dashboards:read",
 
   // custom graphs (share the dashboards permissions, like workflows)
+  // workflow approvals (share the dashboards permissions, like workflows)
+  "GET /workflow-approvals": "dashboards:read",
+  "POST /workflow-approvals/{id}/approve": "dashboards:write",
+  "POST /workflow-approvals/{id}/deny": "dashboards:write",
   "GET /custom-graphs": "dashboards:read",
   "POST /custom-graphs": "dashboards:write",
   "GET /custom-graphs/typings": "dashboards:read",
