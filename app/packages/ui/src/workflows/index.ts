@@ -28,6 +28,7 @@ export type {
   StoredWorkflowMetricDef,
   WorkflowMetricDef,
   WorkflowMetricRow,
+  WorkflowApprovalRow,
   WorkflowRunResult,
   WorkflowRunRow,
   WorkflowRunLog,

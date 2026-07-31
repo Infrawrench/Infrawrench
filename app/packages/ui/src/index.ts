@@ -72,6 +72,7 @@ export type {
   WorkflowClient,
   WorkflowDashboardCardData,
   WorkflowDashboardCardProps,
+  WorkflowApprovalRow,
   WorkflowMetricDef,
   WorkflowMetricRow,
   WorkflowRunLog,

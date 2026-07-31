@@ -5,6 +5,7 @@
 import type {
   DebugSession,
   PromptSpec,
+  WorkflowApprovalRow,
   WorkflowClient,
   WorkflowMetricRow,
   WorkflowRunResult,
@@ -138,5 +139,15 @@ export function createWebWorkflowClient(orgId: string): WorkflowClient {
       fetch(`${base}/${id}/metrics`, jsonInit("GET")).then((r) =>
         jsonOrThrow<WorkflowMetricRow[]>(r),
       ),
+    listPendingApprovals: (workflowId: string) =>
+      fetch(
+        `/api/org/${orgId}/workflow-approvals?status=pending&workflowId=${encodeURIComponent(workflowId)}`,
+        jsonInit("GET"),
+      ).then((r) => jsonOrThrow<WorkflowApprovalRow[]>(r)),
+    decideApproval: (approvalId: string, decision: "approve" | "deny") =>
+      fetch(
+        `/api/org/${orgId}/workflow-approvals/${encodeURIComponent(approvalId)}/${decision}`,
+        jsonInit("POST"),
+      ).then((r) => jsonOrThrow<WorkflowApprovalRow>(r)),
   };
 }
