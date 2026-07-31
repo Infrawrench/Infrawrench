@@ -6,6 +6,7 @@ import {
   deleteCloudBudget,
   deleteCloudWidget,
   listCloudBudgets,
+  listCloudCostAnomalies,
   loadCloudCostDimensionValues,
   loadCloudCostStatus,
   queryCloudCosts,
@@ -39,6 +40,7 @@ export function createDesktopCostsClient(): CostsClient {
       return loadCloudCostStatus(orgId);
     },
     listBudgets: () => listCloudBudgets(requireOrgId()),
+    listAnomalies: (days?: number) => listCloudCostAnomalies(requireOrgId(), days),
     listDashboards: async (): Promise<CostsPanelDashboard[]> => {
       const rows = await listCloudDashboards(requireOrgId());
       return rows.map((d) => ({ id: d.id, name: d.name }));

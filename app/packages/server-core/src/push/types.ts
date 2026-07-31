@@ -21,12 +21,12 @@ import type { PushNotificationData } from "@infrawrench/client-core";
  */
 export type PushData = PushNotificationData;
 
-export type PushTrigger = "syncIncidents" | "budgetAlerts" | "workflowPages";
+export type PushTrigger = "syncIncidents" | "budgetAlerts" | "anomalyAlerts" | "workflowPages";
 
 /**
  * What a Slack channel or Teams webhook can opt into. A superset of the push
  * triggers: the weekly digest is a scheduled summary, not an alert, so it goes
- * to team channels but never to a phone — mobile push keeps the three alert
+ * to team channels but never to a phone — mobile push keeps the four alert
  * triggers only.
  */
 export type ChannelTrigger = PushTrigger | "weeklyDigest";

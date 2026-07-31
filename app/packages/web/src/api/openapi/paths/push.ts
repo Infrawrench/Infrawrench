@@ -15,6 +15,9 @@ const PushDevice = strict({
 const PushPreferences = strict({
   syncIncidents: z.boolean(),
   budgetAlerts: z.boolean(),
+  anomalyAlerts: z
+    .boolean()
+    .openapi({ description: "Statistical spend-spike (cost anomaly) alerts" }),
   workflowPages: z
     .boolean()
     .openapi({ description: "Alerts raised by a workflow calling infra.page(...)" }),
@@ -26,6 +29,7 @@ const PushPreferences = strict({
 const PushPreferencesUpdate = strict({
   syncIncidents: z.boolean().optional(),
   budgetAlerts: z.boolean().optional(),
+  anomalyAlerts: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
 }).openapi("PushPreferencesUpdate");
 
@@ -35,6 +39,7 @@ const PushRecipient = strict({
   displayName: z.string().nullable(),
   syncIncidents: z.boolean(),
   budgetAlerts: z.boolean(),
+  anomalyAlerts: z.boolean(),
   workflowPages: z.boolean(),
   devices: z.array(
     strict({

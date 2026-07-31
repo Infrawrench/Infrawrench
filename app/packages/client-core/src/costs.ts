@@ -272,6 +272,42 @@ export interface BudgetPlacement {
 }
 
 /* ------------------------------------------------------------------ *
+ * Cost anomalies — GET /costs/anomalies.
+ * ------------------------------------------------------------------ */
+
+/** The breakdowns anomaly detection evaluates. */
+export type CostAnomalyDimension = "provider" | "service";
+
+/**
+ * A detected spend anomaly: one UTC day where a provider's or service's spend
+ * cleared the trailing-baseline threshold (mean + N·stddev over the prior
+ * 28 days, with an absolute floor). Detection runs server-side after each
+ * cost collection; this row is what the anomalies list renders.
+ */
+export interface CostAnomaly {
+  id: string;
+  /** The anomalous day, YYYY-MM-DD (UTC). */
+  day: string;
+  dimension: CostAnomalyDimension;
+  /** The dimension's value — a plugin id or a service name. */
+  dimensionKey: string;
+  currency: string;
+  actualCents: number;
+  /** Trailing-window mean, in cents. */
+  baselineCents: number;
+  /** The bar the day cleared (mean + N·stddev), in cents. */
+  thresholdCents: number;
+  detectedAt: string;
+  /** Null when delivery failed or the cooldown suppressed the notification. */
+  notifiedAt: string | null;
+}
+
+export const COST_ANOMALY_DIMENSION_LABELS: Record<CostAnomalyDimension, string> = {
+  provider: "Provider",
+  service: "Service",
+};
+
+/* ------------------------------------------------------------------ *
  * Query contract — POST /costs/query.
  * ------------------------------------------------------------------ */
 

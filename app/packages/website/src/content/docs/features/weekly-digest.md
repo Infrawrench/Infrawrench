@@ -27,7 +27,7 @@ The toggle is org-wide and takes the **Organization settings** permission, exact
 
 Every Slack channel and Teams webhook on the Notifications page has a **Weekly digest** checkbox next to its three alert triggers. The digest goes to every channel with the box ticked — so `#finance` can take the digest and budget alerts while `#ops` keeps only sync failures.
 
-<insert [A routed Slack channel row on the Notifications page with the four trigger checkboxes visible, Weekly digest highlighted] here>
+<insert [A routed Slack channel row on the Notifications page with the five trigger checkboxes visible, Weekly digest highlighted] here>
 
 The checkbox defaults to on for newly added channels, but nothing sends until the org-level toggle is enabled, so ticking it never surprises a channel with an unrequested Monday message.
 

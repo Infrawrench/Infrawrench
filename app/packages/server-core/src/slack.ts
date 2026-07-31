@@ -433,6 +433,7 @@ function escapeMrkdwn(s: string): string {
 const TRIGGER_COLUMN = {
   syncIncidents: slackChannels.syncIncidents,
   budgetAlerts: slackChannels.budgetAlerts,
+  anomalyAlerts: slackChannels.anomalyAlerts,
   workflowPages: slackChannels.workflowPages,
   weeklyDigest: slackChannels.weeklyDigest,
 } as const;

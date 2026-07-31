@@ -93,6 +93,7 @@ app.get("/status", async (c) => {
               isPrivate: ch.isPrivate,
               syncIncidents: ch.syncIncidents,
               budgetAlerts: ch.budgetAlerts,
+              anomalyAlerts: ch.anomalyAlerts,
               workflowPages: ch.workflowPages,
               weeklyDigest: ch.weeklyDigest,
             },
@@ -154,6 +155,7 @@ interface ChannelBody {
   isPrivate?: boolean;
   syncIncidents?: boolean;
   budgetAlerts?: boolean;
+  anomalyAlerts?: boolean;
   workflowPages?: boolean;
   weeklyDigest?: boolean;
 }
@@ -179,6 +181,7 @@ app.post("/channels", async (c) => {
 
   const syncIncidents = body.syncIncidents ?? true;
   const budgetAlerts = body.budgetAlerts ?? true;
+  const anomalyAlerts = body.anomalyAlerts ?? true;
   const workflowPages = body.workflowPages ?? true;
   const weeklyDigest = body.weeklyDigest ?? true;
   const now = new Date();
@@ -193,6 +196,7 @@ app.post("/channels", async (c) => {
       isPrivate: body.isPrivate ?? false,
       syncIncidents,
       budgetAlerts,
+      anomalyAlerts,
       workflowPages,
       weeklyDigest,
     })
@@ -203,6 +207,7 @@ app.post("/channels", async (c) => {
         isPrivate: body.isPrivate ?? false,
         syncIncidents,
         budgetAlerts,
+        anomalyAlerts,
         workflowPages,
         weeklyDigest,
         updatedAt: now,
@@ -215,6 +220,7 @@ app.post("/channels", async (c) => {
 interface ChannelPatchBody {
   syncIncidents?: boolean;
   budgetAlerts?: boolean;
+  anomalyAlerts?: boolean;
   workflowPages?: boolean;
   weeklyDigest?: boolean;
 }
@@ -228,6 +234,7 @@ app.patch("/channels/:id", async (c) => {
   const patch: Partial<typeof slackChannels.$inferInsert> = { updatedAt: new Date() };
   if (body.syncIncidents != null) patch.syncIncidents = body.syncIncidents;
   if (body.budgetAlerts != null) patch.budgetAlerts = body.budgetAlerts;
+  if (body.anomalyAlerts != null) patch.anomalyAlerts = body.anomalyAlerts;
   if (body.workflowPages != null) patch.workflowPages = body.workflowPages;
   if (body.weeklyDigest != null) patch.weeklyDigest = body.weeklyDigest;
 

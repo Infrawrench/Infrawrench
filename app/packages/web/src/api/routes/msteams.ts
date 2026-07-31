@@ -42,6 +42,7 @@ interface WebhookBody {
   url: string;
   syncIncidents?: boolean;
   budgetAlerts?: boolean;
+  anomalyAlerts?: boolean;
   workflowPages?: boolean;
   weeklyDigest?: boolean;
 }
@@ -66,6 +67,7 @@ app.post("/webhooks", async (c) => {
       url: body.url,
       ...(body.syncIncidents != null ? { syncIncidents: body.syncIncidents } : {}),
       ...(body.budgetAlerts != null ? { budgetAlerts: body.budgetAlerts } : {}),
+      ...(body.anomalyAlerts != null ? { anomalyAlerts: body.anomalyAlerts } : {}),
       ...(body.workflowPages != null ? { workflowPages: body.workflowPages } : {}),
       ...(body.weeklyDigest != null ? { weeklyDigest: body.weeklyDigest } : {}),
     });
@@ -80,6 +82,7 @@ interface WebhookPatchBody {
   label?: string;
   syncIncidents?: boolean;
   budgetAlerts?: boolean;
+  anomalyAlerts?: boolean;
   workflowPages?: boolean;
   weeklyDigest?: boolean;
 }
@@ -99,6 +102,7 @@ app.patch("/webhooks/:id", async (c) => {
   }
   if (body.syncIncidents != null) patch.syncIncidents = body.syncIncidents;
   if (body.budgetAlerts != null) patch.budgetAlerts = body.budgetAlerts;
+  if (body.anomalyAlerts != null) patch.anomalyAlerts = body.anomalyAlerts;
   if (body.workflowPages != null) patch.workflowPages = body.workflowPages;
   if (body.weeklyDigest != null) patch.weeklyDigest = body.weeklyDigest;
 
@@ -115,6 +119,7 @@ app.patch("/webhooks/:id", async (c) => {
     urlHint: row.urlHint,
     syncIncidents: row.syncIncidents,
     budgetAlerts: row.budgetAlerts,
+    anomalyAlerts: row.anomalyAlerts,
     workflowPages: row.workflowPages,
     weeklyDigest: row.weeklyDigest,
   });

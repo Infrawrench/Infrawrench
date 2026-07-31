@@ -28,12 +28,13 @@ If you want some alerts to be loud and others not, use the per-organization trig
 
 ## Per-organization preferences
 
-Notification triggers are toggled per user, per organization, in **Settings → Notifications** — on the web app or in the mobile app's settings. Everything defaults to **on**; each member manages their own toggles. The v1 triggers:
+Notification triggers are toggled per user, per organization, in **Settings → Notifications** — on the web app or in the mobile app's settings. Everything defaults to **on**; each member manages their own toggles. The triggers:
 
 | Trigger            | When it fires                                                                                                                                 |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Sync incidents** | An account's background sync keeps failing and crosses the org's paging threshold                                                             |
 | **Budget alerts**  | A [budget threshold](./cloud-costs.md) is crossed                                                                                             |
+| **Cost anomalies** | A [cost anomaly](./cost-anomaly-alerts.md) is detected — a provider's or service's spend spikes far above its usual baseline                  |
 | **Pages**          | Your own code raises an alert — a [workflow](./workflows.md) calling `infra.page(...)`, or a [server calling `POST /pages`](./server-push.md) |
 
 <insert [Web Settings → Notifications page showing the push trigger toggles, a registered device row, and the Send test push button] here>

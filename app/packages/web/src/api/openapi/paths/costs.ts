@@ -78,6 +78,28 @@ const CostAccountStatus = strict({
   coverage: strict({ firstDay: IsoDate, lastDay: IsoDate }).nullable(),
 }).openapi("CostAccountStatus");
 
+const CostAnomaly = strict({
+  id: Uuid,
+  day: IsoDate.describe("The anomalous UTC day."),
+  dimension: z.enum(["provider", "service"]),
+  dimensionKey: z.string().describe("The dimension's value — a plugin id or a service name."),
+  currency: z.string(),
+  actualCents: z.number().int(),
+  baselineCents: z
+    .number()
+    .int()
+    .describe("Mean daily spend over the trailing 28-day baseline, in cents."),
+  thresholdCents: z
+    .number()
+    .int()
+    .describe("The detection bar the day cleared (baseline mean + N·stddev), in cents."),
+  detectedAt: IsoDateTime,
+  notifiedAt: IsoDateTime.nullable().describe(
+    "When the anomaly was delivered to a notification channel; null when delivery " +
+      "failed or a recent anomaly for the same key suppressed it.",
+  ),
+}).openapi("CostAnomaly");
+
 const PushedCostRow = strict({
   date: IsoDate.describe("UTC day the spend belongs to."),
   currency: z.string().length(3).openapi({ example: "USD" }),
@@ -204,6 +226,37 @@ export function registerCostPaths(ctx: BuildContext) {
       200: {
         description: "Values",
         content: { "application/json": { schema: CostDimensionValues } },
+      },
+      400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/costs/anomalies",
+    tags: ["Costs"],
+    summary: "List recently detected cost anomalies",
+    description:
+      "Spend anomalies detected by the daily background pass: days where a provider's or " +
+      "service's spend exceeded its trailing 28-day baseline by a statistical threshold " +
+      "(mean + N·stddev, with an absolute floor to ignore penny-scale noise). " +
+      "Newest day first, capped at 200 rows.",
+    request: {
+      params: OrgIdParam,
+      query: strict({
+        days: z
+          .string()
+          .regex(/^\d+$/)
+          .optional()
+          .describe("Window in days over anomalous days, 1-90. Defaults to 30."),
+      }),
+    },
+    responses: {
+      200: {
+        description: "Anomalies",
+        content: {
+          "application/json": { schema: strict({ anomalies: z.array(CostAnomaly) }) },
+        },
       },
       400: ErrorResponses[400],
     },

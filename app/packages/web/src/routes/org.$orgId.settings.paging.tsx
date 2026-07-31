@@ -395,13 +395,14 @@ function RecipientsPanel({
 
 /**
  * The triggers a channel can opt into, shared by the Slack and Teams sections.
- * The first three are the alert triggers mobile push also has; the weekly
+ * The first four are the alert triggers mobile push also has; the weekly
  * digest is channel-only (it goes to a team channel, not a phone) and only
  * sends once the org enables it in the Weekly digest section below.
  */
 const ALERT_TRIGGERS = [
   { key: "syncIncidents", label: "Sync failures" },
   { key: "budgetAlerts", label: "Budgets" },
+  { key: "anomalyAlerts", label: "Anomalies" },
   { key: "workflowPages", label: "Pages" },
   { key: "weeklyDigest", label: "Weekly digest" },
 ] as const;
@@ -1211,6 +1212,14 @@ function PushPreferencesSection({ orgId }: { orgId: string }) {
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
+            checked={prefs.anomalyAlerts}
+            onChange={(e) => void updatePref({ anomalyAlerts: e.target.checked })}
+          />
+          <span>Cost anomalies</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
             checked={prefs.workflowPages}
             onChange={(e) => void updatePref({ workflowPages: e.target.checked })}
           />
@@ -1273,6 +1282,7 @@ interface PushRecipientRow {
   displayName: string | null;
   syncIncidents: boolean;
   budgetAlerts: boolean;
+  anomalyAlerts: boolean;
   workflowPages: boolean;
   devices: Array<{ id: string; platform: string; deviceName: string | null }>;
 }
@@ -1308,6 +1318,7 @@ function PushRosterSection({ orgId }: { orgId: string }) {
                 {[
                   r.syncIncidents && "incidents",
                   r.budgetAlerts && "budgets",
+                  r.anomalyAlerts && "anomalies",
                   r.workflowPages && "pages",
                 ]
                   .filter(Boolean)

@@ -45,6 +45,8 @@
     "./cost/dates": "./src/cost/dates.ts",
     "./cost/forecast": "./src/cost/forecast.ts",
     "./cost/budget-eval": "./src/cost/budget-eval.ts",
+    "./cost/anomaly-detect": "./src/cost/anomaly-detect.ts",
+    "./cost/anomaly-eval": "./src/cost/anomaly-eval.ts",
     "./digest/compose": "./src/digest/compose.ts",
     "./digest/weekly": "./src/digest/weekly.ts",
     "./cost/workflow-costs": "./src/cost/workflow-costs.ts",

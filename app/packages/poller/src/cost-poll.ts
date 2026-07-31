@@ -3,6 +3,7 @@ import { db } from "@infrawrench/server-core/db/client";
 import { accounts } from "@infrawrench/server-core/db/schema";
 import { collectAccountCosts, describeCostFailure } from "@infrawrench/server-core/cost/collect";
 import { evaluateBudgetsForOrg } from "@infrawrench/server-core/cost/budget-eval";
+import { detectCostAnomaliesForOrg } from "@infrawrench/server-core/cost/anomaly-eval";
 import type { PollAccountRow } from "./poll-account";
 
 /**
@@ -40,6 +41,14 @@ export async function pollAccountCosts(account: PollAccountRow): Promise<void> {
     // Fresh cost data may cross budget thresholds — evaluate now (its own
     // errors are swallowed; it never fails the collection).
     await evaluateBudgetsForOrg(account.organizationId);
+
+    // Same trigger point for anomaly detection: cost data only changes when
+    // collection runs. This fires once per account, so for a multi-account org
+    // most calls are redundant — the ClickHouse reads are the expensive half
+    // and the row dedup does nothing to avoid them. detectCostAnomaliesForOrg
+    // rate-limits itself per org and returns immediately when called again
+    // inside that window.
+    await detectCostAnomaliesForOrg(account.organizationId);
   } catch (e) {
     console.error(`[poller] cost collection for ${account.id} (${account.pluginId}) failed:`, e);
     const failures = account.pollFailureCount + 1;

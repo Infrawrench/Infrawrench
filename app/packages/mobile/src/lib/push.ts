@@ -177,6 +177,10 @@ export function pushDataToPath(data: PushNotificationData): string {
       return `/org/${data.orgId}`;
     case "budget_breach":
       return `/org/${data.orgId}/costs`;
+    // A cost anomaly is about a spend series, and the Costs tab is where the
+    // org's spend lives — same reasoning as budget breaches.
+    case "cost_anomaly":
+      return `/org/${data.orgId}/costs`;
     case "test":
       return `/org/${data.orgId}`;
     default:
@@ -226,6 +230,19 @@ export function parsePushData(raw: unknown): PushNotificationData | null {
         return null;
       }
       return { type: "budget_breach", orgId, budgetId, month, thresholdPercent };
+    }
+    case "cost_anomaly": {
+      const day = data["day"];
+      const dimension = data["dimension"];
+      const dimensionKey = data["dimensionKey"];
+      if (
+        typeof day !== "string" ||
+        (dimension !== "provider" && dimension !== "service") ||
+        typeof dimensionKey !== "string"
+      ) {
+        return null;
+      }
+      return { type: "cost_anomaly", orgId, day, dimension, dimensionKey };
     }
     case "workflow_page": {
       const workflowId = data["workflowId"];

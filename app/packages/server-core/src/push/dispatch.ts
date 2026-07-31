@@ -39,6 +39,7 @@ async function resolveTargets(
   const prefColumn = {
     syncIncidents: pushPreferences.syncIncidents,
     budgetAlerts: pushPreferences.budgetAlerts,
+    anomalyAlerts: pushPreferences.anomalyAlerts,
     workflowPages: pushPreferences.workflowPages,
   }[trigger];
   return db

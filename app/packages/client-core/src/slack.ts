@@ -26,6 +26,8 @@ export interface SlackChannel {
   isPrivate: boolean;
   syncIncidents: boolean;
   budgetAlerts: boolean;
+  /** Statistical spend-spike (cost anomaly) alerts. */
+  anomalyAlerts: boolean;
   /** Alerts raised by a workflow calling `infra.page(...)`. */
   workflowPages: boolean;
   /** The Monday-morning weekly summary (only sends when the org enables it). */
@@ -87,6 +89,7 @@ export interface AddSlackChannelArgs {
   isPrivate?: boolean;
   syncIncidents?: boolean;
   budgetAlerts?: boolean;
+  anomalyAlerts?: boolean;
   workflowPages?: boolean;
   weeklyDigest?: boolean;
 }
@@ -104,7 +107,7 @@ export async function addSlackChannel(
 
 export type SlackChannelTriggers = Pick<
   SlackChannel,
-  "syncIncidents" | "budgetAlerts" | "workflowPages" | "weeklyDigest"
+  "syncIncidents" | "budgetAlerts" | "anomalyAlerts" | "workflowPages" | "weeklyDigest"
 >;
 
 export async function updateSlackChannel(

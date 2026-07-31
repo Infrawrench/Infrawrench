@@ -115,7 +115,12 @@ export default function NotificationsScreen() {
     );
   }
 
-  const current = prefs.data ?? { syncIncidents: true, budgetAlerts: true, workflowPages: true };
+  const current = prefs.data ?? {
+    syncIncidents: true,
+    budgetAlerts: true,
+    anomalyAlerts: true,
+    workflowPages: true,
+  };
   const deviceList = devices.data ?? [];
 
   const confirmRemove = (d: PushDeviceSummary) => {
@@ -166,6 +171,21 @@ export default function NotificationsScreen() {
           <Switch
             value={current.budgetAlerts}
             onValueChange={(v) => updatePrefs.mutate({ budgetAlerts: v })}
+            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
+          />
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
+              Cost anomalies
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+              A provider or service spends far above its usual baseline.
+            </Text>
+          </View>
+          <Switch
+            value={current.anomalyAlerts}
+            onValueChange={(v) => updatePrefs.mutate({ anomalyAlerts: v })}
             trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
           />
         </View>
@@ -307,6 +327,7 @@ function WeeklyDigestSection({ api, orgId }: { api: CloudFetch; orgId: string })
 const SLACK_TRIGGERS = [
   { key: "syncIncidents", label: "Sync failures" },
   { key: "budgetAlerts", label: "Budgets" },
+  { key: "anomalyAlerts", label: "Anomalies" },
   { key: "workflowPages", label: "Pages" },
   { key: "weeklyDigest", label: "Weekly digest" },
 ] as const satisfies ReadonlyArray<{ key: keyof SlackChannelTriggers; label: string }>;
@@ -589,6 +610,7 @@ function SlackChannelRow({
 const MSTEAMS_TRIGGERS = [
   { key: "syncIncidents", label: "Sync failures" },
   { key: "budgetAlerts", label: "Budgets" },
+  { key: "anomalyAlerts", label: "Anomalies" },
   { key: "workflowPages", label: "Pages" },
   { key: "weeklyDigest", label: "Weekly digest" },
 ] as const satisfies ReadonlyArray<{ key: keyof MsTeamsWebhookTriggers; label: string }>;

@@ -52,9 +52,11 @@ Every threshold fires at most once per calendar month. Alerts show up as a badge
 
 <insert [Budget card showing a progress bar at 72% with threshold ticks, a forecast marker, and an alert badge] here>
 
+Budgets alert on totals you chose. For spikes you didn't see coming — a provider or service suddenly spending far above its own baseline — see [cost anomaly alerts](./cost-anomaly-alerts.md), which need no configuration at all.
+
 ## The Costs panel
 
-**Costs** in the sidebar opens month-to-date spend for the whole org — broken down by provider, account, or service — then every budget you have, and finally the resources that look wasted.
+**Costs** in the sidebar opens month-to-date spend for the whole org — broken down by provider, account, or service — then every budget you have, then recently detected [anomalies](./cost-anomaly-alerts.md), and finally the resources that look wasted.
 
 A budget belongs to the org, not to a dashboard. It keeps evaluating and keeps alerting whether or not anything is showing it, which is why the panel exists: it is the one place a budget is always reachable. Each row says which dashboards carry a card for it, or **On no dashboard** when none do.
 

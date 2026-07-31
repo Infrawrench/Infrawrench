@@ -39,6 +39,15 @@ export type PushNotificationData =
       thresholdPercent: number;
     }
   | {
+      /** A statistical spend spike detected against the trailing baseline. */
+      type: "cost_anomaly";
+      orgId: string;
+      /** The anomalous day, YYYY-MM-DD (UTC). */
+      day: string;
+      dimension: "provider" | "service";
+      dimensionKey: string;
+    }
+  | {
       type: "workflow_page";
       orgId: string;
       workflowId: string;
@@ -86,6 +95,8 @@ export async function unregisterPushDevice(api: CloudFetch, deviceId: string): P
 export interface PushPreferences {
   syncIncidents: boolean;
   budgetAlerts: boolean;
+  /** Statistical spend-spike (cost anomaly) alerts. */
+  anomalyAlerts: boolean;
   /**
    * Alerts raised by your own code — a workflow calling `infra.page(...)` or a
    * server calling `POST /api/org/{orgId}/pages`.
@@ -98,6 +109,7 @@ export async function getPushPreferences(api: CloudFetch, orgId: string): Promis
     (await api.org<PushPreferences>(orgId, "/push/preferences")) ?? {
       syncIncidents: true,
       budgetAlerts: true,
+      anomalyAlerts: true,
       workflowPages: true,
     }
   );

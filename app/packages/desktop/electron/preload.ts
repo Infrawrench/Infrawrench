@@ -140,6 +140,7 @@ const INVOKE_CHANNELS = [
   "cloud_costs_query",
   "cloud_costs_dimensions",
   "cloud_costs_status",
+  "cloud_costs_anomalies",
   "cloud_orphans_list",
   "cloud_list_budgets",
   "cloud_create_budget",

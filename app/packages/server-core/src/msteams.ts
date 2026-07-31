@@ -161,6 +161,7 @@ export async function addMsTeamsWebhook(
 
   const syncIncidents = args.syncIncidents ?? true;
   const budgetAlerts = args.budgetAlerts ?? true;
+  const anomalyAlerts = args.anomalyAlerts ?? true;
   const workflowPages = args.workflowPages ?? true;
   const weeklyDigest = args.weeklyDigest ?? true;
   const now = new Date();
@@ -178,6 +179,7 @@ export async function addMsTeamsWebhook(
       urlHint: hint,
       syncIncidents,
       budgetAlerts,
+      anomalyAlerts,
       workflowPages,
       weeklyDigest,
       createdByUserId: userId,
@@ -194,6 +196,7 @@ export async function addMsTeamsWebhook(
         urlHint: hint,
         syncIncidents,
         budgetAlerts,
+        anomalyAlerts,
         workflowPages,
         weeklyDigest,
         updatedAt: now,
@@ -212,6 +215,7 @@ function toRecord(row: typeof msteamsWebhooks.$inferSelect): MsTeamsWebhookRecor
     urlHint: row.urlHint,
     syncIncidents: row.syncIncidents,
     budgetAlerts: row.budgetAlerts,
+    anomalyAlerts: row.anomalyAlerts,
     workflowPages: row.workflowPages,
     weeklyDigest: row.weeklyDigest,
   };
@@ -376,6 +380,7 @@ async function postToWebhook(url: string, payload: unknown, label: string): Prom
 const TRIGGER_COLUMN = {
   syncIncidents: msteamsWebhooks.syncIncidents,
   budgetAlerts: msteamsWebhooks.budgetAlerts,
+  anomalyAlerts: msteamsWebhooks.anomalyAlerts,
   workflowPages: msteamsWebhooks.workflowPages,
   weeklyDigest: msteamsWebhooks.weeklyDigest,
 } as const;
