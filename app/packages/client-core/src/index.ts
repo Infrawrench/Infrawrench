@@ -201,6 +201,7 @@ export {
   type MongoCommand,
 } from "./mongo-browser";
 export * from "./api-types";
+export * from "./orphans";
 export * from "./chat/types";
 export { createBearerChatClient } from "./chat/bearer-client";
 export * from "./ws-protocol";
