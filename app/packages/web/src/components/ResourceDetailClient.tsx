@@ -63,6 +63,7 @@ import { MongoDocumentBrowser } from "@/components/MongoDocumentBrowser";
 import { FirestoreDocumentBrowser } from "@/components/FirestoreDocumentBrowser";
 import { FirestoreMongoPeerBrowser } from "@/components/FirestoreMongoPeerBrowser";
 import { StorageBrowser } from "@/components/StorageBrowser";
+import { ResourceChangesPanel } from "@/components/ResourceChangesPanel";
 import { SftpBrowser } from "@/components/SftpBrowser";
 import { WebTerminal } from "@/components/WebTerminal";
 import { SshQuickConnectPanel } from "@/components/SshQuickConnectPanel";
@@ -1276,6 +1277,9 @@ export function ResourceDetailClient({
                   }
                 : {})}
               metricSeries={metricSeries}
+              renderChangesTab={() => (
+                <ResourceChangesPanel orgId={orgId} resourceId={resourceId} />
+              )}
             />
           </div>
         </div>

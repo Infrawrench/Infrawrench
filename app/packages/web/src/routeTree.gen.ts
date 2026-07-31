@@ -21,6 +21,7 @@ import { Route as OrgOrgIdSavingsRouteImport } from './routes/org.$orgId.savings
 import { Route as OrgOrgIdDeploymentsRouteImport } from './routes/org.$orgId.deployments'
 import { Route as OrgOrgIdCostsRouteImport } from './routes/org.$orgId.costs'
 import { Route as OrgOrgIdChatRouteImport } from './routes/org.$orgId.chat'
+import { Route as OrgOrgIdChangesRouteImport } from './routes/org.$orgId.changes'
 import { Route as OrgOrgIdAgentsRouteImport } from './routes/org.$orgId.agents'
 import { Route as OrgOrgIdSettingsIndexRouteImport } from './routes/org.$orgId.settings.index'
 import { Route as OrgOrgIdChatIndexRouteImport } from './routes/org.$orgId.chat.index'
@@ -96,6 +97,11 @@ const OrgOrgIdCostsRoute = OrgOrgIdCostsRouteImport.update({
 const OrgOrgIdChatRoute = OrgOrgIdChatRouteImport.update({
   id: '/chat',
   path: '/chat',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdChangesRoute = OrgOrgIdChangesRouteImport.update({
+  id: '/changes',
+  path: '/changes',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdAgentsRoute = OrgOrgIdAgentsRouteImport.update({
@@ -193,6 +199,7 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/org/$orgId': typeof OrgOrgIdRouteWithChildren
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
+  '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
@@ -222,6 +229,7 @@ export interface FileRoutesByTo {
   '/deploy/$': typeof DeploySplatRoute
   '/invite/$token': typeof InviteTokenRoute
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
+  '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
@@ -251,6 +259,7 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/org/$orgId': typeof OrgOrgIdRouteWithChildren
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
+  '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
@@ -283,6 +292,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/org/$orgId'
     | '/org/$orgId/agents'
+    | '/org/$orgId/changes'
     | '/org/$orgId/chat'
     | '/org/$orgId/costs'
     | '/org/$orgId/deployments'
@@ -312,6 +322,7 @@ export interface FileRouteTypes {
     | '/deploy/$'
     | '/invite/$token'
     | '/org/$orgId/agents'
+    | '/org/$orgId/changes'
     | '/org/$orgId/costs'
     | '/org/$orgId/deployments'
     | '/org/$orgId/savings'
@@ -340,6 +351,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/org/$orgId'
     | '/org/$orgId/agents'
+    | '/org/$orgId/changes'
     | '/org/$orgId/chat'
     | '/org/$orgId/costs'
     | '/org/$orgId/deployments'
@@ -456,6 +468,13 @@ declare module '@tanstack/react-router' {
       path: '/chat'
       fullPath: '/org/$orgId/chat'
       preLoaderRoute: typeof OrgOrgIdChatRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/changes': {
+      id: '/org/$orgId/changes'
+      path: '/changes'
+      fullPath: '/org/$orgId/changes'
+      preLoaderRoute: typeof OrgOrgIdChangesRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/agents': {
@@ -618,6 +637,7 @@ const OrgOrgIdSettingsRouteWithChildren =
 
 interface OrgOrgIdRouteChildren {
   OrgOrgIdAgentsRoute: typeof OrgOrgIdAgentsRoute
+  OrgOrgIdChangesRoute: typeof OrgOrgIdChangesRoute
   OrgOrgIdChatRoute: typeof OrgOrgIdChatRouteWithChildren
   OrgOrgIdCostsRoute: typeof OrgOrgIdCostsRoute
   OrgOrgIdDeploymentsRoute: typeof OrgOrgIdDeploymentsRoute
@@ -632,6 +652,7 @@ interface OrgOrgIdRouteChildren {
 
 const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdAgentsRoute: OrgOrgIdAgentsRoute,
+  OrgOrgIdChangesRoute: OrgOrgIdChangesRoute,
   OrgOrgIdChatRoute: OrgOrgIdChatRouteWithChildren,
   OrgOrgIdCostsRoute: OrgOrgIdCostsRoute,
   OrgOrgIdDeploymentsRoute: OrgOrgIdDeploymentsRoute,

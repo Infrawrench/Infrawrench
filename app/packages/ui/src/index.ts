@@ -416,6 +416,21 @@ export type {
 } from "@infrawrench/client-core";
 
 /**
+ * Change-timeline contract + formatting. Pure and shared with future hosts,
+ * so it lives in `@infrawrench/client-core`; re-exported here because web and
+ * desktop import shared pieces from `ui`.
+ */
+export {
+  CHANGE_KIND_LABELS,
+  formatChangeValue,
+  summarizeChange,
+  type ResourceChangeKind,
+  type ResourceFieldChange,
+  type ResourceChangeEntry,
+} from "@infrawrench/client-core";
+export { ChangesIcon } from "./components/icons/ChangesIcon.js";
+
+/**
  * SSH host-key trust handshake. Shared with mobile through client-core because
  * all three hosts have to agree on the payload the proxy and the HTTP routes
  * send, and on how the trust POST is shaped.

@@ -129,6 +129,13 @@ interface DetailViewProps {
   /** Time-series metric data — rendered as charts in a Metrics tab when present */
   metricSeries?: MetricSeries[] | undefined;
   /**
+   * When set, a "Changes" tab renders the resource's change timeline via this
+   * render prop. Host-driven rather than schema-driven — the feed is recorded
+   * by the cloud poller on the generic stored record, so it exists for every
+   * plugin, and only hosts with a change store (web today) wire it.
+   */
+  renderChangesTab?: (() => React.ReactNode) | undefined;
+  /**
    * When `schema.noSqlBrowser` is set, the host provides the actual browser
    * UI via this render prop. The detail view renders it inside a dedicated
    * "Documents" tab. Keeping the UI in the host lets it hold driver-specific
@@ -179,6 +186,7 @@ type Tab =
   | "describe"
   | "logs"
   | "metrics"
+  | "changes"
   | "artifacts"
   | "kv-browser"
   | "secret-versions"
@@ -226,6 +234,7 @@ export function DetailView({
   onChildEdit,
   renderChildResource,
   metricSeries,
+  renderChangesTab,
   renderNoSqlBrowser,
   renderStorageBrowser,
   onChatStream,
@@ -247,6 +256,7 @@ export function DetailView({
   // yet". `metricSeriesEmpty` drives the empty-state placeholder below.
   const hasMetrics = !!schema.metricsCapability;
   const metricSeriesEmpty = !metricSeries || metricSeries.length === 0;
+  const hasChangesTab = !!renderChangesTab;
   const hasArtifacts = !!schema.artifactRegistry && !!onListArtifacts;
   const hasKvBrowser =
     !!schema.kvBrowser && !!onListKvKeys && !!onGetKvValue && !!onPutKvValue && !!onDeleteKvKey;
@@ -277,6 +287,7 @@ export function DetailView({
     hasDescribe ||
     hasLogs ||
     hasMetrics ||
+    hasChangesTab ||
     hasArtifacts ||
     hasKvBrowser ||
     hasSecretVersions ||
@@ -302,6 +313,7 @@ export function DetailView({
   if (hasDescribe) tabKeys.push("describe");
   if (hasLogs) tabKeys.push("logs");
   if (hasMetrics) tabKeys.push("metrics");
+  if (hasChangesTab) tabKeys.push("changes");
   if (hasArtifacts) tabKeys.push("artifacts");
   if (hasKvBrowser) tabKeys.push("kv-browser");
   if (hasSecretVersions) tabKeys.push("secret-versions");
@@ -503,6 +515,13 @@ export function DetailView({
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("metrics")}>
                     Metrics
+                  </TabButton>
+                );
+              }
+              if (key === "changes") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("changes")}>
+                    Changes
                   </TabButton>
                 );
               }
@@ -758,6 +777,18 @@ export function DetailView({
               />
             ))
           )}
+        </div>
+      )}
+
+      {hasChangesTab && activeTab === "changes" && (
+        <div
+          role="tabpanel"
+          id={panelIdFor("changes")}
+          aria-labelledby={tabIdFor("changes")}
+          tabIndex={0}
+          className="flex-1 overflow-auto"
+        >
+          {renderChangesTab!()}
         </div>
       )}
 

@@ -173,6 +173,14 @@ export {
 } from "./account-sections";
 export { deriveSSHUsername, pickQuickConnectKeyId } from "./ssh-quick-connect";
 export {
+  CHANGE_KIND_LABELS,
+  formatChangeValue,
+  summarizeChange,
+  type ResourceChangeKind,
+  type ResourceFieldChange,
+  type ResourceChangeEntry,
+} from "./resource-changes";
+export {
   isHostKeyTrustResponse,
   trustPayloadFromFrame,
   hostKeyTrustRequestBody,
