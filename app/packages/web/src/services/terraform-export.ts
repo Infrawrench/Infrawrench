@@ -59,13 +59,14 @@ function toResourceInstance(row: StoredResourceRow): ResourceInstance {
 export async function exportStoredResourcesToTerraform(
   rows: StoredResourceRow[],
 ): Promise<TerraformExportOutcome> {
-  const capabilities = new Map<string, TerraformExportCapability | undefined>();
-  for (const row of rows) {
-    if (!capabilities.has(row.pluginId)) {
-      const loaded = await getPlugin(row.pluginId);
-      capabilities.set(row.pluginId, loaded?.plugin.terraformExport);
-    }
-  }
+  const pluginIds = [...new Set(rows.map((row) => row.pluginId))];
+  const loaded = await Promise.all(pluginIds.map((pluginId) => getPlugin(pluginId)));
+  const capabilities = new Map<string, TerraformExportCapability | undefined>(
+    pluginIds.map((pluginId, i): [string, TerraformExportCapability | undefined] => [
+      pluginId,
+      loaded[i]?.plugin.terraformExport,
+    ]),
+  );
   return exportResourcesToTerraform(rows.map(toResourceInstance), (pluginId) =>
     capabilities.get(pluginId),
   );
