@@ -398,6 +398,49 @@ export const changeFreezes = pgTable(
   }),
 );
 
+/**
+ * Detected spend anomalies: a day whose spend for one (dimension, key) —
+ * a provider or a service — cleared the trailing-window statistical threshold
+ * (see `cost/anomaly-detect.ts`). The unique index makes each (org, day,
+ * dimension, key, currency) fire at most once no matter how many cost passes
+ * re-run that day: evaluation inserts with `onConflictDoNothing` and only a
+ * fresh insert can notify. `notifiedAt` stays null when delivery failed or the
+ * anomaly was suppressed by the cross-day cooldown.
+ */
+export const costAnomalies = pgTable(
+  "cost_anomalies",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** The anomalous day, "YYYY-MM-DD" (UTC). */
+    day: text("day").notNull(),
+    /** Which breakdown flagged it. */
+    dimension: text("dimension").$type<"provider" | "service">().notNull(),
+    /** The dimension's value — a plugin id or a service name. */
+    dimensionKey: text("dimension_key").notNull(),
+    currency: text("currency").notNull(),
+    actualAmountCents: integer("actual_amount_cents").notNull(),
+    /** Trailing-window mean, in cents. */
+    baselineAmountCents: integer("baseline_amount_cents").notNull(),
+    /** The bar the day cleared (mean + N·stddev), in cents. */
+    thresholdAmountCents: integer("threshold_amount_cents").notNull(),
+    detectedAt: timestamp("detected_at").notNull().defaultNow(),
+    notifiedAt: timestamp("notified_at"),
+  },
+  (t) => ({
+    onceUnique: uniqueIndex("cost_anomalies_once_unique").on(
+      t.organizationId,
+      t.day,
+      t.dimension,
+      t.dimensionKey,
+      t.currency,
+    ),
+    orgDayIdx: index("cost_anomalies_org_day_idx").on(t.organizationId, t.day),
+  }),
+);
+
 export const sshKeys = pgTable(
   "ssh_keys",
   {
@@ -682,6 +725,8 @@ export const slackChannels = pgTable(
     isPrivate: boolean("is_private").notNull().default(false),
     syncIncidents: boolean("sync_incidents").notNull().default(true),
     budgetAlerts: boolean("budget_alerts").notNull().default(true),
+    /** Statistical spend-spike alerts (see `cost/anomaly-eval.ts`). */
+    anomalyAlerts: boolean("anomaly_alerts").notNull().default(true),
     /** Alerts raised by a workflow calling `infra.page(...)`. */
     workflowPages: boolean("workflow_pages").notNull().default(true),
     /**
@@ -739,6 +784,8 @@ export const msteamsWebhooks = pgTable(
     urlHint: text("url_hint").notNull(),
     syncIncidents: boolean("sync_incidents").notNull().default(true),
     budgetAlerts: boolean("budget_alerts").notNull().default(true),
+    /** Statistical spend-spike alerts (see `cost/anomaly-eval.ts`). */
+    anomalyAlerts: boolean("anomaly_alerts").notNull().default(true),
     /** Alerts raised by a workflow calling `infra.page(...)`. */
     workflowPages: boolean("workflow_pages").notNull().default(true),
     /**
@@ -891,6 +938,8 @@ export const pushPreferences = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     syncIncidents: boolean("sync_incidents").notNull().default(true),
     budgetAlerts: boolean("budget_alerts").notNull().default(true),
+    /** Statistical spend-spike alerts (see `cost/anomaly-eval.ts`). */
+    anomalyAlerts: boolean("anomaly_alerts").notNull().default(true),
     /** Alerts raised by a workflow calling `infra.page(...)`. */
     workflowPages: boolean("workflow_pages").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),

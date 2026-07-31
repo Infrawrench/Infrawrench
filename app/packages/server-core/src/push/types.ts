@@ -21,7 +21,7 @@ import type { PushNotificationData } from "@infrawrench/client-core";
  */
 export type PushData = PushNotificationData;
 
-export type PushTrigger = "syncIncidents" | "budgetAlerts" | "workflowPages";
+export type PushTrigger = "syncIncidents" | "budgetAlerts" | "anomalyAlerts" | "workflowPages";
 
 /**
  * What a Slack channel or Teams webhook can opt into. A superset of the push
