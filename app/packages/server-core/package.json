@@ -21,6 +21,7 @@
     "./bastion/protocol": "./src/bastion/protocol.ts",
     "./bastion/errors": "./src/bastion/errors.ts",
     "./sync-resources": "./src/sync-resources.ts",
+    "./resource-changes": "./src/resource-changes.ts",
     "./org-accounts": "./src/org-accounts.ts",
     "./peer-clients": "./src/peer-clients.ts",
     "./twilio-pager": "./src/twilio-pager.ts",
