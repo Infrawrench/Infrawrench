@@ -18,13 +18,17 @@ Flagged resources are grouped by account, each row showing the resource, its typ
 
 Click any row to jump to the resource's detail page, where you can confirm it really is unused and delete it in place.
 
+The **mobile app** has the same section at the bottom of its **Costs** tab, grouped by account the same way, and tapping a row opens that resource. It reads your organization's synced resources, so it needs you signed in — there is no local mode on a phone.
+
+<insert [Mobile app Costs tab scrolled to Potential savings, showing two account groups with flagged resources — name, type and reason, and a 30-day cost figure on the right] here>
+
 ## Cloud mode and local mode
 
 The heuristics are declarative — they read fields the provider already reported — so the same scan runs wherever your resources are stored. What differs is the store and whether cost data exists to annotate with:
 
 | Where you are                                                  | What is scanned                                        | Cost column                                                        |
 | -------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------ |
-| Web app, or desktop signed in to an organization               | Your organization's synced resources                   | Trailing 30-day spend where the provider reports per-resource cost |
+| Web app, mobile app, or desktop signed in to an organization   | Your organization's synced resources                   | Trailing 30-day spend where the provider reports per-resource cost |
 | Desktop signed out (local mode), `infrawrench orphans --local` | The resources stored in this machine's local workspace | None — see below                                                   |
 
 Local mode needs no account credentials and makes no network calls at all: it reads the workspace database on disk and applies the same plugin rules. It works offline.

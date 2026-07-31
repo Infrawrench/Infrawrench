@@ -1,9 +1,18 @@
 /**
  * Change-timeline contract + pure formatting helpers, shared by every host
- * that renders the drift feed (web today; desktop/mobile follow-ups). Lives
- * here rather than in `@infrawrench/ui` per the client-core rule: anything
- * more than one surface must agree on that isn't a React component.
+ * that renders the drift feed (web, desktop and mobile). Lives here rather
+ * than in `@infrawrench/ui` per the client-core rule: anything more than one
+ * surface must agree on that isn't a React component.
+ *
+ * The Bearer readers at the bottom (`fetchOrgChanges`, `fetchResourceChanges`)
+ * are for hosts that talk to the cloud API directly — mobile today. Web and
+ * desktop inject their own transport into `ChangesPanel` instead (`apiGet` and
+ * a cloud IPC channel respectively), which is why `@infrawrench/ui` keeps its
+ * own narrower `ChangeFeedQuery`/`ChangesClient` pair; these are the same
+ * endpoints reached the other way.
  */
+
+import type { CloudFetch } from "./fetch";
 
 export type ResourceChangeKind = "created" | "updated" | "deleted";
 
@@ -72,6 +81,98 @@ export function summarizeChange(entry: Pick<ResourceChangeEntry, "changeKind" | 
   const rest = names.length - shown.length;
   const base = shown.join(", ");
   return rest > 0 ? `${base} and ${rest} more` : base;
+}
+
+/* ------------------------------------------------------------------ *
+ * Reading the feed (Bearer hosts)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Every filter `GET /api/org/{orgId}/changes` reads — one field per query
+ * parameter in web's `api/routes/resource-changes.ts`. All optional: the bare
+ * request is page 1 of the whole org's feed, newest first.
+ */
+export interface ChangeFeedRequest {
+  /** 1-based. Below 1 the server clamps to 1. */
+  page?: number | undefined;
+  /** Server default 50, hard ceiling 200. */
+  pageSize?: number | undefined;
+  kind?: ResourceChangeKind | undefined;
+  accountId?: string | undefined;
+  /** Narrow the org feed to one resource's rows. */
+  resourceId?: string | undefined;
+  /**
+   * ISO timestamp — the server compares `createdAt >= from`, so a change
+   * recorded exactly on the boundary is included.
+   */
+  from?: string | undefined;
+  /** ISO timestamp — `createdAt <= to`. */
+  to?: string | undefined;
+}
+
+/** One page of the org feed. `total` is the filter's row count, not the page's. */
+export interface ChangeFeedResult {
+  entries: ResourceChangeEntry[];
+  total: number;
+}
+
+/**
+ * Query string for a feed request, without the leading `?`.
+ *
+ * Empty and non-finite values are dropped rather than sent: the route parses
+ * `page`/`pageSize` with `parseInt` and feeds `from`/`to` straight into
+ * `new Date(...)`, so an empty string or a NaN would either be silently
+ * clamped or turn the whole `where` clause into a comparison against an
+ * Invalid Date. Filtering here keeps a half-filled filter UI honest.
+ */
+export function changeFeedSearchParams(request: ChangeFeedRequest): string {
+  const params = new URLSearchParams();
+  const num = (key: string, value: number | undefined) => {
+    if (typeof value === "number" && Number.isFinite(value)) params.set(key, String(value));
+  };
+  const date = (key: string, value: string | undefined) => {
+    if (value && !Number.isNaN(Date.parse(value))) params.set(key, value);
+  };
+  num("page", request.page);
+  num("pageSize", request.pageSize);
+  if (request.kind) params.set("kind", request.kind);
+  if (request.accountId) params.set("accountId", request.accountId);
+  if (request.resourceId) params.set("resourceId", request.resourceId);
+  date("from", request.from);
+  date("to", request.to);
+  return params.toString();
+}
+
+/** One page of the org-wide change feed. */
+export async function fetchOrgChanges(
+  api: CloudFetch,
+  orgId: string,
+  request: ChangeFeedRequest = {},
+): Promise<ChangeFeedResult> {
+  const query = changeFeedSearchParams(request);
+  const result = await api.org<ChangeFeedResult>(orgId, query ? `/changes?${query}` : "/changes");
+  return result ?? { entries: [], total: 0 };
+}
+
+/**
+ * One resource's slice of the timeline —
+ * `GET /api/org/{orgId}/changes/resource?resourceId=…`. The id rides in a
+ * query parameter because composite resource ids contain slashes and colons
+ * that don't survive as a path segment. Unpaginated; `limit` caps at 200.
+ */
+export async function fetchResourceChanges(
+  api: CloudFetch,
+  orgId: string,
+  resourceId: string,
+  limit?: number,
+): Promise<ResourceChangeEntry[]> {
+  const params = new URLSearchParams({ resourceId });
+  if (typeof limit === "number" && Number.isFinite(limit)) params.set("limit", String(limit));
+  const result = await api.org<{ entries: ResourceChangeEntry[] }>(
+    orgId,
+    `/changes/resource?${params.toString()}`,
+  );
+  return result?.entries ?? [];
 }
 
 /* ------------------------------------------------------------------ *

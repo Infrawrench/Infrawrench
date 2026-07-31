@@ -2,6 +2,7 @@ import {
   COST_ANOMALY_DIMENSION_LABELS,
   COST_ANOMALY_LIMITS,
   DEFAULT_COST_ANOMALY_SETTINGS,
+  costAnomalyDeltaPercent,
 } from "@infrawrench/client-core";
 import { useEffect, useId, useState } from "react";
 
@@ -15,21 +16,6 @@ function formatDay(day: string): string {
   const d = new Date(`${day}T00:00:00.000Z`);
   if (Number.isNaN(d.getTime())) return day;
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
-}
-
-/**
- * "+173%" over baseline; null when there is no baseline to be up from.
- *
- * A new spend source never gets a percentage, whatever its stored baseline
- * rounds to: dividing by a baseline of zero — or of one cent, which is what a
- * near-zero window rounds to — prints Infinity or a meaningless six-figure
- * percentage rather than the fact that matters, which is that the thing is new.
- */
-function deltaPercent(anomaly: CostAnomaly): string | null {
-  if (anomaly.kind === "new_source") return null;
-  if (anomaly.baselineCents <= 0) return null;
-  const pct = ((anomaly.actualCents - anomaly.baselineCents) / anomaly.baselineCents) * 100;
-  return `+${Math.round(pct)}%`;
 }
 
 export interface CostAnomaliesSectionProps {
@@ -128,7 +114,7 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
             </thead>
             <tbody className="divide-y divide-border/50">
               {anomalies.map((a) => {
-                const delta = deltaPercent(a);
+                const delta = costAnomalyDeltaPercent(a);
                 const isNew = a.kind === "new_source";
                 return (
                   <tr key={a.id} className="text-on-surface-secondary">

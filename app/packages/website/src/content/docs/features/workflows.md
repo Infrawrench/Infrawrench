@@ -378,6 +378,16 @@ The page is visible to anyone with `workflows:read`; the Approve and Deny button
 
 In the desktop app the same inbox appears as a banner above the Workflows tab whenever the selected organization has pending requests, and disappears when it doesn't.
 
+#### Deciding from your phone
+
+The [mobile app](./mobile-app.md) has the same inbox under **Settings → Approvals**, and tapping an approval push notification opens it with that request pulled to the top and marked as the one you were notified about. Each card carries what the notification carried: the request, the workflow and run it blocks, when it was requested, the countdown to expiry, and the reminder that no decision counts as a denial.
+
+Deciding on a phone takes **two taps, never one**. **Approve** and **Deny** open a confirmation that names the request, the workflow, the run, and the deadline, and spells out what the decision does — approving releases a run against your real infrastructure; denying fails it at that step and cannot be undone. Only the confirmation sends the decision, so nothing lands from a pocket.
+
+Everything else matches the web page: the list is visible with `workflows:read`, the buttons appear only with `workflows:approve`, it refreshes on its own and on pull-to-refresh, and a request someone else decided first comes back as **"Already decided"** with the list refreshed — never as a silent overwrite. If the request your notification was about has already been decided or expired, the screen says so rather than leaving you hunting for it.
+
+<insert [Mobile Settings → Approvals screen opened from a push notification: the deep-linked request highlighted at the top with its workflow, run id and expiry countdown, and the Approve confirmation dialog naming the request and its deadline] here>
+
 ### Reporting your own cost data
 
 Infrawrench collects spend from every provider that has a billing API, but plenty of money doesn't come from one — a SaaS invoice, an internal chargeback, a colo bill, a provider with no plugin yet. A workflow can report those numbers itself, and they land in exactly the same place provider-collected spend does: [cost graphs](./cloud-costs.md), dimension filters, and budgets.

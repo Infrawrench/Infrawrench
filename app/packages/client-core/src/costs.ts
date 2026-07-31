@@ -17,6 +17,7 @@
 
 import type { CostCapabilityDeclaration } from "@infrawrench/plugin-base";
 
+import type { CloudFetch } from "./fetch";
 import type { CustomGraphWidgetConfig } from "./custom-graphs";
 
 /** Why an account's last cost collection failed, as stored by the poller. */
@@ -334,6 +335,53 @@ export const COST_ANOMALY_KIND_LABELS: Record<CostAnomalyKind, string> = {
   spike: "Spike",
   new_source: "New spend source",
 };
+
+/**
+ * The window `GET /costs/anomalies?days=` accepts. Clients clamp to it so a
+ * typo fails locally rather than as a 400 after the round trip.
+ */
+export const COST_ANOMALY_WINDOW = { minDays: 1, maxDays: 90, defaultDays: 30 } as const;
+
+/**
+ * "+173%" over the trailing baseline, or null when there is no baseline to be
+ * up from.
+ *
+ * A `new_source` never gets a percentage, **whatever its stored baseline
+ * rounds to**: a key that spent a few sub-cent trial amounts across the window
+ * has a baseline of one cent, and dividing by it prints a six-figure
+ * percentage; a true zero prints `Infinity`. Neither is the fact that matters,
+ * which is that the thing is new. Every surface renders `new` instead.
+ */
+export function costAnomalyDeltaPercent(
+  anomaly: Pick<CostAnomaly, "kind" | "actualCents" | "baselineCents">,
+): string | null {
+  if (anomaly.kind === "new_source") return null;
+  if (!(anomaly.baselineCents > 0)) return null;
+  const pct = ((anomaly.actualCents - anomaly.baselineCents) / anomaly.baselineCents) * 100;
+  if (!Number.isFinite(pct)) return null;
+  return `+${Math.round(pct)}%`;
+}
+
+/**
+ * Recently detected spend anomalies, newest day first (`GET /costs/anomalies`,
+ * permission `costs:read`). Detection itself runs server-side after each cost
+ * collection pass — there is nothing to trigger from a client.
+ */
+export async function listCostAnomalies(
+  api: CloudFetch,
+  orgId: string,
+  days: number = COST_ANOMALY_WINDOW.defaultDays,
+): Promise<CostAnomaly[]> {
+  const clamped = Math.min(
+    Math.max(Math.round(days), COST_ANOMALY_WINDOW.minDays),
+    COST_ANOMALY_WINDOW.maxDays,
+  );
+  const res = await api.org<{ anomalies: CostAnomaly[] }>(
+    orgId,
+    `/costs/anomalies?days=${clamped}`,
+  );
+  return res?.anomalies ?? [];
+}
 
 /* ------------------------------------------------------------------ *
  * Anomaly tuning — GET/PUT /costs/anomaly-settings.

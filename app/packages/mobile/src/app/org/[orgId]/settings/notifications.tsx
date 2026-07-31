@@ -21,6 +21,7 @@ import {
   sendMsTeamsTestMessage,
   updateMsTeamsWebhook,
   getDigestSettings,
+  listDigestRecipients,
   sendDigestNow,
   updateDigestSettings,
   type PushDeviceSummary,
@@ -32,6 +33,7 @@ import {
   type MsTeamsWebhook,
   type MsTeamsWebhookTriggers,
   type DigestSettings,
+  type DigestSettingsPatch,
 } from "@infrawrench/client-core";
 import type { CloudFetch } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
@@ -119,6 +121,9 @@ export default function NotificationsScreen() {
     syncIncidents: true,
     budgetAlerts: true,
     anomalyAlerts: true,
+    // Drift is the one trigger that defaults off — it is a continuous feed
+    // where the others are exceptional events.
+    resourceDrift: false,
     workflowPages: true,
   };
   const deviceList = devices.data ?? [];
@@ -191,9 +196,26 @@ export default function NotificationsScreen() {
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
           <View style={{ flex: 1, gap: 2 }}>
+            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
+              Resource drift
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+              One batched digest of the change timeline per cooldown window — never one message per
+              change. Off by default; what counts as drift is set per org on the web app.
+            </Text>
+          </View>
+          <Switch
+            value={current.resourceDrift}
+            onValueChange={(v) => updatePrefs.mutate({ resourceDrift: v })}
+            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
+          />
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+          <View style={{ flex: 1, gap: 2 }}>
             <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>Pages</Text>
             <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              Your code raises an alert — infra.page() or POST /pages.
+              Your code raises an alert — infra.page(), POST /pages, or a run suspended on
+              infra.waitForApproval() asking for a decision.
             </Text>
           </View>
           <Switch
@@ -243,10 +265,63 @@ export default function NotificationsScreen() {
   );
 }
 
+/** ISO day numbers, as the digest API expresses them (1 = Monday). */
+const DIGEST_DAY_LABELS = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+] as const;
+
+function digestScheduleLine(settings: DigestSettings): string {
+  const day = DIGEST_DAY_LABELS[settings.sendDay - 1] ?? "Monday";
+  const hour = `${String(settings.sendHour).padStart(2, "0")}:00`;
+  return `Sends every ${day} at ${hour} ${settings.timezone}, covering the last complete Monday-to-Sunday week.`;
+}
+
 /**
- * Org-level switch for the Monday-morning weekly digest. Which channels get
- * it is the "Weekly digest" toggle on each Slack channel / Teams webhook
- * above; this only turns the schedule on and off.
+ * The outcome of the last delivery attempt, as a colour and a headline. This
+ * is the part of the digest that has to be on the phone: the digest is sent by
+ * a background poller, so without a surface for its failures a digest that
+ * quietly stopped arriving looks exactly like a quiet week.
+ */
+function digestStatusView(settings: DigestSettings): { color: string; headline: string } | null {
+  switch (settings.lastStatus) {
+    case "succeeded":
+      return { color: colors.success, headline: "Last digest delivered to every destination." };
+    case "partial":
+      return { color: colors.warning, headline: "Last digest only partly delivered." };
+    case "failed":
+      return { color: colors.danger, headline: "Last digest failed to send." };
+    case "no_targets":
+      return { color: colors.warning, headline: "The digest has nowhere to go." };
+    case "pending":
+      return { color: colors.textMuted, headline: "A digest is being sent…" };
+    default:
+      return null;
+  }
+}
+
+/**
+ * The weekly digest's org-level settings, as much of them as belongs on a
+ * phone: the on/off switch, the AI-narrative opt-in, Send now, and — the
+ * reason this section is more than a toggle — the status of the last delivery
+ * attempt, mirroring web's `WeeklyDigestSection`.
+ *
+ * Deliberately read-only here (see KNOWLEDGE.md's mobile omissions):
+ * - the **schedule** (day / hour / time zone) is shown as a sentence rather
+ *   than three pickers. Day and hour are easy enough, but the zone list is the
+ *   browser's whole tz database — a searchable ~600-row picker — and shipping
+ *   two thirds of a schedule editor is worse than none.
+ * - the **email recipient list** is shown, not edited. It is an org-wide
+ *   distribution list (a `finance@` alias, not a member opt-in), which is
+ *   admin configuration rather than something you retune from a phone.
+ *
+ * The whole section 403s for anyone without `org:settings:write` — the query
+ * simply fails and this renders nothing, the same shape as the Slack section.
  */
 function WeeklyDigestSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
   const queryClient = useQueryClient();
@@ -257,15 +332,22 @@ function WeeklyDigestSection({ api, orgId }: { api: CloudFetch; orgId: string })
     queryFn: () => getDigestSettings(api, orgId),
   });
 
+  const recipients = useQuery({
+    queryKey: ["digest-recipients", orgId],
+    queryFn: () => listDigestRecipients(api, orgId),
+    // Same permission as the settings themselves; don't ask until they load.
+    enabled: settings.isSuccess,
+  });
+
   const update = useMutation({
-    mutationFn: (enabled: boolean) => updateDigestSettings(api, orgId, { enabled }),
-    onMutate: async (enabled) => {
+    mutationFn: (patch: DigestSettingsPatch) => updateDigestSettings(api, orgId, patch),
+    onMutate: async (patch) => {
       await queryClient.cancelQueries({ queryKey: settingsKey });
       const previous = queryClient.getQueryData<DigestSettings>(settingsKey);
-      if (previous) queryClient.setQueryData(settingsKey, { ...previous, enabled });
+      if (previous) queryClient.setQueryData(settingsKey, { ...previous, ...patch });
       return { previous };
     },
-    onError: (e, _enabled, ctx) => {
+    onError: (e, _patch, ctx) => {
       if (ctx?.previous) queryClient.setQueryData(settingsKey, ctx.previous);
       Alert.alert("Update failed", e instanceof Error ? e.message : "Unknown error");
     },
@@ -277,7 +359,9 @@ function WeeklyDigestSection({ api, orgId }: { api: CloudFetch; orgId: string })
     onSuccess: (result) => {
       Alert.alert(
         "Weekly digest",
-        result ? `Sent to ${result.succeeded} of ${result.attempted} channel(s).` : "Digest sent.",
+        result
+          ? `Sent to ${result.succeeded} of ${result.attempted} destination(s) — Slack ${result.slack.succeeded}/${result.slack.attempted}, Teams ${result.teams.succeeded}/${result.teams.attempted}, email ${result.email.succeeded}/${result.email.attempted}.`
+          : "Digest sent.",
       );
       void queryClient.invalidateQueries({ queryKey: settingsKey });
     },
@@ -287,6 +371,8 @@ function WeeklyDigestSection({ api, orgId }: { api: CloudFetch; orgId: string })
   if (settings.isLoading || !settings.data) return null;
 
   const current = settings.data;
+  const status = digestStatusView(current);
+  const recipientList = recipients.data ?? [];
 
   return (
     <>
@@ -298,22 +384,100 @@ function WeeklyDigestSection({ api, orgId }: { api: CloudFetch; orgId: string })
               Send a weekly digest
             </Text>
             <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              Monday mornings: last week&apos;s spend, movers, incidents, and resource churn — to
-              the channels with &quot;Weekly digest&quot; on.
+              Last week&apos;s spend with week-over-week movers, sync incidents, and resource churn
+              — to the channels with &quot;Weekly digest&quot; on, plus the email recipients below.
             </Text>
           </View>
           <Switch
             value={current.enabled}
-            onValueChange={(v) => update.mutate(v)}
+            onValueChange={(v) => update.mutate({ enabled: v })}
             trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
           />
         </View>
-        {current.lastSentAt ? (
-          <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-            Last sent {new Date(current.lastSentAt).toLocaleDateString()}.
+
+        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+          {digestScheduleLine(current)} Change the schedule from the web app.
+        </Text>
+
+        <Separator />
+
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
+              AI summary paragraph
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+              {current.narrativeAvailable
+                ? "A short paragraph above the numbers saying what changed and why it stands out. Only the digest's own figures are sent to the model — never resource or credential data."
+                : "Unavailable: this deployment has no LLM API key configured."}
+            </Text>
+          </View>
+          <Switch
+            value={current.narrativeEnabled}
+            disabled={!current.narrativeAvailable}
+            onValueChange={(v) => update.mutate({ narrativeEnabled: v })}
+            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
+          />
+        </View>
+      </Card>
+
+      <Card>
+        <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
+          Email recipients
+        </Text>
+        {!current.emailAvailable ? (
+          <Text style={{ color: colors.warning, fontSize: 12 }}>
+            This deployment has no mail provider configured, so email recipients receive nothing.
           </Text>
         ) : null}
+        {recipientList.length === 0 ? (
+          <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+            No email recipients. Add addresses from the web app — they don&apos;t have to belong to
+            Infrawrench users.
+          </Text>
+        ) : (
+          <>
+            {recipientList.map((r) => (
+              <Text key={r.id} style={{ color: colors.textSecondary, fontSize: 13 }}>
+                {r.email}
+              </Text>
+            ))}
+            <Text style={{ color: colors.textFaint, fontSize: 11 }}>Managed from the web app.</Text>
+          </>
+        )}
       </Card>
+
+      <Card>
+        {status ? (
+          <>
+            <Text style={{ color: status.color, fontSize: 13, fontWeight: "500" }}>
+              {status.headline}
+            </Text>
+            {current.lastError ? (
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>{current.lastError}</Text>
+            ) : null}
+            <Text style={{ color: colors.textFaint, fontSize: 11 }}>
+              {current.lastAttemptAt
+                ? `Last attempt ${new Date(current.lastAttemptAt).toLocaleString()} (attempt ${current.attemptCount})`
+                : "No attempt yet"}
+              {current.lastSentWeekStart ? ` · week of ${current.lastSentWeekStart}` : ""}
+              {current.nextAttemptAt
+                ? ` · retrying ${new Date(current.nextAttemptAt).toLocaleString()}`
+                : ""}
+              .
+            </Text>
+          </>
+        ) : (
+          <Text style={{ color: colors.textFaint, fontSize: 11 }}>
+            {current.lastSentAt
+              ? `Last sent ${new Date(current.lastSentAt).toLocaleString()}${
+                  current.lastSentWeekStart ? ` (week of ${current.lastSentWeekStart})` : ""
+                }.`
+              : "No digest sent yet."}
+          </Text>
+        )}
+      </Card>
+
       <Button
         label={sendNow.isPending ? "Sending…" : "Send now"}
         variant="secondary"
@@ -324,10 +488,16 @@ function WeeklyDigestSection({ api, orgId }: { api: CloudFetch; orgId: string })
   );
 }
 
+/**
+ * Same order as web's `ALERT_TRIGGERS`. Drift sits between anomalies and pages
+ * and arrives off — adding a channel opts it into everything else, but drift is
+ * a continuous feed and turning it on has to be a decision.
+ */
 const SLACK_TRIGGERS = [
   { key: "syncIncidents", label: "Sync failures" },
   { key: "budgetAlerts", label: "Budgets" },
   { key: "anomalyAlerts", label: "Anomalies" },
+  { key: "resourceDrift", label: "Drift" },
   { key: "workflowPages", label: "Pages" },
   { key: "weeklyDigest", label: "Weekly digest" },
 ] as const satisfies ReadonlyArray<{ key: keyof SlackChannelTriggers; label: string }>;
@@ -611,6 +781,7 @@ const MSTEAMS_TRIGGERS = [
   { key: "syncIncidents", label: "Sync failures" },
   { key: "budgetAlerts", label: "Budgets" },
   { key: "anomalyAlerts", label: "Anomalies" },
+  { key: "resourceDrift", label: "Drift" },
   { key: "workflowPages", label: "Pages" },
   { key: "weeklyDigest", label: "Weekly digest" },
 ] as const satisfies ReadonlyArray<{ key: keyof MsTeamsWebhookTriggers; label: string }>;

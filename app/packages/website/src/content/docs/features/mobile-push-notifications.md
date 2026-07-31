@@ -61,7 +61,7 @@ The [change timeline](./change-timeline.md) records every resource that appears,
 
 It is also the one trigger that is **off by default**, on phones and on channels alike, for the same reason: it is a continuous feed rather than an exceptional event. Which changes count — appearances, disappearances, field updates (off by default, they are the bulk of the volume), which accounts, and how few changes are too few to bother with — is set once for the whole organization under **Settings → Notifications → Resource drift alerts**, and it takes the **Organization settings** permission.
 
-Tapping a drift notification opens the **Changes** feed for the window it covered.
+Tapping a drift notification opens the **Changes** feed already filtered to the window it covered — and to the account, when every change in that window came from one. A **Since alert** chip shows the filter is on; clear it to widen the view to the whole feed.
 
 ### Pages and approval requests
 
@@ -70,6 +70,8 @@ Your own code can raise an alert — a [workflow](./workflows.md) calling `infra
 Pages deliver over every channel — mobile push, any Slack or Teams channel opted into **Pages**, and SMS to the Twilio recipient list when credentials are configured. The caller can additionally request a **voice call** for something genuinely worth waking up for. Tapping a workflow's page opens that workflow in the app, where its recent runs and logs show what tripped it; a page pushed over the API opens the org home.
 
 A run suspended on [`infra.waitForApproval(...)`](./workflows.md) shares this trigger, because an approval request is a workflow asking for a human just as a page is. It goes to the same places — push, Slack, Teams and SMS — and there is exactly one per request, so it needs no cooldown of its own: the request either gets decided or times out.
+
+Tapping an approval notification opens the app's [approvals inbox](./workflows.md#deciding-from-your-phone) with that request at the top, where you can approve or deny it — behind a confirmation step, since a decision releases or fails a run against real infrastructure.
 
 ## The Notifications settings page
 

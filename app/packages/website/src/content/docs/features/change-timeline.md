@@ -21,9 +21,17 @@ Click **Changes** in the sidebar (next to Costs) to open the feed for the whole 
 
 Filter the feed by change kind or by account; results are paginated.
 
+## On your phone
+
+The [mobile app](./mobile-app.md) has the same feed: open **Changes** at the top of the Resources tab. Filters are chips rather than dropdowns — change kind, account, and a time window (**Any time**, **24h**, **7d**, **30d**) — and **Load more** pages through the rest.
+
+Tap any event to open it: the full per-field before → after list, the resource's id, and a button through to the resource itself. Tapping a [drift notification](./mobile-push-notifications.md) opens this screen already filtered to the window that alert covered, with a **Since alert** chip you can clear to widen the view.
+
+<insert [Mobile Changes screen: the filter chip rows with "Since alert" selected, a list of Appeared/Changed/Disappeared events, and one event expanded showing its before → after field values] here>
+
 ## Per-resource changes
 
-Every resource detail page has a **Changes** tab showing that resource's own slice of the timeline — handy for answering "when did this instance's IP change?" or "when did this DNS record show up?".
+Every resource detail page has a **Changes** tab showing that resource's own slice of the timeline — handy for answering "when did this instance's IP change?" or "when did this DNS record show up?". On mobile it is a **Changes** section on the resource's page rather than a tab; tapping a change there expands the same diff.
 
 <insert [A resource detail page with the Changes tab active, showing an update event with a before → after field diff] here>
 
@@ -85,6 +93,8 @@ So drift alerting works like a digest:
 Only the background poller raises drift alerts. A manual refresh from the UI still records events in the feed but never notifies — the same rule sync-failure incidents follow, and for the same reason: you are already looking at the result.
 
 Drift alerts do **not** send SMS. Twilio is reserved for things that should interrupt a human — sync incidents, budget crossings, pages, and approval requests — and a drift digest is a thing to read, not a thing to be woken by.
+
+On the [mobile app](./mobile-app.md), **Settings → Notifications** carries your personal **Resource drift** push toggle, so you can mute or unmute the feed from the phone it arrives on. The organization-wide filters in the table above are set on the web app: they decide what everyone in the org hears, and retuning a shared threshold is not a thing to do one-handed.
 
 ## How far back it goes
 

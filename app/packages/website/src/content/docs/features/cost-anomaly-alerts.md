@@ -83,6 +83,11 @@ same scope as [pushing your own cost rows](./server-push.md), because retuning c
 whole cost feed alerts on. A member without it sees what detection is tuned to, without the
 controls.
 
+Tuning is a web and desktop feature. The mobile app lists anomalies but does not edit the
+thresholds: they are organization-wide settings that change what everyone's alerts look like,
+and the control you actually want on a phone — turning the notifications off for yourself — is
+the "Cost anomalies" toggle in the app's notification settings.
+
 <insert [Costs panel Anomalies section with the tuning panel expanded, showing the Sensitivity, Spike floor, and New-source floor inputs with their default values] here>
 
 ## Deduplication and cooldown
@@ -111,6 +116,12 @@ percentage change. New spend sources carry a **New source** badge, and show `non
 baseline and `new` for the change — a key with no prior spend has no percentage to be up by.
 
 <insert [Costs panel showing the Anomalies section with a mix of rows — a spike with a red percentage change, and a new spend source with its New source badge, "none" baseline, and "new" change] here>
+
+The **mobile app** shows the same list on its **Costs** tab, under the month-to-date chart and
+your budgets, with the same distinction between the two kinds. Tapping a cost anomaly push
+notification opens it. Detection thresholds are read-only there — see below.
+
+<insert [Mobile app Costs tab scrolled to the Anomalies section, showing a spike row with its baseline and percentage change and a new-spend-source row with its New source badge and "new" change] here>
 
 ## From the CLI
 

@@ -9,6 +9,22 @@ export { createCloudFetch, CloudApiError, type CloudFetch, type CloudFetchOption
 export { parseSseStream, parseNdjsonStream } from "./sse";
 export { fetchOrgs, fetchMe, type CloudOrg, type CloudMe } from "./orgs";
 export {
+  fetchOrgPermissions,
+  hasPermission,
+  type OrgMembership,
+  type OrgRoleSummary,
+} from "./permissions";
+export {
+  fetchWorkflowApprovals,
+  decideWorkflowApproval,
+  isApprovalConflict,
+  isApprovalExpired,
+  formatApprovalExpiry,
+  type ApprovalDecision,
+  type WorkflowApproval,
+  type WorkflowApprovalStatus,
+} from "./workflow-approvals";
+export {
   registerPushToken,
   listPushDevices,
   unregisterPushDevice,
@@ -106,6 +122,9 @@ export {
   formatMoney,
   formatBucketLabel,
   formatBudgetMonth,
+  costAnomalyDeltaPercent,
+  listCostAnomalies,
+  COST_ANOMALY_WINDOW,
   COST_DIMENSIONS,
   COST_RANGE_PRESETS,
   COST_CHART_TYPES,
@@ -194,6 +213,11 @@ export {
   DRIFT_ALERT_LIMITS,
   formatChangeValue,
   summarizeChange,
+  changeFeedSearchParams,
+  fetchOrgChanges,
+  fetchResourceChanges,
+  type ChangeFeedRequest,
+  type ChangeFeedResult,
   type DriftAlertSettings,
   type DriftAlertSettingsPatch,
   type ResourceChangeKind,
@@ -248,6 +272,7 @@ export {
   collectDependencies,
   layoutDependencyGraph,
   dependencyEdgeLabel,
+  fetchDependencyGraph,
   type DependencyGraphNode,
   type DependencyGraphEdge,
   type DependencyEdgeKind,

@@ -167,10 +167,11 @@ export function pushDataToPath(data: PushNotificationData): string {
       return `/org/${data.orgId}/accounts/${data.accountId}`;
     case "workflow_page":
       return `/org/${data.orgId}/workflows/${data.workflowId}`;
-    // Approvals land on the workflow too — its run list shows the suspended
-    // run. (In-app approve/deny is a follow-up; web handles the decision.)
+    // Approvals land on the inbox, which is the screen with the buttons on it —
+    // the workflow's run list can only show that a run is stuck. The id rides
+    // along so the inbox can surface this request first.
     case "workflow_approval":
-      return `/org/${data.orgId}/workflows/${data.workflowId}`;
+      return `/org/${data.orgId}/settings/approvals?approvalId=${encodeURIComponent(data.approvalId)}`;
     // API pages name a source Infrawrench has no page for, so the org home is
     // the closest thing to "where this alert came from".
     case "api_page":
@@ -181,6 +182,15 @@ export function pushDataToPath(data: PushNotificationData): string {
     // org's spend lives — same reasoning as budget breaches.
     case "cost_anomaly":
       return `/org/${data.orgId}/costs`;
+    // A drift digest describes a window of the change timeline, so it opens the
+    // Changes screen already narrowed to that window: `since` becomes the feed's
+    // `from` filter, and `accountId` rides along only when the server said every
+    // change in the window came from one account.
+    case "resource_drift": {
+      const query = new URLSearchParams({ since: data.since });
+      if (data.accountId) query.set("accountId", data.accountId);
+      return `/org/${data.orgId}/changes?${query.toString()}`;
+    }
     case "test":
       return `/org/${data.orgId}`;
     default:
@@ -243,6 +253,21 @@ export function parsePushData(raw: unknown): PushNotificationData | null {
         return null;
       }
       return { type: "cost_anomaly", orgId, day, dimension, dimensionKey };
+    }
+    case "resource_drift": {
+      const changeCount = data["changeCount"];
+      const since = data["since"];
+      const accountId = data["accountId"];
+      if (typeof changeCount !== "number" || typeof since !== "string") return null;
+      return {
+        type: "resource_drift",
+        orgId,
+        changeCount,
+        since,
+        // Absent whenever the window spanned more than one account, which is
+        // the common case — the feed then opens unfiltered by account.
+        ...(typeof accountId === "string" ? { accountId } : {}),
+      };
     }
     case "workflow_page": {
       const workflowId = data["workflowId"];

@@ -84,6 +84,10 @@ The Weekly digest section shows the outcome of the most recent attempt, so a dig
 
 The status line also shows when the last attempt ran, which week it covered, and — while a retry is pending — when the next one is due.
 
+## On the phone
+
+The [mobile app](./mobile-app.md)'s **Settings → Notifications** carries the parts of the digest worth having in a pocket: the on/off switch, the **AI summary paragraph** opt-in, **Send now**, and the same last-attempt status — a failing digest is visible there too, which is the whole point of the status block. The current schedule and the email recipient list are shown, but read-only: changing the send day, hour, or time zone and adding or removing recipients stay on the web app, where a time-zone picker and an address list belong.
+
 ## Scheduling details
 
 - Delivery is exactly-once per week per organization, including across worker restarts and multiple workers.

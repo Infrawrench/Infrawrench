@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.26.0",
+    "version": "0.27.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -1416,6 +1416,7 @@
           "redirect-rule",
           "redis-instance",
           "redshift-cluster",
+          "reserved-ip",
           "route-table",
           "route53-health-check",
           "route53-hosted-zone",
@@ -2473,6 +2474,11 @@
             "description": "The anomalous UTC day.",
             "example": "2026-07-01"
           },
+          "kind": {
+            "type": "string",
+            "enum": ["spike", "new_source"],
+            "description": "Which detection produced the row. `spike` is spend far above the key's own trailing baseline; `new_source` is a provider or service with no spend at all across the trailing window that suddenly has material spend — it can never be a `spike`, since a zero baseline has no mean or deviation to exceed. Rows written before new-source detection existed read as `spike`."
+          },
           "dimension": {
             "type": "string",
             "enum": ["provider", "service"]
@@ -2489,11 +2495,11 @@
           },
           "baselineCents": {
             "type": "integer",
-            "description": "Mean daily spend over the trailing 28-day baseline, in cents."
+            "description": "Mean daily spend over the trailing 28-day baseline, in cents. Zero, or near it, for a `new_source` — clients must not compute a percentage change from it."
           },
           "thresholdCents": {
             "type": "integer",
-            "description": "The detection bar the day cleared (baseline mean + N·stddev), in cents."
+            "description": "The detection bar the day cleared, in cents: baseline mean + N·stddev for a `spike`, the new-source floor for a `new_source`."
           },
           "detectedAt": {
             "type": "string",
@@ -2508,6 +2514,7 @@
         "required": [
           "id",
           "day",
+          "kind",
           "dimension",
           "dimensionKey",
           "currency",
@@ -2517,6 +2524,31 @@
           "detectedAt",
           "notifiedAt"
         ],
+        "additionalProperties": false
+      },
+      "CostAnomalySettings": {
+        "type": "object",
+        "properties": {
+          "sigmas": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "Standard deviations above a key's own trailing mean that count as a spike. Lower is more sensitive. Bounded at 1 — below that roughly a third of ordinary days clear the bar — and at 10, above which nothing short of a 10x jump fires. Defaults to 3."
+          },
+          "minDeltaCents": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 10000000,
+            "description": "Minimum rise over the baseline mean before a spike alerts, in USD cents (converted per series, so it means the same real amount in every currency). Defaults to 1000 ($10)."
+          },
+          "newSourceMinCents": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 10000000,
+            "description": "Minimum first-day spend before a new spend source alerts, in USD cents. A key with no prior spend has no statistical bar to clear, so this absolute floor is the only thing keeping a new $0.02/day service quiet. Defaults to 2500 ($25)."
+          }
+        },
+        "required": ["sigmas", "minDeltaCents", "newSourceMinCents"],
         "additionalProperties": false
       },
       "CostAccountStatus": {
@@ -5317,6 +5349,93 @@
         "required": ["entries", "total"],
         "additionalProperties": false
       },
+      "DriftAlertSettings": {
+        "type": "object",
+        "properties": {
+          "notifyCreated": {
+            "type": "boolean",
+            "description": "Alert on resources that appeared."
+          },
+          "notifyUpdated": {
+            "type": "boolean",
+            "description": "Alert on field-level updates. Defaults to false — updates are the bulk of the volume and are usually a provider restating a value."
+          },
+          "notifyDeleted": {
+            "type": "boolean",
+            "description": "Alert on resources that disappeared."
+          },
+          "cooldownMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 1440,
+            "description": "Least time between drift notifications for this organization. One notification per window, no matter how many changes or accounts it covers."
+          },
+          "minChanges": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "description": "Fewest matching changes in a window worth notifying about."
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "description": "Accounts to alert on. An empty array means every account."
+          },
+          "lastNotifiedAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "When this organization last had a drift digest delivered."
+          }
+        },
+        "required": [
+          "notifyCreated",
+          "notifyUpdated",
+          "notifyDeleted",
+          "cooldownMinutes",
+          "minChanges",
+          "accountIds",
+          "lastNotifiedAt"
+        ],
+        "additionalProperties": false
+      },
+      "DriftAlertSettingsUpdate": {
+        "type": "object",
+        "properties": {
+          "notifyCreated": {
+            "type": "boolean"
+          },
+          "notifyUpdated": {
+            "type": "boolean"
+          },
+          "notifyDeleted": {
+            "type": "boolean"
+          },
+          "cooldownMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 1440
+          },
+          "minChanges": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "maxItems": 200
+          }
+        },
+        "additionalProperties": false
+      },
       "ResourceChangeListResponse": {
         "type": "object",
         "properties": {
@@ -6758,6 +6877,9 @@
           "storage:write",
           "dashboards:read",
           "dashboards:write",
+          "workflows:read",
+          "workflows:write",
+          "workflows:approve",
           "deployments:read",
           "deployments:plan",
           "deployments:write",
@@ -7716,12 +7838,22 @@
             "type": "boolean",
             "description": "Statistical spend-spike (cost anomaly) alerts"
           },
+          "resourceDrift": {
+            "type": "boolean",
+            "description": "Batched resource-drift digests from the change timeline. Defaults to false — drift is continuous where the other triggers are exceptional."
+          },
           "workflowPages": {
             "type": "boolean",
-            "description": "Alerts raised by a workflow calling infra.page(...)"
+            "description": "Pages and approval requests raised by a workflow (infra.page / infra.waitForApproval) or by POST /pages"
           }
         },
-        "required": ["syncIncidents", "budgetAlerts", "anomalyAlerts", "workflowPages"],
+        "required": [
+          "syncIncidents",
+          "budgetAlerts",
+          "anomalyAlerts",
+          "resourceDrift",
+          "workflowPages"
+        ],
         "additionalProperties": false
       },
       "PushPreferencesUpdate": {
@@ -7734,6 +7866,9 @@
             "type": "boolean"
           },
           "anomalyAlerts": {
+            "type": "boolean"
+          },
+          "resourceDrift": {
             "type": "boolean"
           },
           "workflowPages": {
@@ -7761,6 +7896,9 @@
             "type": "boolean"
           },
           "anomalyAlerts": {
+            "type": "boolean"
+          },
+          "resourceDrift": {
             "type": "boolean"
           },
           "workflowPages": {
@@ -7794,6 +7932,7 @@
           "syncIncidents",
           "budgetAlerts",
           "anomalyAlerts",
+          "resourceDrift",
           "workflowPages",
           "devices"
         ],
@@ -7847,9 +7986,13 @@
             "type": "boolean",
             "description": "Statistical spend-spike (cost anomaly) alerts"
           },
+          "resourceDrift": {
+            "type": "boolean",
+            "description": "Batched resource-drift digests from the change timeline. Defaults to false when a channel is added — drift is continuous where the other triggers are exceptional."
+          },
           "workflowPages": {
             "type": "boolean",
-            "description": "Alerts raised by a workflow calling infra.page(...)"
+            "description": "Pages and approval requests raised by a workflow (infra.page / infra.waitForApproval) or by POST /pages"
           },
           "weeklyDigest": {
             "type": "boolean",
@@ -7865,6 +8008,7 @@
           "syncIncidents",
           "budgetAlerts",
           "anomalyAlerts",
+          "resourceDrift",
           "workflowPages",
           "weeklyDigest"
         ],
@@ -7933,6 +8077,9 @@
           "anomalyAlerts": {
             "type": "boolean"
           },
+          "resourceDrift": {
+            "type": "boolean"
+          },
           "workflowPages": {
             "type": "boolean"
           },
@@ -7953,6 +8100,9 @@
             "type": "boolean"
           },
           "anomalyAlerts": {
+            "type": "boolean"
+          },
+          "resourceDrift": {
             "type": "boolean"
           },
           "workflowPages": {
@@ -7988,9 +8138,13 @@
             "type": "boolean",
             "description": "Statistical spend-spike (cost anomaly) alerts"
           },
+          "resourceDrift": {
+            "type": "boolean",
+            "description": "Batched resource-drift digests from the change timeline. Defaults to false when a channel is added — drift is continuous where the other triggers are exceptional."
+          },
           "workflowPages": {
             "type": "boolean",
-            "description": "Alerts raised by a workflow calling infra.page(...)"
+            "description": "Pages and approval requests raised by a workflow (infra.page / infra.waitForApproval) or by POST /pages"
           },
           "weeklyDigest": {
             "type": "boolean",
@@ -8004,6 +8158,7 @@
           "syncIncidents",
           "budgetAlerts",
           "anomalyAlerts",
+          "resourceDrift",
           "workflowPages",
           "weeklyDigest"
         ],
@@ -8042,6 +8197,9 @@
           "anomalyAlerts": {
             "type": "boolean"
           },
+          "resourceDrift": {
+            "type": "boolean"
+          },
           "workflowPages": {
             "type": "boolean"
           },
@@ -8067,6 +8225,9 @@
           "anomalyAlerts": {
             "type": "boolean"
           },
+          "resourceDrift": {
+            "type": "boolean"
+          },
           "workflowPages": {
             "type": "boolean"
           },
@@ -8081,19 +8242,85 @@
         "properties": {
           "enabled": {
             "type": "boolean",
-            "description": "Whether the weekly digest is enabled for this organization. Delivery targets are the Slack channels and Teams webhooks whose weeklyDigest trigger is on."
+            "description": "Whether the weekly digest is enabled for this organization. Delivery targets are the Slack channels and Teams webhooks whose weeklyDigest trigger is on, plus the organization's digest email recipients."
           },
           "lastSentWeekStart": {
             "type": ["string", "null"],
-            "description": "Monday (ISO date, UTC) of the last week a digest covered, or null when none has been sent."
+            "description": "Monday (ISO date, in the organization's timezone) of the last week a digest covered, or null when none has been sent."
           },
           "lastSentAt": {
             "type": ["string", "null"],
             "format": "date-time",
-            "description": "When the last digest was sent, or null when none has been sent."
+            "description": "When a digest last actually reached a destination, or null if none ever has."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA time zone the schedule and the Monday-to-Sunday week boundary are expressed in. Defaults to UTC.",
+            "example": "Europe/Berlin"
+          },
+          "sendDay": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7,
+            "description": "ISO day of week the digest is sent on: 1 = Monday … 7 = Sunday."
+          },
+          "sendHour": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 23,
+            "description": "Local hour (0–23) in `timezone` the digest is sent at."
+          },
+          "narrativeEnabled": {
+            "type": "boolean",
+            "description": "Whether an AI-written summary paragraph is placed above the deterministic content. Opt-in, default off. Failures are non-fatal: the digest still sends without the paragraph."
+          },
+          "narrativeAvailable": {
+            "type": "boolean",
+            "description": "Whether this deployment has an LLM API key configured. False means enabling the narrative has no effect."
+          },
+          "emailAvailable": {
+            "type": "boolean",
+            "description": "Whether this deployment has a mail provider configured. False means email recipients are never delivered to."
+          },
+          "attemptCount": {
+            "type": "integer",
+            "description": "Delivery attempts made for lastSentWeekStart's window, including the first."
+          },
+          "lastAttemptAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "lastStatus": {
+            "type": ["string", "null"],
+            "enum": ["pending", "succeeded", "partial", "failed", "no_targets"],
+            "description": "Outcome of the most recent delivery attempt. `partial` (some destinations took it, some failed) is deliberately never retried automatically — a retry would post the digest twice where it already landed. `failed` (nothing landed) is retried a bounded number of times with backoff, then parked until the next week."
+          },
+          "lastError": {
+            "type": ["string", "null"],
+            "description": "Why the last attempt was not a clean success, for display in the settings UI."
+          },
+          "nextAttemptAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "When the next automatic retry is due, or null when none is scheduled."
           }
         },
-        "required": ["enabled", "lastSentWeekStart", "lastSentAt"],
+        "required": [
+          "enabled",
+          "lastSentWeekStart",
+          "lastSentAt",
+          "timezone",
+          "sendDay",
+          "sendHour",
+          "narrativeEnabled",
+          "narrativeAvailable",
+          "emailAvailable",
+          "attemptCount",
+          "lastAttemptAt",
+          "lastStatus",
+          "lastError",
+          "nextAttemptAt"
+        ],
         "additionalProperties": false
       },
       "DigestSettingsUpdate": {
@@ -8101,9 +8328,39 @@
         "properties": {
           "enabled": {
             "type": "boolean"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA time zone name. Rejected with 400 if the server does not know the zone.",
+            "example": "America/New_York"
+          },
+          "sendDay": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7
+          },
+          "sendHour": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 23
+          },
+          "narrativeEnabled": {
+            "type": "boolean"
           }
         },
-        "required": ["enabled"],
+        "additionalProperties": false
+      },
+      "DigestTransportResult": {
+        "type": "object",
+        "properties": {
+          "attempted": {
+            "type": "integer"
+          },
+          "succeeded": {
+            "type": "integer"
+          }
+        },
+        "required": ["attempted", "succeeded"],
         "additionalProperties": false
       },
       "DigestSendResult": {
@@ -8114,13 +8371,59 @@
           },
           "attempted": {
             "type": "integer",
-            "description": "Deliveries attempted across Slack channels and Teams webhooks."
+            "description": "Deliveries attempted across Slack channels, Teams webhooks and email recipients."
           },
           "succeeded": {
             "type": "integer"
+          },
+          "slack": {
+            "$ref": "#/components/schemas/DigestTransportResult"
+          },
+          "teams": {
+            "$ref": "#/components/schemas/DigestTransportResult"
+          },
+          "email": {
+            "$ref": "#/components/schemas/DigestTransportResult"
           }
         },
-        "required": ["ok", "attempted", "succeeded"],
+        "required": ["ok", "attempted", "succeeded", "slack", "teams", "email"],
+        "additionalProperties": false
+      },
+      "DigestEmailRecipient": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "email"],
+        "additionalProperties": false
+      },
+      "DigestEmailRecipientList": {
+        "type": "object",
+        "properties": {
+          "recipients": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DigestEmailRecipient"
+            }
+          }
+        },
+        "required": ["recipients"],
+        "additionalProperties": false
+      },
+      "DigestEmailRecipientCreate": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "finance@example.com"
+          }
+        },
+        "required": ["email"],
         "additionalProperties": false
       }
     },
@@ -11054,7 +11357,7 @@
       "get": {
         "tags": ["Costs"],
         "summary": "List recently detected cost anomalies",
-        "description": "Spend anomalies detected by the daily background pass: days where a provider's or service's spend exceeded its trailing 28-day baseline by a statistical threshold (mean + N·stddev, with an absolute floor to ignore penny-scale noise). Newest day first, capped at 200 rows.",
+        "description": "Spend anomalies detected by the daily background pass. Two kinds share the list: a `spike`, where a provider's or service's spend exceeded its trailing 28-day baseline by a statistical threshold (mean + N·stddev, with an absolute floor to ignore penny-scale noise), and a `new_source`, where a provider or service with no spend at all across that window suddenly billed a material amount. Thresholds are per organization — see GET /costs/anomaly-settings. Newest day first, capped at 200 rows.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -11111,7 +11414,94 @@
             }
           }
         },
-        "operationId": "getOrgOrgIdCostsAnomalies"
+        "operationId": "getOrgOrgIdCostsAnomalies",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/costs/anomaly-settings": {
+      "get": {
+        "tags": ["Costs"],
+        "summary": "Get the organization's anomaly detection thresholds",
+        "description": "The tunable part of cost anomaly detection. Everything else about the model — the 28-day baseline, the 7-day notification cooldown, the minimum history a baseline needs — is fixed. An organization that has never changed a threshold reads back the defaults.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Anomaly settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostAnomalySettings"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostsAnomalySettings",
+        "x-required-permission": "costs:read"
+      },
+      "put": {
+        "tags": ["Costs"],
+        "summary": "Update the organization's anomaly detection thresholds",
+        "description": "Takes effect on the next detection pass (which runs after each cost collection). Anomalies already stored are not re-judged. All three fields are required — this is a PUT of the whole settings object, not a patch.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostAnomalySettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostAnomalySettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdCostsAnomalySettings",
+        "x-required-permission": "costs:write"
       }
     },
     "/api/org/{orgId}/costs/status": {
@@ -12270,7 +12660,7 @@
       "get": {
         "tags": ["Workflows"],
         "summary": "List workflow approval requests",
-        "description": "Approval requests raised by `infra.waitForApproval(...)` inside workflow runs, newest first. Filter with `status=pending` to build an approvals inbox.\n\n_Requires permission: `dashboards:read`._",
+        "description": "Approval requests raised by `infra.waitForApproval(...)` inside workflow runs, newest first. Filter with `status=pending` to build an approvals inbox.\n\n_Requires permission: `workflows:read`._",
         "parameters": [
           {
             "schema": {
@@ -12338,14 +12728,14 @@
           }
         },
         "operationId": "getOrgOrgIdWorkflowApprovals",
-        "x-required-permission": "dashboards:read"
+        "x-required-permission": "workflows:read"
       }
     },
     "/api/org/{orgId}/workflow-approvals/{id}/approve": {
       "post": {
         "tags": ["Workflows"],
         "summary": "Approve a pending workflow approval request",
-        "description": "The suspended run resumes within a few seconds of the decision landing.\n\n_Requires permission: `dashboards:write`._",
+        "description": "The suspended run resumes within a few seconds of the decision landing.\n\n_Requires permission: `workflows:approve`._",
         "parameters": [
           {
             "schema": {
@@ -12402,14 +12792,14 @@
           }
         },
         "operationId": "postOrgOrgIdWorkflowApprovalsIdApprove",
-        "x-required-permission": "dashboards:write"
+        "x-required-permission": "workflows:approve"
       }
     },
     "/api/org/{orgId}/workflow-approvals/{id}/deny": {
       "post": {
         "tags": ["Workflows"],
         "summary": "Deny a pending workflow approval request",
-        "description": "Denial fails the waiting `infra.waitForApproval(...)` call in the run.\n\n_Requires permission: `dashboards:write`._",
+        "description": "Denial fails the waiting `infra.waitForApproval(...)` call in the run.\n\n_Requires permission: `workflows:approve`._",
         "parameters": [
           {
             "schema": {
@@ -12466,7 +12856,7 @@
           }
         },
         "operationId": "postOrgOrgIdWorkflowApprovalsIdDeny",
-        "x-required-permission": "dashboards:write"
+        "x-required-permission": "workflows:approve"
       }
     },
     "/api/org/{orgId}/deployments/repos": {
@@ -15370,6 +15760,89 @@
         },
         "operationId": "getOrgOrgIdChanges",
         "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/changes/alert-settings": {
+      "get": {
+        "tags": ["Changes"],
+        "summary": "Get the organization's resource-drift alert filter",
+        "description": "Drift notifications are batched: at most one message per organization per `cooldownMinutes`, covering every change since the previous one. These settings decide which changes count and how often a message may go out. Who receives it is the `resourceDrift` opt-in on push preferences, Slack channels and Teams webhooks — off by default on all three.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Drift alert settings (defaults when the organization never saved any)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriftAlertSettings"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdChangesAlertSettings"
+      },
+      "put": {
+        "tags": ["Changes"],
+        "summary": "Update the organization's resource-drift alert filter",
+        "description": "Every field is optional so a single toggle can be saved on its own. `cooldownMinutes` is floored at 5: below the poller's own cycle the notification rate would follow the sync rate again, which is what the batching exists to prevent.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriftAlertSettingsUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriftAlertSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdChangesAlertSettings"
       }
     },
     "/api/org/{orgId}/changes/resource": {
@@ -19470,7 +19943,7 @@
       "get": {
         "tags": ["Push"],
         "summary": "Get the caller's push preferences for this organization",
-        "description": "Absent preferences default to all triggers enabled.",
+        "description": "Absent preferences default to every trigger enabled except resourceDrift, which defaults to false.",
         "parameters": [
           {
             "schema": {
@@ -20341,7 +20814,7 @@
       "get": {
         "tags": ["Weekly digest"],
         "summary": "Get the organization's weekly digest settings",
-        "description": "The weekly digest is a Monday-morning summary of last week's spend (with week-over-week movers), sync incidents, and resource churn, delivered to the Slack channels and Teams webhooks opted into the weeklyDigest trigger.",
+        "description": "The weekly digest is a summary of the last complete Monday-to-Sunday week's spend (with week-over-week movers), sync incidents, and resource churn, delivered to the Slack channels and Teams webhooks opted into the weeklyDigest trigger and to the organization's digest email recipients. The response also carries the outcome of the most recent delivery attempt so a silently failing digest is visible.",
         "parameters": [
           {
             "schema": {
@@ -20371,8 +20844,8 @@
       },
       "put": {
         "tags": ["Weekly digest"],
-        "summary": "Enable or disable the weekly digest",
-        "description": "Enabling schedules the first digest for next Monday morning (07:00 UTC) rather than sending immediately — use POST /digest/send for an immediate one.",
+        "summary": "Update the weekly digest settings",
+        "description": "Every field is optional. Enabling schedules the first digest for the next configured send time rather than sending immediately — use POST /digest/send for an immediate one. The week boundary follows `timezone`, so the reported window is always the organization's own local Monday-to-Sunday week. Changing the schedule clears any parked failure state but never replays a week that already went out.",
         "parameters": [
           {
             "schema": {
@@ -20424,7 +20897,7 @@
       "post": {
         "tags": ["Weekly digest"],
         "summary": "Compose and send last week's digest now",
-        "description": "Ignores the schedule and the enabled flag — composes the digest for the last complete week and posts it to every opted-in channel. Fails when no Slack channel or Teams webhook has the weeklyDigest trigger on.",
+        "description": "Ignores the schedule and the enabled flag — composes the digest for the last complete week and sends it to every opted-in channel and email recipient. This is also the manual recovery for a partial delivery, which is never retried automatically. Fails when nothing is routed to receive the digest, or when every destination rejected it.",
         "parameters": [
           {
             "schema": {
@@ -20440,7 +20913,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Delivery summary",
+            "description": "Delivery summary, broken down per transport",
             "content": {
               "application/json": {
                 "schema": {
@@ -20461,6 +20934,147 @@
           }
         },
         "operationId": "postOrgOrgIdDigestSend"
+      }
+    },
+    "/api/org/{orgId}/digest/recipients": {
+      "get": {
+        "tags": ["Weekly digest"],
+        "summary": "List the organization's digest email recipients",
+        "description": "Email is a digest-only transport, so its destinations are an organization-level address list rather than a per-channel trigger. Addresses need not belong to Infrawrench users — a finance alias is a valid recipient.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The recipient list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestEmailRecipientList"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdDigestRecipients"
+      },
+      "post": {
+        "tags": ["Weekly digest"],
+        "summary": "Add a digest email recipient",
+        "description": "Adding an address the organization already has is a no-op that returns the existing entry, so a double submit cannot double-deliver.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DigestEmailRecipientCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The recipient",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestEmailRecipient"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdDigestRecipients"
+      }
+    },
+    "/api/org/{orgId}/digest/recipients/{recipientId}": {
+      "delete": {
+        "tags": ["Weekly digest"],
+        "summary": "Remove a digest email recipient",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Recipient id"
+            },
+            "required": true,
+            "name": "recipientId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["ok"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdDigestRecipientsRecipientId"
       }
     }
   },
