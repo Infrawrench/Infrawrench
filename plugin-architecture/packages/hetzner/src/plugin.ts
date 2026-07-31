@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { HetznerClient } from "./client.js";
+import { hetznerTerraformExport } from "./terraform.js";
 import { ServerResourceType } from "./resources/server.js";
 import { VolumeResourceType } from "./resources/volume.js";
 import { FloatingIpResourceType } from "./resources/floating-ip.js";
@@ -54,4 +55,5 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new HetznerClient(credentials, resourceTypes, services),
+  terraformExport: hetznerTerraformExport,
 };

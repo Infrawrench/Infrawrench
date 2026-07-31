@@ -1,5 +1,6 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { DigitalOceanClient } from "./client.js";
+import { digitaloceanTerraformExport } from "./terraform.js";
 import { ProjectResourceType } from "./resources/project.js";
 import { DropletResourceType } from "./resources/droplet.js";
 import { DOKSClusterResourceType } from "./resources/doks-cluster.js";
@@ -95,4 +96,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) =>
     new DigitalOceanClient(credentials, resourceTypes, services),
+  terraformExport: digitaloceanTerraformExport,
 };
