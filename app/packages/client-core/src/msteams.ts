@@ -24,6 +24,8 @@ export interface MsTeamsWebhook {
   budgetAlerts: boolean;
   /** Alerts raised by a workflow calling `infra.page(...)`. */
   workflowPages: boolean;
+  /** The Monday-morning weekly summary (only sends when the org enables it). */
+  weeklyDigest: boolean;
 }
 
 export interface MsTeamsStatus {
@@ -50,6 +52,7 @@ export interface AddMsTeamsWebhookArgs {
   syncIncidents?: boolean;
   budgetAlerts?: boolean;
   workflowPages?: boolean;
+  weeklyDigest?: boolean;
 }
 
 export async function addMsTeamsWebhook(
@@ -65,7 +68,7 @@ export async function addMsTeamsWebhook(
 
 export type MsTeamsWebhookTriggers = Pick<
   MsTeamsWebhook,
-  "syncIncidents" | "budgetAlerts" | "workflowPages"
+  "syncIncidents" | "budgetAlerts" | "workflowPages" | "weeklyDigest"
 >;
 
 export async function updateMsTeamsWebhook(

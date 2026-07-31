@@ -599,6 +599,12 @@ export const slackChannels = pgTable(
     budgetAlerts: boolean("budget_alerts").notNull().default(true),
     /** Alerts raised by a workflow calling `infra.page(...)`. */
     workflowPages: boolean("workflow_pages").notNull().default(true),
+    /**
+     * The Monday-morning weekly summary. Channel opt-in defaults on like the
+     * other triggers, but nothing sends until the org enables the digest in
+     * `org_digest_settings`.
+     */
+    weeklyDigest: boolean("weekly_digest").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -650,6 +656,12 @@ export const msteamsWebhooks = pgTable(
     budgetAlerts: boolean("budget_alerts").notNull().default(true),
     /** Alerts raised by a workflow calling `infra.page(...)`. */
     workflowPages: boolean("workflow_pages").notNull().default(true),
+    /**
+     * The Monday-morning weekly summary. Channel opt-in defaults on like the
+     * other triggers, but nothing sends until the org enables the digest in
+     * `org_digest_settings`.
+     */
+    weeklyDigest: boolean("weekly_digest").notNull().default(true),
     createdByUserId: text("created_by_user_id"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -662,6 +674,28 @@ export const msteamsWebhooks = pgTable(
     ),
   }),
 );
+
+/**
+ * Per-org weekly-digest settings and last-sent bookkeeping. One row per org
+ * that has ever touched the feature; no row means disabled.
+ *
+ * `lastSentWeekStart` is the Monday (ISO `YYYY-MM-DD`, UTC) of the week the
+ * last digest *covered*, not the day it was sent. The scheduler claims due
+ * orgs with a single conditional UPDATE on this column, so any number of
+ * poller replicas — or a restart mid-Monday — can never double-send: only the
+ * instance whose UPDATE actually moved the column forward delivers.
+ */
+export const orgDigestSettings = pgTable("org_digest_settings", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  enabled: boolean("enabled").notNull().default(false),
+  /** Monday (ISO day, UTC) of the last week a digest was sent for. */
+  lastSentWeekStart: text("last_sent_week_start"),
+  lastSentAt: timestamp("last_sent_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
 
 /**
  * Rolling-window record of poller sync failures, used by the Twilio pager to

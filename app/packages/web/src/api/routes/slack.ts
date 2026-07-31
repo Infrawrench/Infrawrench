@@ -80,20 +80,25 @@ app.get("/status", async (c) => {
       teamId: i.teamId,
       teamName: i.teamName,
     })),
-    channels: channels
-      // Hide channels whose install has been disconnected; the rows stay so a
-      // re-install restores them.
-      .filter((ch) => installs.some((i) => i.id === ch.installationId))
-      .map((ch) => ({
-        id: ch.id,
-        installationId: ch.installationId,
-        channelId: ch.channelId,
-        channelName: ch.channelName,
-        isPrivate: ch.isPrivate,
-        syncIncidents: ch.syncIncidents,
-        budgetAlerts: ch.budgetAlerts,
-        workflowPages: ch.workflowPages,
-      })),
+    // Hide channels whose install has been disconnected; the rows stay so a
+    // re-install restores them.
+    channels: channels.flatMap((ch) =>
+      installs.some((i) => i.id === ch.installationId)
+        ? [
+            {
+              id: ch.id,
+              installationId: ch.installationId,
+              channelId: ch.channelId,
+              channelName: ch.channelName,
+              isPrivate: ch.isPrivate,
+              syncIncidents: ch.syncIncidents,
+              budgetAlerts: ch.budgetAlerts,
+              workflowPages: ch.workflowPages,
+              weeklyDigest: ch.weeklyDigest,
+            },
+          ]
+        : [],
+    ),
   });
 });
 
@@ -150,6 +155,7 @@ interface ChannelBody {
   syncIncidents?: boolean;
   budgetAlerts?: boolean;
   workflowPages?: boolean;
+  weeklyDigest?: boolean;
 }
 
 /** Route a channel's alerts. Re-adding an existing channel updates its opt-ins. */
@@ -174,6 +180,7 @@ app.post("/channels", async (c) => {
   const syncIncidents = body.syncIncidents ?? true;
   const budgetAlerts = body.budgetAlerts ?? true;
   const workflowPages = body.workflowPages ?? true;
+  const weeklyDigest = body.weeklyDigest ?? true;
   const now = new Date();
   const [row] = await db
     .insert(slackChannels)
@@ -187,6 +194,7 @@ app.post("/channels", async (c) => {
       syncIncidents,
       budgetAlerts,
       workflowPages,
+      weeklyDigest,
     })
     .onConflictDoUpdate({
       target: [slackChannels.installationId, slackChannels.channelId],
@@ -196,6 +204,7 @@ app.post("/channels", async (c) => {
         syncIncidents,
         budgetAlerts,
         workflowPages,
+        weeklyDigest,
         updatedAt: now,
       },
     })
@@ -207,6 +216,7 @@ interface ChannelPatchBody {
   syncIncidents?: boolean;
   budgetAlerts?: boolean;
   workflowPages?: boolean;
+  weeklyDigest?: boolean;
 }
 
 app.patch("/channels/:id", async (c) => {
@@ -219,6 +229,7 @@ app.patch("/channels/:id", async (c) => {
   if (body.syncIncidents != null) patch.syncIncidents = body.syncIncidents;
   if (body.budgetAlerts != null) patch.budgetAlerts = body.budgetAlerts;
   if (body.workflowPages != null) patch.workflowPages = body.workflowPages;
+  if (body.weeklyDigest != null) patch.weeklyDigest = body.weeklyDigest;
 
   const result = await db
     .update(slackChannels)

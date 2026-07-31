@@ -14,6 +14,10 @@ const MsTeamsWebhook = strict({
   workflowPages: z
     .boolean()
     .openapi({ description: "Alerts raised by a workflow calling infra.page(...)" }),
+  weeklyDigest: z.boolean().openapi({
+    description:
+      "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest).",
+  }),
 }).openapi("MsTeamsWebhook");
 
 const MsTeamsStatus = strict({
@@ -29,6 +33,7 @@ const MsTeamsWebhookCreate = strict({
   syncIncidents: z.boolean().optional(),
   budgetAlerts: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
+  weeklyDigest: z.boolean().optional(),
 }).openapi("MsTeamsWebhookCreate");
 
 // Registered under its own name — `.partial()` on a registered schema would
@@ -38,6 +43,7 @@ const MsTeamsWebhookUpdate = strict({
   syncIncidents: z.boolean().optional(),
   budgetAlerts: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
+  weeklyDigest: z.boolean().optional(),
 }).openapi("MsTeamsWebhookUpdate");
 
 export function registerMsTeamsPaths(ctx: BuildContext) {

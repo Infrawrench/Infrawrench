@@ -48,7 +48,7 @@ import type { AddMsTeamsWebhookArgs, MsTeamsWebhook } from "@infrawrench/client-
 import { db } from "./db/client";
 import { msteamsWebhooks } from "./db/schema";
 import { buildAad, decrypt, encrypt, keyedHash } from "./encryption";
-import type { PushTrigger } from "./push/types";
+import type { ChannelTrigger } from "./push/types";
 
 /** Abort Teams requests after 10s so a hung connection can't stall paging. */
 const MSTEAMS_REQUEST_TIMEOUT_MS = 10_000;
@@ -162,6 +162,7 @@ export async function addMsTeamsWebhook(
   const syncIncidents = args.syncIncidents ?? true;
   const budgetAlerts = args.budgetAlerts ?? true;
   const workflowPages = args.workflowPages ?? true;
+  const weeklyDigest = args.weeklyDigest ?? true;
   const now = new Date();
 
   const [row] = await db
@@ -178,6 +179,7 @@ export async function addMsTeamsWebhook(
       syncIncidents,
       budgetAlerts,
       workflowPages,
+      weeklyDigest,
       createdByUserId: userId,
     })
     .onConflictDoUpdate({
@@ -193,6 +195,7 @@ export async function addMsTeamsWebhook(
         syncIncidents,
         budgetAlerts,
         workflowPages,
+        weeklyDigest,
         updatedAt: now,
       },
     })
@@ -210,6 +213,7 @@ function toRecord(row: typeof msteamsWebhooks.$inferSelect): MsTeamsWebhookRecor
     syncIncidents: row.syncIncidents,
     budgetAlerts: row.budgetAlerts,
     workflowPages: row.workflowPages,
+    weeklyDigest: row.weeklyDigest,
   };
 }
 
@@ -373,6 +377,7 @@ const TRIGGER_COLUMN = {
   syncIncidents: msteamsWebhooks.syncIncidents,
   budgetAlerts: msteamsWebhooks.budgetAlerts,
   workflowPages: msteamsWebhooks.workflowPages,
+  weeklyDigest: msteamsWebhooks.weeklyDigest,
 } as const;
 
 /**
@@ -383,7 +388,7 @@ const TRIGGER_COLUMN = {
  */
 export async function sendMsTeamsToOrg(
   organizationId: string,
-  trigger: PushTrigger,
+  trigger: ChannelTrigger,
   alert: MsTeamsAlert,
 ): Promise<MsTeamsFanOutResult> {
   try {

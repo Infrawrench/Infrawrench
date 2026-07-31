@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.19.0",
+    "version": "0.20.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -7312,6 +7312,10 @@
           "workflowPages": {
             "type": "boolean",
             "description": "Alerts raised by a workflow calling infra.page(...)"
+          },
+          "weeklyDigest": {
+            "type": "boolean",
+            "description": "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest)."
           }
         },
         "required": [
@@ -7322,7 +7326,8 @@
           "isPrivate",
           "syncIncidents",
           "budgetAlerts",
-          "workflowPages"
+          "workflowPages",
+          "weeklyDigest"
         ],
         "additionalProperties": false
       },
@@ -7388,6 +7393,9 @@
           },
           "workflowPages": {
             "type": "boolean"
+          },
+          "weeklyDigest": {
+            "type": "boolean"
           }
         },
         "required": ["installationId", "channelId", "channelName"],
@@ -7403,6 +7411,9 @@
             "type": "boolean"
           },
           "workflowPages": {
+            "type": "boolean"
+          },
+          "weeklyDigest": {
             "type": "boolean"
           }
         },
@@ -7431,9 +7442,21 @@
           "workflowPages": {
             "type": "boolean",
             "description": "Alerts raised by a workflow calling infra.page(...)"
+          },
+          "weeklyDigest": {
+            "type": "boolean",
+            "description": "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest)."
           }
         },
-        "required": ["id", "label", "urlHint", "syncIncidents", "budgetAlerts", "workflowPages"],
+        "required": [
+          "id",
+          "label",
+          "urlHint",
+          "syncIncidents",
+          "budgetAlerts",
+          "workflowPages",
+          "weeklyDigest"
+        ],
         "additionalProperties": false
       },
       "MsTeamsStatus": {
@@ -7468,6 +7491,9 @@
           },
           "workflowPages": {
             "type": "boolean"
+          },
+          "weeklyDigest": {
+            "type": "boolean"
           }
         },
         "required": ["label", "url"],
@@ -7487,8 +7513,58 @@
           },
           "workflowPages": {
             "type": "boolean"
+          },
+          "weeklyDigest": {
+            "type": "boolean"
           }
         },
+        "additionalProperties": false
+      },
+      "DigestSettings": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the weekly digest is enabled for this organization. Delivery targets are the Slack channels and Teams webhooks whose weeklyDigest trigger is on."
+          },
+          "lastSentWeekStart": {
+            "type": ["string", "null"],
+            "description": "Monday (ISO date, UTC) of the last week a digest covered, or null when none has been sent."
+          },
+          "lastSentAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "When the last digest was sent, or null when none has been sent."
+          }
+        },
+        "required": ["enabled", "lastSentWeekStart", "lastSentAt"],
+        "additionalProperties": false
+      },
+      "DigestSettingsUpdate": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": ["enabled"],
+        "additionalProperties": false
+      },
+      "DigestSendResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "attempted": {
+            "type": "integer",
+            "description": "Deliveries attempted across Slack channels and Teams webhooks."
+          },
+          "succeeded": {
+            "type": "integer"
+          }
+        },
+        "required": ["ok", "attempted", "succeeded"],
         "additionalProperties": false
       }
     },
@@ -18874,6 +18950,132 @@
           }
         },
         "operationId": "postOrgOrgIdMsteamsTest"
+      }
+    },
+    "/api/org/{orgId}/digest": {
+      "get": {
+        "tags": ["Weekly digest"],
+        "summary": "Get the organization's weekly digest settings",
+        "description": "The weekly digest is a Monday-morning summary of last week's spend (with week-over-week movers), sync incidents, and resource churn, delivered to the Slack channels and Teams webhooks opted into the weeklyDigest trigger.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Digest settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestSettings"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdDigest"
+      },
+      "put": {
+        "tags": ["Weekly digest"],
+        "summary": "Enable or disable the weekly digest",
+        "description": "Enabling schedules the first digest for next Monday morning (07:00 UTC) rather than sending immediately — use POST /digest/send for an immediate one.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DigestSettingsUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdDigest"
+      }
+    },
+    "/api/org/{orgId}/digest/send": {
+      "post": {
+        "tags": ["Weekly digest"],
+        "summary": "Compose and send last week's digest now",
+        "description": "Ignores the schedule and the enabled flag — composes the digest for the last complete week and posts it to every opted-in channel. Fails when no Slack channel or Teams webhook has the weeklyDigest trigger on.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Delivery summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestSendResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdDigestSend"
       }
     }
   },

@@ -19,6 +19,10 @@ const SlackChannel = strict({
   workflowPages: z
     .boolean()
     .openapi({ description: "Alerts raised by a workflow calling infra.page(...)" }),
+  weeklyDigest: z.boolean().openapi({
+    description:
+      "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest).",
+  }),
 }).openapi("SlackChannel");
 
 const SlackStatus = strict({
@@ -43,6 +47,7 @@ const SlackChannelCreate = strict({
   syncIncidents: z.boolean().optional(),
   budgetAlerts: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
+  weeklyDigest: z.boolean().optional(),
 }).openapi("SlackChannelCreate");
 
 // Registered under its own name — `.partial()` on a registered schema would
@@ -51,6 +56,7 @@ const SlackChannelUpdate = strict({
   syncIncidents: z.boolean().optional(),
   budgetAlerts: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
+  weeklyDigest: z.boolean().optional(),
 }).openapi("SlackChannelUpdate");
 
 export function registerSlackPaths(ctx: BuildContext) {

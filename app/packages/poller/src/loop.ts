@@ -4,6 +4,7 @@ import { db } from "@infrawrench/server-core/db/client";
 import { workflows } from "@infrawrench/server-core/db/schema";
 import { runOrgWorkflow } from "@infrawrench/server-core/workflows/runner";
 import { loadPlugins } from "@infrawrench/server-core/plugin-loader";
+import { runWeeklyDigests } from "@infrawrench/server-core/digest/weekly";
 import { TickLoop } from "@infrawrench/server-core/tick-loop";
 import { pollAccount, type PollAccountRow } from "./poll-account";
 import { pollAccountCosts } from "./cost-poll";
@@ -80,6 +81,11 @@ export class PollerLoop extends TickLoop {
     // Third pass: cost collection (daily cadence per account). Also
     // defensive — billing-API problems never affect resource polling.
     await this.tickCosts();
+
+    // Fourth pass: weekly digests. A no-op outside the Monday-morning send
+    // window; the conditional-UPDATE claim inside makes it replica- and
+    // restart-safe. Defensive like the others.
+    await this.tickDigests();
   }
 
   private async runOne(row: PollAccountRow): Promise<void> {
@@ -118,6 +124,15 @@ export class PollerLoop extends TickLoop {
       await Promise.allSettled(claimed.map((row) => pollAccountCosts(row)));
     } catch (e) {
       console.error("[poller] cost tick failed:", e);
+    }
+  }
+
+  /** Send any weekly digests that have come due. */
+  private async tickDigests(): Promise<void> {
+    try {
+      await runWeeklyDigests();
+    } catch (e) {
+      console.error("[poller] digest tick failed:", e);
     }
   }
 

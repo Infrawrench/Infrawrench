@@ -20,6 +20,9 @@ import {
   removeMsTeamsWebhook,
   sendMsTeamsTestMessage,
   updateMsTeamsWebhook,
+  getDigestSettings,
+  sendDigestNow,
+  updateDigestSettings,
   type PushDeviceSummary,
   type PushPreferences,
   type SlackChannel,
@@ -28,6 +31,7 @@ import {
   type MsTeamsStatus,
   type MsTeamsWebhook,
   type MsTeamsWebhookTriggers,
+  type DigestSettings,
 } from "@infrawrench/client-core";
 import type { CloudFetch } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
@@ -213,7 +217,90 @@ export default function NotificationsScreen() {
       <SlackSection api={api} orgId={orgId} />
 
       <MsTeamsSection api={api} orgId={orgId} />
+
+      <WeeklyDigestSection api={api} orgId={orgId} />
     </Screen>
+  );
+}
+
+/**
+ * Org-level switch for the Monday-morning weekly digest. Which channels get
+ * it is the "Weekly digest" toggle on each Slack channel / Teams webhook
+ * above; this only turns the schedule on and off.
+ */
+function WeeklyDigestSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
+  const queryClient = useQueryClient();
+  const settingsKey = ["digest-settings", orgId] as const;
+
+  const settings = useQuery({
+    queryKey: settingsKey,
+    queryFn: () => getDigestSettings(api, orgId),
+  });
+
+  const update = useMutation({
+    mutationFn: (enabled: boolean) => updateDigestSettings(api, orgId, { enabled }),
+    onMutate: async (enabled) => {
+      await queryClient.cancelQueries({ queryKey: settingsKey });
+      const previous = queryClient.getQueryData<DigestSettings>(settingsKey);
+      if (previous) queryClient.setQueryData(settingsKey, { ...previous, enabled });
+      return { previous };
+    },
+    onError: (e, _enabled, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(settingsKey, ctx.previous);
+      Alert.alert("Update failed", e instanceof Error ? e.message : "Unknown error");
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: settingsKey }),
+  });
+
+  const sendNow = useMutation({
+    mutationFn: () => sendDigestNow(api, orgId),
+    onSuccess: (result) => {
+      Alert.alert(
+        "Weekly digest",
+        result ? `Sent to ${result.succeeded} of ${result.attempted} channel(s).` : "Digest sent.",
+      );
+      void queryClient.invalidateQueries({ queryKey: settingsKey });
+    },
+    onError: (e) => Alert.alert("Send failed", e instanceof Error ? e.message : "Unknown error"),
+  });
+
+  if (settings.isLoading || !settings.data) return null;
+
+  const current = settings.data;
+
+  return (
+    <>
+      <SectionTitle>Weekly digest</SectionTitle>
+      <Card>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
+              Send a weekly digest
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+              Monday mornings: last week&apos;s spend, movers, incidents, and resource churn — to
+              the channels with &quot;Weekly digest&quot; on.
+            </Text>
+          </View>
+          <Switch
+            value={current.enabled}
+            onValueChange={(v) => update.mutate(v)}
+            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
+          />
+        </View>
+        {current.lastSentAt ? (
+          <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+            Last sent {new Date(current.lastSentAt).toLocaleDateString()}.
+          </Text>
+        ) : null}
+      </Card>
+      <Button
+        label={sendNow.isPending ? "Sending…" : "Send now"}
+        variant="secondary"
+        disabled={sendNow.isPending}
+        onPress={() => sendNow.mutate()}
+      />
+    </>
   );
 }
 
@@ -221,6 +308,7 @@ const SLACK_TRIGGERS = [
   { key: "syncIncidents", label: "Sync failures" },
   { key: "budgetAlerts", label: "Budgets" },
   { key: "workflowPages", label: "Pages" },
+  { key: "weeklyDigest", label: "Weekly digest" },
 ] as const satisfies ReadonlyArray<{ key: keyof SlackChannelTriggers; label: string }>;
 
 /**
@@ -502,6 +590,7 @@ const MSTEAMS_TRIGGERS = [
   { key: "syncIncidents", label: "Sync failures" },
   { key: "budgetAlerts", label: "Budgets" },
   { key: "workflowPages", label: "Pages" },
+  { key: "weeklyDigest", label: "Weekly digest" },
 ] as const satisfies ReadonlyArray<{ key: keyof MsTeamsWebhookTriggers; label: string }>;
 
 /**

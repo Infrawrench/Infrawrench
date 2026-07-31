@@ -11,6 +11,7 @@ import type {
   SlackInstallation,
   SlackStatus,
 } from "@infrawrench/ui";
+import { WeeklyDigestSection } from "@/components/WeeklyDigestSection";
 
 interface PagingSettings {
   enabled: boolean;
@@ -77,6 +78,8 @@ function PagingPage() {
       <SlackSection orgId={orgId} />
 
       <MsTeamsSection orgId={orgId} />
+
+      <WeeklyDigestSection orgId={orgId} />
 
       <PushPreferencesSection orgId={orgId} />
 
@@ -391,13 +394,16 @@ function RecipientsPanel({
 }
 
 /**
- * The three alert triggers a channel can opt into, shared by the Slack and
- * Teams sections. Same three as mobile push, and the same keys server-side.
+ * The triggers a channel can opt into, shared by the Slack and Teams sections.
+ * The first three are the alert triggers mobile push also has; the weekly
+ * digest is channel-only (it goes to a team channel, not a phone) and only
+ * sends once the org enables it in the Weekly digest section below.
  */
 const ALERT_TRIGGERS = [
   { key: "syncIncidents", label: "Sync failures" },
   { key: "budgetAlerts", label: "Budgets" },
   { key: "workflowPages", label: "Pages" },
+  { key: "weeklyDigest", label: "Weekly digest" },
 ] as const;
 
 /** The Microsoft Teams glyph, in the Teams brand purple. */
@@ -1102,23 +1108,33 @@ function PushPreferencesSection({ orgId }: { orgId: string }) {
   );
   const [testBusy, setTestBusy] = useState(false);
 
-  async function load() {
-    try {
-      const [p, d] = await Promise.all([
-        apiGet<PushPreferences>(`/api/org/${orgId}/push/preferences`),
-        apiGet<PushDeviceSummary[]>(`/api/push/devices`),
-      ]);
-      setPrefs(p);
-      setDevices(d);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load push settings");
-    }
-  }
+  // Bumped to re-run the load effect after removing a device.
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId]);
+    // `cancelled` drops a response that lands after `orgId` changed, so a
+    // slower earlier request can't overwrite the newer org's preferences.
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [p, d] = await Promise.all([
+          apiGet<PushPreferences>(`/api/org/${orgId}/push/preferences`),
+          apiGet<PushDeviceSummary[]>(`/api/push/devices`),
+        ]);
+        if (!cancelled) {
+          setPrefs(p);
+          setDevices(d);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Failed to load push settings");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, reloadNonce]);
 
   async function updatePref(patch: Partial<PushPreferences>) {
     if (!prefs) return;
@@ -1134,7 +1150,7 @@ function PushPreferencesSection({ orgId }: { orgId: string }) {
 
   async function handleRemoveDevice(id: string) {
     await apiDelete(`/api/push/devices/${id}`);
-    void load();
+    setReloadNonce((n) => n + 1);
   }
 
   async function handleTest() {
