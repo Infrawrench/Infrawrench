@@ -48,3 +48,7 @@ DNS record content uses the same machinery. When you create an **A**, **AAAA**, 
 - You want to pin a specific credential regardless of upstream changes.
 
 See [Secret rerolls](./secret-rerolls.md) for changing a reference after you set it.
+
+## Seeing the wiring
+
+Every reference is also a dependency edge, and the [dependency graph](../features/dependency-graph.md) draws them all at once — including the blast radius of any resource other things depend on.
