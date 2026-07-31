@@ -67,6 +67,15 @@ volume: 403 Forbidden — token is missing the "block_storage:read" scope
 
 The rest of the account still lists. Org accounts ask the cloud to re-sync the account from the provider first and then read the synced copy, so they reflect what exists right now too — if the sync fails (provider outage, rate limit) the CLI prints the last synced copy and says so on stderr. The TUI does the same when you open an account: the synced copy appears instantly, then refreshes in place once the live sync completes.
 
+## Exporting to Terraform
+
+```
+infrawrench export -a "Production Hetzner" > main.tf     # HCL on stdout
+infrawrench export -a prod --format terraform --json     # structured result
+```
+
+Generates the same Terraform configuration as the web app's **Export to Terraform** action — provider block, `var.*` variables for secrets, one resource block per mapped resource with its `terraform import` hint. Resources without a mapping yet are listed on stderr (or in the `unsupported` array with `--json`) so redirected stdout stays pure HCL. See [Terraform export](./terraform-export.md) for the supported providers and the adoption workflow.
+
 ## Metrics and cost charts
 
 The CLI renders metric series as terminal charts:
