@@ -1,6 +1,7 @@
 import { z } from "../zod";
 import { strict, ErrorResponses, Ok, OrgIdParam, Uuid, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
+import { FreezeLockedResponse } from "./change-freezes";
 
 const DeployRepo = strict({
   fullName: z.string().openapi({ example: "astrid/my-app" }),
@@ -288,6 +289,7 @@ export function registerDeploymentPaths(ctx: BuildContext) {
       400: ErrorResponses[400],
       402: ErrorResponses[402],
       409: ErrorResponses[409],
+      423: FreezeLockedResponse,
       401: ErrorResponses[401],
       403: ErrorResponses[403],
       404: ErrorResponses[404],

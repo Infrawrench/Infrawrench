@@ -10,6 +10,7 @@ import {
   ResourceStatus,
 } from "../common";
 import type { BuildContext } from "../context";
+import { FreezeLockedResponse } from "./change-freezes";
 
 const StatusDot = strict({
   kind: z.literal("status-dot"),
@@ -586,6 +587,7 @@ export function registerResourcePaths(ctx: BuildContext) {
       },
       400: ErrorResponses[400],
       404: ErrorResponses[404],
+      423: FreezeLockedResponse,
     },
   });
 
@@ -608,6 +610,7 @@ export function registerResourcePaths(ctx: BuildContext) {
       200: { description: "Deleted", content: { "application/json": { schema: Ok } } },
       400: ErrorResponses[400],
       404: ErrorResponses[404],
+      423: FreezeLockedResponse,
     },
   });
 
@@ -616,6 +619,8 @@ export function registerResourcePaths(ctx: BuildContext) {
     path: "/api/org/{orgId}/resources/invoke-action",
     tags: ["Resources"],
     summary: "Invoke a plugin-defined action on a resource",
+    description:
+      "Actions the plugin marks `destructive: true` in its detail schema are blocked with `423` while an org change freeze is in effect.",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: InvokeActionRequest } }, required: true },
@@ -624,6 +629,7 @@ export function registerResourcePaths(ctx: BuildContext) {
       200: { description: "Invoked", content: { "application/json": { schema: Ok } } },
       400: ErrorResponses[400],
       404: ErrorResponses[404],
+      423: FreezeLockedResponse,
     },
   });
 

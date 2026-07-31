@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.22.0",
+    "version": "0.23.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -123,6 +123,10 @@
     {
       "name": "Audit",
       "description": "Audit log access."
+    },
+    {
+      "name": "Change Freezes",
+      "description": "Org-level change freeze windows. While one is in effect, destructive actions are blocked (423) unless explicitly overridden by an admin."
     },
     {
       "name": "API keys",
@@ -2954,6 +2958,102 @@
         ],
         "additionalProperties": false
       },
+      "ChangeFreeze": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reason": {
+            "type": ["string", "null"]
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "createdByUserId": {
+            "type": ["string", "null"]
+          },
+          "endedByUserId": {
+            "type": ["string", "null"]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "reason",
+          "startsAt",
+          "endsAt",
+          "active",
+          "createdByUserId",
+          "endedByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ChangeFreezeStatus": {
+        "type": "object",
+        "properties": {
+          "freeze": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ChangeFreeze"
+              },
+              {
+                "type": ["object", "null"],
+                "description": "The freeze currently in effect, or null when changes are allowed."
+              }
+            ]
+          }
+        },
+        "required": ["freeze"],
+        "additionalProperties": false
+      },
+      "ChangeFreezeInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      },
       "CustomGraphSummary": {
         "type": "object",
         "properties": {
@@ -3617,6 +3717,46 @@
           "buildRunner",
           "startedAt"
         ],
+        "additionalProperties": false
+      },
+      "ChangeFreezeBlocked": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "enum": ["change_freeze_active"]
+          },
+          "freeze": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "example": "00000000-0000-0000-0000-000000000000"
+              },
+              "name": {
+                "type": "string"
+              },
+              "reason": {
+                "type": ["string", "null"]
+              },
+              "startsAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "endsAt": {
+                "type": ["string", "null"],
+                "format": "date-time"
+              }
+            },
+            "required": ["id", "name", "reason", "startsAt", "endsAt"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["error", "code", "freeze"],
         "additionalProperties": false
       },
       "DeployRollbackInput": {
@@ -6441,6 +6581,9 @@
           "costs:write",
           "budgets:read",
           "budgets:write",
+          "freezes:read",
+          "freezes:write",
+          "freezes:override",
           "audit:read",
           "team:read",
           "team:invite",
@@ -11080,6 +11223,309 @@
         "operationId": "getOrgOrgIdBudgetsIdEvents"
       }
     },
+    "/api/org/{orgId}/change-freezes": {
+      "get": {
+        "tags": ["Change Freezes"],
+        "summary": "List change freeze windows, newest first",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Freeze windows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ChangeFreeze"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdChangeFreezes",
+        "x-required-permission": "freezes:read",
+        "description": "_Requires permission: `freezes:read`._"
+      },
+      "post": {
+        "tags": ["Change Freezes"],
+        "summary": "Declare a change freeze window",
+        "description": "While the freeze is in effect, destructive actions (resource deletion, destructive plugin actions, secret-version destroys, deployment rollbacks) return `423` unless explicitly overridden by a caller with `freezes:override`.\n\n_Requires permission: `freezes:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeFreezeInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeFreeze"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdChangeFreezes",
+        "x-required-permission": "freezes:write"
+      }
+    },
+    "/api/org/{orgId}/change-freezes/status": {
+      "get": {
+        "tags": ["Change Freezes"],
+        "summary": "The freeze currently in effect, if any",
+        "description": "Returns the active freeze window (active, started, not yet past its end time) or `freeze: null`. Clients poll this to show the freeze banner and pre-warn before destructive actions.\n\n_Requires permission: `freezes:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current freeze status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeFreezeStatus"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdChangeFreezesStatus",
+        "x-required-permission": "freezes:read"
+      }
+    },
+    "/api/org/{orgId}/change-freezes/{id}": {
+      "put": {
+        "tags": ["Change Freezes"],
+        "summary": "Update a change freeze window",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeFreezeInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeFreeze"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdChangeFreezesId",
+        "x-required-permission": "freezes:write",
+        "description": "_Requires permission: `freezes:write`._"
+      },
+      "delete": {
+        "tags": ["Change Freezes"],
+        "summary": "Delete a change freeze window",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdChangeFreezesId",
+        "x-required-permission": "freezes:write",
+        "description": "_Requires permission: `freezes:write`._"
+      }
+    },
+    "/api/org/{orgId}/change-freezes/{id}/end": {
+      "post": {
+        "tags": ["Change Freezes"],
+        "summary": "End a change freeze now",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeFreeze"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdChangeFreezesIdEnd",
+        "x-required-permission": "freezes:write",
+        "description": "_Requires permission: `freezes:write`._"
+      }
+    },
     "/api/org/{orgId}/custom-graphs": {
       "get": {
         "tags": ["Custom graphs"],
@@ -12299,6 +12745,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "Blocked by an active change freeze. Retry with the `x-change-freeze-override: true` header if you hold `freezes:override`; both blocks and overrides are audit-logged.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeFreezeBlocked"
                 }
               }
             }
@@ -13557,6 +14013,16 @@
                 }
               }
             }
+          },
+          "423": {
+            "description": "Blocked by an active change freeze. Retry with the `x-change-freeze-override: true` header if you hold `freezes:override`; both blocks and overrides are audit-logged.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeFreezeBlocked"
+                }
+              }
+            }
           }
         },
         "operationId": "postOrgOrgIdResourcesPluginIdTypeIdSecretVersionsModify",
@@ -13653,6 +14119,16 @@
                 }
               }
             }
+          },
+          "423": {
+            "description": "Blocked by an active change freeze. Retry with the `x-change-freeze-override: true` header if you hold `freezes:override`; both blocks and overrides are audit-logged.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeFreezeBlocked"
+                }
+              }
+            }
           }
         },
         "operationId": "deleteOrgOrgIdResourcesPluginIdTypeId",
@@ -13664,6 +14140,7 @@
       "post": {
         "tags": ["Resources"],
         "summary": "Invoke a plugin-defined action on a resource",
+        "description": "Actions the plugin marks `destructive: true` in its detail schema are blocked with `423` while an org change freeze is in effect.\n\n_Requires permission: `resources:write`._",
         "parameters": [
           {
             "schema": {
@@ -13717,11 +14194,20 @@
                 }
               }
             }
+          },
+          "423": {
+            "description": "Blocked by an active change freeze. Retry with the `x-change-freeze-override: true` header if you hold `freezes:override`; both blocks and overrides are audit-logged.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeFreezeBlocked"
+                }
+              }
+            }
           }
         },
         "operationId": "postOrgOrgIdResourcesInvokeAction",
-        "x-required-permission": "resources:write",
-        "description": "_Requires permission: `resources:write`._"
+        "x-required-permission": "resources:write"
       }
     },
     "/api/org/{orgId}/resources/nosql-command": {
