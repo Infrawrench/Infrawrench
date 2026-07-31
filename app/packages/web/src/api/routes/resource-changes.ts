@@ -44,30 +44,34 @@ app.get("/", async (c) => {
 
   const where = and(...conditions);
 
-  const [countResult] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(resourceChanges)
-    .where(where);
-
-  const entries = await db
-    .select({
-      id: resourceChanges.id,
-      resourceId: resourceChanges.resourceId,
-      accountId: resourceChanges.accountId,
-      pluginId: resourceChanges.pluginId,
-      resourceTypeId: resourceChanges.resourceTypeId,
-      displayName: resourceChanges.displayName,
-      changeKind: resourceChanges.changeKind,
-      diff: resourceChanges.diff,
-      createdAt: resourceChanges.createdAt,
-      accountName: accounts.displayName,
-    })
-    .from(resourceChanges)
-    .leftJoin(accounts, eq(resourceChanges.accountId, accounts.id))
-    .where(where)
-    .orderBy(desc(resourceChanges.createdAt), desc(resourceChanges.id))
-    .limit(pageSize)
-    .offset((page - 1) * pageSize);
+  // Independent read-only queries — race them so the page costs max(count, rows)
+  // instead of the sum.
+  const [countRows, entries] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(resourceChanges)
+      .where(where),
+    db
+      .select({
+        id: resourceChanges.id,
+        resourceId: resourceChanges.resourceId,
+        accountId: resourceChanges.accountId,
+        pluginId: resourceChanges.pluginId,
+        resourceTypeId: resourceChanges.resourceTypeId,
+        displayName: resourceChanges.displayName,
+        changeKind: resourceChanges.changeKind,
+        diff: resourceChanges.diff,
+        createdAt: resourceChanges.createdAt,
+        accountName: accounts.displayName,
+      })
+      .from(resourceChanges)
+      .leftJoin(accounts, eq(resourceChanges.accountId, accounts.id))
+      .where(where)
+      .orderBy(desc(resourceChanges.createdAt), desc(resourceChanges.id))
+      .limit(pageSize)
+      .offset((page - 1) * pageSize),
+  ]);
+  const countResult = countRows[0];
 
   return c.json({ entries, total: countResult?.count ?? 0 });
 });
