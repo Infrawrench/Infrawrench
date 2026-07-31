@@ -330,6 +330,13 @@
       "when": 1785409276238,
       "tag": "0046_dear_deathbird",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1785489378008,
+      "tag": "0047_swift_jack_power",
+      "breakpoints": true
     }
   ]
 }

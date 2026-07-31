@@ -24,7 +24,7 @@ import type { SlackAvailableChannel } from "@infrawrench/client-core";
 import { db } from "./db/client";
 import { slackChannels, slackInstallations } from "./db/schema";
 import { buildAad, decrypt, encrypt } from "./encryption";
-import type { PushTrigger } from "./push/types";
+import type { ChannelTrigger } from "./push/types";
 
 const SLACK_API = "https://slack.com/api";
 
@@ -434,6 +434,7 @@ const TRIGGER_COLUMN = {
   syncIncidents: slackChannels.syncIncidents,
   budgetAlerts: slackChannels.budgetAlerts,
   workflowPages: slackChannels.workflowPages,
+  weeklyDigest: slackChannels.weeklyDigest,
 } as const;
 
 interface TargetChannel {
@@ -445,7 +446,7 @@ interface TargetChannel {
 /** Channels opted into `trigger`, across the org's live installs. */
 async function resolveTargets(
   organizationId: string,
-  trigger: PushTrigger,
+  trigger: ChannelTrigger,
 ): Promise<TargetChannel[]> {
   return db
     .select({
@@ -472,7 +473,7 @@ async function resolveTargets(
  */
 export async function sendSlackToOrg(
   organizationId: string,
-  trigger: PushTrigger,
+  trigger: ChannelTrigger,
   alert: SlackAlert,
 ): Promise<SlackFanOutResult> {
   try {
