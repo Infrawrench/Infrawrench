@@ -27,6 +27,16 @@ ipcMain.handle("cloud_costs_status", async (_e, { orgId }: { orgId: string }) =>
   return cloudFetch(orgId, "/costs/status");
 });
 
+ipcMain.handle(
+  "cloud_costs_anomalies",
+  async (_e, { orgId, days }: { orgId: string; days?: number }) => {
+    const params = new URLSearchParams();
+    if (days) params.set("days", String(days));
+    const qs = params.toString();
+    return cloudFetch(orgId, `/costs/anomalies${qs ? `?${qs}` : ""}`);
+  },
+);
+
 ipcMain.handle("cloud_list_budgets", async (_e, { orgId }: { orgId: string }) => {
   return (await cloudFetch(orgId, "/budgets")) ?? [];
 });

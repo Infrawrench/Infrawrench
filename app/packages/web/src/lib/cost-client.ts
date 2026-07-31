@@ -2,6 +2,7 @@ import type {
   BudgetInput,
   BudgetWithStatus,
   CostAccountStatus,
+  CostAnomaly,
   CostApi,
   CostDimensionOption,
   CostQueryRequest,
@@ -49,6 +50,12 @@ export function createWebCostsClient(orgId: string): CostsClient {
   return {
     ...createWebCostApi(orgId),
     listBudgets: () => apiGet<BudgetWithStatus[]>(`/api/org/${orgId}/budgets`),
+    listAnomalies: async (days = 30) => {
+      const res = await apiGet<{ anomalies: CostAnomaly[] }>(
+        `/api/org/${orgId}/costs/anomalies?days=${days}`,
+      );
+      return res.anomalies;
+    },
     listDashboards: () => apiGet<CostsPanelDashboard[]>(`/api/org/${orgId}/dashboards`),
     createBudget: (input: BudgetInput) =>
       apiPost<{ id: string }>(`/api/org/${orgId}/budgets`, input),

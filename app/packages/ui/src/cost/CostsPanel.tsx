@@ -4,6 +4,7 @@ import { Modal } from "../components/Modal.js";
 import { SavingsSection } from "../savings/SavingsSection.js";
 import type { OrphanedResource, OrphansClient } from "../savings/types.js";
 import { BudgetCard } from "./BudgetCard.js";
+import { CostAnomaliesSection } from "./CostAnomaliesSection.js";
 import { BudgetConfigModal, DEFAULT_BUDGET_INPUT } from "./BudgetConfigModal.js";
 import { CostGraphCard } from "./CostGraphCard.js";
 import { CostCollectionNotice } from "./CostCollectionNotice.js";
@@ -255,6 +256,8 @@ export function CostsPanel({ client, onOpenDashboard, orphans, onOpenResource }:
             ))}
           </div>
         </section>
+
+        <CostAnomaliesSection client={client} />
 
         {orphans && <SavingsSection client={orphans} onOpenResource={onOpenResource} />}
       </div>

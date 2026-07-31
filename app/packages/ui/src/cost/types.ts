@@ -1,6 +1,7 @@
 import type {
   BudgetWithStatus,
   CostAccountStatus,
+  CostAnomaly,
   CostDimensionOption,
 } from "@infrawrench/client-core";
 import type { BudgetInput, CostQueryRequest, CostQueryResponse } from "./config.js";
@@ -14,6 +15,9 @@ export type {
   CostPollError,
   BudgetWithStatus,
   BudgetPlacement,
+  /** A detected spend anomaly, as listed on the Costs panel. */
+  CostAnomaly,
+  CostAnomalyDimension,
   /** One selectable value in a dimension picker. */
   CostDimensionOption,
 } from "@infrawrench/client-core";
@@ -48,6 +52,12 @@ export interface CostsPanelDashboard {
  */
 export interface CostsClient extends CostApi {
   listBudgets(): Promise<BudgetWithStatus[]>;
+  /**
+   * Spend anomalies detected over the last `days` days (default 30). Optional
+   * the way the mutating half is: a host that hasn't wired the endpoint yet
+   * simply doesn't render the anomalies section.
+   */
+  listAnomalies?(days?: number): Promise<CostAnomaly[]>;
   listDashboards(): Promise<CostsPanelDashboard[]>;
   createBudget?(input: BudgetInput): Promise<{ id: string }>;
   updateBudget?(budgetId: string, input: BudgetInput): Promise<void>;
