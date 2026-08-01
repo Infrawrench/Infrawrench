@@ -5,6 +5,9 @@ import type {
   CostAnomalySettings,
   CostAnomalySettingsView,
   CostDimensionOption,
+  ShowbackReport,
+  TagComplianceReport,
+  UntaggedSpendReport,
 } from "@infrawrench/client-core";
 import type { BudgetInput, CostQueryRequest, CostQueryResponse } from "./config.js";
 
@@ -29,6 +32,18 @@ export type {
   CostAnomalySmsMode,
   /** One selectable value in a dimension picker. */
   CostDimensionOption,
+  /** Tag policy / compliance / showback contract (see client-core/tag-policy). */
+  RequiredTag,
+  TagPolicy,
+  AccountTagCompliance,
+  TagComplianceReport,
+  CostCentre,
+  AllocationRule,
+  AllocationRuleInput,
+  AllocationRuleMatch,
+  UntaggedSpendReport,
+  ShowbackReport,
+  ShowbackReportCentre,
 } from "@infrawrench/client-core";
 
 /**
@@ -89,4 +104,15 @@ export interface CostsClient extends CostApi {
   addBudgetToDashboard?(dashboardId: string, budgetId: string, title: string): Promise<void>;
   /** Remove one budget card, identified by the widget id from `placements`. */
   removeBudgetPlacement?(widgetId: string): Promise<void>;
+  /**
+   * Tag governance reads, optional the way `listAnomalies` is: a host that
+   * hasn't wired them simply doesn't render the tag governance section.
+   * `getTagCompliance` also carries the policy, so one call answers both
+   * "what is required" and "who complies".
+   */
+  getTagCompliance?(): Promise<TagComplianceReport>;
+  /** Untagged spend over the required keys; dates are inclusive YYYY-MM-DD. */
+  getUntaggedSpend?(from?: string, to?: string): Promise<UntaggedSpendReport>;
+  /** Spend grouped by cost centre through the org's allocation rules. */
+  getShowback?(from?: string, to?: string): Promise<ShowbackReport>;
 }

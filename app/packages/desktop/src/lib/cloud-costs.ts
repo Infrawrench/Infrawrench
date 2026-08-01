@@ -14,6 +14,10 @@ import type {
   CostQueryRequest,
   CostQueryResponse,
   DashboardWidget,
+  ShowbackReport,
+  TagComplianceReport,
+  TagPolicy,
+  UntaggedSpendReport,
 } from "@infrawrench/ui/cost";
 import { invoke } from "./invoke";
 
@@ -55,6 +59,38 @@ export async function saveCloudAnomalySettings(
   settings: CostAnomalySettings,
 ): Promise<CostAnomalySettingsView> {
   return invoke("cloud_costs_update_anomaly_settings", { orgId, settings });
+}
+
+export async function loadCloudTagPolicy(orgId: string): Promise<TagPolicy> {
+  return invoke("cloud_tag_policy", { orgId });
+}
+
+export async function loadCloudTagCompliance(orgId: string): Promise<TagComplianceReport> {
+  return invoke("cloud_tag_compliance", { orgId });
+}
+
+export async function loadCloudUntaggedSpend(
+  orgId: string,
+  from?: string,
+  to?: string,
+): Promise<UntaggedSpendReport> {
+  return invoke("cloud_costs_untagged", {
+    orgId,
+    ...(from ? { from } : {}),
+    ...(to ? { to } : {}),
+  });
+}
+
+export async function loadCloudShowback(
+  orgId: string,
+  from?: string,
+  to?: string,
+): Promise<ShowbackReport> {
+  return invoke("cloud_costs_showback", {
+    orgId,
+    ...(from ? { from } : {}),
+    ...(to ? { to } : {}),
+  });
 }
 
 export async function listCloudBudgets(orgId: string): Promise<BudgetWithStatus[]> {

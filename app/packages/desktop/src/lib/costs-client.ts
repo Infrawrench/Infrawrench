@@ -15,6 +15,9 @@ import {
   loadCloudAnomalySettings,
   loadCloudCostDimensionValues,
   loadCloudCostStatus,
+  loadCloudShowback,
+  loadCloudTagCompliance,
+  loadCloudUntaggedSpend,
   queryCloudCosts,
   saveCloudAnomalySettings,
   updateCloudBudget,
@@ -72,5 +75,11 @@ export function createDesktopCostsClient(): CostsClient {
       });
     },
     removeBudgetPlacement: (widgetId: string) => deleteCloudWidget(requireOrgId(), widgetId),
+    // The tag governance section is read-only in the shared panel, so desktop
+    // wires all three reads; policy and rule editing stays in web org settings.
+    getTagCompliance: () => loadCloudTagCompliance(requireOrgId()),
+    getUntaggedSpend: (from?: string, to?: string) =>
+      loadCloudUntaggedSpend(requireOrgId(), from, to),
+    getShowback: (from?: string, to?: string) => loadCloudShowback(requireOrgId(), from, to),
   };
 }

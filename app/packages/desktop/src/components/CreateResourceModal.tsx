@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPluginClient } from "../lib/plugin-client";
 import { invoke } from "../lib/invoke";
 import {
@@ -16,6 +16,8 @@ import {
   createCloudResource,
   loadCloudPickerResources,
 } from "../lib/cloud-api";
+import { loadCloudTagPolicy } from "../lib/cloud-costs";
+import type { RequiredTag } from "@infrawrench/client-core";
 import type { ResourcePickerOption } from "@infrawrench/ui";
 import type {
   AssociationSource,
@@ -84,6 +86,20 @@ export function CreateResourceModal({
 }: CreateResourceModalProps) {
   const clientRef = useRef<PluginClient | null>(null);
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
+  const [requiredTags, setRequiredTags] = useState<RequiredTag[] | undefined>();
+
+  useEffect(() => {
+    // Cloud-only and best-effort: the org tag policy lives server-side, and
+    // the modal's notice/prefill is advisory — the API enforces on create.
+    if (!activeCloudOrgId) {
+      setRequiredTags(undefined);
+      return;
+    }
+    loadCloudTagPolicy(activeCloudOrgId).then(
+      (policy) => setRequiredTags(policy.requiredTags),
+      () => setRequiredTags(undefined),
+    );
+  }, [activeCloudOrgId]);
 
   const callbacks = useMemo(() => {
     if (activeCloudOrgId) {
@@ -396,6 +412,7 @@ export function CreateResourceModal({
       displayName={resourceType.displayName}
       form={form}
       onClose={onClose}
+      requiredTags={requiredTags}
       renderField={(f, value, onChange) => (
         <FieldRenderer
           key={f.key}

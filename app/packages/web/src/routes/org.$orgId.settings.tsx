@@ -33,6 +33,7 @@ function SettingsLayout() {
     { to: `/org/${orgId}/settings/bastions`, label: "Bastions" },
     { to: `/org/${orgId}/settings/api-keys`, label: "API Keys" },
     { to: `/org/${orgId}/settings/freezes`, label: "Change Freezes" },
+    { to: `/org/${orgId}/settings/tag-policy`, label: "Tag Policy" },
     // Hidden outright without `workflows:read` — the page would only be able to
     // tell them they can't see it.
     ...(has("workflows:read")

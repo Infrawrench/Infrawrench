@@ -27,6 +27,7 @@ import { Route as OrgOrgIdAgentsRouteImport } from './routes/org.$orgId.agents'
 import { Route as OrgOrgIdSettingsIndexRouteImport } from './routes/org.$orgId.settings.index'
 import { Route as OrgOrgIdChatIndexRouteImport } from './routes/org.$orgId.chat.index'
 import { Route as OrgOrgIdSettingsTeamRouteImport } from './routes/org.$orgId.settings.team'
+import { Route as OrgOrgIdSettingsTagPolicyRouteImport } from './routes/org.$orgId.settings.tag-policy'
 import { Route as OrgOrgIdSettingsSshKeysRouteImport } from './routes/org.$orgId.settings.ssh-keys'
 import { Route as OrgOrgIdSettingsSshHostKeysRouteImport } from './routes/org.$orgId.settings.ssh-host-keys'
 import { Route as OrgOrgIdSettingsRolesRouteImport } from './routes/org.$orgId.settings.roles'
@@ -35,6 +36,7 @@ import { Route as OrgOrgIdSettingsFreezesRouteImport } from './routes/org.$orgId
 import { Route as OrgOrgIdSettingsBillingRouteImport } from './routes/org.$orgId.settings.billing'
 import { Route as OrgOrgIdSettingsBastionsRouteImport } from './routes/org.$orgId.settings.bastions'
 import { Route as OrgOrgIdSettingsAuditLogRouteImport } from './routes/org.$orgId.settings.audit-log'
+import { Route as OrgOrgIdSettingsApprovalsRouteImport } from './routes/org.$orgId.settings.approvals'
 import { Route as OrgOrgIdSettingsApiKeysRouteImport } from './routes/org.$orgId.settings.api-keys'
 import { Route as OrgOrgIdDashboardDashboardIdRouteImport } from './routes/org.$orgId.dashboard.$dashboardId'
 import { Route as OrgOrgIdChatConversationIdRouteImport } from './routes/org.$orgId.chat.$conversationId'
@@ -131,6 +133,12 @@ const OrgOrgIdSettingsTeamRoute = OrgOrgIdSettingsTeamRouteImport.update({
   path: '/team',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsTagPolicyRoute =
+  OrgOrgIdSettingsTagPolicyRouteImport.update({
+    id: '/tag-policy',
+    path: '/tag-policy',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsSshKeysRoute = OrgOrgIdSettingsSshKeysRouteImport.update({
   id: '/ssh-keys',
   path: '/ssh-keys',
@@ -157,12 +165,6 @@ const OrgOrgIdSettingsFreezesRoute = OrgOrgIdSettingsFreezesRouteImport.update({
   path: '/freezes',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
-const OrgOrgIdSettingsApprovalsRoute =
-  OrgOrgIdSettingsApprovalsRouteImport.update({
-    id: '/approvals',
-    path: '/approvals',
-    getParentRoute: () => OrgOrgIdSettingsRoute,
-  } as any)
 const OrgOrgIdSettingsBillingRoute = OrgOrgIdSettingsBillingRouteImport.update({
   id: '/billing',
   path: '/billing',
@@ -178,6 +180,12 @@ const OrgOrgIdSettingsAuditLogRoute =
   OrgOrgIdSettingsAuditLogRouteImport.update({
     id: '/audit-log',
     path: '/audit-log',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
+const OrgOrgIdSettingsApprovalsRoute =
+  OrgOrgIdSettingsApprovalsRouteImport.update({
+    id: '/approvals',
+    path: '/approvals',
     getParentRoute: () => OrgOrgIdSettingsRoute,
   } as any)
 const OrgOrgIdSettingsApiKeysRoute = OrgOrgIdSettingsApiKeysRouteImport.update({
@@ -230,15 +238,16 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
+  '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
-  '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
+  '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/chat/': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
@@ -261,15 +270,16 @@ export interface FileRoutesByTo {
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
+  '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
-  '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
+  '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsIndexRoute
@@ -296,15 +306,16 @@ export interface FileRoutesById {
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
+  '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
-  '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
+  '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/chat/': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
@@ -332,15 +343,16 @@ export interface FileRouteTypes {
     | '/org/$orgId/chat/$conversationId'
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/settings/api-keys'
+    | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
-    | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
     | '/org/$orgId/settings/ssh-host-keys'
     | '/org/$orgId/settings/ssh-keys'
+    | '/org/$orgId/settings/tag-policy'
     | '/org/$orgId/settings/team'
     | '/org/$orgId/chat/'
     | '/org/$orgId/settings/'
@@ -363,15 +375,16 @@ export interface FileRouteTypes {
     | '/org/$orgId/chat/$conversationId'
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/settings/api-keys'
+    | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
-    | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
     | '/org/$orgId/settings/ssh-host-keys'
     | '/org/$orgId/settings/ssh-keys'
+    | '/org/$orgId/settings/tag-policy'
     | '/org/$orgId/settings/team'
     | '/org/$orgId/chat'
     | '/org/$orgId/settings'
@@ -397,15 +410,16 @@ export interface FileRouteTypes {
     | '/org/$orgId/chat/$conversationId'
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/settings/api-keys'
+    | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
-    | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
     | '/org/$orgId/settings/ssh-host-keys'
     | '/org/$orgId/settings/ssh-keys'
+    | '/org/$orgId/settings/tag-policy'
     | '/org/$orgId/settings/team'
     | '/org/$orgId/chat/'
     | '/org/$orgId/settings/'
@@ -548,6 +562,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsTeamRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/tag-policy': {
+      id: '/org/$orgId/settings/tag-policy'
+      path: '/tag-policy'
+      fullPath: '/org/$orgId/settings/tag-policy'
+      preLoaderRoute: typeof OrgOrgIdSettingsTagPolicyRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/ssh-keys': {
       id: '/org/$orgId/settings/ssh-keys'
       path: '/ssh-keys'
@@ -583,13 +604,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsFreezesRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
-    '/org/$orgId/settings/approvals': {
-      id: '/org/$orgId/settings/approvals'
-      path: '/approvals'
-      fullPath: '/org/$orgId/settings/approvals'
-      preLoaderRoute: typeof OrgOrgIdSettingsApprovalsRouteImport
-      parentRoute: typeof OrgOrgIdSettingsRoute
-    }
     '/org/$orgId/settings/billing': {
       id: '/org/$orgId/settings/billing'
       path: '/billing'
@@ -609,6 +623,13 @@ declare module '@tanstack/react-router' {
       path: '/audit-log'
       fullPath: '/org/$orgId/settings/audit-log'
       preLoaderRoute: typeof OrgOrgIdSettingsAuditLogRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
+    '/org/$orgId/settings/approvals': {
+      id: '/org/$orgId/settings/approvals'
+      path: '/approvals'
+      fullPath: '/org/$orgId/settings/approvals'
+      preLoaderRoute: typeof OrgOrgIdSettingsApprovalsRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
     '/org/$orgId/settings/api-keys': {
@@ -674,6 +695,7 @@ interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsRolesRoute: typeof OrgOrgIdSettingsRolesRoute
   OrgOrgIdSettingsSshHostKeysRoute: typeof OrgOrgIdSettingsSshHostKeysRoute
   OrgOrgIdSettingsSshKeysRoute: typeof OrgOrgIdSettingsSshKeysRoute
+  OrgOrgIdSettingsTagPolicyRoute: typeof OrgOrgIdSettingsTagPolicyRoute
   OrgOrgIdSettingsTeamRoute: typeof OrgOrgIdSettingsTeamRoute
   OrgOrgIdSettingsIndexRoute: typeof OrgOrgIdSettingsIndexRoute
 }
@@ -689,6 +711,7 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsRolesRoute: OrgOrgIdSettingsRolesRoute,
   OrgOrgIdSettingsSshHostKeysRoute: OrgOrgIdSettingsSshHostKeysRoute,
   OrgOrgIdSettingsSshKeysRoute: OrgOrgIdSettingsSshKeysRoute,
+  OrgOrgIdSettingsTagPolicyRoute: OrgOrgIdSettingsTagPolicyRoute,
   OrgOrgIdSettingsTeamRoute: OrgOrgIdSettingsTeamRoute,
   OrgOrgIdSettingsIndexRoute: OrgOrgIdSettingsIndexRoute,
 }

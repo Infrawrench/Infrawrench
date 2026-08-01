@@ -1,5 +1,7 @@
+import { useEffect, useMemo } from "react";
 import type { ReactNode } from "react";
 import type { CreateFieldConfig } from "@infrawrench/plugin-base";
+import type { RequiredTag } from "@infrawrench/client-core";
 import type { CreateResourceFormState } from "../hooks/useCreateResourceForm.js";
 import { Modal } from "./Modal.js";
 import { ErrorNotice } from "./ErrorNotice.js";
@@ -17,6 +19,20 @@ export interface CreateResourceModalProps {
     message: string,
     props?: { className?: string; textClassName?: string },
   ) => ReactNode;
+  /**
+   * The org tag policy's required tags, when the host knows them. If the
+   * plugin's create form declares a `tags`/`labels` field, the modal shows a
+   * policy notice and pre-fills the field with `key=` stubs so the required
+   * keys are in front of the user. The server is the real gate — it rejects
+   * non-compliant creates with a 422 when enforcement is on.
+   */
+  requiredTags?: RequiredTag[] | undefined;
+}
+
+/** The generic tag-field convention, same as the server's enforcement. */
+function isTagField(field: CreateFieldConfig): boolean {
+  const key = field.key.toLowerCase();
+  return key === "tags" || key === "labels";
 }
 
 export function CreateResourceModal({
@@ -25,7 +41,26 @@ export function CreateResourceModal({
   onClose,
   renderField,
   renderError,
+  requiredTags,
 }: CreateResourceModalProps) {
+  const tagField = useMemo(
+    () => (requiredTags?.length ? form.visibleFields.find(isTagField) : undefined),
+    [form.visibleFields, requiredTags],
+  );
+
+  // Pre-fill an empty comma-list tag field with `key=` stubs. Only for the
+  // kinds whose value is a comma-separated list — a structured editor
+  // (key-value-list) keeps its own shape and just gets the notice.
+  const { setField } = form;
+  const tagFieldKey =
+    tagField && (tagField.kind === "string-list" || tagField.kind === "text") ? tagField.key : null;
+  const currentTagValue = tagFieldKey ? (form.fields[tagFieldKey] ?? "") : "";
+  useEffect(() => {
+    if (!tagFieldKey || !requiredTags?.length) return;
+    if (currentTagValue.trim() !== "") return;
+    setField(tagFieldKey, requiredTags.map((t) => `${t.key}=`).join(", "));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tagFieldKey]);
   const errorEl = (message: string, props?: { className?: string; textClassName?: string }) =>
     renderError ? renderError(message, props) : <ErrorNotice message={message} {...props} />;
 
@@ -65,6 +100,19 @@ export function CreateResourceModal({
             </button>
           </div>
         </div>
+
+        {tagField && requiredTags && requiredTags.length > 0 && !form.loadingConfig && (
+          <div className="px-6 pt-3 flex-shrink-0">
+            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+              Org policy requires tags:{" "}
+              {requiredTags
+                .map((t) =>
+                  t.allowedValues?.length ? `${t.key} (${t.allowedValues.join(" | ")})` : t.key,
+                )
+                .join(", ")}
+            </p>
+          </div>
+        )}
 
         {splitPane ? (
           <div className="flex flex-1 min-h-0 overflow-hidden">

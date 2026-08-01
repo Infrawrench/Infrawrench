@@ -11,6 +11,9 @@ import type {
   CostQueryResponse,
   CostsClient,
   CostsPanelDashboard,
+  ShowbackReport,
+  TagComplianceReport,
+  UntaggedSpendReport,
 } from "@infrawrench/ui/cost";
 import { apiDelete, apiGet, apiPost, apiPut } from "./api";
 
@@ -82,5 +85,18 @@ export function createWebCostsClient(orgId: string): CostsClient {
     removeBudgetPlacement: async (widgetId: string) => {
       await apiDelete(`/api/org/${orgId}/dashboards/widgets/${widgetId}`);
     },
+    getTagCompliance: () => apiGet<TagComplianceReport>(`/api/org/${orgId}/tag-policy/compliance`),
+    getUntaggedSpend: (from?: string, to?: string) =>
+      apiGet<UntaggedSpendReport>(`/api/org/${orgId}/costs/untagged${rangeQuery(from, to)}`),
+    getShowback: (from?: string, to?: string) =>
+      apiGet<ShowbackReport>(`/api/org/${orgId}/costs/showback${rangeQuery(from, to)}`),
   };
+}
+
+function rangeQuery(from?: string, to?: string): string {
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
 }
