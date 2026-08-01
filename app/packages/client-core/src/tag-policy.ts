@@ -71,12 +71,15 @@ function toTagValue(value: unknown): string | null {
 function parseEntry(entry: string, out: Record<string, string>): void {
   const trimmed = entry.trim();
   if (!trimmed) return;
-  const sep = trimmed.indexOf("=") >= 0 ? "=" : trimmed.indexOf(":") >= 0 ? ":" : null;
-  if (!sep) {
+  // Whichever of `=` or `:` appears first wins, so values may contain the
+  // other separator (e.g. `url=https://example.com` or `note:a=b`).
+  const eqIdx = trimmed.indexOf("=");
+  const colonIdx = trimmed.indexOf(":");
+  const idx = eqIdx >= 0 && colonIdx >= 0 ? Math.min(eqIdx, colonIdx) : Math.max(eqIdx, colonIdx);
+  if (idx < 0) {
     out[trimmed] = "";
     return;
   }
-  const idx = trimmed.indexOf(sep);
   const key = trimmed.slice(0, idx).trim();
   if (key) out[key] = trimmed.slice(idx + 1).trim();
 }

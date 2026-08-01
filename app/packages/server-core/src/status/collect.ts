@@ -144,6 +144,18 @@ function parseDate(value: string | undefined, fallback: Date): Date {
   return Number.isNaN(parsed.getTime()) ? fallback : parsed;
 }
 
+const INCIDENT_STATES = new Set(["investigating", "identified", "monitoring", "resolved"]);
+const INCIDENT_IMPACTS = new Set(["maintenance", "minor", "major", "critical"]);
+
+/** Accept only the established enum values; plugins can still mis-cast. */
+function normalizeState(state: string): string {
+  return INCIDENT_STATES.has(state) ? state : "investigating";
+}
+
+function normalizeImpact(impact: string): string {
+  return INCIDENT_IMPACTS.has(impact) ? impact : "major";
+}
+
 async function upsertIncidents(
   pluginId: string,
   incidents: StatusIncident[],
@@ -157,8 +169,8 @@ async function upsertIncidents(
     if (resolvedAt && resolvedAt < backfillCutoff) continue;
     const values = {
       title: incident.title.slice(0, 500),
-      state: incident.state,
-      impact: incident.impact,
+      state: normalizeState(incident.state),
+      impact: normalizeImpact(incident.impact),
       url: incident.url ?? null,
       startedAt: parseDate(incident.startedAt, seenAt),
       resolvedAt,

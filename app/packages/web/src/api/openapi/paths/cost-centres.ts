@@ -171,6 +171,35 @@ export function registerCostCentrePaths(ctx: BuildContext) {
     },
   });
 
+  const SwapRulesBody = strict({
+    aId: Uuid,
+    bId: Uuid,
+  }).openapi("SwapAllocationRulesBody", {
+    description: "Two allocation rule ids in the same org whose priorities should be swapped.",
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/cost-centres/rules/swap",
+    tags: ["Cost Centres"],
+    summary: "Swap the priorities of two allocation rules",
+    description:
+      "Atomically swaps priorities so first-match-wins order can be edited without a " +
+      "half-applied pair of independent updates.",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: SwapRulesBody } }, required: true },
+    },
+    responses: {
+      200: {
+        description: "Full rule list after the swap, evaluation order",
+        content: { "application/json": { schema: z.array(AllocationRule) } },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
   registry.registerPath({
     method: "put",
     path: "/api/org/{orgId}/cost-centres/rules/{id}",

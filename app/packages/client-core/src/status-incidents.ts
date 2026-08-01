@@ -81,12 +81,17 @@ const IMPACT_ORDER: Record<ProviderIncidentImpact, number> = {
   maintenance: 3,
 };
 
+/** Fallback rank for unknown impact values so the comparator always returns a number. */
+const UNKNOWN_IMPACT_ORDER = 4;
+
 /** Sort comparator: active before resolved, then most severe, then newest. */
 export function compareStatusIncidents(a: OrgStatusIncident, b: OrgStatusIncident): number {
   const aActive = a.resolvedAt ? 1 : 0;
   const bActive = b.resolvedAt ? 1 : 0;
   if (aActive !== bActive) return aActive - bActive;
-  const impact = IMPACT_ORDER[a.impact] - IMPACT_ORDER[b.impact];
+  const impact =
+    (IMPACT_ORDER[a.impact] ?? UNKNOWN_IMPACT_ORDER) -
+    (IMPACT_ORDER[b.impact] ?? UNKNOWN_IMPACT_ORDER);
   if (impact !== 0) return impact;
   return a.startedAt < b.startedAt ? 1 : a.startedAt > b.startedAt ? -1 : 0;
 }

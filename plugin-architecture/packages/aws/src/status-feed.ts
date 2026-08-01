@@ -52,7 +52,17 @@ export function parseStatusFeed(body: string): StatusIncident[] {
     const regionMatch = raw.service ? raw.service.match(REGION_SUFFIX) : null;
     const region = regionMatch?.[1] ?? null;
     const startedMs = raw.date ? Number(raw.date) * 1000 : NaN;
-    const latestLog = raw.event_log?.[raw.event_log.length - 1];
+    // event_log order is not guaranteed — pick the newest by timestamp.
+    // Init with undefined so an all-invalid log never emits a bogus update.
+    const logs = raw.event_log ?? [];
+    const latestLog = logs.reduce<(typeof logs)[number] | undefined>((best, entry) => {
+      const entryMs = entry?.timestamp ? Date.parse(entry.timestamp) : NaN;
+      if (Number.isNaN(entryMs)) return best;
+      const bestMs = best?.timestamp ? Date.parse(best.timestamp) : NaN;
+      if (Number.isNaN(bestMs) || entryMs >= bestMs) return entry;
+      return best;
+    }, undefined);
+    const lastUpdateMs = latestLog?.timestamp ? Date.parse(latestLog.timestamp) : NaN;
     out.push({
       externalId,
       title: `${raw.service_name ?? "AWS"}: ${stripStatusHtml(summary).slice(0, 300)}`,
@@ -66,6 +76,9 @@ export function parseStatusFeed(body: string): StatusIncident[] {
         : new Date(0).toISOString(),
       ...(latestLog?.message
         ? { lastUpdateText: stripStatusHtml(latestLog.message).slice(0, 500) }
+        : {}),
+      ...(Number.isFinite(lastUpdateMs)
+        ? { lastUpdateAt: new Date(lastUpdateMs).toISOString() }
         : {}),
       regions: region ? [region] : [],
       services: raw.service_name ? [raw.service_name] : [],

@@ -5,7 +5,7 @@
  * which compiles the ordered rule list into one `multiIf` over `cost_daily`.
  */
 import { randomUUID } from "node:crypto";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import {
   ALLOCATION_RULE_LIMITS,
   type AllocationRule,
@@ -182,4 +182,72 @@ export async function deleteAllocationRule(organizationId: string, id: string): 
     )
     .returning({ id: costAllocationRules.id });
   return deleted.length > 0;
+}
+
+/**
+ * Atomically swap the priorities of two rules in the same org. Used by the
+ * tag-policy UI's move-up/move-down controls so a half-applied reorder cannot
+ * leave both rules on the same priority mid-flight.
+ */
+export async function swapAllocationRulePriorities(
+  organizationId: string,
+  aId: string,
+  bId: string,
+): Promise<AllocationRule[] | null> {
+  if (aId === bId) return null;
+
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(costAllocationRules)
+      .where(
+        and(
+          eq(costAllocationRules.organizationId, organizationId),
+          inArray(costAllocationRules.id, [aId, bId]),
+        ),
+      );
+    if (rows.length !== 2) return null;
+    const a = rows.find((r) => r.id === aId);
+    const b = rows.find((r) => r.id === bId);
+    if (!a || !b) return null;
+
+    const now = new Date();
+    // Three-step swap through a sentinel so a partial failure cannot leave
+    // both rows on one priority even without a unique constraint.
+    const sentinel = Math.max(a.priority, b.priority) + 1_000_000;
+    await tx
+      .update(costAllocationRules)
+      .set({ priority: sentinel, updatedAt: now })
+      .where(
+        and(
+          eq(costAllocationRules.id, a.id),
+          eq(costAllocationRules.organizationId, organizationId),
+        ),
+      );
+    await tx
+      .update(costAllocationRules)
+      .set({ priority: a.priority, updatedAt: now })
+      .where(
+        and(
+          eq(costAllocationRules.id, b.id),
+          eq(costAllocationRules.organizationId, organizationId),
+        ),
+      );
+    await tx
+      .update(costAllocationRules)
+      .set({ priority: b.priority, updatedAt: now })
+      .where(
+        and(
+          eq(costAllocationRules.id, a.id),
+          eq(costAllocationRules.organizationId, organizationId),
+        ),
+      );
+
+    const updated = await tx
+      .select()
+      .from(costAllocationRules)
+      .where(eq(costAllocationRules.organizationId, organizationId))
+      .orderBy(asc(costAllocationRules.priority), asc(costAllocationRules.createdAt));
+    return updated.map(ruleToWire);
+  });
 }

@@ -216,13 +216,18 @@ export const costCentreInputSchema = z.object({
 });
 
 /** All set fields must match; an empty match is a catch-all. */
-export const allocationRuleMatchSchema = z.object({
-  tagKey: z.string().min(1).max(TAG_POLICY_LIMITS.maxKeyLength).optional(),
-  tagValue: z.string().max(TAG_POLICY_LIMITS.maxValueLength).optional(),
-  accountId: z.string().min(1).optional(),
-  pluginId: z.string().min(1).optional(),
-  service: z.string().min(1).optional(),
-});
+export const allocationRuleMatchSchema = z
+  .object({
+    tagKey: z.string().min(1).max(TAG_POLICY_LIMITS.maxKeyLength).optional(),
+    tagValue: z.string().max(TAG_POLICY_LIMITS.maxValueLength).optional(),
+    accountId: z.string().min(1).optional(),
+    pluginId: z.string().min(1).optional(),
+    service: z.string().min(1).optional(),
+  })
+  .refine((m) => !m.tagValue?.trim() || !!m.tagKey?.trim(), {
+    message: "tagValue requires tagKey",
+    path: ["tagValue"],
+  });
 
 export const allocationRuleInputSchema = z.object({
   costCentreId: z.string().min(1),

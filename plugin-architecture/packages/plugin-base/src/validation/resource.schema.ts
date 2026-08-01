@@ -102,6 +102,7 @@ const expiryFieldRuleSchema = z
     ]),
     label: z.string().min(1),
     maxAgeDays: z.number().int().positive().optional(),
+    fallbackFieldKey: z.string().min(1).optional(),
   })
   // A budget on an absolute deadline is dead config — the author almost
   // certainly meant `from: "created"`, so fail the manifest instead of
@@ -109,6 +110,10 @@ const expiryFieldRuleSchema = z
   .refine((r) => r.from === "created" || r.maxAgeDays === undefined, {
     message: 'maxAgeDays only applies to `from: "created"` rules',
     path: ["maxAgeDays"],
+  })
+  .refine((r) => r.from === "created" || r.fallbackFieldKey === undefined, {
+    message: 'fallbackFieldKey only applies to `from: "created"` rules',
+    path: ["fallbackFieldKey"],
   });
 
 const orphanRuleSchema = z.object({

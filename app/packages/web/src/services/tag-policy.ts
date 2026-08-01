@@ -160,6 +160,18 @@ export async function getUntaggedSpendReport(
 ): Promise<UntaggedSpendReport> {
   const policy = await getOrgTagPolicy(organizationId);
   const requiredKeys = policy.requiredTags.map((t) => t.key);
+  if (requiredKeys.length === 0) {
+    return {
+      from,
+      to,
+      requiredKeys: [],
+      currencies: [],
+      totals: {},
+      untaggedTotals: {},
+      byKey: [],
+      topUntagged: [],
+    };
+  }
   const rows = await getUntaggedSpend(organizationId, requiredKeys, from, to);
 
   const accountRows = await db

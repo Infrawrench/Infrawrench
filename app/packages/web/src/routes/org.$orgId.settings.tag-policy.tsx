@@ -46,6 +46,7 @@ function TagPolicyPage() {
   const { orgId } = useParams({ from: "/org/$orgId/settings/tag-policy" });
   const { has } = usePermissions();
   const canEditPolicy = has("org:settings:write");
+  const canReadAllocation = has("costs:read");
   const canEditAllocation = has("costs:write");
 
   const [rows, setRows] = useState<PolicyRow[]>([]);
@@ -272,7 +273,7 @@ function TagPolicyPage() {
             )}
           </section>
 
-          <AllocationSection orgId={orgId} canEdit={canEditAllocation} />
+          {canReadAllocation && <AllocationSection orgId={orgId} canEdit={canEditAllocation} />}
         </div>
       )}
     </div>
@@ -354,6 +355,24 @@ function AllocationSection({ orgId, canEdit }: { orgId: string; canEdit: boolean
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete rule");
+    }
+  }
+
+  /** Swap priorities with the neighbour so first-match-wins order is editable. */
+  async function moveRule(rule: AllocationRule, direction: -1 | 1) {
+    const index = rules.findIndex((r) => r.id === rule.id);
+    const neighbour = rules[index + direction];
+    if (!neighbour || index < 0) return;
+    try {
+      // Single transactional swap on the server — two independent PUTs could
+      // leave both rules on the same priority if one failed mid-flight.
+      const next = await apiPost<AllocationRule[]>(`/api/org/${orgId}/cost-centres/rules/swap`, {
+        aId: rule.id,
+        bId: neighbour.id,
+      });
+      setRules(next);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to reorder rule");
     }
   }
 
@@ -446,6 +465,7 @@ function AllocationSection({ orgId, canEdit }: { orgId: string; canEdit: boolean
             if (rule.match.pluginId)
               parts.push(`provider ${labelFor(providers, rule.match.pluginId)}`);
             if (rule.match.service) parts.push(`service ${rule.match.service}`);
+            const ruleIndex = rules.findIndex((r) => r.id === rule.id);
             return (
               <li key={rule.id} className="flex items-center gap-3 text-sm">
                 <span className="text-xs text-on-surface-muted w-10">#{rule.priority}</span>
@@ -455,13 +475,33 @@ function AllocationSection({ orgId, canEdit }: { orgId: string; canEdit: boolean
                   {centre?.name ?? "?"}
                 </span>
                 {canEdit && (
-                  <button
-                    type="button"
-                    onClick={() => void removeRule(rule)}
-                    className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
-                  >
-                    Remove
-                  </button>
+                  <span className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => void moveRule(rule, -1)}
+                      disabled={ruleIndex <= 0}
+                      aria-label="Move rule up"
+                      className="text-xs text-on-surface-muted hover:text-on-surface-secondary disabled:opacity-30 disabled:hover:text-on-surface-muted px-1"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void moveRule(rule, 1)}
+                      disabled={ruleIndex < 0 || ruleIndex >= rules.length - 1}
+                      aria-label="Move rule down"
+                      className="text-xs text-on-surface-muted hover:text-on-surface-secondary disabled:opacity-30 disabled:hover:text-on-surface-muted px-1"
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void removeRule(rule)}
+                      className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+                    >
+                      Remove
+                    </button>
+                  </span>
                 )}
               </li>
             );

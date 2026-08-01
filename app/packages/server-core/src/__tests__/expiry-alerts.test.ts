@@ -267,6 +267,7 @@ describe("release semantics", () => {
     expect(result.outcomes[ORG]).toEqual({
       status: "failed",
       error: "feed exploded",
+      claimed: true,
       released: true,
     });
     expect(releases).toEqual([{ lastNotifiedAt: PRIOR }]);
@@ -290,7 +291,11 @@ describe("release semantics", () => {
     sendSlackToOrg.mockRejectedValue(new Error("slack exploded"));
     const spy = hushErrors();
     const result = await runExpiryAlerts({ limit: 4 }, NOW);
-    expect(result.outcomes[ORG]).toMatchObject({ status: "failed", released: false });
+    expect(result.outcomes[ORG]).toMatchObject({
+      status: "failed",
+      claimed: true,
+      released: false,
+    });
     expect(releases).toEqual([]);
     spy.mockRestore();
   });
@@ -311,8 +316,10 @@ describe("release semantics", () => {
     expect(result.outcomes[ORG]).toEqual({
       status: "failed",
       error: "settings unreadable",
+      claimed: false,
       released: false,
     });
+    expect(result.scanned).toBe(0);
     expect(releases).toEqual([]);
     spy.mockRestore();
   });

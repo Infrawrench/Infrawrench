@@ -9,7 +9,7 @@
  * is attempted.
  */
 import type { StatusFeedDeclaration, StatusIncident } from "@infrawrench/plugin-base";
-import { parseStatusFeedXml } from "@infrawrench/plugin-base";
+import { parseStatusFeedXml, stripStatusHtml } from "@infrawrench/plugin-base";
 
 const STATUS_PAGE = "https://azure.status.microsoft/en-us/status";
 
@@ -24,8 +24,13 @@ export function parseStatusFeed(body: string): StatusIncident[] {
     throw new Error("Azure status feed: not an RSS document");
   }
   // Zero items is the healthy steady state, not a parse failure.
+  // parseStatusFeedXml already strips HTML from description; re-strip + cap
+  // for the 500-char convention shared with other parsers.
   return parseStatusFeedXml(body).map((item) => {
     const published = item.publishedAt ? Date.parse(item.publishedAt) : NaN;
+    const description = item.description
+      ? stripStatusHtml(item.description).slice(0, 500)
+      : undefined;
     return {
       externalId: item.guid,
       title: item.title,
@@ -33,9 +38,9 @@ export function parseStatusFeed(body: string): StatusIncident[] {
       impact: "major" as const,
       url: item.link ?? STATUS_PAGE,
       startedAt: Number.isNaN(published)
-        ? new Date().toISOString()
+        ? new Date(0).toISOString()
         : new Date(published).toISOString(),
-      ...(item.description ? { lastUpdateText: item.description } : {}),
+      ...(description ? { lastUpdateText: description } : {}),
       regions: [],
       services: [],
       providerWide: true,

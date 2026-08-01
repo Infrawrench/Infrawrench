@@ -1083,6 +1083,10 @@ export async function listSecretsManagerSecrets(
         description: String(s["Description"] ?? ""),
         lastAccessedDate: String(s["LastAccessedDate"] ?? ""),
         lastChangedDate: String(s["LastChangedDate"] ?? ""),
+        // Empty when AWS has never recorded a rotation — expiry evaluation
+        // falls back to createdDate via the type's fallbackFieldKey.
+        lastRotatedDate: String(s["LastRotatedDate"] ?? ""),
+        createdDate: String(s["CreatedDate"] ?? ""),
         rotationEnabled: s["RotationEnabled"] === true,
       },
       resolvedOutputs: {

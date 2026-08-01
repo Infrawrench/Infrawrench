@@ -62,7 +62,16 @@ app.get("/settings", async (c) => {
  */
 app.put("/settings", async (c) => {
   requirePermission(c, "org:settings:write");
-  const body = await c.req.json<Record<string, unknown>>();
+  let body: Record<string, unknown>;
+  try {
+    const parsed = await c.req.json();
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return c.json({ error: "Request body must be an object" }, 400);
+    }
+    body = parsed as Record<string, unknown>;
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
   const patch: ExpirySettingsPatch = {};
 
   if (body["enabled"] !== undefined) {

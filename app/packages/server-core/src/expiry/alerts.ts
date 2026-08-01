@@ -54,7 +54,12 @@ export type ExpiryOrgOutcome =
   | { status: "quiet" }
   | { status: "sent"; deadlines: number; push: number; slack: number; msTeams: number }
   | { status: "undelivered"; deadlines: number }
-  | { status: "failed"; error: string; released: boolean };
+  /**
+   * `claimed` is true only after the cooldown claim landed — pre-claim
+   * failures (settings read, claim SQL) leave it false so `scanned` stays
+   * honest. `released` is whether the claim was rolled back.
+   */
+  | { status: "failed"; error: string; claimed: boolean; released: boolean };
 
 export interface ExpiryAlertsResult {
   /** Orgs this pass claimed and scanned. */
@@ -286,6 +291,7 @@ async function runOne(organizationId: string, now: Date): Promise<ExpiryOrgOutco
       return {
         status: "failed",
         error: err instanceof Error ? err.message : String(err),
+        claimed: true,
         released: await releaseUnlessDelivered(organizationId, now, prior, delivery),
       };
     } finally {
@@ -298,6 +304,7 @@ async function runOne(organizationId: string, now: Date): Promise<ExpiryOrgOutco
     return {
       status: "failed",
       error: err instanceof Error ? err.message : String(err),
+      claimed: false,
       released: false,
     };
   }
@@ -324,7 +331,15 @@ export async function runExpiryAlerts(
   for (const organizationId of due) {
     const outcome = await runOne(organizationId, now);
     result.outcomes[organizationId] = outcome;
-    if (outcome.status !== "disabled" && outcome.status !== "cooling-down") result.scanned += 1;
+    // Only count orgs that actually claimed a window. Pre-claim outcomes
+    // (`disabled`, `cooling-down`, unclaimed `failed`) leave the cooldown
+    // untouched and must not inflate `scanned`.
+    const claimed =
+      outcome.status === "quiet" ||
+      outcome.status === "sent" ||
+      outcome.status === "undelivered" ||
+      (outcome.status === "failed" && outcome.claimed);
+    if (claimed) result.scanned += 1;
     if (outcome.status === "sent") result.sent += 1;
   }
   return result;

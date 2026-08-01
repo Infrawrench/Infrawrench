@@ -71,10 +71,10 @@ export function expiryTitle(summary: ExpiryAlertSummary): string {
   return `Expiry radar: ${plural(summary.total, "deadline")} within ${summary.leadDays} days`;
 }
 
-/** `"<name> — <label> in 12d"` / `"<name> — <label> expired 3d ago"`. */
+/** `"<name> — <label> in 12d"` / `"<name> — <label> 3d overdue"`. */
 export function expiryItemLine(item: ExpiryItem): string {
   const when =
-    item.daysRemaining < 0 ? `expired ${-item.daysRemaining}d ago` : `in ${item.daysRemaining}d`;
+    item.daysRemaining < 0 ? `${-item.daysRemaining}d overdue` : `in ${item.daysRemaining}d`;
   return `${item.displayName} — ${item.label} ${when}`;
 }
 

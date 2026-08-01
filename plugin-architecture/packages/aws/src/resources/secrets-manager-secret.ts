@@ -9,17 +9,24 @@ export const SecretsManagerSecretResourceType = rt({
     f("description", "Description", { required: false }),
     f("lastAccessedDate", "Last Accessed", { required: false }),
     f("lastChangedDate", "Last Changed", { required: false }),
+    // LastRotatedDate from ListSecrets / DescribeSecret; empty when AWS has
+    // never recorded a rotation (null on the wire).
+    f("lastRotatedDate", "Last Rotated", { required: false }),
+    f("createdDate", "Created", { required: false }),
     f("rotationEnabled", "Rotation Enabled", { kind: "boolean", required: false }),
   ],
   outputs: [
     o("secretValue", "Secret Value", { sensitive: true, description: "Current secret value" }),
     o("secretArn", "Secret ARN"),
   ],
-  // Rotation-age budget over the lister's LastChangedDate: a secret untouched
-  // for 90+ days shows as overdue on the expiry radar.
+  // Rotation-age budget over LastRotatedDate (not LastChangedDate — any secret
+  // update would otherwise reset the 90-day clock). Never-rotated secrets keep
+  // lastRotatedDate empty and age from createdDate via fallbackFieldKey so the
+  // listed field stays honest about "never rotated".
   expiryFields: [
     {
-      fieldKey: "lastChangedDate",
+      fieldKey: "lastRotatedDate",
+      fallbackFieldKey: "createdDate",
       from: "created",
       kind: "secret-version",
       label: "Last rotated",

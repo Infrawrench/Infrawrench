@@ -266,7 +266,17 @@ export function computeExpiryFeed(
       if (!fields) continue;
 
       for (const rule of typeEntry.rules) {
-        const instant = parseExpiryInstant(fields[rule.fieldKey]);
+        let instant = parseExpiryInstant(fields[rule.fieldKey]);
+        // Age-budget rules may fall back to a secondary field when the primary
+        // is empty (never-rotated Secrets Manager secrets → createdDate).
+        if (
+          instant === null &&
+          rule.from === "created" &&
+          rule.fallbackFieldKey &&
+          rule.fallbackFieldKey !== rule.fieldKey
+        ) {
+          instant = parseExpiryInstant(fields[rule.fallbackFieldKey]);
+        }
         if (instant === null) continue;
         const dueMs =
           rule.from === "created"

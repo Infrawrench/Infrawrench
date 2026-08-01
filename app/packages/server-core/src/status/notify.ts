@@ -45,7 +45,7 @@ function describeIncident(
   const count = match.affectedResourceCount;
   const body =
     `${incident.title} — ${count} of your ${count === 1 ? "resource" : "resources"}` +
-    `${match.affectedRegions.length > 0 ? " there" : ""}${where} may be affected.`;
+    `${where} may be affected.`;
   const context = `Provider status: ${incident.state}${
     incident.lastUpdateText ? ` — ${incident.lastUpdateText.slice(0, 200)}` : ""
   }`;
@@ -132,36 +132,60 @@ async function notifyOneOrg(
     const title = `${providerName}: ${impactLabel.toLowerCase()} upstream`;
     const url = incident.url ?? undefined;
 
+    // Each transport is isolated: a Slack outage must not skip Teams (or
+    // vice versa). Only unclaim when *nothing* landed, so a later tick can
+    // retry once the org has a working channel.
     let delivered = 0;
 
-    const push = await sendPushToOrg(organizationId, "providerIncidents", {
-      title,
-      body,
-      data: {
-        type: "provider_incident",
-        orgId: organizationId,
-        pluginId: incident.pluginId,
-        incidentId: incident.id,
-        affectedResourceCount: match.affectedResourceCount,
-      },
-    });
-    delivered += push.succeeded;
+    try {
+      const push = await sendPushToOrg(organizationId, "providerIncidents", {
+        title,
+        body,
+        data: {
+          type: "provider_incident",
+          orgId: organizationId,
+          pluginId: incident.pluginId,
+          incidentId: incident.id,
+          affectedResourceCount: match.affectedResourceCount,
+        },
+      });
+      delivered += push.succeeded;
+    } catch (err) {
+      console.error(
+        `[poller] provider-incident push for org ${organizationId} (${incident.id}) failed:`,
+        err,
+      );
+    }
 
-    const slack = await sendSlackToOrg(organizationId, "providerIncidents", {
-      title,
-      body,
-      context,
-      ...(url ? { url } : {}),
-    });
-    delivered += slack.succeeded;
+    try {
+      const slack = await sendSlackToOrg(organizationId, "providerIncidents", {
+        title,
+        body,
+        context,
+        ...(url ? { url } : {}),
+      });
+      delivered += slack.succeeded;
+    } catch (err) {
+      console.error(
+        `[poller] provider-incident slack for org ${organizationId} (${incident.id}) failed:`,
+        err,
+      );
+    }
 
-    const msTeams = await sendMsTeamsToOrg(organizationId, "providerIncidents", {
-      title,
-      body,
-      context,
-      ...(url ? { url } : {}),
-    });
-    delivered += msTeams.succeeded;
+    try {
+      const msTeams = await sendMsTeamsToOrg(organizationId, "providerIncidents", {
+        title,
+        body,
+        context,
+        ...(url ? { url } : {}),
+      });
+      delivered += msTeams.succeeded;
+    } catch (err) {
+      console.error(
+        `[poller] provider-incident msteams for org ${organizationId} (${incident.id}) failed:`,
+        err,
+      );
+    }
 
     if (delivered === 0) {
       // Nothing landed — release the claim so a later tick retries once the

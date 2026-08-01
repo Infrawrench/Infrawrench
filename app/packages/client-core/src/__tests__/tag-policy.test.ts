@@ -38,6 +38,13 @@ describe("extractRecordTags", () => {
     });
   });
 
+  it("splits on whichever of = or : appears first so values may contain the other", () => {
+    expect(extractRecordTags({ tags: "url=https://example.com, note:a=b" })).toEqual({
+      url: "https://example.com",
+      note: "a=b",
+    });
+  });
+
   it("parses a JSON-encoded map or array", () => {
     expect(extractRecordTags({ tags: '{"owner":"astrid"}' })).toEqual({ owner: "astrid" });
     expect(extractRecordTags({ tags: '[{"key":"env","value":"prod"}]' })).toEqual({ env: "prod" });

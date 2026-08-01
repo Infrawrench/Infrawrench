@@ -192,10 +192,11 @@ export function genericTools(): ToolDefinition[] {
           (i) => (!severity || i.severity === severity) && (!kind || i.kind === kind),
         );
         // Counts always describe the whole feed so a filtered view still shows
-        // what else is on the radar.
+        // what else is on the radar. matchedCount is the filtered length.
         return ok({
           items,
-          totalCount: items.length,
+          matchedCount: items.length,
+          totalCount: feed.items.length,
           counts: feed.counts,
           leadDays: feed.leadDays,
           generatedAt: feed.generatedAt,

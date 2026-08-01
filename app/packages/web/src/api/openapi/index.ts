@@ -343,6 +343,23 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /expiring": "resources:read",
   "GET /expiring/settings": "org:settings:write",
   "PUT /expiring/settings": "org:settings:write",
+  // tag policy & showback — policy is org settings; compliance/untagged ride
+  // the resource/cost read scopes their data is computed over
+  "GET /tag-policy": "resources:read",
+  "PUT /tag-policy": "org:settings:write",
+  "GET /tag-policy/compliance": "resources:read",
+  "GET /costs/untagged": "costs:read",
+  "GET /costs/showback": "costs:read",
+  // cost centres & allocation rules
+  "GET /cost-centres": "costs:read",
+  "POST /cost-centres": "costs:write",
+  "PUT /cost-centres/{id}": "costs:write",
+  "DELETE /cost-centres/{id}": "costs:write",
+  "GET /cost-centres/rules": "costs:read",
+  "POST /cost-centres/rules": "costs:write",
+  "POST /cost-centres/rules/swap": "costs:write",
+  "PUT /cost-centres/rules/{id}": "costs:write",
+  "DELETE /cost-centres/rules/{id}": "costs:write",
   // resources
   "GET /resources/{pluginId}/{typeId}/detail": "resources:read",
   "GET /resources/{pluginId}/{typeId}/manifest": "resources:read",

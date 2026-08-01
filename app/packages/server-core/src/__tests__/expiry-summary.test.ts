@@ -14,7 +14,7 @@ import {
 
 /**
  * The message shape is pure so it is pinned down here without a database:
- * the body cap, the per-severity counts, and the "in Nd" / "expired Nd ago"
+ * the body cap, the per-severity counts, and the "in Nd" / "Nd overdue"
  * grammar every transport shares. The claim/cooldown orchestration is covered
  * by `expiry-alerts.test.ts`.
  */
@@ -83,9 +83,9 @@ describe("expiryItemLine", () => {
     );
   });
 
-  it("renders a passed deadline as 'expired Nd ago'", () => {
+  it("renders a passed deadline as 'Nd overdue'", () => {
     expect(expiryItemLine(item({ daysRemaining: -3, severity: "expired" }))).toBe(
-      "example.com — Certificate expires expired 3d ago",
+      "example.com — Certificate expires 3d overdue",
     );
   });
 

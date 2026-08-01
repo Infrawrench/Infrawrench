@@ -65,9 +65,38 @@ export async function fetchStatusFeedBody(url: string): Promise<string> {
   if (!res.ok) {
     throw new Error(`status feed responded HTTP ${res.status}`);
   }
-  const buffer = await res.arrayBuffer();
-  if (buffer.byteLength > FEED_MAX_BYTES) {
+  // Stream with an early abort so a runaway feed never buffers past the cap.
+  // Content-Length is only a hint (may be absent or wrong).
+  const advertised = res.headers.get("content-length");
+  if (advertised && Number(advertised) > FEED_MAX_BYTES) {
     throw new Error(`status feed body exceeds ${FEED_MAX_BYTES} bytes`);
   }
-  return decodeFeedBody(new Uint8Array(buffer));
+  if (!res.body) {
+    throw new Error("status feed response has no body");
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  const reader = res.body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > FEED_MAX_BYTES) {
+        await reader.cancel();
+        throw new Error(`status feed body exceeds ${FEED_MAX_BYTES} bytes`);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const buffer = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    buffer.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return decodeFeedBody(buffer);
 }

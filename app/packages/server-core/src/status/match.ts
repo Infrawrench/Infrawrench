@@ -27,18 +27,6 @@ const MAX_INCIDENTS = 50;
 
 const SAMPLE_LIMIT = 5;
 
-/** Field keys plugins conventionally store a resource's placement under. */
-const REGION_FIELD_KEYS = ["region", "location", "zone"] as const;
-
-function resourceRegion(fields: Record<string, unknown> | null): string | null {
-  if (!fields) return null;
-  for (const key of REGION_FIELD_KEYS) {
-    const value = fields[key];
-    if (typeof value === "string" && value.length > 0) return value;
-  }
-  return null;
-}
-
 /**
  * Pure matching rule, exported for tests. Region comparison also accepts a
  * hierarchical child: a resource in `us-central1-a` matches an incident
@@ -85,13 +73,19 @@ export async function matchIncidentsForOrg(
   if (incidents.length === 0) return matches;
   const pluginIds = Array.from(new Set(incidents.map((i) => i.pluginId)));
 
+  // Only the region placement value is needed for matching — not the full
+  // fields bag. Extract it in SQL so we don't ship every resource's jsonb.
   const rows = await db
     .select({
       id: resources.id,
       pluginId: resources.pluginId,
       resourceTypeId: resources.resourceTypeId,
       displayName: resources.displayName,
-      fieldsJson: resources.fieldsJson,
+      region: sql<string | null>`COALESCE(
+        NULLIF(TRIM(${resources.fieldsJson}->>'region'), ''),
+        NULLIF(TRIM(${resources.fieldsJson}->>'location'), ''),
+        NULLIF(TRIM(${resources.fieldsJson}->>'zone'), '')
+      )`,
     })
     .from(resources)
     .where(
@@ -102,13 +96,21 @@ export async function matchIncidentsForOrg(
       ),
     );
 
+  // Group once so each incident only scans its plugin's resources.
+  const byPlugin = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const list = byPlugin.get(row.pluginId);
+    if (list) list.push(row);
+    else byPlugin.set(row.pluginId, [row]);
+  }
+
   for (const incident of incidents) {
     let count = 0;
     const regions = new Set<string>();
     const samples: ProviderIncidentResourceSample[] = [];
-    for (const row of rows) {
-      if (row.pluginId !== incident.pluginId) continue;
-      const region = resourceRegion(row.fieldsJson);
+    const pluginRows = byPlugin.get(incident.pluginId) ?? [];
+    for (const row of pluginRows) {
+      const region = row.region;
       if (!resourceMatchesIncident(incident, row.resourceTypeId, region)) continue;
       count += 1;
       if (region) {
@@ -157,6 +159,9 @@ export async function getOrgStatusIncidents(
   if (pluginIds.length === 0) return [];
 
   const cutoff = new Date(Date.now() - resolvedWithinMs);
+  // Active first (resolvedAt IS NULL sorts before non-null), then newest.
+  // Without this a flood of recent resolutions can push live incidents off
+  // the MAX_INCIDENTS cap.
   const incidentRows = await db
     .select()
     .from(providerStatusIncidents)
@@ -169,7 +174,10 @@ export async function getOrgStatusIncidents(
         ),
       ),
     )
-    .orderBy(desc(providerStatusIncidents.startedAt))
+    .orderBy(
+      sql`${providerStatusIncidents.resolvedAt} IS NOT NULL`,
+      desc(providerStatusIncidents.startedAt),
+    )
     .limit(MAX_INCIDENTS);
   if (incidentRows.length === 0) return [];
 

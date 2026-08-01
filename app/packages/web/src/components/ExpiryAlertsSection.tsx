@@ -16,12 +16,18 @@ export function ExpiryAlertsSection({ orgId }: { orgId: string }) {
   const [settings, setSettings] = useState<ExpirySettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
+  // Raw text while editing so empty / intermediate values don't snap back
+  // to the saved integer on every keystroke.
+  const [leadDaysInput, setLeadDaysInput] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     apiGet<ExpirySettings>(`/api/org/${orgId}/expiring/settings`)
       .then((s) => {
-        if (!cancelled) setSettings(s);
+        if (!cancelled) {
+          setSettings(s);
+          setLeadDaysInput(String(s.leadDays));
+        }
       })
       .catch(() => {
         // Non-admins get a 403 — hide the section rather than show an error.
@@ -31,6 +37,10 @@ export function ExpiryAlertsSection({ orgId }: { orgId: string }) {
       cancelled = true;
     };
   }, [orgId]);
+
+  useEffect(() => {
+    if (settings) setLeadDaysInput(String(settings.leadDays));
+  }, [settings?.leadDays]);
 
   async function save(patch: { enabled?: boolean; leadDays?: number }) {
     if (!settings) return;
@@ -81,13 +91,13 @@ export function ExpiryAlertsSection({ orgId }: { orgId: string }) {
             type="number"
             min={1}
             max={365}
-            value={settings.leadDays}
-            onChange={(e) =>
-              setSettings({ ...settings, leadDays: Number(e.target.value) || settings.leadDays })
-            }
-            onBlur={(e) => {
-              const n = Number(e.target.value);
+            value={leadDaysInput}
+            onChange={(e) => setLeadDaysInput(e.target.value)}
+            onBlur={() => {
+              const raw = leadDaysInput.trim();
+              const n = raw === "" ? Number.NaN : Number(raw);
               const clamped = Number.isInteger(n) ? Math.min(Math.max(n, 1), 365) : 60;
+              setLeadDaysInput(String(clamped));
               void save({ leadDays: clamped });
             }}
             className={inputClass}

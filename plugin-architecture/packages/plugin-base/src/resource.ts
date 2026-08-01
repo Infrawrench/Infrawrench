@@ -303,6 +303,12 @@ export interface ExpiryFieldRule {
    * per-kind default. Ignored for `from: "expiry"`.
    */
   maxAgeDays?: number;
+  /**
+   * When `from: "created"` and the primary `fieldKey` is empty/unparseable,
+   * try this field instead. Used so never-rotated secrets can age from
+   * `createdDate` without stuffing creation into the rotation field.
+   */
+  fallbackFieldKey?: string;
 }
 
 export interface ResourceTypeDefinition {

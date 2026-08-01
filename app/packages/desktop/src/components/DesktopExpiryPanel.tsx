@@ -30,21 +30,23 @@ export function DesktopExpiryPanel({ openResource }: DesktopExpiryPanelProps) {
 
   useEffect(() => {
     let cancelled = false;
+    let latest = 0;
     // Clear on mode/org change: without this the previous context's deadlines
     // stay on screen until the new fetch resolves.
     setData(null);
     setError(null);
     function load() {
+      const seq = ++latest;
       const promise = activeCloudOrgId ? fetchCloudExpiring(activeCloudOrgId) : loadLocalExpiring();
       promise
         .then((d) => {
-          if (!cancelled) {
+          if (!cancelled && seq === latest) {
             setData(d);
             setError(null);
           }
         })
         .catch((e: unknown) => {
-          if (!cancelled)
+          if (!cancelled && seq === latest)
             setError(e instanceof Error ? e.message : "Failed to load the expiry feed");
         });
     }

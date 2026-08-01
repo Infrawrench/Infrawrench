@@ -32,9 +32,32 @@ describe("expiryFields validation", () => {
         label: "Key age",
         maxAgeDays: 90,
       },
+      {
+        fieldKey: "lastRotatedDate",
+        fallbackFieldKey: "createdDate",
+        from: "created",
+        kind: "secret-version",
+        label: "Last rotated",
+        maxAgeDays: 90,
+      },
     ]) {
       expect(resourceTypeDefinitionSchema.safeParse(resourceTypeWith([rule])).success).toBe(true);
     }
+  });
+
+  it("rejects fallbackFieldKey on a from:'expiry' rule", () => {
+    const parsed = resourceTypeDefinitionSchema.safeParse(
+      resourceTypeWith([
+        {
+          fieldKey: "notAfter",
+          from: "expiry",
+          kind: "tls-cert",
+          label: "Certificate expires",
+          fallbackFieldKey: "createdDate",
+        },
+      ]),
+    );
+    expect(parsed.success).toBe(false);
   });
 
   // maxAgeDays on an absolute deadline is dead config — the author almost

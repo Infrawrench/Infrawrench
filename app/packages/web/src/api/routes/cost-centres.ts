@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { allocationRuleInputSchema, costCentreInputSchema } from "@infrawrench/ui/cost/config";
+import { z } from "zod";
 import {
   createAllocationRule,
   createCostCentre,
@@ -7,12 +8,18 @@ import {
   deleteCostCentre,
   listAllocationRules,
   listCostCentres,
+  swapAllocationRulePriorities,
   updateAllocationRule,
   updateCostCentre,
 } from "@infrawrench/server-core/cost/allocation";
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
+
+const swapRulesBodySchema = z.object({
+  aId: z.string().min(1),
+  bId: z.string().min(1),
+});
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -106,6 +113,40 @@ app.get("/rules", async (c) => {
   return c.json(await listAllocationRules(c.get("organizationId")));
 });
 
+/**
+ * POST /api/org/:orgId/cost-centres/rules/swap — atomically swap two rules'
+ * priorities. Registered before `/rules/:id` so "swap" is not captured as an id.
+ */
+app.post("/rules/swap", async (c) => {
+  requirePermission(c, "costs:write");
+  const organizationId = c.get("organizationId");
+  const session = c.get("session");
+
+  const parsed = swapRulesBodySchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: "Invalid swap request", issues: parsed.error.issues }, 400);
+  }
+  if (parsed.data.aId === parsed.data.bId) {
+    return c.json({ error: "Cannot swap a rule with itself" }, 400);
+  }
+
+  const rules = await swapAllocationRulePriorities(
+    organizationId,
+    parsed.data.aId,
+    parsed.data.bId,
+  );
+  if (!rules) return c.json({ error: "One or both rules not found" }, 404);
+  void logAudit({
+    organizationId,
+    userId: session.userId,
+    action: "cost_allocation_rule.swap",
+    entityType: "cost_allocation_rule",
+    entityId: parsed.data.aId,
+    metadata: { aId: parsed.data.aId, bId: parsed.data.bId },
+  });
+  return c.json(rules);
+});
+
 /** POST /api/org/:orgId/cost-centres/rules — add an allocation rule. */
 app.post("/rules", async (c) => {
   requirePermission(c, "costs:write");
@@ -121,7 +162,8 @@ app.post("/rules", async (c) => {
   try {
     rule = await createAllocationRule(organizationId, parsed.data);
   } catch (e) {
-    return c.json({ error: e instanceof Error ? e.message : "Failed to create rule" }, 400);
+    console.error("[cost-centres] Failed to create allocation rule:", e);
+    return c.json({ error: "Failed to create allocation rule" }, 400);
   }
   if (!rule) return c.json({ error: "Cost centre not found" }, 404);
   void logAudit({

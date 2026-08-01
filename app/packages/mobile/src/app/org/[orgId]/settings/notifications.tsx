@@ -58,18 +58,6 @@ interface TestPushResult {
   succeeded: number;
 }
 
-/**
- * `expiryAlerts` (default true — certs, domains, tokens and keys approaching
- * expiry) is landing in the client-core trigger contracts in the same release
- * as this screen: push preferences plus the Slack channel and Teams webhook
- * trigger maps. These intersections keep the screen compiling on either side
- * of that change and collapse into the plain client-core types once the key
- * exists there.
- */
-type PushPrefs = PushPreferences & { expiryAlerts?: boolean };
-type SlackTriggers = SlackChannelTriggers & { expiryAlerts?: boolean };
-type TeamsTriggers = MsTeamsWebhookTriggers & { expiryAlerts?: boolean };
-
 export default function NotificationsScreen() {
   const { api, orgId } = useOrgApi();
   const queryClient = useQueryClient();
@@ -86,7 +74,7 @@ export default function NotificationsScreen() {
   });
 
   const updatePrefs = useMutation({
-    mutationFn: (patch: Partial<PushPrefs>) => updatePushPreferences(api, orgId, patch),
+    mutationFn: (patch: Partial<PushPreferences>) => updatePushPreferences(api, orgId, patch),
     onMutate: async (patch) => {
       await queryClient.cancelQueries({ queryKey: prefsKey });
       const previous = queryClient.getQueryData<PushPreferences>(prefsKey);
@@ -129,7 +117,7 @@ export default function NotificationsScreen() {
     );
   }
 
-  const current: PushPrefs = prefs.data ?? {
+  const current: PushPreferences = prefs.data ?? {
     syncIncidents: true,
     budgetAlerts: true,
     anomalyAlerts: true,
@@ -263,7 +251,7 @@ export default function NotificationsScreen() {
             </Text>
           </View>
           <Switch
-            value={current.expiryAlerts ?? true}
+            value={current.expiryAlerts}
             onValueChange={(v) => updatePrefs.mutate({ expiryAlerts: v })}
             trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
           />
@@ -546,7 +534,7 @@ const SLACK_TRIGGERS = [
   { key: "providerIncidents", label: "Provider incidents" },
   { key: "expiryAlerts", label: "Expiry" },
   { key: "weeklyDigest", label: "Weekly digest" },
-] as const satisfies ReadonlyArray<{ key: keyof SlackTriggers; label: string }>;
+] as const satisfies ReadonlyArray<{ key: keyof SlackChannelTriggers; label: string }>;
 
 /**
  * Slack routing for the whole org — unlike the push toggles above, which are
@@ -593,7 +581,7 @@ function SlackSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
   });
 
   const toggle = useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Partial<SlackTriggers> }) =>
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<SlackChannelTriggers> }) =>
       updateSlackChannel(api, orgId, id, patch),
     onMutate: async ({ id, patch }) => {
       await queryClient.cancelQueries({ queryKey: statusKey });
@@ -790,8 +778,8 @@ function SlackChannelRow({
   onToggle,
   onRemove,
 }: {
-  channel: SlackChannel & { expiryAlerts?: boolean };
-  onToggle: (patch: Partial<SlackTriggers>) => void;
+  channel: SlackChannel;
+  onToggle: (patch: Partial<SlackChannelTriggers>) => void;
   onRemove: () => void;
 }) {
   return (
@@ -813,7 +801,7 @@ function SlackChannelRow({
         >
           <Text style={{ color: colors.textMuted, fontSize: 13, flex: 1 }}>{t.label}</Text>
           <Switch
-            value={channel[t.key] ?? true}
+            value={channel[t.key]}
             onValueChange={(v) => onToggle({ [t.key]: v })}
             trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
           />
@@ -832,7 +820,7 @@ const MSTEAMS_TRIGGERS = [
   { key: "providerIncidents", label: "Provider incidents" },
   { key: "expiryAlerts", label: "Expiry" },
   { key: "weeklyDigest", label: "Weekly digest" },
-] as const satisfies ReadonlyArray<{ key: keyof TeamsTriggers; label: string }>;
+] as const satisfies ReadonlyArray<{ key: keyof MsTeamsWebhookTriggers; label: string }>;
 
 /**
  * Microsoft Teams routing for the whole org. There is no "Add to Teams" button
@@ -858,7 +846,7 @@ function MsTeamsSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
     Alert.alert(title, e instanceof Error ? e.message : "Unknown error");
 
   const toggle = useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Partial<TeamsTriggers> }) =>
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<MsTeamsWebhookTriggers> }) =>
       updateMsTeamsWebhook(api, orgId, id, patch),
     onMutate: async ({ id, patch }) => {
       await queryClient.cancelQueries({ queryKey: statusKey });
@@ -986,8 +974,8 @@ function MsTeamsWebhookRow({
   onToggle,
   onRemove,
 }: {
-  webhook: MsTeamsWebhook & { expiryAlerts?: boolean };
-  onToggle: (patch: Partial<TeamsTriggers>) => void;
+  webhook: MsTeamsWebhook;
+  onToggle: (patch: Partial<MsTeamsWebhookTriggers>) => void;
   onRemove: () => void;
 }) {
   return (
@@ -1009,7 +997,7 @@ function MsTeamsWebhookRow({
         >
           <Text style={{ color: colors.textMuted, fontSize: 13, flex: 1 }}>{t.label}</Text>
           <Switch
-            value={webhook[t.key] ?? true}
+            value={webhook[t.key]}
             onValueChange={(v) => onToggle({ [t.key]: v })}
             trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
           />

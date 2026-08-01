@@ -39,7 +39,8 @@ const plugins = [
         displayName: "Secret",
         expiryFields: [
           {
-            fieldKey: "lastChangedDate",
+            fieldKey: "lastRotatedDate",
+            fallbackFieldKey: "createdDate",
             from: "created" as const,
             kind: "secret-version" as const,
             label: "Last rotated",
@@ -177,7 +178,7 @@ describe("computeExpiryFeed", () => {
           resource({
             id: "stale-secret",
             resourceTypeId: "secrets-manager-secret",
-            fields: { lastChangedDate: iso(-100) },
+            fields: { lastRotatedDate: iso(-100) },
           }),
           resource({
             id: "fresh-key",
@@ -193,12 +194,33 @@ describe("computeExpiryFeed", () => {
 
     const secret = feed.items.find((i) => i.resourceId === "stale-secret")!;
     expect(secret.basis).toBe("age");
-    expect(secret.daysRemaining).toBe(-10); // 90-day budget, changed 100 days ago
+    expect(secret.daysRemaining).toBe(-10); // 90-day budget, rotated 100 days ago
     expect(secret.severity).toBe("expired");
 
     // No maxAgeDays on the rule → per-kind default budget applies.
     const key = feed.items.find((i) => i.resourceId === "fresh-key")!;
     expect(key.daysRemaining).toBe(DEFAULT_MAX_AGE_DAYS["api-token"] - 10);
+  });
+
+  it("falls back to fallbackFieldKey when the primary age field is empty", () => {
+    const feed = computeExpiryFeed(
+      {
+        plugins,
+        accounts,
+        resources: [
+          resource({
+            id: "never-rotated",
+            resourceTypeId: "secrets-manager-secret",
+            // lastRotatedDate empty (AWS null) — age from createdDate instead.
+            fields: { lastRotatedDate: "", createdDate: iso(-100) },
+          }),
+        ],
+      },
+      { now: NOW },
+    );
+    const secret = feed.items.find((i) => i.resourceId === "never-rotated")!;
+    expect(secret.daysRemaining).toBe(-10);
+    expect(secret.severity).toBe("expired");
   });
 
   it("honours a custom lead time", () => {
