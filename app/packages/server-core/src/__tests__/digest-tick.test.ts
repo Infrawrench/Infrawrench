@@ -47,6 +47,12 @@ const organizations = { __t: "organizations", id: "id", displayName: "displayNam
 const digestEmailRecipients = { __t: "recipients", organizationId: "organizationId" };
 const pagingIncidents = { __t: "pagingIncidents", organizationId: "organizationId" };
 const resources = { __t: "resources", organizationId: "organizationId" };
+const providerStatusIncidents = {
+  __t: "providerStatusIncidents",
+  pluginId: "pluginId",
+  startedAt: "startedAt",
+  resolvedAt: "resolvedAt",
+};
 
 vi.mock("../db/schema", () => ({
   orgDigestSettings,
@@ -54,6 +60,7 @@ vi.mock("../db/schema", () => ({
   digestEmailRecipients,
   pagingIncidents,
   resources,
+  providerStatusIncidents,
 }));
 
 // --- Mocked drizzle: predicates become functions over a fake row ---

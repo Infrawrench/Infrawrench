@@ -407,6 +407,13 @@
       "when": 1785598914378,
       "tag": "0057_misty_moon_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1785600979095,
+      "tag": "0058_crazy_stick",
+      "breakpoints": true
     }
   ]
 }

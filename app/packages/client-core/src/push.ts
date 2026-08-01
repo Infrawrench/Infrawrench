@@ -105,6 +105,23 @@ export type PushNotificationData =
       /** The throttle key it paged under. */
       key: string;
     }
+  | {
+      /**
+       * A provider status-page incident overlapping resources the org holds
+       * (see server-core `status/`). One notification per (incident, org).
+       *
+       * Target route: the mobile **Changes** screen, `/org/{orgId}/changes`,
+       * where the incident banner and overlap section render.
+       */
+      type: "provider_incident";
+      orgId: string;
+      /** The plugin whose provider is having the incident. */
+      pluginId: string;
+      /** Cached incident row id (`provider_status_incidents.id`). */
+      incidentId: string;
+      /** How many of the org's resources matched when the alert fired. */
+      affectedResourceCount: number;
+    }
   | { type: "test"; orgId: string };
 
 export async function registerPushToken(
@@ -141,6 +158,8 @@ export interface PushPreferences {
    * `POST /api/org/{orgId}/pages`.
    */
   workflowPages: boolean;
+  /** Provider status-page incidents overlapping resources the org holds. */
+  providerIncidents: boolean;
 }
 
 export async function getPushPreferences(api: CloudFetch, orgId: string): Promise<PushPreferences> {
@@ -151,6 +170,7 @@ export async function getPushPreferences(api: CloudFetch, orgId: string): Promis
       anomalyAlerts: true,
       resourceDrift: false,
       workflowPages: true,
+      providerIncidents: true,
     }
   );
 }

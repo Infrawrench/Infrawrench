@@ -837,6 +837,8 @@ export const slackChannels = pgTable(
     resourceDrift: boolean("resource_drift").notNull().default(false),
     /** Alerts raised by a workflow calling `infra.page(...)`. */
     workflowPages: boolean("workflow_pages").notNull().default(true),
+    /** Provider status-page incidents overlapping the org's resources. */
+    providerIncidents: boolean("provider_incidents").notNull().default(true),
     /**
      * The Monday-morning weekly summary. Channel opt-in defaults on like the
      * other triggers, but nothing sends until the org enables the digest in
@@ -898,6 +900,8 @@ export const msteamsWebhooks = pgTable(
     resourceDrift: boolean("resource_drift").notNull().default(false),
     /** Alerts raised by a workflow calling `infra.page(...)`. */
     workflowPages: boolean("workflow_pages").notNull().default(true),
+    /** Provider status-page incidents overlapping the org's resources. */
+    providerIncidents: boolean("provider_incidents").notNull().default(true),
     /**
      * The Monday-morning weekly summary. Channel opt-in defaults on like the
      * other triggers, but nothing sends until the org enables the digest in
@@ -1216,6 +1220,8 @@ export const pushPreferences = pgTable(
     resourceDrift: boolean("resource_drift").notNull().default(false),
     /** Alerts raised by a workflow calling `infra.page(...)`. */
     workflowPages: boolean("workflow_pages").notNull().default(true),
+    /** Provider status-page incidents overlapping the org's resources. */
+    providerIncidents: boolean("provider_incidents").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -1420,6 +1426,117 @@ export const externalPages = pgTable(
       t.key,
     ),
     orgIdx: index("external_pages_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
+ * Poll bookkeeping for provider status feeds — one row per plugin whose
+ * manifest declares `statusFeed`. Global, not org-scoped: a provider's status
+ * page is the same for everyone, so the cache is shared and correlation with
+ * an org's resources happens at read time.
+ *
+ * `nextFetchAt` doubles as the claim lease, exactly like `accounts.nextPollAt`:
+ * the poller claims due feeds with `UPDATE … WHERE plugin_id IN (SELECT … FOR
+ * UPDATE SKIP LOCKED)`, so replicas never fetch the same feed twice in a tick.
+ *
+ * `lastStatus`/`lastError` exist because poller failures are otherwise
+ * invisible: a feed that 500s or changes shape must leave a durable record a
+ * UI or operator can read, not just a stdout line.
+ */
+export const providerStatusFeeds = pgTable(
+  "provider_status_feeds",
+  {
+    pluginId: text("plugin_id").primaryKey(),
+    nextFetchAt: timestamp("next_fetch_at"),
+    lastFetchedAt: timestamp("last_fetched_at"),
+    /** "ok" | "error" — outcome of the most recent fetch+parse attempt. */
+    lastStatus: text("last_status"),
+    /** Truncated fetch/parse error message from the most recent failure. */
+    lastError: text("last_error"),
+    failureCount: integer("failure_count").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    dueIdx: index("provider_status_feeds_due_idx").on(t.nextFetchAt),
+  }),
+);
+
+/**
+ * Cached provider incidents, normalized by each plugin's `parseStatusFeed`.
+ * One row per (plugin, provider-native incident id); the poller upserts on
+ * every fetch. An incident the feed stops reporting without an explicit
+ * `resolvedAt` is closed by the collector (feeds like Statuspage's
+ * `unresolved.json` simply drop resolved incidents).
+ *
+ * `regions` hold plugin-native region ids (the strings plugins write into
+ * `fields_json.region`), `resourceTypeIds` plugin resource type ids — the two
+ * axes correlation matches on, plus `providerWide`.
+ */
+export const providerStatusIncidents = pgTable(
+  "provider_status_incidents",
+  {
+    id: text("id").primaryKey(),
+    pluginId: text("plugin_id").notNull(),
+    /** Provider-native incident id, stable across polls. */
+    externalId: text("external_id").notNull(),
+    title: text("title").notNull(),
+    /** "investigating" | "identified" | "monitoring" | "resolved" */
+    state: text("state").notNull(),
+    /** "maintenance" | "minor" | "major" | "critical" */
+    impact: text("impact").notNull(),
+    url: text("url"),
+    startedAt: timestamp("started_at").notNull(),
+    resolvedAt: timestamp("resolved_at"),
+    lastUpdateAt: timestamp("last_update_at"),
+    lastUpdateText: text("last_update_text"),
+    regions: jsonb("regions").$type<string[]>().notNull().default([]),
+    services: jsonb("services").$type<string[]>().notNull().default([]),
+    resourceTypeIds: jsonb("resource_type_ids").$type<string[]>().notNull().default([]),
+    providerWide: boolean("provider_wide").notNull().default(false),
+    /** Last poll that still reported this incident — staleness marker. */
+    lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    pluginExternalUnique: uniqueIndex("provider_status_incidents_plugin_external_unique").on(
+      t.pluginId,
+      t.externalId,
+    ),
+    activeIdx: index("provider_status_incidents_active_idx").on(t.resolvedAt, t.pluginId),
+    startedIdx: index("provider_status_incidents_started_idx").on(t.startedAt),
+  }),
+);
+
+/**
+ * Exactly-once bookkeeping for provider-incident notifications: one row per
+ * (incident, org) that has been fanned out. The insert is the claim — the
+ * replica whose `ON CONFLICT DO NOTHING` insert actually lands owns delivery,
+ * mirroring the conditional-UPDATE claims in `drift/alerts.ts`. When no
+ * transport delivers, the row is deleted so a later tick can retry
+ * (`releaseUnlessDelivered` invariant).
+ */
+export const providerStatusNotifications = pgTable(
+  "provider_status_notifications",
+  {
+    id: text("id").primaryKey(),
+    incidentId: text("incident_id")
+      .notNull()
+      .references(() => providerStatusIncidents.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** How many of the org's resources matched at notification time. */
+    affectedResourceCount: integer("affected_resource_count").notNull().default(0),
+    notifiedAt: timestamp("notified_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    incidentOrgUnique: uniqueIndex("provider_status_notifications_incident_org_unique").on(
+      t.incidentId,
+      t.organizationId,
+    ),
+    orgIdx: index("provider_status_notifications_org_idx").on(t.organizationId),
   }),
 );
 

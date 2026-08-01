@@ -32,6 +32,8 @@ export interface SlackChannel {
   resourceDrift: boolean;
   /** Pages and approval requests raised by a workflow or by `POST /pages`. */
   workflowPages: boolean;
+  /** A provider status-page incident overlaps resources the org holds. */
+  providerIncidents: boolean;
   /** The Monday-morning weekly summary (only sends when the org enables it). */
   weeklyDigest: boolean;
 }
@@ -94,6 +96,7 @@ export interface AddSlackChannelArgs {
   anomalyAlerts?: boolean;
   resourceDrift?: boolean;
   workflowPages?: boolean;
+  providerIncidents?: boolean;
   weeklyDigest?: boolean;
 }
 
@@ -115,6 +118,7 @@ export type SlackChannelTriggers = Pick<
   | "anomalyAlerts"
   | "resourceDrift"
   | "workflowPages"
+  | "providerIncidents"
   | "weeklyDigest"
 >;
 

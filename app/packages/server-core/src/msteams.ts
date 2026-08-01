@@ -165,6 +165,7 @@ export async function addMsTeamsWebhook(
   // high-volume where the others are exceptional. See db/schema.ts.
   const resourceDrift = args.resourceDrift ?? false;
   const workflowPages = args.workflowPages ?? true;
+  const providerIncidents = args.providerIncidents ?? true;
   const weeklyDigest = args.weeklyDigest ?? true;
   const now = new Date();
 
@@ -184,6 +185,7 @@ export async function addMsTeamsWebhook(
       anomalyAlerts,
       resourceDrift,
       workflowPages,
+      providerIncidents,
       weeklyDigest,
       createdByUserId: userId,
     })
@@ -202,6 +204,7 @@ export async function addMsTeamsWebhook(
         anomalyAlerts,
         resourceDrift,
         workflowPages,
+        providerIncidents,
         weeklyDigest,
         updatedAt: now,
       },
@@ -222,6 +225,7 @@ function toRecord(row: typeof msteamsWebhooks.$inferSelect): MsTeamsWebhookRecor
     anomalyAlerts: row.anomalyAlerts,
     resourceDrift: row.resourceDrift,
     workflowPages: row.workflowPages,
+    providerIncidents: row.providerIncidents,
     weeklyDigest: row.weeklyDigest,
   };
 }
@@ -388,6 +392,7 @@ const TRIGGER_COLUMN = {
   anomalyAlerts: msteamsWebhooks.anomalyAlerts,
   resourceDrift: msteamsWebhooks.resourceDrift,
   workflowPages: msteamsWebhooks.workflowPages,
+  providerIncidents: msteamsWebhooks.providerIncidents,
   weeklyDigest: msteamsWebhooks.weeklyDigest,
 } as const;
 

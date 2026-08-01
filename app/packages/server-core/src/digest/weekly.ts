@@ -35,6 +35,7 @@ import {
   orgDigestSettings,
   organizations,
   pagingIncidents,
+  providerStatusIncidents,
   resources,
 } from "../db/schema";
 import { queryCosts } from "../clickhouse/cost-readers";
@@ -143,7 +144,7 @@ export async function buildWeeklyDigest(
 
   const { fromDate, toDatePlusOne } = dayRange(window.weekStart, window.weekEnd);
   const count = sql<number>`count(*)::int`;
-  const [[incidents], [added], [removed]] = await Promise.all([
+  const [[incidents], [added], [removed], [providerIncidents]] = await Promise.all([
     db
       .select({ count })
       .from(pagingIncidents)
@@ -174,6 +175,25 @@ export async function buildWeeklyDigest(
           lt(resources.deletedAt, toDatePlusOne),
         ),
       ),
+    // Provider status-page incidents whose window overlapped the reported
+    // week, on providers the org holds accounts with. Provider-level, not
+    // per-resource: the digest line is a headcount, not a blast radius.
+    db
+      .select({ count })
+      .from(providerStatusIncidents)
+      .where(
+        and(
+          lt(providerStatusIncidents.startedAt, toDatePlusOne),
+          or(
+            isNull(providerStatusIncidents.resolvedAt),
+            gte(providerStatusIncidents.resolvedAt, fromDate),
+          ),
+          sql`${providerStatusIncidents.pluginId} IN (
+            SELECT DISTINCT plugin_id FROM accounts
+            WHERE organization_id = ${organizationId} AND deleted_at IS NULL
+          )`,
+        ),
+      ),
   ]);
 
   return composeWeeklyDigest({
@@ -183,6 +203,7 @@ export async function buildWeeklyDigest(
     syncIncidentsOpened: incidents?.count ?? 0,
     resourcesAdded: added?.count ?? 0,
     resourcesRemoved: removed?.count ?? 0,
+    providerIncidents: providerIncidents?.count ?? 0,
   });
 }
 

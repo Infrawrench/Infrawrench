@@ -256,6 +256,16 @@ export {
   type ResourceChangeEntry,
 } from "./resource-changes";
 export {
+  fetchOrgStatusIncidents,
+  compareStatusIncidents,
+  summarizeStatusIncident,
+  type ProviderIncidentImpact,
+  type ProviderIncidentState,
+  type ProviderIncidentResourceSample,
+  type OrgStatusIncident,
+  type OrgStatusIncidentsResponse,
+} from "./status-incidents";
+export {
   isHostKeyTrustResponse,
   trustPayloadFromFrame,
   hostKeyTrustRequestBody,

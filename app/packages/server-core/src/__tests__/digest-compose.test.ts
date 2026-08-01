@@ -60,6 +60,7 @@ function input(overrides: Partial<DigestInput> = {}): DigestInput {
     syncIncidentsOpened: 0,
     resourcesAdded: 0,
     resourcesRemoved: 0,
+    providerIncidents: 0,
     ...overrides,
   };
 }

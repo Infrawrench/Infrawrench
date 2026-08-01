@@ -45,6 +45,11 @@ export interface DigestInput {
   resourcesAdded: number;
   /** Resources soft-deleted during the reported week. */
   resourcesRemoved: number;
+  /**
+   * Provider status-page incidents active during the reported week on
+   * providers the org holds accounts with (from `provider_status_incidents`).
+   */
+  providerIncidents: number;
 }
 
 export interface DigestTotal {
@@ -75,6 +80,8 @@ export interface WeeklyDigest {
   syncIncidentsOpened: number;
   resourcesAdded: number;
   resourcesRemoved: number;
+  /** Provider status-page incidents that overlapped the org's providers. */
+  providerIncidents: number;
 }
 
 const MAX_MOVERS = 3;
@@ -324,6 +331,7 @@ export function composeWeeklyDigest(input: DigestInput): WeeklyDigest {
     syncIncidentsOpened: input.syncIncidentsOpened,
     resourcesAdded: input.resourcesAdded,
     resourcesRemoved: input.resourcesRemoved,
+    providerIncidents: input.providerIncidents,
   };
 }
 
@@ -449,6 +457,15 @@ export function digestSegments(digest: WeeklyDigest, narrative?: string | null):
     { text: "Reliability", bold: true },
     { text: `: ${pluralize(digest.syncIncidentsOpened, "sync incident")} opened`, bold: false },
   ]);
+  if (digest.providerIncidents > 0) {
+    lines.push([
+      { text: "Provider incidents", bold: true },
+      {
+        text: `: ${pluralize(digest.providerIncidents, "upstream incident")} affected your providers`,
+        bold: false,
+      },
+    ]);
+  }
   lines.push([
     { text: "Resources", bold: true },
     { text: `: ${digest.resourcesAdded} added, ${digest.resourcesRemoved} removed`, bold: false },

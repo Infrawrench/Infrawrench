@@ -5,6 +5,7 @@ import { workflows } from "@infrawrench/server-core/db/schema";
 import { runOrgWorkflow } from "@infrawrench/server-core/workflows/runner";
 import { loadPlugins } from "@infrawrench/server-core/plugin-loader";
 import { runWeeklyDigests } from "@infrawrench/server-core/digest/weekly";
+import { runStatusFeedCollection } from "@infrawrench/server-core/status/collect";
 import {
   pruneResourceChanges,
   CHANGE_RETENTION_INTERVAL_MS,
@@ -99,6 +100,12 @@ export class PollerLoop extends TickLoop {
     // idempotent, so replicas and restarts just repeat cheap no-ops. Defensive
     // like the others.
     await this.tickRetention();
+
+    // Sixth pass: provider status feeds. Claims due feeds with the same
+    // SKIP LOCKED lease protocol as accounts (the lease lives in
+    // `provider_status_feeds.next_fetch_at`), so replicas share the work.
+    // Defensive like the others.
+    await this.tickStatusFeeds();
   }
 
   private async runOne(row: PollAccountRow): Promise<void> {
@@ -137,6 +144,15 @@ export class PollerLoop extends TickLoop {
       await Promise.allSettled(claimed.map((row) => pollAccountCosts(row)));
     } catch (e) {
       console.error("[poller] cost tick failed:", e);
+    }
+  }
+
+  /** Fetch any provider status feeds that have come due. */
+  private async tickStatusFeeds(): Promise<void> {
+    try {
+      await runStatusFeedCollection();
+    } catch (e) {
+      console.error("[poller] status feed tick failed:", e);
     }
   }
 
