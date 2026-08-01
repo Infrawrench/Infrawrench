@@ -15,6 +15,7 @@ import type { OutputRefValue } from "@infrawrench/plugin-base";
 import { requirePermission } from "../../../auth/permissions";
 import { nextAssociationSyncVersion } from "../../../services/sync-versions";
 import { checkChangeFreeze } from "../../../services/change-freezes";
+import { checkTagPolicyOnCreate } from "../../../services/tag-policy";
 
 /**
  * Lifecycle routes: create / delete / picker-resources / field-action /
@@ -91,6 +92,19 @@ export function registerLifecycleRoutes(app: Hono): void {
         resolvedFields[fieldKey] = value;
       }
     }
+
+    // Org tag policy: refuse creates missing required tags (422, code
+    // `tag_policy_unmet`) the same way the change freeze refuses destructive
+    // mutations. Types that cannot carry tags are exempt inside the check.
+    const policyBlock = await checkTagPolicyOnCreate(c, {
+      client: ctx.client,
+      pluginId: input.pluginId,
+      resourceTypeId: input.resourceTypeId,
+      accountId: input.accountId,
+      parentResourceId: input.parentResourceId,
+      fields: resolvedFields,
+    });
+    if (policyBlock) return policyBlock;
 
     let createReturn;
     try {

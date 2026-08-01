@@ -11,6 +11,7 @@ import {
 } from "../common";
 import type { BuildContext } from "../context";
 import { FreezeLockedResponse } from "./change-freezes";
+import { TagPolicyUnmetResponse } from "./tag-policy";
 
 const StatusDot = strict({
   kind: z.literal("status-dot"),
@@ -703,6 +704,7 @@ export function registerResourcePaths(ctx: BuildContext) {
       200: { description: "Created", content: { "application/json": { schema: CreateResponse } } },
       400: ErrorResponses[400],
       404: ErrorResponses[404],
+      422: TagPolicyUnmetResponse,
     },
   });
 

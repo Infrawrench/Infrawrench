@@ -17,6 +17,8 @@ import { registerCostPaths } from "./paths/costs";
 import { registerOrphanPaths } from "./paths/orphans";
 import { registerBudgetPaths } from "./paths/budgets";
 import { registerChangeFreezePaths } from "./paths/change-freezes";
+import { registerTagPolicyPaths } from "./paths/tag-policy";
+import { registerCostCentrePaths } from "./paths/cost-centres";
 import { registerCustomGraphPaths } from "./paths/custom-graphs";
 import { registerWorkflowApprovalPaths } from "./paths/workflow-approvals";
 import { registerWorkflowPaths } from "./paths/workflows";
@@ -97,6 +99,8 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerOrphanPaths(ctx);
   registerBudgetPaths(ctx);
   registerChangeFreezePaths(ctx);
+  registerTagPolicyPaths(ctx);
+  registerCostCentrePaths(ctx);
   registerCustomGraphPaths(ctx);
   registerWorkflowApprovalPaths(ctx);
   registerWorkflowPaths(ctx);

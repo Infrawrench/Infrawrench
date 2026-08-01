@@ -39,6 +39,10 @@ export const ALL_PERMISSIONS = [
   "freezes:read",
   "freezes:write",
   "freezes:override",
+  // Create anyway when the org's tag policy would reject the resource. Its own
+  // family (not `resources:*`) so "can create but cannot skip governance"
+  // stays expressible, mirroring `freezes:override`.
+  "tag-policy:override",
   "audit:read",
   "team:read",
   "team:invite",

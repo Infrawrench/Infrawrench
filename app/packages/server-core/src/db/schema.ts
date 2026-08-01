@@ -400,6 +400,91 @@ export const changeFreezes = pgTable(
 );
 
 /**
+ * Org tag policy: the required tag keys (optionally with allowed values) every
+ * resource should carry, and whether resource creation through the app is
+ * refused when they are missing. One row per org, the same missing-row-means-
+ * defaults protocol as `org_cost_anomaly_settings`. Enforcement mirrors the
+ * change-freeze pattern: blocked creates get a 422 with code
+ * `tag_policy_unmet`, overridable via the `x-tag-policy-override` header by
+ * callers holding `tag-policy:override`; blocks and overrides land in
+ * `audit_logs`.
+ */
+export const orgTagPolicies = pgTable("org_tag_policies", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  /** `[{ key, allowedValues? }]` — see `RequiredTag` in client-core. */
+  requiredTags: jsonb("required_tags")
+    .$type<Array<{ key: string; allowedValues?: string[] | undefined }>>()
+    .notNull()
+    .default([]),
+  enforceOnCreate: boolean("enforce_on_create").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * Named cost centres spend is allocated to for showback ("Platform", "Data",
+ * "Growth"…). Purely org-defined labels — the mapping from spend to centre is
+ * the allocation rules table below.
+ */
+export const costCentres = pgTable(
+  "cost_centres",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("cost_centres_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
+ * Ordered rules mapping cost rows to cost centres. `match` is an AND of the
+ * fields it sets (tag key/value, account, provider, service); a rule with an
+ * empty match is a catch-all. Evaluation is first-match-wins by ascending
+ * `priority` — the showback reader compiles the ordered list into one
+ * ClickHouse `multiIf` over `cost_daily`, so rows no rule claims fall into the
+ * synthetic "Unallocated" bucket rather than disappearing.
+ */
+export const costAllocationRules = pgTable(
+  "cost_allocation_rules",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    costCentreId: text("cost_centre_id")
+      .notNull()
+      .references(() => costCentres.id, { onDelete: "cascade" }),
+    /** Lower fires first; first matching rule wins. */
+    priority: integer("priority").notNull().default(0),
+    match: jsonb("match")
+      .$type<{
+        tagKey?: string | undefined;
+        tagValue?: string | undefined;
+        accountId?: string | undefined;
+        pluginId?: string | undefined;
+        service?: string | undefined;
+      }>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("cost_allocation_rules_org_idx").on(t.organizationId),
+    centreIdx: index("cost_allocation_rules_centre_idx").on(t.costCentreId),
+  }),
+);
+
+/**
  * Detected spend anomalies: a day whose spend for one (dimension, key) —
  * a provider or a service — cleared the trailing-window statistical threshold,
  * or where a key with no prior spend at all started costing money (see

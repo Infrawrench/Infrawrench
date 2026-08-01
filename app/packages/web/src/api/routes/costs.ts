@@ -13,6 +13,8 @@ import {
   runCostQuery,
 } from "../../services/cost-query";
 import { listRecentCostAnomalies } from "../../services/cost-anomalies";
+import { getUntaggedSpendReport } from "../../services/tag-policy";
+import { getShowbackReport } from "../../services/showback";
 import type { AuthSession } from "../auth-middleware";
 import { requirePermission } from "../../auth/permissions";
 
@@ -122,6 +124,43 @@ app.put("/anomaly-settings", async (c) => {
     isSmsPagingConfigured(organizationId),
   ]);
   return c.json({ ...settings, smsConfigured });
+});
+
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Parse `?from&to` (both YYYY-MM-DD); defaults to the trailing 30 days. */
+function parseRange(c: {
+  req: { query(name: string): string | undefined };
+}): { from: string; to: string } | null {
+  const today = new Date().toISOString().slice(0, 10);
+  const defaultFrom = new Date(Date.now() - 29 * 86_400_000).toISOString().slice(0, 10);
+  const from = c.req.query("from") ?? defaultFrom;
+  const to = c.req.query("to") ?? today;
+  if (!ISO_DAY.test(from) || !ISO_DAY.test(to) || from > to) return null;
+  return { from, to };
+}
+
+/**
+ * GET /api/org/:orgId/costs/untagged?from&to — spend on rows missing at least
+ * one of the org's required tag keys, overall and per key, plus the largest
+ * untagged (account, service) buckets. Empty when no tag policy is set.
+ */
+app.get("/untagged", async (c) => {
+  requirePermission(c, "costs:read");
+  const range = parseRange(c);
+  if (!range) return c.json({ error: "from/to must be YYYY-MM-DD with from <= to" }, 400);
+  return c.json(await getUntaggedSpendReport(c.get("organizationId"), range.from, range.to));
+});
+
+/**
+ * GET /api/org/:orgId/costs/showback?from&to — spend grouped by cost centre
+ * through the org's allocation rules; unclaimed spend lands in "Unallocated".
+ */
+app.get("/showback", async (c) => {
+  requirePermission(c, "costs:read");
+  const range = parseRange(c);
+  if (!range) return c.json({ error: "from/to must be YYYY-MM-DD with from <= to" }, 400);
+  return c.json(await getShowbackReport(c.get("organizationId"), range.from, range.to));
 });
 
 /**

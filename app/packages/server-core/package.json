@@ -48,6 +48,8 @@
     "./cost/anomaly-detect": "./src/cost/anomaly-detect.ts",
     "./cost/anomaly-eval": "./src/cost/anomaly-eval.ts",
     "./cost/anomaly-settings": "./src/cost/anomaly-settings.ts",
+    "./cost/tag-policy": "./src/cost/tag-policy.ts",
+    "./cost/allocation": "./src/cost/allocation.ts",
     "./drift/alerts": "./src/drift/alerts.ts",
     "./drift/settings": "./src/drift/settings.ts",
     "./drift/summary": "./src/drift/summary.ts",

@@ -26,8 +26,22 @@ import {
   updateBudget,
 } from "../services/budgets";
 import { logAudit } from "../services/audit";
+import { getAccountTagCompliance, getUntaggedSpendReport } from "../services/tag-policy";
+import { getShowbackReport } from "../services/showback";
+import { getOrgTagPolicy } from "@infrawrench/server-core/cost/tag-policy";
 import { denyUnlessPermitted } from "./permissions";
 import { ok, err, type ToolDefinition } from "./types";
+
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
+
+/** Resolve optional from/to tool args; defaults to the trailing 30 days. */
+function toolRange(input: Record<string, unknown>): { from: string; to: string } | null {
+  const from =
+    (input["from"] as string | undefined) ??
+    new Date(Date.now() - 29 * 86_400_000).toISOString().slice(0, 10);
+  const to = (input["to"] as string | undefined) ?? new Date().toISOString().slice(0, 10);
+  return from <= to ? { from, to } : null;
+}
 
 export function costTools(): ToolDefinition[] {
   return [
@@ -101,6 +115,68 @@ export function costTools(): ToolDefinition[] {
         const denied = await denyUnlessPermitted(auth, "costs:read");
         if (denied) return denied;
         return ok(await getOrgCostStatus(auth.organizationId));
+      },
+    },
+
+    {
+      name: "get_tag_compliance",
+      title: "Get tag compliance",
+      description:
+        "The organization's tag policy (required tag keys, optionally with allowed values) and " +
+        "per-account compliance: how many of each account's resources carry every required tag. " +
+        "Resources whose stored record exposes no tags/labels field are counted in " +
+        "totalResources but excluded from the score.",
+      inputSchema: {},
+      risk: "read",
+      permission: "resources:read",
+      handler: async (_input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "resources:read");
+        if (denied) return denied;
+        const [policy, accounts] = await Promise.all([
+          getOrgTagPolicy(auth.organizationId),
+          getAccountTagCompliance(auth.organizationId),
+        ]);
+        return ok({ policy, accounts });
+      },
+    },
+
+    {
+      name: "query_untagged_spend",
+      title: "Query untagged spend",
+      description:
+        "Spend on cost rows missing at least one of the organization's required tag keys, " +
+        "overall and per key, plus the largest untagged (account, service) buckets. Dates are " +
+        "inclusive YYYY-MM-DD, defaulting to the trailing 30 days. Empty when the org has no " +
+        "tag policy.",
+      inputSchema: { from: isoDay.optional(), to: isoDay.optional() },
+      risk: "read",
+      permission: "costs:read",
+      handler: async (input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:read");
+        if (denied) return denied;
+        const range = toolRange(input as Record<string, unknown>);
+        if (!range) return err("from must not be after to");
+        return ok(await getUntaggedSpendReport(auth.organizationId, range.from, range.to));
+      },
+    },
+
+    {
+      name: "query_showback",
+      title: "Query showback",
+      description:
+        "Spend grouped by cost centre through the organization's allocation rules " +
+        "(first-match-wins on tag key/value, account, provider, service). Spend no rule claims " +
+        'lands in the "Unallocated" bucket. Dates are inclusive YYYY-MM-DD, defaulting to the ' +
+        "trailing 30 days.",
+      inputSchema: { from: isoDay.optional(), to: isoDay.optional() },
+      risk: "read",
+      permission: "costs:read",
+      handler: async (input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:read");
+        if (denied) return denied;
+        const range = toolRange(input as Record<string, unknown>);
+        if (!range) return err("from must not be after to");
+        return ok(await getShowbackReport(auth.organizationId, range.from, range.to));
       },
     },
 
