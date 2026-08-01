@@ -4,7 +4,7 @@
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**", "out/**"],
-      "inputs": ["src/**", "tsconfig.json", "tsup.config.ts", "vite.config.ts", "next.config.ts"]
+      "inputs": ["src/**", "tsconfig.json", "tsdown.config.ts", "vite.config.ts", "next.config.ts"]
     },
     "dev": {
       "dependsOn": ["^build"],

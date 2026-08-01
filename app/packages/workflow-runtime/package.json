@@ -24,10 +24,11 @@
     "@infrawrench/plugin-base": "workspace:*",
     "@sebastianwessel/quickjs": "^3.0.1",
     "@jitl/quickjs-ng-wasmfile-release-asyncify": "^0.31.0",
-    "typescript": "^5.7.3"
+    "@typescript/typescript6": "^6.0.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.1",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "typescript": "^7.0.2"
   }
 }

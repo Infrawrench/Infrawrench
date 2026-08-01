@@ -522,6 +522,18 @@ export {
 export * from "./cost/index.js";
 export * from "./savings/index.js";
 
+// Named re-exports of cost/custom-graph wire types. The tsdown (tsgo) dts
+// bundler drops some `export *` type re-exports when the same name also
+// appears as an import into the declaration graph from client-core under
+// another path — desktop/web then fail to resolve them from `@infrawrench/ui`.
+export type {
+  CostAccountStatus,
+  CostAnomalySettings,
+  CostAnomalySettingsView,
+  CostDimensionOption,
+  CustomGraphWidgetConfig,
+} from "@infrawrench/client-core";
+
 // Named rather than `export *`: the change-timeline wire types are already
 // re-exported above straight from client-core, and a star would redeclare them.
 export {

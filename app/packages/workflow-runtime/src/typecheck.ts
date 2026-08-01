@@ -11,7 +11,7 @@
  * exactly (target ESNext, `lib: ["es2020"]`, non-strict) so the diagnostics an
  * agent sees are the diagnostics a human would see in the editor.
  */
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { createRequire } from "node:module";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -64,9 +64,9 @@ let cachedLibDir: string | null | undefined;
 
 /**
  * Where to look for `lib.*.d.ts`, in order. Bundled services (esbuild) lose the
- * ability to resolve the `typescript` package at runtime — its lib files are
- * data, not code — so `scripts/copy-ts-libs.mjs` drops them next to the bundle
- * and candidate #2 finds them there.
+ * ability to resolve the `@typescript/typescript6` package at runtime — its
+ * lib files are data, not code — so `scripts/copy-ts-libs.mjs` drops them next
+ * to the bundle and candidate #2 finds them there.
  */
 function libDirCandidates(): string[] {
   const out: string[] = [];
@@ -78,9 +78,9 @@ function libDirCandidates(): string[] {
     /* import.meta.url unavailable (CJS interop) — skip */
   }
   try {
-    out.push(dirname(createRequire(import.meta.url).resolve("typescript")));
+    out.push(dirname(createRequire(import.meta.url).resolve("@typescript/typescript6")));
   } catch {
-    /* typescript not resolvable from here (bundled) — skip */
+    /* typescript6 not resolvable from here (bundled) — skip */
   }
   try {
     out.push(dirname(ts.getDefaultLibFilePath({})));
