@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { summarizeChange } from "@infrawrench/client-core";
 import { ChangeDiffList, ChangeKindBadge } from "./ChangeParts.js";
+import { ProviderIncidentChangesSection } from "../status/ProviderIncidentChangesSection.js";
+import type { StatusIncidentsClient } from "../status/types.js";
 import type {
   ChangeFeedAccount,
   ChangesClient,
@@ -20,6 +22,14 @@ export interface ChangesPanelProps {
   client: ChangesClient;
   /** Jump to a changed resource's detail view. Omitted, names are plain text. */
   onOpenResource?: ((entry: ResourceChangeEntry) => void) | undefined;
+  /**
+   * Provider status correlation. When present, incidents overlapping the org
+   * render as a section above the feed ("these N changes happened during an
+   * incident"). Optional so hosts adopt it independently.
+   */
+  statusClient?: StatusIncidentsClient | undefined;
+  /** Open an external URL (provider status page). */
+  onOpenUrl?: ((url: string) => void) | undefined;
 }
 
 /**
@@ -30,7 +40,12 @@ export interface ChangesPanelProps {
  * host with no org has nothing to show. Hosts guard the entry point rather than
  * rendering this with a dead client.
  */
-export function ChangesPanel({ client, onOpenResource }: ChangesPanelProps) {
+export function ChangesPanel({
+  client,
+  onOpenResource,
+  statusClient,
+  onOpenUrl,
+}: ChangesPanelProps) {
   const [entries, setEntries] = useState<ResourceChangeEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -98,6 +113,10 @@ export function ChangesPanel({ client, onOpenResource }: ChangesPanelProps) {
         Everything the resource poller saw appear, change, or disappear across your connected
         providers.
       </p>
+
+      {statusClient && (
+        <ProviderIncidentChangesSection client={statusClient} onOpenUrl={onOpenUrl} />
+      )}
 
       <div className="flex gap-3 mb-4">
         <label htmlFor="changes-kind-filter" className="sr-only">

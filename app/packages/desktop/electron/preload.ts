@@ -151,6 +151,7 @@ const INVOKE_CHANNELS = [
   "cloud_orphans_list",
   "local_orphans_list",
   "cloud_changes_list",
+  "cloud_status_incidents",
   "cloud_list_budgets",
   "cloud_create_budget",
   "cloud_update_budget",

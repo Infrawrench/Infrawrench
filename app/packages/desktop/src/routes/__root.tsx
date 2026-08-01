@@ -35,6 +35,7 @@ import { SpotlightSearch } from "../components/SpotlightSearch";
 import { UpdatePromptHost } from "../components/UpdatePromptHost";
 import { SwipeIndicator } from "../components/SwipeIndicator";
 import { SidebarAccounts } from "../components/SidebarAccounts";
+import { ProviderIncidentShellBanner } from "../components/ProviderIncidentShellBanner";
 import { SidebarDashboards } from "../components/SidebarDashboards";
 import { Onboarding, isOnboardingComplete, markOnboardingComplete } from "../components/Onboarding";
 import { getDb } from "../db/client";
@@ -621,6 +622,8 @@ function RootLayout() {
             ))}
           </div>
         )}
+
+        <ProviderIncidentShellBanner />
 
         <GlobalTabBar
           tabs={workspaceTabs}

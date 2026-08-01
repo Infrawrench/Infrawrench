@@ -413,6 +413,7 @@ const ALERT_TRIGGERS = [
   { key: "anomalyAlerts", label: "Anomalies" },
   { key: "resourceDrift", label: "Drift" },
   { key: "workflowPages", label: "Pages" },
+  { key: "providerIncidents", label: "Provider incidents" },
   { key: "weeklyDigest", label: "Weekly digest" },
 ] as const;
 
@@ -1438,6 +1439,17 @@ function PushPreferencesSection({ orgId }: { orgId: string }) {
           />
           <span>Pages</span>
         </label>
+        <label
+          className="flex items-center gap-2"
+          title="An upstream provider incident overlaps resources you hold."
+        >
+          <input
+            type="checkbox"
+            checked={prefs.providerIncidents}
+            onChange={(e) => void updatePref({ providerIncidents: e.target.checked })}
+          />
+          <span>Provider incidents</span>
+        </label>
       </div>
 
       {devices.length === 0 ? (
@@ -1498,6 +1510,7 @@ interface PushRecipientRow {
   anomalyAlerts: boolean;
   resourceDrift: boolean;
   workflowPages: boolean;
+  providerIncidents: boolean;
   devices: Array<{ id: string; platform: string; deviceName: string | null }>;
 }
 
@@ -1535,6 +1548,7 @@ function PushRosterSection({ orgId }: { orgId: string }) {
                   r.anomalyAlerts && "anomalies",
                   r.resourceDrift && "drift",
                   r.workflowPages && "pages",
+                  r.providerIncidents && "provider incidents",
                 ]
                   .filter(Boolean)
                   .join(", ") || "all triggers off"}

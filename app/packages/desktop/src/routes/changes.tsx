@@ -2,7 +2,9 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { ChangesPanel, useUIStore } from "@infrawrench/ui";
 import { createDesktopChangesClient } from "@/lib/changes-client";
+import { createDesktopStatusIncidentsClient } from "@/lib/status-incidents-client";
 import { getWorkspaceNavigateArgs, resourceTabTarget } from "@/lib/workspace-tabs";
+import { invoke } from "@/lib/invoke";
 
 export const Route = createFileRoute("/changes")({
   component: ChangesPage,
@@ -22,6 +24,7 @@ function ChangesPage() {
   const navigate = useNavigate();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const client = useMemo(() => createDesktopChangesClient(), []);
+  const statusClient = useMemo(() => createDesktopStatusIncidentsClient(), []);
 
   if (!activeCloudOrgId) {
     return (
@@ -42,6 +45,8 @@ function ChangesPage() {
       // previous org's events.
       key={activeCloudOrgId}
       client={client}
+      statusClient={statusClient}
+      onOpenUrl={(url) => void invoke("open_external_url", { url })}
       onOpenResource={(entry) =>
         void navigate(
           getWorkspaceNavigateArgs(

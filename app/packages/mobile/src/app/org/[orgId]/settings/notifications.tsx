@@ -125,6 +125,7 @@ export default function NotificationsScreen() {
     // where the others are exceptional events.
     resourceDrift: false,
     workflowPages: true,
+    providerIncidents: true,
   };
   const deviceList = devices.data ?? [];
 
@@ -221,6 +222,21 @@ export default function NotificationsScreen() {
           <Switch
             value={current.workflowPages}
             onValueChange={(v) => updatePrefs.mutate({ workflowPages: v })}
+            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
+          />
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
+              Provider incidents
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+              A provider status-page incident overlaps resources you hold.
+            </Text>
+          </View>
+          <Switch
+            value={current.providerIncidents}
+            onValueChange={(v) => updatePrefs.mutate({ providerIncidents: v })}
             trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
           />
         </View>
@@ -499,6 +515,7 @@ const SLACK_TRIGGERS = [
   { key: "anomalyAlerts", label: "Anomalies" },
   { key: "resourceDrift", label: "Drift" },
   { key: "workflowPages", label: "Pages" },
+  { key: "providerIncidents", label: "Provider incidents" },
   { key: "weeklyDigest", label: "Weekly digest" },
 ] as const satisfies ReadonlyArray<{ key: keyof SlackChannelTriggers; label: string }>;
 
@@ -783,6 +800,7 @@ const MSTEAMS_TRIGGERS = [
   { key: "anomalyAlerts", label: "Anomalies" },
   { key: "resourceDrift", label: "Drift" },
   { key: "workflowPages", label: "Pages" },
+  { key: "providerIncidents", label: "Provider incidents" },
   { key: "weeklyDigest", label: "Weekly digest" },
 ] as const satisfies ReadonlyArray<{ key: keyof MsTeamsWebhookTriggers; label: string }>;
 

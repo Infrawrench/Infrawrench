@@ -11,6 +11,7 @@ import {
 } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { Button, Card, EmptyView, ErrorView, LoadingView, Screen } from "@/components/ui";
+import { ProviderIncidentNotice } from "@/components/ProviderIncidentNotice";
 import { Chip, ChipRow } from "@/components/form";
 import { colors, spacing } from "@/lib/theme";
 import { ChangeDiffList, ChangeKindBadge } from "./ChangeParts";
@@ -181,6 +182,8 @@ export function ChangesScreen({ since, accountId: initialAccountId }: ChangesScr
 
   return (
     <Screen onRefresh={() => void feed.refetch()} refreshing={feed.isRefetching}>
+      <ProviderIncidentNotice showResolvedCorrelation />
+
       {filters}
 
       {entries.length === 0 ? (

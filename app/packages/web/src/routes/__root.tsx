@@ -18,6 +18,7 @@ import {
 import { PromptHost } from "@infrawrench/ui/workflows";
 import { WebSidebar } from "@/components/WebSidebar";
 import { ChangeFreezeBanner } from "@/components/ChangeFreezeBanner";
+import { ProviderIncidentShellBanner } from "@/components/ProviderIncidentShellBanner";
 import { SpotlightSearch } from "@/components/SpotlightSearch";
 import { WebWorkspaceTabsViewport } from "@/components/WorkspaceTabsViewport";
 import { apiGet, apiPost } from "@/lib/api";
@@ -320,6 +321,7 @@ function AuthenticatedShell() {
           onNew={handleNewTab}
         />
         {orgId && <ChangeFreezeBanner orgId={orgId} />}
+        {orgId && <ProviderIncidentShellBanner orgId={orgId} />}
         <div className="flex flex-1 overflow-hidden">
           <WebSidebar orgId={orgId} />
           <main className="flex-1 flex flex-col min-w-0 overflow-hidden">

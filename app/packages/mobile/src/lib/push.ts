@@ -191,6 +191,10 @@ export function pushDataToPath(data: PushNotificationData): string {
       if (data.accountId) query.set("accountId", data.accountId);
       return `/org/${data.orgId}/changes?${query.toString()}`;
     }
+    // A provider incident is surfaced as a banner/section on the Changes
+    // screen, which is where the affected resources' churn shows up.
+    case "provider_incident":
+      return `/org/${data.orgId}/changes`;
     case "test":
       return `/org/${data.orgId}`;
     default:
@@ -298,6 +302,19 @@ export function parsePushData(raw: unknown): PushNotificationData | null {
       const key = data["key"];
       if (typeof source !== "string" || typeof key !== "string") return null;
       return { type: "api_page", orgId, source, key };
+    }
+    case "provider_incident": {
+      const pluginId = data["pluginId"];
+      const incidentId = data["incidentId"];
+      const affectedResourceCount = data["affectedResourceCount"];
+      if (
+        typeof pluginId !== "string" ||
+        typeof incidentId !== "string" ||
+        typeof affectedResourceCount !== "number"
+      ) {
+        return null;
+      }
+      return { type: "provider_incident", orgId, pluginId, incidentId, affectedResourceCount };
     }
     case "test":
       return { type: "test", orgId };

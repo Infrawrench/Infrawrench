@@ -547,6 +547,19 @@ export {
   type ChangeFeedAccount,
 } from "./changes/index.js";
 
+export {
+  ProviderIncidentBanner,
+  ProviderIncidentChangesSection,
+  type ProviderIncidentBannerProps,
+  type ProviderIncidentChangesSectionProps,
+  type StatusIncidentsClient,
+  type OrgStatusIncident,
+  type OrgStatusIncidentsResponse,
+  type ProviderIncidentImpact,
+  type ProviderIncidentResourceSample,
+  type ProviderIncidentState,
+} from "./status/index.js";
+
 export * from "./custom-graphs/index.js";
 
 export * from "./chat/index.js";

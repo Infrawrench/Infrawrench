@@ -6,6 +6,7 @@ import type { Dashboard } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { TextField } from "@/components/form";
 import { Button, Card, ErrorView, LoadingView, Row, Screen } from "@/components/ui";
+import { ProviderIncidentNotice } from "@/components/ProviderIncidentNotice";
 import { colors, spacing } from "@/lib/theme";
 
 /**
@@ -72,6 +73,8 @@ export default function OrgDashboards() {
 
   return (
     <Screen onRefresh={() => void dashboards.refetch()} refreshing={dashboards.isRefetching}>
+      <ProviderIncidentNotice />
+
       {list.length === 0 ? (
         <Text style={{ color: colors.textMuted, fontSize: 13 }}>
           No dashboards in this organization yet. Make one and pin the resources, cost graphs, and

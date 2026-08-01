@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { ChangesPanel } from "@infrawrench/ui";
 import { createWebChangesClient } from "@/lib/changes-client";
+import { createWebStatusIncidentsClient } from "@/lib/status-incidents-client";
 
 export const Route = createFileRoute("/org/$orgId/changes")({
   component: ChangesFeedPage,
@@ -16,6 +17,7 @@ function ChangesFeedPage() {
   const { orgId } = Route.useParams();
   const navigate = useNavigate();
   const client = useMemo(() => createWebChangesClient(orgId), [orgId]);
+  const statusClient = useMemo(() => createWebStatusIncidentsClient(orgId), [orgId]);
 
   return (
     <ChangesPanel
@@ -23,6 +25,8 @@ function ChangesFeedPage() {
       // previous org's events under the new org's filters.
       key={orgId}
       client={client}
+      statusClient={statusClient}
+      onOpenUrl={(url) => window.open(url, "_blank", "noopener,noreferrer")}
       onOpenResource={(entry) =>
         void navigate({
           to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
