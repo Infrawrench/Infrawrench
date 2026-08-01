@@ -14,6 +14,7 @@ import type {
 } from "@infrawrench/ui";
 import { DRIFT_ALERT_LIMITS } from "@infrawrench/ui";
 import { WeeklyDigestSection } from "@/components/WeeklyDigestSection";
+import { ExpiryAlertsSection } from "@/components/ExpiryAlertsSection";
 
 interface PagingSettings {
   enabled: boolean;
@@ -83,6 +84,8 @@ function PagingPage() {
       <MsTeamsSection orgId={orgId} />
 
       <DriftAlertsSection orgId={orgId} />
+
+      <ExpiryAlertsSection orgId={orgId} />
 
       <WeeklyDigestSection orgId={orgId} />
 
@@ -414,6 +417,7 @@ const ALERT_TRIGGERS = [
   { key: "resourceDrift", label: "Drift" },
   { key: "workflowPages", label: "Pages" },
   { key: "providerIncidents", label: "Provider incidents" },
+  { key: "expiryAlerts", label: "Expiry alerts" },
   { key: "weeklyDigest", label: "Weekly digest" },
 ] as const;
 
@@ -1450,6 +1454,17 @@ function PushPreferencesSection({ orgId }: { orgId: string }) {
           />
           <span>Provider incidents</span>
         </label>
+        <label
+          className="flex items-center gap-2"
+          title="Certificates, domains, tokens and keys approaching expiry."
+        >
+          <input
+            type="checkbox"
+            checked={prefs.expiryAlerts}
+            onChange={(e) => void updatePref({ expiryAlerts: e.target.checked })}
+          />
+          <span>Expiry alerts</span>
+        </label>
       </div>
 
       {devices.length === 0 ? (
@@ -1511,6 +1526,8 @@ interface PushRecipientRow {
   resourceDrift: boolean;
   workflowPages: boolean;
   providerIncidents: boolean;
+  /** Expiry-radar alerts; on by default like the other exceptional triggers. */
+  expiryAlerts: boolean;
   devices: Array<{ id: string; platform: string; deviceName: string | null }>;
 }
 
@@ -1549,6 +1566,7 @@ function PushRosterSection({ orgId }: { orgId: string }) {
                   r.resourceDrift && "drift",
                   r.workflowPages && "pages",
                   r.providerIncidents && "provider incidents",
+                  r.expiryAlerts && "expiry",
                 ]
                   .filter(Boolean)
                   .join(", ") || "all triggers off"}

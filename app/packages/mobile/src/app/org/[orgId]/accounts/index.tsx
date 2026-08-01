@@ -33,15 +33,20 @@ export default function AccountsScreen() {
   return (
     <Screen onRefresh={() => void accounts.refetch()} refreshing={accounts.isRefetching}>
       {/*
-        The change timeline is org-wide but it is about resources, so it hangs
-        off this tab rather than earning a seventh one — the tab bar is already
-        at the width where labels ellipsize.
+        The change timeline and expiry feed are org-wide but they are about
+        resources, so they hang off this tab rather than earning tabs of their
+        own — the tab bar is already at the width where labels ellipsize.
       */}
       <Card list>
         <Row
           title="Changes"
           subtitle="What appeared, changed or disappeared"
           onPress={() => router.push(`/org/${orgId}/changes`)}
+        />
+        <Row
+          title="Expiring soon"
+          subtitle="Certs, domains, tokens and keys with deadlines"
+          onPress={() => router.push(`/org/${orgId}/expiring`)}
         />
       </Card>
       <Card list>

@@ -483,6 +483,40 @@ export {
 export { ChangesIcon } from "./components/icons/ChangesIcon.js";
 
 /**
+ * Expiry radar — the pure contract (feed computation, wire types, settings
+ * helpers) lives in `@infrawrench/client-core` so mobile and the CLI share
+ * one definition; re-exported here because web and desktop import it from
+ * `ui`.
+ */
+export {
+  computeExpiryFeed,
+  fetchExpiring,
+  getExpirySettings,
+  updateExpirySettings,
+  itemsWithinLead,
+  EXPIRY_KIND_LABELS,
+  EXPIRY_SEVERITIES,
+  DEFAULT_EXPIRY_LEAD_DAYS,
+} from "@infrawrench/client-core";
+export type {
+  ExpiryFieldRule,
+  ExpiryItem,
+  ExpiryKind,
+  ExpiryListResponse,
+  ExpiryScanAccount,
+  ExpiryScanInput,
+  ExpiryScanPlugin,
+  ExpiryScanResource,
+  ExpiryScanResourceType,
+  ExpirySettings,
+  ExpirySettingsPatch,
+  ExpirySeverity,
+} from "@infrawrench/client-core";
+export { ExpirySection, formatDaysRemaining } from "./expiry/ExpirySection.js";
+export type { ExpirySectionProps } from "./expiry/ExpirySection.js";
+export { ExpiryIcon } from "./components/icons/ExpiryIcon.js";
+
+/**
  * SSH host-key trust handshake. Shared with mobile through client-core because
  * all three hosts have to agree on the payload the proxy and the HTTP routes
  * send, and on how the trust POST is shaped.

@@ -7,6 +7,7 @@ import {
   DEFAULT_CHAT_MODEL,
   ChangesIcon,
   DeployIcon,
+  ExpiryIcon,
   GraphIcon,
   DroppableDashboardItem,
   emitChatConversationsChanged,
@@ -222,6 +223,15 @@ export function SidebarDashboards() {
       label: "Graph",
       icon: <GraphIcon />,
       onClick: () => void navigateToWorkspaceTarget(navigate, graphTabTarget(), { label: "Graph" }),
+    },
+    // Expiring also has a local half — the feed is computed from stored state
+    // and the locally loaded plugins' expiry declarations. Not a workspace
+    // tab — same as web and Changes, a plain route.
+    {
+      key: "expiring",
+      label: "Expiring",
+      icon: <ExpiryIcon />,
+      onClick: () => void navigate({ to: "/expiring" }),
     },
   ];
 

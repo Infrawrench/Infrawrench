@@ -16,6 +16,7 @@ import { cmdMetrics } from "./commands/metrics";
 import { cmdCosts, cmdCostAnomalies } from "./commands/costs";
 import { cmdTags, cmdShowback } from "./commands/tags";
 import { cmdOrphans } from "./commands/orphans";
+import { cmdExpiring } from "./commands/expiring";
 import { cmdChanges } from "./commands/changes";
 import { cmdIncidents } from "./commands/incidents";
 import { cmdGraph } from "./commands/graph";
@@ -46,6 +47,8 @@ COMMANDS
   showback            spend by cost centre via the org's allocation rules   [--last 30d]
   orphans             likely-wasted resources (unattached volumes, idle IPs) with reasons + cost
                       (--local scans this machine's workspace; no cost column without the cloud)
+  expiring            certificates, domains, tokens & keys approaching expiry, soonest first
+                      (--local scans this machine's workspace)
   changes             what appeared / changed / disappeared across your providers
                       [--last 7d] [--limit 50] [--kind created|updated|deleted] [-a <account>] [--resource <id>]
   incidents           provider status-page incidents overlapping your resources ("is it me or is it them?")
@@ -236,6 +239,9 @@ export async function runCli(): Promise<void> {
         break;
       case "orphans":
         await cmdOrphans(ctx);
+        break;
+      case "expiring":
+        await cmdExpiring(ctx);
         break;
       case "changes":
         await cmdChanges(ctx, parsed.range);

@@ -153,15 +153,24 @@ export async function unregisterCurrentDevice(api: CloudFetch): Promise<void> {
 }
 
 /**
+ * The union this app routes on. `expiry_alert` is landing in client-core's
+ * `PushNotificationData` in the same release as this handler; until it does,
+ * the variant is declared here. On the wire it carries `organizationId` where
+ * every other variant carries `orgId` — `parsePushData` normalises that.
+ */
+export type MobilePushData = PushNotificationData | { type: "expiry_alert"; orgId: string };
+
+/**
  * Map a notification payload to an expo-router path. Sync incidents land on
  * the failing account; workflow pages land on the workflow that raised them
  * (its run list is the first thing you want); budget breaches land on the
  * Costs tab, which lists every budget in the org whether or not a dashboard
  * shows it — the alert has to open something that contains the budget it is
  * about, and the Dashboards tab is a list of dashboards, not of budgets.
+ * Expiry alerts land on the Expiring screen, the feed the alert summarised.
  * Tests and API pages land on the org root.
  */
-export function pushDataToPath(data: PushNotificationData): string {
+export function pushDataToPath(data: MobilePushData): string {
   switch (data.type) {
     case "sync_incident":
       return `/org/${data.orgId}/accounts/${data.accountId}`;
@@ -195,6 +204,13 @@ export function pushDataToPath(data: PushNotificationData): string {
     // screen, which is where the affected resources' churn shows up.
     case "provider_incident":
       return `/org/${data.orgId}/changes`;
+    // An expiry alert summarises the whole feed, so it opens the feed. Read
+    // both id keys so this stays correct if the shared union grows a variant
+    // carrying the wire's raw `organizationId` rather than the normalised one.
+    case "expiry_alert": {
+      const target = data as { orgId?: string; organizationId?: string };
+      return `/org/${target.orgId ?? target.organizationId}/expiring`;
+    }
     case "test":
       return `/org/${data.orgId}`;
     default:
@@ -212,9 +228,19 @@ export function pushDataToPath(data: PushNotificationData): string {
  * or a field of the wrong primitive type yields `null` (the caller then skips
  * the deep link) instead of a path containing "undefined".
  */
-export function parsePushData(raw: unknown): PushNotificationData | null {
+export function parsePushData(raw: unknown): MobilePushData | null {
   if (!raw || typeof raw !== "object") return null;
   const data: Record<string, unknown> = raw as Record<string, unknown>;
+
+  // Expiry alerts identify the org as `organizationId` where every other
+  // variant says `orgId`, so this variant is handled ahead of the shared gate
+  // below (accepting either spelling, normalised to `orgId`).
+  if (data["type"] === "expiry_alert") {
+    const organizationId = data["organizationId"] ?? data["orgId"];
+    if (typeof organizationId !== "string") return null;
+    return { type: "expiry_alert", orgId: organizationId };
+  }
+
   const orgId = data["orgId"];
   if (typeof orgId !== "string") return null;
 

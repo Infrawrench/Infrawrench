@@ -4,6 +4,7 @@ import "./accounts";
 import "./chat";
 import "./costs";
 import "./orphans";
+import "./expiring";
 import "./changes";
 import "./custom-graphs";
 import "./dashboards";

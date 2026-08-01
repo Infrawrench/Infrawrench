@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkflowsRouteImport } from './routes/workflows'
 import { Route as SavingsRouteImport } from './routes/savings'
 import { Route as GraphRouteImport } from './routes/graph'
+import { Route as ExpiringRouteImport } from './routes/expiring'
 import { Route as DeploymentsRouteImport } from './routes/deployments'
 import { Route as CostsRouteImport } from './routes/costs'
 import { Route as ChatRouteImport } from './routes/chat'
@@ -35,6 +36,11 @@ const SavingsRoute = SavingsRouteImport.update({
 const GraphRoute = GraphRouteImport.update({
   id: '/graph',
   path: '/graph',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExpiringRoute = ExpiringRouteImport.update({
+  id: '/expiring',
+  path: '/expiring',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DeploymentsRoute = DeploymentsRouteImport.update({
@@ -91,6 +97,7 @@ export interface FileRoutesByFullPath {
   '/chat': typeof ChatRoute
   '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
+  '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
   '/savings': typeof SavingsRoute
   '/workflows': typeof WorkflowsRoute
@@ -105,6 +112,7 @@ export interface FileRoutesByTo {
   '/chat': typeof ChatRoute
   '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
+  '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
   '/savings': typeof SavingsRoute
   '/workflows': typeof WorkflowsRoute
@@ -120,6 +128,7 @@ export interface FileRoutesById {
   '/chat': typeof ChatRoute
   '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
+  '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
   '/savings': typeof SavingsRoute
   '/workflows': typeof WorkflowsRoute
@@ -136,6 +145,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/costs'
     | '/deployments'
+    | '/expiring'
     | '/graph'
     | '/savings'
     | '/workflows'
@@ -150,6 +160,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/costs'
     | '/deployments'
+    | '/expiring'
     | '/graph'
     | '/savings'
     | '/workflows'
@@ -164,6 +175,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/costs'
     | '/deployments'
+    | '/expiring'
     | '/graph'
     | '/savings'
     | '/workflows'
@@ -179,6 +191,7 @@ export interface RootRouteChildren {
   ChatRoute: typeof ChatRoute
   CostsRoute: typeof CostsRoute
   DeploymentsRoute: typeof DeploymentsRoute
+  ExpiringRoute: typeof ExpiringRoute
   GraphRoute: typeof GraphRoute
   SavingsRoute: typeof SavingsRoute
   WorkflowsRoute: typeof WorkflowsRoute
@@ -208,6 +221,13 @@ declare module '@tanstack/react-router' {
       path: '/graph'
       fullPath: '/graph'
       preLoaderRoute: typeof GraphRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/expiring': {
+      id: '/expiring'
+      path: '/expiring'
+      fullPath: '/expiring'
+      preLoaderRoute: typeof ExpiringRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/deployments': {
@@ -283,6 +303,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRoute,
   CostsRoute: CostsRoute,
   DeploymentsRoute: DeploymentsRoute,
+  ExpiringRoute: ExpiringRoute,
   GraphRoute: GraphRoute,
   SavingsRoute: SavingsRoute,
   WorkflowsRoute: WorkflowsRoute,

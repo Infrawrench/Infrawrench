@@ -1,5 +1,9 @@
 import type { AssociationSource } from "@infrawrench/plugin-base";
-import type { DependencyGraphData, ResourcePickerOption } from "@infrawrench/ui";
+import type {
+  DependencyGraphData,
+  ExpiryListResponse,
+  ResourcePickerOption,
+} from "@infrawrench/ui";
 import { invoke } from "./invoke";
 
 /**
@@ -12,6 +16,14 @@ export async function fetchCloudDependencyGraph(
   resourceId?: string,
 ): Promise<DependencyGraphData> {
   return invoke("cloud_dependency_graph", resourceId ? { orgId, resourceId } : { orgId });
+}
+
+/**
+ * The org expiry feed, computed server-side over synced rows. The local-mode
+ * counterpart is `loadLocalExpiring` in lib/local-expiring.ts.
+ */
+export async function fetchCloudExpiring(orgId: string): Promise<ExpiryListResponse> {
+  return invoke("cloud_expiring", { orgId });
 }
 
 export async function getCloudResourceDetail(
