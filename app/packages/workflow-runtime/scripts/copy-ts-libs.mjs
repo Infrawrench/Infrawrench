@@ -7,23 +7,24 @@
  * MCP/chat `write_workflow` tool) the same diagnostics the Monaco editor
  * shows. esbuild bundles the compiler's *code*, but the lib declarations are
  * data files read from disk at runtime — and a bundled service can no longer
- * resolve the `typescript` package to find them. Without this copy the check
- * silently degrades to syntax-only (`degraded: true`).
+ * resolve the `@typescript/typescript6` package to find them. Without this copy
+ * the check silently degrades to syntax-only (`degraded: true`).
  *
  * DOM libs are deliberately excluded: workflows run in QuickJS, and the editor
  * checks against `lib: ["es2020"]`.
  *
  * Usage (from a service package dir): node ../workflow-runtime/scripts/copy-ts-libs.mjs dist
  *
- * Resolution happens from this package, which declares `typescript` as a direct
- * dependency — service packages don't (and shouldn't) depend on it.
+ * Resolution happens from this package, which declares `@typescript/typescript6`
+ * as a direct dependency (TS 7 has no stable JS API / lib data layout for this
+ * path yet) — service packages don't (and shouldn't) depend on it.
  */
 import { createRequire } from "node:module";
 import { copyFileSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 const require = createRequire(import.meta.url);
-const libDir = dirname(require.resolve("typescript"));
+const libDir = dirname(require.resolve("@typescript/typescript6"));
 const destDir = resolve(process.cwd(), process.argv[2] ?? "dist", "ts-libs");
 mkdirSync(destDir, { recursive: true });
 

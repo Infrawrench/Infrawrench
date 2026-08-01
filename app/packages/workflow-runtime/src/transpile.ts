@@ -7,7 +7,7 @@
  * Electron renderer (where the desktop isolate runs and a native esbuild binary
  * is unavailable). `transpileModule` is pure JS and single-file.
  */
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 export interface TranspileResult {
   code: string;

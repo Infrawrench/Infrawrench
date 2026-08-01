@@ -18,7 +18,7 @@
  * side effect — a bug in this file fails the build instead of shipping.
  */
 import { readFile, rm } from "node:fs/promises";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { pascalCase, uniqueName } from "../../naming";
 import {
   AUTHOR,

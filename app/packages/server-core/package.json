@@ -73,7 +73,7 @@
     "./billing/build-meter": "./src/billing/build-meter.ts"
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
@@ -142,7 +142,7 @@
     "@types/ssh2": "^1.15.4",
     "@types/ws": "^8.5.13",
     "@vitest/coverage-v8": "^4.1.8",
-    "typescript": "^5.7.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.8"
   }
 }

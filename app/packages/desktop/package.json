@@ -15,7 +15,7 @@
     "dev": "node scripts/ensure-env.mjs && electron-vite dev",
     "build": "node scripts/ensure-env.mjs && electron-vite build",
     "preview": "electron-vite preview",
-    "typecheck": "node scripts/ensure-env.mjs && tsgo --noEmit -p tsconfig.node.json && tsgo --noEmit -p tsconfig.web.json",
+    "typecheck": "node scripts/ensure-env.mjs && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "dist": "node scripts/ensure-env.mjs && electron-vite build && bash build/dist.sh"
   },
   "build": {
@@ -173,7 +173,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tailwindcss": "^4.2.2",
-    "typescript": "^5.7.3",
+    "typescript": "^7.0.2",
     "vite": "^6.4.3",
     "vitest": "^4.1.8"
   }
