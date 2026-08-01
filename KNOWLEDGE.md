@@ -2129,11 +2129,12 @@ TypeScript 7 ships the Go-native compiler as `tsc` (platform binaries under `@ty
 
 Library packages build with **tsdown** (not tsup). tsup's DTS path still depends on the classic TS JS API and cannot run on pure TS 7; tsdown emits types via the native compiler and peers `typescript@^5 || ^6 || ^7`. Configs live in `tsdown.config.ts` and use `outExtensions` so output names stay `index.js` / `index.cjs` / `index.d.ts` / `index.d.cts` (matching the previous tsup layout). `unrun` is an optional peer used whenever Node lacks type stripping; keep it as a root `devDependency` so EAS (and any Node < 22.6) can still load those configs — see Mobile CI.
 
-TS 7 does **not** ship a stable JS compiler API yet (expected in 7.1). The few places that still need `transpileModule` / `createProgram` import `@typescript/typescript6` explicitly:
+TS 7 does **not** ship a stable JS compiler API yet (expected in 7.1). The few places that still need `transpileModule` / `createProgram` / `ts.sys` import `@typescript/typescript6` explicitly (or alias `typescript` to it):
 
 - `workflow-runtime` (runtime transpile + headless typecheck + `copy-ts-libs.mjs`)
 - `web` SDK generator (`scripts/sdk/targets/typescript`)
 - `website` keeps `typescript` aliased to `@typescript/typescript6` for `@astrojs/check` (peer is still `^5 || ^6`)
+- `mobile` keeps the same alias: Expo CLI's `evaluateTsConfig` does `ts.sys.getCurrentDirectory` when Metro starts (`expo export:embed` on EAS), and pure TS 7 leaves `ts.sys` undefined — fails with `Cannot read properties of undefined (reading 'getCurrentDirectory')`. Bumping Expo does not help until it stops requiring the classic JS API.
 
 `tsconfig.base.json` sets `types: ["*"]` (TS 6/7 default is `[]`). Do **not** reintroduce `@typescript/native-preview` / `tsgo` / tsup.
 
