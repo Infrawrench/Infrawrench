@@ -56,7 +56,7 @@ Budgets alert on totals you chose. For spend you didn't see coming — a provide
 
 ## The Costs panel
 
-**Costs** in the sidebar opens month-to-date spend for the whole org — broken down by provider, account, or service — then every budget you have, then recently detected [anomalies](./cost-anomaly-alerts.md), and finally the resources that look wasted.
+**Costs** in the sidebar opens month-to-date spend for the whole org — broken down by provider, account, or service — then every budget you have, then [tag compliance, untagged spend, and showback](./tag-policy-and-showback.md), then recently detected [anomalies](./cost-anomaly-alerts.md), and finally the resources that look wasted.
 
 A budget belongs to the org, not to a dashboard. It keeps evaluating and keeps alerting whether or not anything is showing it, which is why the panel exists: it is the one place a budget is always reachable. Each row says which dashboards carry a card for it, or **On no dashboard** when none do.
 

@@ -100,6 +100,16 @@ infrawrench costs --anomalies
 infrawrench costs --anomalies --days 7      # 1-90; --last 2w says the same thing
 ```
 
+`tags` and `showback` are the [tag governance](./tag-policy-and-showback.md) reports: the org's required tags with per-account compliance scores and the spend missing a required key, and spend grouped by cost centre through the org's allocation rules:
+
+```
+infrawrench tags                  # policy, compliance table, untagged spend
+infrawrench tags --last 90d --json
+infrawrench showback              # spend by cost centre; unmatched spend is "unallocated"
+```
+
+<insert [Terminal showing `infrawrench tags` output with the compliance table (green/yellow/red score column) and the untagged-spend bar chart below] here>
+
 ## What changed, and what depends on what
 
 Two read commands over the organization's own history and topology:

@@ -14,6 +14,7 @@ import { cmdLogin, cmdLogout, cmdWhoami } from "./commands/auth";
 import { cmdOrgs, cmdAccounts, cmdResources, cmdResource } from "./commands/listing";
 import { cmdMetrics } from "./commands/metrics";
 import { cmdCosts, cmdCostAnomalies } from "./commands/costs";
+import { cmdTags, cmdShowback } from "./commands/tags";
 import { cmdOrphans } from "./commands/orphans";
 import { cmdChanges } from "./commands/changes";
 import { cmdGraph } from "./commands/graph";
@@ -40,6 +41,8 @@ COMMANDS
   costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource]
   costs --anomalies   days a provider or service spiked past its own baseline   [--days 30]
   costs push          push your own cost rows   --source <name> [--file rows.json | stdin]
+  tags                org tag policy, per-account compliance & untagged spend   [--last 30d]
+  showback            spend by cost centre via the org's allocation rules   [--last 30d]
   orphans             likely-wasted resources (unattached volumes, idle IPs) with reasons + cost
                       (--local scans this machine's workspace; no cost column without the cloud)
   changes             what appeared / changed / disappeared across your providers
@@ -222,6 +225,12 @@ export async function runCli(): Promise<void> {
           break;
         }
         await cmdCosts(ctx, parsed.range);
+        break;
+      case "tags":
+        await cmdTags(ctx, parsed.range);
+        break;
+      case "showback":
+        await cmdShowback(ctx, parsed.range);
         break;
       case "orphans":
         await cmdOrphans(ctx);
