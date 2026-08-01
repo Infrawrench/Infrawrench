@@ -133,6 +133,11 @@ app_env = {
   INFRAWRENCH_STRIPE_BUILD_METER_EVENT = "hosted_build_seconds"
   STRIPE_BUILD_PRICE_ID                = "price_..."
 
+  # Optional: egress proxy Worker (app/packages/egress-proxy) for workflow
+  # fetch(), the chat agent's web_fetch, and the poller's provider status-feed
+  # pass. Token = the Worker's PROXY_TOKEN secret. Without both, workflow
+  # fetch() throws and web_fetch is withheld from the model; status feeds fall
+  # back to a direct in-pod fetch (manifest-declared public URLs only).
   WORKFLOW_FETCH_PROXY_URL   = "https://egress.infrawrench.com"
   WORKFLOW_FETCH_PROXY_TOKEN = "<openssl rand -base64 32>"
 
