@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { GroqClient } from "./client.js";
+import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { GroqBatchResourceType } from "./resources/batch.js";
 import { GroqFileResourceType } from "./resources/file.js";
 import { GroqFineTuningResourceType } from "./resources/fine-tuning.js";
@@ -32,6 +33,7 @@ const manifest: PluginManifest = {
     },
     caCertCredentialField,
   ],
+  statusFeed,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -45,4 +47,5 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new GroqClient(credentials, services),
+  parseStatusFeed,
 };

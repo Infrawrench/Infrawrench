@@ -1,5 +1,6 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { DigitalOceanClient } from "./client.js";
+import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { ProjectResourceType } from "./resources/project.js";
 import { DropletResourceType } from "./resources/droplet.js";
 import { DOKSClusterResourceType } from "./resources/doks-cluster.js";
@@ -67,6 +68,7 @@ const manifest: PluginManifest = {
   // per invoice line + region. Needs the `billing:read` token scope. Data
   // exists from 1 Dec 2025 onward; earlier backfill windows come back empty.
   costs: { dimensions: ["service", "region"], maxHistoryDays: 365, restatementDays: 3 },
+  statusFeed,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -99,4 +101,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) =>
     new DigitalOceanClient(credentials, resourceTypes, services),
+  parseStatusFeed,
 };

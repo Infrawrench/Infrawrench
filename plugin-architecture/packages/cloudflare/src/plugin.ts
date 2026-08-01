@@ -1,5 +1,6 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { CloudflareClient } from "./client.js";
+import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { ZoneResourceType } from "./resources/zone.js";
 import { DnsRecordResourceType } from "./resources/dns-record.js";
 import { WorkerResourceType } from "./resources/worker.js";
@@ -112,6 +113,7 @@ const manifest: PluginManifest = {
   // accounts; conservative history window while the endpoint can change.
   // Charge periods follow the billing cycle, hence periodNative.
   costs: { dimensions: ["service", "tag"], maxHistoryDays: 90, periodNative: true },
+  statusFeed,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -154,4 +156,5 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials) => new CloudflareClient(credentials, resourceTypes),
+  parseStatusFeed,
 };

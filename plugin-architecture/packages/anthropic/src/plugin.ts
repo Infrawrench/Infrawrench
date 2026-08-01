@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { AnthropicClient } from "./client.js";
+import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { ModelResourceType } from "./resources/model.js";
 import { MessageBatchResourceType } from "./resources/message-batch.js";
 import { FileResourceType } from "./resources/file.js";
@@ -59,6 +60,7 @@ const manifest: PluginManifest = {
   // daily-granularity only and admin-key only. Grouping is limited to
   // `description` (→ service) and `workspace_id` (→ resource).
   costs: { dimensions: ["service", "resource"], maxHistoryDays: 365, restatementDays: 3 },
+  statusFeed,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -75,4 +77,5 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new AnthropicClient(credentials, services),
+  parseStatusFeed,
 };

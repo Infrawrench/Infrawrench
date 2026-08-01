@@ -1,5 +1,6 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { ScalewayClient } from "./client.js";
+import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { InstanceResourceType } from "./resources/instance.js";
 import { KapsuleClusterResourceType } from "./resources/kapsule-cluster.js";
 import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
@@ -61,6 +62,7 @@ const manifest: PluginManifest = {
     restatementDays: 5,
     periodNative: true,
   },
+  statusFeed,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -75,4 +77,5 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new ScalewayClient(credentials, resourceTypes, services),
+  parseStatusFeed,
 };

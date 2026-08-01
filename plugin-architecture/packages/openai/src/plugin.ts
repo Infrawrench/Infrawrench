@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { OpenAIClient } from "./client.js";
+import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { BatchResourceType } from "./resources/batch.js";
 import { ContainerResourceType } from "./resources/container.js";
 import { EvalResourceType } from "./resources/eval.js";
@@ -66,6 +67,7 @@ const manifest: PluginManifest = {
     maxHistoryDays: 365,
     restatementDays: 3,
   },
+  statusFeed,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -86,4 +88,5 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new OpenAIClient(credentials, services),
+  parseStatusFeed,
 };
