@@ -252,6 +252,59 @@ export interface ResourceDependencyRule {
   label?: string;
 }
 
+/**
+ * What a declared expiry field counts down toward — used by hosts purely for
+ * grouping, labels and icons on the cross-provider Expiry radar. Pick the
+ * closest match; `"other"` is a valid answer.
+ */
+export type ExpiryKind =
+  | "tls-cert"
+  | "domain"
+  | "api-token"
+  | "access-key"
+  | "k8s-cert"
+  | "ssh-key"
+  | "secret-version"
+  | "other";
+
+/**
+ * Declares that a field this type's lister already stores carries a deadline —
+ * a certificate's notAfter, a domain's registration expiry, a token's
+ * expiration, an access key's creation date. Feeds the cross-provider Expiry
+ * radar (web/desktop/mobile screens, the `infrawrench expiring` CLI and the
+ * poller's expiry alerts).
+ *
+ * Exactly like `orphanRule` and `dependsOn`, this is evaluated over
+ * already-synced `fields` — no plugin client, no credentials, no extra
+ * provider API calls, ever. Only declare a field the lister actually
+ * populates; a rule over a field that never lands in `fields` simply yields
+ * nothing. Values may be ISO 8601 strings, date-only strings, or unix epochs
+ * (seconds or milliseconds, number or numeric string) — the host parses all
+ * of these; anything unparseable is skipped, never alarmed on.
+ */
+export interface ExpiryFieldRule {
+  /** Key into the instance's stored `fields` map holding the timestamp. */
+  fieldKey: string;
+  /**
+   * What the timestamp means:
+   * - `"expiry"` — the field IS the moment the clock runs out (cert
+   *   notAfter, domain expiry date, token expiration).
+   * - `"created"` — the field is a creation/rotation date and the deadline is
+   *   derived from an age budget: `maxAgeDays` when set, otherwise the host's
+   *   per-kind default (e.g. access keys are due for rotation at 90 days).
+   */
+  from: "expiry" | "created";
+  /** Grouping bucket; drives labels/icons on the radar. */
+  kind: ExpiryKind;
+  /** Human caption for the deadline, e.g. "Certificate expires". */
+  label: string;
+  /**
+   * Age budget in days for `from: "created"` rules, overriding the host's
+   * per-kind default. Ignored for `from: "expiry"`.
+   */
+  maxAgeDays?: number;
+}
+
 export interface ResourceTypeDefinition {
   id: string;
   displayName: string;
@@ -265,6 +318,12 @@ export interface ResourceTypeDefinition {
    * list produce one edge per element.
    */
   dependsOn?: ResourceDependencyRule[];
+  /**
+   * Fields on this type that carry a deadline (cert expiry, domain renewal,
+   * token expiration, key age). Feeds the cross-provider Expiry radar; see
+   * `ExpiryFieldRule`. Evaluated over already-synced fields only.
+   */
+  expiryFields?: ExpiryFieldRule[];
   /** Set on child resource types — points to the parent type's id */
   parentTypeId?: string;
   /**

@@ -135,6 +135,42 @@ describe("dependsOn declarations", () => {
   });
 });
 
+/**
+ * Same silent-failure class as `dependsOn`: an `expiryFields` rule over a
+ * field the lister never stores simply yields no item on the expiry radar —
+ * no compile error, no runtime error, just a deadline nobody is watching.
+ */
+describe("expiryFields declarations", () => {
+  it("declare a field the type actually knows about", async () => {
+    const loaded = await loader.loadPlugins();
+    const suspicious: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        for (const rule of type.expiryFields ?? []) {
+          const known = type.fields.some((f) => f.key === rule.fieldKey);
+          if (!known) suspicious.push(`${plugin.manifest.id}/${type.id}.${rule.fieldKey}`);
+        }
+      }
+    }
+    expect(suspicious).toEqual([]);
+  });
+
+  it("only set an age budget on from:'created' rules", async () => {
+    const loaded = await loader.loadPlugins();
+    const bad: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        for (const rule of type.expiryFields ?? []) {
+          if (rule.from !== "created" && rule.maxAgeDays !== undefined) {
+            bad.push(`${plugin.manifest.id}/${type.id}.${rule.fieldKey}`);
+          }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+});
+
 describe("getPlugin", () => {
   it("returns a loaded plugin by id", async () => {
     const p = await loader.getPlugin("aws");

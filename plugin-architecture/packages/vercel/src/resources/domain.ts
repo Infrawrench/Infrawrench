@@ -21,6 +21,9 @@ export const VercelDomainResourceType = rt({
   // domain↔project association lives on `/v9/projects/{id}/domains`, which the
   // lister doesn't fetch.
   dependsOn: [{ fieldKey: "teamId", targetTypeId: "vercel-team", label: "owned by" }],
+  expiryFields: [
+    { fieldKey: "expiresAt", from: "expiry", kind: "domain", label: "Registration expires" },
+  ],
   supportsCreate: true,
   iconKey: "domain",
   attachTargets: [

@@ -15,6 +15,17 @@ export const SecretsManagerSecretResourceType = rt({
     o("secretValue", "Secret Value", { sensitive: true, description: "Current secret value" }),
     o("secretArn", "Secret ARN"),
   ],
+  // Rotation-age budget over the lister's LastChangedDate: a secret untouched
+  // for 90+ days shows as overdue on the expiry radar.
+  expiryFields: [
+    {
+      fieldKey: "lastChangedDate",
+      from: "created",
+      kind: "secret-version",
+      label: "Last rotated",
+      maxAgeDays: 90,
+    },
+  ],
   supportsCreate: true,
   iconKey: "secret",
   secretExportTemplates: [

@@ -86,6 +86,31 @@ const orphanConditionSchema = z
     path: ["value"],
   });
 
+const expiryFieldRuleSchema = z
+  .object({
+    fieldKey: z.string().min(1),
+    from: z.enum(["expiry", "created"]),
+    kind: z.enum([
+      "tls-cert",
+      "domain",
+      "api-token",
+      "access-key",
+      "k8s-cert",
+      "ssh-key",
+      "secret-version",
+      "other",
+    ]),
+    label: z.string().min(1),
+    maxAgeDays: z.number().int().positive().optional(),
+  })
+  // A budget on an absolute deadline is dead config — the author almost
+  // certainly meant `from: "created"`, so fail the manifest instead of
+  // silently ignoring it.
+  .refine((r) => r.from === "created" || r.maxAgeDays === undefined, {
+    message: 'maxAgeDays only applies to `from: "created"` rules',
+    path: ["maxAgeDays"],
+  });
+
 const orphanRuleSchema = z.object({
   conditions: z.array(orphanConditionSchema).min(1),
   reason: z.string().min(1),
@@ -106,4 +131,5 @@ export const resourceTypeDefinitionSchema = z.object({
   attachTargets: z.array(attachTargetSchema).optional(),
   supportsMetrics: z.boolean().optional(),
   orphanRule: orphanRuleSchema.optional(),
+  expiryFields: z.array(expiryFieldRuleSchema).optional(),
 });

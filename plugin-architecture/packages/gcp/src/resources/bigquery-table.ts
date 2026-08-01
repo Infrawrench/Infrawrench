@@ -39,6 +39,11 @@ export const BigQueryTableResourceType = rt({
   // A dataset's external id is `project:dataset`, which is exactly what the
   // lister stores — a bare dataset id is only unique inside its project.
   dependsOn: [{ fieldKey: "datasetId", targetTypeId: "bigquery-dataset", label: "in dataset" }],
+  // The lister writes "NEVER" when the table has no expiration — unparseable
+  // by design, so those tables never show on the radar.
+  expiryFields: [
+    { fieldKey: "expirationTime", from: "expiry", kind: "other", label: "Table expires" },
+  ],
   parentTypeId: "bigquery-dataset",
   supportsCreate: true,
 });

@@ -51,6 +51,8 @@ export type {
   AgentVmCapability,
   OrphanCondition,
   OrphanRule,
+  ExpiryKind,
+  ExpiryFieldRule,
 } from "./resource.js";
 
 export type {

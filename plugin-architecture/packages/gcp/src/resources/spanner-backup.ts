@@ -27,6 +27,9 @@ export const SpannerBackupResourceType = rt({
       label: "backs up",
     },
   ],
+  expiryFields: [
+    { fieldKey: "expireTime", from: "expiry", kind: "other", label: "Backup expires" },
+  ],
   parentTypeId: "spanner-instance",
   supportsCreate: true,
 });

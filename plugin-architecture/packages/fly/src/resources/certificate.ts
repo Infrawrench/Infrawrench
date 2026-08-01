@@ -17,6 +17,9 @@ export const CertificateResourceType = rt({
   ],
   outputs: [o("hostname", "Hostname")],
   dependsOn: [{ fieldKey: "appName", targetTypeId: "app", label: "in app" }],
+  expiryFields: [
+    { fieldKey: "expires", from: "expiry", kind: "tls-cert", label: "Certificate expires" },
+  ],
   iconKey: "certificate",
   supportsCreate: true,
 });

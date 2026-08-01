@@ -55,6 +55,10 @@ export const ACMCertificateResourceType = rt({
       label: "used by",
     },
   ],
+  // The lister stores DescribeCertificate's NotAfter (epoch seconds, stringified).
+  expiryFields: [
+    { fieldKey: "notAfter", from: "expiry", kind: "tls-cert", label: "Certificate expires" },
+  ],
   iconKey: "certificate",
   supportsCreate: true,
 });

@@ -42,6 +42,7 @@ export const InviteResourceType = rt({
     f("acceptedAt", "Accepted", { required: false, editable: false }),
   ],
   outputs: [o("inviteId", "Invite ID"), o("email", "Email")],
+  expiryFields: [{ fieldKey: "expiresAt", from: "expiry", kind: "other", label: "Invite expires" }],
   supportsCreate: true,
   supportsDelete: true,
   iconKey: "email",
