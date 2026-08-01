@@ -74,4 +74,11 @@ export const pluginManifestSchema = z.object({
       periodNative: z.boolean().optional(),
     })
     .optional(),
+  statusFeed: z
+    .object({
+      url: z.string().url(),
+      format: z.enum(["statuspage-v2", "custom-json", "rss", "atom"]),
+      statusPageUrl: z.string().url().optional(),
+    })
+    .optional(),
 });

@@ -149,6 +149,14 @@ export interface PluginManifest {
    * pass for its accounts.
    */
   costs?: CostCapabilityDeclaration;
+  /**
+   * If present, this plugin's provider publishes a public status feed. The
+   * host polls `statusFeed.url` (no credentials — the feed is public) on a
+   * low-frequency background pass and hands the raw body to the plugin's
+   * `parseStatusFeed`, then correlates the returned incidents against the
+   * resources an org holds on this plugin.
+   */
+  statusFeed?: StatusFeedDeclaration;
 }
 
 export interface RateLimitDeclaration {
@@ -800,10 +808,19 @@ export interface Plugin {
   resourceTypes: ResourceTypeDefinition[];
   /** Create a scoped client for a set of credentials — host never exposes raw credentials */
   createClient(credentials: Record<string, string>, services?: HostServices): PluginClient;
+  /**
+   * Parse the raw body fetched from `manifest.statusFeed.url` into normalized
+   * incidents. Required when the manifest declares `statusFeed`. Lives on the
+   * Plugin (not the client) because it needs no credentials — the feed is
+   * public. Malformed bodies should throw; the host logs the failure against
+   * the feed rather than silently treating it as "no incidents".
+   */
+  parseStatusFeed?(body: string): StatusIncident[];
 }
 
 // Forward declarations — defined in their own modules but used here
 import type { CostCapabilityDeclaration, CostFetchRange, CostRow } from "./cost.js";
+import type { StatusFeedDeclaration, StatusIncident } from "./status-feed.js";
 import type { ResourceCreateReturn, ResourceInstance } from "./instance.js";
 import type {
   ArtifactEntry,

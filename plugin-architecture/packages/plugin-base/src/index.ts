@@ -26,6 +26,17 @@ export type { CostCapabilityDeclaration, CostFetchRange, CostHelpLink, CostRow }
 export { CostSetupError } from "./cost.js";
 
 export type {
+  StatusFeedDeclaration,
+  StatusIncident,
+  StatusIncidentImpact,
+  StatusIncidentState,
+  StatusComponentMapping,
+  StatuspageParseOptions,
+  StatusFeedXmlItem,
+} from "./status-feed.js";
+export { parseStatuspageIncidents, parseStatusFeedXml, stripStatusHtml } from "./status-feed.js";
+
+export type {
   ResourceTypeDefinition,
   FieldDefinition,
   FieldKind,
