@@ -9,6 +9,7 @@ import {
   filterVisiblePeerIntegrations,
 } from "../services/plugin-clients";
 import { setLiteralSecretState } from "@infrawrench/server-core/secret-states";
+import { getOrgStatusIncidents } from "@infrawrench/server-core/status/match";
 import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
 import { resolveStoredSshPublicKey } from "./ssh-key-lookup";
 import { logAudit } from "../services/audit";
@@ -127,6 +128,26 @@ export function genericTools(): ToolDefinition[] {
           .from(accounts)
           .where(and(eq(accounts.organizationId, auth.organizationId), isNull(accounts.deletedAt)));
         return ok(rows);
+      },
+    },
+
+    {
+      name: "list_provider_incidents",
+      title: "List provider incidents affecting you",
+      description:
+        "Provider status-page incidents overlapping the organization's resources — \"is it me " +
+        "or is it them?\". The poller watches each provider plugin's public status feed and " +
+        "this correlates active incidents (plus those resolved in the last 24h) against the " +
+        "resources the org holds, by region, resource type, or provider-wide scope. Each " +
+        "incident includes how many of your resources it overlaps and how many change-timeline " +
+        "events were recorded during its window. Check this before debugging a sudden failure " +
+        "or unexplained drift.",
+      inputSchema: {},
+      risk: "read",
+      // Mirrors `GET /status-incidents` — correlation reads the org's resource set.
+      permission: "resources:read",
+      handler: async (_input, auth) => {
+        return ok(await getOrgStatusIncidents(auth.organizationId));
       },
     },
 

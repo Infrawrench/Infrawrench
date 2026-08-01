@@ -17,6 +17,7 @@ import { cmdCosts, cmdCostAnomalies } from "./commands/costs";
 import { cmdTags, cmdShowback } from "./commands/tags";
 import { cmdOrphans } from "./commands/orphans";
 import { cmdChanges } from "./commands/changes";
+import { cmdIncidents } from "./commands/incidents";
 import { cmdGraph } from "./commands/graph";
 import { cmdPage, cmdCostsPush } from "./commands/push";
 import { cmdCli } from "./commands/cli-install";
@@ -47,6 +48,7 @@ COMMANDS
                       (--local scans this machine's workspace; no cost column without the cloud)
   changes             what appeared / changed / disappeared across your providers
                       [--last 7d] [--limit 50] [--kind created|updated|deleted] [-a <account>] [--resource <id>]
+  incidents           provider status-page incidents overlapping your resources ("is it me or is it them?")
   graph               resource dependency tree   [--resource <id>: what it needs + its blast radius]
   page <message>      alert the org's on-call transports   --source <name> [--key k] [--voice]
   page clear          drop a page key's cooldown after a recovery   --source <name> [--key k]
@@ -237,6 +239,9 @@ export async function runCli(): Promise<void> {
         break;
       case "changes":
         await cmdChanges(ctx, parsed.range);
+        break;
+      case "incidents":
+        await cmdIncidents(ctx);
         break;
       case "graph":
         // `infrawrench graph <resource-id>` is the same as --resource; a
