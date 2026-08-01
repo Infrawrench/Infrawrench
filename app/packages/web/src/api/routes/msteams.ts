@@ -46,6 +46,7 @@ interface WebhookBody {
   resourceDrift?: boolean;
   workflowPages?: boolean;
   providerIncidents?: boolean;
+  expiryAlerts?: boolean;
   weeklyDigest?: boolean;
 }
 
@@ -73,6 +74,7 @@ app.post("/webhooks", async (c) => {
       ...(body.resourceDrift != null ? { resourceDrift: body.resourceDrift } : {}),
       ...(body.workflowPages != null ? { workflowPages: body.workflowPages } : {}),
       ...(body.providerIncidents != null ? { providerIncidents: body.providerIncidents } : {}),
+      ...(body.expiryAlerts != null ? { expiryAlerts: body.expiryAlerts } : {}),
       ...(body.weeklyDigest != null ? { weeklyDigest: body.weeklyDigest } : {}),
     });
     return c.json(webhook);
@@ -90,6 +92,7 @@ interface WebhookPatchBody {
   resourceDrift?: boolean;
   workflowPages?: boolean;
   providerIncidents?: boolean;
+  expiryAlerts?: boolean;
   weeklyDigest?: boolean;
 }
 
@@ -112,6 +115,7 @@ app.patch("/webhooks/:id", async (c) => {
   if (body.resourceDrift != null) patch.resourceDrift = body.resourceDrift;
   if (body.workflowPages != null) patch.workflowPages = body.workflowPages;
   if (body.providerIncidents != null) patch.providerIncidents = body.providerIncidents;
+  if (body.expiryAlerts != null) patch.expiryAlerts = body.expiryAlerts;
   if (body.weeklyDigest != null) patch.weeklyDigest = body.weeklyDigest;
 
   const result = await db
@@ -131,6 +135,7 @@ app.patch("/webhooks/:id", async (c) => {
     resourceDrift: row.resourceDrift,
     workflowPages: row.workflowPages,
     providerIncidents: row.providerIncidents,
+    expiryAlerts: row.expiryAlerts,
     weeklyDigest: row.weeklyDigest,
   });
 });

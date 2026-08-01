@@ -71,6 +71,16 @@ vi.mock("@infrawrench/plugin-base", () => ({
   normalizeResourceCreateResult: (r: unknown) => ({ resource: r, warnings: [] }),
   evaluatePeerIntegrationUnreachable: () => null,
 }));
+// The status correlation and expiry feed modules load the whole plugin
+// registry (and, transitively, the db client) at import time — stub them;
+// both have their own server-core tests.
+vi.mock("@infrawrench/server-core/status/match", () => ({
+  getOrgStatusIncidents: vi.fn().mockResolvedValue([]),
+}));
+const mockListExpiring = vi.fn();
+vi.mock("@infrawrench/server-core/expiry/feed", () => ({
+  listExpiring: (...a: unknown[]) => mockListExpiring(...a),
+}));
 const mockResolveSshKey = vi.fn();
 vi.mock("../ssh-key-lookup", () => ({
   resolveStoredSshPublicKey: (...a: unknown[]) => mockResolveSshKey(...a),

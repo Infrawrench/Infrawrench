@@ -122,6 +122,19 @@ export type PushNotificationData =
       /** How many of the org's resources matched when the alert fired. */
       affectedResourceCount: number;
     }
+  | {
+      /**
+       * A daily digest of approaching deadlines on synced resources — expiring
+       * TLS certificates, domain registrations, API tokens, keys past their
+       * rotation budget (see server-core `expiry/alerts.ts`). Never one
+       * notification per deadline: the server batches everything inside the
+       * org's lead time into this single payload, at most once per 24h.
+       *
+       * Target route: the expiry radar, `/org/{orgId}/expiring`.
+       */
+      type: "expiry_alert";
+      orgId: string;
+    }
   | { type: "test"; orgId: string };
 
 export async function registerPushToken(
@@ -160,6 +173,8 @@ export interface PushPreferences {
   workflowPages: boolean;
   /** Provider status-page incidents overlapping resources the org holds. */
   providerIncidents: boolean;
+  /** Daily digests of approaching resource deadlines (certs, domains, keys). */
+  expiryAlerts: boolean;
 }
 
 export async function getPushPreferences(api: CloudFetch, orgId: string): Promise<PushPreferences> {
@@ -171,6 +186,7 @@ export async function getPushPreferences(api: CloudFetch, orgId: string): Promis
       resourceDrift: false,
       workflowPages: true,
       providerIncidents: true,
+      expiryAlerts: true,
     }
   );
 }

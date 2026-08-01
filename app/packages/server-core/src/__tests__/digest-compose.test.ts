@@ -61,6 +61,7 @@ function input(overrides: Partial<DigestInput> = {}): DigestInput {
     resourcesAdded: 0,
     resourcesRemoved: 0,
     providerIncidents: 0,
+    expiringSoon: 0,
     ...overrides,
   };
 }
@@ -379,6 +380,15 @@ describe("formatting", () => {
   it("explains an empty cost week instead of printing zeros", () => {
     const lines = digestLines(composeWeeklyDigest(input()), (s) => s);
     expect(lines[0]).toContain("No cost data was recorded for last week");
+  });
+
+  it("adds an expiring-soon line only when deadlines are inside the lead time", () => {
+    const withDeadlines = formatDigestSlackBody(composeWeeklyDigest(input({ expiringSoon: 3 })));
+    expect(withDeadlines).toContain("*Expiring soon*: 3 deadlines within your lead time");
+    const one = formatDigestSlackBody(composeWeeklyDigest(input({ expiringSoon: 1 })));
+    expect(one).toContain("1 deadline within your lead time");
+    const without = formatDigestSlackBody(composeWeeklyDigest(input()));
+    expect(without).not.toContain("Expiring soon");
   });
 
   it("labels currencies when an org spends in more than one", () => {

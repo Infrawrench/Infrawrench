@@ -117,6 +117,7 @@ interface PreferencesPayload {
   resourceDrift: boolean;
   workflowPages: boolean;
   providerIncidents: boolean;
+  expiryAlerts: boolean;
 }
 
 const PREFERENCE_KEYS = [
@@ -126,6 +127,7 @@ const PREFERENCE_KEYS = [
   "resourceDrift",
   "workflowPages",
   "providerIncidents",
+  "expiryAlerts",
 ] as const;
 
 /**
@@ -140,6 +142,7 @@ const PREFERENCE_DEFAULTS: PreferencesPayload = {
   resourceDrift: false,
   workflowPages: true,
   providerIncidents: true,
+  expiryAlerts: true,
 };
 
 pushOrgRoutes.get("/preferences", async (c) => {
@@ -161,6 +164,7 @@ pushOrgRoutes.get("/preferences", async (c) => {
     resourceDrift: row?.resourceDrift ?? PREFERENCE_DEFAULTS.resourceDrift,
     workflowPages: row?.workflowPages ?? PREFERENCE_DEFAULTS.workflowPages,
     providerIncidents: row?.providerIncidents ?? PREFERENCE_DEFAULTS.providerIncidents,
+    expiryAlerts: row?.expiryAlerts ?? PREFERENCE_DEFAULTS.expiryAlerts,
   };
   return c.json(payload);
 });
@@ -189,6 +193,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
       resourceDrift: body.resourceDrift ?? PREFERENCE_DEFAULTS.resourceDrift,
       workflowPages: body.workflowPages ?? PREFERENCE_DEFAULTS.workflowPages,
       providerIncidents: body.providerIncidents ?? PREFERENCE_DEFAULTS.providerIncidents,
+      expiryAlerts: body.expiryAlerts ?? PREFERENCE_DEFAULTS.expiryAlerts,
     })
     .onConflictDoUpdate({
       target: [pushPreferences.userId, pushPreferences.organizationId],
@@ -199,6 +204,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
         ...(body.resourceDrift != null ? { resourceDrift: body.resourceDrift } : {}),
         ...(body.workflowPages != null ? { workflowPages: body.workflowPages } : {}),
         ...(body.providerIncidents != null ? { providerIncidents: body.providerIncidents } : {}),
+        ...(body.expiryAlerts != null ? { expiryAlerts: body.expiryAlerts } : {}),
         updatedAt: now,
       },
     });
@@ -216,6 +222,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
       resourceDrift: body.resourceDrift,
       workflowPages: body.workflowPages,
       providerIncidents: body.providerIncidents,
+      expiryAlerts: body.expiryAlerts,
     },
   });
   return c.json({ ok: true });
@@ -243,6 +250,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
       resourceDrift: pushPreferences.resourceDrift,
       workflowPages: pushPreferences.workflowPages,
       providerIncidents: pushPreferences.providerIncidents,
+      expiryAlerts: pushPreferences.expiryAlerts,
     })
     .from(organizationMembers)
     .innerJoin(users, eq(organizationMembers.userId, users.id))
@@ -271,6 +279,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
       resourceDrift: boolean;
       workflowPages: boolean;
       providerIncidents: boolean;
+      expiryAlerts: boolean;
       devices: Array<{ id: string; platform: string; deviceName: string | null }>;
     }
   >();
@@ -287,6 +296,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
         resourceDrift: r.resourceDrift ?? PREFERENCE_DEFAULTS.resourceDrift,
         workflowPages: r.workflowPages ?? PREFERENCE_DEFAULTS.workflowPages,
         providerIncidents: r.providerIncidents ?? PREFERENCE_DEFAULTS.providerIncidents,
+        expiryAlerts: r.expiryAlerts ?? PREFERENCE_DEFAULTS.expiryAlerts,
         devices: [],
       };
       byUser.set(r.userId, entry);

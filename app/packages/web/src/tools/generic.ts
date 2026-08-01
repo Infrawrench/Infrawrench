@@ -10,6 +10,7 @@ import {
 } from "../services/plugin-clients";
 import { setLiteralSecretState } from "@infrawrench/server-core/secret-states";
 import { getOrgStatusIncidents } from "@infrawrench/server-core/status/match";
+import { listExpiring } from "@infrawrench/server-core/expiry/feed";
 import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
 import { resolveStoredSshPublicKey } from "./ssh-key-lookup";
 import { logAudit } from "../services/audit";
@@ -148,6 +149,57 @@ export function genericTools(): ToolDefinition[] {
       permission: "resources:read",
       handler: async (_input, auth) => {
         return ok(await getOrgStatusIncidents(auth.organizationId));
+      },
+    },
+
+    {
+      name: "list_expiring",
+      title: "List expiring resources",
+      description:
+        "The expiry radar: every deadline plugins declared on the organization's synced " +
+        "resources — TLS certificate expiries, domain registrations, API token expirations, " +
+        "access keys past their rotation budget, kubeconfig/SSH key ages — soonest first, " +
+        "bucketed by severity against the org's lead time (expired, critical <7d, warning " +
+        "<30d, upcoming within lead, ok beyond it). Purely a read over already-synced state; " +
+        "no provider API calls. Check this before certificates lapse or tokens rotate out.",
+      inputSchema: {
+        severity: z
+          .enum(["expired", "critical", "warning", "upcoming", "ok"])
+          .optional()
+          .describe("Only return deadlines in this severity bucket."),
+        kind: z
+          .enum([
+            "tls-cert",
+            "domain",
+            "api-token",
+            "access-key",
+            "k8s-cert",
+            "ssh-key",
+            "secret-version",
+            "other",
+          ])
+          .optional()
+          .describe("Only return deadlines of this kind."),
+      },
+      risk: "read",
+      // Mirrors `GET /expiring` — the feed is computed over the org's resource set.
+      permission: "resources:read",
+      handler: async (input, auth) => {
+        const severity = input["severity"] as string | undefined;
+        const kind = input["kind"] as string | undefined;
+        const feed = await listExpiring(auth.organizationId);
+        const items = feed.items.filter(
+          (i) => (!severity || i.severity === severity) && (!kind || i.kind === kind),
+        );
+        // Counts always describe the whole feed so a filtered view still shows
+        // what else is on the radar.
+        return ok({
+          items,
+          totalCount: items.length,
+          counts: feed.counts,
+          leadDays: feed.leadDays,
+          generatedAt: feed.generatedAt,
+        });
       },
     },
 

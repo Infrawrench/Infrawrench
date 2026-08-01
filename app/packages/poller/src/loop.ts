@@ -6,6 +6,7 @@ import { runOrgWorkflow } from "@infrawrench/server-core/workflows/runner";
 import { loadPlugins } from "@infrawrench/server-core/plugin-loader";
 import { runWeeklyDigests } from "@infrawrench/server-core/digest/weekly";
 import { runStatusFeedCollection } from "@infrawrench/server-core/status/collect";
+import { runExpiryAlerts } from "@infrawrench/server-core/expiry/alerts";
 import {
   pruneResourceChanges,
   CHANGE_RETENTION_INTERVAL_MS,
@@ -106,6 +107,12 @@ export class PollerLoop extends TickLoop {
     // `provider_status_feeds.next_fetch_at`), so replicas share the work.
     // Defensive like the others.
     await this.tickStatusFeeds();
+
+    // Seventh pass: expiry alerts. A bounded batch of orgs whose 24h scan
+    // window has elapsed; the conditional-upsert claim inside
+    // (`org_expiry_settings.last_notified_at`) makes it replica- and
+    // restart-safe. Defensive like the others.
+    await this.tickExpiryAlerts();
   }
 
   private async runOne(row: PollAccountRow): Promise<void> {
@@ -153,6 +160,15 @@ export class PollerLoop extends TickLoop {
       await runStatusFeedCollection();
     } catch (e) {
       console.error("[poller] status feed tick failed:", e);
+    }
+  }
+
+  /** Scan a bounded batch of orgs whose expiry-alert window has come due. */
+  private async tickExpiryAlerts(): Promise<void> {
+    try {
+      await runExpiryAlerts({ limit: 4 });
+    } catch (e) {
+      console.error("[poller] expiry alert tick failed:", e);
     }
   }
 

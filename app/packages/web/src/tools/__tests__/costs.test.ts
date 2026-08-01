@@ -5,6 +5,20 @@ const mockRunCostQuery = vi.fn();
 const mockListDimensionValues = vi.fn();
 const mockListTagKeys = vi.fn();
 const mockGetOrgCostStatus = vi.fn();
+// The tag-policy modules reach the db client at import time, which requires
+// DATABASE_URL — stub them like the other server-core imports below.
+vi.mock("@infrawrench/server-core/cost/tag-policy", () => ({
+  getOrgTagPolicy: vi.fn().mockResolvedValue(null),
+  setOrgTagPolicy: vi.fn(),
+}));
+vi.mock("../../services/tag-policy", () => ({
+  getUntaggedSpendReport: vi.fn(),
+  getAccountTagCompliance: vi.fn(),
+}));
+vi.mock("../../services/showback", () => ({
+  getShowbackReport: vi.fn(),
+}));
+
 // Not importOriginal: the real module pulls in db/client, which requires
 // DATABASE_URL at import time. The class only needs to be instance-shared.
 vi.mock("../../services/cost-query", () => ({

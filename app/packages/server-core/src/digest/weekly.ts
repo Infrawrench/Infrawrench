@@ -38,7 +38,9 @@ import {
   providerStatusIncidents,
   resources,
 } from "../db/schema";
+import { itemsWithinLead } from "@infrawrench/client-core";
 import { queryCosts } from "../clickhouse/cost-readers";
+import { listExpiring } from "../expiry/feed";
 import { sendSlackToOrg } from "../slack";
 import { sendMsTeamsToOrg } from "../msteams";
 import { isEmailConfigured, sendEmails, type EmailMessage } from "../email";
@@ -144,7 +146,7 @@ export async function buildWeeklyDigest(
 
   const { fromDate, toDatePlusOne } = dayRange(window.weekStart, window.weekEnd);
   const count = sql<number>`count(*)::int`;
-  const [[incidents], [added], [removed], [providerIncidents]] = await Promise.all([
+  const [[incidents], [added], [removed], [providerIncidents], expiringSoon] = await Promise.all([
     db
       .select({ count })
       .from(pagingIncidents)
@@ -194,6 +196,16 @@ export async function buildWeeklyDigest(
           )`,
         ),
       ),
+    // Deadlines currently inside the org's expiry lead time. A point-in-time
+    // headcount, not a weekly delta — "what needs attention now" is the useful
+    // digest line for deadlines. Defensive: a broken feed must cost the digest
+    // one line, not the whole send.
+    listExpiring(organizationId)
+      .then((feed) => itemsWithinLead(feed).length)
+      .catch((err) => {
+        console.error(`[expiry] digest feed for org ${organizationId} failed:`, err);
+        return 0;
+      }),
   ]);
 
   return composeWeeklyDigest({
@@ -204,6 +216,7 @@ export async function buildWeeklyDigest(
     resourcesAdded: added?.count ?? 0,
     resourcesRemoved: removed?.count ?? 0,
     providerIncidents: providerIncidents?.count ?? 0,
+    expiringSoon,
   });
 }
 

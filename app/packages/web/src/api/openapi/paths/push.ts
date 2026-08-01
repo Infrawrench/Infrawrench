@@ -29,6 +29,10 @@ const PushPreferences = strict({
   providerIncidents: z.boolean().openapi({
     description: "A provider status-page incident overlaps resources you hold.",
   }),
+  expiryAlerts: z.boolean().openapi({
+    description:
+      "Daily digests of approaching resource deadlines — expiring certificates, domains, tokens and keys past their rotation budget.",
+  }),
 }).openapi("PushPreferences");
 
 // Registered under its own name — `.partial()` on a registered schema would
@@ -41,6 +45,7 @@ const PushPreferencesUpdate = strict({
   resourceDrift: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
   providerIncidents: z.boolean().optional(),
+  expiryAlerts: z.boolean().optional(),
 }).openapi("PushPreferencesUpdate");
 
 const PushRecipient = strict({
@@ -53,6 +58,7 @@ const PushRecipient = strict({
   resourceDrift: z.boolean(),
   workflowPages: z.boolean(),
   providerIncidents: z.boolean(),
+  expiryAlerts: z.boolean(),
   devices: z.array(
     strict({
       id: z.string(),

@@ -97,6 +97,7 @@ app.get("/status", async (c) => {
               resourceDrift: ch.resourceDrift,
               workflowPages: ch.workflowPages,
               providerIncidents: ch.providerIncidents,
+              expiryAlerts: ch.expiryAlerts,
               weeklyDigest: ch.weeklyDigest,
             },
           ]
@@ -161,6 +162,7 @@ interface ChannelBody {
   resourceDrift?: boolean;
   workflowPages?: boolean;
   providerIncidents?: boolean;
+  expiryAlerts?: boolean;
   weeklyDigest?: boolean;
 }
 
@@ -191,6 +193,7 @@ app.post("/channels", async (c) => {
   const resourceDrift = body.resourceDrift ?? false;
   const workflowPages = body.workflowPages ?? true;
   const providerIncidents = body.providerIncidents ?? true;
+  const expiryAlerts = body.expiryAlerts ?? true;
   const weeklyDigest = body.weeklyDigest ?? true;
   const now = new Date();
   const [row] = await db
@@ -208,6 +211,7 @@ app.post("/channels", async (c) => {
       resourceDrift,
       workflowPages,
       providerIncidents,
+      expiryAlerts,
       weeklyDigest,
     })
     .onConflictDoUpdate({
@@ -221,6 +225,7 @@ app.post("/channels", async (c) => {
         resourceDrift,
         workflowPages,
         providerIncidents,
+        expiryAlerts,
         weeklyDigest,
         updatedAt: now,
       },
@@ -236,6 +241,7 @@ interface ChannelPatchBody {
   resourceDrift?: boolean;
   workflowPages?: boolean;
   providerIncidents?: boolean;
+  expiryAlerts?: boolean;
   weeklyDigest?: boolean;
 }
 
@@ -252,6 +258,7 @@ app.patch("/channels/:id", async (c) => {
   if (body.resourceDrift != null) patch.resourceDrift = body.resourceDrift;
   if (body.workflowPages != null) patch.workflowPages = body.workflowPages;
   if (body.providerIncidents != null) patch.providerIncidents = body.providerIncidents;
+  if (body.expiryAlerts != null) patch.expiryAlerts = body.expiryAlerts;
   if (body.weeklyDigest != null) patch.weeklyDigest = body.weeklyDigest;
 
   const result = await db

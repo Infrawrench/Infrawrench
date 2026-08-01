@@ -30,6 +30,10 @@ const SlackChannel = strict({
   providerIncidents: z.boolean().openapi({
     description: "A provider status-page incident overlaps resources you hold.",
   }),
+  expiryAlerts: z.boolean().openapi({
+    description:
+      "Daily digests of approaching resource deadlines — expiring certificates, domains, tokens and keys past their rotation budget.",
+  }),
   weeklyDigest: z.boolean().openapi({
     description:
       "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest).",
@@ -61,6 +65,7 @@ const SlackChannelCreate = strict({
   resourceDrift: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
   providerIncidents: z.boolean().optional(),
+  expiryAlerts: z.boolean().optional(),
   weeklyDigest: z.boolean().optional(),
 }).openapi("SlackChannelCreate");
 
@@ -73,6 +78,7 @@ const SlackChannelUpdate = strict({
   resourceDrift: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
   providerIncidents: z.boolean().optional(),
+  expiryAlerts: z.boolean().optional(),
   weeklyDigest: z.boolean().optional(),
 }).openapi("SlackChannelUpdate");
 

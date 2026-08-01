@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.29.0",
+    "version": "0.30.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -6129,6 +6129,192 @@
         "required": ["incidents"],
         "additionalProperties": false
       },
+      "ExpiryItem": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string",
+            "description": "Infrawrench resource id."
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string",
+            "example": "Cloudflare"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string",
+            "example": "ACM Certificate"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": ["string", "null"],
+            "description": "Provider-native id, when known."
+          },
+          "fieldKey": {
+            "type": "string",
+            "description": "The declared field the deadline came from."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "tls-cert",
+              "domain",
+              "api-token",
+              "access-key",
+              "k8s-cert",
+              "ssh-key",
+              "secret-version",
+              "other"
+            ],
+            "description": "Grouping bucket for the kind of deadline."
+          },
+          "label": {
+            "type": "string",
+            "description": "Plugin-authored caption for the deadline.",
+            "example": "Certificate expires"
+          },
+          "basis": {
+            "type": "string",
+            "enum": ["expiry", "age"],
+            "description": "`expiry` — the field held the deadline itself; `age` — the deadline was derived from a creation/rotation date plus an age budget."
+          },
+          "dueAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The deadline."
+          },
+          "daysRemaining": {
+            "type": "integer",
+            "description": "Whole days until dueAt (floor); negative once expired."
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["expired", "critical", "warning", "upcoming", "ok"],
+            "description": "How close the deadline is: `expired` (in the past), `critical` (due within 7 days), `warning` (within 30 days), `upcoming` (within the organization's lead time), or `ok` (tracked, but further out than the lead time)."
+          }
+        },
+        "required": [
+          "resourceId",
+          "pluginId",
+          "pluginName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "accountId",
+          "accountName",
+          "displayName",
+          "externalId",
+          "fieldKey",
+          "kind",
+          "label",
+          "basis",
+          "dueAt",
+          "daysRemaining",
+          "severity"
+        ],
+        "additionalProperties": false
+      },
+      "ExpirySeverityCounts": {
+        "type": "object",
+        "properties": {
+          "expired": {
+            "type": "integer"
+          },
+          "critical": {
+            "type": "integer"
+          },
+          "warning": {
+            "type": "integer"
+          },
+          "upcoming": {
+            "type": "integer"
+          },
+          "ok": {
+            "type": "integer"
+          }
+        },
+        "required": ["expired", "critical", "warning", "upcoming", "ok"],
+        "additionalProperties": false,
+        "description": "Item count per severity; every bucket present, zeros included."
+      },
+      "ExpiryListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExpiryItem"
+            },
+            "description": "All tracked deadlines, soonest first (`ok` items included)."
+          },
+          "totalCount": {
+            "type": "integer"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ExpirySeverityCounts"
+          },
+          "leadDays": {
+            "type": "integer",
+            "description": "The lead time the `upcoming` bucket was computed against."
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["items", "totalCount", "counts", "leadDays", "generatedAt"],
+        "additionalProperties": false
+      },
+      "ExpiryAlertSettings": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the poller sends expiry alerts for this organization at all."
+          },
+          "leadDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365,
+            "description": "Days of lead time before a deadline counts as `upcoming` and alertable. Default 60."
+          },
+          "lastNotifiedAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "When the organization's expiry alert scan last completed, or null before the first. Owned by the poller's cooldown claim; not writable through this API."
+          }
+        },
+        "required": ["enabled", "leadDays", "lastNotifiedAt"],
+        "additionalProperties": false
+      },
+      "ExpiryAlertSettingsUpdate": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "leadDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365
+          }
+        },
+        "additionalProperties": false
+      },
       "SqlQueryResponse": {
         "type": "object",
         "properties": {
@@ -8530,6 +8716,10 @@
           "providerIncidents": {
             "type": "boolean",
             "description": "A provider status-page incident overlaps resources you hold."
+          },
+          "expiryAlerts": {
+            "type": "boolean",
+            "description": "Daily digests of approaching resource deadlines — expiring certificates, domains, tokens and keys past their rotation budget."
           }
         },
         "required": [
@@ -8538,7 +8728,8 @@
           "anomalyAlerts",
           "resourceDrift",
           "workflowPages",
-          "providerIncidents"
+          "providerIncidents",
+          "expiryAlerts"
         ],
         "additionalProperties": false
       },
@@ -8561,6 +8752,9 @@
             "type": "boolean"
           },
           "providerIncidents": {
+            "type": "boolean"
+          },
+          "expiryAlerts": {
             "type": "boolean"
           }
         },
@@ -8596,6 +8790,9 @@
           "providerIncidents": {
             "type": "boolean"
           },
+          "expiryAlerts": {
+            "type": "boolean"
+          },
           "devices": {
             "type": "array",
             "items": {
@@ -8627,6 +8824,7 @@
           "resourceDrift",
           "workflowPages",
           "providerIncidents",
+          "expiryAlerts",
           "devices"
         ],
         "additionalProperties": false
@@ -8691,6 +8889,10 @@
             "type": "boolean",
             "description": "A provider status-page incident overlaps resources you hold."
           },
+          "expiryAlerts": {
+            "type": "boolean",
+            "description": "Daily digests of approaching resource deadlines — expiring certificates, domains, tokens and keys past their rotation budget."
+          },
           "weeklyDigest": {
             "type": "boolean",
             "description": "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest)."
@@ -8708,6 +8910,7 @@
           "resourceDrift",
           "workflowPages",
           "providerIncidents",
+          "expiryAlerts",
           "weeklyDigest"
         ],
         "additionalProperties": false
@@ -8784,6 +8987,9 @@
           "providerIncidents": {
             "type": "boolean"
           },
+          "expiryAlerts": {
+            "type": "boolean"
+          },
           "weeklyDigest": {
             "type": "boolean"
           }
@@ -8810,6 +9016,9 @@
             "type": "boolean"
           },
           "providerIncidents": {
+            "type": "boolean"
+          },
+          "expiryAlerts": {
             "type": "boolean"
           },
           "weeklyDigest": {
@@ -8854,6 +9063,10 @@
             "type": "boolean",
             "description": "A provider status-page incident overlaps resources you hold."
           },
+          "expiryAlerts": {
+            "type": "boolean",
+            "description": "Daily digests of approaching resource deadlines — expiring certificates, domains, tokens and keys past their rotation budget."
+          },
           "weeklyDigest": {
             "type": "boolean",
             "description": "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest)."
@@ -8869,6 +9082,7 @@
           "resourceDrift",
           "workflowPages",
           "providerIncidents",
+          "expiryAlerts",
           "weeklyDigest"
         ],
         "additionalProperties": false
@@ -8915,6 +9129,9 @@
           "providerIncidents": {
             "type": "boolean"
           },
+          "expiryAlerts": {
+            "type": "boolean"
+          },
           "weeklyDigest": {
             "type": "boolean"
           }
@@ -8944,6 +9161,9 @@
             "type": "boolean"
           },
           "providerIncidents": {
+            "type": "boolean"
+          },
+          "expiryAlerts": {
             "type": "boolean"
           },
           "weeklyDigest": {
@@ -17527,6 +17747,125 @@
         },
         "operationId": "getOrgOrgIdStatusIncidents",
         "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/expiring": {
+      "get": {
+        "tags": ["Expiry radar"],
+        "summary": "List approaching deadlines on synced resources",
+        "description": "One cross-provider countdown of everything with a clock on it: TLS certificate expiries, domain registrations, API token expirations, access keys past their rotation budget, Kubernetes/SSH credential ages. Plugins declare which synced fields carry deadlines; the feed is computed over already-stored state, so no provider API calls are made and results reflect the last sync. Items are sorted soonest first and bucketed by severity against the organization's lead time.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tracked deadlines, soonest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpiryListResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdExpiring",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/expiring/settings": {
+      "get": {
+        "tags": ["Expiry radar"],
+        "summary": "Get the organization's expiry alert settings",
+        "description": "The lead time feeds both the feed's `upcoming` bucket and the poller's daily alert scan. An organization that never saved reads the shipped defaults (enabled, 60 days).\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Expiry alert settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpiryAlertSettings"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdExpiringSettings",
+        "x-required-permission": "org:settings:write"
+      },
+      "put": {
+        "tags": ["Expiry radar"],
+        "summary": "Update the expiry alert settings",
+        "description": "Every field is optional so a single toggle can be saved on its own. `leadDays` must be a whole number from 1 to 365. Saving never resets the alert cooldown.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpiryAlertSettingsUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpiryAlertSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdExpiringSettings",
+        "x-required-permission": "org:settings:write"
       }
     },
     "/api/org/{orgId}/sql/query": {

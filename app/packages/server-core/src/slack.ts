@@ -437,6 +437,7 @@ const TRIGGER_COLUMN = {
   resourceDrift: slackChannels.resourceDrift,
   workflowPages: slackChannels.workflowPages,
   providerIncidents: slackChannels.providerIncidents,
+  expiryAlerts: slackChannels.expiryAlerts,
   weeklyDigest: slackChannels.weeklyDigest,
 } as const;
 

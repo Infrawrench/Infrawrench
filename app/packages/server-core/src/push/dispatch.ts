@@ -43,6 +43,7 @@ async function resolveTargets(
     resourceDrift: pushPreferences.resourceDrift,
     workflowPages: pushPreferences.workflowPages,
     providerIncidents: pushPreferences.providerIncidents,
+    expiryAlerts: pushPreferences.expiryAlerts,
   }[trigger];
   return db
     .select({ id: pushDevices.id, expoPushToken: pushDevices.expoPushToken })

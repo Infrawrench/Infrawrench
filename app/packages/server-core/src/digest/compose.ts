@@ -50,6 +50,12 @@ export interface DigestInput {
    * providers the org holds accounts with (from `provider_status_incidents`).
    */
   providerIncidents: number;
+  /**
+   * Deadlines currently inside the org's expiry lead time — expiring certs,
+   * domains, tokens and keys past their rotation budget (from the expiry
+   * feed, severity expired/critical/warning/upcoming).
+   */
+  expiringSoon: number;
 }
 
 export interface DigestTotal {
@@ -82,6 +88,8 @@ export interface WeeklyDigest {
   resourcesRemoved: number;
   /** Provider status-page incidents that overlapped the org's providers. */
   providerIncidents: number;
+  /** Deadlines currently inside the org's expiry lead time. */
+  expiringSoon: number;
 }
 
 const MAX_MOVERS = 3;
@@ -332,6 +340,7 @@ export function composeWeeklyDigest(input: DigestInput): WeeklyDigest {
     resourcesAdded: input.resourcesAdded,
     resourcesRemoved: input.resourcesRemoved,
     providerIncidents: input.providerIncidents,
+    expiringSoon: input.expiringSoon,
   };
 }
 
@@ -462,6 +471,15 @@ export function digestSegments(digest: WeeklyDigest, narrative?: string | null):
       { text: "Provider incidents", bold: true },
       {
         text: `: ${pluralize(digest.providerIncidents, "upstream incident")} affected your providers`,
+        bold: false,
+      },
+    ]);
+  }
+  if (digest.expiringSoon > 0) {
+    lines.push([
+      { text: "Expiring soon", bold: true },
+      {
+        text: `: ${pluralize(digest.expiringSoon, "deadline")} within your lead time`,
         bold: false,
       },
     ]);

@@ -27,6 +27,7 @@ import { registerPagePaths } from "./paths/pages";
 import { registerResourcePaths } from "./paths/resources";
 import { registerResourceChangePaths } from "./paths/resource-changes";
 import { registerStatusIncidentPaths } from "./paths/status-incidents";
+import { registerExpiringPaths } from "./paths/expiring";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
 import { registerAssociationPaths } from "./paths/associations";
 import { registerDependencyGraphPaths } from "./paths/dependency-graph";
@@ -110,6 +111,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerResourcePaths(ctx);
   registerResourceChangePaths(ctx);
   registerStatusIncidentPaths(ctx);
+  registerExpiringPaths(ctx);
   registerConnectionFeaturePaths(ctx);
   registerAssociationPaths(ctx);
   registerDependencyGraphPaths(ctx);
@@ -335,6 +337,12 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   // provider status correlation — reads the same resource set the incidents
   // are matched against, so it rides the resources read scope
   "GET /status-incidents": "resources:read",
+  // expiry radar — the feed is a read over the org's resource set; the alert
+  // settings decide what the org's channels hear, the same trust level as the
+  // drift alert settings
+  "GET /expiring": "resources:read",
+  "GET /expiring/settings": "org:settings:write",
+  "PUT /expiring/settings": "org:settings:write",
   // resources
   "GET /resources/{pluginId}/{typeId}/detail": "resources:read",
   "GET /resources/{pluginId}/{typeId}/manifest": "resources:read",

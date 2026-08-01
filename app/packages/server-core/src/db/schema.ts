@@ -839,6 +839,8 @@ export const slackChannels = pgTable(
     workflowPages: boolean("workflow_pages").notNull().default(true),
     /** Provider status-page incidents overlapping the org's resources. */
     providerIncidents: boolean("provider_incidents").notNull().default(true),
+    /** Approaching deadlines on synced resources (see `expiry/alerts.ts`). */
+    expiryAlerts: boolean("expiry_alerts").notNull().default(true),
     /**
      * The Monday-morning weekly summary. Channel opt-in defaults on like the
      * other triggers, but nothing sends until the org enables the digest in
@@ -902,6 +904,8 @@ export const msteamsWebhooks = pgTable(
     workflowPages: boolean("workflow_pages").notNull().default(true),
     /** Provider status-page incidents overlapping the org's resources. */
     providerIncidents: boolean("provider_incidents").notNull().default(true),
+    /** Approaching deadlines on synced resources (see `expiry/alerts.ts`). */
+    expiryAlerts: boolean("expiry_alerts").notNull().default(true),
     /**
      * The Monday-morning weekly summary. Channel opt-in defaults on like the
      * other triggers, but nothing sends until the org enables the digest in
@@ -1106,6 +1110,35 @@ export const orgDriftAlertSettings = pgTable("org_drift_alert_settings", {
 });
 
 /**
+ * Per-org settings and throttle state for expiry-radar alerts, modelled on
+ * `org_drift_alert_settings`. One row per org that has either tuned the
+ * settings or been through an alert scan; no row means the shipped defaults
+ * (enabled, 60-day lead time).
+ *
+ * `lastNotifiedAt` is a claim, not bookkeeping, and it records the last
+ * *completed alert scan*, not necessarily a delivered message: `expiry/alerts.ts`
+ * advances it with one conditional upsert (`last_notified_at IS NULL OR
+ * <= now - 24h`), exactly like the drift cooldown, so N poller replicas
+ * evaluating the same org produce one scan per day. A scan that finds nothing
+ * due keeps the window spent — deadlines move by whole days, so re-scanning a
+ * quiet org every tick would buy nothing — while a scan whose message reached
+ * nobody is rolled back so the next tick can retry.
+ */
+export const orgExpirySettings = pgTable("org_expiry_settings", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  /** Whether the poller sends expiry alerts for this org at all. */
+  enabled: boolean("enabled").notNull().default(true),
+  /** Days of lead time before a deadline counts as `upcoming` and alertable. */
+  leadDays: integer("lead_days").notNull().default(60),
+  /** The cooldown claim — when this org's expiry alert scan last completed. */
+  lastNotifiedAt: timestamp("last_notified_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
  * Rolling-window record of poller sync failures, used by the Twilio pager to
  * decide whether a (account, resourceType) has crossed its threshold. Rows
  * older than the org's `windowMinutes` are deleted on each tick.
@@ -1222,6 +1255,8 @@ export const pushPreferences = pgTable(
     workflowPages: boolean("workflow_pages").notNull().default(true),
     /** Provider status-page incidents overlapping the org's resources. */
     providerIncidents: boolean("provider_incidents").notNull().default(true),
+    /** Approaching deadlines on synced resources (see `expiry/alerts.ts`). */
+    expiryAlerts: boolean("expiry_alerts").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

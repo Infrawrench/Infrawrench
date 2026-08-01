@@ -34,6 +34,8 @@ export interface SlackChannel {
   workflowPages: boolean;
   /** A provider status-page incident overlaps resources the org holds. */
   providerIncidents: boolean;
+  /** Daily digests of approaching resource deadlines (certs, domains, keys). */
+  expiryAlerts: boolean;
   /** The Monday-morning weekly summary (only sends when the org enables it). */
   weeklyDigest: boolean;
 }
@@ -97,6 +99,7 @@ export interface AddSlackChannelArgs {
   resourceDrift?: boolean;
   workflowPages?: boolean;
   providerIncidents?: boolean;
+  expiryAlerts?: boolean;
   weeklyDigest?: boolean;
 }
 
@@ -119,6 +122,7 @@ export type SlackChannelTriggers = Pick<
   | "resourceDrift"
   | "workflowPages"
   | "providerIncidents"
+  | "expiryAlerts"
   | "weeklyDigest"
 >;
 
