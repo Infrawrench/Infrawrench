@@ -96,6 +96,7 @@ app.get("/status", async (c) => {
               anomalyAlerts: ch.anomalyAlerts,
               resourceDrift: ch.resourceDrift,
               workflowPages: ch.workflowPages,
+              providerIncidents: ch.providerIncidents,
               weeklyDigest: ch.weeklyDigest,
             },
           ]
@@ -159,6 +160,7 @@ interface ChannelBody {
   anomalyAlerts?: boolean;
   resourceDrift?: boolean;
   workflowPages?: boolean;
+  providerIncidents?: boolean;
   weeklyDigest?: boolean;
 }
 
@@ -188,6 +190,7 @@ app.post("/channels", async (c) => {
   // high-volume where the others are exceptional. See server-core db/schema.ts.
   const resourceDrift = body.resourceDrift ?? false;
   const workflowPages = body.workflowPages ?? true;
+  const providerIncidents = body.providerIncidents ?? true;
   const weeklyDigest = body.weeklyDigest ?? true;
   const now = new Date();
   const [row] = await db
@@ -204,6 +207,7 @@ app.post("/channels", async (c) => {
       anomalyAlerts,
       resourceDrift,
       workflowPages,
+      providerIncidents,
       weeklyDigest,
     })
     .onConflictDoUpdate({
@@ -216,6 +220,7 @@ app.post("/channels", async (c) => {
         anomalyAlerts,
         resourceDrift,
         workflowPages,
+        providerIncidents,
         weeklyDigest,
         updatedAt: now,
       },
@@ -230,6 +235,7 @@ interface ChannelPatchBody {
   anomalyAlerts?: boolean;
   resourceDrift?: boolean;
   workflowPages?: boolean;
+  providerIncidents?: boolean;
   weeklyDigest?: boolean;
 }
 
@@ -245,6 +251,7 @@ app.patch("/channels/:id", async (c) => {
   if (body.anomalyAlerts != null) patch.anomalyAlerts = body.anomalyAlerts;
   if (body.resourceDrift != null) patch.resourceDrift = body.resourceDrift;
   if (body.workflowPages != null) patch.workflowPages = body.workflowPages;
+  if (body.providerIncidents != null) patch.providerIncidents = body.providerIncidents;
   if (body.weeklyDigest != null) patch.weeklyDigest = body.weeklyDigest;
 
   const result = await db

@@ -26,6 +26,9 @@ const PushPreferences = strict({
     description:
       "Pages and approval requests raised by a workflow (infra.page / infra.waitForApproval) or by POST /pages",
   }),
+  providerIncidents: z.boolean().openapi({
+    description: "A provider status-page incident overlaps resources you hold.",
+  }),
 }).openapi("PushPreferences");
 
 // Registered under its own name — `.partial()` on a registered schema would
@@ -37,6 +40,7 @@ const PushPreferencesUpdate = strict({
   anomalyAlerts: z.boolean().optional(),
   resourceDrift: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
+  providerIncidents: z.boolean().optional(),
 }).openapi("PushPreferencesUpdate");
 
 const PushRecipient = strict({
@@ -48,6 +52,7 @@ const PushRecipient = strict({
   anomalyAlerts: z.boolean(),
   resourceDrift: z.boolean(),
   workflowPages: z.boolean(),
+  providerIncidents: z.boolean(),
   devices: z.array(
     strict({
       id: z.string(),

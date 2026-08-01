@@ -116,6 +116,7 @@ interface PreferencesPayload {
   anomalyAlerts: boolean;
   resourceDrift: boolean;
   workflowPages: boolean;
+  providerIncidents: boolean;
 }
 
 const PREFERENCE_KEYS = [
@@ -124,6 +125,7 @@ const PREFERENCE_KEYS = [
   "anomalyAlerts",
   "resourceDrift",
   "workflowPages",
+  "providerIncidents",
 ] as const;
 
 /**
@@ -137,6 +139,7 @@ const PREFERENCE_DEFAULTS: PreferencesPayload = {
   anomalyAlerts: true,
   resourceDrift: false,
   workflowPages: true,
+  providerIncidents: true,
 };
 
 pushOrgRoutes.get("/preferences", async (c) => {
@@ -157,6 +160,7 @@ pushOrgRoutes.get("/preferences", async (c) => {
     anomalyAlerts: row?.anomalyAlerts ?? PREFERENCE_DEFAULTS.anomalyAlerts,
     resourceDrift: row?.resourceDrift ?? PREFERENCE_DEFAULTS.resourceDrift,
     workflowPages: row?.workflowPages ?? PREFERENCE_DEFAULTS.workflowPages,
+    providerIncidents: row?.providerIncidents ?? PREFERENCE_DEFAULTS.providerIncidents,
   };
   return c.json(payload);
 });
@@ -184,6 +188,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
       anomalyAlerts: body.anomalyAlerts ?? PREFERENCE_DEFAULTS.anomalyAlerts,
       resourceDrift: body.resourceDrift ?? PREFERENCE_DEFAULTS.resourceDrift,
       workflowPages: body.workflowPages ?? PREFERENCE_DEFAULTS.workflowPages,
+      providerIncidents: body.providerIncidents ?? PREFERENCE_DEFAULTS.providerIncidents,
     })
     .onConflictDoUpdate({
       target: [pushPreferences.userId, pushPreferences.organizationId],
@@ -193,6 +198,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
         ...(body.anomalyAlerts != null ? { anomalyAlerts: body.anomalyAlerts } : {}),
         ...(body.resourceDrift != null ? { resourceDrift: body.resourceDrift } : {}),
         ...(body.workflowPages != null ? { workflowPages: body.workflowPages } : {}),
+        ...(body.providerIncidents != null ? { providerIncidents: body.providerIncidents } : {}),
         updatedAt: now,
       },
     });
@@ -209,6 +215,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
       anomalyAlerts: body.anomalyAlerts,
       resourceDrift: body.resourceDrift,
       workflowPages: body.workflowPages,
+      providerIncidents: body.providerIncidents,
     },
   });
   return c.json({ ok: true });
@@ -235,6 +242,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
       anomalyAlerts: pushPreferences.anomalyAlerts,
       resourceDrift: pushPreferences.resourceDrift,
       workflowPages: pushPreferences.workflowPages,
+      providerIncidents: pushPreferences.providerIncidents,
     })
     .from(organizationMembers)
     .innerJoin(users, eq(organizationMembers.userId, users.id))
@@ -262,6 +270,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
       anomalyAlerts: boolean;
       resourceDrift: boolean;
       workflowPages: boolean;
+      providerIncidents: boolean;
       devices: Array<{ id: string; platform: string; deviceName: string | null }>;
     }
   >();
@@ -277,6 +286,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
         anomalyAlerts: r.anomalyAlerts ?? PREFERENCE_DEFAULTS.anomalyAlerts,
         resourceDrift: r.resourceDrift ?? PREFERENCE_DEFAULTS.resourceDrift,
         workflowPages: r.workflowPages ?? PREFERENCE_DEFAULTS.workflowPages,
+        providerIncidents: r.providerIncidents ?? PREFERENCE_DEFAULTS.providerIncidents,
         devices: [],
       };
       byUser.set(r.userId, entry);

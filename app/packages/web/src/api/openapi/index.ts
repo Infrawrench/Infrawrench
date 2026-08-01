@@ -26,6 +26,7 @@ import { registerDeploymentPaths } from "./paths/deployments";
 import { registerPagePaths } from "./paths/pages";
 import { registerResourcePaths } from "./paths/resources";
 import { registerResourceChangePaths } from "./paths/resource-changes";
+import { registerStatusIncidentPaths } from "./paths/status-incidents";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
 import { registerAssociationPaths } from "./paths/associations";
 import { registerDependencyGraphPaths } from "./paths/dependency-graph";
@@ -108,6 +109,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerPagePaths(ctx);
   registerResourcePaths(ctx);
   registerResourceChangePaths(ctx);
+  registerStatusIncidentPaths(ctx);
   registerConnectionFeaturePaths(ctx);
   registerAssociationPaths(ctx);
   registerDependencyGraphPaths(ctx);
@@ -330,6 +332,9 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   // change timeline
   "GET /changes": "resources:read",
   "GET /changes/resource": "resources:read",
+  // provider status correlation — reads the same resource set the incidents
+  // are matched against, so it rides the resources read scope
+  "GET /status-incidents": "resources:read",
   // resources
   "GET /resources/{pluginId}/{typeId}/detail": "resources:read",
   "GET /resources/{pluginId}/{typeId}/manifest": "resources:read",

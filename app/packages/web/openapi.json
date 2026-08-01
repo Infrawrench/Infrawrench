@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.28.0",
+    "version": "0.29.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -5977,6 +5977,158 @@
         "required": ["entries"],
         "additionalProperties": false
       },
+      "ProviderIncidentState": {
+        "type": "string",
+        "enum": ["investigating", "identified", "monitoring", "resolved"],
+        "description": "Normalized incident lifecycle state as the provider reports it."
+      },
+      "ProviderIncidentImpact": {
+        "type": "string",
+        "enum": ["maintenance", "minor", "major", "critical"],
+        "description": "Normalized incident severity, least to most severe."
+      },
+      "ProviderIncidentResourceSample": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Resource id."
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "region": {
+            "type": ["string", "null"],
+            "description": "The resource's region field, when it has one."
+          }
+        },
+        "required": ["id", "displayName", "resourceTypeId"],
+        "additionalProperties": false
+      },
+      "OrgStatusIncident": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Cached incident row id."
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "pluginName": {
+            "type": "string",
+            "description": "Provider display name, e.g. \"DigitalOcean\"."
+          },
+          "title": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ProviderIncidentState"
+          },
+          "impact": {
+            "$ref": "#/components/schemas/ProviderIncidentImpact"
+          },
+          "url": {
+            "type": ["string", "null"],
+            "description": "Deep link to the provider's incident page or status page."
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resolvedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "lastUpdateAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "lastUpdateText": {
+            "type": ["string", "null"],
+            "description": "Plain-text body of the provider's most recent update."
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Plugin-native region ids the provider reports as affected."
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Human-readable affected provider services/products."
+          },
+          "providerWide": {
+            "type": "boolean",
+            "description": "True when the incident affects the provider as a whole."
+          },
+          "affectedResourceCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many of the organization's resources the incident overlaps."
+          },
+          "affectedRegions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The subset of `regions` where the organization actually holds resources."
+          },
+          "sampleResources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderIncidentResourceSample"
+            },
+            "description": "Up to five of the overlapped resources, for display."
+          },
+          "overlappingChangeCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Change-timeline events recorded on this provider during the incident window — \"these N changes happened during an incident\"."
+          }
+        },
+        "required": [
+          "id",
+          "pluginId",
+          "pluginName",
+          "title",
+          "state",
+          "impact",
+          "url",
+          "startedAt",
+          "resolvedAt",
+          "lastUpdateAt",
+          "lastUpdateText",
+          "regions",
+          "services",
+          "providerWide",
+          "affectedResourceCount",
+          "affectedRegions",
+          "sampleResources",
+          "overlappingChangeCount"
+        ],
+        "additionalProperties": false
+      },
+      "OrgStatusIncidentsResponse": {
+        "type": "object",
+        "properties": {
+          "incidents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgStatusIncident"
+            }
+          }
+        },
+        "required": ["incidents"],
+        "additionalProperties": false
+      },
       "SqlQueryResponse": {
         "type": "object",
         "properties": {
@@ -8374,6 +8526,10 @@
           "workflowPages": {
             "type": "boolean",
             "description": "Pages and approval requests raised by a workflow (infra.page / infra.waitForApproval) or by POST /pages"
+          },
+          "providerIncidents": {
+            "type": "boolean",
+            "description": "A provider status-page incident overlaps resources you hold."
           }
         },
         "required": [
@@ -8381,7 +8537,8 @@
           "budgetAlerts",
           "anomalyAlerts",
           "resourceDrift",
-          "workflowPages"
+          "workflowPages",
+          "providerIncidents"
         ],
         "additionalProperties": false
       },
@@ -8401,6 +8558,9 @@
             "type": "boolean"
           },
           "workflowPages": {
+            "type": "boolean"
+          },
+          "providerIncidents": {
             "type": "boolean"
           }
         },
@@ -8433,6 +8593,9 @@
           "workflowPages": {
             "type": "boolean"
           },
+          "providerIncidents": {
+            "type": "boolean"
+          },
           "devices": {
             "type": "array",
             "items": {
@@ -8463,6 +8626,7 @@
           "anomalyAlerts",
           "resourceDrift",
           "workflowPages",
+          "providerIncidents",
           "devices"
         ],
         "additionalProperties": false
@@ -8523,6 +8687,10 @@
             "type": "boolean",
             "description": "Pages and approval requests raised by a workflow (infra.page / infra.waitForApproval) or by POST /pages"
           },
+          "providerIncidents": {
+            "type": "boolean",
+            "description": "A provider status-page incident overlaps resources you hold."
+          },
           "weeklyDigest": {
             "type": "boolean",
             "description": "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest)."
@@ -8539,6 +8707,7 @@
           "anomalyAlerts",
           "resourceDrift",
           "workflowPages",
+          "providerIncidents",
           "weeklyDigest"
         ],
         "additionalProperties": false
@@ -8612,6 +8781,9 @@
           "workflowPages": {
             "type": "boolean"
           },
+          "providerIncidents": {
+            "type": "boolean"
+          },
           "weeklyDigest": {
             "type": "boolean"
           }
@@ -8635,6 +8807,9 @@
             "type": "boolean"
           },
           "workflowPages": {
+            "type": "boolean"
+          },
+          "providerIncidents": {
             "type": "boolean"
           },
           "weeklyDigest": {
@@ -8675,6 +8850,10 @@
             "type": "boolean",
             "description": "Pages and approval requests raised by a workflow (infra.page / infra.waitForApproval) or by POST /pages"
           },
+          "providerIncidents": {
+            "type": "boolean",
+            "description": "A provider status-page incident overlaps resources you hold."
+          },
           "weeklyDigest": {
             "type": "boolean",
             "description": "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest)."
@@ -8689,6 +8868,7 @@
           "anomalyAlerts",
           "resourceDrift",
           "workflowPages",
+          "providerIncidents",
           "weeklyDigest"
         ],
         "additionalProperties": false
@@ -8732,6 +8912,9 @@
           "workflowPages": {
             "type": "boolean"
           },
+          "providerIncidents": {
+            "type": "boolean"
+          },
           "weeklyDigest": {
             "type": "boolean"
           }
@@ -8758,6 +8941,9 @@
             "type": "boolean"
           },
           "workflowPages": {
+            "type": "boolean"
+          },
+          "providerIncidents": {
             "type": "boolean"
           },
           "weeklyDigest": {
@@ -17296,6 +17482,50 @@
           }
         },
         "operationId": "getOrgOrgIdChangesResource",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/status-incidents": {
+      "get": {
+        "tags": ["Status incidents"],
+        "summary": "Provider incidents overlapping your resources",
+        "description": "The \"is it me or is it them?\" feed. The poller watches each provider plugin's public status feed (declared on its manifest — zero credentials, zero rate-limit risk), caches active incidents, and this endpoint correlates them against the resources the organization holds: an incident matches a resource when it is provider-wide, names the resource's region, or names its resource type. Includes incidents resolved within the last 24 hours so recent drift can still be correlated. Active incidents first, most severe first.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Incidents correlated with the organization's resources",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStatusIncidentsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdStatusIncidents",
         "x-required-permission": "resources:read"
       }
     },

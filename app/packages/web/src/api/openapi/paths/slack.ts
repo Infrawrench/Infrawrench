@@ -27,6 +27,9 @@ const SlackChannel = strict({
     description:
       "Pages and approval requests raised by a workflow (infra.page / infra.waitForApproval) or by POST /pages",
   }),
+  providerIncidents: z.boolean().openapi({
+    description: "A provider status-page incident overlaps resources you hold.",
+  }),
   weeklyDigest: z.boolean().openapi({
     description:
       "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest).",
@@ -57,6 +60,7 @@ const SlackChannelCreate = strict({
   anomalyAlerts: z.boolean().optional(),
   resourceDrift: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
+  providerIncidents: z.boolean().optional(),
   weeklyDigest: z.boolean().optional(),
 }).openapi("SlackChannelCreate");
 
@@ -68,6 +72,7 @@ const SlackChannelUpdate = strict({
   anomalyAlerts: z.boolean().optional(),
   resourceDrift: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
+  providerIncidents: z.boolean().optional(),
   weeklyDigest: z.boolean().optional(),
 }).openapi("SlackChannelUpdate");
 
