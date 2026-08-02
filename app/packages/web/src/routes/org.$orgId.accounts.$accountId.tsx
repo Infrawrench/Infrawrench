@@ -235,6 +235,10 @@ export function AccountPanel({
         resourceId={accountRoot.id}
         accountId={accountId}
         view="details"
+        // The account *is* this resource, so the name the user gave the
+        // account names the thing. The provider id it would otherwise show
+        // (an UploadThing app id) is not something anyone recognises.
+        titleOverride={meta.account.displayName}
       />
     );
   }

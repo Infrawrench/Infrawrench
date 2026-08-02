@@ -77,6 +77,12 @@ export default function ResourceDetailScreen() {
     resourceId: string;
     accountId?: string;
     parentResourceId?: string;
+    /**
+     * Heading to show instead of the resource's own display name. Set by the
+     * account screen when it redirects here for an account-root resource —
+     * the account *is* this resource, so its name names the thing.
+     */
+    title?: string;
   }>();
   const { api, orgId } = useOrgApi();
   const queryClient = useQueryClient();
@@ -86,6 +92,7 @@ export default function ResourceDetailScreen() {
   const resourceTypeId = params.resourceTypeId;
   const resourceId = params.resourceId;
   const parentResourceId = params.parentResourceId;
+  const title = params.title;
   const queryKey = [
     "resource-detail",
     orgId,
@@ -218,7 +225,7 @@ export default function ResourceDetailScreen() {
     <ActionDispatchProvider value={handlers}>
       <Screen onRefresh={() => void detail.refetch()} refreshing={detail.isRefetching}>
         <Text style={{ color: colors.text, fontSize: 20, fontWeight: "700" }}>
-          {data.resourceDisplayName}
+          {title || data.resourceDisplayName}
         </Text>
         <Text style={{ color: colors.textMuted, fontSize: 13 }}>
           {data.resourceTypeLabel} · {pluginId}

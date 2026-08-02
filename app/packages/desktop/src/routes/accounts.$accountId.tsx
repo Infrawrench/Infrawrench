@@ -774,7 +774,17 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
   // first sync hasn't landed yet falls through to the normal inventory instead
   // of rendering a detail page for a resource id we don't have.
   if (accountRootResource) {
-    return <ResourcePanel accountId={accountId} resourceId={accountRootResource.id} view="" />;
+    return (
+      <ResourcePanel
+        accountId={accountId}
+        resourceId={accountRootResource.id}
+        view=""
+        // The account *is* this resource, so the name the user gave the
+        // account names the thing. The provider id it would otherwise show
+        // (an UploadThing app id) is not something anyone recognises.
+        {...(account?.display_name ? { titleOverride: account.display_name } : {})}
+      />
+    );
   }
 
   return (

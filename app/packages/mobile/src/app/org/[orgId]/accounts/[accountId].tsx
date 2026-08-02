@@ -117,9 +117,14 @@ export default function AccountResources() {
   // lands there is nothing to redirect to, and the inventory is the right
   // fallback rather than a detail screen for an id we do not have.
   if (accountRoot) {
+    // `title` carries the account's name across the redirect: the account *is*
+    // this resource, so its name names the thing, and the provider id the
+    // screen would otherwise show (an UploadThing app id) is not something
+    // anyone recognises. Web and desktop pass the same value as a prop.
+    const rootTitle = detail.data?.account.displayName ?? "";
     return (
       <Redirect
-        href={`/org/${orgId}/resources/${encodeURIComponent(accountRoot.pluginId)}/${encodeURIComponent(accountRoot.resourceTypeId)}/${encodeURIComponent(accountRoot.id)}`}
+        href={`/org/${orgId}/resources/${encodeURIComponent(accountRoot.pluginId)}/${encodeURIComponent(accountRoot.resourceTypeId)}/${encodeURIComponent(accountRoot.id)}${rootTitle ? `?title=${encodeURIComponent(rootTitle)}` : ""}`}
       />
     );
   }

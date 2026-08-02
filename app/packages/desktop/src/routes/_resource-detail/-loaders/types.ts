@@ -84,4 +84,15 @@ export interface LoaderParams {
    * correct tab's title — with keep-alive, multiple tabs are mounted
    * simultaneously and `activeWorkspaceTabId` would target the wrong one. */
   tabId: string | null;
+  /**
+   * Title to use instead of the resource's own display name.
+   *
+   * Set when the panel is standing in for something else — today, an
+   * account-root resource rendered as its account's page. The account *is*
+   * that resource, so the name the user gave the account is the name of the
+   * thing, and an opaque provider id would be a worse label than the one they
+   * chose. Threaded through the loader rather than re-set afterwards because
+   * the loader is what writes the tab title, and a second write would race it.
+   */
+  titleOverride?: string | undefined;
 }

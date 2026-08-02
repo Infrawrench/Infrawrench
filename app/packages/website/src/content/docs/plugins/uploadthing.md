@@ -59,6 +59,10 @@ field — Infrawrench works out which one you gave it:
   The app page shows both when they do.
 - UploadThing stores files in a **flat namespace** — there are no folders, and
   the browser's search box filters on file name.
+- **The page is titled with your account name**, because UploadThing's API
+  exposes no app name — `getAppInfo` returns the app ID, the default ACL, and
+  the override flag, and nothing else. Rename the account to rename the page;
+  the app ID is still on it, copyable.
 - **Content type** is only available on a file's own page. UploadThing's file
   listing does not include it, so it is fetched separately when you open a file.
 - **Downloads go through a per-file grant.** UploadThing issues no read token

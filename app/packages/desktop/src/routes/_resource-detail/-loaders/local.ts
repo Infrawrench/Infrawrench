@@ -43,6 +43,7 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
     setters,
     setAccountConnected,
     tabId,
+    titleOverride,
   } = params;
 
   const db = await getDb();
@@ -396,7 +397,10 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
     setters.setResource(enrichedResource);
 
     if (tabId) {
-      const viewSuffix = resourceTabTitle(enrichedResource.displayName, locationHash);
+      const viewSuffix = resourceTabTitle(
+        titleOverride ?? enrichedResource.displayName,
+        locationHash,
+      );
       useUIStore.getState().setWorkspaceTabTitle(tabId, viewSuffix);
     }
 
