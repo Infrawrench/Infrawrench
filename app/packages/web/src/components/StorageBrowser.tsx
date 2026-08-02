@@ -64,12 +64,15 @@ export function StorageBrowser({
 
   const onBatchDownload = useCallback(
     async (keys: string[]) => {
-      for (const key of keys) {
-        window.open(
-          `/api/org/${orgId}/storage/download?accountId=${encodeURIComponent(accountId)}&bucket=${encodeURIComponent(bucketName)}&key=${encodeURIComponent(key)}`,
-          "_blank",
-        );
-      }
+      // One request carrying the whole selection. The route takes `keys` as a
+      // JSON array — it was being sent as a singular `key` per window, which
+      // the handler rejects outright (`Missing accountId, bucket, or keys`),
+      // so downloads 400'd for every plugin. It also streams a zip for a
+      // multi-file selection, which the per-key loop could never produce.
+      window.open(
+        `/api/org/${orgId}/storage/download?accountId=${encodeURIComponent(accountId)}&bucket=${encodeURIComponent(bucketName)}&keys=${encodeURIComponent(JSON.stringify(keys))}`,
+        "_blank",
+      );
     },
     [accountId, bucketName, orgId],
   );

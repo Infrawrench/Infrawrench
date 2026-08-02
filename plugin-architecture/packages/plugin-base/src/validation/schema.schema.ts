@@ -279,6 +279,7 @@ export const detailViewSchema = z.object({
     )
     .optional(),
   childTables: z.array(childTableSchema).optional(),
+  hiddenChildTypeIds: z.array(z.string()).optional(),
   settingsEditor: z
     .object({ tabLabel: z.string().optional(), description: z.string().optional() })
     .optional(),

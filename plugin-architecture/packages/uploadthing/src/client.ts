@@ -706,6 +706,23 @@ export class UploadThingClient implements PluginClient {
   }
 
   /**
+   * The credential the Node-side driver spends to fetch bytes.
+   *
+   * For most providers this is a short-lived read token that covers many
+   * objects. UploadThing has no such thing: the only read grant it issues is
+   * `requestFileAccess`, which mints a presigned URL for **one** file. So the
+   * API key itself is what crosses to the driver, and the driver does a
+   * per-file grant there. That is also what makes downloading a *private*
+   * file work — the public `ufs.sh` URL 403s unless the ACL is public-read.
+   *
+   * No new exposure: on web the token never leaves the server, and on desktop
+   * the renderer already holds these credentials to construct this client.
+   */
+  async getStorageAccessToken(): Promise<string> {
+    return this.apiKey;
+  }
+
+  /**
    * Present so the browser's "new folder" button reports the real reason it
    * cannot work here instead of failing on an undefined method.
    */
@@ -876,30 +893,12 @@ export class UploadThingClient implements PluginClient {
         label: pct != null ? `${pct}% of quota` : "Active",
       },
       sections,
-      childTables: [
-        {
-          title: "Files",
-          typeId: "ut-file",
-          emptyText: "No files uploaded yet.",
-          createLabel: "+ Upload from URL",
-          columns: [
-            { key: "name", label: "Name", source: { kind: "display-name" }, width: "wide" },
-            {
-              key: "key",
-              label: "Key",
-              source: { kind: "field", fieldKey: "key" },
-              format: "mono",
-            },
-            { key: "size", label: "Size", source: { kind: "field", fieldKey: "sizeLabel" } },
-            { key: "status", label: "Status", source: { kind: "field", fieldKey: "status" } },
-            {
-              key: "uploadedAt",
-              label: "Uploaded",
-              source: { kind: "field", fieldKey: "uploadedAt" },
-            },
-          ],
-        },
-      ],
+      // The Files tab (the storage browser below) is the file listing, and it
+      // carries upload, download and delete on the same rows. Repeating those
+      // rows on Overview only added a second table that could disagree with
+      // it — and for an app over the sync cap it disagrees by definition,
+      // since the browser pages the provider while the table shows what synced.
+      hiddenChildTypeIds: ["ut-file"],
       storageBrowser: { bucketName: appId },
       headerActions: [
         { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },

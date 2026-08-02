@@ -30,11 +30,13 @@ field — Infrawrench works out which one you gave it:
 
 ## Notable flows
 
-- **File browser** on the app page — upload from your machine, download, and
-  delete, backed by UploadThing's own listing.
-- **Upload from URL** — the Files table's create button takes a public URL,
-  downloads it, and pushes the bytes to UploadThing. Optionally set a custom ID
-  and, where the app allows it, the file's access level.
+- **File browser** on the **Files** tab — upload from your machine, download
+  (single file, or a zip of a multi-file selection), and delete, backed by
+  UploadThing's own listing. This tab is the file listing; the Overview tab
+  deliberately does not repeat it.
+- **Upload from URL** — takes a public URL, downloads it, and pushes the bytes
+  to UploadThing. Optionally set a custom ID and, where the app allows it, the
+  file's access level.
 - **Make public / Make private** on a file, when the app allows per-file ACL
   overrides. These buttons are hidden when it does not, because the API rejects
   the change rather than ignoring it — flip the app-wide default in the
@@ -59,5 +61,9 @@ field — Infrawrench works out which one you gave it:
   the browser's search box filters on file name.
 - **Content type** is only available on a file's own page. UploadThing's file
   listing does not include it, so it is fetched separately when you open a file.
+- **Downloads go through a per-file grant.** UploadThing issues no read token
+  covering many files, so each download asks the API for a short-lived signed
+  URL first. That is what makes downloading a **private** file work — its plain
+  `ufs.sh` URL returns 403.
 - Files cannot be moved between apps, and a file's key is assigned at upload
   and never changes. Renaming changes the display name only.

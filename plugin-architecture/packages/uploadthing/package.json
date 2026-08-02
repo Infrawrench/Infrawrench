@@ -8,13 +8,25 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./node-driver": {
+      "import": {
+        "types": "./node-driver.d.ts",
+        "default": "./dist/node-driver.js"
+      },
+      "require": {
+        "types": "./node-driver.d.cts",
+        "default": "./dist/node-driver.cjs"
+      }
     }
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "node-driver.d.ts",
+    "node-driver.d.cts"
   ],
   "scripts": {
     "build": "tsdown",

@@ -22,6 +22,7 @@ import { driver as k8sDriver } from "@infrawrench/plugin-kubernetes/driver";
 import { driver as libsqlDriver } from "@infrawrench/plugin-turso/driver";
 import { driver as planetscaleDriver } from "@infrawrench/plugin-planetscale/driver";
 import { nodeDriver as gcpDriver } from "@infrawrench/plugin-gcp/node-driver";
+import { nodeDriver as uploadthingDriver } from "@infrawrench/plugin-uploadthing/node-driver";
 
 export const sqlDrivers = new Map<string, SqlNodeDriver>([
   [pgDriver.id, pgDriver],
@@ -42,4 +43,7 @@ export const dockerDrivers = new Map<string, DockerNodeDriver>([[dockerDriver.id
 
 export const k8sDrivers = new Map<string, K8sNodeDriver>([[k8sDriver.id, k8sDriver]]);
 
-export const storageDrivers = new Map<string, StorageNodeDriver>([[gcpDriver.pluginId, gcpDriver]]);
+export const storageDrivers = new Map<string, StorageNodeDriver>([
+  [gcpDriver.pluginId, gcpDriver],
+  [uploadthingDriver.pluginId, uploadthingDriver],
+]);

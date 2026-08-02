@@ -382,13 +382,16 @@ describe("renderDetail", () => {
     expect(labels).not.toContain("Make public");
   });
 
-  it("gives the app a files table and a storage browser", async () => {
+  it("gives the app a storage browser and keeps files off Overview", async () => {
     installReadFetch();
     const c = client();
     const [app] = await c.listResources("ut-app", ACCOUNT);
     const detail = c.renderDetail(app!);
+    // The browser tab is the file listing; an Overview copy would be a second
+    // table that disagrees with it once an app passes the sync cap.
     expect(detail.storageBrowser?.bucketName).toBe(APP_ID);
-    expect(detail.childTables?.[0]?.typeId).toBe("ut-file");
+    expect(detail.hiddenChildTypeIds).toContain("ut-file");
+    expect(detail.childTables).toBeUndefined();
   });
 
   it("marks a failed upload as an error in the sidebar", async () => {
