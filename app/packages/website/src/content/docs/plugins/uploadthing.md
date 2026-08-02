@@ -12,6 +12,11 @@ sidebar_order: 49
 An UploadThing API key is scoped to a single app, so one Infrawrench account is
 one UploadThing app. Add a second account for a second app.
 
+Because a second app is impossible rather than merely unusual, the account _is_
+the app: opening it lands you straight on the app page below, and the sidebar
+expands the account directly to its files. See
+[providers with a single root](../core-concepts/resources-and-accounts.md#providers-with-a-single-root).
+
 ## Credentials
 
 UploadThing dashboard → **API Keys**. Paste **either** value into the single

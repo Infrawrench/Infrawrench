@@ -1024,6 +1024,12 @@
           },
           "sshTunnelAttachSource": {
             "type": "boolean"
+          },
+          "showInSidebar": {
+            "type": "boolean"
+          },
+          "accountRoot": {
+            "type": "boolean"
           }
         },
         "required": ["id", "displayName", "supportsCreate"],

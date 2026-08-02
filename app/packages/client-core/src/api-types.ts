@@ -121,6 +121,14 @@ export interface ResourceTypeSummary {
   isSshHost?: boolean;
   /** True when this type can be dragged onto SSH hosts to set up a tunnel. */
   sshTunnelAttachSource?: boolean;
+  /** Child type that opts into its own top-level sidebar section. */
+  showInSidebar?: boolean;
+  /**
+   * True when this type is the plugin's singleton account root — the account
+   * page renders its detail view instead of an inventory. See
+   * `ResourceTypeDefinition.accountRoot`.
+   */
+  accountRoot?: boolean;
 }
 
 /**

@@ -34,6 +34,10 @@ export const UtAppResourceType = rt({
       description: "Prepend to a file key to get its public URL",
     }),
   ],
+  // An API key is app-scoped and there is no "list apps" call, so an account
+  // can never hold two of these — the app *is* the account. Opening the
+  // account lands here instead of on a section holding one pill.
+  accountRoot: true,
   supportsStorageBrowser: true,
   supportsCreate: false,
   supportsDelete: false,

@@ -383,6 +383,12 @@ app.get("/:id/detail", async (c) => {
       pluralDisplayName: rt.pluralDisplayName,
       parentTypeId: rt.parentTypeId,
       supportsCreate: rt.supportsCreate ?? false,
+      // Both flags drive what the account page *opens to*, so the client can't
+      // work them out from the rows alone — `showInSidebar` was already
+      // missing here once and made web drop every child type until you typed
+      // into the search box.
+      ...(rt.showInSidebar ? { showInSidebar: true } : {}),
+      ...(rt.accountRoot ? { accountRoot: true } : {}),
       ...(rt.attachTargets ? { attachTargets: rt.attachTargets } : {}),
       ...(rt.sshEndpoint ? { isSshHost: true } : {}),
       ...(rt.sshTunnelAttachSource ? { sshTunnelAttachSource: true } : {}),

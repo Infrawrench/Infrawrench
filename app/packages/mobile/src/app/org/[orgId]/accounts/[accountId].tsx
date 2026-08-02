@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { StyleSheet, TextInput } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  getAccountRootType,
   getVisibleAccountCategories,
   type AccountDetail,
   type Resource,
@@ -84,12 +85,34 @@ export default function AccountResources() {
     return getVisibleAccountCategories(categories, query.trim().toLowerCase());
   }, [resources.data, detail.data, query]);
 
+  // Account-root plugins (UploadThing) hold exactly one instance of their root
+  // type, and that instance *is* the account. Web and desktop swap the account
+  // page's body for the resource's detail view; the phone has one screen per
+  // route, so the equivalent is to redirect — same destination, and Back still
+  // lands on the accounts list rather than on a page holding a single row.
+  const accountRoot = useMemo(() => {
+    const rootTypeId = getAccountRootType(detail.data?.resourceTypes ?? [])?.id;
+    if (!rootTypeId) return null;
+    return (resources.data ?? []).find((r) => r.resourceTypeId === rootTypeId) ?? null;
+  }, [detail.data, resources.data]);
+
   if (resources.isLoading) return <LoadingView />;
   if (resources.isError) {
     return (
       <ErrorView
         message={resources.error instanceof Error ? resources.error.message : "Failed to load"}
         onRetry={() => void resources.refetch()}
+      />
+    );
+  }
+
+  // Only redirect once a root row actually exists — before the first sync
+  // lands there is nothing to redirect to, and the inventory is the right
+  // fallback rather than a detail screen for an id we do not have.
+  if (accountRoot) {
+    return (
+      <Redirect
+        href={`/org/${orgId}/resources/${encodeURIComponent(accountRoot.pluginId)}/${encodeURIComponent(accountRoot.resourceTypeId)}/${encodeURIComponent(accountRoot.id)}`}
       />
     );
   }

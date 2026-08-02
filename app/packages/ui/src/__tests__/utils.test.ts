@@ -8,6 +8,7 @@ import {
   evaluateShowWhen,
   buildDefaultFields,
   getListableResourceTypes,
+  getAccountRootType,
   extractHostLabel,
   buildChildResourceGroups,
   resourceTabTitle,
@@ -231,6 +232,51 @@ describe("resource type filters", () => {
   it("getListableResourceTypes keeps top-level and sidebar children only", () => {
     const ids = getListableResourceTypes(types).map((t) => t.id);
     expect(ids).toEqual(["top", "child-sidebar"]);
+  });
+
+  describe("with an account root", () => {
+    const rootTypes = [
+      { id: "app", accountRoot: true },
+      { id: "file", parentTypeId: "app" },
+      { id: "other-top" },
+      { id: "nested", parentTypeId: "file" },
+    ];
+
+    it("drops the root and promotes its children", () => {
+      // Without the promotion the account expands to nothing: `file` is a
+      // child type with no showInSidebar, so the plain rule filters it out.
+      const ids = getListableResourceTypes(rootTypes).map((t) => t.id);
+      expect(ids).toEqual(["file", "other-top"]);
+    });
+
+    it("leaves grandchildren nested", () => {
+      expect(getListableResourceTypes(rootTypes).map((t) => t.id)).not.toContain("nested");
+    });
+
+    it("still honours showInSidebar on unrelated children", () => {
+      const ids = getListableResourceTypes([
+        ...rootTypes,
+        { id: "opted-in", parentTypeId: "other-top", showInSidebar: true },
+      ]).map((t) => t.id);
+      expect(ids).toContain("opted-in");
+    });
+  });
+});
+
+describe("getAccountRootType", () => {
+  it("returns null when no type declares it", () => {
+    expect(getAccountRootType([{ id: "a" }, { id: "b", parentTypeId: "a" }])).toBeNull();
+  });
+
+  it("finds the declared root", () => {
+    expect(getAccountRootType([{ id: "a" }, { id: "app", accountRoot: true }])?.id).toBe("app");
+  });
+
+  it("ignores a root that is itself a child", () => {
+    // The loader test rejects this shape at build time, but a serialized flag
+    // arriving over the wire is not covered by that — an account must never
+    // open to something nested inside something else.
+    expect(getAccountRootType([{ id: "x", accountRoot: true, parentTypeId: "a" }])).toBeNull();
   });
 });
 

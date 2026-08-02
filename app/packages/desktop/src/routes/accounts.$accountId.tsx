@@ -11,6 +11,7 @@ import {
   dispatchResourcesChanged,
   dispatchRefreshResource,
   AccountResourceSections,
+  getAccountRootType,
   type SectionCategoryState,
   type DraggableResource,
   formatErrorMessage,
@@ -44,6 +45,7 @@ import {
   accountTabTarget,
 } from "../lib/workspace-tabs";
 import { ResourcePill } from "./_account-detail/-ResourcePill";
+import { ResourcePanel } from "./resource.$accountId.$resourceId";
 
 export const Route = createFileRoute("/accounts/$accountId")({
   // Rendering is handled by WorkspaceTabsViewport in __root.tsx, which mounts
@@ -715,6 +717,11 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     dispatchResourcesChanged({ accountId });
   }
 
+  const accountRootTypeId = getAccountRootType(categories.map((cat) => cat.typeDef))?.id;
+  const accountRootResource = accountRootTypeId
+    ? categories.find((cat) => cat.typeDef.id === accountRootTypeId)?.resources[0]
+    : undefined;
+
   function openDetail(resource: ResourceInstance) {
     void navigateToWorkspaceTarget(navigate, resourceTabTarget(accountId, resource.id), {
       label: resource.displayName,
@@ -730,6 +737,19 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
   }
   if (error) {
     return <div className="p-6 text-red-400 text-sm">{error}</div>;
+  }
+
+  // Account-root plugins (UploadThing) hold exactly one instance of their root
+  // type, and that instance *is* the account — so the account opens straight
+  // to its detail view rather than to an inventory whose only content is a
+  // section holding one pill. Tab, route, and sidebar selection stay the
+  // account's; only the body is swapped.
+  //
+  // Derived from already-loaded rows rather than asserted, so an account whose
+  // first sync hasn't landed yet falls through to the normal inventory instead
+  // of rendering a detail page for a resource id we don't have.
+  if (accountRootResource) {
+    return <ResourcePanel accountId={accountId} resourceId={accountRootResource.id} view="" />;
   }
 
   return (
