@@ -51,9 +51,9 @@ field — Infrawrench works out which one you gave it:
 
 ## Tips & limits
 
-- Infrawrench syncs the first **2,000 files** as individual resources. The app
-  page says so explicitly when there are more, and shows the real total from
-  UploadThing's own counter. The Files browser is subject to the same cap.
+- **Every file is listed** — there is no cap. A very large app therefore costs
+  a proportionally longer sync each poll cycle, since UploadThing pages its
+  listing 500 at a time and Infrawrench walks all of it.
 - On the free tier the storage quota is shared across every free app on the
   account, so "storage used by this app" and "counted against quota" can differ.
   The app page shows both when they do.

@@ -38,17 +38,15 @@ import { base64ToUtf8, formatBytes, jsonRestFetch } from "@infrawrench/plugin-ba
 const API_BASE = "https://api.uploadthing.com";
 
 /**
- * Ceiling on how many files are materialised as resources.
+ * Page size for `listFiles`, which accepts up to 100,000 per page.
  *
- * `listFiles` will happily page through six figures of files, and an app that
- * size would put one row per file into the resource table on every poll cycle.
- * The app's own `filesUploaded` counter is the honest total; when it exceeds
- * what was listed the app detail view says so out loud rather than letting the
- * short list read as complete. The Files browser is subject to the same cap.
+ * Listing is **not** capped: the loop pages until UploadThing says there is
+ * nothing more. That makes a poll cycle's cost proportional to the app's file
+ * count — a six-figure app is six figures of rows every cycle — which is the
+ * accepted trade for a listing that is actually complete. `fetchFiles` is
+ * memoised per client instance so the several call sites in one request share
+ * a single walk rather than repeating it.
  */
-const MAX_LISTED_FILES = 2000;
-
-/** `listFiles` accepts up to 100,000 per page; 500 is its documented default. */
 const FILE_PAGE_SIZE = 500;
 
 /** How many file keys to send per `deleteFiles` call when clearing a folder. */
@@ -249,6 +247,9 @@ export class UploadThingClient implements PluginClient {
    */
   private appInfoPromise: Promise<UtAppInfo> | undefined;
 
+  /** Memoised full file listing — see {@link fetchFiles}. */
+  private filesPromise: Promise<UtFile[]> | undefined;
+
   constructor(credentials: Record<string, string>, services?: HostServices) {
     const raw = credentials["apiKey"];
     if (!raw) throw new Error("UploadThing plugin: missing apiKey credential");
@@ -341,24 +342,40 @@ export class UploadThingClient implements PluginClient {
   }
 
   /**
-   * Page through `POST /v6/listFiles` up to {@link MAX_LISTED_FILES}.
+   * Every file in the app.
    *
-   * The endpoint is offset-paginated (`limit` + `offset`) and reports
-   * `hasMore`, so the loop stops on either that flag, a short page, or the cap.
+   * `POST /v6/listFiles` is offset-paginated and reports `hasMore`, so the walk
+   * ends when the data does. An empty page also breaks the loop: `hasMore`
+   * comes from the server, and a server that kept asserting it while returning
+   * nothing would otherwise spin forever.
+   *
+   * Memoised for the life of this client — one request may list resources,
+   * open the file browser, and resolve a folder delete, and there is no reason
+   * for those to each walk the whole app. Clients are constructed per request,
+   * so the memo cannot outlive the data by long; mutations clear it explicitly.
    */
-  private async fetchFiles(): Promise<UtFile[]> {
-    const files: UtFile[] = [];
-    let offset = 0;
-    for (;;) {
-      const limit = Math.min(FILE_PAGE_SIZE, MAX_LISTED_FILES - files.length);
-      if (limit <= 0) break;
-      const page = await this.post<UtFileList>("/v6/listFiles", { limit, offset });
-      const batch = page.files ?? [];
-      files.push(...batch);
-      if (!page.hasMore || batch.length === 0) break;
-      offset += batch.length;
-    }
-    return files;
+  private fetchFiles(): Promise<UtFile[]> {
+    this.filesPromise ??= (async () => {
+      const files: UtFile[] = [];
+      let offset = 0;
+      for (;;) {
+        const page = await this.post<UtFileList>("/v6/listFiles", {
+          limit: FILE_PAGE_SIZE,
+          offset,
+        });
+        const batch = page.files ?? [];
+        files.push(...batch);
+        if (!page.hasMore || batch.length === 0) break;
+        offset += batch.length;
+      }
+      return files;
+    })();
+    return this.filesPromise;
+  }
+
+  /** Drop the memoised listing after anything that changes it. */
+  private invalidateFiles(): void {
+    this.filesPromise = undefined;
   }
 
   private async listFiles(accountId: string): Promise<ResourceInstance[]> {
@@ -607,6 +624,7 @@ export class UploadThingClient implements PluginClient {
     if (!res.ok) {
       throw new Error(`UploadThing upload failed: HTTP ${res.status} ${await res.text()}`);
     }
+    this.invalidateFiles();
     return prepared.key;
   }
 
@@ -626,6 +644,8 @@ export class UploadThingClient implements PluginClient {
     await this.post<{ success: boolean; renamedCount: number }>("/v6/renameFiles", {
       updates: [{ fileKey: key, newName }],
     });
+    // Before the re-read below, which walks the listing.
+    this.invalidateFiles();
 
     return this.getResource(typeId, resourceId, accountId);
   }
@@ -639,6 +659,7 @@ export class UploadThingClient implements PluginClient {
     await this.post<{ success: boolean; deletedCount: number }>("/v6/deleteFiles", {
       fileKeys: [key],
     });
+    this.invalidateFiles();
   }
 
   /**
@@ -769,6 +790,7 @@ export class UploadThingClient implements PluginClient {
       await this.post<{ success: boolean; deletedCount: number }>("/v6/deleteFiles", {
         fileKeys: [key],
       });
+      this.invalidateFiles();
       return;
     }
 
@@ -784,6 +806,7 @@ export class UploadThingClient implements PluginClient {
         fileKeys: fileKeys.slice(i, i + DELETE_BATCH_SIZE),
       });
     }
+    this.invalidateFiles();
   }
 
   /**
@@ -950,23 +973,6 @@ export class UploadThingClient implements PluginClient {
       },
     ];
 
-    // Be explicit when the synced file list is a truncation rather than the
-    // whole app — a short list that silently stands in for 40,000 files is
-    // worse than no list.
-    if (filesUploaded > MAX_LISTED_FILES) {
-      sections.push({
-        kind: "section",
-        title: "Files",
-        children: [
-          {
-            kind: "text",
-            variant: "muted",
-            content: `This app has ${filesUploaded.toLocaleString()} files. Infrawrench syncs the first ${MAX_LISTED_FILES.toLocaleString()} as resources; use the Files browser to reach the rest.`,
-          },
-        ],
-      });
-    }
-
     return {
       title: resource.displayName,
       subtitle: "UploadThing app",
@@ -977,10 +983,9 @@ export class UploadThingClient implements PluginClient {
       },
       sections,
       // The Files tab (the storage browser below) is the file listing, and it
-      // carries upload, download and delete on the same rows. Repeating those
-      // rows on Overview only added a second table that could disagree with
-      // it — and for an app over the sync cap it disagrees by definition,
-      // since the browser pages the provider while the table shows what synced.
+      // carries upload, download and delete on the same rows — and browses the
+      // name paths as folders, which a flat table cannot. Repeating the rows on
+      // Overview only added a second listing to disagree with it.
       hiddenChildTypeIds: ["ut-file"],
       storageBrowser: { bucketName: appId },
       headerActions: [

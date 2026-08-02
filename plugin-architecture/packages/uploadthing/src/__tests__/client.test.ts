@@ -160,6 +160,55 @@ describe("listResources", () => {
     expect(calls.filter((call) => call.url.endsWith("/v7/getAppInfo"))).toHaveLength(1);
   });
 
+  it("pages past 2,000 files — the listing is not capped", async () => {
+    // 12 pages of 500. A cap would silently stop at four and the app would
+    // look like it holds 2,000 files.
+    const TOTAL_PAGES = 12;
+    let page = 0;
+    installReadFetch((url) => {
+      if (!url.endsWith("/v6/listFiles")) return undefined;
+      page += 1;
+      const files = Array.from({ length: 500 }, (_, i) => ({
+        ...FILES[0],
+        key: `p${page}-${i}`,
+        name: `p${page}-${i}.png`,
+      }));
+      return jsonResponse({ hasMore: page < TOTAL_PAGES, files });
+    });
+
+    const files = await client().listResources("ut-file", ACCOUNT);
+    expect(files).toHaveLength(6000);
+  });
+
+  it("stops when a server claims hasMore but returns nothing", async () => {
+    installReadFetch((url) =>
+      url.endsWith("/v6/listFiles") ? jsonResponse({ hasMore: true, files: [] }) : undefined,
+    );
+    // `hasMore` is the server's word; without the empty-page break this spins.
+    await expect(client().listResources("ut-file", ACCOUNT)).resolves.toHaveLength(0);
+  });
+
+  it("walks the listing once per client, not once per call site", async () => {
+    installReadFetch();
+    const c = client();
+    await c.listResources("ut-file", ACCOUNT);
+    await c.listStorageObjects(APP_ID, "");
+    expect(calls.filter((call) => call.url.endsWith("/v6/listFiles"))).toHaveLength(1);
+  });
+
+  it("re-walks after a delete so the browser does not show a deleted row", async () => {
+    installReadFetch((url) =>
+      url.endsWith("/v6/deleteFiles")
+        ? jsonResponse({ success: true, deletedCount: 1 })
+        : undefined,
+    );
+    const c = client();
+    await c.listStorageObjects(APP_ID, "");
+    await c.deleteStorageObject(APP_ID, "aaaa-bbbb");
+    await c.listStorageObjects(APP_ID, "");
+    expect(calls.filter((call) => call.url.endsWith("/v6/listFiles"))).toHaveLength(2);
+  });
+
   it("pages listFiles by offset until hasMore goes false", async () => {
     let page = 0;
     installReadFetch((url) => {

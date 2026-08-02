@@ -51,10 +51,12 @@ export const UtFileResourceType = rt({
   ],
   parentTypeId: "ut-app",
   // Deliberately sidebar-hidden. There is exactly one app per account, so the
-  // app page is always one click away and carries both the Files table and the
-  // file browser — where a flat section of up to MAX_LISTED_FILES entries in
-  // the sidebar would drown every other account out. (The account page still
-  // lists this type; `getVisibleAccountCategories` does not read this flag.)
+  // app page *is* the account page and its Files tab is always right there,
+  // browsing the name paths as folders. A sidebar section would instead be one
+  // flat run of every file in the app — and the listing is uncapped, so an
+  // archive upload alone would drown out every other account.
+  // (The account page still lists this type; `getVisibleAccountCategories`
+  // does not read this flag.)
   supportsCreate: true,
   supportsUpdate: true,
   supportsDelete: true,
