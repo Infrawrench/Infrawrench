@@ -340,8 +340,27 @@ describe("createResource", () => {
   });
 });
 
+/** An archive upload: nested names sharing a top-level prefix. */
+const TREE_FILES = [
+  { ...FILES[0], key: "k1", name: "git-cliff-2.12.0/CHANGELOG.md", size: 100 },
+  { ...FILES[0], key: "k2", name: "git-cliff-2.12.0/completions/git-cliff.bash", size: 200 },
+  { ...FILES[0], key: "k3", name: "git-cliff-2.12.0/completions/git-cliff.fish", size: 300 },
+  { ...FILES[0], key: "k4", name: "git-cliff-2.12.0/man/git-cliff.1", size: 50 },
+  { ...FILES[0], key: "k5", name: "loose.txt", size: 10 },
+];
+
+function installTreeFetch(extra?: (url: string, init?: RequestInit) => Response | undefined) {
+  return installReadFetch((url, init) => {
+    const fromExtra = extra?.(url, init);
+    if (fromExtra) return fromExtra;
+    return url.endsWith("/v6/listFiles")
+      ? jsonResponse({ hasMore: false, files: TREE_FILES })
+      : undefined;
+  });
+}
+
 describe("storage browser", () => {
-  it("lists files flat — UploadThing has no directories", async () => {
+  it("lists files at the root when no name carries a path", async () => {
     installReadFetch();
     const objects = await client().listStorageObjects(APP_ID, "");
     expect(objects).toHaveLength(2);
@@ -349,10 +368,45 @@ describe("storage browser", () => {
     expect(objects[0]?.key).toBe("aaaa-bbbb");
   });
 
-  it("filters by name prefix client-side, case-insensitively", async () => {
-    installReadFetch();
-    const objects = await client().listStorageObjects(APP_ID, "LOG");
-    expect(objects.map((o) => o.name)).toEqual(["logo.png"]);
+  it("derives one folder per top segment instead of a wall of long names", async () => {
+    installTreeFetch();
+    const objects = await client().listStorageObjects(APP_ID, "");
+    expect(objects.filter((o) => o.isDirectory).map((o) => o.name)).toEqual(["git-cliff-2.12.0"]);
+    expect(objects.filter((o) => !o.isDirectory).map((o) => o.name)).toEqual(["loose.txt"]);
+  });
+
+  it("gives a folder a trailing-slash key so it can be listed and deleted", async () => {
+    installTreeFetch();
+    const [dir] = await client().listStorageObjects(APP_ID, "");
+    expect(dir?.key).toBe("git-cliff-2.12.0/");
+  });
+
+  it("rolls the whole subtree's size and newest timestamp into the folder", async () => {
+    installTreeFetch();
+    const [dir] = await client().listStorageObjects(APP_ID, "");
+    expect(dir?.size).toBe(650);
+  });
+
+  it("opens a folder by listing its key", async () => {
+    installTreeFetch();
+    const objects = await client().listStorageObjects(APP_ID, "git-cliff-2.12.0/");
+    expect(objects.filter((o) => o.isDirectory).map((o) => o.name)).toEqual(["completions", "man"]);
+    // Leaf names only — the browser already shows the path in its breadcrumb.
+    expect(objects.filter((o) => !o.isDirectory).map((o) => o.name)).toEqual(["CHANGELOG.md"]);
+  });
+
+  it("nests a second level under the first", async () => {
+    installTreeFetch();
+    const objects = await client().listStorageObjects(APP_ID, "git-cliff-2.12.0/completions/");
+    expect(objects.map((o) => o.name)).toEqual(["git-cliff.bash", "git-cliff.fish"]);
+    // Real UploadThing keys — delete and download address files by key.
+    expect(objects.map((o) => o.key)).toEqual(["k2", "k3"]);
+  });
+
+  it("keeps real file keys on leaves so delete and download still resolve", async () => {
+    installTreeFetch();
+    const objects = await client().listStorageObjects(APP_ID, "");
+    expect(objects.find((o) => o.name === "loose.txt")?.key).toBe("k5");
   });
 
   it("keeps a folder upload's relative path as the file name", async () => {
@@ -412,8 +466,40 @@ describe("storage browser", () => {
     expect(JSON.parse(String(prepare?.init?.body))).toMatchObject({ fileName: "logo.svg" });
   });
 
-  it("explains that folders do not exist rather than failing obscurely", async () => {
-    await expect(client().makeStorageFolder(APP_ID, "images/")).rejects.toThrow(/flat namespace/);
+  it("explains why an empty folder cannot be created", async () => {
+    await expect(client().makeStorageFolder(APP_ID, "images/")).rejects.toThrow(
+      /derived from file names/,
+    );
+  });
+
+  it("deletes every file under a folder key, batched", async () => {
+    installTreeFetch((url) =>
+      url.endsWith("/v6/deleteFiles")
+        ? jsonResponse({ success: true, deletedCount: 3 })
+        : undefined,
+    );
+    await client().deleteStorageObject(APP_ID, "git-cliff-2.12.0/");
+    const bodies = calls
+      .filter((c) => c.url.endsWith("/v6/deleteFiles"))
+      .map((c) => JSON.parse(String(c.init?.body)) as { fileKeys: string[] });
+    expect(bodies.flatMap((b) => b.fileKeys)).toEqual(["k1", "k2", "k3", "k4"]);
+  });
+
+  it("does not treat a plain file key as a folder", async () => {
+    installTreeFetch((url) =>
+      url.endsWith("/v6/deleteFiles")
+        ? jsonResponse({ success: true, deletedCount: 1 })
+        : undefined,
+    );
+    await client().deleteStorageObject(APP_ID, "k5");
+    const body = calls.find((c) => c.url.endsWith("/v6/deleteFiles"))?.init?.body;
+    expect(JSON.parse(String(body))).toEqual({ fileKeys: ["k5"] });
+  });
+
+  it("skips the delete call entirely for an empty folder", async () => {
+    installTreeFetch();
+    await client().deleteStorageObject(APP_ID, "nothing-here/");
+    expect(calls.some((c) => c.url.endsWith("/v6/deleteFiles"))).toBe(false);
   });
 });
 

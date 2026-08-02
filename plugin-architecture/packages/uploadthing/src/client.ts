@@ -51,6 +51,9 @@ const MAX_LISTED_FILES = 2000;
 /** `listFiles` accepts up to 100,000 per page; 500 is its documented default. */
 const FILE_PAGE_SIZE = 500;
 
+/** How many file keys to send per `deleteFiles` call when clearing a folder. */
+const DELETE_BATCH_SIZE = 250;
+
 // ---------------------------------------------------------------------------
 // API response shapes
 // ---------------------------------------------------------------------------
@@ -665,24 +668,69 @@ export class UploadThingClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   /**
-   * UploadThing's namespace is flat — there are no folders, no delimiters, and
-   * no server-side prefix filter. `prefix` is honoured as a case-insensitive
-   * match on the file name so the browser's search box still does something
-   * useful, and every entry comes back as a file.
+   * List one level of the browser's tree.
+   *
+   * UploadThing's namespace is genuinely flat — no folders, no delimiters, no
+   * server-side prefix filter. But names carry the path a folder upload came
+   * from (`git-cliff-2.12.0/completions/git-cliff.bash`), so the tree is
+   * derivable: split on "/" and fold everything sharing a first segment into a
+   * synthesized directory. Without this the browser is one screen of long
+   * identical-looking rows, which is what a real archive upload produces.
+   *
+   * `prefix` is navigation, not search — the browser filters its search box
+   * client-side and only calls this to open a directory.
+   *
+   * Two invariants the rest of this class leans on:
+   *  - a **file** entry carries the real UploadThing key, because delete and
+   *    download address files by key, not by name;
+   *  - a **directory** entry carries the name prefix and always ends in "/",
+   *    which a real file key never does. That is what lets `deleteStorageObject`
+   *    tell a folder from a file without a host-side signature change.
    */
   async listStorageObjects(_bucket: string, prefix: string): Promise<StorageObject[]> {
     const files = await this.fetchFiles();
-    const needle = prefix.trim().toLowerCase();
-    const matched = needle
-      ? files.filter((f) => (f.name ?? "").toLowerCase().startsWith(needle))
-      : files;
-    return matched.map((file) => ({
-      key: file.key,
-      name: file.name || file.key,
-      size: file.size ?? 0,
-      lastModified: isoFromEpochMs(file.uploadedAt),
-      isDirectory: false,
+    const scope = prefix.replace(/^\/+/, "");
+
+    const dirs = new Map<string, { size: number; latest: number }>();
+    const entries: StorageObject[] = [];
+
+    for (const file of files) {
+      const name = file.name || file.key;
+      if (scope && !name.startsWith(scope)) continue;
+      const rest = name.slice(scope.length);
+      if (!rest) continue;
+
+      const slash = rest.indexOf("/");
+      if (slash === -1) {
+        entries.push({
+          key: file.key,
+          name: rest,
+          size: file.size ?? 0,
+          lastModified: isoFromEpochMs(file.uploadedAt),
+          isDirectory: false,
+        });
+        continue;
+      }
+
+      // Roll the whole subtree up into its top segment: the browser asks for
+      // deeper levels by listing this directory's key.
+      const dirName = rest.slice(0, slash);
+      const agg = dirs.get(dirName);
+      dirs.set(dirName, {
+        size: (agg?.size ?? 0) + (file.size ?? 0),
+        latest: Math.max(agg?.latest ?? 0, file.uploadedAt ?? 0),
+      });
+    }
+
+    const dirEntries: StorageObject[] = [...dirs].map(([name, agg]) => ({
+      key: `${scope}${name}/`,
+      name,
+      size: agg.size,
+      lastModified: isoFromEpochMs(agg.latest),
+      isDirectory: true,
     }));
+
+    return [...dirEntries, ...entries];
   }
 
   async uploadStorageObject(
@@ -707,10 +755,35 @@ export class UploadThingClient implements PluginClient {
     onProgress?.(100);
   }
 
+  /**
+   * Delete a file, or everything under a synthesized folder.
+   *
+   * The host's delete signature carries no "is this a directory" flag, so the
+   * trailing slash `listStorageObjects` puts on directory keys is what tells
+   * them apart — a real UploadThing file key never ends in one. Without this
+   * branch, deleting a folder would post its path as a file key and come back
+   * `deletedCount: 0`: a silent no-op on a destructive action.
+   */
   async deleteStorageObject(_bucket: string, key: string): Promise<void> {
-    await this.post<{ success: boolean; deletedCount: number }>("/v6/deleteFiles", {
-      fileKeys: [key],
-    });
+    if (!key.endsWith("/")) {
+      await this.post<{ success: boolean; deletedCount: number }>("/v6/deleteFiles", {
+        fileKeys: [key],
+      });
+      return;
+    }
+
+    const files = await this.fetchFiles();
+    const fileKeys = files.filter((f) => (f.name || f.key).startsWith(key)).map((f) => f.key);
+    if (fileKeys.length === 0) return;
+
+    // Chunked: a folder from an archive upload can hold thousands of files and
+    // the API documents no ceiling on the array, which is not the same as
+    // there being none.
+    for (let i = 0; i < fileKeys.length; i += DELETE_BATCH_SIZE) {
+      await this.post<{ success: boolean; deletedCount: number }>("/v6/deleteFiles", {
+        fileKeys: fileKeys.slice(i, i + DELETE_BATCH_SIZE),
+      });
+    }
   }
 
   /**
@@ -732,11 +805,13 @@ export class UploadThingClient implements PluginClient {
 
   /**
    * Present so the browser's "new folder" button reports the real reason it
-   * cannot work here instead of failing on an undefined method.
+   * cannot work here instead of failing on an undefined method. Folders are
+   * derived from names, so one with nothing in it has nothing to derive from.
    */
   async makeStorageFolder(_bucket: string, _key: string): Promise<void> {
     throw new Error(
-      "UploadThing stores files in a flat namespace and has no folders. Upload the file directly.",
+      "UploadThing has no folders — the ones shown here are derived from file names, " +
+        "so an empty one cannot exist. Upload a folder, or a file named `folder/file.ext`.",
     );
   }
 
