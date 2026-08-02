@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.27.0",
+    "version": "0.28.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -834,6 +834,7 @@
           "ssh",
           "together",
           "turso",
+          "uploadthing",
           "vercel",
           "xai"
         ],
@@ -1460,6 +1461,8 @@
           "turso-organization-invite",
           "turso-organization-member",
           "upload-preset",
+          "ut-app",
+          "ut-file",
           "vector-store",
           "vectorize-index",
           "vercel-deployment",

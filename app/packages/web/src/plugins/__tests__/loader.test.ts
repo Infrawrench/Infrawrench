@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { loadPlugins } from "@/plugins/loader";
 
 describe("plugin loader", () => {
-  it("loads all 47 plugins successfully", async () => {
+  it("loads all 48 plugins successfully", async () => {
     const plugins = await loadPlugins();
-    expect(plugins).toHaveLength(47);
+    expect(plugins).toHaveLength(48);
   });
 
   it("each plugin has a valid manifest with required fields", async () => {
@@ -76,6 +76,7 @@ describe("plugin loader", () => {
       "speechmatics",
       "together",
       "xai",
+      "uploadthing",
     ];
     for (const id of expected) {
       expect(ids).toContain(id);

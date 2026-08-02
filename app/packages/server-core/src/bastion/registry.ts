@@ -132,6 +132,9 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   ],
   together: ["api.together.ai", "api.together.xyz", "api-inference.together.ai"],
   xai: ["api.x.ai", "management-api.x.ai"],
+  // Control plane, the per-app file-serving host, and the regional ingest
+  // endpoints presigned uploads PUT to.
+  uploadthing: ["api.uploadthing.com", "*.ufs.sh", "*.ingest.uploadthing.com", "utfs.io"],
   kubernetes: [], // kubeconfig-relative; v1 doesn't bastion-route Kubernetes
 };
 

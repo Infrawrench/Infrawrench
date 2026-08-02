@@ -106,6 +106,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   revai: { accessToken: "test-revai-access-token", region: "us" },
   together: { apiKey: "test-together-key" },
   xai: { apiKey: "xai-test-inference-key", managementKey: "xai-test-management-key" },
+  uploadthing: { apiKey: "sk_live_testuploadthingkey" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

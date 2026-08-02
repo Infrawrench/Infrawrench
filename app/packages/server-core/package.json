@@ -126,6 +126,7 @@
     "@infrawrench/plugin-ssh": "workspace:*",
     "@infrawrench/plugin-together": "workspace:*",
     "@infrawrench/plugin-turso": "workspace:*",
+    "@infrawrench/plugin-uploadthing": "workspace:*",
     "@infrawrench/plugin-vercel": "workspace:*",
     "@infrawrench/plugin-xai": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
