@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { v4 as uuid } from "uuid";
-import { eq, and, isNull, or, inArray, sql } from "drizzle-orm";
+import { eq, and, isNull, or, inArray, notInArray, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { accounts, bastionVms, resources } from "../../db/schema";
 import { refreshAllowlistById } from "@infrawrench/server-core/bastion/registry";
@@ -322,10 +322,22 @@ app.get("/:id/resources", async (c) => {
     // Top-level resources have no parent. Child types can opt into the
     // sidebar via `showInSidebar` on their `ResourceTypeDefinition`; include
     // those resource type ids in the result alongside the parentless rows.
+    //
+    // An account-root type is the exception in both directions: it *is* the
+    // account, so it is excluded and its direct children are promoted into
+    // the top level it vacated. This has to mirror `getListableResourceTypes`
+    // in `@infrawrench/ui` — desktop reads the plugin registry directly and
+    // uses that helper, so any disagreement here shows up as the two apps
+    // expanding the same account to different things.
     const sidebarChildTypeIds = new Set<string>();
+    const excludedTypeIds = new Set<string>();
     for (const p of await loadPlugins()) {
+      const root = p.plugin.resourceTypes.find((t) => t.accountRoot && !t.parentTypeId);
+      if (root) excludedTypeIds.add(root.id);
       for (const t of p.plugin.resourceTypes) {
-        if (t.parentTypeId && t.showInSidebar) sidebarChildTypeIds.add(t.id);
+        if (t.parentTypeId && (t.showInSidebar || (root && t.parentTypeId === root.id))) {
+          sidebarChildTypeIds.add(t.id);
+        }
       }
     }
     if (sidebarChildTypeIds.size === 0) {
@@ -334,6 +346,9 @@ app.get("/:id/resources", async (c) => {
       const sidebarChildClause = inArray(resources.resourceTypeId, [...sidebarChildTypeIds]);
       const orExpr = or(isNull(resources.parentResourceId), sidebarChildClause);
       if (orExpr) conditions.push(orExpr);
+    }
+    if (excludedTypeIds.size > 0) {
+      conditions.push(notInArray(resources.resourceTypeId, [...excludedTypeIds]));
     }
   }
 

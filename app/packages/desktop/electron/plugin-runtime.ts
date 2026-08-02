@@ -274,6 +274,16 @@ export async function createAccountPluginClient(
  * package — server-core duplicates it for the same reason.
  */
 function listableResourceTypes(types: ResourceTypeDefinition[]): ResourceTypeDefinition[] {
+  // An account-root type *is* the account, so it drops out of its own subtree
+  // and its direct children take the top level it vacated. Without this the
+  // account expands to a single pill for the root while the GUI, which uses
+  // `getListableResourceTypes`, expands to the root's contents.
+  const root = types.find((t) => t.accountRoot && !t.parentTypeId);
+  if (root) {
+    return types.filter(
+      (t) => t.id !== root.id && (t.parentTypeId === root.id || !t.parentTypeId || t.showInSidebar),
+    );
+  }
   return types.filter((t) => !t.parentTypeId || t.showInSidebar);
 }
 

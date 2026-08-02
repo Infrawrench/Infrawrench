@@ -108,6 +108,20 @@ describe("decodeApiKey", () => {
   });
 });
 
+describe("host services", () => {
+  it("routes through the host HTTP service even without a custom CA", async () => {
+    // Coupling `http` to `caCert` means an account with a bastion attached but
+    // no custom CA silently bypasses bastion routing — the common case, and
+    // this plugin is in the egress allowlist precisely so it routes.
+    const request = vi.fn(async () => ({ status: 200, body: JSON.stringify(APP_INFO) }));
+    const c = new UploadThingClient({ apiKey: "sk_live_test" }, {
+      http: { request },
+    } as unknown as ConstructorParameters<typeof UploadThingClient>[1]);
+    await c.resolveOutput("ut-app", `${ACCOUNT}:ut-app:${APP_ID}`, "appId", ACCOUNT);
+    expect(request).toHaveBeenCalled();
+  });
+});
+
 describe("authentication", () => {
   it("sends the app-scoped key header, not a bearer token", async () => {
     installReadFetch();
@@ -377,6 +391,50 @@ describe("createResource", () => {
       customId: "cid-1",
       acl: "private",
     });
+  });
+
+  it("refuses a private, loopback or link-local source", async () => {
+    installReadFetch();
+    const c = client();
+    // On the cloud this fetch runs inside the API server; without the guard,
+    // anyone with resources:write could read the metadata service back out as
+    // an uploaded file.
+    for (const url of [
+      "http://169.254.169.254/latest/meta-data/",
+      "http://localhost:8080/x.png",
+      "http://127.0.0.1/x.png",
+      "http://10.0.0.5/x.png",
+      "http://192.168.1.9/x.png",
+      "http://172.16.0.1/x.png",
+      "http://[::1]/x.png",
+    ]) {
+      await expect(c.createResource("ut-file", ACCOUNT, { sourceUrl: url })).rejects.toThrow(
+        /private and loopback/,
+      );
+    }
+    expect(calls.some((call) => call.url.includes("169.254"))).toBe(false);
+  });
+
+  it("refuses a non-http scheme", async () => {
+    installReadFetch();
+    await expect(
+      client().createResource("ut-file", ACCOUNT, { sourceUrl: "file:///etc/passwd" }),
+    ).rejects.toThrow(/Only http and https/);
+  });
+
+  it("rejects a body that advertises more than the cap", async () => {
+    installReadFetch((url) =>
+      url === "https://example.com/huge.bin"
+        ? ({
+            ok: true,
+            status: 200,
+            headers: new Headers({ "content-length": String(9 * 1024 * 1024 * 1024) }),
+          } as unknown as Response)
+        : undefined,
+    );
+    await expect(
+      client().createResource("ut-file", ACCOUNT, { sourceUrl: "https://example.com/huge.bin" }),
+    ).rejects.toThrow(/capped at/);
   });
 
   it("surfaces a failed download instead of uploading an empty file", async () => {

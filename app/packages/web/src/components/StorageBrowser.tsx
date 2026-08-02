@@ -4,6 +4,9 @@ import type { StorageObject } from "@infrawrench/plugin-base";
 import { apiPost } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 
+/** Mirrors `MAX_BULK_KEYS` in `api/routes/storage.ts`, which rejects above it. */
+const MAX_BULK_DOWNLOAD_KEYS = 100;
+
 export function StorageBrowser({
   accountId,
   bucketName,
@@ -41,7 +44,7 @@ export function StorageBrowser({
           else reject(new Error(`Upload failed: ${xhr.statusText}`));
         });
         xhr.addEventListener("error", () => reject(new Error("Upload failed")));
-        xhr.open("POST", `/api/org/${orgId}/storage/upload`);
+        xhr.open("POST", `/api/org/${orgId}/v1/storage/upload`);
         xhr.send(formData);
       });
     },
@@ -64,15 +67,24 @@ export function StorageBrowser({
 
   const onBatchDownload = useCallback(
     async (keys: string[]) => {
-      // One request carrying the whole selection. The route takes `keys` as a
-      // JSON array — it was being sent as a singular `key` per window, which
-      // the handler rejects outright (`Missing accountId, bucket, or keys`),
-      // so downloads 400'd for every plugin. It also streams a zip for a
-      // multi-file selection, which the per-key loop could never produce.
-      window.open(
-        `/api/org/${orgId}/storage/download?accountId=${encodeURIComponent(accountId)}&bucket=${encodeURIComponent(bucketName)}&keys=${encodeURIComponent(JSON.stringify(keys))}`,
-        "_blank",
-      );
+      // Two things were wrong here and only one of them was visible. The route
+      // takes `keys` as a JSON array, not a singular `key` per window — but it
+      // also lives under `/v1/storage` (`api/index.ts`), where only
+      // list/mkdir/delete are also served unversioned from
+      // `connection-features.ts`. So the old request 404'd before it could
+      // even 400, and fixing the payload alone would not have helped.
+      //
+      // Chunked at MAX_BULK_KEYS: the server rejects a larger selection
+      // outright, and FileBrowser expands a selected folder to a flat key list
+      // first, so one folder of >100 files would otherwise fail wholesale
+      // rather than download.
+      for (let i = 0; i < keys.length; i += MAX_BULK_DOWNLOAD_KEYS) {
+        const batch = keys.slice(i, i + MAX_BULK_DOWNLOAD_KEYS);
+        window.open(
+          `/api/org/${orgId}/v1/storage/download?accountId=${encodeURIComponent(accountId)}&bucket=${encodeURIComponent(bucketName)}&keys=${encodeURIComponent(JSON.stringify(batch))}`,
+          "_blank",
+        );
+      }
     },
     [accountId, bucketName, orgId],
   );

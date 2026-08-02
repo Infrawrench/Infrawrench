@@ -117,6 +117,17 @@ export default function ResourceDetailScreen() {
 
   const data = detail.data;
 
+  // `hiddenChildTypeIds` says another surface on this page is already the
+  // listing for these types, so a second copy would be a duplicate. Web and
+  // desktop honour it in `DetailView`; mobile renders its own child rows and
+  // has to apply it too — without this, opening an UploadThing app lists every
+  // file in the app as a "Related resources" row, and that listing is uncapped.
+  const visibleChildResources = useMemo(() => {
+    const hidden = new Set(data?.detailSchema.hiddenChildTypeIds ?? []);
+    if (hidden.size === 0) return data?.childResources ?? [];
+    return (data?.childResources ?? []).filter((child) => !hidden.has(child.resourceTypeId));
+  }, [data]);
+
   const handlers = useMemo<ActionHandlers>(
     () => ({
       navigateToResource: (target) =>
@@ -330,11 +341,11 @@ export default function ResourceDetailScreen() {
           </Card>
         )}
 
-        {data.childResources.length > 0 && (
+        {visibleChildResources.length > 0 && (
           <Card>
             <SectionTitle>Related resources</SectionTitle>
             <RowGroup>
-              {data.childResources.map((child) => (
+              {visibleChildResources.map((child) => (
                 <Row
                   key={child.id}
                   title={child.displayName}

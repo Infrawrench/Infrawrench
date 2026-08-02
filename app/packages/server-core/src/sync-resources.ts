@@ -31,9 +31,19 @@ import {
 /** Returns resource types listed in the sidebar — top-level plus child types
  * that opted in via `showInSidebar`. Duplicated from @infrawrench/ui to avoid
  * a server→React-package dependency. */
-function listableTopLevelTypes<T extends { parentTypeId?: string; showInSidebar?: boolean }>(
-  types: T[],
-): T[] {
+function listableTopLevelTypes<
+  T extends { id: string; parentTypeId?: string; showInSidebar?: boolean; accountRoot?: boolean },
+>(types: T[]): T[] {
+  // An account-root type *is* the account, so it drops out of its own subtree
+  // and its direct children take the top level it vacated. Without this the
+  // account expands to a single pill for the root while the GUI, which uses
+  // `getListableResourceTypes`, expands to the root's contents.
+  const root = types.find((t) => t.accountRoot && !t.parentTypeId);
+  if (root) {
+    return types.filter(
+      (t) => t.id !== root.id && (t.parentTypeId === root.id || !t.parentTypeId || t.showInSidebar),
+    );
+  }
   return types.filter((t) => !t.parentTypeId || t.showInSidebar);
 }
 

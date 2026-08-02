@@ -212,6 +212,84 @@ function quotaPercent(used: number, limit: number): number | null {
   return Math.min(100, Math.round((used / limit) * 100));
 }
 
+/**
+ * Largest body `createResource` will pull from a URL. The download is buffered
+ * whole before being pushed to UploadThing, and on the cloud that buffer is
+ * the API server's heap, not the caller's.
+ */
+const MAX_URL_UPLOAD_BYTES = 256 * 1024 * 1024;
+
+/**
+ * Reject a source URL that would make the server fetch something on its own
+ * behalf rather than the user's.
+ *
+ * `createResource` is the one place in this plugin that dereferences a
+ * user-supplied address, and on the cloud it runs inside the API server — so
+ * without this, anyone holding `resources:write` could aim it at the metadata
+ * service or a service reachable only from inside the cluster and read the
+ * response back out as an uploaded file. Scheme and host are both checked:
+ * `file://` would read the pod's disk, and a private/loopback/link-local
+ * address is never a legitimate place to fetch a user's upload from.
+ *
+ * This is deliberately a denylist of address *shapes* rather than a resolver
+ * check — it cannot stop a hostname that resolves to a private address
+ * (DNS rebinding). Closing that needs egress policy, not string parsing; what
+ * this does stop is the direct, obvious form.
+ */
+function assertFetchableUrl(raw: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error(`"${raw}" is not a valid URL.`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(`Only http and https URLs can be uploaded from (got "${parsed.protocol}").`);
+  }
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  const blocked =
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host === "::1" ||
+    host === "0.0.0.0" ||
+    /^127\./.test(host) ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^172\.(1[6-9]|2[0-9]|3[01])\./.test(host) ||
+    // Link-local, which is where cloud metadata services live.
+    /^169\.254\./.test(host) ||
+    /^fe80:/i.test(host) ||
+    // Unique-local IPv6.
+    /^f[cd][0-9a-f]{2}:/i.test(host);
+  if (blocked) {
+    throw new Error(
+      `Refusing to upload from "${parsed.hostname}" — private and loopback addresses are not reachable sources.`,
+    );
+  }
+}
+
+/** Read a response body, aborting past `limit` rather than buffering it all. */
+async function readCappedBlob(res: Response, limit: number): Promise<Blob> {
+  if (!res.body) return res.blob();
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel();
+      throw new Error(`That file exceeds the ${formatBytes(limit)} cap for uploads from a URL.`);
+    }
+    chunks.push(value);
+  }
+  return new Blob(chunks as BlobPart[], {
+    ...(res.headers.get("content-type") ? { type: res.headers.get("content-type")! } : {}),
+  });
+}
+
 /** The last path segment of a URL, used as the default upload filename. */
 function fileNameFromUrl(raw: string): string {
   try {
@@ -269,9 +347,13 @@ export class UploadThingClient implements PluginClient {
       errorPath: path,
       headers: { "x-uploadthing-api-key": this.apiKey },
       init: { method: "POST", body: JSON.stringify(body ?? {}) },
-      ...(this.caCert && this.services?.http
-        ? { caCert: this.caCert, http: this.services.http }
-        : {}),
+      // Independently spread. Coupling `http` to `caCert` (as the helper this
+      // was cribbed from does) means an account with a bastion attached but no
+      // custom CA — the normal case — silently falls through to bare `fetch`
+      // and skips bastion routing entirely, despite `uploadthing` being in the
+      // egress allowlist.
+      ...(this.services?.http ? { http: this.services.http } : {}),
+      ...(this.caCert ? { caCert: this.caCert } : {}),
     });
   }
 
@@ -281,9 +363,13 @@ export class UploadThingClient implements PluginClient {
       url: `${API_BASE}${path}`,
       errorPath: path,
       headers: { "x-uploadthing-api-key": this.apiKey },
-      ...(this.caCert && this.services?.http
-        ? { caCert: this.caCert, http: this.services.http }
-        : {}),
+      // Independently spread. Coupling `http` to `caCert` (as the helper this
+      // was cribbed from does) means an account with a bastion attached but no
+      // custom CA — the normal case — silently falls through to bare `fetch`
+      // and skips bastion routing entirely, despite `uploadthing` being in the
+      // egress allowlist.
+      ...(this.services?.http ? { http: this.services.http } : {}),
+      ...(this.caCert ? { caCert: this.caCert } : {}),
     });
   }
 
@@ -549,12 +635,22 @@ export class UploadThingClient implements PluginClient {
 
     const sourceUrl = (fields["sourceUrl"] ?? "").trim();
     if (!sourceUrl) throw new Error("A file URL is required");
+    assertFetchableUrl(sourceUrl);
 
-    const download = await fetch(sourceUrl);
+    const download = await fetch(sourceUrl, { redirect: "follow" });
     if (!download.ok) {
       throw new Error(`Could not download ${sourceUrl}: HTTP ${download.status}`);
     }
-    const blob = await download.blob();
+    // On the cloud this runs inside the API server, so an unbounded read is
+    // the pod's heap. Check the advertised length first, then count bytes as
+    // they arrive — `content-length` is the server's claim, not a guarantee.
+    const declared = Number(download.headers.get("content-length") ?? "");
+    if (Number.isFinite(declared) && declared > MAX_URL_UPLOAD_BYTES) {
+      throw new Error(
+        `That file is ${formatBytes(declared)}; uploads from a URL are capped at ${formatBytes(MAX_URL_UPLOAD_BYTES)}.`,
+      );
+    }
+    const blob = await readCappedBlob(download, MAX_URL_UPLOAD_BYTES);
     const name = (fields["fileName"] ?? "").trim() || fileNameFromUrl(sourceUrl);
     const contentType = blob.type || download.headers.get("content-type") || "";
 

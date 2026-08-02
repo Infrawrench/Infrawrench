@@ -50,13 +50,16 @@ export const UtFileResourceType = rt({
     }),
   ],
   parentTypeId: "ut-app",
-  // Deliberately sidebar-hidden. There is exactly one app per account, so the
-  // app page *is* the account page and its Files tab is always right there,
-  // browsing the name paths as folders. A sidebar section would instead be one
-  // flat run of every file in the app — and the listing is uncapped, so an
-  // archive upload alone would drown out every other account.
-  // (The account page still lists this type; `getVisibleAccountCategories`
-  // does not read this flag.)
+  // No `showInSidebar`, but that does not keep it out of the sidebar: `ut-app`
+  // is the account root, and `getListableResourceTypes` promotes a root's
+  // direct children into the top level the root vacates. That is deliberate —
+  // an account expanding to a single "Apps" pill would be useless — and it is
+  // why this flag is absent rather than false: setting it would be redundant,
+  // and reading it here would suggest a choice that isn't being made.
+  //
+  // The cost is real and worth knowing: the sidebar lists this type on expand
+  // and on every 30s background refresh, and the listing is uncapped, so a
+  // large app pays a full walk each time.
   supportsCreate: true,
   supportsUpdate: true,
   supportsDelete: true,
