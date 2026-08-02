@@ -718,9 +718,24 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
   }
 
   const accountRootTypeId = getAccountRootType(categories.map((cat) => cat.typeDef))?.id;
-  const accountRootResource = accountRootTypeId
-    ? categories.find((cat) => cat.typeDef.id === accountRootTypeId)?.resources[0]
+  const accountRootCategory = accountRootTypeId
+    ? categories.find((cat) => cat.typeDef.id === accountRootTypeId)
     : undefined;
+  const accountRootResource = accountRootCategory?.resources[0];
+
+  // Both load paths publish the category list (with empty `resources`) and
+  // clear `initialLoading` as soon as the *type list* is known, well before
+  // the rows land. For a normal account that's the point — sections render
+  // with their own spinners. For an account-root plugin it would paint the
+  // inventory we're about to throw away, so the page visibly flashes a list
+  // of empty sections before snapping to the app. Hold the spinner instead:
+  // the type list already tells us a root is coming, only its id is missing.
+  //
+  // Scoped to `loading` so it can't latch. A failed listing clears the flag
+  // with no rows, which falls through to the inventory — where the error
+  // belongs — and a background refresh never re-raises it.
+  const awaitingAccountRoot =
+    !!accountRootCategory && !accountRootResource && accountRootCategory.loading;
 
   function openDetail(resource: ResourceInstance) {
     void navigateToWorkspaceTarget(navigate, resourceTabTarget(accountId, resource.id), {
@@ -728,9 +743,19 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     });
   }
 
-  if (initialLoading) {
+  if (initialLoading || awaitingAccountRoot) {
+    // While awaiting a root we already know ResourcePanel is what renders
+    // next, so borrow its exact loading treatment — otherwise the handoff
+    // swaps one spinner for a differently-styled one, which reads as a second
+    // load rather than a continuous one.
     return (
-      <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
+      <div
+        className={
+          awaitingAccountRoot
+            ? "flex items-center justify-center h-full text-on-surface-muted text-sm animate-pulse"
+            : "flex items-center justify-center h-full text-on-surface-faint text-sm"
+        }
+      >
         Loading…
       </div>
     );

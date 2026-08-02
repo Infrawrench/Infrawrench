@@ -97,6 +97,13 @@ export default function AccountResources() {
   }, [detail.data, resources.data]);
 
   if (resources.isLoading) return <LoadingView />;
+  // The type list is the only thing that says whether this account has a root,
+  // and it is fetched alongside the rows rather than before them — so rendering
+  // the inventory while it is still in flight would flash a screen we are about
+  // to redirect away from. Wait for it. On error we carry on: the fallback type
+  // list below (ids as titles) is better than a dead end, and an account that
+  // *does* have a root will pick it up on the next successful fetch.
+  if (detail.isLoading) return <LoadingView />;
   if (resources.isError) {
     return (
       <ErrorView
