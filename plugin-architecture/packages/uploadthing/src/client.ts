@@ -691,9 +691,17 @@ export class UploadThingClient implements PluginClient {
     file: File,
     onProgress?: (pct: number) => void,
   ): Promise<void> {
-    // The browser passes a target path; UploadThing assigns its own opaque key,
-    // so only the leaf name survives.
-    const name = key.split("/").filter(Boolean).pop() || file.name || "upload";
+    // The browser passes a target path — for a folder upload that is the
+    // picked folder's relative path (`photos/sub/a.png`), for a plain file
+    // just the name.
+    //
+    // Keep the whole thing as the file *name*. UploadThing creates no folder
+    // either way (it has none) and assigns its own opaque key, so the slash is
+    // just a character in a string here — but keeping it is what stops two
+    // files called `a.png` in different subfolders from arriving as two
+    // identical-looking rows. `pathMode: "absolute"` browsers prefix a slash;
+    // strip it so names don't start with one.
+    const name = key.replace(/^\/+/, "") || file.name || "upload";
     onProgress?.(0);
     await this.uploadBlob(file, name, file.type, {});
     onProgress?.(100);

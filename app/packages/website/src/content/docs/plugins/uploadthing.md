@@ -58,7 +58,11 @@ field — Infrawrench works out which one you gave it:
   account, so "storage used by this app" and "counted against quota" can differ.
   The app page shows both when they do.
 - UploadThing stores files in a **flat namespace** — there are no folders, and
-  the browser's search box filters on file name.
+  the browser's search box filters on file name. Uploading a folder therefore
+  uploads its **contents**; no folder is created. The picked folder's relative
+  path is kept as part of each file's name (`photos/sub/a.png`), so two files
+  called `a.png` in different subfolders stay distinguishable instead of
+  arriving as two identical-looking rows.
 - **The page is titled with your account name**, because UploadThing's API
   exposes no app name — `getAppInfo` returns the app ID, the default ACL, and
   the override flag, and nothing else. Rename the account to rename the page;

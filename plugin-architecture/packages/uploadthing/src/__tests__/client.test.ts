@@ -355,6 +355,63 @@ describe("storage browser", () => {
     expect(objects.map((o) => o.name)).toEqual(["logo.png"]);
   });
 
+  it("keeps a folder upload's relative path as the file name", async () => {
+    installReadFetch((url, init) => {
+      if (url.endsWith("/v7/prepareUpload")) {
+        return jsonResponse({ key: "new-key", url: "https://sea1.ingest.uploadthing.com/new-key" });
+      }
+      if (url.startsWith("https://sea1.ingest.uploadthing.com/") && init?.method === "PUT") {
+        return jsonResponse({ ok: true });
+      }
+      return undefined;
+    });
+
+    const file = new File([new Uint8Array(2)], "a.png", { type: "image/png" });
+    await client().uploadStorageObject(APP_ID, "photos/sub/a.png", file);
+
+    // Flattening to the leaf would land two `a.png` rows from two subfolders.
+    const prepare = calls.find((c) => c.url.endsWith("/v7/prepareUpload"));
+    expect(JSON.parse(String(prepare?.init?.body))).toMatchObject({
+      fileName: "photos/sub/a.png",
+    });
+  });
+
+  it("strips a leading slash so names never start with one", async () => {
+    installReadFetch((url, init) => {
+      if (url.endsWith("/v7/prepareUpload")) {
+        return jsonResponse({ key: "new-key", url: "https://sea1.ingest.uploadthing.com/new-key" });
+      }
+      if (url.startsWith("https://sea1.ingest.uploadthing.com/") && init?.method === "PUT") {
+        return jsonResponse({ ok: true });
+      }
+      return undefined;
+    });
+
+    const file = new File([new Uint8Array(2)], "a.png", { type: "image/png" });
+    await client().uploadStorageObject(APP_ID, "/photos/a.png", file);
+
+    const prepare = calls.find((c) => c.url.endsWith("/v7/prepareUpload"));
+    expect(JSON.parse(String(prepare?.init?.body))).toMatchObject({ fileName: "photos/a.png" });
+  });
+
+  it("leaves a plain file upload's name alone", async () => {
+    installReadFetch((url, init) => {
+      if (url.endsWith("/v7/prepareUpload")) {
+        return jsonResponse({ key: "new-key", url: "https://sea1.ingest.uploadthing.com/new-key" });
+      }
+      if (url.startsWith("https://sea1.ingest.uploadthing.com/") && init?.method === "PUT") {
+        return jsonResponse({ ok: true });
+      }
+      return undefined;
+    });
+
+    const file = new File([new Uint8Array(2)], "logo.svg", { type: "image/svg+xml" });
+    await client().uploadStorageObject(APP_ID, "logo.svg", file);
+
+    const prepare = calls.find((c) => c.url.endsWith("/v7/prepareUpload"));
+    expect(JSON.parse(String(prepare?.init?.body))).toMatchObject({ fileName: "logo.svg" });
+  });
+
   it("explains that folders do not exist rather than failing obscurely", async () => {
     await expect(client().makeStorageFolder(APP_ID, "images/")).rejects.toThrow(/flat namespace/);
   });
