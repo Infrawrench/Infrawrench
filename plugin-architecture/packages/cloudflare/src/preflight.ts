@@ -297,7 +297,9 @@ export async function runCloudflarePreflight(token: string): Promise<PreflightRe
         missingPermissions: METRICS_PERMISSIONS,
         helpLink: TOKENS_HELP_LINK,
       });
-    } else if (res.ok && body?.data?.viewer != null) {
+    } else if (res.ok && body?.data?.viewer != null && (body.errors ?? []).length === 0) {
+      // GraphQL can 200 with a non-null viewer AND populated errors (partial
+      // response) — only a clean response proves the analytics scope works.
       checks.push({ capabilityId: "metrics", status: "ok" });
     } else {
       const msg = (body?.errors ?? [])

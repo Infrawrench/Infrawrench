@@ -88,4 +88,34 @@ describe("CredentialPreflightPanel", () => {
     expect(screen.queryByText(/stale failure/)).not.toBeInTheDocument();
     expect(screen.getByText("second")).toBeInTheDocument();
   });
+
+  it("keeps the template cleared when a pending generate resolves after unchecking everything", async () => {
+    let resolvePending!: (t: PolicyTemplate) => void;
+    const pending = new Promise<PolicyTemplate>((r) => {
+      resolvePending = r;
+    });
+    const fetchPolicyTemplate = vi
+      .fn<(ids: string[]) => Promise<PolicyTemplate>>()
+      .mockImplementation(() => pending);
+
+    render(
+      <CredentialPreflightPanel
+        declaration={declaration}
+        fetchPolicyTemplate={fetchPolicyTemplate}
+      />,
+    );
+
+    // Opening the generator fires a request that stays pending.
+    fireEvent.click(screen.getByText(/Generate least-privilege/));
+    // Unchecking every capability clears the generator without a new request.
+    fireEvent.click(screen.getByLabelText("Resource inventory"));
+    fireEvent.click(screen.getByLabelText("Cost reporting"));
+
+    // The pending request resolving late must not resurrect a template for
+    // the now-empty selection.
+    resolvePending(template("late arrival"));
+    await waitFor(() => expect(fetchPolicyTemplate).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByText("late arrival")).not.toBeInTheDocument();
+  });
 });

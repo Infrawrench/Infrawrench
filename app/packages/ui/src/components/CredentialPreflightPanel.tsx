@@ -263,8 +263,17 @@ export function CredentialPreflightPanel({
                             ? [...selectedIds, cap.id]
                             : selectedIds.filter((id) => id !== cap.id);
                           setSelectedIds(next);
-                          if (next.length > 0) void generate(next);
-                          else setTemplate(null);
+                          if (next.length > 0) {
+                            void generate(next);
+                          } else {
+                            // Unchecking everything invalidates any in-flight
+                            // generate — a late resolution must not resurrect
+                            // a template for a now-empty selection.
+                            generateSeq.current++;
+                            setTemplate(null);
+                            setGeneratorError(null);
+                            setGenerating(false);
+                          }
                         }}
                       />
                       {cap.label}

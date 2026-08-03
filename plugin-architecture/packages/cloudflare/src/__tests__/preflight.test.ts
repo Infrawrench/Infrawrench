@@ -203,6 +203,29 @@ describe("runCloudflarePreflight", () => {
     expect(metrics.status === "unknown" && metrics.message).toContain("internal server error");
   });
 
+  it("marks metrics unknown on a partial GraphQL response (viewer AND errors)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      stubFetch({
+        "/user/tokens/verify": { status: 200, body: okEnvelope({ id: "tok1", status: "active" }) },
+        "/zones?per_page=1": { status: 200, body: okEnvelope([]) },
+        "/accounts?per_page=1": { status: 200, body: okEnvelope([{ id: "acc1" }]) },
+        "/graphql": {
+          status: 200,
+          body: {
+            data: { viewer: { budget: 100 } },
+            errors: [{ message: "quota exceeded for analytics" }],
+          },
+        },
+        "/billable-usage/info": { status: 200, body: okEnvelope({ covered: true }) },
+      }),
+    );
+    const result = await runCloudflarePreflight("t");
+    const metrics = result.checks.find((c) => c.capabilityId === "metrics")!;
+    expect(metrics.status).toBe("unknown");
+    expect(metrics.status === "unknown" && metrics.message).toContain("quota exceeded");
+  });
+
   it("marks costs unknown when no account id could be resolved", async () => {
     vi.stubGlobal(
       "fetch",

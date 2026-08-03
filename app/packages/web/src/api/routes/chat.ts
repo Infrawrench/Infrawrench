@@ -339,9 +339,14 @@ app.post("/conversations/:id/pending/:pendingId", async (c) => {
   }
 
   if (body.action === "reject") {
-    const { allResolved } = await rejectPendingAction(pendingId, body.reason);
-    noteDecided("denied");
-    return c.json({ ok: true, allResolved });
+    // finally: the claim above already decided the row, so the Slack copies
+    // must retire even when recording the rejection details throws.
+    try {
+      const { allResolved } = await rejectPendingAction(pendingId, body.reason);
+      return c.json({ ok: true, allResolved });
+    } finally {
+      noteDecided("denied");
+    }
   }
 
   // Approved and claimed: execute synchronously. If execution succeeds and all
