@@ -114,6 +114,7 @@ interface PreferencesPayload {
   syncIncidents: boolean;
   budgetAlerts: boolean;
   anomalyAlerts: boolean;
+  metricAlerts: boolean;
   resourceDrift: boolean;
   workflowPages: boolean;
   providerIncidents: boolean;
@@ -125,6 +126,7 @@ const PREFERENCE_KEYS = [
   "syncIncidents",
   "budgetAlerts",
   "anomalyAlerts",
+  "metricAlerts",
   "resourceDrift",
   "workflowPages",
   "providerIncidents",
@@ -141,6 +143,7 @@ const PREFERENCE_DEFAULTS: PreferencesPayload = {
   syncIncidents: true,
   budgetAlerts: true,
   anomalyAlerts: true,
+  metricAlerts: true,
   resourceDrift: false,
   workflowPages: true,
   providerIncidents: true,
@@ -164,6 +167,7 @@ pushOrgRoutes.get("/preferences", async (c) => {
     syncIncidents: row?.syncIncidents ?? PREFERENCE_DEFAULTS.syncIncidents,
     budgetAlerts: row?.budgetAlerts ?? PREFERENCE_DEFAULTS.budgetAlerts,
     anomalyAlerts: row?.anomalyAlerts ?? PREFERENCE_DEFAULTS.anomalyAlerts,
+    metricAlerts: row?.metricAlerts ?? PREFERENCE_DEFAULTS.metricAlerts,
     resourceDrift: row?.resourceDrift ?? PREFERENCE_DEFAULTS.resourceDrift,
     workflowPages: row?.workflowPages ?? PREFERENCE_DEFAULTS.workflowPages,
     providerIncidents: row?.providerIncidents ?? PREFERENCE_DEFAULTS.providerIncidents,
@@ -194,6 +198,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
       syncIncidents: body.syncIncidents ?? PREFERENCE_DEFAULTS.syncIncidents,
       budgetAlerts: body.budgetAlerts ?? PREFERENCE_DEFAULTS.budgetAlerts,
       anomalyAlerts: body.anomalyAlerts ?? PREFERENCE_DEFAULTS.anomalyAlerts,
+      metricAlerts: body.metricAlerts ?? PREFERENCE_DEFAULTS.metricAlerts,
       resourceDrift: body.resourceDrift ?? PREFERENCE_DEFAULTS.resourceDrift,
       workflowPages: body.workflowPages ?? PREFERENCE_DEFAULTS.workflowPages,
       providerIncidents: body.providerIncidents ?? PREFERENCE_DEFAULTS.providerIncidents,
@@ -206,6 +211,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
         ...(body.syncIncidents != null ? { syncIncidents: body.syncIncidents } : {}),
         ...(body.budgetAlerts != null ? { budgetAlerts: body.budgetAlerts } : {}),
         ...(body.anomalyAlerts != null ? { anomalyAlerts: body.anomalyAlerts } : {}),
+        ...(body.metricAlerts != null ? { metricAlerts: body.metricAlerts } : {}),
         ...(body.resourceDrift != null ? { resourceDrift: body.resourceDrift } : {}),
         ...(body.workflowPages != null ? { workflowPages: body.workflowPages } : {}),
         ...(body.providerIncidents != null ? { providerIncidents: body.providerIncidents } : {}),
@@ -225,6 +231,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
       syncIncidents: body.syncIncidents,
       budgetAlerts: body.budgetAlerts,
       anomalyAlerts: body.anomalyAlerts,
+      metricAlerts: body.metricAlerts,
       resourceDrift: body.resourceDrift,
       workflowPages: body.workflowPages,
       providerIncidents: body.providerIncidents,
@@ -253,6 +260,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
       syncIncidents: pushPreferences.syncIncidents,
       budgetAlerts: pushPreferences.budgetAlerts,
       anomalyAlerts: pushPreferences.anomalyAlerts,
+      metricAlerts: pushPreferences.metricAlerts,
       resourceDrift: pushPreferences.resourceDrift,
       workflowPages: pushPreferences.workflowPages,
       providerIncidents: pushPreferences.providerIncidents,
@@ -283,6 +291,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
       syncIncidents: boolean;
       budgetAlerts: boolean;
       anomalyAlerts: boolean;
+      metricAlerts: boolean;
       resourceDrift: boolean;
       workflowPages: boolean;
       providerIncidents: boolean;
@@ -301,6 +310,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
         syncIncidents: r.syncIncidents ?? PREFERENCE_DEFAULTS.syncIncidents,
         budgetAlerts: r.budgetAlerts ?? PREFERENCE_DEFAULTS.budgetAlerts,
         anomalyAlerts: r.anomalyAlerts ?? PREFERENCE_DEFAULTS.anomalyAlerts,
+        metricAlerts: r.metricAlerts ?? PREFERENCE_DEFAULTS.metricAlerts,
         resourceDrift: r.resourceDrift ?? PREFERENCE_DEFAULTS.resourceDrift,
         workflowPages: r.workflowPages ?? PREFERENCE_DEFAULTS.workflowPages,
         providerIncidents: r.providerIncidents ?? PREFERENCE_DEFAULTS.providerIncidents,

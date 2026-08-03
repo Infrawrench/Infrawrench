@@ -20,6 +20,7 @@ import { Route as OrgOrgIdSshFanoutRouteImport } from './routes/org.$orgId.ssh-f
 import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settings'
 import { Route as OrgOrgIdSavingsRouteImport } from './routes/org.$orgId.savings'
 import { Route as OrgOrgIdMomentRouteImport } from './routes/org.$orgId.moment'
+import { Route as OrgOrgIdMetricAlertsRouteImport } from './routes/org.$orgId.metric-alerts'
 import { Route as OrgOrgIdLogsRouteImport } from './routes/org.$orgId.logs'
 import { Route as OrgOrgIdGraphRouteImport } from './routes/org.$orgId.graph'
 import { Route as OrgOrgIdExpiringRouteImport } from './routes/org.$orgId.expiring'
@@ -100,6 +101,11 @@ const OrgOrgIdSavingsRoute = OrgOrgIdSavingsRouteImport.update({
 const OrgOrgIdMomentRoute = OrgOrgIdMomentRouteImport.update({
   id: '/moment',
   path: '/moment',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdMetricAlertsRoute = OrgOrgIdMetricAlertsRouteImport.update({
+  id: '/metric-alerts',
+  path: '/metric-alerts',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdLogsRoute = OrgOrgIdLogsRouteImport.update({
@@ -256,6 +262,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
+  '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
@@ -293,6 +300,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
+  '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
@@ -332,6 +340,7 @@ export interface FileRoutesById {
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
+  '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
@@ -373,6 +382,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
     | '/org/$orgId/logs'
+    | '/org/$orgId/metric-alerts'
     | '/org/$orgId/moment'
     | '/org/$orgId/savings'
     | '/org/$orgId/settings'
@@ -410,6 +420,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
     | '/org/$orgId/logs'
+    | '/org/$orgId/metric-alerts'
     | '/org/$orgId/moment'
     | '/org/$orgId/savings'
     | '/org/$orgId/ssh-fanout'
@@ -448,6 +459,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
     | '/org/$orgId/logs'
+    | '/org/$orgId/metric-alerts'
     | '/org/$orgId/moment'
     | '/org/$orgId/savings'
     | '/org/$orgId/settings'
@@ -559,6 +571,13 @@ declare module '@tanstack/react-router' {
       path: '/moment'
       fullPath: '/org/$orgId/moment'
       preLoaderRoute: typeof OrgOrgIdMomentRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/metric-alerts': {
+      id: '/org/$orgId/metric-alerts'
+      path: '/metric-alerts'
+      fullPath: '/org/$orgId/metric-alerts'
+      preLoaderRoute: typeof OrgOrgIdMetricAlertsRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/logs': {
@@ -804,6 +823,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdExpiringRoute: typeof OrgOrgIdExpiringRoute
   OrgOrgIdGraphRoute: typeof OrgOrgIdGraphRoute
   OrgOrgIdLogsRoute: typeof OrgOrgIdLogsRoute
+  OrgOrgIdMetricAlertsRoute: typeof OrgOrgIdMetricAlertsRoute
   OrgOrgIdMomentRoute: typeof OrgOrgIdMomentRoute
   OrgOrgIdSavingsRoute: typeof OrgOrgIdSavingsRoute
   OrgOrgIdSettingsRoute: typeof OrgOrgIdSettingsRouteWithChildren
@@ -824,6 +844,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdExpiringRoute: OrgOrgIdExpiringRoute,
   OrgOrgIdGraphRoute: OrgOrgIdGraphRoute,
   OrgOrgIdLogsRoute: OrgOrgIdLogsRoute,
+  OrgOrgIdMetricAlertsRoute: OrgOrgIdMetricAlertsRoute,
   OrgOrgIdMomentRoute: OrgOrgIdMomentRoute,
   OrgOrgIdSavingsRoute: OrgOrgIdSavingsRoute,
   OrgOrgIdSettingsRoute: OrgOrgIdSettingsRouteWithChildren,

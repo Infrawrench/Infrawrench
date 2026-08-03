@@ -43,6 +43,7 @@ interface WebhookBody {
   syncIncidents?: boolean;
   budgetAlerts?: boolean;
   anomalyAlerts?: boolean;
+  metricAlerts?: boolean;
   resourceDrift?: boolean;
   workflowPages?: boolean;
   providerIncidents?: boolean;
@@ -72,6 +73,7 @@ app.post("/webhooks", async (c) => {
       ...(body.syncIncidents != null ? { syncIncidents: body.syncIncidents } : {}),
       ...(body.budgetAlerts != null ? { budgetAlerts: body.budgetAlerts } : {}),
       ...(body.anomalyAlerts != null ? { anomalyAlerts: body.anomalyAlerts } : {}),
+      ...(body.metricAlerts != null ? { metricAlerts: body.metricAlerts } : {}),
       ...(body.resourceDrift != null ? { resourceDrift: body.resourceDrift } : {}),
       ...(body.workflowPages != null ? { workflowPages: body.workflowPages } : {}),
       ...(body.providerIncidents != null ? { providerIncidents: body.providerIncidents } : {}),
@@ -91,6 +93,7 @@ interface WebhookPatchBody {
   syncIncidents?: boolean;
   budgetAlerts?: boolean;
   anomalyAlerts?: boolean;
+  metricAlerts?: boolean;
   resourceDrift?: boolean;
   workflowPages?: boolean;
   providerIncidents?: boolean;
@@ -115,6 +118,7 @@ app.patch("/webhooks/:id", async (c) => {
   if (body.syncIncidents != null) patch.syncIncidents = body.syncIncidents;
   if (body.budgetAlerts != null) patch.budgetAlerts = body.budgetAlerts;
   if (body.anomalyAlerts != null) patch.anomalyAlerts = body.anomalyAlerts;
+  if (body.metricAlerts != null) patch.metricAlerts = body.metricAlerts;
   if (body.resourceDrift != null) patch.resourceDrift = body.resourceDrift;
   if (body.workflowPages != null) patch.workflowPages = body.workflowPages;
   if (body.providerIncidents != null) patch.providerIncidents = body.providerIncidents;
@@ -136,6 +140,7 @@ app.patch("/webhooks/:id", async (c) => {
     syncIncidents: row.syncIncidents,
     budgetAlerts: row.budgetAlerts,
     anomalyAlerts: row.anomalyAlerts,
+    metricAlerts: row.metricAlerts,
     resourceDrift: row.resourceDrift,
     workflowPages: row.workflowPages,
     providerIncidents: row.providerIncidents,

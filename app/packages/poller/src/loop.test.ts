@@ -58,6 +58,13 @@ vi.mock("@infrawrench/server-core/resource-changes", () => ({
   CHANGE_RETENTION_INTERVAL_MS: 60 * 60 * 1000,
 }));
 
+// Mocked like the workflow runner: the real pass pulls in the ClickHouse
+// reader chain, which this suite has no business importing.
+const runMetricAlertPass = vi.fn();
+vi.mock("@infrawrench/server-core/metric-alerts/pass", () => ({
+  runMetricAlertPass: (...a: unknown[]) => runMetricAlertPass(...a),
+}));
+
 import { PollerLoop } from "./loop";
 
 function row(id: string) {
@@ -89,6 +96,7 @@ beforeEach(() => {
     failed: 0,
     truncated: false,
   });
+  runMetricAlertPass.mockResolvedValue({ claimed: 0 });
 });
 
 afterEach(() => {
@@ -298,6 +306,32 @@ describe("PollerLoop change-timeline retention", () => {
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(5_000);
     expect(pruneResourceChanges).toHaveBeenCalledTimes(1);
+    errSpy.mockRestore();
+    await loop.stop();
+  });
+});
+
+describe("PollerLoop metric alerts", () => {
+  it("runs the metric alert pass on every tick with a bounded batch", async () => {
+    const loop = new PollerLoop({ tickMs: 1_000 });
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(runMetricAlertPass).toHaveBeenCalledTimes(1);
+    expect(runMetricAlertPass).toHaveBeenCalledWith({ limit: 8 });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(runMetricAlertPass).toHaveBeenCalledTimes(2);
+    await loop.stop();
+  });
+
+  it("swallows a failing metric alert pass so account polling still runs", async () => {
+    claimDueAccounts.mockResolvedValue([row("a")]);
+    runMetricAlertPass.mockRejectedValueOnce(new Error("clickhouse down"));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const loop = new PollerLoop();
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pollAccount).toHaveBeenCalledTimes(1);
+    expect(errSpy).toHaveBeenCalledWith("[poller] metric alert tick failed:", expect.any(Error));
     errSpy.mockRestore();
     await loop.stop();
   });

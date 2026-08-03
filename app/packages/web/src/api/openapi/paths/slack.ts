@@ -19,6 +19,9 @@ const SlackChannel = strict({
   anomalyAlerts: z
     .boolean()
     .openapi({ description: "Statistical spend-spike (cost anomaly) alerts" }),
+  metricAlerts: z
+    .boolean()
+    .openapi({ description: "Metric threshold rule firings and recoveries" }),
   resourceDrift: z.boolean().openapi({
     description:
       "Batched resource-drift digests from the change timeline. Defaults to false when a channel is added — drift is continuous where the other triggers are exceptional.",
@@ -65,6 +68,7 @@ const SlackChannelCreate = strict({
   syncIncidents: z.boolean().optional(),
   budgetAlerts: z.boolean().optional(),
   anomalyAlerts: z.boolean().optional(),
+  metricAlerts: z.boolean().optional(),
   resourceDrift: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
   providerIncidents: z.boolean().optional(),
@@ -79,6 +83,7 @@ const SlackChannelUpdate = strict({
   syncIncidents: z.boolean().optional(),
   budgetAlerts: z.boolean().optional(),
   anomalyAlerts: z.boolean().optional(),
+  metricAlerts: z.boolean().optional(),
   resourceDrift: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
   providerIncidents: z.boolean().optional(),

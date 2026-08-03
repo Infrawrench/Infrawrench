@@ -280,6 +280,106 @@ export async function getMetricQuantilesBatch(
 }
 
 /**
+ * A metric series that actually exists for the org (optionally narrowed to a
+ * plugin / resource type), for the metric-alert rule builder's key picker —
+ * the user picks from what their resources really report instead of having to
+ * know internal series labels.
+ *
+ * Reads the raw table (the only one carrying plugin/type columns) over its
+ * full 7-day TTL, so a metric only stops being offered a week after the last
+ * resource stopped reporting it.
+ */
+export interface MetricSeriesKey {
+  label: string;
+  unit: string;
+  /** How many distinct resources reported this series in the window. */
+  resourceCount: number;
+}
+
+export async function listMetricSeriesKeys(
+  organizationId: string,
+  filter: { pluginId?: string | undefined; resourceTypeId?: string | undefined } = {},
+): Promise<MetricSeriesKey[]> {
+  const conditions = [
+    "organization_id = {orgId:String}",
+    "ts > now() - INTERVAL 7 DAY",
+    ...(filter.pluginId ? ["plugin_id = {pluginId:String}"] : []),
+    ...(filter.resourceTypeId ? ["resource_type_id = {resourceTypeId:String}"] : []),
+  ];
+  const rows = await query<{ series_label: string; unit: string; resource_count: string | number }>(
+    `SELECT series_label,
+            any(unit)                AS unit,
+            uniqExact(resource_id)   AS resource_count
+     FROM metric_points_raw
+     WHERE ${conditions.join(" AND ")}
+     GROUP BY series_label
+     ORDER BY series_label ASC`,
+    {
+      orgId: organizationId,
+      ...(filter.pluginId ? { pluginId: filter.pluginId } : {}),
+      ...(filter.resourceTypeId ? { resourceTypeId: filter.resourceTypeId } : {}),
+    },
+  );
+  return rows.map((r) => ({
+    label: r.series_label,
+    unit: r.unit,
+    resourceCount: Number(r.resource_count),
+  }));
+}
+
+/** One per-minute averaged sample, as the metric-alert evaluator consumes it. */
+export interface MetricMinuteSample {
+  tsMs: number;
+  value: number;
+}
+
+/**
+ * Per-minute averages of one series for many resources over a window — the
+ * metric-alert evaluator's read. Uses the 1m rollup (30-day TTL) rather than
+ * raw points so the "held for the whole window" judgement runs over evenly
+ * bucketed samples regardless of how bursty the plugin's reporting is.
+ */
+export async function getMetricMinuteSeriesBatch(
+  organizationId: string,
+  resourceIds: string[],
+  seriesLabel: string,
+  fromMs: number,
+  toMs: number,
+): Promise<Map<string, MetricMinuteSample[]>> {
+  const result = new Map<string, MetricMinuteSample[]>();
+  if (resourceIds.length === 0) return result;
+  const rows = await query<{ resource_id: string; ts_ms: number; value: number }>(
+    `SELECT resource_id,
+            toUnixTimestamp(ts_minute) * 1000 AS ts_ms,
+            avgMerge(value_avg) AS value
+     FROM metric_points_1m
+     WHERE organization_id = {orgId:String}
+       AND resource_id IN {ids:Array(String)}
+       AND series_label = {seriesLabel:String}
+       AND ts_minute >= toDateTime({fromSec:Int64})
+       AND ts_minute <= toDateTime({toSec:Int64})
+     GROUP BY resource_id, ts_minute
+     ORDER BY ts_minute ASC`,
+    {
+      orgId: organizationId,
+      ids: resourceIds,
+      seriesLabel,
+      fromSec: Math.floor(fromMs / 1000),
+      toSec: Math.floor(toMs / 1000),
+    },
+  );
+  for (const r of rows) {
+    let list = result.get(r.resource_id);
+    if (!list) {
+      list = [];
+      result.set(r.resource_id, list);
+    }
+    list.push({ tsMs: Number(r.ts_ms), value: Number(r.value) });
+  }
+  return result;
+}
+
+/**
  * Historical metric range. Auto-routes between raw / 1m / 1h based on span:
  *  <= 2h: raw
  *  <= 7d: 1m rollup

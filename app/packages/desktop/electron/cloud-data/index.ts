@@ -3,6 +3,7 @@
 import "./accounts";
 import "./chat";
 import "./costs";
+import "./metric-alerts";
 import "./orphans";
 import "./rightsizing";
 import "./expiring";

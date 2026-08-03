@@ -414,6 +414,7 @@ const ALERT_TRIGGERS = [
   { key: "syncIncidents", label: "Sync failures" },
   { key: "budgetAlerts", label: "Budgets" },
   { key: "anomalyAlerts", label: "Anomalies" },
+  { key: "metricAlerts", label: "Metric alerts" },
   { key: "resourceDrift", label: "Drift" },
   { key: "workflowPages", label: "Pages" },
   { key: "providerIncidents", label: "Provider incidents" },
@@ -1434,6 +1435,17 @@ function PushPreferencesSection({ orgId }: { orgId: string }) {
           />
           <span>Cost anomalies</span>
         </label>
+        <label
+          className="flex items-center gap-2"
+          title="Metric threshold rules firing and recovering."
+        >
+          <input
+            type="checkbox"
+            checked={prefs.metricAlerts}
+            onChange={(e) => void updatePref({ metricAlerts: e.target.checked })}
+          />
+          <span>Metric alerts</span>
+        </label>
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -1541,6 +1553,7 @@ interface PushRecipientRow {
   syncIncidents: boolean;
   budgetAlerts: boolean;
   anomalyAlerts: boolean;
+  metricAlerts: boolean;
   resourceDrift: boolean;
   workflowPages: boolean;
   providerIncidents: boolean;
@@ -1583,6 +1596,7 @@ function PushRosterSection({ orgId }: { orgId: string }) {
                   r.syncIncidents && "incidents",
                   r.budgetAlerts && "budgets",
                   r.anomalyAlerts && "anomalies",
+                  r.metricAlerts && "metric alerts",
                   r.resourceDrift && "drift",
                   r.workflowPages && "pages",
                   r.providerIncidents && "provider incidents",

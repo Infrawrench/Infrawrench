@@ -17,6 +17,7 @@ import { registerCostPaths } from "./paths/costs";
 import { registerOrphanPaths } from "./paths/orphans";
 import { registerRightsizingPaths } from "./paths/rightsizing";
 import { registerBudgetPaths } from "./paths/budgets";
+import { registerMetricAlertPaths } from "./paths/metric-alerts";
 import { registerChangeFreezePaths } from "./paths/change-freezes";
 import { registerTagPolicyPaths } from "./paths/tag-policy";
 import { registerCostCentrePaths } from "./paths/cost-centres";
@@ -106,6 +107,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerOrphanPaths(ctx);
   registerRightsizingPaths(ctx);
   registerBudgetPaths(ctx);
+  registerMetricAlertPaths(ctx);
   registerChangeFreezePaths(ctx);
   registerTagPolicyPaths(ctx);
   registerCostCentrePaths(ctx);

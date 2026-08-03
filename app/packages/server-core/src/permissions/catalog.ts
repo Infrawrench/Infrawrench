@@ -36,6 +36,8 @@ export const ALL_PERMISSIONS = [
   "costs:write",
   "budgets:read",
   "budgets:write",
+  "metric-alerts:read",
+  "metric-alerts:write",
   "freezes:read",
   "freezes:write",
   "freezes:override",

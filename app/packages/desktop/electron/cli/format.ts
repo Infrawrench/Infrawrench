@@ -98,3 +98,36 @@ export function formatChangeTime(iso: string): string {
   if (Number.isNaN(ms)) return iso;
   return new Date(ms).toISOString().replace("T", " ").slice(0, 16);
 }
+
+/* ------------------------------------------------------------------ *
+ * Metric alerts
+ * ------------------------------------------------------------------ */
+
+/**
+ * `"CPU % > 90 for 15m"` — one line for a rule's condition. A local twin of
+ * client-core's `describeMetricAlertCondition`: the CLI can only take
+ * type-only imports from client-core (CJS→ESM), so the formatting lives here
+ * where it is unit-testable without Electron.
+ */
+export function formatMetricAlertCondition(rule: {
+  metricKey: string;
+  comparator: string;
+  threshold: number;
+  forMinutes: number;
+}): string {
+  return `${rule.metricKey} ${rule.comparator} ${rule.threshold} for ${rule.forMinutes}m`;
+}
+
+/** `"aws · ec2-instance · env=prod"`, or `"all resources"` when unscoped. */
+export function formatMetricAlertSelector(rule: {
+  pluginId: string | null;
+  resourceTypeId: string | null;
+  tagKey: string | null;
+  tagValue: string | null;
+}): string {
+  const parts: string[] = [];
+  if (rule.pluginId) parts.push(rule.pluginId);
+  if (rule.resourceTypeId) parts.push(rule.resourceTypeId);
+  if (rule.tagKey) parts.push(rule.tagValue ? `${rule.tagKey}=${rule.tagValue}` : rule.tagKey);
+  return parts.length > 0 ? parts.join(" · ") : "all resources";
+}

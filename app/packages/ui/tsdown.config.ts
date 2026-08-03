@@ -9,6 +9,8 @@ export default defineConfig({
     // React-free cost widget config schemas — imported by the web API for
     // request/config validation as well as by the widget editors.
     "cost/config": "src/cost/config.ts",
+    // React-free metric alert rule schemas — same split, same consumer.
+    "metric-alerts/config": "src/metric-alerts/config.ts",
     // React-free prompt bridge. Data-layer modules (the desktop cloud client,
     // the web workflow transport) raise prompts without pulling in the whole
     // component barrel — importing that into a Node context drags Monaco and

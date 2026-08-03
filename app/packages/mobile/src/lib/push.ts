@@ -193,6 +193,11 @@ export function pushDataToPath(data: MobilePushData): string {
     // away via the anomaly row's deep link.
     case "cost_anomaly":
       return `/org/${data.orgId}/moment`;
+    // A metric alert is the same "what happened just now?" shape — the moment
+    // view shows what coincided with the breach (mobile has no rule editor;
+    // rules are managed on web/desktop).
+    case "metric_alert":
+      return `/org/${data.orgId}/moment`;
     // A drift digest describes the window `since → now`, so it opens the
     // moment view centred on that window's midpoint with a half-width that
     // covers it — the digest's changes merged with everything else that
@@ -295,6 +300,19 @@ export function parsePushData(raw: unknown): MobilePushData | null {
         return null;
       }
       return { type: "cost_anomaly", orgId, day, dimension, dimensionKey };
+    }
+    case "metric_alert": {
+      const ruleId = data["ruleId"];
+      const resourceId = data["resourceId"];
+      const status = data["status"];
+      if (
+        typeof ruleId !== "string" ||
+        typeof resourceId !== "string" ||
+        (status !== "firing" && status !== "resolved")
+      ) {
+        return null;
+      }
+      return { type: "metric_alert", orgId, ruleId, resourceId, status };
     }
     case "resource_drift": {
       const changeCount = data["changeCount"];

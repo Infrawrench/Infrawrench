@@ -534,6 +534,7 @@ export { ExpirySection, formatDaysRemaining } from "./expiry/ExpirySection.js";
 export type { ExpirySectionProps } from "./expiry/ExpirySection.js";
 export { ExpiryIcon } from "./components/icons/ExpiryIcon.js";
 export { FanoutIcon } from "./components/icons/FanoutIcon.js";
+export { MetricAlertIcon } from "./components/icons/MetricAlertIcon.js";
 
 /**
  * SSH host-key trust handshake. Shared with mobile through client-core because
@@ -573,6 +574,7 @@ export {
 } from "@infrawrench/client-core";
 
 export * from "./cost/index.js";
+export * from "./metric-alerts/index.js";
 export * from "./savings/index.js";
 export * from "./logs/index.js";
 export { SleepSchedulesSection } from "./schedules/SleepSchedulesSection.js";

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.34.0",
+    "version": "0.35.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -3464,6 +3464,255 @@
           "actualAmountCents",
           "forecastAmountCents",
           "triggeredAt"
+        ],
+        "additionalProperties": false
+      },
+      "MetricAlertRuleInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "pluginId": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Selector: plugin the resource must belong to. Null matches any plugin."
+          },
+          "resourceTypeId": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Selector: resource type within the plugin. Null matches any type."
+          },
+          "tagKey": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Selector: tag key the resource must carry (matched case-insensitively). Null applies no tag filter. Resources are always selected by this query, never by id, so rules cover resources created later."
+          },
+          "tagValue": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Selector: exact value tagKey must have. Null matches any value."
+          },
+          "metricKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The metric series label as the resource's charts report it (see /metric-alerts/metric-keys).",
+            "example": "CPU %"
+          },
+          "comparator": {
+            "type": "string",
+            "enum": [">", ">=", "<", "<="],
+            "example": ">"
+          },
+          "threshold": {
+            "type": "number"
+          },
+          "forMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 1440,
+            "description": "Trailing window (minutes) the condition must hold for before firing."
+          },
+          "cooldownMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10080,
+            "description": "Least minutes between notified firings for one (rule, resource)."
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "pluginId",
+          "resourceTypeId",
+          "tagKey",
+          "tagValue",
+          "metricKey",
+          "comparator",
+          "threshold",
+          "forMinutes",
+          "cooldownMinutes",
+          "enabled"
+        ],
+        "additionalProperties": false
+      },
+      "MetricAlertRule": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MetricAlertRuleInput"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "example": "00000000-0000-0000-0000-000000000000"
+              },
+              "lastEvalAt": {
+                "type": ["string", "null"],
+                "format": "date-time"
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": ["id", "lastEvalAt", "createdAt", "updatedAt"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "MetricAlertRuleWithStatus": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MetricAlertRule"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "firingCount": {
+                "type": "integer",
+                "description": "Resources currently in breach of this rule."
+              },
+              "matchingResourceCount": {
+                "type": "integer",
+                "description": "Resources the selector matches right now."
+              }
+            },
+            "required": ["firingCount", "matchingResourceCount"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "MetricSeriesKey": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "resourceCount": {
+            "type": "integer",
+            "description": "Distinct resources that reported this series in the last 7 days."
+          }
+        },
+        "required": ["label", "unit", "resourceCount"],
+        "additionalProperties": false
+      },
+      "MetricAlertSelectorOptions": {
+        "type": "object",
+        "properties": {
+          "plugins": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "pluginId": {
+                  "type": "string"
+                },
+                "resourceTypeIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": ["pluginId", "resourceTypeIds"],
+              "additionalProperties": false
+            }
+          },
+          "tagKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["plugins", "tagKeys"],
+        "additionalProperties": false
+      },
+      "MetricAlertSelectorPreview": {
+        "type": "object",
+        "properties": {
+          "matchingResourceCount": {
+            "type": "integer"
+          },
+          "sampleResourceNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Up to 10 matching display names, for a live form preview."
+          }
+        },
+        "required": ["matchingResourceCount", "sampleResourceNames"],
+        "additionalProperties": false
+      },
+      "MetricAlertEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "ruleId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "ruleName": {
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "resourceName": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["firing", "resolved"]
+          },
+          "observedValue": {
+            "type": "number",
+            "description": "Worst sample observed in the breaching window, in the metric's unit."
+          },
+          "firedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resolvedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "ruleId",
+          "ruleName",
+          "resourceId",
+          "resourceName",
+          "status",
+          "observedValue",
+          "firedAt",
+          "resolvedAt"
         ],
         "additionalProperties": false
       },
@@ -9204,6 +9453,8 @@
           "costs:write",
           "budgets:read",
           "budgets:write",
+          "metric-alerts:read",
+          "metric-alerts:write",
           "freezes:read",
           "freezes:write",
           "freezes:override",
@@ -10156,6 +10407,10 @@
             "type": "boolean",
             "description": "Statistical spend-spike (cost anomaly) alerts"
           },
+          "metricAlerts": {
+            "type": "boolean",
+            "description": "Metric threshold rule firings and recoveries"
+          },
           "resourceDrift": {
             "type": "boolean",
             "description": "Batched resource-drift digests from the change timeline. Defaults to false — drift is continuous where the other triggers are exceptional."
@@ -10181,6 +10436,7 @@
           "syncIncidents",
           "budgetAlerts",
           "anomalyAlerts",
+          "metricAlerts",
           "resourceDrift",
           "workflowPages",
           "providerIncidents",
@@ -10199,6 +10455,9 @@
             "type": "boolean"
           },
           "anomalyAlerts": {
+            "type": "boolean"
+          },
+          "metricAlerts": {
             "type": "boolean"
           },
           "resourceDrift": {
@@ -10238,6 +10497,9 @@
             "type": "boolean"
           },
           "anomalyAlerts": {
+            "type": "boolean"
+          },
+          "metricAlerts": {
             "type": "boolean"
           },
           "resourceDrift": {
@@ -10283,6 +10545,7 @@
           "syncIncidents",
           "budgetAlerts",
           "anomalyAlerts",
+          "metricAlerts",
           "resourceDrift",
           "workflowPages",
           "providerIncidents",
@@ -10340,6 +10603,10 @@
             "type": "boolean",
             "description": "Statistical spend-spike (cost anomaly) alerts"
           },
+          "metricAlerts": {
+            "type": "boolean",
+            "description": "Metric threshold rule firings and recoveries"
+          },
           "resourceDrift": {
             "type": "boolean",
             "description": "Batched resource-drift digests from the change timeline. Defaults to false when a channel is added — drift is continuous where the other triggers are exceptional."
@@ -10374,6 +10641,7 @@
           "syncIncidents",
           "budgetAlerts",
           "anomalyAlerts",
+          "metricAlerts",
           "resourceDrift",
           "workflowPages",
           "providerIncidents",
@@ -10446,6 +10714,9 @@
           "anomalyAlerts": {
             "type": "boolean"
           },
+          "metricAlerts": {
+            "type": "boolean"
+          },
           "resourceDrift": {
             "type": "boolean"
           },
@@ -10478,6 +10749,9 @@
             "type": "boolean"
           },
           "anomalyAlerts": {
+            "type": "boolean"
+          },
+          "metricAlerts": {
             "type": "boolean"
           },
           "resourceDrift": {
@@ -10525,6 +10799,10 @@
             "type": "boolean",
             "description": "Statistical spend-spike (cost anomaly) alerts"
           },
+          "metricAlerts": {
+            "type": "boolean",
+            "description": "Metric threshold rule firings and recoveries"
+          },
           "resourceDrift": {
             "type": "boolean",
             "description": "Batched resource-drift digests from the change timeline. Defaults to false when a channel is added — drift is continuous where the other triggers are exceptional."
@@ -10557,6 +10835,7 @@
           "syncIncidents",
           "budgetAlerts",
           "anomalyAlerts",
+          "metricAlerts",
           "resourceDrift",
           "workflowPages",
           "providerIncidents",
@@ -10599,6 +10878,9 @@
           "anomalyAlerts": {
             "type": "boolean"
           },
+          "metricAlerts": {
+            "type": "boolean"
+          },
           "resourceDrift": {
             "type": "boolean"
           },
@@ -10634,6 +10916,9 @@
             "type": "boolean"
           },
           "anomalyAlerts": {
+            "type": "boolean"
+          },
+          "metricAlerts": {
             "type": "boolean"
           },
           "resourceDrift": {
@@ -14557,6 +14842,478 @@
           }
         },
         "operationId": "getOrgOrgIdBudgetsIdEvents"
+      }
+    },
+    "/api/org/{orgId}/metric-alerts": {
+      "get": {
+        "tags": ["Metric alerts"],
+        "summary": "List metric alert rules with live firing status",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MetricAlertRuleWithStatus"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdMetricAlerts"
+      },
+      "post": {
+        "tags": ["Metric alerts"],
+        "summary": "Create a metric alert rule",
+        "description": "Rules select resources by query (plugin + resource type + tag), never by id list, so a rule automatically covers resources created after it was written. The poller evaluates enabled rules about once a minute and alerts when the condition held for the whole trailing window.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MetricAlertRuleInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricAlertRule"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdMetricAlerts"
+      }
+    },
+    "/api/org/{orgId}/metric-alerts/metric-keys": {
+      "get": {
+        "tags": ["Metric alerts"],
+        "summary": "List metric series that actually exist",
+        "description": "The series labels resources reported in the last 7 days, optionally narrowed to one plugin and resource type — what the rule builder's metric picker is fed from.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "pluginId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "resourceTypeId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Series keys",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MetricSeriesKey"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdMetricAlertsMetricKeys"
+      }
+    },
+    "/api/org/{orgId}/metric-alerts/selector-options": {
+      "get": {
+        "tags": ["Metric alerts"],
+        "summary": "List what the organization's resources offer to select on",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Selector options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricAlertSelectorOptions"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdMetricAlertsSelectorOptions"
+      }
+    },
+    "/api/org/{orgId}/metric-alerts/selector-preview": {
+      "get": {
+        "tags": ["Metric alerts"],
+        "summary": "Preview which resources a selector matches right now",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "pluginId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "resourceTypeId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "tagKey",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "tagValue",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Preview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricAlertSelectorPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdMetricAlertsSelectorPreview"
+      }
+    },
+    "/api/org/{orgId}/metric-alerts/events": {
+      "get": {
+        "tags": ["Metric alerts"],
+        "summary": "Recent metric alert firings",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": false,
+            "name": "ruleId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Events, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MetricAlertEvent"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdMetricAlertsEvents"
+      }
+    },
+    "/api/org/{orgId}/metric-alerts/{id}": {
+      "get": {
+        "tags": ["Metric alerts"],
+        "summary": "Get a metric alert rule",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricAlertRule"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdMetricAlertsId"
+      },
+      "put": {
+        "tags": ["Metric alerts"],
+        "summary": "Update a metric alert rule",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MetricAlertRuleInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricAlertRule"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdMetricAlertsId"
+      },
+      "delete": {
+        "tags": ["Metric alerts"],
+        "summary": "Delete a metric alert rule",
+        "description": "Soft delete. The rule's firing history stays readable via /metric-alerts/events.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdMetricAlertsId"
       }
     },
     "/api/org/{orgId}/change-freezes": {

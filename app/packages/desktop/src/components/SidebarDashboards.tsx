@@ -6,6 +6,7 @@ import {
   CHAT_CONVERSATIONS_CHANGED_EVENT,
   DEFAULT_CHAT_MODEL,
   ChangesIcon,
+  MetricAlertIcon,
   DeployIcon,
   ExpiryIcon,
   FanoutIcon,
@@ -207,6 +208,15 @@ export function SidebarDashboards() {
             icon: <CostsIcon />,
             onClick: () =>
               void navigateToWorkspaceTarget(navigate, costsTabTarget(), { label: "Costs" }),
+          },
+          // Cloud-only for the same reason as Costs: rules are evaluated by
+          // the cloud poller against the cloud metric store. Not a workspace
+          // tab — same as web, a plain route.
+          {
+            key: "metric-alerts",
+            label: "Alerts",
+            icon: <MetricAlertIcon />,
+            onClick: () => void navigate({ to: "/metric-alerts" }),
           },
           // Cloud-only for the same reason as Costs: change events are recorded
           // by the cloud poller, and there is no poller in local-only mode.

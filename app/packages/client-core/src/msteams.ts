@@ -24,6 +24,8 @@ export interface MsTeamsWebhook {
   budgetAlerts: boolean;
   /** Statistical spend-spike (cost anomaly) alerts. */
   anomalyAlerts: boolean;
+  /** Metric threshold rule firings and recoveries. */
+  metricAlerts: boolean;
   /** Batched resource-drift digests from the change timeline. Defaults off. */
   resourceDrift: boolean;
   /** Pages and approval requests raised by a workflow or by `POST /pages`. */
@@ -62,6 +64,7 @@ export interface AddMsTeamsWebhookArgs {
   syncIncidents?: boolean;
   budgetAlerts?: boolean;
   anomalyAlerts?: boolean;
+  metricAlerts?: boolean;
   resourceDrift?: boolean;
   workflowPages?: boolean;
   providerIncidents?: boolean;
@@ -86,6 +89,7 @@ export type MsTeamsWebhookTriggers = Pick<
   | "syncIncidents"
   | "budgetAlerts"
   | "anomalyAlerts"
+  | "metricAlerts"
   | "resourceDrift"
   | "workflowPages"
   | "providerIncidents"

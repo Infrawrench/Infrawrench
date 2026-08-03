@@ -25,6 +25,7 @@ export type PushTrigger =
   | "syncIncidents"
   | "budgetAlerts"
   | "anomalyAlerts"
+  | "metricAlerts"
   | "resourceDrift"
   | "workflowPages"
   | "providerIncidents"

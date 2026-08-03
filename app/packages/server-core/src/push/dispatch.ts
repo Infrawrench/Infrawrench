@@ -40,6 +40,7 @@ async function resolveTargets(
     syncIncidents: pushPreferences.syncIncidents,
     budgetAlerts: pushPreferences.budgetAlerts,
     anomalyAlerts: pushPreferences.anomalyAlerts,
+    metricAlerts: pushPreferences.metricAlerts,
     resourceDrift: pushPreferences.resourceDrift,
     workflowPages: pushPreferences.workflowPages,
     providerIncidents: pushPreferences.providerIncidents,

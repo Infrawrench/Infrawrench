@@ -34,6 +34,16 @@
       "import": "./dist/cost/config.js",
       "require": "./dist/cost/config.cjs"
     },
+    "./metric-alerts": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./metric-alerts/config": {
+      "types": "./dist/metric-alerts/config.d.ts",
+      "import": "./dist/metric-alerts/config.js",
+      "require": "./dist/metric-alerts/config.cjs"
+    },
     "./workflows/prompt-bridge": {
       "types": "./dist/workflows/prompt-bridge.d.ts",
       "import": "./dist/workflows/prompt-bridge.js",

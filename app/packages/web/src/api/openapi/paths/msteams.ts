@@ -14,6 +14,9 @@ const MsTeamsWebhook = strict({
   anomalyAlerts: z
     .boolean()
     .openapi({ description: "Statistical spend-spike (cost anomaly) alerts" }),
+  metricAlerts: z
+    .boolean()
+    .openapi({ description: "Metric threshold rule firings and recoveries" }),
   resourceDrift: z.boolean().openapi({
     description:
       "Batched resource-drift digests from the change timeline. Defaults to false when a channel is added — drift is continuous where the other triggers are exceptional.",
@@ -51,6 +54,7 @@ const MsTeamsWebhookCreate = strict({
   syncIncidents: z.boolean().optional(),
   budgetAlerts: z.boolean().optional(),
   anomalyAlerts: z.boolean().optional(),
+  metricAlerts: z.boolean().optional(),
   resourceDrift: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
   providerIncidents: z.boolean().optional(),
@@ -66,6 +70,7 @@ const MsTeamsWebhookUpdate = strict({
   syncIncidents: z.boolean().optional(),
   budgetAlerts: z.boolean().optional(),
   anomalyAlerts: z.boolean().optional(),
+  metricAlerts: z.boolean().optional(),
   resourceDrift: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
   providerIncidents: z.boolean().optional(),

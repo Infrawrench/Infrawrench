@@ -557,6 +557,115 @@ export const costAnomalies = pgTable(
   }),
 );
 
+/**
+ * Metric threshold alert rules — "CPU > 90% for 15 minutes on these
+ * resources". Resources are selected by *query* (plugin + resource type +
+ * tag), never by id list, so a rule automatically covers resources created
+ * after it was written; the selector is resolved against the live `resources`
+ * table on every evaluation pass (`server-core/src/metric-alerts/`).
+ *
+ * `nextEvalAt` is the due-time column AND the claim lease, exactly like
+ * `accounts.next_poll_at`: the poller claims due rules with
+ * `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED)` writing
+ * `now() + lease` into it, so N replicas never double-evaluate, and the
+ * normal completion path overwrites the lease with the true next cadence.
+ */
+export const metricAlertRules = pgTable(
+  "metric_alert_rules",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** Selector: null means "any plugin". */
+    pluginId: text("plugin_id"),
+    /** Selector: null means "any resource type". Only meaningful with pluginId. */
+    resourceTypeId: text("resource_type_id"),
+    /** Selector: tag key the resource must carry (matched case-insensitively). */
+    tagKey: text("tag_key"),
+    /** Selector: exact value `tagKey` must have; null means "any value". */
+    tagValue: text("tag_value"),
+    /** The metric series label as written to ClickHouse (e.g. "CPU %"). */
+    metricKey: text("metric_key").notNull(),
+    comparator: text("comparator").$type<">" | ">=" | "<" | "<=">().notNull(),
+    threshold: doublePrecision("threshold").notNull(),
+    /** Trailing window the condition must hold for before the rule fires. */
+    forMinutes: integer("for_minutes").notNull().default(15),
+    /**
+     * Least minutes between notified firings for one (rule, resource) — the
+     * flap suppressor. Follows the anomaly cooldown convention: a firing
+     * inside the cooldown is still recorded, just not notified.
+     */
+    cooldownMinutes: integer("cooldown_minutes").notNull().default(60),
+    enabled: boolean("enabled").notNull().default(true),
+    /** Due time + claim lease; null means "due now" (fresh rules evaluate promptly). */
+    nextEvalAt: timestamp("next_eval_at"),
+    lastEvalAt: timestamp("last_eval_at"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("metric_alert_rules_org_idx").on(t.organizationId),
+    dueIdx: index("metric_alert_rules_due_idx").on(t.nextEvalAt),
+    forMinutesPositive: check("metric_alert_rules_for_minutes_positive", sql`${t.forMinutes} > 0`),
+    cooldownNonNegative: check(
+      "metric_alert_rules_cooldown_non_negative",
+      sql`${t.cooldownMinutes} >= 0`,
+    ),
+  }),
+);
+
+/**
+ * Firing state and history for metric alert rules — one row per continuous
+ * breach of one rule on one resource. The partial unique index on
+ * (ruleId, resourceId) WHERE status = 'firing' is the claim, mirroring
+ * `paging_incidents_open_unique`: the replica whose `onConflictDoNothing`
+ * insert lands owns opening (and notifying) the incident, and a firing stays
+ * open until an evaluation observes the condition clear, which flips it to
+ * `resolved` and sends the recovery notification.
+ *
+ * `resourceId` is deliberately not a FK (the `resource_changes` stance):
+ * resource rows are churned by sync, and the history must keep rendering for
+ * resources that disappeared upstream. `notifiedAt` stays null when delivery
+ * failed or the firing was suppressed by the rule's cooldown.
+ */
+export const metricAlertEvents = pgTable(
+  "metric_alert_events",
+  {
+    id: text("id").primaryKey(),
+    ruleId: text("rule_id")
+      .notNull()
+      .references(() => metricAlertRules.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    resourceId: text("resource_id").notNull(),
+    /** Denormalized so resolved firings still render after resource churn. */
+    resourceName: text("resource_name").notNull(),
+    status: text("status").$type<"firing" | "resolved">().notNull().default("firing"),
+    /** Worst sample observed in the breaching window, in the metric's unit. */
+    observedValue: doublePrecision("observed_value").notNull(),
+    firedAt: timestamp("fired_at").notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at"),
+    /** When the firing notification was delivered; null = suppressed or failed. */
+    notifiedAt: timestamp("notified_at"),
+    /** When the recovery notification was delivered. */
+    resolvedNotifiedAt: timestamp("resolved_notified_at"),
+  },
+  (t) => ({
+    openUnique: uniqueIndex("metric_alert_events_open_unique")
+      .on(t.ruleId, t.resourceId)
+      .where(sql`status = 'firing'`),
+    ruleFiredIdx: index("metric_alert_events_rule_fired_idx").on(t.ruleId, t.firedAt),
+    orgFiredIdx: index("metric_alert_events_org_fired_idx").on(t.organizationId, t.firedAt),
+  }),
+);
+
 export const sshKeys = pgTable(
   "ssh_keys",
   {
@@ -871,6 +980,8 @@ export const slackChannels = pgTable(
     budgetAlerts: boolean("budget_alerts").notNull().default(true),
     /** Statistical spend-spike alerts (see `cost/anomaly-eval.ts`). */
     anomalyAlerts: boolean("anomaly_alerts").notNull().default(true),
+    /** Metric threshold rule firings/recoveries (see `metric-alerts/eval.ts`). */
+    metricAlerts: boolean("metric_alerts").notNull().default(true),
     /**
      * Batched resource-drift digests (see `drift/alerts.ts`). The one trigger
      * that defaults **off**: drift is continuous and high-volume where the
@@ -1017,6 +1128,8 @@ export const msteamsWebhooks = pgTable(
     budgetAlerts: boolean("budget_alerts").notNull().default(true),
     /** Statistical spend-spike alerts (see `cost/anomaly-eval.ts`). */
     anomalyAlerts: boolean("anomaly_alerts").notNull().default(true),
+    /** Metric threshold rule firings/recoveries (see `metric-alerts/eval.ts`). */
+    metricAlerts: boolean("metric_alerts").notNull().default(true),
     /** Batched resource-drift digests. Defaults off — see `slackChannels`. */
     resourceDrift: boolean("resource_drift").notNull().default(false),
     /** Alerts raised by a workflow calling `infra.page(...)`. */
@@ -1505,6 +1618,8 @@ export const pushPreferences = pgTable(
     budgetAlerts: boolean("budget_alerts").notNull().default(true),
     /** Statistical spend-spike alerts (see `cost/anomaly-eval.ts`). */
     anomalyAlerts: boolean("anomaly_alerts").notNull().default(true),
+    /** Metric threshold rule firings/recoveries (see `metric-alerts/eval.ts`). */
+    metricAlerts: boolean("metric_alerts").notNull().default(true),
     /** Batched resource-drift digests. Defaults off — see `slackChannels`. */
     resourceDrift: boolean("resource_drift").notNull().default(false),
     /** Alerts raised by a workflow calling `infra.page(...)`. */

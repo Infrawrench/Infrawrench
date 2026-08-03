@@ -57,6 +57,21 @@ export type PushNotificationData =
       dimensionKey: string;
     }
   | {
+      /**
+       * A metric threshold alert rule fired (or recovered) on one resource —
+       * "CPU > 90% for 15 minutes" (see server-core `metric-alerts/eval.ts`).
+       *
+       * Target route: the resource's detail view when it still exists,
+       * otherwise the org's metric alerts list.
+       */
+      type: "metric_alert";
+      orgId: string;
+      ruleId: string;
+      resourceId: string;
+      /** Whether this notification announces the breach or the recovery. */
+      status: "firing" | "resolved";
+    }
+  | {
       type: "workflow_page";
       orgId: string;
       workflowId: string;
@@ -176,6 +191,8 @@ export interface PushPreferences {
   budgetAlerts: boolean;
   /** Statistical spend-spike (cost anomaly) alerts. */
   anomalyAlerts: boolean;
+  /** Metric threshold rule firings and recoveries. */
+  metricAlerts: boolean;
   /**
    * Batched resource-drift digests from the change timeline. Defaults **off**:
    * drift is continuous where the other alerts are exceptional.
@@ -201,6 +218,7 @@ export async function getPushPreferences(api: CloudFetch, orgId: string): Promis
       syncIncidents: true,
       budgetAlerts: true,
       anomalyAlerts: true,
+      metricAlerts: true,
       resourceDrift: false,
       workflowPages: true,
       providerIncidents: true,

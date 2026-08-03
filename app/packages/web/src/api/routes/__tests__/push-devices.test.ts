@@ -169,6 +169,7 @@ describe("push org routes", () => {
         syncIncidents: true,
         budgetAlerts: true,
         anomalyAlerts: true,
+        metricAlerts: true,
         resourceDrift: false,
         workflowPages: true,
         providerIncidents: true,

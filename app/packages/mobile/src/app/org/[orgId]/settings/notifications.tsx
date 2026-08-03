@@ -121,6 +121,7 @@ export default function NotificationsScreen() {
     syncIncidents: true,
     budgetAlerts: true,
     anomalyAlerts: true,
+    metricAlerts: true,
     // Drift is the one trigger that defaults off — it is a continuous feed
     // where the others are exceptional events.
     resourceDrift: false,
@@ -194,6 +195,21 @@ export default function NotificationsScreen() {
           <Switch
             value={current.anomalyAlerts}
             onValueChange={(v) => updatePrefs.mutate({ anomalyAlerts: v })}
+            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
+          />
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
+              Metric alerts
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+              A metric threshold rule fires or recovers on a resource.
+            </Text>
+          </View>
+          <Switch
+            value={current.metricAlerts}
+            onValueChange={(v) => updatePrefs.mutate({ metricAlerts: v })}
             trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
           />
         </View>
@@ -543,6 +559,7 @@ const SLACK_TRIGGERS = [
   { key: "syncIncidents", label: "Sync failures" },
   { key: "budgetAlerts", label: "Budgets" },
   { key: "anomalyAlerts", label: "Anomalies" },
+  { key: "metricAlerts", label: "Metric alerts" },
   { key: "resourceDrift", label: "Drift" },
   { key: "workflowPages", label: "Pages" },
   { key: "providerIncidents", label: "Provider incidents" },
@@ -830,6 +847,7 @@ const MSTEAMS_TRIGGERS = [
   { key: "syncIncidents", label: "Sync failures" },
   { key: "budgetAlerts", label: "Budgets" },
   { key: "anomalyAlerts", label: "Anomalies" },
+  { key: "metricAlerts", label: "Metric alerts" },
   { key: "resourceDrift", label: "Drift" },
   { key: "workflowPages", label: "Pages" },
   { key: "providerIncidents", label: "Provider incidents" },

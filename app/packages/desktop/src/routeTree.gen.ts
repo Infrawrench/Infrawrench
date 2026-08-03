@@ -13,6 +13,7 @@ import { Route as WorkflowsRouteImport } from './routes/workflows'
 import { Route as SshFanoutRouteImport } from './routes/ssh-fanout'
 import { Route as SavingsRouteImport } from './routes/savings'
 import { Route as MomentRouteImport } from './routes/moment'
+import { Route as MetricAlertsRouteImport } from './routes/metric-alerts'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as GraphRouteImport } from './routes/graph'
 import { Route as ExpiringRouteImport } from './routes/expiring'
@@ -44,6 +45,11 @@ const SavingsRoute = SavingsRouteImport.update({
 const MomentRoute = MomentRouteImport.update({
   id: '/moment',
   path: '/moment',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MetricAlertsRoute = MetricAlertsRouteImport.update({
+  id: '/metric-alerts',
+  path: '/metric-alerts',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LogsRoute = LogsRouteImport.update({
@@ -118,6 +124,7 @@ export interface FileRoutesByFullPath {
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
   '/logs': typeof LogsRoute
+  '/metric-alerts': typeof MetricAlertsRoute
   '/moment': typeof MomentRoute
   '/savings': typeof SavingsRoute
   '/ssh-fanout': typeof SshFanoutRoute
@@ -136,6 +143,7 @@ export interface FileRoutesByTo {
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
   '/logs': typeof LogsRoute
+  '/metric-alerts': typeof MetricAlertsRoute
   '/moment': typeof MomentRoute
   '/savings': typeof SavingsRoute
   '/ssh-fanout': typeof SshFanoutRoute
@@ -155,6 +163,7 @@ export interface FileRoutesById {
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
   '/logs': typeof LogsRoute
+  '/metric-alerts': typeof MetricAlertsRoute
   '/moment': typeof MomentRoute
   '/savings': typeof SavingsRoute
   '/ssh-fanout': typeof SshFanoutRoute
@@ -175,6 +184,7 @@ export interface FileRouteTypes {
     | '/expiring'
     | '/graph'
     | '/logs'
+    | '/metric-alerts'
     | '/moment'
     | '/savings'
     | '/ssh-fanout'
@@ -193,6 +203,7 @@ export interface FileRouteTypes {
     | '/expiring'
     | '/graph'
     | '/logs'
+    | '/metric-alerts'
     | '/moment'
     | '/savings'
     | '/ssh-fanout'
@@ -211,6 +222,7 @@ export interface FileRouteTypes {
     | '/expiring'
     | '/graph'
     | '/logs'
+    | '/metric-alerts'
     | '/moment'
     | '/savings'
     | '/ssh-fanout'
@@ -230,6 +242,7 @@ export interface RootRouteChildren {
   ExpiringRoute: typeof ExpiringRoute
   GraphRoute: typeof GraphRoute
   LogsRoute: typeof LogsRoute
+  MetricAlertsRoute: typeof MetricAlertsRoute
   MomentRoute: typeof MomentRoute
   SavingsRoute: typeof SavingsRoute
   SshFanoutRoute: typeof SshFanoutRoute
@@ -267,6 +280,13 @@ declare module '@tanstack/react-router' {
       path: '/moment'
       fullPath: '/moment'
       preLoaderRoute: typeof MomentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/metric-alerts': {
+      id: '/metric-alerts'
+      path: '/metric-alerts'
+      fullPath: '/metric-alerts'
+      preLoaderRoute: typeof MetricAlertsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/logs': {
@@ -366,6 +386,7 @@ const rootRouteChildren: RootRouteChildren = {
   ExpiringRoute: ExpiringRoute,
   GraphRoute: GraphRoute,
   LogsRoute: LogsRoute,
+  MetricAlertsRoute: MetricAlertsRoute,
   MomentRoute: MomentRoute,
   SavingsRoute: SavingsRoute,
   SshFanoutRoute: SshFanoutRoute,

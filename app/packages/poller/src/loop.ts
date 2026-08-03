@@ -9,6 +9,7 @@ import { runStatusFeedCollection } from "@infrawrench/server-core/status/collect
 import { runExpiryAlerts } from "@infrawrench/server-core/expiry/alerts";
 import { runSchedulePass } from "@infrawrench/server-core/schedules/pass";
 import { runLogAlertPass } from "@infrawrench/server-core/log-workspaces/pass";
+import { runMetricAlertPass } from "@infrawrench/server-core/metric-alerts/pass";
 import {
   pruneResourceChanges,
   CHANGE_RETENTION_INTERVAL_MS,
@@ -128,6 +129,12 @@ export class PollerLoop extends TickLoop {
     // through the plugin `getLogs` contract and notifies on match, with a
     // per-query cooldown. Defensive like the others.
     await this.tickLogAlerts();
+
+    // Tenth pass: metric threshold alert rules. Claims due rules with the
+    // accounts lease protocol (`metric_alert_rules.next_eval_at` doubles as
+    // the lease), judges each rule's trailing window against ClickHouse, and
+    // opens/resolves firing events. Defensive like the others.
+    await this.tickMetricAlerts();
   }
 
   private async runOne(row: PollAccountRow): Promise<void> {
@@ -202,6 +209,15 @@ export class PollerLoop extends TickLoop {
       await runLogAlertPass({ limit: 4 });
     } catch (e) {
       console.error("[poller] log alert tick failed:", e);
+    }
+  }
+
+  /** Evaluate any metric threshold alert rules that have come due. */
+  private async tickMetricAlerts(): Promise<void> {
+    try {
+      await runMetricAlertPass({ limit: 8 });
+    } catch (e) {
+      console.error("[poller] metric alert tick failed:", e);
     }
   }
 

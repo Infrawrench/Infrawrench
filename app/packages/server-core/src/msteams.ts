@@ -161,6 +161,7 @@ export async function addMsTeamsWebhook(
   const syncIncidents = args.syncIncidents ?? true;
   const budgetAlerts = args.budgetAlerts ?? true;
   const anomalyAlerts = args.anomalyAlerts ?? true;
+  const metricAlerts = args.metricAlerts ?? true;
   // Drift is the one trigger that defaults off — it is continuous and
   // high-volume where the others are exceptional. See db/schema.ts.
   const resourceDrift = args.resourceDrift ?? false;
@@ -185,6 +186,7 @@ export async function addMsTeamsWebhook(
       syncIncidents,
       budgetAlerts,
       anomalyAlerts,
+      metricAlerts,
       resourceDrift,
       workflowPages,
       providerIncidents,
@@ -206,6 +208,7 @@ export async function addMsTeamsWebhook(
         syncIncidents,
         budgetAlerts,
         anomalyAlerts,
+        metricAlerts,
         resourceDrift,
         workflowPages,
         providerIncidents,
@@ -229,6 +232,7 @@ function toRecord(row: typeof msteamsWebhooks.$inferSelect): MsTeamsWebhookRecor
     syncIncidents: row.syncIncidents,
     budgetAlerts: row.budgetAlerts,
     anomalyAlerts: row.anomalyAlerts,
+    metricAlerts: row.metricAlerts,
     resourceDrift: row.resourceDrift,
     workflowPages: row.workflowPages,
     providerIncidents: row.providerIncidents,
@@ -398,6 +402,7 @@ const TRIGGER_COLUMN = {
   syncIncidents: msteamsWebhooks.syncIncidents,
   budgetAlerts: msteamsWebhooks.budgetAlerts,
   anomalyAlerts: msteamsWebhooks.anomalyAlerts,
+  metricAlerts: msteamsWebhooks.metricAlerts,
   resourceDrift: msteamsWebhooks.resourceDrift,
   workflowPages: msteamsWebhooks.workflowPages,
   providerIncidents: msteamsWebhooks.providerIncidents,

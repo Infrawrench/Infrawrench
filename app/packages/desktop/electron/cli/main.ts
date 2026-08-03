@@ -17,6 +17,7 @@ import { cmdCosts, cmdCostAnomalies } from "./commands/costs";
 import { cmdTags, cmdShowback } from "./commands/tags";
 import { cmdOrphans } from "./commands/orphans";
 import { cmdOversized } from "./commands/oversized";
+import { cmdAlerts, cmdAlertEvents } from "./commands/alerts";
 import { cmdExpiring } from "./commands/expiring";
 import { cmdChanges } from "./commands/changes";
 import { cmdMoment } from "./commands/moment";
@@ -53,6 +54,8 @@ COMMANDS
                       (--local scans this machine's workspace; no cost column without the cloud)
   oversized           machines whose 14-day p95 utilisation sits well under their size, with the
                       recommended smaller size and monthly saving (cloud only)
+  alerts              metric threshold alert rules ("CPU > 90% for 15m") with live firing status
+  alerts events       recent metric alert firings & recoveries   [--limit 50]
   expiring            certificates, domains, tokens & keys approaching expiry, soonest first
                       (--local scans this machine's workspace)
   changes             what appeared / changed / disappeared across your providers
@@ -265,6 +268,13 @@ export async function runCli(): Promise<void> {
         break;
       case "oversized":
         await cmdOversized(ctx);
+        break;
+      case "alerts":
+        if (rest[0] === "events") {
+          await cmdAlertEvents(ctx, parsed.range.limit);
+          break;
+        }
+        await cmdAlerts(ctx);
         break;
       case "expiring":
         await cmdExpiring(ctx);

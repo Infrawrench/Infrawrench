@@ -21,6 +21,7 @@ import {
   ExpiryIcon,
   FanoutIcon,
   LogsIcon,
+  MetricAlertIcon,
 } from "@infrawrench/ui";
 import { CHAT_CONVERSATIONS_CHANGED_EVENT, type ConversationSummary } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
@@ -475,6 +476,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <CostsIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/costs", params: { orgId: orgId! } }),
+              },
+              {
+                key: "metric-alerts",
+                label: "Alerts",
+                icon: <MetricAlertIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/metric-alerts", params: { orgId: orgId! } }),
               },
               {
                 key: "changes",

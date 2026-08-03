@@ -94,6 +94,7 @@ app.get("/status", async (c) => {
               syncIncidents: ch.syncIncidents,
               budgetAlerts: ch.budgetAlerts,
               anomalyAlerts: ch.anomalyAlerts,
+              metricAlerts: ch.metricAlerts,
               resourceDrift: ch.resourceDrift,
               workflowPages: ch.workflowPages,
               providerIncidents: ch.providerIncidents,
@@ -160,6 +161,7 @@ interface ChannelBody {
   syncIncidents?: boolean;
   budgetAlerts?: boolean;
   anomalyAlerts?: boolean;
+  metricAlerts?: boolean;
   resourceDrift?: boolean;
   workflowPages?: boolean;
   providerIncidents?: boolean;
@@ -190,6 +192,7 @@ app.post("/channels", async (c) => {
   const syncIncidents = body.syncIncidents ?? true;
   const budgetAlerts = body.budgetAlerts ?? true;
   const anomalyAlerts = body.anomalyAlerts ?? true;
+  const metricAlerts = body.metricAlerts ?? true;
   // Drift is the one trigger that defaults off — it is continuous and
   // high-volume where the others are exceptional. See server-core db/schema.ts.
   const resourceDrift = body.resourceDrift ?? false;
@@ -211,6 +214,7 @@ app.post("/channels", async (c) => {
       syncIncidents,
       budgetAlerts,
       anomalyAlerts,
+      metricAlerts,
       resourceDrift,
       workflowPages,
       providerIncidents,
@@ -226,6 +230,7 @@ app.post("/channels", async (c) => {
         syncIncidents,
         budgetAlerts,
         anomalyAlerts,
+        metricAlerts,
         resourceDrift,
         workflowPages,
         providerIncidents,
@@ -243,6 +248,7 @@ interface ChannelPatchBody {
   syncIncidents?: boolean;
   budgetAlerts?: boolean;
   anomalyAlerts?: boolean;
+  metricAlerts?: boolean;
   resourceDrift?: boolean;
   workflowPages?: boolean;
   providerIncidents?: boolean;
@@ -261,6 +267,7 @@ app.patch("/channels/:id", async (c) => {
   if (body.syncIncidents != null) patch.syncIncidents = body.syncIncidents;
   if (body.budgetAlerts != null) patch.budgetAlerts = body.budgetAlerts;
   if (body.anomalyAlerts != null) patch.anomalyAlerts = body.anomalyAlerts;
+  if (body.metricAlerts != null) patch.metricAlerts = body.metricAlerts;
   if (body.resourceDrift != null) patch.resourceDrift = body.resourceDrift;
   if (body.workflowPages != null) patch.workflowPages = body.workflowPages;
   if (body.providerIncidents != null) patch.providerIncidents = body.providerIncidents;

@@ -581,6 +581,7 @@ const TRIGGER_COLUMN = {
   syncIncidents: slackChannels.syncIncidents,
   budgetAlerts: slackChannels.budgetAlerts,
   anomalyAlerts: slackChannels.anomalyAlerts,
+  metricAlerts: slackChannels.metricAlerts,
   resourceDrift: slackChannels.resourceDrift,
   workflowPages: slackChannels.workflowPages,
   providerIncidents: slackChannels.providerIncidents,

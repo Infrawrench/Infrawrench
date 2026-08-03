@@ -18,6 +18,9 @@ const PushPreferences = strict({
   anomalyAlerts: z
     .boolean()
     .openapi({ description: "Statistical spend-spike (cost anomaly) alerts" }),
+  metricAlerts: z
+    .boolean()
+    .openapi({ description: "Metric threshold rule firings and recoveries" }),
   resourceDrift: z.boolean().openapi({
     description:
       "Batched resource-drift digests from the change timeline. Defaults to false — drift is continuous where the other triggers are exceptional.",
@@ -45,6 +48,7 @@ const PushPreferencesUpdate = strict({
   syncIncidents: z.boolean().optional(),
   budgetAlerts: z.boolean().optional(),
   anomalyAlerts: z.boolean().optional(),
+  metricAlerts: z.boolean().optional(),
   resourceDrift: z.boolean().optional(),
   workflowPages: z.boolean().optional(),
   providerIncidents: z.boolean().optional(),
@@ -59,6 +63,7 @@ const PushRecipient = strict({
   syncIncidents: z.boolean(),
   budgetAlerts: z.boolean(),
   anomalyAlerts: z.boolean(),
+  metricAlerts: z.boolean(),
   resourceDrift: z.boolean(),
   workflowPages: z.boolean(),
   providerIncidents: z.boolean(),
