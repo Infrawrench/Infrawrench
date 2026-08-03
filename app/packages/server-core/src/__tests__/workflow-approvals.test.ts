@@ -54,11 +54,34 @@ vi.mock("drizzle-orm", () => ({
 }));
 
 const sendPushToOrg = vi.fn();
-const sendSlackToOrg = vi.fn();
+const sendSlackToOrgTracked = vi.fn();
 const sendMsTeamsToOrg = vi.fn();
 const sendOneShotPage = vi.fn();
+const recordSlackApprovalMessages = vi.fn();
+const updateSlackApprovalMessages = vi.fn();
 vi.mock("../push/dispatch", () => ({ sendPushToOrg: (...a: unknown[]) => sendPushToOrg(...a) }));
-vi.mock("../slack", () => ({ sendSlackToOrg: (...a: unknown[]) => sendSlackToOrg(...a) }));
+vi.mock("../slack", () => ({
+  sendSlackToOrgTracked: (...a: unknown[]) => sendSlackToOrgTracked(...a),
+}));
+vi.mock("../slack-approvals", () => ({
+  // Real-shaped buttons so the test can assert what the Slack message carries.
+  slackApprovalButtons: (v: { kind: string; approvalId: string; organizationId: string }) => [
+    {
+      text: "Approve",
+      actionId: "infrawrench_approval_approve",
+      value: JSON.stringify({ k: v.kind, a: v.approvalId, o: v.organizationId }),
+      style: "primary",
+    },
+    {
+      text: "Deny",
+      actionId: "infrawrench_approval_deny",
+      value: JSON.stringify({ k: v.kind, a: v.approvalId, o: v.organizationId }),
+      style: "danger",
+    },
+  ],
+  recordSlackApprovalMessages: (...a: unknown[]) => recordSlackApprovalMessages(...a),
+  updateSlackApprovalMessages: (...a: unknown[]) => updateSlackApprovalMessages(...a),
+}));
 vi.mock("../msteams", () => ({ sendMsTeamsToOrg: (...a: unknown[]) => sendMsTeamsToOrg(...a) }));
 vi.mock("../twilio-pager", () => ({ sendOneShotPage: (...a: unknown[]) => sendOneShotPage(...a) }));
 
@@ -91,7 +114,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   approvalRow = { status: "approved", decidedByName: "Astrid", decidedAt: new Date() };
   sendPushToOrg.mockResolvedValue({ attempted: 1, succeeded: 1 });
-  sendSlackToOrg.mockResolvedValue({ attempted: 1, succeeded: 1, failed: 0 });
+  sendSlackToOrgTracked.mockResolvedValue({
+    attempted: 1,
+    succeeded: 1,
+    failed: 0,
+    messages: [{ installationId: "inst1", channelId: "C1", ts: "1722700000.000100" }],
+  });
   sendMsTeamsToOrg.mockResolvedValue({ attempted: 1, succeeded: 1, failed: 0 });
   sendOneShotPage.mockResolvedValue({ attempted: 1, succeeded: 1, failed: 0 });
   workflowPageCooldownStore.mockReturnValue(pageStore);
@@ -110,7 +138,7 @@ describe("approval request fan-out", () => {
   it("notifies every transport under the workflowPages trigger", async () => {
     await requestApprovalAndWait(CTX, SPEC);
     expect(sendPushToOrg).toHaveBeenCalledWith(ORG, "workflowPages", expect.anything());
-    expect(sendSlackToOrg).toHaveBeenCalledWith(ORG, "workflowPages", expect.anything());
+    expect(sendSlackToOrgTracked).toHaveBeenCalledWith(ORG, "workflowPages", expect.anything());
     expect(sendMsTeamsToOrg).toHaveBeenCalledWith(ORG, "workflowPages", expect.anything());
     expect(sendOneShotPage).toHaveBeenCalledTimes(1);
   });
@@ -135,7 +163,7 @@ describe("approval request fan-out", () => {
 
   it("uses the spec's title when the author set one", async () => {
     await requestApprovalAndWait(CTX, { ...SPEC, title: "Deploy v42 to production" });
-    const slack = sendSlackToOrg.mock.calls[0]![2] as { title: string };
+    const slack = sendSlackToOrgTracked.mock.calls[0]![2] as { title: string };
     expect(slack.title).toBe("Approval needed: Deploy v42 to production");
   });
 
@@ -145,9 +173,46 @@ describe("approval request fan-out", () => {
     expect(teams.body).toContain("started manually by a team member");
   });
 
+  it("puts Approve/Deny buttons on the Slack copy, valued for this approval", async () => {
+    await requestApprovalAndWait(CTX, SPEC);
+    const slack = sendSlackToOrgTracked.mock.calls[0]![2] as {
+      buttons?: Array<{ actionId: string; value: string; style?: string }>;
+    };
+    expect(slack.buttons).toHaveLength(2);
+    const [approve, deny] = slack.buttons!;
+    expect(approve!.actionId).toBe("infrawrench_approval_approve");
+    expect(deny!.actionId).toBe("infrawrench_approval_deny");
+    const value = JSON.parse(approve!.value) as { k: string; a: string; o: string };
+    expect(value.k).toBe("workflow");
+    expect(value.o).toBe(ORG);
+    // The value's approval id is the id the request was recorded under, so the
+    // click decides this row and no other.
+    expect(value.a).toBeTruthy();
+  });
+
+  it("records where the Slack copies landed so a decision can retire them", async () => {
+    await requestApprovalAndWait(CTX, SPEC);
+    expect(recordSlackApprovalMessages).toHaveBeenCalledWith(ORG, "workflow", expect.any(String), [
+      { installationId: "inst1", channelId: "C1", ts: "1722700000.000100" },
+    ]);
+    // Same approval id as the buttons carry.
+    const slack = sendSlackToOrgTracked.mock.calls[0]![2] as {
+      buttons: Array<{ value: string }>;
+    };
+    const buttonValue = JSON.parse(slack.buttons[0]!.value) as { a: string };
+    expect(recordSlackApprovalMessages.mock.calls[0]![2]).toBe(buttonValue.a);
+  });
+
+  it("still resolves when recording the Slack message refs fails", async () => {
+    recordSlackApprovalMessages.mockRejectedValue(new Error("db down"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(requestApprovalAndWait(CTX, SPEC)).resolves.toMatchObject({ approved: true });
+    spy.mockRestore();
+  });
+
   it("gives Slack mrkdwn and Teams plain text", async () => {
     await requestApprovalAndWait(CTX, SPEC);
-    const slack = sendSlackToOrg.mock.calls[0]![2] as { body: string };
+    const slack = sendSlackToOrgTracked.mock.calls[0]![2] as { body: string };
     const teams = sendMsTeamsToOrg.mock.calls[0]![2] as { body: string };
     expect(slack.body).toContain("*prod-deploy*");
     expect(teams.body).not.toContain("*");
@@ -171,14 +236,14 @@ describe("approval request fan-out", () => {
   it("omits the button when the server has no APP_URL", async () => {
     delete process.env["APP_URL"];
     await requestApprovalAndWait(CTX, SPEC);
-    const slack = sendSlackToOrg.mock.calls[0]![2] as { url?: string };
+    const slack = sendSlackToOrgTracked.mock.calls[0]![2] as { url?: string };
     expect(slack.url).toBeUndefined();
   });
 
   it("refuses to raise an approval outside a persisted run", async () => {
     const { runId: _runId, ...noRun } = CTX;
     await expect(requestApprovalAndWait(noRun, SPEC)).rejects.toThrow(/persisted workflow run/);
-    expect(sendSlackToOrg).not.toHaveBeenCalled();
+    expect(sendSlackToOrgTracked).not.toHaveBeenCalled();
   });
 
   it("still waits for the decision when a transport throws", async () => {
@@ -236,7 +301,7 @@ describe("approval SMS cooldown", () => {
     pageStore.claim.mockResolvedValue(false);
     await requestApprovalAndWait(CTX, SPEC);
     expect(sendPushToOrg).toHaveBeenCalledTimes(1);
-    expect(sendSlackToOrg).toHaveBeenCalledTimes(1);
+    expect(sendSlackToOrgTracked).toHaveBeenCalledTimes(1);
     expect(sendMsTeamsToOrg).toHaveBeenCalledTimes(1);
   });
 

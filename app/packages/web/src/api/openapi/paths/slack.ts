@@ -218,6 +218,92 @@ export function registerSlackPaths(ctx: BuildContext) {
     },
   });
 
+  // --- Inbound Slack (public, signature-verified; internal in the published
+  // spec — these are called by Slack and the browser, never by API clients).
+
+  const slackSignatureHeaders = strict({
+    "x-slack-signature": z
+      .string()
+      .openapi({ description: "v0=<hex HMAC-SHA256 of `v0:<timestamp>:<raw body>`>" }),
+    "x-slack-request-timestamp": z
+      .string()
+      .openapi({ description: "Unix seconds; requests older than 5 minutes are rejected" }),
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/slack/commands",
+    tags: ["Slack"],
+    summary: "Slack slash-command endpoint (/infrawrench)",
+    description:
+      "Public; verified against the app's signing secret. Handles `costs`, `status <resource>`, `link`, `unlink` and `help`, replying with an ephemeral message. The Slack user must have linked their account (`/infrawrench link`) and hold the same permission the equivalent web surface requires (`costs:read`, `resources:read`).",
+    security: [],
+    request: {
+      headers: slackSignatureHeaders,
+      body: {
+        content: {
+          "application/x-www-form-urlencoded": {
+            schema: z.unknown().openapi({ description: "Slack's slash-command form payload" }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "Slack message payload (rendered ephemerally to the invoker)",
+        content: { "application/json": { schema: z.unknown() } },
+      },
+      401: ErrorResponses[401],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/slack/interactions",
+    tags: ["Slack"],
+    summary: "Slack interactivity endpoint (Approve/Deny buttons)",
+    description:
+      "Public; verified against the app's signing secret. Receives `block_actions` payloads from the Approve/Deny buttons on approval messages and the status disambiguation picker. Button decisions resolve through the same code path as the web UI — the linked member needs `workflows:approve` (workflow approvals) or must own the conversation and hold `chat:write` (chat agent tool approvals).",
+    security: [],
+    request: {
+      headers: slackSignatureHeaders,
+      body: {
+        content: {
+          "application/x-www-form-urlencoded": {
+            schema: z
+              .unknown()
+              .openapi({ description: "`payload=<JSON>` interaction envelope from Slack" }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: { description: "Acknowledged; feedback rides response_url and message updates" },
+      401: ErrorResponses[401],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/slack/link",
+    tags: ["Slack"],
+    summary: "Link a Slack user to the signed-in member (browser redirect)",
+    description:
+      "Landing for the signed link URL the slash-command endpoints hand to unknown Slack users. Requires a browser session (bounces through sign-in), verifies the short-lived token, requires membership of the token's organization, then stores the Slack-user ↔ member mapping and redirects to the notification settings page.",
+    security: [],
+    request: {
+      query: strict({
+        token: z.string().openapi({ description: "Signed link token from Slack (15-minute TTL)" }),
+      }),
+    },
+    responses: {
+      302: { description: "Redirect to the settings page (or sign-in / an error toast)" },
+      401: ErrorResponses[401],
+    },
+  });
+
   registry.registerPath({
     method: "post",
     path: "/api/org/{orgId}/slack/test",

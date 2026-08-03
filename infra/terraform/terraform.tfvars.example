@@ -69,12 +69,22 @@ app_env = {
   # same shape as the GitHub App.
   #
   # The Slack app needs: redirect URL <APP_URL>/api/slack/oauth/callback, bot
-  # scopes chat:write / chat:write.public / channels:read / groups:read, public
-  # distribution ON (each org installs into its own workspace), and token
-  # rotation OFF — the bot token is stored once and never refreshed. No signing
-  # secret is needed; there are no events, slash commands, or interactivity.
+  # scopes chat:write / chat:write.public / channels:read / groups:read /
+  # commands, public distribution ON (each org installs into its own
+  # workspace), and token rotation OFF — the bot token is stored once and
+  # never refreshed.
   SLACK_CLIENT_ID     = "1234567890.1234567890"
   SLACK_CLIENT_SECRET = "..."
+
+  # Optional: enables the two-way half of Slack — the /infrawrench slash
+  # command (costs, resource status, account linking) and the Approve/Deny
+  # buttons on approval messages. From the Slack app's Basic Information →
+  # App Credentials → Signing Secret. The app also needs a slash command named
+  # /infrawrench pointed at <APP_URL>/api/slack/commands and Interactivity
+  # turned on with request URL <APP_URL>/api/slack/interactions. Without this
+  # key, outbound alerts still send but every inbound Slack request is refused
+  # (commands error, approval messages carry buttons that don't work).
+  SLACK_SIGNING_SECRET = "..."
 
   # Optional: transactional email via Mailgun, used only by the weekly digest's
   # email recipients. The first three are required together — with any missing,

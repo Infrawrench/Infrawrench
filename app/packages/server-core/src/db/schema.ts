@@ -875,6 +875,80 @@ export const slackChannels = pgTable(
 );
 
 /**
+ * Slack identity ↔ org member mapping, created by the signed link flow
+ * (`GET /api/slack/link`). Inbound Slack requests (slash commands, approval
+ * buttons) carry only a Slack `user_id`; nothing is honoured until that id
+ * resolves through this table to a member of the org, so the row is the whole
+ * trust boundary for two-way Slack.
+ *
+ * Keyed per (org, workspace, Slack user): one Slack account maps to exactly
+ * one Infrawrench account within an org, and re-linking overwrites — the link
+ * token proves control of the Slack account, the session proves the
+ * Infrawrench one, so whoever holds both decides the pairing.
+ */
+export const slackUserLinks = pgTable(
+  "slack_user_links",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Slack workspace id (`T…`) the link was made from. */
+    teamId: text("team_id").notNull(),
+    /** Slack user id (`U…`/`W…`). */
+    slackUserId: text("slack_user_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgTeamSlackUnique: uniqueIndex("slack_user_links_org_team_slack_unique").on(
+      t.organizationId,
+      t.teamId,
+      t.slackUserId,
+    ),
+    teamUserIdx: index("slack_user_links_team_user_idx").on(t.teamId, t.slackUserId),
+    orgIdx: index("slack_user_links_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
+ * Where an approval request's interactive Slack message landed, so a decision
+ * — from a Slack button or the web UI — can update every copy in place and
+ * thread the outcome under it. One row per (approval, channel) message.
+ *
+ * `approvalId` is deliberately not a FK: it points at `workflow_approvals` for
+ * kind "workflow" and `chat_pending_actions` for kind "chat", and a stale row
+ * is harmless (the update loop just no-ops when the message is gone).
+ */
+export const slackApprovalMessages = pgTable(
+  "slack_approval_messages",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** "workflow" (workflow_approvals) | "chat" (chat_pending_actions). */
+    kind: text("kind").$type<"workflow" | "chat">().notNull(),
+    approvalId: text("approval_id").notNull(),
+    installationId: text("installation_id")
+      .notNull()
+      .references(() => slackInstallations.id, { onDelete: "cascade" }),
+    /** Slack channel id (`C…`/`G…`) the message was posted to. */
+    channelId: text("channel_id").notNull(),
+    /** Slack message timestamp — the id `chat.update` and threads key on. */
+    messageTs: text("message_ts").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    approvalIdx: index("slack_approval_messages_approval_idx").on(t.kind, t.approvalId),
+    orgIdx: index("slack_approval_messages_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
  * A Microsoft Teams channel an org routes alerts to, identified by the webhook
  * URL of a Teams "Workflows" automation (or a legacy Office 365 connector).
  * The three flags mirror `slackChannels` and `pushPreferences`.

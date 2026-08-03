@@ -25,6 +25,7 @@ import {
 } from "@infrawrench/ui";
 import { recordUsage } from "./billing";
 import { providerForModel, type ProviderTool } from "./providers";
+import { notifyChatToolApproval } from "./slack-approvals";
 import { webChatTools, webChatToolSpecs } from "./web/tools";
 
 const DEFAULT_MODEL = DEFAULT_CHAT_MODEL;
@@ -455,6 +456,18 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
           toolName: tu.name,
           toolInput: tu.input,
           status: "pending",
+        });
+        // Mirror the request into Slack with Approve/Deny buttons, so the
+        // owner can decide without the tab open. Fire-and-forget (the helper
+        // never throws): the in-app approval UI is the primary surface and a
+        // Slack outage must not stall the turn.
+        void notifyChatToolApproval({
+          organizationId: auth.organizationId,
+          conversationId,
+          pendingActionId: pendingId,
+          toolName: tu.name,
+          toolInput: tu.input,
+          ...(auth.email !== undefined ? { ownerEmail: auth.email } : {}),
         });
         yield {
           type: "pending_action",

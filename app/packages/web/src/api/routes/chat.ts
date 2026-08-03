@@ -17,6 +17,7 @@ import {
   rejectPendingAction,
   type AgentEvent,
 } from "../../chat/agent";
+import { noteChatToolApprovalDecided } from "../../chat/slack-approvals";
 import { getMonthlySpend } from "../../chat/billing";
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL } from "@infrawrench/ui";
 import type { ToolAuthContext } from "../../tools/types";
@@ -301,8 +302,23 @@ app.post("/conversations/:id/pending/:pendingId", async (c) => {
     ...(auth.scopes !== undefined ? { scopes: auth.scopes } : {}),
   };
 
+  // Retire the interactive Slack copies of this request, whatever the
+  // decision. Fire-and-forget (the helper never throws) — the decision below
+  // is the record; Slack is presentation.
+  const noteDecided = (decision: "approved" | "denied") =>
+    void noteChatToolApprovalDecided({
+      organizationId: auth.organizationId,
+      pendingActionId: pendingId,
+      toolName: row.pending.toolName,
+      toolInput: row.pending.toolInput,
+      decision,
+      decidedByName: auth.email ?? null,
+      via: "the web app",
+    });
+
   if (body.action === "reject") {
     const { allResolved } = await rejectPendingAction(pendingId, body.reason);
+    noteDecided("denied");
     return c.json({ ok: true, allResolved });
   }
 
@@ -316,6 +332,7 @@ app.post("/conversations/:id/pending/:pendingId", async (c) => {
 
   try {
     const { allResolved } = await executePendingAction(pendingId, toolAuth);
+    noteDecided("approved");
     return c.json({ ok: true, allResolved });
   } catch (e) {
     await db

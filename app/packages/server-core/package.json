@@ -27,6 +27,7 @@
     "./twilio-pager": "./src/twilio-pager.ts",
     "./source-name": "./src/source-name.ts",
     "./slack": "./src/slack.ts",
+    "./slack-approvals": "./src/slack-approvals.ts",
     "./msteams": "./src/msteams.ts",
     "./plugin-loader": "./src/plugin-loader.ts",
     "./workflows/runner": "./src/workflows/runner.ts",

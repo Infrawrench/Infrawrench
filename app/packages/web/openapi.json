@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.30.0",
+    "version": "0.31.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -23718,6 +23718,157 @@
           }
         },
         "operationId": "deleteOrgOrgIdSlackChannelsId"
+      }
+    },
+    "/api/slack/commands": {
+      "post": {
+        "tags": ["Slack"],
+        "summary": "Slack slash-command endpoint (/infrawrench)",
+        "description": "Public; verified against the app's signing secret. Handles `costs`, `status <resource>`, `link`, `unlink` and `help`, replying with an ephemeral message. The Slack user must have linked their account (`/infrawrench link`) and hold the same permission the equivalent web surface requires (`costs:read`, `resources:read`).",
+        "security": [],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "v0=<hex HMAC-SHA256 of `v0:<timestamp>:<raw body>`>"
+            },
+            "required": true,
+            "name": "x-slack-signature",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Unix seconds; requests older than 5 minutes are rejected"
+            },
+            "required": true,
+            "name": "x-slack-request-timestamp",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "description": "Slack's slash-command form payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Slack message payload (rendered ephemerally to the invoker)",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postSlackCommands",
+        "x-internal": true
+      }
+    },
+    "/api/slack/interactions": {
+      "post": {
+        "tags": ["Slack"],
+        "summary": "Slack interactivity endpoint (Approve/Deny buttons)",
+        "description": "Public; verified against the app's signing secret. Receives `block_actions` payloads from the Approve/Deny buttons on approval messages and the status disambiguation picker. Button decisions resolve through the same code path as the web UI — the linked member needs `workflows:approve` (workflow approvals) or must own the conversation and hold `chat:write` (chat agent tool approvals).",
+        "security": [],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "v0=<hex HMAC-SHA256 of `v0:<timestamp>:<raw body>`>"
+            },
+            "required": true,
+            "name": "x-slack-signature",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Unix seconds; requests older than 5 minutes are rejected"
+            },
+            "required": true,
+            "name": "x-slack-request-timestamp",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "description": "`payload=<JSON>` interaction envelope from Slack"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acknowledged; feedback rides response_url and message updates"
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postSlackInteractions",
+        "x-internal": true
+      }
+    },
+    "/api/slack/link": {
+      "get": {
+        "tags": ["Slack"],
+        "summary": "Link a Slack user to the signed-in member (browser redirect)",
+        "description": "Landing for the signed link URL the slash-command endpoints hand to unknown Slack users. Requires a browser session (bounces through sign-in), verifies the short-lived token, requires membership of the token's organization, then stores the Slack-user ↔ member mapping and redirects to the notification settings page.",
+        "security": [],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "Signed link token from Slack (15-minute TTL)"
+            },
+            "required": true,
+            "name": "token",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to the settings page (or sign-in / an error toast)"
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getSlackLink",
+        "x-internal": true
       }
     },
     "/api/org/{orgId}/slack/test": {

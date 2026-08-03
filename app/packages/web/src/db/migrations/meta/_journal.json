@@ -435,6 +435,13 @@
       "when": 1785768502073,
       "tag": "0061_fluffy_doctor_octopus",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1785769608954,
+      "tag": "0062_material_doctor_strange",
+      "breakpoints": true
     }
   ]
 }

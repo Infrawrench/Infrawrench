@@ -1009,6 +1009,12 @@ function SlackSection({ orgId }: { orgId: string }) {
       {installResult === "cancelled" && (
         <p className="text-xs text-on-surface-muted">Slack install was cancelled.</p>
       )}
+      {installResult === "linked" && (
+        <p className="text-xs text-green-400">
+          Your Slack account is linked. You can now run /infrawrench commands and decide approvals
+          from Slack.
+        </p>
+      )}
       {installResult === "error" && (
         <p className="text-xs text-red-400">
           The Slack install didn&apos;t complete. Try connecting again.

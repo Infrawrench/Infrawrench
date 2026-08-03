@@ -2370,3 +2370,54 @@ field** over `WeeklyDigest`, not a `JSON.stringify` of it, so a later addition t
 cannot widen what leaves the deployment by accident — the model sees currency totals, WoW deltas,
 mover names with spend, and three counts. Nothing else. `ANTHROPIC_API_KEY` is shared with chat and
 is now documented in both env files.
+
+## Two-way Slack (slash commands + approval buttons)
+
+Slack went from write-only to two-way. Outbound stays as it was; three public inbound endpoints
+were added in `web/src/api/routes/slack-inbound.ts`, mounted at the API root next to the OAuth
+callback: `POST /api/slack/commands` (the `/infrawrench` slash command), `POST
+/api/slack/interactions` (`block_actions` from message buttons), and `GET /api/slack/link` (the
+browser half of account linking — session-authed, bounces through sign-in with `return_to`).
+All three are `x-internal` in the published spec (`public-spec.ts` `INTERNAL_PATHS`).
+
+**Auth is three layers, in order, and each exists for a reason.** (1) Every POST is verified
+against `SLACK_SIGNING_SECRET` (`verifySlackRequestSignature` in `server-core/src/slack.ts`:
+HMAC-SHA256 over `v0:<ts>:<raw body>`, constant-time compare, 5-minute replay window — the _raw_
+body, so read `c.req.text()` before any parsing). The secret gates the whole inbound half:
+`isSlackInboundConfigured()` false ⇒ 503 for everything, while outbound alerts keep working.
+(2) The Slack `user_id` must resolve through `slack_user_links` (new table: unique per
+(org, team, Slack user)) to a **current** org member — the resolver inner-joins
+`organization_members`, so a leaver's link dies on its own. Unknown users get an ephemeral link
+prompt carrying a signed 15-minute token (`signSlackLinkToken`, keyed off the signing secret so
+rotation voids outstanding tokens); `GET /api/slack/link` verifies it against the _session's_
+user, requires membership of the token's org, and upserts. One Slack workspace can be installed
+into several orgs; links are per-org and commands fan across every linked org. (3) Each surface
+re-checks the same permission as its web twin via `resolveEffectivePermissions`: `costs:read`
+(`/infrawrench costs` — summary built on the same `runCostQuery` the dashboard uses),
+`resources:read` (`/infrawrench status <name>`, fuzzy `ilike`+score matching with a button picker
+on ambiguity), `workflows:approve` (workflow approval buttons), and chat-conversation ownership +
+`chat:write` (agent tool approval buttons).
+
+**Buttons never create approvals; they only decide existing rows through the web UI's own code
+paths** — `decideWorkflowApproval`'s conditional UPDATE (losers get "already decided"), and the
+chat pending-action `approved → executed` transitions in `web/src/chat/agent.ts`. The Slack copy
+of every approval request now goes out via `sendSlackToOrgTracked` (returns per-channel
+`{installationId, channelId, ts}`), refs are stored in `slack_approval_messages` (new table,
+`kind` "workflow"|"chat"), and `updateSlackApprovalMessages`
+(`server-core/src/slack-approvals.ts`) rewrites _every_ copy — buttons removed, "✅ Approved by X
+via Slack/the web app" context, threaded reply — on any decision, web included (hooked inside
+`decideWorkflowApproval` and the chat routes, fire-and-forget, never throws). Chat tool approvals
+additionally mirror into Slack at suspension time (`web/src/chat/slack-approvals.ts`, called from
+the destructive branch of `runAgentTurn`), and a Slack decision resumes the agent turn
+server-side by draining `runAgentTurn` — that is how the outcome lands back in the conversation
+with nobody's browser open. Chat tool execution off a button click is forked after the ack: Slack
+demands a 200 within 3 seconds and a destructive tool can run longer.
+
+Gotchas: the `commands` bot scope was added to `SLACK_SCOPES` (existing installs need a reinstall
+to get the slash command); the tfvars comment used to _promise_ no signing secret was needed —
+that promise is gone, keep the three request URLs (`oauth/callback`, `commands`, `interactions`)
+in the Slack app config in step with `APP_URL`; `response_url` is only safe to POST to because
+the payload carrying it was signature-verified (do not post to URLs from unverified sources).
+Tests: `server-core/__tests__/slack.test.ts` (signature + link tokens + tracked send),
+`slack-approvals.test.ts`, and `web/routes/__tests__/slack-inbound.test.ts` (the layer-ordering
+and permission matrix).

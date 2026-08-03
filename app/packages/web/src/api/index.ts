@@ -65,6 +65,7 @@ import { sshTunnelRoutes } from "./routes/ssh-tunnels";
 import { bastionRoutes } from "./routes/bastions";
 import { twilioRoutes } from "./routes/twilio";
 import { slackRoutes, slackOauthRoute } from "./routes/slack";
+import { slackInboundRoutes } from "./routes/slack-inbound";
 import { msteamsRoutes } from "./routes/msteams";
 import { digestRoutes } from "./routes/digest";
 import { pushDeviceRoutes, pushOrgRoutes } from "./routes/push-devices";
@@ -97,6 +98,9 @@ api.route("/api", workflowGitWebhook);
 api.route("/api", githubSetupRoute);
 // Public Slack OAuth callback (no session; signed `state` binds the org).
 api.route("/api", slackOauthRoute);
+// Inbound Slack: slash commands + interactivity (signature-verified), and the
+// session-authed account-link landing (it bounces through sign-in itself).
+api.route("/api", slackInboundRoutes);
 api.route("/.well-known", wellKnownRoutes);
 
 /**

@@ -26,7 +26,12 @@ import {
 import { db } from "../db/client";
 import { workflowApprovals, workflows } from "../db/schema";
 import { sendPushToOrg } from "../push/dispatch";
-import { sendSlackToOrg } from "../slack";
+import { sendSlackToOrgTracked } from "../slack";
+import {
+  recordSlackApprovalMessages,
+  slackApprovalButtons,
+  updateSlackApprovalMessages,
+} from "../slack-approvals";
 import { sendMsTeamsToOrg } from "../msteams";
 import { sendOneShotPage } from "../twilio-pager";
 import { workflowPageCooldownStore } from "./paging";
@@ -183,14 +188,34 @@ async function notifyApprovalRequest(args: {
 
   // Slack renders `*bold*`; the Teams Adaptive Card escaper turns `*` into a
   // literal asterisk, so it gets the same text with the markup left out — the
-  // split the weekly digest and drift alerts already use.
-  await sendSlackToOrg(ctx.organizationId, "workflowPages", {
+  // split the weekly digest and drift alerts already use. Slack's copy carries
+  // Approve/Deny buttons and is tracked so a decision can retire every copy in
+  // place — the buttons resolve through `decideWorkflowApproval`, the same
+  // conditional UPDATE the web UI uses.
+  const slackSent = await sendSlackToOrgTracked(ctx.organizationId, "workflowPages", {
     title: `Approval needed: ${title}`,
     body:
       `*${ctx.workflowName}* needs a decision before run \`${runId}\` can continue.\n\n` + detail,
     context,
     ...(url ? { url } : {}),
+    buttons: slackApprovalButtons({
+      kind: "workflow",
+      approvalId,
+      organizationId: ctx.organizationId,
+    }),
   });
+  try {
+    await recordSlackApprovalMessages(
+      ctx.organizationId,
+      "workflow",
+      approvalId,
+      slackSent.messages,
+    );
+  } catch (err) {
+    // Losing the refs only costs the in-place update later; the buttons still
+    // work, so this must not fail the fan-out.
+    console.error(`[approvals] recording Slack messages for ${approvalId} failed:`, err);
+  }
   await sendMsTeamsToOrg(ctx.organizationId, "workflowPages", {
     title: `Approval needed: ${title}`,
     body: `${ctx.workflowName} needs a decision before run ${runId} can continue.\n\n` + detail,
@@ -409,6 +434,10 @@ export async function decideWorkflowApproval(
   approvalId: string,
   decision: "approved" | "denied",
   decidedBy: { userId: string; name?: string | null },
+  opts: {
+    /** Where the decision came from, for the Slack message update. */
+    decidedVia?: "Slack" | "the web app";
+  } = {},
 ): Promise<
   | { outcome: "decided"; approval: WorkflowApprovalSummary }
   | { outcome: "conflict" }
@@ -453,5 +482,16 @@ export async function decideWorkflowApproval(
       .where(eq(workflowApprovals.id, approvalId));
     return { outcome: "conflict" };
   }
+  // Retire any interactive Slack copies of this request: buttons off, outcome
+  // and decider shown in place, threaded reply for the channel's history.
+  // Fire-and-forget (the updater never throws) — the decision is already
+  // landed, and a Slack outage must not turn it into an error.
+  void updateSlackApprovalMessages(organizationId, "workflow", approvalId, {
+    decision,
+    decidedByName: decidedBy.name ?? null,
+    via: opts.decidedVia ?? "the web app",
+    title: `Approval needed: ${updated.title}`,
+    body: updated.message,
+  });
   return { outcome: "decided", approval: toSummary(updated, null) };
 }
