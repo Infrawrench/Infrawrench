@@ -125,7 +125,9 @@ baseline and `new` for the change — a key with no prior spend has no percentag
 
 The **mobile app** shows the same list on its **Costs** tab, under the month-to-date chart and
 your budgets, with the same distinction between the two kinds. Tapping a cost anomaly push
-notification opens it. Detection thresholds are read-only there — see below.
+notification opens the [moment view](./moment.md) — the anomaly in context with everything else
+that happened around it, with Costs one tap away. Detection thresholds are read-only there —
+see below.
 
 <insert [Mobile app Costs tab scrolled to the Anomalies section, showing a spike row with its baseline and percentage change and a new-spend-source row with its New source badge and "new" change] here>
 

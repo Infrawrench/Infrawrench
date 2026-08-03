@@ -61,7 +61,7 @@ The [change timeline](./change-timeline.md) records every resource that appears,
 
 It is also the one trigger that is **off by default**, on phones and on channels alike, for the same reason: it is a continuous feed rather than an exceptional event. Which changes count — appearances, disappearances, field updates (off by default, they are the bulk of the volume), which accounts, and how few changes are too few to bother with — is set once for the whole organization under **Settings → Notifications → Resource drift alerts**, and it takes the **Organization settings** permission.
 
-Tapping a drift notification opens the **Changes** feed already filtered to the window it covered — and to the account, when every change in that window came from one. A **Since alert** chip shows the filter is on; clear it to widen the view to the whole feed.
+Tapping a drift notification opens the [moment view](./moment.md) centred on the window the digest covered — its changes merged chronologically with everything else that happened around them (deploys, incidents, anomalies). Cost-anomaly and provider-incident notifications land there too; the Changes feed itself is one tap away.
 
 ### Pages and approval requests
 
