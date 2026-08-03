@@ -7,9 +7,10 @@
  *    `status <resource>`, `link`, `unlink`, `help`).
  *  - `POST /slack/interactions` — `block_actions` payloads: the Approve/Deny
  *    buttons on approval messages and the status disambiguation picker.
- *  - `GET /slack/link` — the browser half of account linking; session-authed
- *    (bounces through sign-in), consumes a signed token minted for exactly one
- *    (org, workspace, Slack user).
+ *  - `GET /slack/link` + `POST /slack/link` — the browser half of account
+ *    linking; session-authed (bounces through sign-in). The GET renders a
+ *    confirmation page for a signed token minted for exactly one (org,
+ *    workspace, Slack user); the CSRF-guarded POST stores the pair.
  *
  * Security model, in order:
  *
@@ -30,10 +31,10 @@
  * (`decideWorkflowApproval`, the chat pending-action lifecycle), so two
  * deciders racing still produce exactly one decision.
  */
-import { Hono } from "hono";
-import { getCookie } from "hono/cookie";
+import { Hono, type Context } from "hono";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { and, desc, eq, ilike, inArray, isNull, or } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 
 import {
   escapeMrkdwn,
@@ -42,6 +43,7 @@ import {
   signSlackLinkToken,
   verifySlackLinkToken,
   verifySlackRequestSignature,
+  type SlackLinkRequest,
 } from "@infrawrench/server-core/slack";
 import {
   SLACK_APPROVE_ACTION_ID,
@@ -717,7 +719,26 @@ export async function handleBlockAction(payload: SlackInteractionPayload): Promi
       via: "Slack",
     });
 
+  // Claim the row first, conditioned on it still being `pending`. The returned
+  // row count is what makes two racing deciders — Slack buttons, the web UI, or
+  // one of each — produce exactly one decision: the loser's UPDATE matches
+  // nothing, gets acknowledged, and goes no further. Same conditional
+  // transition the web decision route uses.
+  const claimed = await db
+    .update(chatPendingActions)
+    .set({ status: decision === "denied" ? "rejected" : "approved" })
+    .where(and(eq(chatPendingActions.id, row.pending.id), eq(chatPendingActions.status, "pending")))
+    .returning({ id: chatPendingActions.id });
+  if (claimed.length === 0) {
+    await respond(ephemeral("This action has already been resolved."));
+    return;
+  }
+
   if (decision === "denied") {
+    // The claim above already moved the row to `rejected`, so
+    // executePendingAction (which requires `approved`) can never also run;
+    // rejectPendingAction records the reason and reports whether the turn can
+    // resume.
     const { allResolved } = await rejectPendingAction(
       row.pending.id,
       `Denied from Slack by ${memberName(member)}.`,
@@ -729,13 +750,9 @@ export async function handleBlockAction(payload: SlackInteractionPayload): Promi
     return;
   }
 
-  // Approve: claim the row (same approved → executed transition as the web
-  // route), then run the tool and resume off this request — execution can
-  // outlive Slack's 3-second acknowledgement window.
-  await db
-    .update(chatPendingActions)
-    .set({ status: "approved" })
-    .where(eq(chatPendingActions.id, row.pending.id));
+  // Approved and claimed (same approved → executed transition as the web
+  // route): run the tool and resume off this request — execution can outlive
+  // Slack's 3-second acknowledgement window.
   void (async () => {
     try {
       const { allResolved } = await executePendingAction(row.pending.id, toolAuth);
@@ -751,6 +768,9 @@ export async function handleBlockAction(payload: SlackInteractionPayload): Promi
           resolvedAt: new Date(),
         })
         .where(eq(chatPendingActions.id, row.pending.id));
+      // The approval still happened — only the execution failed — so the Slack
+      // copies' decision controls must retire either way.
+      await noteDecided("approved");
       console.error(`[slack] executing pending action ${row.pending.id} failed:`, err);
     }
   })();
@@ -789,18 +809,29 @@ app.post("/slack/commands", async (c) => {
   const params = new URLSearchParams(pre.rawBody);
   const teamId = params.get("team_id") ?? "";
   const slackUserId = params.get("user_id") ?? "";
-  if (!teamId || !slackUserId) return c.json({ error: "Malformed command payload" }, 400);
-  try {
-    const reply = await handleSlashCommand({
-      teamId,
-      slackUserId,
-      text: params.get("text") ?? "",
-    });
-    return c.json(reply);
-  } catch (err) {
-    console.error("[slack] slash command failed:", err);
-    return c.json(ephemeral("Something went wrong running that command. Try again shortly."));
+  const responseUrl = params.get("response_url") ?? "";
+  const text = params.get("text") ?? "";
+  if (!teamId || !slackUserId || !responseUrl) {
+    return c.json({ error: "Malformed command payload" }, 400);
   }
+  // Acknowledge inside Slack's 3-second window *before* doing any real work —
+  // a cost query or resource search can blow that budget — and deliver the
+  // actual reply through response_url, which stays valid for 30 minutes.
+  void (async () => {
+    let reply: SlackReply;
+    try {
+      reply = await handleSlashCommand({ teamId, slackUserId, text });
+    } catch (err) {
+      console.error("[slack] slash command failed:", err);
+      reply = ephemeral("Something went wrong running that command. Try again shortly.");
+    }
+    try {
+      await postToSlackResponseUrl(responseUrl, reply);
+    } catch (err) {
+      console.error("[slack] response_url post failed:", err);
+    }
+  })();
+  return c.body(null, 200);
 });
 
 app.post("/slack/interactions", async (c) => {
@@ -814,29 +845,41 @@ app.post("/slack/interactions", async (c) => {
     return c.json({ error: "Malformed interaction payload" }, 400);
   }
   if (!payload || payload.type !== "block_actions") return c.body(null, 200);
-  try {
-    await handleBlockAction(payload);
-  } catch (err) {
+  // Same shape as /slack/commands: acknowledge now, work in the background.
+  // All feedback rides response_url, chat.update, and threads.
+  void handleBlockAction(payload).catch((err: unknown) => {
     console.error("[slack] interaction failed:", err);
-  }
-  // Slack only wants a timely 200 here; all feedback rides response_url,
-  // chat.update, and threads.
+  });
   return c.body(null, 200);
 });
 
+/** Double-submit CSRF cookie for the link confirmation form. */
+const SLACK_LINK_CSRF_COOKIE = "slack_link_csrf";
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function timingSafeEqualStrings(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
 /**
- * Browser half of account linking. The Slack side handed the user a signed
- * token asserting "this Slack user in this workspace"; the session here
- * asserts the Infrawrench account. Membership of the token's org is required
- * before the pair is stored.
+ * Shared GET/POST preamble for /slack/link: authenticated session, valid link
+ * token, and membership of the token's org. Failures keep the original
+ * behavior — a redirect to the root with the `slack=error` toast param (or the
+ * session middleware's own response).
  */
-app.get("/slack/link", async (c) => {
-  const token = c.req.query("token") ?? "";
-  // Signed out: bounce through sign-in and come back here.
-  if (!getCookie(c, "wos-session") && !c.req.header("authorization")) {
-    const returnTo = safeReturnPath(`/api/slack/link?token=${encodeURIComponent(token)}`);
-    return c.redirect(`/api/auth/sign-in?return_to=${encodeURIComponent(returnTo ?? "/")}`);
-  }
+async function resolveLinkRequest(
+  c: Context,
+  token: string,
+): Promise<{ userId: string; verified: SlackLinkRequest } | Response> {
   const denied = await sessionMiddleware(c, async () => {});
   if (denied instanceof Response) return denied;
   const session = c.get("session");
@@ -860,6 +903,108 @@ app.get("/slack/link", async (c) => {
   if (!member) {
     return c.redirect(`${appUrl()}/?slack=error`);
   }
+  return { userId: session.userId, verified };
+}
+
+/**
+ * Browser half of account linking. The Slack side handed the user a signed
+ * token asserting "this Slack user in this workspace"; the session here
+ * asserts the Infrawrench account. Membership of the token's org is required
+ * before the pair is stored.
+ *
+ * The GET only *renders* a confirmation naming the Slack user and the org —
+ * a state-changing write must not ride a URL that link unfurlers, prefetchers
+ * and mail scanners follow. The write happens in the POST below, guarded by a
+ * double-submit CSRF pair: a cookie bound to this browser session plus the
+ * same value echoed by the form. A cross-site page can post the token, but it
+ * can neither read nor set that cookie.
+ */
+app.get("/slack/link", async (c) => {
+  const token = c.req.query("token") ?? "";
+  // Signed out: bounce through sign-in and come back here.
+  if (!getCookie(c, "wos-session") && !c.req.header("authorization")) {
+    const returnTo = safeReturnPath(`/api/slack/link?token=${encodeURIComponent(token)}`);
+    return c.redirect(`/api/auth/sign-in?return_to=${encodeURIComponent(returnTo ?? "/")}`);
+  }
+  const resolved = await resolveLinkRequest(c, token);
+  if (resolved instanceof Response) return resolved;
+  const { verified } = resolved;
+
+  const [org] = await db
+    .select({ displayName: organizations.displayName })
+    .from(organizations)
+    .where(eq(organizations.id, verified.organizationId))
+    .limit(1);
+  const [install] = await db
+    .select({ teamName: slackInstallations.teamName })
+    .from(slackInstallations)
+    .where(
+      and(
+        eq(slackInstallations.organizationId, verified.organizationId),
+        eq(slackInstallations.teamId, verified.teamId),
+        isNull(slackInstallations.deletedAt),
+      ),
+    )
+    .limit(1);
+  const orgName = org?.displayName ?? verified.organizationId;
+  const workspace = install?.teamName ?? verified.teamId;
+
+  const csrf = randomUUID();
+  setCookie(c, SLACK_LINK_CSRF_COOKIE, csrf, {
+    path: "/api/slack/link",
+    httpOnly: true,
+    sameSite: "Lax",
+    secure: appUrl().startsWith("https://"),
+    maxAge: 15 * 60,
+  });
+
+  return c.html(
+    `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Link Slack to Infrawrench</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #0f1117; color: #e6e8ee; display: grid; place-items: center; min-height: 100vh; margin: 0; }
+  main { max-width: 26rem; padding: 2rem; background: #171a23; border: 1px solid #2a2f3d; border-radius: 12px; }
+  h1 { font-size: 1.2rem; margin-top: 0; }
+  code { background: #232836; border-radius: 4px; padding: 0.1rem 0.3rem; }
+  p.hint { color: #9aa1b2; font-size: 0.85rem; }
+  button { background: #4f6df5; color: #fff; border: 0; border-radius: 8px; padding: 0.6rem 1.2rem; font-size: 1rem; cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Link your Slack account</h1>
+  <p>Link Slack user <code>${escapeHtml(verified.slackUserId)}</code> in workspace
+  <strong>${escapeHtml(workspace)}</strong> to your Infrawrench account in
+  <strong>${escapeHtml(orgName)}</strong>?</p>
+  <p class="hint">Once linked, /infrawrench commands and approval buttons pressed by that
+  Slack user act with your Infrawrench permissions.</p>
+  <form method="post" action="/api/slack/link">
+    <input type="hidden" name="token" value="${escapeHtml(token)}">
+    <input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
+    <button type="submit">Link account</button>
+  </form>
+</main>
+</body>
+</html>`,
+  );
+});
+
+/** The confirmation form's target: validates the CSRF pair, then writes the link. */
+app.post("/slack/link", async (c) => {
+  const form = new URLSearchParams(await c.req.text());
+  const token = form.get("token") ?? "";
+  const formCsrf = form.get("csrf") ?? "";
+  const cookieCsrf = getCookie(c, SLACK_LINK_CSRF_COOKIE) ?? "";
+  if (!formCsrf || !cookieCsrf || !timingSafeEqualStrings(formCsrf, cookieCsrf)) {
+    return c.redirect(`${appUrl()}/?slack=error`);
+  }
+  const resolved = await resolveLinkRequest(c, token);
+  if (resolved instanceof Response) return resolved;
+  const { userId, verified } = resolved;
 
   await db
     .insert(slackUserLinks)
@@ -868,13 +1013,14 @@ app.get("/slack/link", async (c) => {
       organizationId: verified.organizationId,
       teamId: verified.teamId,
       slackUserId: verified.slackUserId,
-      userId: session.userId,
+      userId,
     })
     .onConflictDoUpdate({
       target: [slackUserLinks.organizationId, slackUserLinks.teamId, slackUserLinks.slackUserId],
-      set: { userId: session.userId, updatedAt: new Date() },
+      set: { userId, updatedAt: new Date() },
     });
 
+  deleteCookie(c, SLACK_LINK_CSRF_COOKIE, { path: "/api/slack/link" });
   return c.redirect(`${appUrl()}/org/${verified.organizationId}/settings/paging?slack=linked`);
 });
 

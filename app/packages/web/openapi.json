@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.35.1",
+    "version": "0.35.2",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -26152,7 +26152,7 @@
       "post": {
         "tags": ["Slack"],
         "summary": "Slack slash-command endpoint (/infrawrench)",
-        "description": "Public; verified against the app's signing secret. Handles `costs`, `status <resource>`, `link`, `unlink` and `help`, replying with an ephemeral message. The Slack user must have linked their account (`/infrawrench link`) and hold the same permission the equivalent web surface requires (`costs:read`, `resources:read`).",
+        "description": "Public; verified against the app's signing secret. Handles `costs`, `status <resource>`, `link`, `unlink` and `help`. Acknowledged immediately; the ephemeral reply is delivered through the payload's `response_url`. The Slack user must have linked their account (`/infrawrench link`) and hold the same permission the equivalent web surface requires (`costs:read`, `resources:read`).",
         "security": [],
         "parameters": [
           {
@@ -26186,12 +26186,7 @@
         },
         "responses": {
           "200": {
-            "description": "Slack message payload (rendered ephemerally to the invoker)",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
+            "description": "Acknowledged; the reply is delivered through response_url"
           },
           "401": {
             "description": "Unauthenticated",
@@ -26266,8 +26261,8 @@
     "/api/slack/link": {
       "get": {
         "tags": ["Slack"],
-        "summary": "Link a Slack user to the signed-in member (browser redirect)",
-        "description": "Landing for the signed link URL the slash-command endpoints hand to unknown Slack users. Requires a browser session (bounces through sign-in), verifies the short-lived token, requires membership of the token's organization, then stores the Slack-user ↔ member mapping and redirects to the notification settings page.",
+        "summary": "Confirm linking a Slack user to the signed-in member (browser)",
+        "description": "Landing for the signed link URL the slash-command endpoints hand to unknown Slack users. Requires a browser session (bounces through sign-in), verifies the short-lived token and membership of the token's organization, then renders a confirmation page naming the Slack user and organization. The write itself happens in the CSRF-guarded POST the page submits.",
         "security": [],
         "parameters": [
           {
@@ -26281,8 +26276,18 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Confirmation page (HTML form that POSTs back to this path)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "302": {
-            "description": "Redirect to the settings page (or sign-in / an error toast)"
+            "description": "Redirect to sign-in or an error toast"
           },
           "401": {
             "description": "Unauthenticated",
@@ -26296,6 +26301,51 @@
           }
         },
         "operationId": "getSlackLink",
+        "x-internal": true
+      },
+      "post": {
+        "tags": ["Slack"],
+        "summary": "Store the Slack-user ↔ member link (confirmation form target)",
+        "description": "Submitted by the confirmation page above. Requires the browser session, the signed link token, and the double-submit CSRF pair (cookie + form field) minted by the GET; on success stores the Slack-user ↔ member mapping and redirects to the notification settings page.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "description": "Signed link token from Slack (15-minute TTL)"
+                  },
+                  "csrf": {
+                    "type": "string",
+                    "description": "CSRF value matching the slack_link_csrf cookie"
+                  }
+                },
+                "required": ["token", "csrf"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "302": {
+            "description": "Redirect to the settings page (or an error toast)"
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postSlackLink",
         "x-internal": true
       }
     },

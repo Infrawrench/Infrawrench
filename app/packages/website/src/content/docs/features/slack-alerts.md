@@ -64,7 +64,7 @@ An **approval request** carries everything needed to decide without opening the 
 
 Alerts go out to channels, but anything coming _back_ — a slash command, an Approve button — has to be tied to a specific member before Infrawrench will honour it. That tie is a one-time link between your Slack user and your Infrawrench account.
 
-Run `/infrawrench link` (or just press any Approve/Deny button, or run any command, while unlinked) and Slack replies — only to you — with a link URL. Opening it asks you to sign in to Infrawrench if you aren't already, checks that you're a member of the organization, and stores the mapping. The URL expires after 15 minutes; run `/infrawrench link` again for a fresh one.
+Run `/infrawrench link` (or just press any Approve/Deny button, or run any command, while unlinked) and Slack replies — only to you — with a link URL. Opening it asks you to sign in to Infrawrench if you aren't already, checks that you're a member of the organization, and shows a confirmation page naming the Slack user and organization being linked — the mapping is stored when you press **Link account**. The URL expires after 15 minutes; run `/infrawrench link` again for a fresh one.
 
 <insert [Slack ephemeral message shown to an unlinked user, with the "Link your account to <org>" URL visible] here>
 

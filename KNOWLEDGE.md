@@ -2394,12 +2394,16 @@ is now documented in both env files.
 
 ## Two-way Slack (slash commands + approval buttons)
 
-Slack went from write-only to two-way. Outbound stays as it was; three public inbound endpoints
-were added in `web/src/api/routes/slack-inbound.ts`, mounted at the API root next to the OAuth
+Slack went from write-only to two-way. Outbound stays as it was; the public inbound endpoints
+live in `web/src/api/routes/slack-inbound.ts`, mounted at the API root next to the OAuth
 callback: `POST /api/slack/commands` (the `/infrawrench` slash command), `POST
-/api/slack/interactions` (`block_actions` from message buttons), and `GET /api/slack/link` (the
-browser half of account linking — session-authed, bounces through sign-in with `return_to`).
-All three are `x-internal` in the published spec (`public-spec.ts` `INTERNAL_PATHS`).
+/api/slack/interactions` (`block_actions` from message buttons), and `GET` + `POST
+/api/slack/link` (the browser half of account linking — session-authed, bounces through sign-in
+with `return_to`; the GET only renders a confirmation page, the double-submit-CSRF-guarded POST
+writes the link). All are `x-internal` in the published spec (`public-spec.ts` `INTERNAL_PATHS`).
+Both Slack POST endpoints ack with an empty 200 _before_ doing any real work — Slack cuts them
+off at 3 seconds and a cost query can be slower — and deliver all feedback through
+`response_url` / `chat.update`.
 
 **Auth is three layers, in order, and each exists for a reason.** (1) Every POST is verified
 against `SLACK_SIGNING_SECRET` (`verifySlackRequestSignature` in `server-core/src/slack.ts`:
@@ -2411,7 +2415,9 @@ body, so read `c.req.text()` before any parsing). The secret gates the whole inb
 `organization_members`, so a leaver's link dies on its own. Unknown users get an ephemeral link
 prompt carrying a signed 15-minute token (`signSlackLinkToken`, keyed off the signing secret so
 rotation voids outstanding tokens); `GET /api/slack/link` verifies it against the _session's_
-user, requires membership of the token's org, and upserts. One Slack workspace can be installed
+user, requires membership of the token's org, and shows a confirmation page naming the Slack
+user and org — the upsert only happens on the `POST`, which additionally requires the
+`slack_link_csrf` cookie/form pair the GET minted. One Slack workspace can be installed
 into several orgs; links are per-org and commands fan across every linked org. (3) Each surface
 re-checks the same permission as its web twin via `resolveEffectivePermissions`: `costs:read`
 (`/infrawrench costs` — summary built on the same `runCostQuery` the dashboard uses),
@@ -2421,13 +2427,20 @@ on ambiguity), `workflows:approve` (workflow approval buttons), and chat-convers
 
 **Buttons never create approvals; they only decide existing rows through the web UI's own code
 paths** — `decideWorkflowApproval`'s conditional UPDATE (losers get "already decided"), and the
-chat pending-action `approved → executed` transitions in `web/src/chat/agent.ts`. The Slack copy
+chat pending-action transitions: both the Slack handler and the web decision route claim
+`pending → approved/rejected` with a conditional UPDATE ... RETURNING, so racing deciders across
+either surface produce exactly one decision (the loser gets an ack/409). The Slack copy
 of every approval request now goes out via `sendSlackToOrgTracked` (returns per-channel
 `{installationId, channelId, ts}`), refs are stored in `slack_approval_messages` (new table,
 `kind` "workflow"|"chat"), and `updateSlackApprovalMessages`
 (`server-core/src/slack-approvals.ts`) rewrites _every_ copy — buttons removed, "✅ Approved by X
 via Slack/the web app" context, threaded reply — on any decision, web included (hooked inside
-`decideWorkflowApproval` and the chat routes, fire-and-forget, never throws). Chat tool approvals
+`decideWorkflowApproval` and the chat routes, fire-and-forget, never throws). Expiry retires the
+copies too (`expirePending`'s winning claim, and the late-approval conflict path inside
+`decideWorkflowApproval`, both render a "⏳ Expired" outcome), and
+`recordSlackApprovalMessages` re-reads the approval after inserting refs so a decision that
+landed mid-post still converges. Slack messages never carry raw tool input — `chatApprovalText`
+summarizes field _names_ only; the full input stays in the in-app approval view. Chat tool approvals
 additionally mirror into Slack at suspension time (`web/src/chat/slack-approvals.ts`, called from
 the destructive branch of `runAgentTurn`), and a Slack decision resumes the agent turn
 server-side by draining `runAgentTurn` — that is how the outcome lands back in the conversation

@@ -246,7 +246,7 @@ export function registerSlackPaths(ctx: BuildContext) {
     tags: ["Slack"],
     summary: "Slack slash-command endpoint (/infrawrench)",
     description:
-      "Public; verified against the app's signing secret. Handles `costs`, `status <resource>`, `link`, `unlink` and `help`, replying with an ephemeral message. The Slack user must have linked their account (`/infrawrench link`) and hold the same permission the equivalent web surface requires (`costs:read`, `resources:read`).",
+      "Public; verified against the app's signing secret. Handles `costs`, `status <resource>`, `link`, `unlink` and `help`. Acknowledged immediately; the ephemeral reply is delivered through the payload's `response_url`. The Slack user must have linked their account (`/infrawrench link`) and hold the same permission the equivalent web surface requires (`costs:read`, `resources:read`).",
     security: [],
     request: {
       headers: slackSignatureHeaders,
@@ -260,10 +260,7 @@ export function registerSlackPaths(ctx: BuildContext) {
       },
     },
     responses: {
-      200: {
-        description: "Slack message payload (rendered ephemerally to the invoker)",
-        content: { "application/json": { schema: z.unknown() } },
-      },
+      200: { description: "Acknowledged; the reply is delivered through response_url" },
       401: ErrorResponses[401],
     },
   });
@@ -299,9 +296,9 @@ export function registerSlackPaths(ctx: BuildContext) {
     method: "get",
     path: "/api/slack/link",
     tags: ["Slack"],
-    summary: "Link a Slack user to the signed-in member (browser redirect)",
+    summary: "Confirm linking a Slack user to the signed-in member (browser)",
     description:
-      "Landing for the signed link URL the slash-command endpoints hand to unknown Slack users. Requires a browser session (bounces through sign-in), verifies the short-lived token, requires membership of the token's organization, then stores the Slack-user ↔ member mapping and redirects to the notification settings page.",
+      "Landing for the signed link URL the slash-command endpoints hand to unknown Slack users. Requires a browser session (bounces through sign-in), verifies the short-lived token and membership of the token's organization, then renders a confirmation page naming the Slack user and organization. The write itself happens in the CSRF-guarded POST the page submits.",
     security: [],
     request: {
       query: strict({
@@ -309,7 +306,42 @@ export function registerSlackPaths(ctx: BuildContext) {
       }),
     },
     responses: {
-      302: { description: "Redirect to the settings page (or sign-in / an error toast)" },
+      200: {
+        description: "Confirmation page (HTML form that POSTs back to this path)",
+        content: { "text/html": { schema: z.string() } },
+      },
+      302: { description: "Redirect to sign-in or an error toast" },
+      401: ErrorResponses[401],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/slack/link",
+    tags: ["Slack"],
+    summary: "Store the Slack-user ↔ member link (confirmation form target)",
+    description:
+      "Submitted by the confirmation page above. Requires the browser session, the signed link token, and the double-submit CSRF pair (cookie + form field) minted by the GET; on success stores the Slack-user ↔ member mapping and redirects to the notification settings page.",
+    security: [],
+    request: {
+      body: {
+        content: {
+          "application/x-www-form-urlencoded": {
+            schema: strict({
+              token: z
+                .string()
+                .openapi({ description: "Signed link token from Slack (15-minute TTL)" }),
+              csrf: z
+                .string()
+                .openapi({ description: "CSRF value matching the slack_link_csrf cookie" }),
+            }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      302: { description: "Redirect to the settings page (or an error toast)" },
       401: ErrorResponses[401],
     },
   });

@@ -429,6 +429,42 @@ describe("verifySlackRequestSignature", () => {
       verifySlackRequestSignature({ rawBody: BODY, timestamp: ts, signature: good, nowMs: now }),
     ).toBe(false);
   });
+
+  it("rejects malformed signatures — truncated or missing the v0= prefix — without throwing", async () => {
+    const { verifySlackRequestSignature } = await import("../slack");
+    const now = 1_722_700_000_000;
+    const ts = String(Math.floor(now / 1000));
+    const good = sign(SECRET, ts, BODY);
+    // Truncated: different length must fail cleanly, not trip timingSafeEqual.
+    expect(
+      verifySlackRequestSignature({
+        rawBody: BODY,
+        timestamp: ts,
+        signature: good.slice(0, 12),
+        nowMs: now,
+      }),
+    ).toBe(false);
+    // Right length, wrong scheme prefix: the digest may match but the version
+    // marker is part of what is signed and compared.
+    expect(
+      verifySlackRequestSignature({
+        rawBody: BODY,
+        timestamp: ts,
+        signature: `v1=${good.slice(3)}`,
+        nowMs: now,
+      }),
+    ).toBe(false);
+    // Prefixless hex of the right digest, same length as `v0=` + digest minus
+    // the marker: still refused.
+    expect(
+      verifySlackRequestSignature({
+        rawBody: BODY,
+        timestamp: ts,
+        signature: good.slice(3),
+        nowMs: now,
+      }),
+    ).toBe(false);
+  });
 });
 
 /**

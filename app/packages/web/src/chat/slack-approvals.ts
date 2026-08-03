@@ -23,27 +23,40 @@ function appUrl(): string | null {
   return process.env["APP_URL"] ?? null;
 }
 
-const INPUT_PREVIEW_MAX = 600;
+const INPUT_SUMMARY_MAX_FIELDS = 8;
+
+/**
+ * A redacted, non-sensitive shape of a tool's input: field *names* only, never
+ * values. Tool inputs routinely carry things a shared channel must not see —
+ * connection strings, SQL, key material — and a Slack channel is a much wider
+ * audience than the conversation owner. The full input stays where it always
+ * was: the authenticated in-app approval view.
+ */
+export function summarizeToolInput(toolInput: unknown): string {
+  if (toolInput === null || toolInput === undefined) return "no input";
+  if (Array.isArray(toolInput)) {
+    return `a list of ${toolInput.length} item${toolInput.length === 1 ? "" : "s"}`;
+  }
+  if (typeof toolInput === "object") {
+    const keys = Object.keys(toolInput as Record<string, unknown>);
+    if (keys.length === 0) return "no input";
+    const shown = keys.slice(0, INPUT_SUMMARY_MAX_FIELDS).map((k) => `\`${k}\``);
+    const more = keys.length > INPUT_SUMMARY_MAX_FIELDS ? ", …" : "";
+    return `${keys.length} field${keys.length === 1 ? "" : "s"} (${shown.join(", ")}${more})`;
+  }
+  return `a single ${typeof toolInput} value`;
+}
 
 /** The request's headline/body, shared by the initial post and the update. */
 export function chatApprovalText(
   toolName: string,
   toolInput: unknown,
 ): { title: string; body: string } {
-  let input: string;
-  try {
-    input = JSON.stringify(toolInput);
-  } catch {
-    input = String(toolInput);
-  }
-  if (input.length > INPUT_PREVIEW_MAX) {
-    input = `${input.slice(0, INPUT_PREVIEW_MAX - 1)}…`;
-  }
   return {
     title: `Approval needed: ${toolName}`,
     body:
       `The chat agent wants to run the destructive tool \`${toolName}\` and is waiting for approval.\n\n` +
-      `Input: ${input}`,
+      `Input: ${summarizeToolInput(toolInput)} — review the full input in Infrawrench before deciding.`,
   };
 }
 
@@ -85,6 +98,7 @@ export async function notifyChatToolApproval(args: {
       "chat",
       args.pendingActionId,
       sent.messages,
+      { title, body },
     );
   } catch (err) {
     console.error(`[chat] Slack approval notification for ${args.pendingActionId} failed:`, err);

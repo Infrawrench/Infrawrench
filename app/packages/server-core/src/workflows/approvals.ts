@@ -210,6 +210,9 @@ async function notifyApprovalRequest(args: {
       "workflow",
       approvalId,
       slackSent.messages,
+      // The decided/expired rendering, should the recorder find the request
+      // already settled: the same title/body every later update uses.
+      { title: `Approval needed: ${title}`, body: message },
     );
   } catch (err) {
     // Losing the refs only costs the in-place update later; the buttons still
@@ -277,12 +280,25 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Mark a still-pending request expired; a landed decision wins the race. */
+/**
+ * Mark a still-pending request expired; a landed decision wins the race. When
+ * the expiry wins, every tracked Slack copy is rewritten too — buttons off,
+ * "expired" shown — so a channel never keeps offering a decision the run
+ * already stopped listening for. Fire-and-forget: the updater never throws.
+ */
 async function expirePending(approvalId: string): Promise<void> {
-  await db
+  const [expired] = await db
     .update(workflowApprovals)
     .set({ status: "expired", decidedAt: new Date() })
-    .where(and(eq(workflowApprovals.id, approvalId), eq(workflowApprovals.status, "pending")));
+    .where(and(eq(workflowApprovals.id, approvalId), eq(workflowApprovals.status, "pending")))
+    .returning();
+  if (!expired) return;
+  void updateSlackApprovalMessages(expired.organizationId, "workflow", approvalId, {
+    decision: "expired",
+    decidedByName: null,
+    title: `Approval needed: ${expired.title}`,
+    body: expired.message,
+  });
 }
 
 /**
@@ -480,6 +496,16 @@ export async function decideWorkflowApproval(
       .update(workflowApprovals)
       .set({ status: "expired" })
       .where(eq(workflowApprovals.id, approvalId));
+    // The Slack copies must land on "expired" here too — this path is the one
+    // where the run's poll never gets to call expirePending (the row left
+    // `pending` under the late approval), so nothing else retires them.
+    void updateSlackApprovalMessages(organizationId, "workflow", approvalId, {
+      decision: "expired",
+      decidedByName: decidedBy.name ?? null,
+      via: opts.decidedVia ?? "the web app",
+      title: `Approval needed: ${updated.title}`,
+      body: updated.message,
+    });
     return { outcome: "conflict" };
   }
   // Retire any interactive Slack copies of this request: buttons off, outcome

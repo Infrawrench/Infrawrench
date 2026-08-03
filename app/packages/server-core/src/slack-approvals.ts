@@ -24,7 +24,7 @@ import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 import { db } from "./db/client";
-import { slackApprovalMessages } from "./db/schema";
+import { chatPendingActions, slackApprovalMessages, workflowApprovals } from "./db/schema";
 import {
   escapeMrkdwn,
   loadOrgSlackTokens,
@@ -69,12 +69,57 @@ export function parseSlackApprovalButtonValue(raw: unknown): SlackApprovalButton
   }
 }
 
-/** Remember where an approval request's messages landed, for later updates. */
+/**
+ * The current decided state of an approval, or null while it is still open.
+ *
+ * A chat action that is `approved` but not yet executed counts as open: the
+ * decision paths call `updateSlackApprovalMessages` again once execution
+ * settles, so the buttons still get retired.
+ */
+async function decidedApprovalState(
+  kind: SlackApprovalKind,
+  approvalId: string,
+): Promise<{ decision: SlackApprovalOutcome["decision"]; decidedByName: string | null } | null> {
+  if (kind === "workflow") {
+    const [row] = await db
+      .select({ status: workflowApprovals.status, decidedByName: workflowApprovals.decidedByName })
+      .from(workflowApprovals)
+      .where(eq(workflowApprovals.id, approvalId))
+      .limit(1);
+    if (!row || row.status === "pending") return null;
+    return {
+      decision:
+        row.status === "approved" ? "approved" : row.status === "denied" ? "denied" : "expired",
+      decidedByName: row.decidedByName ?? null,
+    };
+  }
+  const [row] = await db
+    .select({ status: chatPendingActions.status })
+    .from(chatPendingActions)
+    .where(eq(chatPendingActions.id, approvalId))
+    .limit(1);
+  if (!row || row.status === "pending" || row.status === "approved") return null;
+  // `executed` and `errored` both mean an approval was claimed and ran.
+  return { decision: row.status === "rejected" ? "denied" : "approved", decidedByName: null };
+}
+
+/**
+ * Remember where an approval request's messages landed, for later updates.
+ *
+ * `rendered` is the request's headline/body as the poster rendered it, so the
+ * reconciliation below can retire the copies without re-deriving the text.
+ * The reconciliation closes a race: a decision that lands *while the Slack
+ * post is in flight* fires `updateSlackApprovalMessages` before these rows
+ * exist, and without the re-check the freshly posted copies would keep live
+ * buttons forever. Re-reading the approval after the insert converges: either
+ * the decision's update saw our rows, or we see the decision here.
+ */
 export async function recordSlackApprovalMessages(
   organizationId: string,
   kind: SlackApprovalKind,
   approvalId: string,
   messages: SlackPostedMessage[],
+  rendered: { title: string; body: string },
 ): Promise<void> {
   if (messages.length === 0) return;
   await db.insert(slackApprovalMessages).values(
@@ -88,23 +133,39 @@ export async function recordSlackApprovalMessages(
       messageTs: m.ts,
     })),
   );
+  const decided = await decidedApprovalState(kind, approvalId);
+  if (decided) {
+    await updateSlackApprovalMessages(organizationId, kind, approvalId, {
+      ...decided,
+      title: rendered.title,
+      body: rendered.body,
+    });
+  }
 }
 
 export interface SlackApprovalOutcome {
-  decision: "approved" | "denied";
+  decision: "approved" | "denied" | "expired";
   decidedByName: string | null;
-  /** Where the decision landed — "Slack" or "the web app". */
-  via: string;
+  /** Where the decision landed — "Slack" or "the web app". Unknown for expiry. */
+  via?: string;
   /** The request's original headline and body, re-rendered without buttons. */
   title: string;
   body: string;
 }
 
 function outcomeLine(outcome: SlackApprovalOutcome): string {
+  if (outcome.decision === "expired") {
+    // A named decider here means their approval landed after the timeout —
+    // the run treats that as expired, so the message must say so too.
+    const late = outcome.decidedByName
+      ? ` (${outcome.decidedByName}'s approval${outcome.via ? ` via ${outcome.via}` : ""} came after the timeout)`
+      : "";
+    return `⏳ Expired — not decided within the timeout${late}`;
+  }
   const verb = outcome.decision === "approved" ? "Approved" : "Denied";
   const glyph = outcome.decision === "approved" ? "✅" : "🚫";
   const who = outcome.decidedByName ? ` by ${outcome.decidedByName}` : "";
-  return `${glyph} ${verb}${who} via ${outcome.via}`;
+  return `${glyph} ${verb}${who}${outcome.via ? ` via ${outcome.via}` : ""}`;
 }
 
 /**

@@ -35,7 +35,10 @@ vi.mock("../db/client", () => {
   const updateChain = () => {
     const self: Record<string, unknown> = {};
     self["set"] = () => self;
-    self["where"] = () => Promise.resolve(undefined);
+    // Awaitable directly, and RETURNING-capable for expirePending's claim
+    // (no rows: the expiry never wins in these tests — a decision landed).
+    self["where"] = () =>
+      Object.assign(Promise.resolve(undefined), { returning: () => Promise.resolve([]) });
     return self;
   };
   return {
@@ -192,9 +195,15 @@ describe("approval request fan-out", () => {
 
   it("records where the Slack copies landed so a decision can retire them", async () => {
     await requestApprovalAndWait(CTX, SPEC);
-    expect(recordSlackApprovalMessages).toHaveBeenCalledWith(ORG, "workflow", expect.any(String), [
-      { installationId: "inst1", channelId: "C1", ts: "1722700000.000100" },
-    ]);
+    expect(recordSlackApprovalMessages).toHaveBeenCalledWith(
+      ORG,
+      "workflow",
+      expect.any(String),
+      [{ installationId: "inst1", channelId: "C1", ts: "1722700000.000100" }],
+      // The rendering the recorder falls back to if the request is already
+      // decided by the time the refs land.
+      { title: "Approval needed: prod-deploy", body: "Roll the API to v42?" },
+    );
     // Same approval id as the buttons carry.
     const slack = sendSlackToOrgTracked.mock.calls[0]![2] as {
       buttons: Array<{ value: string }>;

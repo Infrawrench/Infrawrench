@@ -14,20 +14,37 @@ vi.mock("../db/schema", () => ({
     kind: "kind",
     approvalId: "approvalId",
   },
+  workflowApprovals: {
+    __t: "workflowApprovals",
+    id: "id",
+    status: "status",
+    decidedByName: "decidedByName",
+  },
+  chatPendingActions: { __t: "chatPendingActions", id: "id", status: "status" },
 }));
 
 let messageRows: unknown[] = [];
+/** The approval rows the post-insert reconciliation reads back. */
+const approvalRows: Record<string, unknown[]> = {};
 const insertedValues: unknown[][] = [];
 
 vi.mock("../db/client", () => {
-  const chain = () => {
+  const chain = (rows: () => unknown[]) => {
     const self: Record<string, unknown> = {};
-    self["where"] = () => Promise.resolve(messageRows);
+    self["where"] = () => self;
+    self["limit"] = () => Promise.resolve(rows());
+    self["then"] = (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
+      Promise.resolve(rows()).then(res, rej);
     return self;
   };
   return {
     db: {
-      select: () => ({ from: () => chain() }),
+      select: () => ({
+        from: (table: { __t: string }) =>
+          chain(() =>
+            table.__t === "slackApprovalMessages" ? messageRows : (approvalRows[table.__t] ?? []),
+          ),
+      }),
       insert: () => ({
         values: (v: unknown[]) => {
           insertedValues.push(v);
@@ -63,6 +80,10 @@ import {
 beforeEach(() => {
   vi.clearAllMocks();
   messageRows = [];
+  for (const key of Object.keys(approvalRows)) delete approvalRows[key];
+  // Default: the approval is still open, so recording does not reconcile.
+  approvalRows["workflowApprovals"] = [{ status: "pending", decidedByName: null }];
+  approvalRows["chatPendingActions"] = [{ status: "pending" }];
   insertedValues.length = 0;
   loadOrgSlackTokens.mockResolvedValue(new Map([["inst1", "xoxb-1"]]));
   updateSlackMessage.mockResolvedValue(undefined);
@@ -98,16 +119,24 @@ describe("approval button values", () => {
 });
 
 describe("recordSlackApprovalMessages", () => {
+  const RENDERED = { title: "Approval needed: prod-deploy", body: "Roll the API to v42?" };
+
   it("skips the insert entirely when nothing was delivered", async () => {
-    await recordSlackApprovalMessages("org-1", "workflow", "ap-1", []);
+    await recordSlackApprovalMessages("org-1", "workflow", "ap-1", [], RENDERED);
     expect(insertedValues).toHaveLength(0);
   });
 
   it("stores one row per delivered message", async () => {
-    await recordSlackApprovalMessages("org-1", "chat", "pa-1", [
-      { installationId: "inst1", channelId: "C1", ts: "1.1" },
-      { installationId: "inst1", channelId: "C2", ts: "2.2" },
-    ]);
+    await recordSlackApprovalMessages(
+      "org-1",
+      "chat",
+      "pa-1",
+      [
+        { installationId: "inst1", channelId: "C1", ts: "1.1" },
+        { installationId: "inst1", channelId: "C2", ts: "2.2" },
+      ],
+      RENDERED,
+    );
     expect(insertedValues[0]).toHaveLength(2);
     expect(insertedValues[0]![0]).toMatchObject({
       organizationId: "org-1",
@@ -116,6 +145,63 @@ describe("recordSlackApprovalMessages", () => {
       channelId: "C1",
       messageTs: "1.1",
     });
+  });
+
+  it("leaves an open approval's fresh copies alone", async () => {
+    await recordSlackApprovalMessages(
+      "org-1",
+      "workflow",
+      "ap-1",
+      [{ installationId: "inst1", channelId: "C1", ts: "1.1" }],
+      RENDERED,
+    );
+    expect(updateSlackMessage).not.toHaveBeenCalled();
+  });
+
+  it("immediately retires copies recorded after the decision already landed", async () => {
+    // The race: a decision lands while the Slack post is in flight, so its
+    // updateSlackApprovalMessages ran before these rows existed. Recording
+    // must notice the settled state and retire the fresh copies itself.
+    approvalRows["workflowApprovals"] = [{ status: "approved", decidedByName: "Astrid" }];
+    messageRows = [{ installationId: "inst1", channelId: "C1", messageTs: "1.1" }];
+    await recordSlackApprovalMessages(
+      "org-1",
+      "workflow",
+      "ap-1",
+      [{ installationId: "inst1", channelId: "C1", ts: "1.1" }],
+      RENDERED,
+    );
+    expect(updateSlackMessage).toHaveBeenCalledTimes(1);
+    const text = updateSlackMessage.mock.calls[0]![3] as string;
+    expect(text).toContain("Approved by Astrid");
+  });
+
+  it("converges a chat action that was rejected mid-post to the denied form", async () => {
+    approvalRows["chatPendingActions"] = [{ status: "rejected" }];
+    messageRows = [{ installationId: "inst1", channelId: "C1", messageTs: "1.1" }];
+    await recordSlackApprovalMessages(
+      "org-1",
+      "chat",
+      "pa-1",
+      [{ installationId: "inst1", channelId: "C1", ts: "1.1" }],
+      RENDERED,
+    );
+    const text = updateSlackMessage.mock.calls[0]![3] as string;
+    expect(text).toContain("Denied");
+  });
+
+  it("treats a claimed-but-still-executing chat action as open", async () => {
+    // `approved` means a decider claimed it and execution is in flight; the
+    // post-execution noteDecided call retires the copies once it settles.
+    approvalRows["chatPendingActions"] = [{ status: "approved" }];
+    await recordSlackApprovalMessages(
+      "org-1",
+      "chat",
+      "pa-1",
+      [{ installationId: "inst1", channelId: "C1", ts: "1.1" }],
+      RENDERED,
+    );
+    expect(updateSlackMessage).not.toHaveBeenCalled();
   });
 });
 
@@ -182,5 +268,28 @@ describe("updateSlackApprovalMessages", () => {
     });
     const text = updateSlackMessage.mock.calls[0]![3] as string;
     expect(text).toContain("Denied by Astrid via the web app");
+  });
+
+  it("renders a timeout as expired with no decider", async () => {
+    messageRows = [{ installationId: "inst1", channelId: "C1", messageTs: "1.1" }];
+    await updateSlackApprovalMessages("org-1", "workflow", "ap-1", {
+      ...OUTCOME,
+      decision: "expired",
+      decidedByName: null,
+    });
+    const text = updateSlackMessage.mock.calls[0]![3] as string;
+    expect(text).toContain("Expired — not decided within the timeout");
+    expect(text).not.toContain("Astrid");
+  });
+
+  it("names the late decider when an approval landed after the timeout", async () => {
+    messageRows = [{ installationId: "inst1", channelId: "C1", messageTs: "1.1" }];
+    await updateSlackApprovalMessages("org-1", "workflow", "ap-1", {
+      ...OUTCOME,
+      decision: "expired",
+    });
+    const text = updateSlackMessage.mock.calls[0]![3] as string;
+    expect(text).toContain("Expired");
+    expect(text).toContain("Astrid's approval via Slack came after the timeout");
   });
 });

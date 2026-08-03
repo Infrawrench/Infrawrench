@@ -50,6 +50,8 @@ vi.mock("drizzle-orm", () => ({
 const tableRows: Record<string, unknown[]> = {};
 const inserted: Array<{ table: string; values: unknown }> = [];
 const updated: Array<{ table: string; set: Record<string, unknown> }> = [];
+/** Rows an UPDATE ... RETURNING yields, per table; defaults to one row (a won claim). */
+const updateReturning: Record<string, unknown[]> = {};
 let deletedReturning: unknown[] = [];
 
 vi.mock("@/db/client", () => {
@@ -75,7 +77,14 @@ vi.mock("@/db/client", () => {
       update: (table: { __t: string }) => ({
         set: (s: Record<string, unknown>) => {
           updated.push({ table: table.__t, set: s });
-          return { where: () => Promise.resolve() };
+          return {
+            where: () => {
+              const rows = updateReturning[table.__t] ?? [{ id: "claimed" }];
+              return Object.assign(Promise.resolve(undefined), {
+                returning: () => Promise.resolve(rows),
+              });
+            },
+          };
         },
       }),
       delete: () => ({
@@ -179,12 +188,15 @@ const { slackInboundRoutes } = await import("@/api/routes/slack-inbound");
 
 const app = new Hono().route("/api", slackInboundRoutes);
 
+const COMMAND_RESPONSE_URL = "https://hooks.slack.example/respond";
+
 async function commandRequest(text: string, signature = "good"): Promise<Response> {
   const body = new URLSearchParams({
     team_id: "T1",
     user_id: "U1",
     command: "/infrawrench",
     text,
+    response_url: COMMAND_RESPONSE_URL,
   }).toString();
   return app.request("/api/slack/commands", {
     method: "POST",
@@ -195,6 +207,17 @@ async function commandRequest(text: string, signature = "good"): Promise<Respons
     },
     body,
   });
+}
+
+/**
+ * The command's reply: the endpoint acks with an empty 200 inside Slack's
+ * 3-second window and delivers the real message through response_url.
+ */
+async function commandReply(text: string): Promise<unknown> {
+  const res = await commandRequest(text);
+  expect(res.status).toBe(200);
+  await flushAsync();
+  return postToSlackResponseUrl.mock.calls.at(-1)?.[1];
 }
 
 async function interactionRequest(
@@ -247,6 +270,7 @@ beforeEach(() => {
   deletedReturning = [];
   inserted.length = 0;
   updated.length = 0;
+  for (const key of Object.keys(updateReturning)) delete updateReturning[key];
   for (const key of Object.keys(tableRows)) delete tableRows[key];
   tableRows["slackInstallations"] = [{ organizationId: "org-1", orgName: "Acme" }];
   tableRows["slackUserLinks"] = [];
@@ -272,7 +296,9 @@ describe("POST /api/slack/commands — authentication", () => {
     verifySignature.mockReturnValue(false);
     const res = await commandRequest("costs", "forged");
     expect(res.status).toBe(401);
+    await flushAsync();
     expect(runCostQuery).not.toHaveBeenCalled();
+    expect(postToSlackResponseUrl).not.toHaveBeenCalled();
   });
 
   it("verifies the signature over the raw body", async () => {
@@ -281,13 +307,36 @@ describe("POST /api/slack/commands — authentication", () => {
     expect(arg.rawBody).toContain("text=help");
     expect(arg.signature).toBe("good");
   });
+
+  it("acks with an empty 200 and delivers the reply through response_url", async () => {
+    const res = await commandRequest("help");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("");
+    await flushAsync();
+    expect(postToSlackResponseUrl).toHaveBeenCalledWith(
+      COMMAND_RESPONSE_URL,
+      expect.objectContaining({ response_type: "ephemeral" }),
+    );
+  });
+
+  it("refuses a payload with no response_url to answer through", async () => {
+    const body = new URLSearchParams({ team_id: "T1", user_id: "U1", text: "help" }).toString();
+    const res = await app.request("/api/slack/commands", {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "x-slack-signature": "good",
+        "x-slack-request-timestamp": "1722700000",
+      },
+      body,
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("POST /api/slack/commands — identity", () => {
   it("gives an unlinked user a link prompt instead of data", async () => {
-    const res = await commandRequest("costs");
-    expect(res.status).toBe(200);
-    const body = JSON.stringify(await res.json());
+    const body = JSON.stringify(await commandReply("costs"));
     expect(body).toContain("isn't linked");
     expect(body).toContain("/api/slack/link?token=tok-org-1");
     expect(runCostQuery).not.toHaveBeenCalled();
@@ -295,8 +344,7 @@ describe("POST /api/slack/commands — identity", () => {
 
   it("tells a workspace that was never connected to connect first", async () => {
     tableRows["slackInstallations"] = [];
-    const res = await commandRequest("costs");
-    const body = JSON.stringify(await res.json());
+    const body = JSON.stringify(await commandReply("costs"));
     expect(body).toContain("isn't connected");
   });
 
@@ -304,8 +352,7 @@ describe("POST /api/slack/commands — identity", () => {
     // linkedMembers inner-joins organization_members; the fake models the
     // post-join result, so an ex-member is simply an empty join result.
     tableRows["slackUserLinks"] = [];
-    const res = await commandRequest("status prod");
-    expect(JSON.stringify(await res.json())).toContain("isn't linked");
+    expect(JSON.stringify(await commandReply("status prod"))).toContain("isn't linked");
   });
 });
 
@@ -328,8 +375,7 @@ describe("/infrawrench costs", () => {
   });
 
   it("replies ephemerally with the month-to-date summary", async () => {
-    const res = await commandRequest("costs");
-    const body = (await res.json()) as { response_type: string };
+    const body = (await commandReply("costs")) as { response_type: string };
     expect(body.response_type).toBe("ephemeral");
     const text = JSON.stringify(body);
     expect(text).toContain("USD 40.00");
@@ -341,10 +387,29 @@ describe("/infrawrench costs", () => {
     expect(req.to >= req.from).toBe(true);
   });
 
+  it("renders finite numbers when there is no previous-period spend", async () => {
+    runCostQuery.mockResolvedValue({
+      series: [
+        {
+          key: "ec2",
+          label: "EC2",
+          currency: "USD",
+          points: [{ bucket: "2026-08-01", amount: 40 }],
+        },
+      ],
+      currencies: ["USD"],
+      totals: { USD: 40 },
+      previousTotals: {},
+    });
+    const text = JSON.stringify(await commandReply("costs"));
+    expect(text).toContain("USD 40.00");
+    expect(text).not.toContain("Infinity");
+    expect(text).not.toContain("NaN");
+  });
+
   it("requires costs:read", async () => {
     memberPermissions = ["resources:read"];
-    const res = await commandRequest("costs");
-    expect(JSON.stringify(await res.json())).toContain("costs:read");
+    expect(JSON.stringify(await commandReply("costs"))).toContain("costs:read");
     expect(runCostQuery).not.toHaveBeenCalled();
   });
 });
@@ -356,8 +421,7 @@ describe("/infrawrench status", () => {
 
   it("requires resources:read", async () => {
     memberPermissions = ["costs:read"];
-    const res = await commandRequest("status prod");
-    expect(JSON.stringify(await res.json())).toContain("resources:read");
+    expect(JSON.stringify(await commandReply("status prod"))).toContain("resources:read");
   });
 
   it("answers directly when one resource clearly matches", async () => {
@@ -374,8 +438,7 @@ describe("/infrawrench status", () => {
     ];
     tableRows["accounts"] = [{ displayName: "Production" }];
     tableRows["resourceChanges"] = [];
-    const res = await commandRequest("status prod-db");
-    const text = JSON.stringify(await res.json());
+    const text = JSON.stringify(await commandReply("status prod-db"));
     expect(text).toContain("prod-db");
     expect(text).toContain("EC2 instance");
     expect(text).toContain("minutes ago");
@@ -386,8 +449,9 @@ describe("/infrawrench status", () => {
       { id: "r1", displayName: "prod-db-primary", deletedAt: null },
       { id: "r2", displayName: "prod-db-replica", deletedAt: null },
     ];
-    const res = await commandRequest("status db");
-    const body = (await res.json()) as { blocks: Array<{ type: string; elements?: unknown[] }> };
+    const body = (await commandReply("status db")) as {
+      blocks: Array<{ type: string; elements?: unknown[] }>;
+    };
     const actions = body.blocks.find((b) => b.type === "actions");
     expect(actions?.elements).toHaveLength(2);
     expect(JSON.stringify(actions)).toContain("infrawrench_status_pick");
@@ -395,8 +459,9 @@ describe("/infrawrench status", () => {
 
   it("says so when nothing matches", async () => {
     tableRows["resources"] = [];
-    const res = await commandRequest("status nothing-here");
-    expect(JSON.stringify(await res.json())).toContain("No resource matching");
+    expect(JSON.stringify(await commandReply("status nothing-here"))).toContain(
+      "No resource matching",
+    );
   });
 });
 
@@ -405,12 +470,14 @@ describe("POST /api/slack/interactions — workflow approval buttons", () => {
     verifySignature.mockReturnValue(false);
     const res = await interactionRequest("infrawrench_approval_approve", APPROVAL_VALUE, "forged");
     expect(res.status).toBe(401);
+    await flushAsync();
     expect(decideWorkflowApproval).not.toHaveBeenCalled();
   });
 
   it("sends an unlinked clicker the link prompt, decides nothing", async () => {
     const res = await interactionRequest("infrawrench_approval_approve", APPROVAL_VALUE);
     expect(res.status).toBe(200);
+    await flushAsync();
     expect(decideWorkflowApproval).not.toHaveBeenCalled();
     expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("isn't linked");
   });
@@ -418,6 +485,7 @@ describe("POST /api/slack/interactions — workflow approval buttons", () => {
   it("decides through decideWorkflowApproval — the web UI's code path", async () => {
     linkedAstrid();
     await interactionRequest("infrawrench_approval_approve", APPROVAL_VALUE);
+    await flushAsync();
     expect(decideWorkflowApproval).toHaveBeenCalledWith(
       "org-1",
       "ap-1",
@@ -430,6 +498,7 @@ describe("POST /api/slack/interactions — workflow approval buttons", () => {
   it("maps the Deny button to a denial", async () => {
     linkedAstrid();
     await interactionRequest("infrawrench_approval_deny", APPROVAL_VALUE);
+    await flushAsync();
     expect(decideWorkflowApproval).toHaveBeenCalledWith(
       "org-1",
       "ap-1",
@@ -443,14 +512,31 @@ describe("POST /api/slack/interactions — workflow approval buttons", () => {
     linkedAstrid();
     memberPermissions = ["workflows:read", "workflows:write"];
     await interactionRequest("infrawrench_approval_approve", APPROVAL_VALUE);
+    await flushAsync();
     expect(decideWorkflowApproval).not.toHaveBeenCalled();
     expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("workflows:approve");
+  });
+
+  it("refuses a button whose echoed value names an org the clicker isn't linked in", async () => {
+    // The link row is for org-1; the (attacker-controllable) button value says
+    // org-2. Membership must resolve from the value's org, not just any org
+    // the clicker is linked in — otherwise a crafted value crosses orgs.
+    linkedAstrid();
+    await interactionRequest("infrawrench_approval_approve", {
+      k: "workflow",
+      a: "ap-1",
+      o: "org-2",
+    });
+    await flushAsync();
+    expect(decideWorkflowApproval).not.toHaveBeenCalled();
+    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("isn't linked");
   });
 
   it("tells the losing racer the request was already decided", async () => {
     linkedAstrid();
     decideWorkflowApproval.mockResolvedValue({ outcome: "conflict" });
     await interactionRequest("infrawrench_approval_approve", APPROVAL_VALUE);
+    await flushAsync();
     expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("already been decided");
   });
 
@@ -458,6 +544,7 @@ describe("POST /api/slack/interactions — workflow approval buttons", () => {
     linkedAstrid();
     const res = await interactionRequest("infrawrench_approval_approve", "not-json{");
     expect(res.status).toBe(200);
+    await flushAsync();
     expect(decideWorkflowApproval).not.toHaveBeenCalled();
   });
 });
@@ -538,9 +625,77 @@ describe("POST /api/slack/interactions — chat tool approval buttons", () => {
     expect(executePendingAction).not.toHaveBeenCalled();
     expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("already been resolved");
   });
+
+  it("acknowledges the losing racer without executing — the claim is conditional", async () => {
+    // The read said "pending" but by claim time another decider won: the
+    // conditional UPDATE matches no rows, and this click must go no further.
+    linkedAstrid();
+    pendingRow("user-1");
+    updateReturning["chatPendingActions"] = [];
+    await interactionRequest("infrawrench_approval_approve", CHAT_VALUE);
+    await flushAsync();
+    expect(executePendingAction).not.toHaveBeenCalled();
+    expect(rejectPendingAction).not.toHaveBeenCalled();
+    expect(noteChatToolApprovalDecided).not.toHaveBeenCalled();
+    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("already been resolved");
+  });
+
+  it("claims the denial before rejecting, so a racing approve cannot also run", async () => {
+    linkedAstrid();
+    pendingRow("user-1");
+    await interactionRequest("infrawrench_approval_deny", CHAT_VALUE);
+    await flushAsync();
+    // The claim moves pending → rejected up front; executePendingAction's own
+    // status=approved precondition can then never be satisfied by a racer.
+    expect(updated).toContainEqual({ table: "chatPendingActions", set: { status: "rejected" } });
+    expect(rejectPendingAction).toHaveBeenCalledWith("pa-1", "Denied from Slack by Astrid.");
+  });
+
+  it("retires the Slack copies even when execution fails after approval", async () => {
+    linkedAstrid();
+    pendingRow("user-1");
+    executePendingAction.mockRejectedValue(new Error("provider exploded"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await interactionRequest("infrawrench_approval_approve", CHAT_VALUE);
+    await flushAsync();
+    expect(updated).toContainEqual(
+      expect.objectContaining({
+        table: "chatPendingActions",
+        set: expect.objectContaining({ status: "errored" }),
+      }),
+    );
+    // The approval decision still landed; the buttons must come off.
+    expect(noteChatToolApprovalDecided).toHaveBeenCalledWith(
+      expect.objectContaining({ decision: "approved" }),
+    );
+    spy.mockRestore();
+  });
 });
 
-describe("GET /api/slack/link", () => {
+describe("GET + POST /api/slack/link", () => {
+  function validLinkSetup(): void {
+    sessionUserId = "user-1";
+    verifySlackLinkToken.mockReturnValue({
+      organizationId: "org-1",
+      teamId: "T1",
+      slackUserId: "U1",
+    });
+    tableRows["organizationMembers"] = [{ id: "m1" }];
+    tableRows["organizations"] = [{ displayName: "Acme Corp" }];
+  }
+
+  function csrfCookieFrom(res: Response): string {
+    return /slack_link_csrf=([^;]+)/.exec(res.headers.get("set-cookie") ?? "")?.[1] ?? "";
+  }
+
+  async function postLink(body: Record<string, string>, cookie: string): Promise<Response> {
+    return app.request("/api/slack/link", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(body).toString(),
+    });
+  }
+
   it("bounces a signed-out browser through sign-in and back", async () => {
     const res = await app.request("/api/slack/link?token=abc");
     expect(res.status).toBe(302);
@@ -549,17 +704,30 @@ describe("GET /api/slack/link", () => {
     expect(decodeURIComponent(location)).toContain("/api/slack/link?token=abc");
   });
 
-  it("stores the mapping for a signed-in org member", async () => {
-    sessionUserId = "user-1";
-    verifySlackLinkToken.mockReturnValue({
-      organizationId: "org-1",
-      teamId: "T1",
-      slackUserId: "U1",
-    });
-    tableRows["organizationMembers"] = [{ id: "m1" }];
+  it("GET renders a confirmation naming the Slack user and org — and writes nothing", async () => {
+    validLinkSetup();
     const res = await app.request("/api/slack/link?token=abc", {
       headers: { cookie: "wos-session=sealed" },
     });
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("U1");
+    expect(html).toContain("Acme Corp");
+    expect(html).toContain('name="csrf"');
+    expect(csrfCookieFrom(res)).not.toBe("");
+    expect(inserted).toHaveLength(0);
+  });
+
+  it("POST stores the mapping when the form echoes the CSRF cookie", async () => {
+    validLinkSetup();
+    const page = await app.request("/api/slack/link?token=abc", {
+      headers: { cookie: "wos-session=sealed" },
+    });
+    const csrf = csrfCookieFrom(page);
+    const res = await postLink(
+      { token: "abc", csrf },
+      `wos-session=sealed; slack_link_csrf=${csrf}`,
+    );
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toContain("slack=linked");
     expect(inserted[0]).toMatchObject({
@@ -573,8 +741,25 @@ describe("GET /api/slack/link", () => {
     });
   });
 
+  it("POST refuses a CSRF value that doesn't match the cookie", async () => {
+    validLinkSetup();
+    const res = await postLink(
+      { token: "abc", csrf: "forged" },
+      "wos-session=sealed; slack_link_csrf=real",
+    );
+    expect(res.headers.get("location")).toContain("slack=error");
+    expect(inserted).toHaveLength(0);
+  });
+
+  it("POST refuses a cross-site form that has the token but no CSRF cookie", async () => {
+    validLinkSetup();
+    const res = await postLink({ token: "abc", csrf: "anything" }, "wos-session=sealed");
+    expect(res.headers.get("location")).toContain("slack=error");
+    expect(inserted).toHaveLength(0);
+  });
+
   it("refuses a token for an org the user is not a member of", async () => {
-    sessionUserId = "user-1";
+    validLinkSetup();
     verifySlackLinkToken.mockReturnValue({
       organizationId: "org-2",
       teamId: "T1",
@@ -595,6 +780,13 @@ describe("GET /api/slack/link", () => {
       headers: { cookie: "wos-session=sealed" },
     });
     expect(res.headers.get("location")).toContain("slack=error");
+    expect(inserted).toHaveLength(0);
+
+    const posted = await postLink(
+      { token: "stale", csrf: "nonce" },
+      "wos-session=sealed; slack_link_csrf=nonce",
+    );
+    expect(posted.headers.get("location")).toContain("slack=error");
     expect(inserted).toHaveLength(0);
   });
 });
