@@ -83,6 +83,9 @@ interface ResourceDetailResponse {
   sshHost?: string;
   sshPrivateHost?: string;
   defaultSshUsername?: string;
+  hasRdp?: boolean;
+  rdpHost?: string | null;
+  defaultRdpUsername?: string | null;
   containerId?: string;
   databaseName?: string;
   storageBucketName?: string;
@@ -319,10 +322,16 @@ export function ResourcePanel({
         sshHost={data.sshHost}
         sshPrivateHost={data.sshPrivateHost}
         defaultSshUsername={data.defaultSshUsername}
+        rdpHost={data.rdpHost ?? undefined}
+        defaultRdpUsername={data.defaultRdpUsername ?? undefined}
         containerId={data.containerId}
         databaseName={data.databaseName}
         storageBucketName={data.storageBucketName}
-        initialView={currentView === "ssh" || currentView === "sftp" ? currentView : undefined}
+        initialView={
+          currentView === "ssh" || currentView === "sftp" || currentView === "rdp"
+            ? currentView
+            : undefined
+        }
         agentSessionId={agentSessionId}
         initialSshKeyId={sshKeyId}
         initialSshKeyName={sshKeyName}

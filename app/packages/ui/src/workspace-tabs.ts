@@ -111,6 +111,22 @@ export function resourceSftpTabTarget(
   };
 }
 
+export function resourceRdpTabTarget(
+  accountId: string,
+  resourceId: string,
+  pluginId?: string,
+  resourceTypeId?: string,
+): WorkspaceTabTarget {
+  return {
+    kind: "resource",
+    accountId,
+    resourceId: normalizeResourceId(resourceId),
+    view: "rdp",
+    ...(pluginId ? { pluginId } : {}),
+    ...(resourceTypeId ? { resourceTypeId } : {}),
+  };
+}
+
 /**
  * Navigate to a workspace target, updating the store and routing.
  * Platform-specific `getNavigateArgs` must be curried in by each platform.

@@ -13,6 +13,7 @@ import { setColorEnabled, printErr, println, c } from "./output";
 import { cmdLogin, cmdLogout, cmdWhoami } from "./commands/auth";
 import { cmdOrgs, cmdAccounts, cmdResources, cmdResource } from "./commands/listing";
 import { cmdMetrics } from "./commands/metrics";
+import { cmdRdp } from "./commands/rdp";
 import { cmdCosts, cmdCostAnomalies } from "./commands/costs";
 import { cmdTags, cmdShowback } from "./commands/tags";
 import { cmdOrphans } from "./commands/orphans";
@@ -42,6 +43,7 @@ COMMANDS
   accounts            list accounts (local + every org by default)
   resources           list an account's resources   --account <id|name>
   resource <id>       show one resource's fields & outputs
+  rdp <id>            open a Remote Desktop session to a Windows VM   [--json prints the endpoint]
   metrics <id>        metric charts for a resource   [--last 6h] [--series cpu] [--local]
   costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource]
   costs --anomalies   days a provider or service spiked past its own baseline   [--days 30]
@@ -225,6 +227,9 @@ export async function runCli(): Promise<void> {
         break;
       case "resource":
         await cmdResource(ctx, rest[0] ?? "");
+        break;
+      case "rdp":
+        await cmdRdp(ctx, rest[0] ?? "");
         break;
       case "metrics":
         await cmdMetrics(ctx, rest[0] ?? "", parsed.range);

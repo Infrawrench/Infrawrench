@@ -57,6 +57,15 @@ infrawrench resources -a prod --type gce-instance   # filter by resource type
 infrawrench resource <resource-id>                  # fields + outputs of one resource
 ```
 
+## Remote Desktop
+
+```
+infrawrench rdp <resource-id>            # open a Windows VM's desktop in the app
+infrawrench rdp <resource-id> --json     # print the resolved host/username, open nothing
+```
+
+`rdp` resolves the machine's RDP address, checks it is a running Windows VM, and hands it off to the desktop app, which opens the [Remote Desktop](./remote-desktop.md) session (canvas, clipboard, and two-way file transfer). With `--json` it just prints the endpoint, so you can script against it.
+
 Account references accept an id, an exact name, or a unique name prefix. When the same name exists both locally and in an org, disambiguate with `--local` or `--org`.
 
 Local accounts are listed live from the provider, exactly as the desktop sidebar does — the CLI holds no cached copy of your infrastructure, so what it prints is what the provider says right now. That also means a listing is only as fast as the provider's API, and a resource type the credentials can't reach is reported on stderr rather than quietly dropped:

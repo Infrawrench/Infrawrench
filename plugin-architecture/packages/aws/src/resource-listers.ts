@@ -218,6 +218,8 @@ export async function listEC2Instances(
           ),
           state,
           imageId: String(inst["imageId"] ?? ""),
+          // Only present for Windows instances ("windows"); Linux/UNIX omit it.
+          platform: String(inst["platform"] ?? ""),
           vpcId: String(inst["vpcId"] ?? ""),
           subnetId: String(inst["subnetId"] ?? ""),
           securityGroupIds: sgIds.join(", "),

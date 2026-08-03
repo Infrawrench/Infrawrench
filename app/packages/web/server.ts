@@ -14,6 +14,7 @@ import { handleK9sSession } from "./src/services/k9s-proxy";
 import { handleK8sPfSession } from "./src/services/k8s-pf-proxy";
 import { handleWorkflowSession } from "./src/services/workflow-ws";
 import { handleDeploymentSession } from "./src/services/deployment-ws";
+import { handleRdpSession } from "./src/services/rdp-proxy";
 import { resolveKubeconfig } from "./src/services/k8s-kubeconfig-resolver";
 import { authenticateApiRequest, requireScope } from "./src/auth/api-auth";
 import { validateWsToken } from "./src/services/ws-tokens";
@@ -125,6 +126,30 @@ async function start() {
   // redraws, which compress extremely well; browsers and Electron negotiate
   // the extension automatically and plain clients fall back to uncompressed.
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: true });
+  // RDP frames are a raw binary TLS byte stream (RDCleanPath), not the JSON the
+  // /api/ws multiplexer speaks, so it gets its own socket. No deflate — the
+  // stream is already effectively incompressible.
+  const rdpWss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
+
+  // Same auth the /api/ws upgrade uses: short-lived ws-token (web app, already
+  // gated on resources:execute) or an API key that must carry resources:execute.
+  async function resolveWsAuth(
+    token: string,
+  ): Promise<{ organizationId: string; userId: string } | null> {
+    const sessionAuth = await validateWsToken(token);
+    if (sessionAuth) return sessionAuth;
+    const fakeRequest = new Request("http://localhost", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const keyAuth = await authenticateApiRequest(fakeRequest);
+    if (!keyAuth) return null;
+    try {
+      requireScope(keyAuth, "resources:execute");
+      return keyAuth;
+    } catch {
+      return null;
+    }
+  }
 
   server.on("upgrade", async (request, socket, head) => {
     const url = parse(request.url ?? "", true);
@@ -140,11 +165,6 @@ async function start() {
       return;
     }
 
-    if (url.pathname !== "/api/ws") {
-      socket.destroy();
-      return;
-    }
-
     const token = url.query["token"] as string | undefined;
     if (!token) {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
@@ -152,30 +172,32 @@ async function start() {
       return;
     }
 
-    // Try short-lived session token first (from web app). Those are minted by
-    // POST /ws-token, which already gates on `resources:execute`.
-    let auth = await validateWsToken(token);
-    if (!auth) {
-      // Fall back to API key auth (from desktop sync client). Unlike the
-      // ws-token path there is no prior permission check, so enforce the same
-      // `resources:execute` scope here — every channel this socket can open
-      // (SSH, SQL, k8s exec, port-forward, workflow runs) reaches customer
-      // infrastructure, and a read-scoped key must not get there.
-      const fakeRequest = new Request("http://localhost", {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const keyAuth = await authenticateApiRequest(fakeRequest);
-      if (keyAuth) {
-        try {
-          requireScope(keyAuth, "resources:execute");
-          auth = keyAuth;
-        } catch {
-          socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
-          socket.destroy();
-          return;
-        }
+    if (url.pathname === "/api/rdp") {
+      const auth = await resolveWsAuth(token);
+      if (!auth) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
       }
+      const accountId = url.query["account"] as string | undefined;
+      const resourceId = url.query["resource"] as string | undefined;
+      if (!accountId || !resourceId) {
+        socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      rdpWss.handleUpgrade(request, socket, head, (ws) => {
+        void handleRdpSession(ws, auth.organizationId, accountId, resourceId);
+      });
+      return;
     }
+
+    if (url.pathname !== "/api/ws") {
+      socket.destroy();
+      return;
+    }
+
+    const auth = await resolveWsAuth(token);
     if (!auth) {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
       socket.destroy();

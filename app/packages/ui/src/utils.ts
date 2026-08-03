@@ -388,5 +388,6 @@ export function buildChildResourceGroups(
 export function resourceTabTitle(displayName: string, view?: string): string {
   if (view === "ssh") return `SSH: ${displayName}`;
   if (view === "sftp") return `SFTP: ${displayName}`;
+  if (view === "rdp") return `RDP: ${displayName}`;
   return displayName;
 }

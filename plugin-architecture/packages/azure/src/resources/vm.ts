@@ -109,6 +109,15 @@ export const VMResourceType = rt({
     runningWhen: { fieldKey: "powerState", value: "VM running" },
     usernameFieldKey: "sshUsername",
   },
+  // The lister stores osType from the VM's storageProfile ("Windows"/"Linux"),
+  // so only Windows VMs grow the RDP button. The create flow already opens
+  // TCP/3389 in the auto-created NSG for Windows images.
+  rdpEndpoint: {
+    hostOutputKey: "publicIp",
+    privateHostOutputKey: "privateIp",
+    runningWhen: { fieldKey: "powerState", value: "VM running" },
+    windowsWhen: { fieldKey: "osType", value: "Windows" },
+  },
   supportsCreate: true,
   // Edit = change VM size only (Azure VM names are immutable).
   supportsUpdate: true,

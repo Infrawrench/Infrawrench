@@ -14,7 +14,7 @@ export type WorkspaceTabTarget =
       kind: "resource";
       accountId: string;
       resourceId: string;
-      view?: "details" | "ssh" | "sftp";
+      view?: "details" | "ssh" | "sftp" | "rdp";
       pluginId?: string | undefined;
       resourceTypeId?: string | undefined;
       parentResourceId?: string | undefined;
@@ -68,6 +68,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       }
       if (target.view === "sftp")
         return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}:sftp`;
+      if (target.view === "rdp")
+        return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}:rdp`;
       return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}`;
   }
 }
@@ -95,6 +97,7 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
     case "resource":
       if (target.view === "ssh") return "SSH";
       if (target.view === "sftp") return "SFTP";
+      if (target.view === "rdp") return "RDP";
       return "Resource";
   }
 }
@@ -125,7 +128,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
         normalizeResourceId(a.resourceId) ===
           normalizeResourceId((b as { resourceId: string }).resourceId) &&
         (a.view ?? "details") ===
-          ((b as { view?: "details" | "ssh" | "sftp" }).view ?? "details") &&
+          ((b as { view?: "details" | "ssh" | "sftp" | "rdp" }).view ?? "details") &&
         a.agentSessionId === (b as { agentSessionId?: string }).agentSessionId &&
         a.sshKeyId === (b as { sshKeyId?: string }).sshKeyId &&
         a.sshKeyName === (b as { sshKeyName?: string }).sshKeyName

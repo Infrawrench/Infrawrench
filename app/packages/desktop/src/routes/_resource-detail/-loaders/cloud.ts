@@ -107,6 +107,8 @@ export async function loadCloudResource(orgId: string, params: LoaderParams): Pr
     hasDockerActions: boolean;
     sshHost: string | null;
     defaultSshUsername: string | null;
+    rdpHost?: string | null;
+    defaultRdpUsername?: string | null;
     supportsMetrics: boolean;
     childTypes: Array<{
       id: string;
@@ -183,6 +185,8 @@ export async function loadCloudResource(orgId: string, params: LoaderParams): Pr
   setters.setCredentialFormats(detail.credentialFormats ?? []);
   setters.setSshHost(detail.sshHost);
   setters.setSshDefaultUsername(detail.defaultSshUsername);
+  setters.setRdpHost(detail.rdpHost ?? null);
+  setters.setRdpDefaultUsername(detail.defaultRdpUsername ?? null);
   setters.setPgConnected(detail.hasSqlEditor);
   setters.setIsKvPlugin(detail.hasKvConsole);
   setters.setKvDriverName(detail.kvDriverName ?? null);

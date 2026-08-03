@@ -51,10 +51,12 @@ import {
   navigateToWorkspaceTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
+  resourceRdpTabTarget,
   resourceTabTarget,
 } from "../lib/workspace-tabs";
 import { SftpViewPane } from "./_resource-detail/-SftpViewPane";
 import { SshViewPane } from "./_resource-detail/-SshViewPane";
+import { RdpViewPane } from "./_resource-detail/-RdpViewPane";
 import { ResourceActionBar } from "./_resource-detail/-ResourceActionBar";
 import { ResourceFooterBar } from "./_resource-detail/-ResourceFooterBar";
 import { SshConnectionBar } from "./_resource-detail/-SshConnectionBar";
@@ -138,6 +140,7 @@ export function ResourcePanel({
   const currentView = locationHash.replace(/^#/, "");
   const isSshView = currentView === "ssh";
   const isSftpView = currentView === "sftp";
+  const isRdpView = currentView === "rdp";
 
   const [account, setAccount] = useState<AccountRow | null>(null);
   const [resource, setResource] = useState<ResourceInstance | null>(null);
@@ -163,6 +166,8 @@ export function ResourcePanel({
   const [sshConfig, setSshConfig] = useState<SshConfig | null>(null);
   const [sshHost, setSshHost] = useState<string | null>(null);
   const [sshDefaultUsername, setSshDefaultUsername] = useState<string | null>(null);
+  const [rdpHost, setRdpHost] = useState<string | null>(null);
+  const [rdpDefaultUsername, setRdpDefaultUsername] = useState<string | null>(null);
   const [quickSshConnection, setQuickSshConnection] = useState<QuickSshConnection | null>(null);
   const [agentLaunchDefaults, setAgentLaunchDefaults] = useState<AgentLaunchDefaults>({});
   const [resolvedAgentLaunchLookupKey, setResolvedAgentLaunchLookupKey] = useState<string | null>(
@@ -261,6 +266,8 @@ export function ResourcePanel({
       setSshConfig,
       setSshHost,
       setSshDefaultUsername,
+      setRdpHost,
+      setRdpDefaultUsername,
       setCanDelete,
       setCanEdit,
       setEditableFields,
@@ -1020,6 +1027,7 @@ export function ResourcePanel({
   const hasStorageBrowser = !!schema?.storageBrowser;
   const hasTerminal = !!sshConfig;
   const hasSshPanel = hasTerminal || !!sshHost;
+  const hasRdpPanel = !!rdpHost;
   const hasSftpBrowser = !!sshConfig || !!sshHost;
   const agentLaunchResolving = Boolean(
     agentLaunchLookupKey && resolvedAgentLaunchLookupKey !== agentLaunchLookupKey,
@@ -1059,6 +1067,13 @@ export function ResourcePanel({
     });
   }
 
+  function openRdpTab() {
+    void navigateToWorkspaceTarget(navigate, resourceRdpTabTarget(accountId, decodedResourceId), {
+      label: resourceTabTitle(resource?.displayName ?? "", "rdp") || "RDP",
+      mode: "pin",
+    });
+  }
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex-1 flex flex-col overflow-hidden min-h-0">
@@ -1075,15 +1090,17 @@ export function ResourcePanel({
           />
         )}
 
-        {!isSshView && !isSftpView && (
+        {!isSshView && !isSftpView && !isRdpView && (
           <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-            {(hasSshPanel || hasSftpBrowser || resource) && (
+            {(hasSshPanel || hasSftpBrowser || hasRdpPanel || resource) && (
               <ResourceActionBar
                 hasSftpBrowser={hasSftpBrowser}
                 hasSshPanel={hasSshPanel}
+                hasRdpPanel={hasRdpPanel}
                 sshHost={sshHost}
                 onOpenSftpTab={openSftpTab}
                 onOpenSshTab={openSshTab}
+                onOpenRdpTab={openRdpTab}
                 onShowTunnelModal={() => setShowTunnelModal(true)}
                 onShowDockerSetup={() => setShowDockerSetup(true)}
                 onShowDropSpotlight={() => setShowDropSpotlight(true)}
@@ -1163,6 +1180,8 @@ export function ResourcePanel({
             agentLaunchError={agentLaunchError ?? undefined}
           />
         )}
+
+        {isRdpView && <RdpViewPane rdpHost={rdpHost} rdpDefaultUsername={rdpDefaultUsername} />}
       </div>
 
       {/* SSH bottom bar — connection info + disconnect */}
@@ -1175,18 +1194,21 @@ export function ResourcePanel({
         />
       )}
 
-      {/* Non-SSH bottom panels — hidden when in SSH view */}
-      {!isSshView && !isSftpView && (canDelete || canEdit || credentialFormats.length > 0) && (
-        <ResourceFooterBar
-          canDelete={canDelete}
-          canEdit={canEdit}
-          hasCredentialFormats={credentialFormats.length > 0}
-          resourceTypeLabel={resourceTypeLabel}
-          onShowExportCredential={() => setShowExportCredential(true)}
-          onConfirmDelete={() => setConfirmDelete(true)}
-          onEdit={() => setShowEditModal(true)}
-        />
-      )}
+      {/* Non-SSH bottom panels — hidden in the SSH / SFTP / RDP views */}
+      {!isSshView &&
+        !isSftpView &&
+        !isRdpView &&
+        (canDelete || canEdit || credentialFormats.length > 0) && (
+          <ResourceFooterBar
+            canDelete={canDelete}
+            canEdit={canEdit}
+            hasCredentialFormats={credentialFormats.length > 0}
+            resourceTypeLabel={resourceTypeLabel}
+            onShowExportCredential={() => setShowExportCredential(true)}
+            onConfirmDelete={() => setConfirmDelete(true)}
+            onEdit={() => setShowEditModal(true)}
+          />
+        )}
 
       <ResourceModals
         showExportCredential={showExportCredential}
@@ -1234,13 +1256,13 @@ export function ResourcePanel({
         onCloseCreateChild={() => setCreateChildTarget(null)}
       />
 
-      {!isSshView && !isSftpView && !hasSqlEditor && pgError && (
+      {!isSshView && !isSftpView && !isRdpView && !hasSqlEditor && pgError && (
         <div className="shrink-0 px-4 py-2 border-t border-border bg-surface">
           <span className="text-xs text-red-400 font-mono">SQL connection failed: {pgError}</span>
         </div>
       )}
 
-      {!isSshView && !isSftpView && (
+      {!isSshView && !isSftpView && !isRdpView && (
         <DataPanels
           activeCloudOrgId={activeCloudOrgId}
           isKvPlugin={isKvPlugin}

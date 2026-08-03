@@ -94,8 +94,8 @@ export async function cmdAccounts(ctx: CliContext): Promise<void> {
   });
 }
 
-/** Resolve the single account the resources/resource commands operate on. */
-async function resolveScopedAccount(
+/** Resolve the single account the resources/resource/rdp commands operate on. */
+export async function resolveScopedAccount(
   ctx: CliContext,
 ): Promise<{ orgId: string | null; account: AccountInfo }> {
   if (!ctx.flags.account) {

@@ -14,6 +14,12 @@ export const GceInstanceResourceType = rt({
         "Machine type name, e.g. e2-standard-2. Changing it resizes the instance (only allowed while it is stopped)",
     }),
     f("status", "Status", { required: false, editable: false }),
+    f("osFamily", "OS Family", {
+      required: false,
+      description:
+        'Derived from the boot disk\'s license URIs: "windows" or "linux". Gates the RDP button.',
+      editable: false,
+    }),
     f("networkTier", "Network Tier", { required: false, editable: false }),
     f("network", "VPC Network", {
       kind: "association",
@@ -75,6 +81,12 @@ export const GceInstanceResourceType = rt({
     privateHostOutputKey: "internalIp",
     runningWhen: { fieldKey: "status", value: "RUNNING" },
     usernameFieldKey: "sshUsername",
+  },
+  rdpEndpoint: {
+    hostOutputKey: "externalIp",
+    privateHostOutputKey: "internalIp",
+    runningWhen: { fieldKey: "status", value: "RUNNING" },
+    windowsWhen: { fieldKey: "osFamily", value: "windows" },
   },
   agentVm: {
     sshKeyFieldKey: "sshPublicKey",

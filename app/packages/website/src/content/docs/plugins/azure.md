@@ -28,6 +28,7 @@ Create a service principal (Azure Portal → Microsoft Entra ID → App registra
 
 - **Create resources in-app** — 25 resource types can be provisioned from the create form: resource groups, VMs (the form auto-creates the VNet, NIC, public IP, and an NSG if you don't pick an existing one), managed disks, VNets (with a default subnet), NSGs, public IPs, load balancers, AKS clusters, storage accounts, SQL Database (on a new or existing server), Cosmos DB, PostgreSQL and MySQL flexible servers, Redis Cache, App Service, Function Apps, container instances, container registries, Key Vaults, Service Bus and Event Hub namespaces, Log Analytics workspaces, managed identities, DNS zones, and Entra ID app registrations (which also mint the matching service principal).
 - **SSH terminal** on Linux VMs.
+- **Remote Desktop (RDP)** on Windows VMs — [Remote Desktop](../features/remote-desktop.md).
 - **SQL editor** on Azure SQL Database.
 - **File browser** on Blob Storage.
 - **Secret export to K8s** for SQL Database and Storage accounts.

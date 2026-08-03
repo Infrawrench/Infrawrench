@@ -32,7 +32,8 @@ Use least-privilege policies. For read-only browsing, the `ReadOnlyAccess` manag
 
 ## Notable flows
 
-- **SSH terminal** on EC2 instances — [SSH terminal](../features/ssh-terminal.md).
+- **SSH terminal** on Linux EC2 instances — [SSH terminal](../features/ssh-terminal.md).
+- **Remote Desktop (RDP)** on Windows EC2 instances — [Remote Desktop](../features/remote-desktop.md).
 - **SQL editor** on RDS and Aurora — [SQL editor](../features/sql-editor.md).
 - **File browser** on S3 — [File browsers](../features/file-browsers.md).
 - **Document browser** on DynamoDB tables — scan items, edit/insert/delete documents inline.

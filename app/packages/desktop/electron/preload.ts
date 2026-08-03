@@ -53,6 +53,14 @@ const INVOKE_CHANNELS = [
   "ssh_check_1password",
   "ssh_list_1password_keys",
   "ssh_host_key_decide",
+  // rdp — embedded IronRDP session relayed over IPC (see electron/rdp-host.ts)
+  "rdp_session_open",
+  "rdp_ws_send",
+  "rdp_ws_close",
+  "rdp_local_file_stat",
+  "rdp_local_file_read",
+  "rdp_save_download",
+  "consume_pending_deeplink",
   // workflow ssh
   "workflow_ssh_exec",
   "workflow_ssh_stream_start",
@@ -244,6 +252,7 @@ const EVENT_LITERALS = new Set<string>([
   "cloud_auth_error",
   "storage_download_progress",
   "ssh_host_key_prompt",
+  "open_rdp_deeplink",
   "update_available_prompt",
   "update_error",
   // main asks the renderer to serve a workflow host capability mid-run
@@ -255,6 +264,8 @@ const EVENT_LITERALS = new Set<string>([
 const EVENT_PREFIXES: readonly string[] = [
   "ssh_shell_data_",
   "ssh_shell_exit_",
+  "rdp_ws_data_",
+  "rdp_ws_closed_",
   "k8s_exec_data_",
   "k8s_exec_exit_",
   "k9s_data_",

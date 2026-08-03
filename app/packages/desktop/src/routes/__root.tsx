@@ -60,6 +60,7 @@ import {
 import {
   dashboardTabTarget,
   resourceTabTarget,
+  resourceRdpTabTarget,
   workflowsTabTarget,
   getWorkspaceNavigateArgs,
   navigateToWorkspaceTarget,
@@ -336,6 +337,32 @@ function RootLayout() {
         if (useUIStore.getState().activeCloudOrgId) setActiveOrgId(null);
       });
   }, []);
+
+  // RDP deep links from the CLI (`infrawrench rdp <resource>`): open the RDP
+  // tab for the handed-off resource. Consume any link buffered before mount,
+  // and listen for links that arrive while the app is already running. Dedupe
+  // by id so the two paths never double-open.
+  useEffect(() => {
+    const handled = new Set<string>();
+    const open = (link: { id: string; accountId: string; resourceId: string } | null) => {
+      if (!link || handled.has(link.id)) return;
+      handled.add(link.id);
+      void navigateToWorkspaceTarget(
+        navigate,
+        resourceRdpTabTarget(link.accountId, link.resourceId),
+        { mode: "pin" },
+      );
+    };
+    void invoke<{ id: string; accountId: string; resourceId: string } | null>(
+      "consume_pending_deeplink",
+    )
+      .then(open)
+      .catch(() => {});
+    window.electronAPI.on("open_rdp_deeplink", (payload: unknown) =>
+      open(payload as { id: string; accountId: string; resourceId: string }),
+    );
+    return () => window.electronAPI.offAll("open_rdp_deeplink");
+  }, [navigate]);
 
   const swipeBack = useCallback(() => router.history.back(), [router]);
   const swipeForward = useCallback(() => router.history.forward(), [router]);

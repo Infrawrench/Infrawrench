@@ -18,6 +18,7 @@ import { type SqlValue } from "sql.js";
 import { getSqlite, persist, normalizeSql, wireDbGetter } from "./db";
 import { closeAllTunnels } from "./ssh-tunnel";
 import { killAllSshShells } from "./ssh-shell";
+import { closeRdpProxy } from "./rdp-host";
 import { killAllK8sExecs } from "./k8s-exec";
 import { killAllK9sSessions } from "./k9s";
 import { validateSql, validateParams, classifyMutation } from "./db-guard";
@@ -58,6 +59,7 @@ process.on("uncaughtException", (err) => {
 import "./plugin-host";
 import "./ssh-host";
 import "./ssh-host-key-prompt";
+import "./rdp-host";
 import "./k8s-host";
 import "./cloud-auth";
 import "./cloud-data";
@@ -351,6 +353,7 @@ app.on("before-quit", (event) => {
   quitting = true;
   closeAllTunnels();
   killAllSshShells();
+  closeRdpProxy();
   killAllK8sExecs();
   killAllK9sSessions();
   teardownAllPfCloudSessions();

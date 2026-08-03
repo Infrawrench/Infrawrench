@@ -512,6 +512,47 @@ export interface ResourceTypeDefinition {
     usernameFieldKey?: string;
   };
   /**
+   * When present, the host offers a Remote Desktop (RDP) session for instances
+   * of this type — the embedded IronRDP client on desktop and the
+   * `infrawrench rdp` CLI command. Parallel to `sshEndpoint`: `hostOutputKey`
+   * names the output whose resolved value is the RDP server address.
+   */
+  rdpEndpoint?: {
+    hostOutputKey: string;
+    /**
+     * Optional output key resolving to a private/internal address (e.g.
+     * "privateIp") offered as an alternative destination for users on a
+     * VPN/peered network.
+     */
+    privateHostOutputKey?: string;
+    /**
+     * Optional guard: RDP is only offered when the resource field named by
+     * `fieldKey` equals `value` (case-insensitive) — hides the button while
+     * the VM is stopped or still provisioning.
+     */
+    runningWhen?: { fieldKey: string; value: string };
+    /**
+     * Optional guard: RDP is only offered when the named field equals `value`
+     * (case-insensitive). Used to gate on the OS — e.g.
+     * `{ fieldKey: "osType", value: "windows" }` so Linux VMs don't grow an
+     * RDP button. Types without any OS signal can omit this, at the cost of
+     * offering RDP on every instance.
+     */
+    windowsWhen?: { fieldKey: string; value: string };
+    /**
+     * Static default RDP username for this resource type (e.g. "Administrator"
+     * for EC2 Windows AMIs). The user can always override it in the connect
+     * form — RDP passwords are never stored, so the form always shows.
+     */
+    defaultUsername?: string;
+    /**
+     * Field key storing the per-instance RDP username. Resolved from the
+     * resource's `fields` map; when present and non-empty, takes precedence
+     * over `defaultUsername`.
+     */
+    usernameFieldKey?: string;
+  };
+  /**
    * Declares that this VM resource type can host an Infrawrench agent session.
    * Hosts use this metadata to list eligible accounts and to hide/provider-fill
    * fields such as SSH keys while keeping provider-specific create behavior in

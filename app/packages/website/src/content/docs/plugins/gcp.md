@@ -35,7 +35,8 @@ Follow the link and click **Enable** for each service you want listed, or leave 
 
 ## Notable flows
 
-- **SSH terminal** on Compute Engine VMs — infrawrench injects your chosen SSH key via the instance metadata API.
+- **SSH terminal** on Linux Compute Engine VMs — infrawrench injects your chosen SSH key via the instance metadata API.
+- **Remote Desktop (RDP)** on Windows Compute Engine VMs — [Remote Desktop](../features/remote-desktop.md).
 - **SQL editor** on Cloud SQL (Postgres, MySQL, SQL Server) — direct connection to the instance's public IP using the embedded root password (see below).
 - **File browser** on GCS buckets.
 - **Secret export to K8s** for Cloud SQL and GCS (with service account key export as a secret).

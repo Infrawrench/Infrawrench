@@ -12,6 +12,7 @@ import {
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
+  resourceRdpTabTarget,
   type WorkspaceTabTarget,
   type RouteNavigator,
 } from "@infrawrench/ui";
@@ -24,6 +25,7 @@ export {
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
+  resourceRdpTabTarget,
 };
 
 function getCurrentOrgId(): string {
@@ -103,7 +105,14 @@ export function getWorkspaceNavigateArgs(
           };
     case "resource": {
       const rid = normalizeResourceId(target.resourceId);
-      const hash = target.view === "ssh" ? "ssh" : target.view === "sftp" ? "sftp" : undefined;
+      const hash =
+        target.view === "ssh"
+          ? "ssh"
+          : target.view === "sftp"
+            ? "sftp"
+            : target.view === "rdp"
+              ? "rdp"
+              : undefined;
       if (target.pluginId && target.resourceTypeId) {
         const search: Record<string, string> = { accountId: target.accountId };
         if (target.parentResourceId) search["parent"] = target.parentResourceId;
@@ -228,6 +237,8 @@ export function syncWorkspaceRouteFromPath(
       });
     if (normalizedHash === "sftp")
       return resourceSftpTabTarget(accountId, resourceId, pluginId, resourceTypeId);
+    if (normalizedHash === "rdp")
+      return resourceRdpTabTarget(accountId, resourceId, pluginId, resourceTypeId);
     return resourceTabTarget(accountId, resourceId, pluginId, resourceTypeId);
   }
   return null;

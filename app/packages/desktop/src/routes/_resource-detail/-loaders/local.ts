@@ -433,6 +433,38 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
       setters.setSshDefaultUsername(null);
     }
 
+    if (resourceTypeDef?.rdpEndpoint) {
+      const { hostOutputKey, runningWhen, windowsWhen, usernameFieldKey, defaultUsername } =
+        resourceTypeDef.rdpEndpoint;
+      const gatePasses = (guard?: { fieldKey: string; value: string }): boolean => {
+        if (!guard) return true;
+        const fieldVal = String(enrichedResource.fields[guard.fieldKey] ?? "");
+        return fieldVal.toLowerCase() === guard.value.toLowerCase();
+      };
+      if (!gatePasses(runningWhen) || !gatePasses(windowsWhen)) {
+        if (!isCancelled()) setters.setRdpHost(null);
+      } else {
+        const host = String(
+          enrichedResource.resolvedOutputs[hostOutputKey] ??
+            enrichedResource.fields[hostOutputKey] ??
+            "",
+        );
+        if (!isCancelled()) setters.setRdpHost(host || null);
+      }
+      if (!isCancelled()) {
+        let resolvedUsername: string | null = null;
+        if (usernameFieldKey) {
+          const val = String(enrichedResource.fields[usernameFieldKey] ?? "");
+          if (val) resolvedUsername = val;
+        }
+        if (!resolvedUsername && defaultUsername) resolvedUsername = defaultUsername;
+        setters.setRdpDefaultUsername(resolvedUsername);
+      }
+    } else if (!isCancelled()) {
+      setters.setRdpHost(null);
+      setters.setRdpDefaultUsername(null);
+    }
+
     const childTypes = plugin.resourceTypes.filter(
       (t) => t.parentTypeId === enrichedResource.resourceTypeId,
     );

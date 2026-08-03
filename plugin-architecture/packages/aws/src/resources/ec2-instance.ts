@@ -21,6 +21,12 @@ export const EC2InstanceResourceType = rt({
       enumValues: ["pending", "running", "shutting-down", "terminated", "stopping", "stopped"],
     }),
     f("imageId", "AMI ID", { required: false, editable: false }),
+    f("platform", "Platform", {
+      required: false,
+      description:
+        'Set to "windows" for Windows AMIs (DescribeInstances platform attribute); empty for Linux/UNIX',
+      editable: false,
+    }),
     f("vpcId", "VPC ID", { required: false, editable: false }),
     f("subnetId", "Subnet ID", { required: false, editable: false }),
     f("securityGroupIds", "Security Groups", {
@@ -74,6 +80,16 @@ export const EC2InstanceResourceType = rt({
     privateHostOutputKey: "privateIp",
     runningWhen: { fieldKey: "state", value: "running" },
     usernameFieldKey: "sshUsername",
+  },
+  // Windows instances report platform="windows" in DescribeInstances; Linux
+  // leaves it empty, so only Windows instances grow the RDP button. EC2
+  // Windows AMIs ship with the local "Administrator" account.
+  rdpEndpoint: {
+    hostOutputKey: "publicIp",
+    privateHostOutputKey: "privateIp",
+    runningWhen: { fieldKey: "state", value: "running" },
+    windowsWhen: { fieldKey: "platform", value: "windows" },
+    defaultUsername: "Administrator",
   },
   agentVm: {
     sshKeyFieldKey: "sshKey",

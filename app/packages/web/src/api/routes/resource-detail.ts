@@ -463,9 +463,53 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     }
   }
 
+  // Resolve RDP host from the resource type's rdpEndpoint declaration (like
+  // desktop). Gated on runningWhen and, when declared, windowsWhen so Linux VMs
+  // don't offer RDP.
+  let rdpHost: string | null = null;
+  let rdpPrivateHost: string | null = null;
+  let defaultRdpUsername: string | null = null;
+  if (resourceTypeDef?.rdpEndpoint) {
+    const {
+      hostOutputKey,
+      privateHostOutputKey,
+      runningWhen,
+      windowsWhen,
+      usernameFieldKey,
+      defaultUsername,
+    } = resourceTypeDef.rdpEndpoint;
+    const gatePasses = (guard?: { fieldKey: string; value: string }): boolean => {
+      if (!guard) return true;
+      const fieldVal = String(enrichedInstance.fields?.[guard.fieldKey] ?? "");
+      return fieldVal.toLowerCase() === guard.value.toLowerCase();
+    };
+    if (gatePasses(runningWhen) && gatePasses(windowsWhen)) {
+      const host = String(
+        enrichedInstance.resolvedOutputs?.[hostOutputKey] ??
+          enrichedInstance.fields?.[hostOutputKey] ??
+          "",
+      );
+      if (host) rdpHost = host;
+      if (privateHostOutputKey) {
+        const priv = String(
+          enrichedInstance.resolvedOutputs?.[privateHostOutputKey] ??
+            enrichedInstance.fields?.[privateHostOutputKey] ??
+            "",
+        );
+        if (priv) rdpPrivateHost = priv;
+      }
+      if (usernameFieldKey) {
+        const val = String(enrichedInstance.fields?.[usernameFieldKey] ?? "");
+        if (val) defaultRdpUsername = val;
+      }
+      if (!defaultRdpUsername && defaultUsername) defaultRdpUsername = defaultUsername;
+    }
+  }
+
   const isRunning = finalSchema.status?.status === "healthy";
   const hasSshTerminal = isRunning && (!!sshConfig || !!sshHost);
   const hasSftpBrowser = isRunning && (!!sshConfig || !!sshHost);
+  const hasRdp = isRunning && !!rdpHost;
   const containerId = String(
     instance.resolvedOutputs?.["containerId"] ?? instance.externalId ?? "",
   );
@@ -505,6 +549,10 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     sshHost,
     sshPrivateHost,
     defaultSshUsername,
+    hasRdp,
+    rdpHost,
+    rdpPrivateHost,
+    defaultRdpUsername,
     containerId,
     databaseName,
     storageBucketName,

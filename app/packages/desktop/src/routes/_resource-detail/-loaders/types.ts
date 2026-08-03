@@ -58,6 +58,8 @@ export interface LoaderSetters {
   setSshConfig: (c: SshConfig | null) => void;
   setSshHost: (s: string | null) => void;
   setSshDefaultUsername: (s: string | null) => void;
+  setRdpHost: (s: string | null) => void;
+  setRdpDefaultUsername: (s: string | null) => void;
   setCanDelete: (b: boolean) => void;
   setCanEdit: (b: boolean) => void;
   setEditableFields: (f: FieldDefinition[]) => void;

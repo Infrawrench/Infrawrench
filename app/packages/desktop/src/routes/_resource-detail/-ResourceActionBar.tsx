@@ -1,9 +1,11 @@
 interface ResourceActionBarProps {
   hasSftpBrowser: boolean;
   hasSshPanel: boolean;
+  hasRdpPanel: boolean;
   sshHost: string | null;
   onOpenSftpTab: () => void;
   onOpenSshTab: () => void;
+  onOpenRdpTab: () => void;
   onShowTunnelModal: () => void;
   onShowDockerSetup: () => void;
   onShowDropSpotlight: () => void;
@@ -12,15 +14,26 @@ interface ResourceActionBarProps {
 export function ResourceActionBar({
   hasSftpBrowser,
   hasSshPanel,
+  hasRdpPanel,
   sshHost,
   onOpenSftpTab,
   onOpenSshTab,
+  onOpenRdpTab,
   onShowTunnelModal,
   onShowDockerSetup,
   onShowDropSpotlight,
 }: ResourceActionBarProps) {
   return (
     <div className="shrink-0 flex justify-end gap-2 px-4 py-2 border-b border-border bg-surface">
+      {hasRdpPanel && (
+        <button
+          type="button"
+          onClick={onOpenRdpTab}
+          className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
+        >
+          Open RDP tab
+        </button>
+      )}
       {hasSftpBrowser && (
         <button
           type="button"

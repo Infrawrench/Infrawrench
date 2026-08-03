@@ -59,6 +59,7 @@ export default defineConfig({
           "@infrawrench/plugin-together",
           "@infrawrench/plugin-xai",
           "@infrawrench/workflow-runtime",
+          "@infrawrench/rdp-core",
           "@infrawrench/plugin-base",
           "@infrawrench/plugin-aws",
           "@infrawrench/plugin-azure",

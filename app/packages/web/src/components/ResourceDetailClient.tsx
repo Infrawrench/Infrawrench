@@ -61,6 +61,7 @@ import {
   navigateToWorkspaceTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
+  resourceRdpTabTarget,
   resourceTabTarget,
 } from "@/lib/workspace-tabs";
 import { CreateResourceModal } from "./CreateResourceModal";
@@ -75,6 +76,8 @@ import { createWebSchedulesClient } from "@/lib/schedules-client";
 import { SftpBrowser } from "@/components/SftpBrowser";
 import { WebTerminal } from "@/components/WebTerminal";
 import { SshQuickConnectPanel } from "@/components/SshQuickConnectPanel";
+import { WebRdpViewer } from "@/components/WebRdpViewer";
+import { WebRdpConnectPanel, type RdpConnection } from "@/components/WebRdpConnectPanel";
 import { SpotlightSearch } from "./SpotlightSearch";
 import { ConnectResourceModal } from "./ConnectResourceModal";
 import { SshTunnelModal } from "./SshTunnelModal";
@@ -147,10 +150,12 @@ interface Props {
   sshHost?: string | undefined;
   sshPrivateHost?: string | undefined;
   defaultSshUsername?: string | undefined;
+  rdpHost?: string | undefined;
+  defaultRdpUsername?: string | undefined;
   containerId?: string | undefined;
   databaseName?: string | undefined;
   storageBucketName?: string | undefined;
-  initialView?: "ssh" | "sftp" | undefined;
+  initialView?: "ssh" | "sftp" | "rdp" | undefined;
   agentSessionId?: string | undefined;
   initialSshKeyId?: string | undefined;
   initialSshKeyName?: string | undefined;
@@ -194,6 +199,8 @@ export function ResourceDetailClient({
   sshHost,
   sshPrivateHost,
   defaultSshUsername,
+  rdpHost,
+  defaultRdpUsername,
   containerId,
   databaseName,
   storageBucketName,
@@ -293,6 +300,7 @@ export function ResourceDetailClient({
     sshKeyId: string;
     username: string;
   } | null>(null);
+  const [rdpConnect, setRdpConnect] = useState<RdpConnection | null>(null);
   const [showDropSpotlight, setShowDropSpotlight] = useState(false);
   const [dropSource, setDropSource] = useState<SpotlightResult | null>(null);
   const [showSshTunnel, setShowSshTunnel] = useState(false);
@@ -313,7 +321,9 @@ export function ResourceDetailClient({
 
   const isSshView = initialView === "ssh";
   const isSftpView = initialView === "sftp";
+  const isRdpView = initialView === "rdp";
   const hasSshPanel = hasSshTerminal || !!sshHost;
+  const hasRdpPanel = !!rdpHost;
 
   // Rehydrate launch metadata ONLY for agent tabs (agentSessionId present)
   // that are missing pieces of it (deep link or restored tab — the URL never
@@ -979,6 +989,14 @@ export function ResourceDetailClient({
     );
   }
 
+  function openRdpTab() {
+    void navigateToWorkspaceTarget(
+      navigate,
+      resourceRdpTabTarget(accountId, resourceId, pluginId, resourceTypeId),
+      { label: `RDP: ${resourceDisplayName}`, mode: "pin" },
+    );
+  }
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* SFTP view — full screen (hidden while provisioning) */}
@@ -1120,11 +1138,51 @@ export function ResourceDetailClient({
         </div>
       )}
 
-      {/* Detail view — shown when not in SSH or SFTP view */}
-      {!isSshView && !isSftpView && (
+      {/* RDP view — full screen */}
+      {isRdpView && (
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+          {!rdpHost ? (
+            <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center">
+              <div className="animate-pulse text-sm text-on-surface-muted">
+                Waiting for an RDP address…
+              </div>
+              <div className="text-xs text-on-surface-faint">
+                The machine may still be starting up.
+              </div>
+            </div>
+          ) : !rdpConnect ? (
+            <WebRdpConnectPanel
+              host={rdpHost}
+              defaultUsername={defaultRdpUsername ?? null}
+              onConnect={setRdpConnect}
+            />
+          ) : (
+            <WebRdpViewer
+              orgId={orgId}
+              accountId={accountId}
+              resourceId={resourceId}
+              username={rdpConnect.username}
+              password={rdpConnect.password}
+              {...(rdpConnect.domain ? { domain: rdpConnect.domain } : {})}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Detail view — shown when not in SSH, SFTP, or RDP view */}
+      {!isSshView && !isSftpView && !isRdpView && (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-          {/* Top buttons for SSH/SFTP/Connect */}
+          {/* Top buttons for SSH/SFTP/RDP/Connect */}
           <div className="shrink-0 flex justify-end gap-2 px-4 py-2 border-b border-border bg-surface">
+            {hasRdpPanel && (
+              <button
+                type="button"
+                onClick={openRdpTab}
+                className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
+              >
+                Open RDP tab
+              </button>
+            )}
             {hasSftpBrowser && (
               <button
                 type="button"
@@ -1353,7 +1411,7 @@ export function ResourceDetailClient({
       )}
 
       {/* Bottom panels — KV, Docker, Storage (inline like desktop, only when not in SSH/SFTP) */}
-      {!isSshView && !isSftpView && hasKvConsole && !isMongoDb && (
+      {!isSshView && !isSftpView && !isRdpView && hasKvConsole && !isMongoDb && (
         <KvConsole
           accountId={accountId}
           driverName={kvDriverName ?? "redis"}
@@ -1362,11 +1420,11 @@ export function ResourceDetailClient({
         />
       )}
 
-      {!isSshView && !isSftpView && hasKvConsole && isMongoDb && (
+      {!isSshView && !isSftpView && !isRdpView && hasKvConsole && isMongoDb && (
         <MongoDocumentBrowser accountId={accountId} databaseName={databaseName ?? "test"} />
       )}
 
-      {!isSshView && !isSftpView && hasDockerActions && containerId && (
+      {!isSshView && !isSftpView && !isRdpView && hasDockerActions && containerId && (
         <DockerActionsPanel accountId={accountId} containerId={containerId} />
       )}
 

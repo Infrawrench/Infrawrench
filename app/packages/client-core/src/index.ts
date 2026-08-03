@@ -342,6 +342,13 @@ export * from "./rightsizing";
 export * from "./chat/types";
 export { createBearerChatClient } from "./chat/bearer-client";
 export * from "./ws-protocol";
+export { scancodeFor } from "./rdp-scancodes";
+export {
+  RdpFileTransferManager,
+  type RdpUploadFile,
+  type RdpFileSink,
+  type RdpFileTransferCallbacks,
+} from "./rdp-file-transfer";
 export {
   parseCronExpression,
   validateCronExpression,

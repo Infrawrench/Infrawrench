@@ -33,10 +33,48 @@ function focusMainWindow(): void {
   win.focus();
 }
 
+// A deep link the CLI (`infrawrench rdp`) emits to hand a resource off to the
+// GUI, which owns the renderer + IPC the embedded RDP client needs. Buffered so
+// a cold-started renderer can pull it on mount; also pushed as an event to an
+// already-running renderer. Each carries an id so the renderer dedupes if both
+// paths fire.
+interface RdpDeepLink {
+  id: string;
+  accountId: string;
+  resourceId: string;
+}
+let pendingRdpDeepLink: RdpDeepLink | null = null;
+
 function dispatchProtocolUrl(url: string): void {
   if (!url.startsWith(`${PROTOCOL}://`)) return;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return;
+  }
+  if (parsed.hostname === "rdp") {
+    const accountId = parsed.searchParams.get("account") ?? "";
+    const resourceId = parsed.searchParams.get("resource") ?? "";
+    if (!accountId || !resourceId) return;
+    pendingRdpDeepLink = { id: crypto.randomUUID(), accountId, resourceId };
+    focusMainWindow();
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.webContents.isDestroyed())
+        win.webContents.send("open_rdp_deeplink", pendingRdpDeepLink);
+    }
+    return;
+  }
   void handleOAuthCallback(url).finally(focusMainWindow);
 }
+
+// The renderer pulls any buffered deep link once it has mounted, covering the
+// cold-start case where the event fired before a listener existed.
+ipcMain.handle("consume_pending_deeplink", () => {
+  const link = pendingRdpDeepLink;
+  pendingRdpDeepLink = null;
+  return link;
+});
 
 // macOS: protocol URLs are delivered via open-url to the running instance.
 app.on("open-url", (event, url) => {
@@ -57,6 +95,13 @@ if (!app.requestSingleInstanceLock()) {
     if (url) dispatchProtocolUrl(url);
     else focusMainWindow();
   });
+
+  // Cold start: a protocol launch (e.g. `infrawrench rdp` opening the app when
+  // it wasn't running) delivers the URL as initial argv on Windows/Linux rather
+  // than through second-instance. macOS uses open-url instead, which fires on
+  // its own. Dispatch once the app is ready so a window exists to receive it.
+  const initialUrl = process.argv.find((a) => a.startsWith(`${PROTOCOL}://`));
+  if (initialUrl) void app.whenReady().then(() => dispatchProtocolUrl(initialUrl));
 }
 
 let codeVerifier: string | null = null;

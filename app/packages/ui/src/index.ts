@@ -276,6 +276,7 @@ export {
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
+  resourceRdpTabTarget,
   navigateToWorkspaceTarget,
 } from "./workspace-tabs.js";
 export type { RouteNavigator } from "./workspace-tabs.js";

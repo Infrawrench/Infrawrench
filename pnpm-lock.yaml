@@ -82,6 +82,9 @@ importers:
 
   app/packages/desktop:
     dependencies:
+      '@infrawrench/rdp-core':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/rdp-core
       '@infrawrench/workflow-runtime':
         specifier: workspace:*
         version: link:../workflow-runtime
@@ -338,6 +341,9 @@ importers:
       electron-vite:
         specifier: ^3.1.0
         version: 3.1.0(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.8.3))
+      ironrdp-wasm:
+        specifier: ^1.1.0
+        version: 1.1.0
       jsdom:
         specifier: ^29.1.1
         version: 29.1.1
@@ -902,6 +908,9 @@ importers:
       '@infrawrench/plugin-ssh':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/ssh
+      '@infrawrench/rdp-core':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/rdp-core
       '@infrawrench/server-core':
         specifier: workspace:*
         version: link:../server-core
@@ -956,6 +965,9 @@ importers:
       hono:
         specifier: ^4.12.30
         version: 4.12.30
+      ironrdp-wasm:
+        specifier: ^1.1.0
+        version: 1.1.0
       jose:
         specifier: ^6.2.2
         version: 6.2.2
@@ -2005,6 +2017,21 @@ importers:
       vitest:
         specifier: ^4.1.8
         version: 4.1.8(@types/node@24.12.2)(@vitest/coverage-v8@4.1.8)(jsdom@29.1.1)(vite@8.1.4(@types/node@24.12.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.8.3))
+
+  plugin-architecture/packages/rdp-core:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28)(oxc-resolver@11.19.1(@emnapi/core@2.0.0-alpha.3)(@emnapi/runtime@2.0.0-alpha.3))(tsx@4.23.1)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.8(@types/node@22.20.1)(@vitest/coverage-v8@4.1.8)(jsdom@29.1.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.8.3))
 
   plugin-architecture/packages/redis:
     dependencies:
@@ -9627,6 +9654,9 @@ packages:
   iron-webcrypto@1.2.1:
     resolution: {integrity: sha512-feOM6FaSr6rEABp/eDfVseKyTMDt+KGpeB35SkVn9Tyn0CqvVsY3EwI0v5i8nMHyJnzCIQf7nsy3p41TPkJZhg==}
 
+  ironrdp-wasm@1.1.0:
+    resolution: {integrity: sha512-AKF9Du3DeFIO3ej3pRQmAXAnwNAU8/rLsep1od3NW9WRYqmslQMA7skjJW/E/+BH3EtNHnjxyAgAkvtyucSRQQ==}
+
   is-alphabetical@2.0.1:
     resolution: {integrity: sha512-FWyyY60MeTNyeSRpkM2Iry0G9hpr7/9kD40mD/cGQEuilcZYS4okz8SN2Q6rLCJ8gbCt6fN+rC+6tMGS99LaxQ==}
 
@@ -9982,7 +10012,6 @@ packages:
 
   libsql@0.4.7:
     resolution: {integrity: sha512-T9eIRCs6b0J1SHKYIvD8+KCJMcWZ900iZyxdnSCdqxN12Z1ijzT+jY5nrk72Jw4B0HGzms2NgpryArlJqvc3Lw==}
-    cpu: [x64, arm64, wasm32]
     os: [darwin, linux, win32]
 
   lighthouse-logger@1.4.2:
@@ -20593,7 +20622,7 @@ snapshots:
       obug: 2.1.1
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.8(@types/node@22.20.1)(@vitest/coverage-v8@4.1.8)(jsdom@29.1.1)(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.8.3))
+      vitest: 4.1.8(@types/node@24.12.2)(@vitest/coverage-v8@4.1.8)(jsdom@29.1.1)(vite@8.1.4(@types/node@24.12.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.8.3))
 
   '@vitest/expect@4.1.8':
     dependencies:
@@ -23509,6 +23538,8 @@ snapshots:
   ipaddr.js@1.9.1: {}
 
   iron-webcrypto@1.2.1: {}
+
+  ironrdp-wasm@1.1.0: {}
 
   is-alphabetical@2.0.1: {}
 
