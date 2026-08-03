@@ -92,9 +92,13 @@ The same budget can appear on as many dashboards as you like — one budget, man
 
 Below the budgets, **Potential savings** lists resources that look orphaned or idle — volumes attached to nothing, IPs assigned to nothing — with the trailing 30-day spend where the provider reports cost per resource. It reads the state your accounts last synced, so it costs no provider API calls. The section also appears in local-only desktop mode, scanning this machine's workspace without a cost column. See [Orphan & idle resource finder](./orphan-finder.md) for what each provider flags.
 
+### Oversized
+
+Under Potential savings, **Oversized** covers the other half of waste: machines doing real work on more hardware than they use. Infrawrench computes each machine's p95 CPU/memory over the last 14 days of stored metrics and, where it sits well under the size, recommends the provider's cheapest smaller size that still leaves headroom — with a live-priced monthly saving and a one-click apply. See [Right-sizing](./right-sizing.md).
+
 ### Sleep schedules
 
-Under Potential savings, **Sleep schedules** manages the org's off-at/on-at windows: stop a staging VM at 19:00 and start it at 08:00, Mon–Fri, with the projected monthly saving computed from its trailing spend. Schedules are created from an eligible resource's Schedule tab; this section lists them all with the next transition, the last run's outcome, and pause/edit/delete. See [Sleep/wake schedules](./sleep-schedules.md).
+Below that, **Sleep schedules** manages the org's off-at/on-at windows: stop a staging VM at 19:00 and start it at 08:00, Mon–Fri, with the projected monthly saving computed from its trailing spend. Schedules are created from an eligible resource's Schedule tab; this section lists them all with the next transition, the last run's outcome, and pause/edit/delete. See [Sleep/wake schedules](./sleep-schedules.md).
 
 ## On your phone
 

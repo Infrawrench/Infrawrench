@@ -73,3 +73,7 @@ infrawrench orphans --org <org-id>  # pick an organization explicitly
 `--json` reports which mode produced the output: local scans carry `"costBasis": "unavailable"` and `"costWindowDays": 0`, so a script can tell "nothing was spent on this" apart from "spend is unknown here".
 
 <insert [Terminal showing `infrawrench orphans` text output: account headings with flagged resource rows, reasons, and a cost column] here>
+
+## Beyond orphans: oversized machines
+
+Waste is not always a resource doing nothing — sometimes it is a machine doing real work on twice the hardware it needs. The **Oversized** section directly below Potential savings covers that half: [right-sizing recommendations](./right-sizing.md) computed from two weeks of stored p95 CPU/memory utilisation, each with the provider's cheapest smaller size that still leaves headroom and a one-click resize.
