@@ -349,7 +349,10 @@ export function SshFanoutView({
             <select
               value=""
               onChange={(e) => {
-                if (e.target.value) void onDeleteSnippet(e.target.value);
+                const s = snippets.find((sn) => sn.id === e.target.value);
+                if (!s) return;
+                if (!window.confirm(`Delete snippet "${s.name}"?`)) return;
+                onDeleteSnippet(s.id).catch((err) => setRunError(formatErrorMessage(err)));
               }}
               aria-label="Delete saved snippet"
               className={INPUT_CLASSES}

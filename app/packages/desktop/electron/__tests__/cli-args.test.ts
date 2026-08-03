@@ -56,6 +56,12 @@ describe("parseCliArgs — flags for changes / graph / anomalies", () => {
     expect(range.kind).toBeUndefined();
     expect(range.resource).toBeUndefined();
   });
+
+  it("passes everything after -- through as positionals (ssh-fanout's escape hatch)", () => {
+    const parsed = parseCliArgs(["ssh-fanout", "-y", "--", "uptime", "-p", "--since"]);
+    expect(parsed.positionals).toEqual(["ssh-fanout", "uptime", "-p", "--since"]);
+    expect(parsed.fanout.yes).toBe(true);
+  });
 });
 
 describe("parseLastDays", () => {

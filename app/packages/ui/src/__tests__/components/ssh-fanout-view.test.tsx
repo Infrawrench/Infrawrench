@@ -135,6 +135,33 @@ describe("SshFanoutView", () => {
     expect(screen.getByText("- 6.8.0")).toBeInTheDocument();
   });
 
+  it("confirms before deleting a snippet and reports a failed deletion", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    try {
+      const onDeleteSnippet = vi.fn().mockRejectedValue(new Error("delete failed"));
+      render(
+        <SshFanoutView
+          targets={targets}
+          sshKeys={[]}
+          snippets={[{ id: "s1", name: "kernel", command: "uname -r" }]}
+          onRun={vi.fn()}
+          onDeleteSnippet={onDeleteSnippet}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText("Delete saved snippet"), { target: { value: "s1" } });
+      expect(confirmSpy).toHaveBeenCalledWith('Delete snippet "kernel"?');
+      expect(onDeleteSnippet).not.toHaveBeenCalled();
+
+      confirmSpy.mockReturnValue(true);
+      fireEvent.change(screen.getByLabelText("Delete saved snippet"), { target: { value: "s1" } });
+      expect(onDeleteSnippet).toHaveBeenCalledWith("s1");
+      await waitFor(() => expect(screen.getByText("delete failed")).toBeInTheDocument());
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
   it("inserts a saved snippet into the command box", () => {
     render(
       <SshFanoutView

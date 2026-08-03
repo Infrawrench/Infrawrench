@@ -55,9 +55,10 @@ function CloudFanout({ orgId }: { orgId: string }) {
   const [sshKeys, setSshKeys] = useState<Array<{ id: string; name: string }>>([]);
   const [snippets, setSnippets] = useState<SshFanoutSnippetInfo[]>([]);
 
-  async function loadSnippets() {
+  async function loadSnippets(isStale?: () => boolean) {
     try {
-      setSnippets(await listCloudFanoutSnippets(orgId));
+      const rows = await listCloudFanoutSnippets(orgId);
+      if (!isStale?.()) setSnippets(rows);
     } catch {
       /* snippets are a convenience */
     }
@@ -84,7 +85,9 @@ function CloudFanout({ orgId }: { orgId: string }) {
       .catch(() => {
         /* keys only matter for quick-connect targets */
       });
-    void loadSnippets();
+    // Participates in the same cancellation flow: a response that lands after
+    // orgId changed must not apply another org's snippets.
+    void loadSnippets(() => cancelled);
     return () => {
       cancelled = true;
     };

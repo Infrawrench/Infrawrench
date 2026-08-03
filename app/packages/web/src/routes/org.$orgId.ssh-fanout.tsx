@@ -42,10 +42,10 @@ function SshFanoutPage() {
   const [sshKeys, setSshKeys] = useState<SshKeyRow[]>([]);
   const [snippets, setSnippets] = useState<SshFanoutSnippetInfo[]>([]);
 
-  async function loadSnippets() {
+  async function loadSnippets(isStale?: () => boolean) {
     try {
       const res = await apiGet<SnippetsResponse>(`/api/org/${orgId}/ssh-fanout/snippets`);
-      setSnippets(res.snippets);
+      if (!isStale?.()) setSnippets(res.snippets);
     } catch {
       // Snippets are a convenience — the page still works without them.
     }
@@ -72,7 +72,9 @@ function SshFanoutPage() {
       .catch(() => {
         /* keys only matter for quick-connect targets */
       });
-    void loadSnippets();
+    // Participates in the same cancellation flow: a response that lands after
+    // orgId changed must not apply another org's snippets.
+    void loadSnippets(() => cancelled);
     return () => {
       cancelled = true;
     };

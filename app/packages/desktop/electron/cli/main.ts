@@ -68,6 +68,8 @@ COMMANDS
   ssh-fanout <cmd>    run one command across many SSH hosts; identical output is collapsed and
                       outliers are diffed against the majority   [--list] [--hosts <q>] [--plugin <id>]
                       [--tag k:v] [--key <id|name>] [--user <name>] [--snippet <name>] [-y]
+                      (put -- before a remote command with flags of its own:
+                      infrawrench ssh-fanout -y -- uptime -p)
   ssh-fanout snippets the organization's saved fan-out commands
   page <message>      alert the org's on-call transports   --source <name> [--key k] [--voice]
   page clear          drop a page key's cooldown after a recovery   --source <name> [--key k]

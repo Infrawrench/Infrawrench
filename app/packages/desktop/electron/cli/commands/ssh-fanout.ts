@@ -134,7 +134,9 @@ export async function cmdSshFanout(
   }
   if (!command) {
     throw new CliError(
-      'Nothing to run. Pass a command (infrawrench ssh-fanout "uname -r"), --snippet <name>, or --list.',
+      'Nothing to run. Pass a command (infrawrench ssh-fanout "uname -r"), --snippet <name>, or --list. ' +
+        "If the remote command has flags of its own, put -- before it so they are not parsed here: " +
+        "infrawrench ssh-fanout -y -- uptime -p.",
       2,
     );
   }

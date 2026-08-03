@@ -1,6 +1,7 @@
 /**
  * SSH command execution via ssh2 — used by the connect/env-deploy API.
  */
+import { StringDecoder } from "node:string_decoder";
 import ssh2 from "ssh2";
 import { eq, and } from "drizzle-orm";
 
@@ -67,12 +68,37 @@ const CAPTURE_READY_TIMEOUT_MS = 30_000;
 const CAPTURE_COMMAND_TIMEOUT_MS = 120_000;
 
 /**
+ * Append `data` to `chunks`, keeping the total at or under CAPTURE_MAX_BYTES.
+ * Counts bytes (not string length) so multi-byte output can't blow past the
+ * cap, and truncates an oversized chunk rather than admitting it whole.
+ * Returns the new byte total.
+ */
+function appendCapped(chunks: Buffer[], bytes: number, data: Buffer): number {
+  const remaining = CAPTURE_MAX_BYTES - bytes;
+  if (remaining <= 0) return bytes;
+  const slice = data.byteLength > remaining ? data.subarray(0, remaining) : data;
+  chunks.push(slice);
+  return bytes + slice.byteLength;
+}
+
+/**
+ * Decode capped chunks as UTF-8. StringDecoder#write without a matching end()
+ * simply withholds a multi-byte character the cap clipped mid-sequence,
+ * instead of emitting replacement characters that would push the decoded
+ * string back over the byte budget.
+ */
+function decodeCapped(chunks: Buffer[]): string {
+  return new StringDecoder("utf8").write(Buffer.concat(chunks));
+}
+
+/**
  * Execute a single command over SSH and capture stdout, stderr, and the exit
  * code. Unlike {@link sshExec}, a non-zero exit resolves normally — the caller
  * (fan-out) surfaces per-host exit codes instead of treating them as
- * transport errors. Still throws on SSH/connection failures, including
- * {@link HostKeyTrustRequiredError}. Output is capped at 256 KiB per stream
- * and the command is abandoned after 2 minutes.
+ * transport errors. Still throws on SSH/connection failures (including
+ * {@link HostKeyTrustRequiredError}) and when the command is killed by a
+ * signal instead of exiting. Output is capped at 256 KiB per stream and the
+ * command is abandoned after 2 minutes.
  */
 export function sshExecCapture(
   organizationId: string,
@@ -102,17 +128,41 @@ export function sshExecCapture(
           finish(() => reject(err));
           return;
         }
-        let stdout = "";
-        let stderr = "";
+        const stdoutChunks: Buffer[] = [];
+        const stderrChunks: Buffer[] = [];
+        let stdoutBytes = 0;
+        let stderrBytes = 0;
         stream.on("data", (data: Buffer) => {
-          if (stdout.length < CAPTURE_MAX_BYTES) stdout += data.toString();
+          stdoutBytes = appendCapped(stdoutChunks, stdoutBytes, data);
         });
         stream.stderr.on("data", (data: Buffer) => {
-          if (stderr.length < CAPTURE_MAX_BYTES) stderr += data.toString();
+          stderrBytes = appendCapped(stderrChunks, stderrBytes, data);
         });
-        stream.on("close", (code: number | null) => {
+        // ssh2 mirrors child_process here: close carries the numeric exit
+        // status, or (null, "SIGKILL", …) when the command died to a signal,
+        // or nothing at all when the channel closed without exit info. Only a
+        // real numeric status may resolve — signal death is not exit 0.
+        stream.on("close", (code: number | null | undefined, signal?: string | null) => {
           client.end();
-          finish(() => resolve({ stdout, stderr, exitCode: code ?? 0 }));
+          if (typeof code !== "number") {
+            finish(() =>
+              reject(
+                new Error(
+                  signal
+                    ? `Command terminated by ${signal}`
+                    : "Command ended without an exit status",
+                ),
+              ),
+            );
+            return;
+          }
+          finish(() =>
+            resolve({
+              stdout: decodeCapped(stdoutChunks),
+              stderr: decodeCapped(stderrChunks),
+              exitCode: code,
+            }),
+          );
         });
       });
     });

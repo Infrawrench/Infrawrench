@@ -132,7 +132,13 @@ export async function listFanoutTargets(organizationId: string): Promise<FanoutT
   const sshAccounts = await db
     .select({ id: accounts.id, displayName: accounts.displayName })
     .from(accounts)
-    .where(and(eq(accounts.organizationId, organizationId), eq(accounts.pluginId, "ssh")));
+    .where(
+      and(
+        eq(accounts.organizationId, organizationId),
+        eq(accounts.pluginId, "ssh"),
+        isNull(accounts.deletedAt),
+      ),
+    );
   for (const a of sshAccounts) {
     targets.push({
       kind: "account",
