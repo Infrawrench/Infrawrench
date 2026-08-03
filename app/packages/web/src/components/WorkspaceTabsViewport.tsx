@@ -24,8 +24,9 @@ import { WebAgentsPanel } from "./WebAgentsPanel";
 import { WebChatPanel } from "./WebChatPanel";
 import { WebGraphPanel } from "./WebGraphPanel";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
-import { resourceTabTarget, type OrphansClient } from "@infrawrench/ui";
+import { resourceTabTarget, type OrphansClient, type SchedulesClient } from "@infrawrench/ui";
 import { createWebOrphansClient } from "@/lib/orphans-client";
+import { createWebSchedulesClient } from "@/lib/schedules-client";
 
 interface WebWorkspaceTabsViewportProps {
   orgId: string;
@@ -131,6 +132,16 @@ function getOrphansClient(orgId: string): OrphansClient {
   return client;
 }
 
+const schedulesClients = new Map<string, SchedulesClient>();
+function getSchedulesClient(orgId: string): SchedulesClient {
+  let client = schedulesClients.get(orgId);
+  if (!client) {
+    client = createWebSchedulesClient(orgId);
+    schedulesClients.set(orgId, client);
+  }
+  return client;
+}
+
 function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<typeof useNavigate>) {
   const t = tab.target;
   switch (t.kind) {
@@ -181,6 +192,19 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
               }),
             );
           }}
+          schedules={getSchedulesClient(orgId)}
+          onOpenScheduledResource={(s) =>
+            void navigate(
+              getWorkspaceNavigateArgs({
+                kind: "resource",
+                accountId: s.accountId,
+                resourceId: s.resourceId,
+                view: "details",
+                pluginId: s.pluginId,
+                resourceTypeId: s.resourceTypeId,
+              }),
+            )
+          }
         />
       );
     case "graph":

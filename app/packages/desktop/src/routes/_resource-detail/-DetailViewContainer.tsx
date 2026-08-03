@@ -25,6 +25,7 @@ import {
   DetailView,
   DraggableChildPill,
   FirestoreDocumentBrowser,
+  ResourceSchedulePanel,
   RESOURCES_CHANGED_EVENT,
   buildDependencyGraph,
   directDependencies,
@@ -41,6 +42,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { PeerPaneView } from "../../components/PeerPaneView";
 import { FirestoreMongoPeerBrowser } from "../../components/FirestoreMongoPeerBrowser";
 import { getPlugin } from "../../plugins/loader";
+import { createDesktopSchedulesClient } from "../../lib/schedules-client";
+import type { SchedulesClient } from "@infrawrench/ui";
 import { navigateToWorkspaceTarget, resourceTabTarget } from "../../lib/workspace-tabs";
 import { fetchCloudDependencyGraph } from "../../lib/cloud-resources";
 import { loadLocalDependencyGraph } from "../../lib/local-dependency-graph";
@@ -102,6 +105,12 @@ interface DetailViewContainerProps {
   renderStorageBrowser?: () => React.ReactNode;
 }
 
+let desktopSchedulesClient: SchedulesClient | null = null;
+function getSchedulesClient(): SchedulesClient {
+  if (!desktopSchedulesClient) desktopSchedulesClient = createDesktopSchedulesClient();
+  return desktopSchedulesClient;
+}
+
 export function DetailViewContainer({
   schema,
   decodedResourceId,
@@ -146,6 +155,25 @@ export function DetailViewContainer({
 }: DetailViewContainerProps) {
   const navigate = useNavigate();
   const noSqlBrowser = schema?.noSqlBrowser;
+
+  // Sleep/wake schedule tab — cloud mode only (the cloud poller executes the
+  // transitions), and only for types whose plugin declares a lifecycle
+  // start/stop pair. Discovered from the local plugin definition, never from
+  // provider names.
+  const [schedulable, setSchedulable] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setSchedulable(false);
+    if (!activeCloudOrgId || !resource) return undefined;
+    void getPlugin(resource.pluginId).then((loaded) => {
+      if (cancelled) return;
+      const typeDef = loaded?.plugin.resourceTypes.find((t) => t.id === resource.resourceTypeId);
+      setSchedulable(!!typeDef?.lifecycle);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCloudOrgId, resource]);
 
   // Direct neighbors in the output-reference dependency graph — drives the
   // "Dependencies" tab. Best-effort: on failure the tab simply doesn't show.
@@ -297,6 +325,20 @@ export function DetailViewContainer({
             }
           : {})}
         {...(dependencies ? { dependencies, onOpenDependency: handleOpenDependency } : {})}
+        {...(schedulable && activeCloudOrgId
+          ? {
+              renderScheduleTab: () => (
+                <ResourceSchedulePanel
+                  client={getSchedulesClient()}
+                  target={{
+                    resourceId: decodedResourceId,
+                    accountId,
+                    resourceName: resource?.displayName ?? decodedResourceId,
+                  }}
+                />
+              ),
+            }
+          : {})}
         metricSeries={metricSeries}
       />
     </div>

@@ -555,6 +555,24 @@ export {
 
 export * from "./cost/index.js";
 export * from "./savings/index.js";
+export { SleepSchedulesSection } from "./schedules/SleepSchedulesSection.js";
+export type { SleepSchedulesSectionProps } from "./schedules/SleepSchedulesSection.js";
+export { ScheduleEditorModal } from "./schedules/ScheduleEditorModal.js";
+export type {
+  ScheduleEditorModalProps,
+  ScheduleEditorTarget,
+} from "./schedules/ScheduleEditorModal.js";
+export { ResourceSchedulePanel } from "./schedules/ResourceSchedulePanel.js";
+export type { ResourceSchedulePanelProps } from "./schedules/ResourceSchedulePanel.js";
+export type {
+  SchedulesClient,
+  SleepSchedule,
+  SleepScheduleCreate,
+  SleepScheduleListResponse,
+  SleepSchedulePatch,
+  SchedulePreview,
+  SchedulePreviewRequest,
+} from "./schedules/types.js";
 
 // Named re-exports of cost/custom-graph wire types. The tsdown (tsgo) dts
 // bundler drops some `export *` type re-exports when the same name also

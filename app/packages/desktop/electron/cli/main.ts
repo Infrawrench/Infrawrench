@@ -19,6 +19,7 @@ import { cmdOrphans } from "./commands/orphans";
 import { cmdExpiring } from "./commands/expiring";
 import { cmdChanges } from "./commands/changes";
 import { cmdIncidents } from "./commands/incidents";
+import { cmdSchedules } from "./commands/schedules";
 import { cmdGraph } from "./commands/graph";
 import { cmdPage, cmdCostsPush } from "./commands/push";
 import { cmdCli } from "./commands/cli-install";
@@ -52,6 +53,7 @@ COMMANDS
   changes             what appeared / changed / disappeared across your providers
                       [--last 7d] [--limit 50] [--kind created|updated|deleted] [-a <account>] [--resource <id>]
   incidents           provider status-page incidents overlapping your resources ("is it me or is it them?")
+  schedules           sleep/wake schedules: windows, next transitions & projected savings
   graph               resource dependency tree   [--resource <id>: what it needs + its blast radius]
   page <message>      alert the org's on-call transports   --source <name> [--key k] [--voice]
   page clear          drop a page key's cooldown after a recovery   --source <name> [--key k]
@@ -248,6 +250,9 @@ export async function runCli(): Promise<void> {
         break;
       case "incidents":
         await cmdIncidents(ctx);
+        break;
+      case "schedules":
+        await cmdSchedules(ctx);
         break;
       case "graph":
         // `infrawrench graph <resource-id>` is the same as --resource; a

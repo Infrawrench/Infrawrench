@@ -17,8 +17,9 @@ import { ResourcePanel } from "@/routes/resource.$accountId.$resourceId";
 import { getWorkspaceNavigateArgs, syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
 import { AgentsPanel, type AgentClient } from "@infrawrench/ui/agents";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
-import { type OrphansClient } from "@infrawrench/ui";
+import { type OrphansClient, type SchedulesClient } from "@infrawrench/ui";
 import { createDesktopCostsClient } from "@/lib/costs-client";
+import { createDesktopSchedulesClient } from "@/lib/schedules-client";
 import { createDesktopOrphansClient } from "@/lib/orphans-client";
 import { createDesktopAgentClient } from "@/lib/agent-client";
 import { createDesktopDeploymentClient } from "@/lib/cloud-deployments";
@@ -51,6 +52,12 @@ let orphansClient: OrphansClient | null = null;
 function getOrphansClient(): OrphansClient {
   if (!orphansClient) orphansClient = createDesktopOrphansClient();
   return orphansClient;
+}
+
+let schedulesClient: SchedulesClient | null = null;
+function getSchedulesClient(): SchedulesClient {
+  if (!schedulesClient) schedulesClient = createDesktopSchedulesClient();
+  return schedulesClient;
 }
 
 // Desktop-side glue between WorkspaceTabsViewport (in @infrawrench/ui) and the
@@ -142,6 +149,16 @@ function renderPanel(
           // dropping the section. The client picks the store — see
           // lib/orphans-client.ts.
           orphans={getOrphansClient()}
+          // Cloud-only: the rows live server-side and the cloud poller runs
+          // the transitions, so local mode omits the section entirely.
+          schedules={activeCloudOrgId ? getSchedulesClient() : undefined}
+          onOpenScheduledResource={(s) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(s.accountId, s.resourceId, s.pluginId, s.resourceTypeId),
+              ),
+            )
+          }
           onOpenResource={(r, accountId) => {
             void navigate(
               getWorkspaceNavigateArgs(

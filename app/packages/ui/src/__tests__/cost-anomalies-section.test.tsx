@@ -1,12 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { CostAnomaliesSection } from "../cost/CostAnomaliesSection.js";
-import type {
-  CostAnomaly,
-  CostAnomalySettings,
-  CostAnomalySettingsView,
-  CostsClient,
-} from "../cost/types.js";
+import type { CostAnomalySettings, CostAnomalySettingsView } from "../cost/config.js";
+import type { CostAnomaly, CostsClient } from "../cost/types.js";
 
 function anomaly(overrides: Partial<CostAnomaly> = {}): CostAnomaly {
   return {

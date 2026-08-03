@@ -100,6 +100,13 @@ infrawrench costs --anomalies
 infrawrench costs --anomalies --days 7      # 1-90; --last 2w says the same thing
 ```
 
+`schedules` lists the org's [sleep/wake schedules](./sleep-schedules.md) — each window, its timezone, the next transition, the last run's outcome (including freeze skips and failures), and the projected monthly saving:
+
+```
+infrawrench schedules
+infrawrench schedules --json
+```
+
 `tags` and `showback` are the [tag governance](./tag-policy-and-showback.md) reports: the org's required tags with per-account compliance scores and the spend missing a required key, and spend grouped by cost centre through the org's allocation rules:
 
 ```

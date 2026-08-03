@@ -268,6 +268,9 @@ function ChangeEntryRow({
       {expanded && (
         <View style={styles.detail}>
           <ChangeDiffList entry={entry} />
+          {entry.origin === "schedule" && (
+            <Text style={styles.hint}>Executed by a sleep/wake schedule.</Text>
+          )}
           {entry.changeKind !== "updated" && (
             <Text style={styles.hint}>
               {entry.changeKind === "created"

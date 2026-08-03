@@ -16,35 +16,17 @@ import type { BudgetInput, CostQueryRequest, CostQueryResponse } from "./config.
  * this package) shares one definition of it; re-exported for web and desktop.
  */
 export type {
-  CostAccountStatus,
-  CostPollError,
   BudgetWithStatus,
   BudgetPlacement,
   /** A detected spend anomaly, as listed on the Costs panel. */
   CostAnomaly,
   CostAnomalyDimension,
   CostAnomalyKind,
-  /** The per-org detection thresholds the Anomalies section edits. */
-  CostAnomalySettings,
-  /** Those thresholds plus whether SMS paging could actually be delivered. */
-  CostAnomalySettingsView,
-  /** Which anomaly kinds page by SMS: off / new sources only / everything. */
-  CostAnomalySmsMode,
-  /** One selectable value in a dimension picker. */
-  CostDimensionOption,
-  /** Tag policy / compliance / showback contract (see client-core/tag-policy). */
-  RequiredTag,
-  TagPolicy,
-  AccountTagCompliance,
-  TagComplianceReport,
-  CostCentre,
-  AllocationRule,
-  AllocationRuleInput,
-  AllocationRuleMatch,
-  UntaggedSpendReport,
-  ShowbackReport,
-  ShowbackReportCentre,
 } from "@infrawrench/client-core";
+// The rest of the cost/tag-policy contract (CostAccountStatus, the anomaly
+// settings, ShowbackReport, TagComplianceReport, …) is re-exported by
+// `./config.js`, which shares this barrel — re-exporting the same names from
+// two modules makes the bundled d.ts drop them from `export *` as ambiguous.
 
 /**
  * Host-injected data access for the cost components. Web wraps `apiFetch`;

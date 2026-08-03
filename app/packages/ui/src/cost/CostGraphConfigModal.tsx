@@ -12,7 +12,8 @@ import {
   type CostFilter,
   type CostGraphConfig,
 } from "./config.js";
-import type { CostApi, CostDimensionOption } from "./types.js";
+import type { CostDimensionOption } from "./config.js";
+import type { CostApi } from "./types.js";
 import { MultiSelect, type MultiSelectStatus } from "../components/MultiSelect.js";
 
 // The labels and the new-widget defaults live in client-core: mobile authors

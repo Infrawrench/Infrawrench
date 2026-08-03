@@ -26,6 +26,7 @@ import {
   type ChildResourceGroup,
   type NavigateToResourceDetail,
   type PeerPaneData,
+  ResourceSchedulePanel,
 } from "@infrawrench/ui";
 import type {
   ArtifactEntry,
@@ -70,6 +71,7 @@ import { FirestoreDocumentBrowser } from "@/components/FirestoreDocumentBrowser"
 import { FirestoreMongoPeerBrowser } from "@/components/FirestoreMongoPeerBrowser";
 import { StorageBrowser } from "@/components/StorageBrowser";
 import { ResourceChangesPanel } from "@/components/ResourceChangesPanel";
+import { createWebSchedulesClient } from "@/lib/schedules-client";
 import { SftpBrowser } from "@/components/SftpBrowser";
 import { WebTerminal } from "@/components/WebTerminal";
 import { SshQuickConnectPanel } from "@/components/SshQuickConnectPanel";
@@ -155,6 +157,7 @@ interface Props {
   initialCommand?: string | undefined;
   initialCwd?: string | undefined;
   supportsMetrics?: boolean | undefined;
+  schedulable?: boolean | undefined;
   resourceFields?: Record<string, string | number | boolean> | undefined;
   parentResourceId?: string | undefined;
 }
@@ -201,12 +204,14 @@ export function ResourceDetailClient({
   initialCommand,
   initialCwd,
   supportsMetrics,
+  schedulable,
   resourceFields,
   parentResourceId,
 }: Props) {
   const navigate = useNavigate();
   const router = useRouter();
   const orgId = useOrgId();
+  const schedulesClient = useMemo(() => createWebSchedulesClient(orgId), [orgId]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showExportCredential, setShowExportCredential] = useState(false);
@@ -1332,6 +1337,16 @@ export function ResourceDetailClient({
               renderChangesTab={() => (
                 <ResourceChangesPanel orgId={orgId} resourceId={resourceId} />
               )}
+              {...(schedulable
+                ? {
+                    renderScheduleTab: () => (
+                      <ResourceSchedulePanel
+                        client={schedulesClient}
+                        target={{ resourceId, accountId, resourceName: resourceDisplayName }}
+                      />
+                    ),
+                  }
+                : {})}
             />
           </div>
         </div>

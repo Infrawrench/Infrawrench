@@ -9,13 +9,8 @@ import {
 import { useEffect, useId, useState } from "react";
 
 import { formatMoney } from "./transform.js";
-import type {
-  CostAnomaly,
-  CostAnomalySettings,
-  CostAnomalySettingsView,
-  CostAnomalySmsMode,
-  CostsClient,
-} from "./types.js";
+import type { CostAnomalySettings, CostAnomalySettingsView, CostAnomalySmsMode } from "./config.js";
+import type { CostAnomaly, CostsClient } from "./types.js";
 
 /** How far back the section looks, in days. */
 const WINDOW_DAYS = 30;

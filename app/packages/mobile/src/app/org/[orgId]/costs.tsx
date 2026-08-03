@@ -10,6 +10,7 @@ import { CostGraphCard } from "@/features/dashboard/CostGraphCard";
 import { useBudgets } from "@/features/dashboard/useBudgets";
 import { useCostStatus } from "@/features/dashboard/useCostStatus";
 import { SavingsSection } from "@/features/savings/SavingsSection";
+import { SchedulesSection } from "@/features/schedules/SchedulesSection";
 
 /**
  * The org's spend, budgets, anomalies, and potential savings — the Costs panel
@@ -57,6 +58,7 @@ export default function CostsScreen() {
         void queryClient.invalidateQueries({ queryKey: ["tag-compliance"] });
         void queryClient.invalidateQueries({ queryKey: ["untagged-spend"] });
         void queryClient.invalidateQueries({ queryKey: ["orphans"] });
+        void queryClient.invalidateQueries({ queryKey: ["schedules"] });
       }}
       refreshing={budgets.isRefetching}
     >
@@ -84,6 +86,8 @@ export default function CostsScreen() {
       <CostAnomaliesSection />
 
       <SavingsSection />
+
+      <SchedulesSection />
     </Screen>
   );
 }

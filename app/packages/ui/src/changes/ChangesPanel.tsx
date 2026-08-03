@@ -192,6 +192,14 @@ export function ChangesPanel({
                     {new Date(entry.createdAt).toLocaleString()}
                   </span>
                   <ChangeKindBadge kind={entry.changeKind} />
+                  {entry.origin === "schedule" && (
+                    <span
+                      className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary whitespace-nowrap"
+                      title="This transition was executed by a sleep/wake schedule."
+                    >
+                      via schedule
+                    </span>
+                  )}
                   {onOpenResource ? (
                     <button
                       type="button"

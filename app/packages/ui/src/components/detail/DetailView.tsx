@@ -138,6 +138,13 @@ interface DetailViewProps {
    */
   renderChangesTab?: (() => React.ReactNode) | undefined;
   /**
+   * When set, a "Schedule" tab renders the resource's sleep/wake schedule via
+   * this render prop. Host-driven like `renderChangesTab` — hosts wire it only
+   * for types whose plugin declares lifecycle start/stop actions and only
+   * when a schedule store exists (cloud mode).
+   */
+  renderScheduleTab?: (() => React.ReactNode) | undefined;
+  /**
    * When `schema.noSqlBrowser` is set, the host provides the actual browser
    * UI via this render prop. The detail view renders it inside a dedicated
    * "Documents" tab. Keeping the UI in the host lets it hold driver-specific
@@ -198,6 +205,7 @@ type Tab =
   | "logs"
   | "metrics"
   | "changes"
+  | "schedule"
   | "artifacts"
   | "kv-browser"
   | "secret-versions"
@@ -247,6 +255,7 @@ export function DetailView({
   renderChildResource,
   metricSeries,
   renderChangesTab,
+  renderScheduleTab,
   renderNoSqlBrowser,
   renderStorageBrowser,
   onChatStream,
@@ -271,6 +280,7 @@ export function DetailView({
   const hasMetrics = !!schema.metricsCapability;
   const metricSeriesEmpty = !metricSeries || metricSeries.length === 0;
   const hasChangesTab = !!renderChangesTab;
+  const hasScheduleTab = !!renderScheduleTab;
   const hasArtifacts = !!schema.artifactRegistry && !!onListArtifacts;
   const hasKvBrowser =
     !!schema.kvBrowser && !!onListKvKeys && !!onGetKvValue && !!onPutKvValue && !!onDeleteKvKey;
@@ -308,6 +318,7 @@ export function DetailView({
     hasLogs ||
     hasMetrics ||
     hasChangesTab ||
+    hasScheduleTab ||
     hasArtifacts ||
     hasKvBrowser ||
     hasSecretVersions ||
@@ -335,6 +346,7 @@ export function DetailView({
   if (hasLogs) tabKeys.push("logs");
   if (hasMetrics) tabKeys.push("metrics");
   if (hasChangesTab) tabKeys.push("changes");
+  if (hasScheduleTab) tabKeys.push("schedule");
   if (hasArtifacts) tabKeys.push("artifacts");
   if (hasKvBrowser) tabKeys.push("kv-browser");
   if (hasSecretVersions) tabKeys.push("secret-versions");
@@ -544,6 +556,13 @@ export function DetailView({
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("changes")}>
                     Changes
+                  </TabButton>
+                );
+              }
+              if (key === "schedule") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("schedule")}>
+                    Schedule
                   </TabButton>
                 );
               }
@@ -818,6 +837,18 @@ export function DetailView({
           className="flex-1 overflow-auto"
         >
           {renderChangesTab!()}
+        </div>
+      )}
+
+      {hasScheduleTab && activeTab === "schedule" && (
+        <div
+          role="tabpanel"
+          id={panelIdFor("schedule")}
+          aria-labelledby={tabIdFor("schedule")}
+          tabIndex={0}
+          className="flex-1 overflow-auto"
+        >
+          {renderScheduleTab!()}
         </div>
       )}
 

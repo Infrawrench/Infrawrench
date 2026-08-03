@@ -6,6 +6,7 @@ import "./costs";
 import "./orphans";
 import "./expiring";
 import "./changes";
+import "./schedules";
 import "./custom-graphs";
 import "./dashboards";
 import "./deployments";
