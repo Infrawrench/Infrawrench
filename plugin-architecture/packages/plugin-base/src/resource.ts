@@ -340,6 +340,105 @@ export interface LifecycleActionsDeclaration {
   stoppedValues?: string[];
 }
 
+/**
+ * Points the host at the CPU-utilisation series this type's
+ * `fetchMetricSeries` emits. Series identity is the label string — the same
+ * key the metrics warehouse stores — so the declaration must match it
+ * exactly.
+ */
+export interface RightsizingCpuMetric {
+  /** Exact `MetricSeries.label` of the CPU-utilisation series. */
+  seriesLabel: string;
+  /**
+   * How the series encodes utilisation: `"percent"` (0–100, the default) or
+   * `"fraction"` (0–1 — e.g. GCE `instance/cpu/utilization`).
+   */
+  scale?: "percent" | "fraction";
+}
+
+/**
+ * Points the host at the memory series, when the provider reports one.
+ * Providers disagree on what the number means, so the declaration says:
+ * - `"percent"` — utilisation 0–100 (e.g. DO managed-database `Memory Used`).
+ * - `"used-bytes"` — absolute bytes in use.
+ * - `"available-bytes"` — absolute bytes free/available (e.g. DO droplet
+ *   `Memory Available`, Azure `Available Memory Bytes`); the host derives
+ *   used% from the current size's total RAM.
+ */
+export interface RightsizingMemoryMetric {
+  /** Exact `MetricSeries.label` of the memory series. */
+  seriesLabel: string;
+  interpretation: "percent" | "used-bytes" | "available-bytes";
+}
+
+/**
+ * Declares that this resource type can be right-sized: its create form's
+ * size-picker options (`SizeOption.vcpus` / `memoryMb` / `priceMonthly`) are a
+ * real catalog of what the resource could be resized to, and the metric series
+ * named here measure how much of the current size is actually used.
+ *
+ * The generic convention behind the "Oversized" savings finder — the same
+ * shape as `orphanRule` and `lifecycle`: the host discovers eligibility from
+ * the declaration and never hard-codes provider names. The host reads
+ * candidate sizes from `getCreateConfig`'s size-picker for `sizeFieldKey`
+ * (hydrating prices through `getCreateSizePricing` where the plugin implements
+ * it), computes p95 utilisation from already-stored metrics, and applies a
+ * recommended resize through the ordinary `updateResource` path — so only
+ * declare this on types whose `updateResource` actually accepts a new value
+ * for `sizeFieldKey`.
+ */
+export interface RightsizingDeclaration {
+  /**
+   * Field holding the current size id (e.g. "serverType", "size",
+   * "machineType"). Must be the key of the create form's size-picker so the
+   * stored value and the catalog ids agree, and must be accepted by
+   * `updateResource` to apply a resize.
+   */
+  sizeFieldKey: string;
+  /**
+   * Key of the create form's size-picker field, when it differs from the
+   * stored field (Azure stores `vmSize` but the create form's picker is
+   * `size`). Defaults to `sizeFieldKey`.
+   */
+  createSizeFieldKey?: string;
+  /**
+   * Field holding the provider location the resource lives in (region, zone,
+   * location). Passed to `getCreateSizePricing` as `regionId` and matched
+   * against `SizeOption.availableFor` when present.
+   */
+  regionFieldKey?: string;
+  /**
+   * Field holding the resource's actual disk size in GB, for providers that
+   * bundle disk with size and refuse resizes onto a smaller included disk
+   * (Hetzner `primary_disk_size`, DO droplet `disk`). Without it the host
+   * falls back to the current size's own `diskGb` — conservative, since a
+   * bundled disk never shrinks.
+   */
+  diskFieldKey?: string;
+  cpuMetric: RightsizingCpuMetric;
+  /** Omit when the provider stores no memory series for this type. */
+  memoryMetric?: RightsizingMemoryMetric;
+  /**
+   * ISO 4217 currency of the catalog's `priceMonthly` values. Defaults to
+   * "USD"; set it when the provider bills in something else (Hetzner: EUR).
+   */
+  priceCurrency?: string;
+  /**
+   * Regex applied to size ids to guard cross-family resizes the provider
+   * would reject (architecture changes above all). When set, a candidate
+   * qualifies only if every capture group matches the current size's — e.g.
+   * `"^([a-z]+)"` keeps Hetzner `cax` (arm) and `cx` (x86) apart. Must
+   * contain at least one capture group.
+   */
+  sizeFamilyPattern?: string;
+  /**
+   * Plugin-authored caveat surfaced in the resize confirm dialog — the place
+   * to say "requires the server to be powered off first" or "the VM restarts
+   * during the resize". The plugin is the one that knows.
+   */
+  resizeNote?: string;
+}
+
 export interface ResourceTypeDefinition {
   id: string;
   displayName: string;
@@ -500,6 +599,12 @@ export interface ResourceTypeDefinition {
    * scheduled.
    */
   lifecycle?: LifecycleActionsDeclaration;
+  /**
+   * Size catalog + utilisation metric hints for the "Oversized" savings
+   * finder; see {@link RightsizingDeclaration}. Absent = the type is never
+   * flagged as oversized.
+   */
+  rightsizing?: RightsizingDeclaration;
 }
 
 /** One predicate inside an {@link OrphanRule}. All conditions must hold. */

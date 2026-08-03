@@ -536,6 +536,35 @@ export class AzureClient implements PluginClient {
     throw new Error(`Azure plugin: invokeAction "${actionId}" not supported for type "${typeId}"`);
   }
 
+  /**
+   * Edit a VM: change its size (`vmSize`) — the right-sizing apply path.
+   * ARM PATCH on `hardwareProfile.vmSize`; Azure accepts it on a running VM
+   * but restarts it during the change, and rejects sizes unavailable on the
+   * current hardware cluster (deallocate first to widen the choice). VM
+   * names are immutable in Azure, so nothing else is editable.
+   */
+  async updateResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    if (typeId !== "azure-vm") {
+      throw new Error(`Azure plugin: updateResource not supported for type "${typeId}"`);
+    }
+    const vmSize = fields["vmSize"];
+    if (!vmSize) throw new Error("Azure plugin: vmSize is the only editable VM field");
+    const resource = await this.getResource(typeId, resourceId, accountId);
+    // externalId is rg/name — the same two-part form deleteResource splits.
+    const [rg, name] = String(resource.externalId ?? "").split("/");
+    if (!rg || !name) throw new Error("Cannot determine resource group/name for VM");
+    await this.patch(
+      `${ARM}/subscriptions/${this.creds.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.Compute/virtualMachines/${name}?api-version=2024-03-01`,
+      { properties: { hardwareProfile: { vmSize } } },
+    );
+    return this.getResource(typeId, resourceId, accountId);
+  }
+
   async publishMessage(
     typeId: string,
     resourceId: string,

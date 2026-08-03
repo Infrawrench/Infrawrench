@@ -101,11 +101,46 @@ describe("updateResource", () => {
     expect(r.displayName).toBe("Renamed");
   });
 
+  it("resizes a droplet via the resize action with disk:false", async () => {
+    const actionBodies: string[] = [];
+    installFetch((path, method, body) => {
+      if (path === "/droplets/1/actions" && method === "POST") {
+        actionBodies.push(body ?? "");
+        return { action: { id: 1, status: "in-progress" } };
+      }
+      if (path === "/droplets/1")
+        return {
+          droplet: {
+            id: 1,
+            name: "web-1",
+            status: "off",
+            memory: 2048,
+            vcpus: 1,
+            disk: 50,
+            size: { slug: "s-1vcpu-2gb", price_monthly: 12 },
+            region: { slug: "fra1" },
+            image: { slug: "ubuntu-24-04-x64" },
+            networks: { v4: [] },
+          },
+        };
+      return undefined;
+    });
+    await newClient().updateResource("droplet", `${ACC}:droplet:1`, ACC, {
+      size: "s-1vcpu-2gb",
+    });
+    expect(actionBodies).toHaveLength(1);
+    expect(JSON.parse(actionBodies[0]!)).toEqual({
+      type: "resize",
+      size: "s-1vcpu-2gb",
+      disk: false,
+    });
+  });
+
   it("throws for unsupported update types", async () => {
     installFetch(() => undefined);
-    await expect(
-      newClient().updateResource("droplet", `${ACC}:droplet:1`, ACC, {}),
-    ).rejects.toThrow(/not supported/);
+    await expect(newClient().updateResource("volume", `${ACC}:volume:1`, ACC, {})).rejects.toThrow(
+      /not supported/,
+    );
   });
 });
 

@@ -54,6 +54,9 @@ export type {
   ExpiryKind,
   ExpiryFieldRule,
   LifecycleActionsDeclaration,
+  RightsizingDeclaration,
+  RightsizingCpuMetric,
+  RightsizingMemoryMetric,
 } from "./resource.js";
 
 export type {

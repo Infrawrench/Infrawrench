@@ -1299,6 +1299,125 @@ describe("renderDetail / renderSidebarItem", () => {
   });
 });
 
+describe("updateResource (server rename + change_type)", () => {
+  const serverBody = {
+    server: {
+      id: 42,
+      name: "web-1",
+      status: "off",
+      created: "2026-01-01T00:00:00Z",
+      server_type: { name: "cx32", cores: 4, memory: 8, disk: 80 },
+      primary_disk_size: 40,
+      datacenter: { name: "fsn1-dc14", location: { name: "fsn1", city: "Falkenstein" } },
+      image: { name: "ubuntu-24.04", description: "Ubuntu" },
+      public_net: { ipv4: { ip: "1.2.3.4" } },
+    },
+  };
+
+  it("changes the server type with upgrade_disk:false and returns the refreshed server", async () => {
+    const c = makeClient();
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/servers/42/actions/change_type")) {
+        expect(init?.method).toBe("POST");
+        expect(JSON.parse(String(init?.body))).toEqual({
+          server_type: "cx32",
+          upgrade_disk: false,
+        });
+        return okJson({ action: { id: 1 } });
+      }
+      if (url.endsWith("/servers/42")) return okJson(serverBody);
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    const r = await c.updateResource("server", `${ACCOUNT}:server:42`, ACCOUNT, {
+      serverType: "cx32",
+    });
+    expect(r.fields["serverType"]).toBe("cx32");
+    expect(r.fields["primaryDiskGb"]).toBe(40);
+  });
+
+  it("renames via PUT /servers/{id}", async () => {
+    const c = makeClient();
+    const puts: string[] = [];
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/servers/42") && init?.method === "PUT") {
+        puts.push(String(init.body));
+        return okJson(serverBody);
+      }
+      if (url.endsWith("/servers/42")) return okJson(serverBody);
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    await c.updateResource("server", `${ACCOUNT}:server:42`, ACCOUNT, { name: "web-2" });
+    expect(puts).toEqual([JSON.stringify({ name: "web-2" })]);
+  });
+
+  it("rejects unsupported types", async () => {
+    await expect(makeClient().updateResource("volume", "a:volume:1", ACCOUNT, {})).rejects.toThrow(
+      /not supported/,
+    );
+  });
+});
+
+describe("getCreateSizePricing (per-location server type prices)", () => {
+  it("returns the requested location's monthly gross price", async () => {
+    const c = makeClient();
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/server_types")) {
+        return okJson({
+          server_types: [
+            {
+              id: 1,
+              name: "cx22",
+              cores: 2,
+              memory: 4,
+              disk: 40,
+              deprecated: false,
+              prices: [
+                { location: "fsn1", price_monthly: { net: "3.00", gross: "3.57" } },
+                { location: "ash", price_monthly: { net: "4.00", gross: "4.76" } },
+              ],
+            },
+          ],
+          meta: { pagination: { total_entries: 1 } },
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    const prices = await c.getCreateSizePricing("server", {
+      regionId: "ash",
+      sizes: [{ id: "cx22" }],
+    });
+    expect(prices).toEqual({ cx22: 4.76 });
+  });
+
+  it("falls back to the first listed price when the location is unknown", async () => {
+    const c = makeClient();
+    fetchMock.mockImplementation(async () =>
+      okJson({
+        server_types: [
+          {
+            id: 1,
+            name: "cx22",
+            cores: 2,
+            memory: 4,
+            disk: 40,
+            deprecated: false,
+            prices: [{ location: "fsn1", price_monthly: { net: "3.00", gross: "3.57" } }],
+          },
+        ],
+        meta: { pagination: { total_entries: 1 } },
+      }),
+    );
+    const prices = await c.getCreateSizePricing("server", {
+      regionId: "sin",
+      sizes: [{ id: "cx22" }],
+    });
+    expect(prices).toEqual({ cx22: 3.57 });
+  });
+});
+
 describe("caCert routing via host http service", () => {
   it("uses services.http.request when caCert provided", async () => {
     const request = vi.fn(async () => ({ status: 200, body: JSON.stringify({ servers: [] }) }));

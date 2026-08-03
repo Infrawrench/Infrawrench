@@ -1172,6 +1172,30 @@ export class DigitalOceanClient implements PluginClient {
       };
     }
 
+    if (typeId === "droplet") {
+      // Rename and/or resize. Resize is DO's `resize` droplet action with
+      // `disk: false` — CPU/RAM only, reversible, and DO powers the Droplet
+      // off for it automatically. DO rejects targets whose included disk is
+      // smaller than the Droplet's current disk; that error surfaces as-is.
+      const name = fields["name"];
+      if (name !== undefined && name !== "") {
+        await this.fetch<unknown>(`/droplets/${externalId}/actions`, {
+          method: "POST",
+          body: JSON.stringify({ type: "rename", name }),
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const size = fields["size"];
+      if (size !== undefined && size !== "") {
+        await this.fetch<unknown>(`/droplets/${externalId}/actions`, {
+          method: "POST",
+          body: JSON.stringify({ type: "resize", size, disk: false }),
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return this.getResource(typeId, resourceId, accountId);
+    }
+
     if (typeId !== "project") {
       throw new Error(`DigitalOcean plugin: updateResource not supported for type "${typeId}"`);
     }

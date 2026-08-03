@@ -138,6 +138,73 @@ describe("resourceTypeDefinitionSchema", () => {
     const { dashboardPinnable: _, ...noPinnable } = validResourceType;
     expect(resourceTypeDefinitionSchema.safeParse(noPinnable).success).toBe(false);
   });
+
+  it("accepts a full rightsizing declaration", () => {
+    expect(
+      resourceTypeDefinitionSchema.safeParse({
+        ...validResourceType,
+        rightsizing: {
+          sizeFieldKey: "serverType",
+          createSizeFieldKey: "size",
+          regionFieldKey: "location",
+          diskFieldKey: "primaryDiskGb",
+          cpuMetric: { seriesLabel: "CPU Utilization", scale: "fraction" },
+          memoryMetric: { seriesLabel: "Memory Available", interpretation: "available-bytes" },
+          priceCurrency: "EUR",
+          sizeFamilyPattern: "^([a-z]+)",
+          resizeNote: "Power the server off first.",
+        },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects a rightsizing declaration without a CPU metric", () => {
+    expect(
+      resourceTypeDefinitionSchema.safeParse({
+        ...validResourceType,
+        rightsizing: { sizeFieldKey: "size" },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a rightsizing sizeFamilyPattern that doesn't compile", () => {
+    expect(
+      resourceTypeDefinitionSchema.safeParse({
+        ...validResourceType,
+        rightsizing: {
+          sizeFieldKey: "size",
+          cpuMetric: { seriesLabel: "CPU" },
+          sizeFamilyPattern: "([a-z", // unbalanced group — invalid regex
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a rightsizing sizeFamilyPattern without a capture group", () => {
+    expect(
+      resourceTypeDefinitionSchema.safeParse({
+        ...validResourceType,
+        rightsizing: {
+          sizeFieldKey: "size",
+          cpuMetric: { seriesLabel: "CPU" },
+          sizeFamilyPattern: "^(?:[a-z]+)",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a memory metric without an interpretation", () => {
+    expect(
+      resourceTypeDefinitionSchema.safeParse({
+        ...validResourceType,
+        rightsizing: {
+          sizeFieldKey: "size",
+          cpuMetric: { seriesLabel: "CPU" },
+          memoryMetric: { seriesLabel: "Memory" },
+        },
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe("fieldDefinitionSchema", () => {

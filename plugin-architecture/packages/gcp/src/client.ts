@@ -98,6 +98,7 @@ import {
 } from "./secret-versions-client.js";
 import {
   restartReplaceInstanceGroup,
+  setGceInstanceMachineType,
   setGceInstancePower,
   attachResource as runAttachResource,
 } from "./compute-extras-client.js";
@@ -747,6 +748,19 @@ export class GcpClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
+    if (typeId === "gce-instance") {
+      // Edit = change machine type (the right-sizing apply path). GCE only
+      // allows setMachineType on a TERMINATED instance; the API's error for
+      // a running one is surfaced as-is.
+      const machineType = fields["machineType"];
+      if (!machineType) {
+        throw new Error("GCP plugin: machineType is the only editable VM instance field");
+      }
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      await setGceInstanceMachineType(this.sharedCtx, resource, machineType);
+      return this.getResource(typeId, resourceId, accountId);
+    }
+
     if (typeId === "cloud-dns-record-set") {
       // Cloud DNS record sets are immutable — "update" is a change transaction
       // that deletes the existing rrset and adds the replacement. externalId

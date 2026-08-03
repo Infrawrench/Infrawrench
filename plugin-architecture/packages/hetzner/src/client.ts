@@ -660,6 +660,71 @@ export class HetznerClient implements PluginClient {
     }
   }
 
+  /**
+   * Edit a server: rename (`name`) and/or change its type (`serverType`).
+   *
+   * The type change is Hetzner's `change_type` action with
+   * `upgrade_disk: false` — the disk keeps its current size, which is what
+   * keeps a later downgrade possible. Hetzner rejects the action with
+   * `server_not_stopped` (422) unless the server is powered off, and refuses
+   * targets whose included disk is smaller than the server's current disk or
+   * whose architecture differs; those provider errors are surfaced as-is.
+   */
+  async updateResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    if (typeId !== "server") {
+      throw new Error(`Hetzner plugin: updateResource not supported for type "${typeId}"`);
+    }
+    const externalId = resourceId.split(":").pop();
+    if (!externalId) throw new Error("Cannot parse server ID");
+
+    const name = fields["name"];
+    if (name !== undefined && name !== "") {
+      await this.fetch<unknown>(`/servers/${externalId}`, {
+        method: "PUT",
+        body: JSON.stringify({ name }),
+      });
+    }
+
+    const serverType = fields["serverType"];
+    if (serverType !== undefined && serverType !== "") {
+      await this.fetch<unknown>(`/servers/${externalId}/actions/change_type`, {
+        method: "POST",
+        body: JSON.stringify({ server_type: serverType, upgrade_disk: false }),
+      });
+    }
+
+    return this.getResource(typeId, resourceId, accountId);
+  }
+
+  /**
+   * Per-location monthly prices for server types. `/server_types` carries a
+   * price per location, so unlike the create-config catalog (which quotes the
+   * first location's price) this resolves the one the caller asked for.
+   */
+  async getCreateSizePricing(
+    typeId: string,
+    request: { regionId?: string; sizes: Array<{ id: string }> },
+  ): Promise<Record<string, number>> {
+    if (typeId !== "server") return {};
+    const serverTypes = await this.fetchAll<HetznerServerType>("/server_types", "server_types");
+    const wanted = new Set(request.sizes.map((s) => s.id));
+    const out: Record<string, number> = {};
+    for (const st of serverTypes) {
+      if (!wanted.has(st.name)) continue;
+      const price =
+        (request.regionId ? st.prices?.find((p) => p.location === request.regionId) : undefined) ??
+        st.prices?.[0];
+      const monthly = price?.price_monthly?.gross ? parseFloat(price.price_monthly.gross) : NaN;
+      if (Number.isFinite(monthly)) out[st.name] = monthly;
+    }
+    return out;
+  }
+
   async invokeAction(
     typeId: string,
     resourceId: string,
@@ -1116,6 +1181,9 @@ export class HetznerClient implements PluginClient {
         placementGroupId: s.placement_group?.id != null ? String(s.placement_group.id) : "",
         firewallIds: firewallIds.join(", "),
         networkIds: networkIds.join(", "),
+        // Straight off the payload. Feeds the right-sizing disk guard: a
+        // resize target's included disk must be >= this.
+        primaryDiskGb: s.primary_disk_size ?? s.server_type?.disk ?? 0,
       },
       resolvedOutputs: {
         ipv4: publicIpv4,
@@ -1437,6 +1505,8 @@ interface HetznerServer {
   /** One entry per attached Network; `network` is the Network id. */
   private_net?: Array<{ ip: string; network?: number }>;
   server_type?: { name: string; cores: number; memory: number; disk: number };
+  /** Actual root disk size in GB — stays put on change_type with upgrade_disk=false. */
+  primary_disk_size?: number;
   datacenter?: { name: string; location?: { name: string; city: string } };
   image?: { name: string; description: string };
   placement_group?: { id?: number; name?: string; type?: string } | null;

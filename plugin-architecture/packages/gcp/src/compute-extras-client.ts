@@ -220,6 +220,36 @@ export async function setGceInstancePower(
 }
 
 /**
+ * Change a stopped instance's machine type — the right-sizing apply path.
+ * GCE only accepts `setMachineType` while the instance is TERMINATED; a
+ * running instance gets the API's own 400, surfaced as-is.
+ */
+export async function setGceInstanceMachineType(
+  ctx: GcpClientContext,
+  resource: ResourceInstance,
+  machineType: string,
+): Promise<void> {
+  const p = ctx.project;
+  const zone = String(resource.fields["zone"] ?? "");
+  const name = String(resource.fields["name"] ?? "");
+  if (!zone || !name) {
+    throw new Error("Cannot determine zone/name for VM instance");
+  }
+  const tok = await ctx.token();
+  const res = await fetch(
+    `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/instances/${name}/setMachineType`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ machineType: `zones/${zone}/machineTypes/${machineType}` }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(await formatGcpError("Set machine type", res));
+  }
+}
+
+/**
  * Run the "restart/replace" action on an instance group — used by the
  * sidebar action button to roll over every VM.
  */

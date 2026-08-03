@@ -112,6 +112,7 @@ import {
   fetchMetricSeries as fetchMetricSeriesImpl,
 } from "./dashboard-metrics.js";
 import { getCreateCostEstimate as getCreateCostEstimateImpl } from "./cost-estimate.js";
+import { fetchEc2MonthlyPrices } from "./pricing.js";
 import { fetchAwsCostData } from "./cost-data.js";
 import { attachResource as attachResourceImpl } from "./attach-handlers.js";
 import { resolveOutput as resolveOutputImpl } from "./resolve-output.js";
@@ -601,6 +602,26 @@ export class AWSClient implements PluginClient {
         updatedAt: new Date().toISOString(),
       };
     }
+
+    if (typeId === "ec2-instance") {
+      // Edit = change instance type (the right-sizing apply path).
+      // ModifyInstanceAttribute requires the instance to be fully stopped;
+      // a running one gets EC2's IncorrectInstanceState, surfaced as-is.
+      const instanceType = fields["instanceType"];
+      if (!instanceType) {
+        throw new Error("AWS plugin: instanceType is the only editable EC2 instance field");
+      }
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const instanceId = String(resource.externalId ?? resource.fields["instanceId"] ?? "");
+      if (!instanceId) throw new Error("Cannot determine EC2 instance ID");
+      const region = String(resource.fields["region"] ?? this.creds.region);
+      await ec2Call(this.credsFor(region), "ModifyInstanceAttribute", {
+        InstanceId: instanceId,
+        "InstanceType.Value": instanceType,
+      });
+      return this.getResource(typeId, resourceId, accountId);
+    }
+
     throw new Error(`AWS plugin: updateResource not supported for type "${typeId}"`);
   }
 
@@ -609,6 +630,25 @@ export class AWSClient implements PluginClient {
     fields: Record<string, string>,
   ): Promise<number | null> {
     return getCreateCostEstimateImpl(typeId, fields);
+  }
+
+  /**
+   * Per-region monthly on-demand prices for the size picker, via the Price
+   * List Query API — the live replacement for the static `cost-estimate.ts`
+   * table. Requires the `pricing:GetProducts` permission; without it the
+   * result is empty and the picker simply shows no price chips.
+   */
+  async getCreateSizePricing(
+    typeId: string,
+    request: { regionId?: string; sizes: Array<{ id: string }> },
+  ): Promise<Record<string, number>> {
+    if (typeId !== "ec2-instance") return {};
+    const region = request.regionId ?? this.creds.region;
+    return fetchEc2MonthlyPrices(
+      this.creds,
+      region,
+      request.sizes.map((s) => s.id),
+    );
   }
 
   async executeFieldAction(

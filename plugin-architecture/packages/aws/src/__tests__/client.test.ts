@@ -318,9 +318,7 @@ describe("AWSClient.updateResource", () => {
   });
   it("throws for unsupported update types", async () => {
     const c = new AWSClient(credMap);
-    await expect(c.updateResource("ec2-instance", "r", "acct", {})).rejects.toThrow(
-      /not supported/,
-    );
+    await expect(c.updateResource("s3-bucket", "r", "acct", {})).rejects.toThrow(/not supported/);
   });
 });
 

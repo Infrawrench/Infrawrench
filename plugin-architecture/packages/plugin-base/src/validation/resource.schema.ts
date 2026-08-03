@@ -142,6 +142,48 @@ const lifecycleActionsSchema = z
     path: ["statusFieldKey"],
   });
 
+const rightsizingSchema = z
+  .object({
+    sizeFieldKey: z.string().min(1),
+    createSizeFieldKey: z.string().min(1).optional(),
+    regionFieldKey: z.string().min(1).optional(),
+    diskFieldKey: z.string().min(1).optional(),
+    cpuMetric: z.object({
+      seriesLabel: z.string().min(1),
+      scale: z.enum(["percent", "fraction"]).optional(),
+    }),
+    memoryMetric: z
+      .object({
+        seriesLabel: z.string().min(1),
+        interpretation: z.enum(["percent", "used-bytes", "available-bytes"]),
+      })
+      .optional(),
+    priceCurrency: z.string().length(3).optional(),
+    sizeFamilyPattern: z.string().min(1).optional(),
+    resizeNote: z.string().min(1).optional(),
+  })
+  // A family guard that doesn't compile, or has nothing to capture, would
+  // silently disable (or worse, never constrain) candidate filtering — fail
+  // the manifest instead (the `maxAgeDays` stance).
+  .refine(
+    (r) => {
+      if (r.sizeFamilyPattern === undefined) return true;
+      try {
+        return new RegExp(r.sizeFamilyPattern).exec("probe") !== undefined;
+      } catch {
+        return false;
+      }
+    },
+    {
+      message: "sizeFamilyPattern must be a valid regular expression",
+      path: ["sizeFamilyPattern"],
+    },
+  )
+  .refine((r) => r.sizeFamilyPattern === undefined || /\((?!\?:)/.test(r.sizeFamilyPattern), {
+    message: "sizeFamilyPattern must contain at least one capture group",
+    path: ["sizeFamilyPattern"],
+  });
+
 export const resourceTypeDefinitionSchema = z.object({
   id: z.string().min(1),
   displayName: z.string().min(1),
@@ -159,4 +201,5 @@ export const resourceTypeDefinitionSchema = z.object({
   orphanRule: orphanRuleSchema.optional(),
   expiryFields: z.array(expiryFieldRuleSchema).optional(),
   lifecycle: lifecycleActionsSchema.optional(),
+  rightsizing: rightsizingSchema.optional(),
 });
