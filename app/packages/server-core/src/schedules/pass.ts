@@ -16,6 +16,11 @@
  *   completion write can't fire the same window twice. Downtime longer than
  *   a window executes only the *latest* missed transition — the one that
  *   decides the current desired state — never a replay of history.
+ * - **Edits beat stale runs.** The lease instant doubles as a claim token
+ *   (`claimGuard`): every completion write requires `next_transition_at` to
+ *   still hold the claimed value. A schedule edit or pause recomputes that
+ *   column, so a superseded run's completion matches nothing — the edit's
+ *   timing (and a paused row's null `next_transition_at`) always wins.
  * - **Freezes are respected.** An in-effect org change freeze skips the
  *   transition: logged, recorded as `skipped_freeze` on the row (surfaced in
  *   every schedule list), and the key is spent so the skipped transition is
@@ -66,8 +71,23 @@ export interface SchedulePassResult {
   failed: number;
 }
 
+/** A claimed row: its id plus the claim token the completion must present. */
+interface ClaimedSchedule {
+  id: string;
+  /**
+   * The exact lease instant the claim wrote into `next_transition_at`,
+   * carried as Postgres' own text rendering so no driver rounds the
+   * microseconds away. Every completion/reschedule write is guarded on the
+   * column still holding this value — a schedule edit (or pause) recomputes
+   * `next_transition_at`, which invalidates the token, so a stale claimed run
+   * can never clobber the edit (and a paused row can never be handed a
+   * non-null `next_transition_at` back).
+   */
+  claimToken: string;
+}
+
 /** Claim due, unpaused schedules — the `claimDueAccounts` protocol. */
-async function claimDueSchedules(limit: number): Promise<string[]> {
+async function claimDueSchedules(limit: number): Promise<ClaimedSchedule[]> {
   const rows = await db.execute(sql`
     UPDATE resource_schedules
     SET next_transition_at = now() + ${SCHEDULE_LEASE_MS}::float8 * interval '1 millisecond',
@@ -81,9 +101,25 @@ async function claimDueSchedules(limit: number): Promise<string[]> {
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING id
+    RETURNING id, next_transition_at::text AS claim_token
   `);
-  return Array.from(rows as Iterable<Record<string, unknown>>, (r) => String(r["id"]));
+  return Array.from(rows as Iterable<Record<string, unknown>>, (r) => ({
+    id: String(r["id"]),
+    claimToken: String(r["claim_token"]),
+  }));
+}
+
+/**
+ * WHERE fragment shared by the completion writes: the row is only touched
+ * while it still carries our claim lease. An edit made mid-run recomputed
+ * `next_transition_at`, so the guarded update matches nothing and the edit's
+ * timing wins over the superseded run's.
+ */
+function claimGuard(rowId: string, claimToken: string) {
+  return and(
+    eq(resourceSchedules.id, rowId),
+    sql`${resourceSchedules.nextTransitionAt} = ${claimToken}::timestamp`,
+  );
 }
 
 interface CompletionUpdate {
@@ -99,6 +135,7 @@ async function completeRun(
   row: ScheduleRecord,
   due: ScheduleTransition,
   now: number,
+  claimToken: string,
   update: CompletionUpdate,
 ): Promise<void> {
   const timing = {
@@ -110,7 +147,7 @@ async function completeRun(
   const reschedule = update.retryAt
     ? { nextTransitionAt: update.retryAt, nextTransitionAction: due.action }
     : nextTransitionColumns(timing, false, now);
-  await db
+  const updated = await db
     .update(resourceSchedules)
     .set({
       ...reschedule,
@@ -121,11 +158,18 @@ async function completeRun(
       lastRunError: update.error ?? null,
       updatedAt: new Date(now),
     })
-    .where(eq(resourceSchedules.id, row.id));
+    .where(claimGuard(row.id, claimToken))
+    .returning({ id: resourceSchedules.id });
+  if (updated.length === 0) {
+    console.warn(
+      `[schedules] completion for schedule ${row.id} superseded by a concurrent edit; ` +
+        `leaving the edited row's timing in place`,
+    );
+  }
 }
 
 /** Reschedule without recording a run (nothing was due / already ran). */
-async function rescheduleOnly(row: ScheduleRecord, now: number): Promise<void> {
+async function rescheduleOnly(row: ScheduleRecord, now: number, claimToken: string): Promise<void> {
   const timing = {
     daysOfWeek: row.daysOfWeek,
     stopTime: row.stopTime,
@@ -135,7 +179,7 @@ async function rescheduleOnly(row: ScheduleRecord, now: number): Promise<void> {
   await db
     .update(resourceSchedules)
     .set({ ...nextTransitionColumns(timing, false, now), updatedAt: new Date(now) })
-    .where(eq(resourceSchedules.id, row.id));
+    .where(claimGuard(row.id, claimToken));
 }
 
 function desiredStateValue(
@@ -169,9 +213,14 @@ async function attributeTransition(
     const desired = desiredStateValue(lifecycle, action);
     const from = fieldKey ? (resource.fieldsJson[fieldKey] ?? null) : null;
     if (fieldKey && desired !== null) {
+      // Patch only the status key in place (jsonb_set) rather than writing
+      // back the whole document we read earlier — a concurrent sync's update
+      // to any other field must not be clobbered by this bookkeeping write.
       await db
         .update(resources)
-        .set({ fieldsJson: { ...resource.fieldsJson, [fieldKey]: desired } })
+        .set({
+          fieldsJson: sql`jsonb_set(coalesce(${resources.fieldsJson}, '{}'::jsonb), ARRAY[${fieldKey}]::text[], to_jsonb(${desired}::text))`,
+        })
         .where(
           and(eq(resources.id, row.resourceId), eq(resources.organizationId, row.organizationId)),
         );
@@ -201,6 +250,7 @@ async function attributeTransition(
 async function executeSchedule(
   row: ScheduleRecord,
   now: number,
+  claimToken: string,
 ): Promise<"ok" | "skipped_freeze" | "failed" | "noop"> {
   const timing = {
     daysOfWeek: row.daysOfWeek,
@@ -212,13 +262,13 @@ async function executeSchedule(
   if (!due) {
     // Nothing has ever been due (fresh schedule whose first window is ahead,
     // or timing rows edited to something invalid) — just reschedule.
-    await rescheduleOnly(row, now);
+    await rescheduleOnly(row, now, claimToken);
     return "noop";
   }
   if (row.lastTransitionKey === transitionKey(due)) {
     // Already executed (or deliberately skipped) — a lease-expiry re-claim or
     // a restart landed here. Reschedule without re-invoking.
-    await rescheduleOnly(row, now);
+    await rescheduleOnly(row, now, claimToken);
     return "noop";
   }
 
@@ -230,7 +280,7 @@ async function executeSchedule(
       `[schedules] skipping ${due.action} for schedule ${row.id} (resource ${row.resourceId}): ` +
         `change freeze "${freeze.name}" is in effect`,
     );
-    await completeRun(row, due, now, {
+    await completeRun(row, due, now, claimToken, {
       status: "skipped_freeze",
       error: `Skipped: change freeze "${freeze.name}" was in effect`,
     });
@@ -251,7 +301,7 @@ async function executeSchedule(
     console.error(
       `[schedules] schedule ${row.id}: resource ${row.resourceId} is gone from sync; skipping ${due.action}`,
     );
-    await completeRun(row, due, now, {
+    await completeRun(row, due, now, claimToken, {
       status: "failed",
       error: "Resource is no longer synced (deleted upstream?) — delete this schedule",
     });
@@ -263,7 +313,7 @@ async function executeSchedule(
     console.error(
       `[schedules] schedule ${row.id}: type ${row.pluginId}/${row.resourceTypeId} no longer declares lifecycle actions`,
     );
-    await completeRun(row, due, now, {
+    await completeRun(row, due, now, claimToken, {
       status: "failed",
       error: "Resource type no longer declares start/stop lifecycle actions",
     });
@@ -278,7 +328,7 @@ async function executeSchedule(
     lifecycle.statusFieldKey &&
     stateMatches(resource.fieldsJson[lifecycle.statusFieldKey], desiredValues)
   ) {
-    await completeRun(row, due, now, { status: "ok" });
+    await completeRun(row, due, now, claimToken, { status: "ok" });
     return "ok";
   }
 
@@ -289,6 +339,45 @@ async function executeSchedule(
     if (!ctx.client.invokeAction) {
       throw new Error(`Plugin ${row.pluginId} does not implement invokeAction`);
     }
+
+    // Retry of a transition whose earlier attempt failed *after* the request
+    // may have reached the provider (timeout, dropped response — the outcome
+    // is ambiguous). The plugin contract carries no idempotency key, so the
+    // guard is a live provider read: if the desired state already holds, the
+    // earlier invocation landed and re-invoking would at best no-op and at
+    // worst error (a second stop on a stopping instance).
+    if (
+      row.lastRunStatus === "failed" &&
+      row.lastRunAction === due.action &&
+      lifecycle.statusFieldKey &&
+      desiredValues &&
+      desiredValues.length > 0
+    ) {
+      let alreadyApplied = false;
+      try {
+        const live = await ctx.client.getResource(
+          row.resourceTypeId,
+          row.resourceId,
+          row.accountId,
+        );
+        alreadyApplied = stateMatches(live.fields[lifecycle.statusFieldKey], desiredValues);
+      } catch {
+        // The pre-check is best-effort — fall through to the normal invoke.
+      }
+      if (alreadyApplied) {
+        console.log(
+          `[schedules] ${due.action} already applied at the provider for resource ` +
+            `${row.resourceId} (schedule ${row.id}); skipping re-invoke`,
+        );
+        await attributeTransition(row, lifecycle, due.action, {
+          displayName: resource.displayName,
+          fieldsJson: (resource.fieldsJson ?? {}) as Record<string, unknown>,
+        });
+        await completeRun(row, due, now, claimToken, { status: "ok" });
+        return "ok";
+      }
+    }
+
     await ctx.client.invokeAction(row.resourceTypeId, row.resourceId, actionId, row.accountId);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -298,14 +387,14 @@ async function executeSchedule(
     const transitionAge = now - Date.parse(due.at);
     if (transitionAge < SCHEDULE_GIVE_UP_MS) {
       // Keep the key unspent and retry on a short lease.
-      await completeRun(row, due, now, {
+      await completeRun(row, due, now, claimToken, {
         status: "failed",
         error: message,
         spendKey: false,
         retryAt: new Date(now + SCHEDULE_RETRY_MS),
       });
     } else {
-      await completeRun(row, due, now, { status: "failed", error: message });
+      await completeRun(row, due, now, claimToken, { status: "failed", error: message });
     }
     return "failed";
   }
@@ -317,7 +406,7 @@ async function executeSchedule(
     displayName: resource.displayName,
     fieldsJson: (resource.fieldsJson ?? {}) as Record<string, unknown>,
   });
-  await completeRun(row, due, now, { status: "ok" });
+  await completeRun(row, due, now, claimToken, { status: "ok" });
   return "ok";
 }
 
@@ -332,11 +421,11 @@ export async function runSchedulePass(
   const limit = options.limit ?? 4;
   const result: SchedulePassResult = { claimed: 0, executed: 0, skippedFreeze: 0, failed: 0 };
 
-  const claimedIds = await claimDueSchedules(limit);
-  result.claimed = claimedIds.length;
-  if (claimedIds.length === 0) return result;
+  const claimed = await claimDueSchedules(limit);
+  result.claimed = claimed.length;
+  if (claimed.length === 0) return result;
 
-  for (const id of claimedIds) {
+  for (const { id, claimToken } of claimed) {
     const now = options.now ?? Date.now();
     try {
       const rows = await db
@@ -346,7 +435,7 @@ export async function runSchedulePass(
         .limit(1);
       const row = rows[0] as ScheduleRecord | undefined;
       if (!row || row.paused) continue;
-      const outcome = await executeSchedule(row, now);
+      const outcome = await executeSchedule(row, now, claimToken);
       if (outcome === "ok") result.executed += 1;
       else if (outcome === "skipped_freeze") result.skippedFreeze += 1;
       else if (outcome === "failed") result.failed += 1;

@@ -161,6 +161,7 @@ function renderPanel(
           // omits the section entirely (the schedules rule).
           rightsizing={activeCloudOrgId ? getRightsizingClient() : undefined}
           onOpenOversizedResource={(r, accountId) => {
+            if (!r.id) return;
             void navigate(
               getWorkspaceNavigateArgs(
                 resourceTabTarget(accountId, r.id, r.pluginId, r.resourceTypeId),

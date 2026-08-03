@@ -53,6 +53,9 @@ async function parseObjectBody(c: Context): Promise<ParsedBody> {
   }
 }
 
+/** Wall-clock "HH:MM", 24-hour — the same shape the MCP tool schema enforces. */
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 function readTiming(
   body: Record<string, unknown>,
   { partial }: { partial: boolean },
@@ -75,7 +78,11 @@ function readTiming(
   if (body["daysOfWeek"] !== undefined || !partial) {
     if (
       !Array.isArray(body["daysOfWeek"]) ||
-      !body["daysOfWeek"].every((d) => typeof d === "number")
+      body["daysOfWeek"].length < 1 ||
+      body["daysOfWeek"].length > 7 ||
+      !body["daysOfWeek"].every(
+        (d) => typeof d === "number" && Number.isInteger(d) && d >= 1 && d <= 7,
+      )
     ) {
       return { error: "daysOfWeek must be an array of ISO weekday numbers (1–7)" };
     }
@@ -84,6 +91,9 @@ function readTiming(
   for (const key of ["stopTime", "startTime", "timezone"] as const) {
     if (body[key] !== undefined || !partial) {
       if (typeof body[key] !== "string") return { error: `${key} must be a string` };
+      if (key !== "timezone" && !TIME_RE.test(body[key])) {
+        return { error: `${key} must be in 24-hour HH:MM format` };
+      }
       timing[key] = body[key] as string;
     }
   }
@@ -94,8 +104,10 @@ function scheduleErrorResponse(c: Context, err: unknown) {
   if (err instanceof ScheduleInputError) {
     return c.json({ error: err.message }, err.status);
   }
-  const message = err instanceof Error ? err.message : "Schedule operation failed";
-  return c.json({ error: message }, 400);
+  // Anything else is a server bug or infrastructure failure — log the detail
+  // server-side and keep internals out of the response.
+  console.error("[schedules] unexpected error:", err);
+  return c.json({ error: "Schedule operation failed" }, 500);
 }
 
 app.get("/", async (c) => {

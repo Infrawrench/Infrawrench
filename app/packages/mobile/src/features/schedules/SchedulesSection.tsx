@@ -53,45 +53,55 @@ export function SchedulesSection() {
           </Text>
         </Card>
       ) : (
-        <Card list>
-          {rows.map((s) => (
-            <Pressable
-              key={s.id}
-              onPress={() => openResource(s)}
-              style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-            >
-              <View style={styles.rowMain}>
-                <Text style={styles.name} numberOfLines={1}>
-                  {s.resourceName}
-                </Text>
-                <Text style={styles.window} numberOfLines={1}>
-                  {formatDaysOfWeek(s.daysOfWeek)} · off {s.stopTime} → on {s.startTime} ·{" "}
-                  {s.timezone}
-                </Text>
-                <Text style={styles.meta} numberOfLines={1}>
-                  {s.paused
-                    ? "Paused"
-                    : s.lastRunStatus === "failed"
-                      ? `Last run failed${s.lastRunError ? `: ${s.lastRunError}` : ""}`
-                      : s.lastRunStatus === "skipped_freeze"
-                        ? "Last transition skipped (change freeze)"
-                        : s.projectedMonthlySaving != null && s.currency
-                          ? `Saves ~${formatMoney(s.projectedMonthlySaving, s.currency)}/mo`
-                          : s.accountName}
-                </Text>
-              </View>
+        <>
+          {pause.isError && (
+            <Card>
+              <Text style={styles.error}>
+                Couldn&apos;t update the schedule —{" "}
+                {pause.error instanceof Error ? pause.error.message : "request failed"}
+              </Text>
+            </Card>
+          )}
+          <Card list>
+            {rows.map((s) => (
               <Pressable
-                onPress={() => pause.mutate({ scheduleId: s.id, paused: !s.paused })}
-                disabled={pause.isPending}
-                style={({ pressed }) => [styles.pauseButton, pressed && styles.rowPressed]}
-                accessibilityRole="button"
-                accessibilityLabel={s.paused ? "Resume schedule" : "Pause schedule"}
+                key={s.id}
+                onPress={() => openResource(s)}
+                style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
               >
-                <Text style={styles.pauseLabel}>{s.paused ? "Resume" : "Pause"}</Text>
+                <View style={styles.rowMain}>
+                  <Text style={styles.name} numberOfLines={1}>
+                    {s.resourceName}
+                  </Text>
+                  <Text style={styles.window} numberOfLines={1}>
+                    {formatDaysOfWeek(s.daysOfWeek)} · off {s.stopTime} → on {s.startTime} ·{" "}
+                    {s.timezone}
+                  </Text>
+                  <Text style={styles.meta} numberOfLines={1}>
+                    {s.paused
+                      ? "Paused"
+                      : s.lastRunStatus === "failed"
+                        ? `Last run failed${s.lastRunError ? `: ${s.lastRunError}` : ""}`
+                        : s.lastRunStatus === "skipped_freeze"
+                          ? "Last transition skipped (change freeze)"
+                          : s.projectedMonthlySaving != null && s.currency
+                            ? `Saves ~${formatMoney(s.projectedMonthlySaving, s.currency)}/mo`
+                            : s.accountName}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => pause.mutate({ scheduleId: s.id, paused: !s.paused })}
+                  disabled={pause.isPending}
+                  style={({ pressed }) => [styles.pauseButton, pressed && styles.rowPressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.paused ? "Resume schedule" : "Pause schedule"}
+                >
+                  <Text style={styles.pauseLabel}>{s.paused ? "Resume" : "Pause"}</Text>
+                </Pressable>
               </Pressable>
-            </Pressable>
-          ))}
-        </Card>
+            ))}
+          </Card>
+        </>
       )}
     </>
   );

@@ -77,7 +77,10 @@ export function scheduleTools(): ToolDefinition[] {
         };
         try {
           const created = await createScheduleRecord(auth.organizationId, request, auth.userId);
-          void logAudit({
+          // Awaited (not fire-and-forget) so the audit write has been attempted
+          // before the tool reports success; `logAudit` itself never throws, so
+          // an audit failure can't undo a created schedule.
+          await logAudit({
             organizationId: auth.organizationId,
             userId: auth.userId,
             action: "resource_schedule.create",

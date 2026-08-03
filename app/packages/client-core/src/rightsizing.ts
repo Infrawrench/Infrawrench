@@ -365,7 +365,9 @@ export async function fetchRightsizing(
       accounts: [],
       totalCount: 0,
       windowDays: RIGHTSIZING_WINDOW_DAYS,
-      generatedAt: "",
+      // Keep the contract's "parseable timestamp" promise even on the
+      // defensive empty fallback.
+      generatedAt: new Date().toISOString(),
     }
   );
 }

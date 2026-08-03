@@ -8,7 +8,7 @@
  * per-feed exactly as the HTTP route omits them.
  */
 import { z } from "zod";
-import { computeMoment } from "../services/moment";
+import { computeMoment, parseMomentTimestamp } from "../services/moment";
 import { effectiveToolPermissions } from "./permissions";
 import { ok, err, type ToolDefinition } from "./types";
 
@@ -29,7 +29,10 @@ export function momentTools(): ToolDefinition[] {
         at: z
           .string()
           .optional()
-          .describe("ISO 8601 centre timestamp, e.g. 2026-08-03T03:14:00Z. Defaults to now."),
+          .describe(
+            "ISO 8601 centre timestamp, e.g. 2026-08-03T03:14:00Z. A timestamp without an " +
+              "offset is interpreted as UTC. Defaults to now.",
+          ),
         window_minutes: z
           .number()
           .int()
@@ -49,10 +52,13 @@ export function momentTools(): ToolDefinition[] {
         };
         let at: Date | undefined;
         if (atRaw !== undefined) {
-          at = new Date(atRaw);
-          if (Number.isNaN(at.getTime())) {
+          // Shared with `GET /moment` — offset-less timestamps are pinned to
+          // UTC so the result doesn't depend on the server's local zone.
+          const parsed = parseMomentTimestamp(atRaw);
+          if (parsed === null) {
             return err(`Invalid 'at' timestamp: ${atRaw}`);
           }
+          at = parsed;
         }
         const permissions = await effectiveToolPermissions(auth);
         return ok(

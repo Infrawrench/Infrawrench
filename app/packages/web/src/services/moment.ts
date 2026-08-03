@@ -20,7 +20,7 @@
  * Wire contract lives in `@infrawrench/client-core` (`moment.ts`) so web,
  * desktop, mobile and the CLI cannot drift from the server.
  */
-import { and, eq, gte, inArray, lte, or } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, or } from "drizzle-orm";
 import {
   clampMomentWindow,
   compareMomentEvents,
@@ -109,7 +109,7 @@ export async function computeMoment(
     try {
       incidentSpans = await loadIncidentSpans(organizationId, from, to);
     } catch (error) {
-      incidentError = describeError(error);
+      incidentError = describeError(error, "statusIncidents");
     }
   }
 
@@ -143,7 +143,7 @@ export async function computeMoment(
         events.push(...result.events);
         feeds.push({ feed, status: "ok", ...(result.truncated ? { truncated: true } : {}) });
       } catch (error) {
-        feeds.push({ feed, status: "error", error: describeError(error) });
+        feeds.push({ feed, status: "error", error: describeError(error, feed) });
       }
     }),
   );
@@ -164,10 +164,28 @@ export async function computeMoment(
   };
 }
 
-function describeError(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  // Cap so a driver error dump can't bloat the response.
-  return message.length > 200 ? `${message.slice(0, 199)}…` : message;
+/**
+ * Log the real failure server-side and hand the client an opaque reason —
+ * driver/internal error text (hosts, table names, SQL) must not reach API
+ * clients through `MomentFeedStatus.error`.
+ */
+function describeError(error: unknown, feed: MomentFeedId): string {
+  console.error(`[moment] feed "${feed}" failed to load:`, error);
+  return "Feed unavailable";
+}
+
+/**
+ * Parse a caller-supplied `at` timestamp deterministically: an offset-less
+ * ISO date-time (e.g. "2026-08-03T03:14:00") is interpreted as UTC rather
+ * than the server's local zone, so the same request means the same window
+ * regardless of where the server runs. Returns null when unparseable.
+ */
+export function parseMomentTimestamp(raw: string): Date | null {
+  // ISO date-time with a time part but no zone designator (no trailing Z or
+  // ±hh[:mm]) — pin it to UTC.
+  const offsetless = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(raw.trim());
+  const at = new Date(offsetless ? `${raw.trim()}Z` : raw);
+  return Number.isNaN(at.getTime()) ? null : at;
 }
 
 function within(value: Date | null, from: Date, to: Date): value is Date {
@@ -203,7 +221,9 @@ const loadChanges: FeedLoader = async (organizationId, from, to) => {
         lte(resourceChanges.createdAt, to),
       ),
     )
-    .orderBy(resourceChanges.createdAt)
+    // Newest-first so the row cap drops the *oldest* rows, matching the
+    // `truncated` contract. Global event order is restored by the final sort.
+    .orderBy(desc(resourceChanges.createdAt))
     .limit(FEED_ROW_CAP + 1);
 
   const truncated = rows.length > FEED_ROW_CAP;
@@ -335,7 +355,7 @@ const loadCostAnomalies: FeedLoader = async (organizationId, from, to) => {
         lte(costAnomalies.detectedAt, to),
       ),
     )
-    .orderBy(costAnomalies.detectedAt)
+    .orderBy(desc(costAnomalies.detectedAt))
     .limit(FEED_ROW_CAP + 1);
 
   const truncated = rows.length > FEED_ROW_CAP;
@@ -390,7 +410,7 @@ const loadWorkflowRuns: FeedLoader = async (organizationId, from, to) => {
         ),
       ),
     )
-    .orderBy(workflowRuns.createdAt)
+    .orderBy(desc(workflowRuns.createdAt))
     .limit(FEED_ROW_CAP + 1);
 
   const truncated = rows.length > FEED_ROW_CAP;
@@ -451,7 +471,7 @@ const loadDeployments: FeedLoader = async (organizationId, from, to) => {
         ),
       ),
     )
-    .orderBy(deploymentRuns.startedAt)
+    .orderBy(desc(deploymentRuns.startedAt))
     .limit(FEED_ROW_CAP + 1);
 
   const truncated = rows.length > FEED_ROW_CAP;
@@ -513,7 +533,7 @@ const loadAudit: FeedLoader = async (organizationId, from, to) => {
         lte(auditLogs.createdAt, to),
       ),
     )
-    .orderBy(auditLogs.createdAt)
+    .orderBy(desc(auditLogs.createdAt))
     .limit(FEED_ROW_CAP + 1);
 
   const truncated = rows.length > FEED_ROW_CAP;
@@ -566,7 +586,7 @@ const loadFreezes: FeedLoader = async (organizationId, from, to) => {
         ),
       ),
     )
-    .orderBy(changeFreezes.startsAt)
+    .orderBy(desc(changeFreezes.startsAt))
     .limit(FEED_ROW_CAP + 1);
 
   const truncated = rows.length > FEED_ROW_CAP;

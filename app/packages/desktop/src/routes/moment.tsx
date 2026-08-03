@@ -14,8 +14,9 @@ export const Route = createFileRoute("/moment")({
     if (typeof search.at === "string" && !Number.isNaN(Date.parse(search.at))) {
       result.at = search.at;
     }
-    const window = Number(search.window);
-    if (Number.isFinite(window) && window > 0) result.window = Math.round(window);
+    // Round before validating so a fractional value can't round down to 0.
+    const window = Math.round(Number(search.window));
+    if (Number.isFinite(window) && window > 0) result.window = window;
     return result;
   },
 });

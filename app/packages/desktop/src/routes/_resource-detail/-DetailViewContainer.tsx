@@ -161,19 +161,28 @@ export function DetailViewContainer({
   // start/stop pair. Discovered from the local plugin definition, never from
   // provider names.
   const [schedulable, setSchedulable] = useState(false);
+  // Depend on the two identifying strings rather than the resource object —
+  // a refetched (new-identity) resource of the same type must not re-run the
+  // plugin load.
+  const resourcePluginId = resource?.pluginId;
+  const resourceTypeId = resource?.resourceTypeId;
   useEffect(() => {
     let cancelled = false;
     setSchedulable(false);
-    if (!activeCloudOrgId || !resource) return undefined;
-    void getPlugin(resource.pluginId).then((loaded) => {
-      if (cancelled) return;
-      const typeDef = loaded?.plugin.resourceTypes.find((t) => t.id === resource.resourceTypeId);
-      setSchedulable(!!typeDef?.lifecycle);
-    });
+    if (!activeCloudOrgId || !resourcePluginId || !resourceTypeId) return undefined;
+    getPlugin(resourcePluginId)
+      .then((loaded) => {
+        if (cancelled) return;
+        const typeDef = loaded?.plugin.resourceTypes.find((t) => t.id === resourceTypeId);
+        setSchedulable(!!typeDef?.lifecycle);
+      })
+      .catch(() => {
+        if (!cancelled) setSchedulable(false);
+      });
     return () => {
       cancelled = true;
     };
-  }, [activeCloudOrgId, resource]);
+  }, [activeCloudOrgId, resourcePluginId, resourceTypeId]);
 
   // Direct neighbors in the output-reference dependency graph — drives the
   // "Dependencies" tab. Best-effort: on failure the tab simply doesn't show.

@@ -1,6 +1,6 @@
 ---
 title: Right-sizing (Oversized resources)
-description: Find machines whose two-week p95 CPU and memory sit well under their size, get the smallest size that still leaves headroom, and apply the resize in one click.
+description: Find machines whose two-week p95 CPU (and memory, where measured) sits well under their size, get the smallest size that still leaves headroom, and apply the resize in one click.
 sidebar_order: 14
 ---
 

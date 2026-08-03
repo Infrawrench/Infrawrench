@@ -13,7 +13,11 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
-import { computeMoment, MOMENT_FEED_PERMISSIONS } from "../../services/moment";
+import {
+  computeMoment,
+  parseMomentTimestamp,
+  MOMENT_FEED_PERMISSIONS,
+} from "../../services/moment";
 
 const app = new Hono();
 
@@ -29,10 +33,13 @@ app.get("/", async (c) => {
   const atRaw = c.req.query("at");
   let at: Date | undefined;
   if (atRaw !== undefined) {
-    at = new Date(atRaw);
-    if (Number.isNaN(at.getTime())) {
+    // Offset-less timestamps are pinned to UTC (shared with `what_changed`)
+    // so the same URL means the same window wherever the server runs.
+    const parsed = parseMomentTimestamp(atRaw);
+    if (parsed === null) {
       return c.json({ error: "Invalid 'at' timestamp" }, 400);
     }
+    at = parsed;
   }
   const windowRaw = c.req.query("window");
   let windowMinutes: number | undefined;

@@ -682,23 +682,55 @@ export class HetznerClient implements PluginClient {
     const externalId = resourceId.split(":").pop();
     if (!externalId) throw new Error("Cannot parse server ID");
 
+    // Rename and change_type are independent calls: one failing must not
+    // silently skip or hide the other. Each runs in its own guard and the
+    // failures are combined into one labelled error, so partial success is
+    // explicit rather than reported as a clean failure.
+    const failures: string[] = [];
     const name = fields["name"];
     if (name !== undefined && name !== "") {
-      await this.fetch<unknown>(`/servers/${externalId}`, {
-        method: "PUT",
-        body: JSON.stringify({ name }),
-      });
+      try {
+        await this.fetch<unknown>(`/servers/${externalId}`, {
+          method: "PUT",
+          body: JSON.stringify({ name }),
+        });
+      } catch (e) {
+        failures.push(`rename failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
 
     const serverType = fields["serverType"];
     if (serverType !== undefined && serverType !== "") {
-      await this.fetch<unknown>(`/servers/${externalId}/actions/change_type`, {
-        method: "POST",
-        body: JSON.stringify({ server_type: serverType, upgrade_disk: false }),
-      });
+      try {
+        await this.fetch<unknown>(`/servers/${externalId}/actions/change_type`, {
+          method: "POST",
+          body: JSON.stringify({ server_type: serverType, upgrade_disk: false }),
+        });
+      } catch (e) {
+        failures.push(`change type failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
 
-    return this.getResource(typeId, resourceId, accountId);
+    if (failures.length > 0) {
+      throw new Error(`Hetzner server update: ${failures.join("; ")}`);
+    }
+
+    // change_type is asynchronous on Hetzner's side — an immediate re-read
+    // can still report the old server type while the action runs. Overlay the
+    // accepted values so the returned resource reflects the requested end
+    // state; the next sync reads the converged truth (the disk keeps its size
+    // because upgrade_disk is false).
+    const refreshed = await this.getResource(typeId, resourceId, accountId);
+    return {
+      ...refreshed,
+      fields: {
+        ...refreshed.fields,
+        ...(name !== undefined && name !== "" ? { name } : {}),
+        ...(serverType !== undefined && serverType !== "" ? { serverType } : {}),
+      },
+      ...(name !== undefined && name !== "" ? { displayName: name } : {}),
+      updatedAt: new Date().toISOString(),
+    };
   }
 
   /**

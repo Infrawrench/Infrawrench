@@ -50,8 +50,11 @@ export function describeResizeConfirm(r: OversizedResource): string {
 export function OversizedSection({ client, onOpenResource }: OversizedSectionProps) {
   const [data, setData] = useState<RightsizingListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [applyingId, setApplyingId] = useState<string | null>(null);
+  // Per-row in-flight set — one slow resize must not re-enable (or disable)
+  // any other row's Apply button.
+  const [applying, setApplying] = useState<ReadonlySet<string>>(new Set());
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
+  /** resource id → applied size *label* (what the row displays). */
   const [applied, setApplied] = useState<Record<string, string>>({});
   const requestSeq = useRef(0);
 
@@ -76,14 +79,14 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
   const apply = useCallback(
     async (resource: OversizedResource, accountId: string) => {
       if (!window.confirm(describeResizeConfirm(resource))) return;
-      setApplyingId(resource.id);
+      setApplying((prev) => new Set(prev).add(resource.id));
       setRowErrors((prev) => {
         const { [resource.id]: _dropped, ...rest } = prev;
         return rest;
       });
       try {
         await client.applyResize(resource, accountId);
-        setApplied((prev) => ({ ...prev, [resource.id]: resource.recommendedSize.id }));
+        setApplied((prev) => ({ ...prev, [resource.id]: resource.recommendedSize.label }));
       } catch (e) {
         // Change-freeze 423s and tag-policy 422s land here with the server's
         // own explanation — show it verbatim, offer nothing else.
@@ -92,7 +95,11 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
           [resource.id]: e instanceof Error ? e.message : String(e),
         }));
       } finally {
-        setApplyingId(null);
+        setApplying((prev) => {
+          const next = new Set(prev);
+          next.delete(resource.id);
+          return next;
+        });
       }
     },
     [client],
@@ -205,11 +212,11 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
                       ) : (
                         <button
                           type="button"
-                          disabled={applyingId === r.id}
+                          disabled={applying.has(r.id)}
                           onClick={() => void apply(r, group.accountId)}
                           className="rounded-lg border border-border bg-surface-raised px-3 py-1 text-xs text-on-surface hover:border-border-strong disabled:opacity-50"
                         >
-                          {applyingId === r.id ? "Applying…" : "Apply resize"}
+                          {applying.has(r.id) ? "Applying…" : "Apply resize"}
                         </button>
                       )}
                     </td>

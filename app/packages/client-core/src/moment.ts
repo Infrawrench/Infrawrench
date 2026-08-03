@@ -199,10 +199,15 @@ const FEED_ORDER: Record<MomentFeedId, number> = MOMENT_FEED_IDS.reduce(
 
 /**
  * Chronological comparator (oldest first), with deterministic tie-breaks by
- * feed order then id so a merged list is stable across refreshes.
+ * feed order then id so a merged list is stable across refreshes. Compares
+ * parsed instants (not strings) so equivalent ISO timestamps with different
+ * offsets sort by actual time; unparseable timestamps sort last.
  */
 export function compareMomentEvents(a: MomentEvent, b: MomentEvent): number {
-  if (a.timestamp !== b.timestamp) return a.timestamp < b.timestamp ? -1 : 1;
+  const at = Date.parse(a.timestamp);
+  const bt = Date.parse(b.timestamp);
+  if (Number.isNaN(at) !== Number.isNaN(bt)) return Number.isNaN(at) ? 1 : -1;
+  if (!Number.isNaN(at) && at !== bt) return at < bt ? -1 : 1;
   const feed = (FEED_ORDER[a.feed] ?? 99) - (FEED_ORDER[b.feed] ?? 99);
   if (feed !== 0) return feed;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;

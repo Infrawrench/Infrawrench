@@ -179,10 +179,24 @@ const rightsizingSchema = z
       path: ["sizeFamilyPattern"],
     },
   )
-  .refine((r) => r.sizeFamilyPattern === undefined || /\((?!\?:)/.test(r.sizeFamilyPattern), {
-    message: "sizeFamilyPattern must contain at least one capture group",
-    path: ["sizeFamilyPattern"],
-  });
+  .refine(
+    (r) => {
+      if (r.sizeFamilyPattern === undefined) return true;
+      // Count *actual* capturing groups structurally: appending an empty
+      // alternative makes the regex match "", and the match array's length is
+      // 1 + the number of capturing groups (named ones included). A source
+      // scan would miscount `(?=…)` / `(?!…)` lookarounds and escaped parens.
+      try {
+        return (new RegExp(`${r.sizeFamilyPattern}|`).exec("")?.length ?? 1) > 1;
+      } catch {
+        return false; // invalid regex — already reported by the refine above
+      }
+    },
+    {
+      message: "sizeFamilyPattern must contain at least one capture group",
+      path: ["sizeFamilyPattern"],
+    },
+  );
 
 export const resourceTypeDefinitionSchema = z.object({
   id: z.string().min(1),

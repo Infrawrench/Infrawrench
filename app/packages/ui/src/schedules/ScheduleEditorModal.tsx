@@ -100,6 +100,18 @@ export function ScheduleEditorModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const previewSeq = useRef(0);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  // Dialog basics: focus the panel on mount so keyboard users land inside it,
+  // and let Escape close it.
+  useEffect(() => {
+    panelRef.current?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
 
   const zones = useMemo(knownTimeZones, []);
   const timingError = validateScheduleTiming(timing);
@@ -168,11 +180,15 @@ export function ScheduleEditorModal({
       role="dialog"
       aria-modal="true"
       aria-label={existing ? "Edit sleep schedule" : "New sleep schedule"}
-      onClick={onClose}
+      // mousedown (not click) so a drag or text selection that starts inside
+      // the panel and ends over the backdrop doesn't dismiss the editor.
+      onMouseDown={onClose}
     >
       <div
+        ref={panelRef}
+        tabIndex={-1}
         className="w-full max-w-md rounded-2xl border border-border bg-surface p-5 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <h2 className="text-sm font-semibold text-on-surface">
           {existing ? "Edit sleep schedule" : "New sleep schedule"}
@@ -283,7 +299,7 @@ export function ScheduleEditorModal({
                     </>
                   ) : null}
                 </div>
-                {preview?.projectedMonthlySaving == null && (
+                {preview !== null && preview.projectedMonthlySaving == null && (
                   <div className="mt-1">
                     No per-resource billing rows for this resource yet, so there is no savings
                     figure — the schedule works either way.

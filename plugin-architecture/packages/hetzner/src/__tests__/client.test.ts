@@ -1357,6 +1357,54 @@ describe("updateResource (server rename + change_type)", () => {
       /not supported/,
     );
   });
+
+  it("still attempts change_type when the rename fails, and reports both in one error", async () => {
+    const c = makeClient();
+    const attempted: string[] = [];
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/servers/42") && init?.method === "PUT") {
+        attempted.push("rename");
+        return notOk(500, "rename exploded");
+      }
+      if (url.endsWith("/servers/42/actions/change_type")) {
+        attempted.push("change_type");
+        return okJson({ action: { id: 1 } });
+      }
+      if (url.endsWith("/servers/42")) return okJson(serverBody);
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    await expect(
+      c.updateResource("server", `${ACCOUNT}:server:42`, ACCOUNT, {
+        name: "web-2",
+        serverType: "cx32",
+      }),
+    ).rejects.toThrow(/rename failed/);
+    // The resize was not silently skipped by the rename failure.
+    expect(attempted).toEqual(["rename", "change_type"]);
+  });
+
+  it("overlays the requested server type on the returned resource (async change_type)", async () => {
+    const c = makeClient();
+    const staleBody = {
+      server: {
+        ...serverBody.server,
+        server_type: { name: "cx22", cores: 2, memory: 4, disk: 40 },
+      },
+    };
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/servers/42/actions/change_type")) return okJson({ action: { id: 1 } });
+      if (url.endsWith("/servers/42") && init?.method !== "PUT") return okJson(staleBody);
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    const r = await c.updateResource("server", `${ACCOUNT}:server:42`, ACCOUNT, {
+      serverType: "cx32",
+    });
+    // Hetzner hasn't converged yet (the re-read still says cx22) but the
+    // returned resource reflects the accepted request.
+    expect(r.fields["serverType"]).toBe("cx32");
+  });
 });
 
 describe("getCreateSizePricing (per-location server type prices)", () => {

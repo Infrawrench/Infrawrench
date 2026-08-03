@@ -79,8 +79,14 @@ export function MomentPanel({
 }: MomentPanelProps) {
   // "" = around now. Kept in the input's local format so typing stays sane.
   const [atInput, setAtInput] = useState(() => (initialAt ? isoToLocalInput(initialAt) : ""));
+  // Guard the host-supplied initial window like MomentScreen does — only a
+  // finite positive number is usable; anything else gets the default.
   const [windowMinutes, setWindowMinutes] = useState(
-    initialWindowMinutes ?? DEFAULT_MOMENT_WINDOW_MINUTES,
+    typeof initialWindowMinutes === "number" &&
+      Number.isFinite(initialWindowMinutes) &&
+      initialWindowMinutes > 0
+      ? initialWindowMinutes
+      : DEFAULT_MOMENT_WINDOW_MINUTES,
   );
   const [data, setData] = useState<MomentResponse | null>(null);
   const [loading, setLoading] = useState(true);

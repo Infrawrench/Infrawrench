@@ -1177,23 +1177,54 @@ export class DigitalOceanClient implements PluginClient {
       // `disk: false` — CPU/RAM only, reversible, and DO powers the Droplet
       // off for it automatically. DO rejects targets whose included disk is
       // smaller than the Droplet's current disk; that error surfaces as-is.
+      //
+      // The two actions are independent: one failing must not silently skip
+      // or hide the other, so each runs in its own guard and the failures are
+      // combined into one labelled error that makes partial success explicit.
+      const failures: string[] = [];
       const name = fields["name"];
       if (name !== undefined && name !== "") {
-        await this.fetch<unknown>(`/droplets/${externalId}/actions`, {
-          method: "POST",
-          body: JSON.stringify({ type: "rename", name }),
-          headers: { "Content-Type": "application/json" },
-        });
+        try {
+          await this.fetch<unknown>(`/droplets/${externalId}/actions`, {
+            method: "POST",
+            body: JSON.stringify({ type: "rename", name }),
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (e) {
+          failures.push(`rename failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
       }
       const size = fields["size"];
       if (size !== undefined && size !== "") {
-        await this.fetch<unknown>(`/droplets/${externalId}/actions`, {
-          method: "POST",
-          body: JSON.stringify({ type: "resize", size, disk: false }),
-          headers: { "Content-Type": "application/json" },
-        });
+        try {
+          await this.fetch<unknown>(`/droplets/${externalId}/actions`, {
+            method: "POST",
+            body: JSON.stringify({ type: "resize", size, disk: false }),
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (e) {
+          failures.push(`resize failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
       }
-      return this.getResource(typeId, resourceId, accountId);
+      if (failures.length > 0) {
+        throw new Error(`DigitalOcean droplet update: ${failures.join("; ")}`);
+      }
+      // Both actions are asynchronous on DO's side — an immediate re-read can
+      // still report the old name/size while the action runs. Overlay the
+      // accepted values so the returned resource reflects the requested end
+      // state (the sleep/wake "don't fight the sync" stance); the next sync
+      // reads the converged truth.
+      const refreshed = await this.getResource(typeId, resourceId, accountId);
+      return {
+        ...refreshed,
+        fields: {
+          ...refreshed.fields,
+          ...(name !== undefined && name !== "" ? { name } : {}),
+          ...(size !== undefined && size !== "" ? { size } : {}),
+        },
+        ...(name !== undefined && name !== "" ? { displayName: name } : {}),
+        updatedAt: new Date().toISOString(),
+      };
     }
 
     if (typeId !== "project") {

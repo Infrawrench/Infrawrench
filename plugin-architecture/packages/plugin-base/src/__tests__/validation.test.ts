@@ -193,6 +193,47 @@ describe("resourceTypeDefinitionSchema", () => {
     ).toBe(false);
   });
 
+  it("rejects a rightsizing sizeFamilyPattern whose only parens are a lookahead", () => {
+    // `(?=…)` contains "(" but captures nothing — a source scan for "("
+    // would wrongly accept it and the family guard would never constrain.
+    expect(
+      resourceTypeDefinitionSchema.safeParse({
+        ...validResourceType,
+        rightsizing: {
+          sizeFieldKey: "size",
+          cpuMetric: { seriesLabel: "CPU" },
+          sizeFamilyPattern: "^(?=[a-z])",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a rightsizing sizeFamilyPattern whose only paren is escaped", () => {
+    expect(
+      resourceTypeDefinitionSchema.safeParse({
+        ...validResourceType,
+        rightsizing: {
+          sizeFieldKey: "size",
+          cpuMetric: { seriesLabel: "CPU" },
+          sizeFamilyPattern: "^\\(size",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts a rightsizing sizeFamilyPattern with a named capture group", () => {
+    expect(
+      resourceTypeDefinitionSchema.safeParse({
+        ...validResourceType,
+        rightsizing: {
+          sizeFieldKey: "size",
+          cpuMetric: { seriesLabel: "CPU" },
+          sizeFamilyPattern: "^(?<family>[a-z]+)",
+        },
+      }).success,
+    ).toBe(true);
+  });
+
   it("rejects a memory metric without an interpretation", () => {
     expect(
       resourceTypeDefinitionSchema.safeParse({

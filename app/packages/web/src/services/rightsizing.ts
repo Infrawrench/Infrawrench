@@ -49,9 +49,17 @@ interface CacheEntry {
 
 const responseCache = new Map<string, CacheEntry>();
 
+/**
+ * Orgs whose computation is currently running. A `refresh=true` call (or a
+ * cache-expiry miss) while one is in flight joins that run instead of
+ * stacking a second full provider/ClickHouse sweep.
+ */
+const inFlight = new Set<string>();
+
 /** Test hook. */
 export function clearRightsizingCache(): void {
   responseCache.clear();
+  inFlight.clear();
 }
 
 export async function listRightsizing(
@@ -59,11 +67,21 @@ export async function listRightsizing(
   { refresh = false }: { refresh?: boolean } = {},
 ): Promise<RightsizingListResponse> {
   const cached = responseCache.get(organizationId);
-  if (!refresh && cached && cached.expiresAt > Date.now()) return cached.promise;
+  if (cached && (inFlight.has(organizationId) || (!refresh && cached.expiresAt > Date.now()))) {
+    return cached.promise;
+  }
 
-  const promise = computeRightsizing(organizationId);
-  responseCache.set(organizationId, { expiresAt: Date.now() + CACHE_TTL_MS, promise });
-  promise.catch(() => responseCache.delete(organizationId));
+  inFlight.add(organizationId);
+  const promise = computeRightsizing(organizationId).finally(() => {
+    inFlight.delete(organizationId);
+  });
+  const entry: CacheEntry = { expiresAt: Date.now() + CACHE_TTL_MS, promise };
+  responseCache.set(organizationId, entry);
+  // A failed computation must not serve from cache until the TTL runs out —
+  // drop the entry (only if it is still ours) so the next call retries.
+  promise.catch(() => {
+    if (responseCache.get(organizationId) === entry) responseCache.delete(organizationId);
+  });
   return promise;
 }
 

@@ -619,7 +619,15 @@ export class AWSClient implements PluginClient {
         InstanceId: instanceId,
         "InstanceType.Value": instanceType,
       });
-      return this.getResource(typeId, resourceId, accountId);
+      // Return the resource already in hand with the new type overlaid rather
+      // than re-running the multi-region lookup: it halves the API fan-out,
+      // and EC2's eventual consistency means an immediate re-describe could
+      // still report the old type. The next sync reads the converged truth.
+      return {
+        ...resource,
+        fields: { ...resource.fields, instanceType },
+        updatedAt: new Date().toISOString(),
+      };
     }
 
     throw new Error(`AWS plugin: updateResource not supported for type "${typeId}"`);

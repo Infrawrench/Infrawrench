@@ -8,7 +8,7 @@
  * the server and the form can't disagree about when a window opens.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   computeNextTransition,
   validateScheduleTiming,
@@ -68,6 +68,16 @@ export class ScheduleInputError extends Error {
     super(message);
     this.name = "ScheduleInputError";
   }
+}
+
+/** Postgres unique-index conflict (23505), possibly wrapped by the ORM. */
+function isUniqueViolation(error: unknown): boolean {
+  let current: unknown = error;
+  while (current instanceof Error) {
+    if ((current as { code?: unknown }).code === "23505") return true;
+    current = current.cause;
+  }
+  return false;
 }
 
 /** The `lifecycle` declaration for a type, or null when it has none. */
@@ -167,30 +177,6 @@ export async function createScheduleRecord(
     );
   }
 
-  const existing = await db
-    .select({ id: resourceSchedules.id })
-    .from(resourceSchedules)
-    .where(
-      and(
-        eq(resourceSchedules.organizationId, organizationId),
-        eq(resourceSchedules.resourceId, input.resourceId),
-      ),
-    )
-    .limit(1);
-  if (existing.length > 0) {
-    throw new ScheduleInputError("This resource already has a schedule — edit it instead", 409);
-  }
-
-  const count = await db
-    .select({ id: resourceSchedules.id })
-    .from(resourceSchedules)
-    .where(eq(resourceSchedules.organizationId, organizationId));
-  if (count.length >= SCHEDULE_LIMITS.maxPerOrg) {
-    throw new ScheduleInputError(
-      `Organizations are limited to ${SCHEDULE_LIMITS.maxPerOrg} schedules`,
-    );
-  }
-
   const now = new Date();
   const row = {
     id: randomUUID(),
@@ -209,7 +195,49 @@ export async function createScheduleRecord(
     createdAt: now,
     updatedAt: now,
   };
-  await db.insert(resourceSchedules).values(row);
+
+  // The duplicate check, the per-org limit and the insert run in one
+  // transaction under an org-scoped advisory lock, so two concurrent creates
+  // can't both pass the checks. The unique index on (organization_id,
+  // resource_id) is the hard backstop — a conflict from it surfaces as the
+  // same 409 the pre-check gives, never as a raw database error.
+  try {
+    await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${`resource_schedules:${organizationId}`}))`,
+      );
+      const existing = await tx
+        .select({ id: resourceSchedules.id })
+        .from(resourceSchedules)
+        .where(
+          and(
+            eq(resourceSchedules.organizationId, organizationId),
+            eq(resourceSchedules.resourceId, input.resourceId),
+          ),
+        )
+        .limit(1);
+      if (existing.length > 0) {
+        throw new ScheduleInputError("This resource already has a schedule — edit it instead", 409);
+      }
+
+      const count = await tx
+        .select({ id: resourceSchedules.id })
+        .from(resourceSchedules)
+        .where(eq(resourceSchedules.organizationId, organizationId));
+      if (count.length >= SCHEDULE_LIMITS.maxPerOrg) {
+        throw new ScheduleInputError(
+          `Organizations are limited to ${SCHEDULE_LIMITS.maxPerOrg} schedules`,
+        );
+      }
+
+      await tx.insert(resourceSchedules).values(row);
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      throw new ScheduleInputError("This resource already has a schedule — edit it instead", 409);
+    }
+    throw error;
+  }
   return (await getScheduleRecord(organizationId, row.id))!;
 }
 

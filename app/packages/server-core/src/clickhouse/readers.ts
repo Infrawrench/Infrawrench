@@ -212,7 +212,9 @@ export interface MetricSeriesQuantiles {
  * right-sizing window is 14 days) rather than the 1h rollup: a p95 of hourly
  * averages flattens the very peaks the recommendation must respect. The inner
  * query finalizes the avg-state per minute, the outer one takes quantiles
- * over those per-minute points.
+ * over those per-minute points. Series identity is (resource, label) — a
+ * series whose unit string changed mid-window still combines into one row,
+ * with a representative unit via `any(unit)`.
  */
 export async function getMetricQuantilesBatch(
   organizationId: string,
@@ -233,7 +235,7 @@ export async function getMetricQuantilesBatch(
   }>(
     `SELECT resource_id,
             series_label,
-            unit,
+            any(unit)                  AS unit,
             quantile(0.05)(minute_avg) AS q05,
             quantile(0.95)(minute_avg) AS q95,
             max(minute_avg)            AS vmax,
@@ -251,7 +253,7 @@ export async function getMetricQuantilesBatch(
          AND ts_minute <= toDateTime({toSec:Int64})
        GROUP BY resource_id, series_label, unit, ts_minute
      )
-     GROUP BY resource_id, series_label, unit`,
+     GROUP BY resource_id, series_label`,
     {
       orgId: organizationId,
       ids: resourceIds,

@@ -1917,28 +1917,37 @@ export class NeonClient implements PluginClient {
         },
       ],
       headerActions: [
-        state === "idle"
-          ? {
-              kind: "action",
-              label: "Start",
-              action: {
-                type: "plugin-action",
-                actionId: "start",
-                successMessage: "Start requested — the compute is warming up.",
+        // Start only from "idle", Suspend only from "active" — transitional
+        // states ("init" and friends) get neither: the API would reject or
+        // race the in-flight transition, so wait for Refresh to settle it.
+        ...(state === "idle"
+          ? [
+              {
+                kind: "action" as const,
+                label: "Start",
+                action: {
+                  type: "plugin-action" as const,
+                  actionId: "start",
+                  successMessage: "Start requested — the compute is warming up.",
+                },
               },
-            }
-          : {
-              kind: "action",
-              label: "Suspend",
-              action: {
-                type: "plugin-action",
-                actionId: "suspend",
-                confirmMessage:
-                  "Suspend this compute endpoint? Open connections drop; the next connection wakes it (or a scheduled start does).",
-                successMessage: "Suspend requested.",
-              },
-              variant: "danger",
-            },
+            ]
+          : state === "active"
+            ? [
+                {
+                  kind: "action" as const,
+                  label: "Suspend",
+                  action: {
+                    type: "plugin-action" as const,
+                    actionId: "suspend",
+                    confirmMessage:
+                      "Suspend this compute endpoint? Open connections drop; the next connection wakes it (or a scheduled start does).",
+                    successMessage: "Suspend requested.",
+                  },
+                  variant: "danger" as const,
+                },
+              ]
+            : []),
         { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
       ],
     };
