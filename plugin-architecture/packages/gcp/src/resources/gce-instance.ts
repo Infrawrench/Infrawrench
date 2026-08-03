@@ -53,6 +53,15 @@ export const GceInstanceResourceType = rt({
     { fieldKey: "serviceAccounts", targetTypeId: "gcp-service-account", label: "runs as" },
   ],
   supportsMetrics: true,
+  // Sleep/wake schedules: instances.stop / instances.start. A TERMINATED VM
+  // stops compute billing (disks and reserved IPs keep billing).
+  lifecycle: {
+    startActionId: "start",
+    stopActionId: "stop",
+    statusFieldKey: "status",
+    runningValues: ["RUNNING", "PROVISIONING", "STAGING"],
+    stoppedValues: ["TERMINATED", "STOPPING", "SUSPENDED"],
+  },
   sshEndpoint: {
     hostOutputKey: "externalIp",
     privateHostOutputKey: "internalIp",

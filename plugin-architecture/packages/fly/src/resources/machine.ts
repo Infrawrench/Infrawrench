@@ -33,6 +33,16 @@ export const MachineResourceType = rt({
   // id — so the edge resolves exactly rather than by guesswork.
   dependsOn: [{ fieldKey: "appName", targetTypeId: "app", label: "in app" }],
   iconKey: "server",
+  // Sleep/wake schedules: Machines API start / stop. A stopped machine stops
+  // compute billing (rootfs storage keeps billing); `start` also resumes a
+  // suspended machine.
+  lifecycle: {
+    startActionId: "start",
+    stopActionId: "stop",
+    statusFieldKey: "state",
+    runningValues: ["started", "starting"],
+    stoppedValues: ["stopped", "stopping", "suspended"],
+  },
   supportsCreate: true,
   supportsMetrics: true,
 });

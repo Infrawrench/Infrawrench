@@ -21,6 +21,16 @@ export const NeonEndpointResourceType = rt({
     { fieldKey: "branchId", targetTypeId: "neon-branch", label: "on branch" },
   ],
   parentTypeId: "neon-branch",
+  // Sleep/wake schedules: endpoint suspend/start. A suspended compute stops
+  // consuming compute units; note the next incoming connection also wakes it,
+  // so a scheduled suspend holds only until something connects.
+  lifecycle: {
+    startActionId: "start",
+    stopActionId: "suspend",
+    statusFieldKey: "currentState",
+    runningValues: ["active"],
+    stoppedValues: ["idle"],
+  },
   supportsCreate: true,
   iconKey: "neon",
 });

@@ -114,6 +114,40 @@ export function renderAzureDetail(
     headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
   };
 
+  if (resource.resourceTypeId === "azure-vm") {
+    const power = String(fields["powerState"] ?? "");
+    if (power === "VM running") {
+      detail.headerActions = [
+        {
+          kind: "action",
+          label: "Stop",
+          action: {
+            type: "plugin-action",
+            actionId: "deallocate",
+            confirmMessage:
+              "Stop this VM? Deallocating releases the compute so VM billing stops; disks and public IPs keep billing.",
+            successMessage: "Deallocate requested.",
+          },
+          variant: "danger",
+        },
+        ...(detail.headerActions ?? []),
+      ];
+    } else if (power === "VM deallocated" || power === "VM stopped") {
+      detail.headerActions = [
+        {
+          kind: "action",
+          label: "Start",
+          action: {
+            type: "plugin-action",
+            actionId: "start",
+            successMessage: "Start requested.",
+          },
+        },
+        ...(detail.headerActions ?? []),
+      ];
+    }
+  }
+
   if (resource.resourceTypeId === "azure-storage-account") {
     detail.storageBrowser = { bucketName: String(resource.fields["name"] ?? "") };
   }

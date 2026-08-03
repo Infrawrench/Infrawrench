@@ -1,4 +1,5 @@
 import type {
+  ActionNode,
   DetailViewSchema,
   DetailViewTab,
   ResourceInstance,
@@ -110,6 +111,65 @@ export function renderDetail(
       ? [buildDynamoSchemaTab(decodeIndexesField(fields["_indexesJson"]))]
       : [];
 
+  // Stop/Start header actions for the lifecycle pair (see the types'
+  // `lifecycle` declarations): Stop while the instance runs, Start once it
+  // has stopped. EC2 keys off the instance state, RDS off the DB status.
+  const lifecycleActions: ActionNode[] = [];
+  if (resource.resourceTypeId === "ec2-instance") {
+    const s = state.toLowerCase();
+    if (s === "running") {
+      lifecycleActions.push({
+        kind: "action",
+        label: "Stop",
+        action: {
+          type: "plugin-action",
+          actionId: "stop",
+          confirmMessage:
+            "Stop this EC2 instance? Compute billing stops while it is stopped; EBS volumes and Elastic IPs keep billing.",
+          successMessage: "Stop requested.",
+        },
+        variant: "danger",
+      });
+    } else if (s === "stopped") {
+      lifecycleActions.push({
+        kind: "action",
+        label: "Start",
+        action: {
+          type: "plugin-action",
+          actionId: "start",
+          successMessage: "Start requested.",
+        },
+      });
+    }
+  }
+  if (resource.resourceTypeId === "rds-instance") {
+    const s = state.toLowerCase();
+    if (s === "available") {
+      lifecycleActions.push({
+        kind: "action",
+        label: "Stop",
+        action: {
+          type: "plugin-action",
+          actionId: "stop",
+          confirmMessage:
+            "Stop this RDS instance? Connections drop and instance-hour billing stops; storage keeps billing, and AWS restarts a stopped instance after 7 days.",
+          successMessage: "Stop requested.",
+        },
+        variant: "danger",
+      });
+    } else if (s === "stopped") {
+      lifecycleActions.push({
+        kind: "action",
+        label: "Start",
+        action: {
+          type: "plugin-action",
+          actionId: "start",
+          successMessage: "Start requested.",
+        },
+      });
+    }
+  }
+
   return {
     title: resource.displayName,
     subtitle: `${resourceTypeDisplayName(resourceTypes, resource.resourceTypeId)} · ${region}`,
@@ -144,7 +204,10 @@ export function renderDetail(
           : [];
       })(),
     ],
-    headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    headerActions: [
+      ...lifecycleActions,
+      { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+    ],
     ...(resource.resourceTypeId === "ecr-repository"
       ? {
           artifactRegistry: {

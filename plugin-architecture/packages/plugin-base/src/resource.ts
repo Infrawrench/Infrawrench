@@ -311,6 +311,35 @@ export interface ExpiryFieldRule {
   fallbackFieldKey?: string;
 }
 
+/**
+ * Declares that a resource type can be powered off and back on through a pair
+ * of the plugin's own invoke-actions ("plugin-action" `HostAction`s dispatched
+ * via `client.invokeAction`). The generic convention behind sleep/wake
+ * schedules: the host discovers eligibility from this hint — it never
+ * hard-codes provider names or string-matches action ids — and executes the
+ * named actions server-side when a schedule window opens or closes.
+ *
+ * Only declare action ids the plugin's `invokeAction` actually accepts for
+ * this type. The stop action should be the one that halts billing where the
+ * provider distinguishes (e.g. Azure deallocate rather than an OS-level stop).
+ */
+export interface LifecycleActionsDeclaration {
+  /** actionId understood by `invokeAction` that starts/resumes the resource. */
+  startActionId: string;
+  /** actionId that stops/suspends/powers off the resource. */
+  stopActionId: string;
+  /**
+   * Field on this type holding the provider's run-state (e.g. "status").
+   * When declared with the value lists below, hosts skip a transition whose
+   * stored state already matches the desired one instead of re-invoking.
+   */
+  statusFieldKey?: string;
+  /** Values of that field (case-insensitive) that mean "running". */
+  runningValues?: string[];
+  /** Values of that field (case-insensitive) that mean "stopped". */
+  stoppedValues?: string[];
+}
+
 export interface ResourceTypeDefinition {
   id: string;
   displayName: string;
@@ -465,6 +494,12 @@ export interface ResourceTypeDefinition {
    * matches both, `equals`/`notEquals` never match an absent field).
    */
   orphanRule?: OrphanRule;
+  /**
+   * Start/stop action pair for sleep/wake schedules; see
+   * {@link LifecycleActionsDeclaration}. Absent = the type cannot be
+   * scheduled.
+   */
+  lifecycle?: LifecycleActionsDeclaration;
 }
 
 /** One predicate inside an {@link OrphanRule}. All conditions must hold. */

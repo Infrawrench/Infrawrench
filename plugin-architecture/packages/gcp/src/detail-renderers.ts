@@ -200,6 +200,40 @@ export function gcpRenderDetail(
     renderCloudFunction(resource, base);
   }
 
+  if (resource.resourceTypeId === "gce-instance") {
+    const status = String(fields["status"] ?? "").toUpperCase();
+    if (status === "RUNNING") {
+      base.headerActions = [
+        {
+          kind: "action",
+          label: "Stop",
+          action: {
+            type: "plugin-action",
+            actionId: "stop",
+            confirmMessage:
+              "Stop this VM instance? Compute billing stops while it is terminated; attached disks and static IPs keep billing.",
+            successMessage: "Stop requested.",
+          },
+          variant: "danger",
+        },
+        ...(base.headerActions ?? []),
+      ];
+    } else if (status === "TERMINATED") {
+      base.headerActions = [
+        {
+          kind: "action",
+          label: "Start",
+          action: {
+            type: "plugin-action",
+            actionId: "start",
+            successMessage: "Start requested.",
+          },
+        },
+        ...(base.headerActions ?? []),
+      ];
+    }
+  }
+
   if (resource.resourceTypeId === "instance-group") {
     base.subtitle = "Managed Instance Group";
     const rawMi = String(resource.resolvedOutputs["managedInstances"] ?? "");

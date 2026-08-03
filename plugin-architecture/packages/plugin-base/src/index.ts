@@ -53,6 +53,7 @@ export type {
   OrphanRule,
   ExpiryKind,
   ExpiryFieldRule,
+  LifecycleActionsDeclaration,
 } from "./resource.js";
 
 export type {

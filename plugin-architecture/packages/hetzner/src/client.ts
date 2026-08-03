@@ -1,4 +1,5 @@
 import type {
+  ActionNode,
   PluginClient,
   ResourceInstance,
   DetailViewSchema,
@@ -659,6 +660,23 @@ export class HetznerClient implements PluginClient {
     }
   }
 
+  async invokeAction(
+    typeId: string,
+    resourceId: string,
+    actionId: string,
+    _accountId: string,
+  ): Promise<void> {
+    if (typeId === "server" && (actionId === "poweron" || actionId === "poweroff")) {
+      const externalId = resourceId.split(":").pop();
+      if (!externalId) throw new Error("Cannot parse server ID");
+      await this.fetch<unknown>(`/servers/${externalId}/actions/${actionId}`, { method: "POST" });
+      return;
+    }
+    throw new Error(
+      `Hetzner plugin: invokeAction "${actionId}" not supported for type "${typeId}"`,
+    );
+  }
+
   async attachResource(
     sourceTypeId: string,
     sourceResourceId: string,
@@ -995,6 +1013,37 @@ export class HetznerClient implements PluginClient {
         ? serverStatusToDot(String(fields["status"] ?? "unknown"))
         : ("info" as const);
 
+    // Power off/on header actions for the server lifecycle pair (see the
+    // type's `lifecycle` declaration).
+    const lifecycleActions: ActionNode[] = [];
+    if (resource.resourceTypeId === "server") {
+      const s = String(fields["status"] ?? "");
+      if (s === "running") {
+        lifecycleActions.push({
+          kind: "action",
+          label: "Power off",
+          action: {
+            type: "plugin-action",
+            actionId: "poweroff",
+            confirmMessage:
+              "Power off this server? This is a hard poweroff (like pulling the plug); Hetzner keeps billing a powered-off server.",
+            successMessage: "Power off requested.",
+          },
+          variant: "danger",
+        });
+      } else if (s === "off") {
+        lifecycleActions.push({
+          kind: "action",
+          label: "Power on",
+          action: {
+            type: "plugin-action",
+            actionId: "poweron",
+            successMessage: "Power on requested.",
+          },
+        });
+      }
+    }
+
     return {
       title: resource.displayName,
       subtitle: `${resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId)} · ${String(fields["location"] ?? "")}`,
@@ -1011,7 +1060,10 @@ export class HetznerClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      headerActions: [
+        ...lifecycleActions,
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+      ],
     };
   }
 

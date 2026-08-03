@@ -193,6 +193,33 @@ export async function fetchCloudNatRouterStatus(
 }
 
 /**
+ * Start or stop a GCE VM instance — the detail-page power actions and the
+ * sleep/wake schedule lifecycle pair. `stop` moves the VM to TERMINATED
+ * (compute billing stops; disks and static IPs keep billing), `start` boots
+ * a TERMINATED VM again.
+ */
+export async function setGceInstancePower(
+  ctx: GcpClientContext,
+  resource: ResourceInstance,
+  verb: "start" | "stop",
+): Promise<void> {
+  const p = ctx.project;
+  const zone = String(resource.fields["zone"] ?? "");
+  const name = String(resource.fields["name"] ?? "");
+  if (!zone || !name) {
+    throw new Error("Cannot determine zone/name for VM instance");
+  }
+  const tok = await ctx.token();
+  const res = await fetch(
+    `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/instances/${name}/${verb}`,
+    { method: "POST", headers: { Authorization: `Bearer ${tok}` } },
+  );
+  if (!res.ok) {
+    throw new Error(await formatGcpError(verb === "start" ? "Start VM" : "Stop VM", res));
+  }
+}
+
+/**
  * Run the "restart/replace" action on an instance group — used by the
  * sidebar action button to roll over every VM.
  */

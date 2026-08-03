@@ -432,6 +432,40 @@ export class ClickHouseClient implements PluginClient {
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
 
+    // Stop/Start header actions for the lifecycle pair (see the type's
+    // `lifecycle` declaration). "idle" still counts as running — the service
+    // is auto-idled and wakes on demand.
+    if (state === "running" || state === "idle") {
+      detail.headerActions = [
+        {
+          kind: "action",
+          label: "Stop",
+          action: {
+            type: "plugin-action",
+            actionId: "stop",
+            confirmMessage:
+              "Stop this service? Open connections drop and compute billing stops while it is stopped; storage keeps billing.",
+            successMessage: "Stop requested.",
+          },
+          variant: "danger",
+        },
+        ...(detail.headerActions ?? []),
+      ];
+    } else if (state === "stopped") {
+      detail.headerActions = [
+        {
+          kind: "action",
+          label: "Start",
+          action: {
+            type: "plugin-action",
+            actionId: "start",
+            successMessage: "Start requested.",
+          },
+        },
+        ...(detail.headerActions ?? []),
+      ];
+    }
+
     // Add SQL editor if the service is running and we have connection info
     if ((state === "running" || state === "idle") && resource.resolvedOutputs["connectionString"]) {
       detail.sqlEditor = {
@@ -880,15 +914,38 @@ export class ClickHouseClient implements PluginClient {
     // If the service is running or idle, stop it first (ClickHouse Cloud requires stopped state to delete)
     const state = String(resource.fields["state"]);
     if (state === "running" || state === "idle") {
-      await this.cloudApi(
-        "PATCH",
-        `/v1/organizations/${this.organizationId}/services/${serviceId}/state`,
-        { command: "stop" },
-      );
+      await this.setServiceState(serviceId, "stop");
       // Wait a bit for the stop to initiate
       await new Promise((r) => setTimeout(r, 2000));
     }
 
     await this.cloudApi("DELETE", `/v1/organizations/${this.organizationId}/services/${serviceId}`);
+  }
+
+  /** Start or stop a ClickHouse Cloud service via the state PATCH endpoint. */
+  private async setServiceState(serviceId: string, command: "start" | "stop"): Promise<void> {
+    await this.cloudApi(
+      "PATCH",
+      `/v1/organizations/${this.organizationId}/services/${serviceId}/state`,
+      { command },
+    );
+  }
+
+  async invokeAction(
+    typeId: string,
+    resourceId: string,
+    actionId: string,
+    accountId: string,
+  ): Promise<void> {
+    if (typeId === "ch-service" && (actionId === "start" || actionId === "stop")) {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const serviceId = String(resource.fields["serviceId"] ?? resource.externalId ?? "");
+      if (!serviceId) throw new Error("Cannot determine ClickHouse Cloud service ID");
+      await this.setServiceState(serviceId, actionId);
+      return;
+    }
+    throw new Error(
+      `ClickHouse plugin: invokeAction "${actionId}" not supported for type "${typeId}"`,
+    );
   }
 }

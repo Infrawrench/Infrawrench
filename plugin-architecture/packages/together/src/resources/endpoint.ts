@@ -32,6 +32,16 @@ export const EndpointResourceType = rt({
     { fieldKey: "model", targetTypeId: "model", label: "serves" },
     { fieldKey: "hardware", targetTypeId: "hardware", label: "runs on" },
   ],
+  // Sleep/wake schedules: the existing start/stop header actions (both PATCH
+  // the endpoint state). A stopped dedicated endpoint releases its reserved
+  // GPU hardware, so the off-hours saving here is real.
+  lifecycle: {
+    startActionId: "start",
+    stopActionId: "stop",
+    statusFieldKey: "state",
+    runningValues: ["STARTED", "STARTING", "PENDING"],
+    stoppedValues: ["STOPPED", "STOPPING"],
+  },
   supportsCreate: true,
   supportsUpdate: true,
   iconKey: "deployment",

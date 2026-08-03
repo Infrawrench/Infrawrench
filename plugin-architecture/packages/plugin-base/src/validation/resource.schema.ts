@@ -121,6 +121,27 @@ const orphanRuleSchema = z.object({
   reason: z.string().min(1),
 });
 
+const lifecycleActionsSchema = z
+  .object({
+    startActionId: z.string().min(1),
+    stopActionId: z.string().min(1),
+    statusFieldKey: z.string().min(1).optional(),
+    runningValues: z.array(z.string().min(1)).min(1).optional(),
+    stoppedValues: z.array(z.string().min(1)).min(1).optional(),
+  })
+  // A single action can't both stop and start — an identical pair is a typo
+  // that would make every scheduled transition a no-op or a flap.
+  .refine((l) => l.startActionId !== l.stopActionId, {
+    message: "startActionId and stopActionId must differ",
+    path: ["stopActionId"],
+  })
+  // Value lists without a field to read are dead config; fail the manifest
+  // rather than silently never matching (the `maxAgeDays` stance).
+  .refine((l) => l.statusFieldKey !== undefined || (!l.runningValues && !l.stoppedValues), {
+    message: "runningValues/stoppedValues require statusFieldKey",
+    path: ["statusFieldKey"],
+  });
+
 export const resourceTypeDefinitionSchema = z.object({
   id: z.string().min(1),
   displayName: z.string().min(1),
@@ -137,4 +158,5 @@ export const resourceTypeDefinitionSchema = z.object({
   supportsMetrics: z.boolean().optional(),
   orphanRule: orphanRuleSchema.optional(),
   expiryFields: z.array(expiryFieldRuleSchema).optional(),
+  lifecycle: lifecycleActionsSchema.optional(),
 });

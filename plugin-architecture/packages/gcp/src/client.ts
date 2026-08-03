@@ -98,6 +98,7 @@ import {
 } from "./secret-versions-client.js";
 import {
   restartReplaceInstanceGroup,
+  setGceInstancePower,
   attachResource as runAttachResource,
 } from "./compute-extras-client.js";
 import { enrichDetail as runEnrichDetail } from "./enrich-detail-client.js";
@@ -585,6 +586,11 @@ export class GcpClient implements PluginClient {
     if (typeId === "instance-group" && actionId === "restart-replace") {
       const resource = await this.getResource(typeId, resourceId, accountId);
       await restartReplaceInstanceGroup(this.sharedCtx, resource);
+      return;
+    }
+    if (typeId === "gce-instance" && (actionId === "start" || actionId === "stop")) {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      await setGceInstancePower(this.sharedCtx, resource, actionId);
       return;
     }
     throw new Error(`GCP plugin: invokeAction "${actionId}" not supported for type "${typeId}"`);

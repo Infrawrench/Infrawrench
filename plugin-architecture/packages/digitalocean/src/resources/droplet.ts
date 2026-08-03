@@ -42,6 +42,17 @@ export const DropletResourceType = rt({
     defaultUsername: "root",
     runningWhen: { fieldKey: "status", value: "active" },
   },
+  // Sleep/wake schedules: the existing droplet power actions. Stop is the
+  // hard power_off rather than the ACPI shutdown — a scheduled sleep must not
+  // depend on the guest OS honouring the event. (DO bills stopped droplets;
+  // the savings quote is an upper bound for this provider.)
+  lifecycle: {
+    startActionId: "power_on",
+    stopActionId: "power_off",
+    statusFieldKey: "status",
+    runningValues: ["active"],
+    stoppedValues: ["off"],
+  },
   agentVm: {
     sshKeyFieldKey: "sshPublicKey",
     defaultUsername: "root",

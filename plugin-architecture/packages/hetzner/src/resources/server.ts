@@ -52,6 +52,16 @@ export const ServerResourceType = rt({
     { fieldKey: "networkIds", targetTypeId: "network", label: "attached to" },
   ],
   iconKey: "server",
+  // Sleep/wake schedules: server actions poweron / poweroff. Note Hetzner
+  // keeps billing a powered-off server (its resources stay reserved) — only
+  // deleting it stops charges.
+  lifecycle: {
+    startActionId: "poweron",
+    stopActionId: "poweroff",
+    statusFieldKey: "status",
+    runningValues: ["running", "starting"],
+    stoppedValues: ["off", "stopping"],
+  },
   sshEndpoint: {
     hostOutputKey: "ipv4",
     privateHostOutputKey: "ipv4Private",

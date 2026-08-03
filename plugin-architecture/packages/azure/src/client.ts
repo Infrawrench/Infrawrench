@@ -57,7 +57,7 @@ import {
   type AzurePricingCacheEntry,
 } from "./pricing.js";
 import { type AzureCreateContext } from "./create-handlers.js";
-import { type AzureHttpContext } from "./shared.js";
+import { ARM, type AzureHttpContext } from "./shared.js";
 import {
   deleteStorageObject,
   listStorageObjects,
@@ -514,6 +514,26 @@ export class AzureClient implements PluginClient {
       resourceId,
       accountId,
     );
+  }
+
+  async invokeAction(
+    typeId: string,
+    resourceId: string,
+    actionId: string,
+    accountId: string,
+  ): Promise<void> {
+    if (typeId === "azure-vm" && (actionId === "start" || actionId === "deallocate")) {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      // externalId is rg/name — the same two-part form deleteResource splits.
+      const [rg, name] = String(resource.externalId ?? "").split("/");
+      if (!rg || !name) throw new Error("Cannot determine resource group/name for VM");
+      await this.post(
+        `${ARM}/subscriptions/${this.creds.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.Compute/virtualMachines/${name}/${actionId}?api-version=2024-03-01`,
+        {},
+      );
+      return;
+    }
+    throw new Error(`Azure plugin: invokeAction "${actionId}" not supported for type "${typeId}"`);
   }
 
   async publishMessage(

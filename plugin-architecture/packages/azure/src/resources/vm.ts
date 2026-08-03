@@ -85,6 +85,17 @@ export const VMResourceType = rt({
     },
   ],
   iconKey: "instance",
+  // Sleep/wake schedules: virtualMachines start / deallocate. Deallocate (not
+  // powerOff) releases the compute so VM billing stops; disks and public IPs
+  // keep billing. Values are the instance-view display statuses the lister
+  // stores ("VM running", "VM deallocated", …).
+  lifecycle: {
+    startActionId: "start",
+    stopActionId: "deallocate",
+    statusFieldKey: "powerState",
+    runningValues: ["VM running", "VM starting"],
+    stoppedValues: ["VM deallocated", "VM deallocating", "VM stopped"],
+  },
   sshEndpoint: {
     hostOutputKey: "publicIp",
     privateHostOutputKey: "privateIp",

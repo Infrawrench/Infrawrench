@@ -76,6 +76,16 @@ export const RDSInstanceResourceType = rt({
     { fieldKey: "dbClusterIdentifier", targetTypeId: "neptune-cluster", label: "member of" },
   ],
   supportsMetrics: true,
+  // Sleep/wake schedules: StartDBInstance / StopDBInstance. A stopped instance
+  // stops instance-hour billing (storage and backups keep billing); note AWS
+  // auto-starts a stopped RDS instance again after 7 days.
+  lifecycle: {
+    startActionId: "start",
+    stopActionId: "stop",
+    statusFieldKey: "status",
+    runningValues: ["available", "starting", "backing-up"],
+    stoppedValues: ["stopped", "stopping"],
+  },
   supportsCreate: true,
   iconKey: "database",
   peerIntegrations: [

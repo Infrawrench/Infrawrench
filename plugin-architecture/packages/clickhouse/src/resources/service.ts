@@ -32,6 +32,16 @@ export const ServiceResourceType = rt({
     o("httpUrl", "HTTP URL"),
   ],
   iconKey: "database",
+  // Sleep/wake schedules: PATCH …/services/{id}/state with command start /
+  // stop. "idle" counts as running — it is auto-idled compute that wakes on
+  // demand, and ClickHouse Cloud accepts a stop from it.
+  lifecycle: {
+    startActionId: "start",
+    stopActionId: "stop",
+    statusFieldKey: "state",
+    runningValues: ["running", "idle"],
+    stoppedValues: ["stopped", "stopping"],
+  },
   supportsCreate: true,
   resourceSqlDriver: {
     driver: "clickhouse",

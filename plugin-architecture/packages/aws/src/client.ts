@@ -672,6 +672,41 @@ export class AWSClient implements PluginClient {
     );
   }
 
+  async invokeAction(
+    typeId: string,
+    resourceId: string,
+    actionId: string,
+    accountId: string,
+  ): Promise<void> {
+    if (typeId === "ec2-instance" && (actionId === "start" || actionId === "stop")) {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const instanceId = String(resource.externalId ?? resource.fields["instanceId"] ?? "");
+      if (!instanceId) throw new Error("Cannot determine EC2 instance ID");
+      const region = String(resource.fields["region"] ?? this.creds.region);
+      await ec2Call(
+        this.credsFor(region),
+        actionId === "start" ? "StartInstances" : "StopInstances",
+        { "InstanceId.1": instanceId },
+      );
+      return;
+    }
+    if (typeId === "rds-instance" && (actionId === "start" || actionId === "stop")) {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const dbId = String(resource.externalId ?? resource.fields["dbInstanceId"] ?? "");
+      if (!dbId) throw new Error("Cannot determine RDS instance identifier");
+      const region = String(resource.fields["region"] ?? this.creds.region);
+      await queryPostCall(
+        this.credsFor(region),
+        "rds",
+        actionId === "start" ? "StartDBInstance" : "StopDBInstance",
+        "2014-10-31",
+        { DBInstanceIdentifier: dbId },
+      );
+      return;
+    }
+    throw new Error(`AWS plugin: invokeAction "${actionId}" not supported for type "${typeId}"`);
+  }
+
   async executeNoSqlCommand(
     typeId: string,
     resourceId: string,

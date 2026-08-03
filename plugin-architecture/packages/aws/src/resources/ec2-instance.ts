@@ -51,6 +51,15 @@ export const EC2InstanceResourceType = rt({
     { fieldKey: "securityGroupIds", targetTypeId: "security-group", label: "guarded by" },
   ],
   supportsMetrics: true,
+  // Sleep/wake schedules: StartInstances / StopInstances. A stopped instance
+  // stops compute billing (EBS volumes and Elastic IPs keep billing).
+  lifecycle: {
+    startActionId: "start",
+    stopActionId: "stop",
+    statusFieldKey: "state",
+    runningValues: ["running", "pending"],
+    stoppedValues: ["stopped", "stopping"],
+  },
   sshEndpoint: {
     hostOutputKey: "publicIp",
     privateHostOutputKey: "privateIp",
