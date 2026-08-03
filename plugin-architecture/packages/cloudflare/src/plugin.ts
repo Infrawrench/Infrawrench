@@ -73,6 +73,8 @@ const CREATE_TOKEN_SCOPES = [
   { key: "ai_gateway", type: "edit" },
   { key: "autorag", type: "edit" },
   { key: "analytics", type: "read" },
+  // Billing Read backs cost graphs via the Billable Usage API.
+  { key: "billing", type: "read" },
 ];
 
 const CREATE_TOKEN_URL = `https://dash.cloudflare.com/profile/api-tokens?${new URLSearchParams({
@@ -109,9 +111,9 @@ const manifest: PluginManifest = {
     },
   ],
   rateLimit: { capacity: 80, refillPerSecond: 6 },
-  // PayGo billable-usage API — v1 ALPHA, restricted to select self-serve
-  // accounts; conservative history window while the endpoint can change.
-  // Charge periods follow the billing cycle, hence periodNative.
+  // Billable Usage API — GA for self-serve accounts (Enterprise still rolling
+  // out); conservative history window while coverage expands. Charge periods
+  // follow the billing cycle, hence periodNative.
   costs: { dimensions: ["service", "tag"], maxHistoryDays: 90, periodNative: true },
   statusFeed,
 };
