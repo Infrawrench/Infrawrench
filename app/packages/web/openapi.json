@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.33.0",
+    "version": "0.34.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -6521,6 +6521,229 @@
             "maximum": 365
           }
         },
+        "additionalProperties": false
+      },
+      "MomentFeedId": {
+        "type": "string",
+        "enum": [
+          "changes",
+          "statusIncidents",
+          "costAnomalies",
+          "workflowRuns",
+          "deployments",
+          "audit",
+          "freezes",
+          "driftAlerts",
+          "expiryAlerts"
+        ],
+        "description": "One of the indexed feeds the moment union draws from."
+      },
+      "MomentFeedStatus": {
+        "type": "object",
+        "properties": {
+          "feed": {
+            "$ref": "#/components/schemas/MomentFeedId"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["ok", "omitted", "error"],
+            "description": "`omitted` = the caller lacks the feed's read permission; `error` = the feed's query failed but the rest of the response is still valid (partial-failure tolerance)."
+          },
+          "error": {
+            "type": ["string", "null"],
+            "description": "Short failure reason when `status` is `error`."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "True when the feed hit its row cap and events were dropped."
+          }
+        },
+        "required": ["feed", "status"],
+        "additionalProperties": false
+      },
+      "MomentSeverity": {
+        "type": "string",
+        "enum": ["info", "warning", "critical"]
+      },
+      "MomentEventLink": {
+        "type": ["object", "null"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "resource",
+              "changes",
+              "incident",
+              "costs",
+              "workflow-run",
+              "deployment",
+              "audit",
+              "freeze",
+              "expiring"
+            ],
+            "description": "Which native screen the event deep-links to."
+          },
+          "id": {
+            "type": ["string", "null"],
+            "description": "Target id where the kind needs one (resource id, run id, freeze id…)."
+          },
+          "parentId": {
+            "type": ["string", "null"],
+            "description": "Parent id where the target needs one (workflow id for a run)."
+          },
+          "url": {
+            "type": ["string", "null"],
+            "description": "Absolute external URL — a provider's incident page. Wins when present."
+          }
+        },
+        "required": ["kind"],
+        "additionalProperties": false
+      },
+      "MomentEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable synthetic id, unique within a response (`feed:rowId[:phase]`)."
+          },
+          "feed": {
+            "$ref": "#/components/schemas/MomentFeedId"
+          },
+          "kind": {
+            "type": "string",
+            "description": "Fine-grained `<noun>.<verb>` kind, e.g. `change.created`, `incident.started`, `workflow-run.failed`, `deployment.finished`, `freeze.started`, `drift-alert.sent`. Open set — render unknown kinds generically."
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "title": {
+            "type": "string",
+            "description": "One-line headline."
+          },
+          "detail": {
+            "type": ["string", "null"],
+            "description": "Optional second line — diff summary, actor, error text."
+          },
+          "severity": {
+            "$ref": "#/components/schemas/MomentSeverity"
+          },
+          "pluginId": {
+            "type": ["string", "null"]
+          },
+          "accountId": {
+            "type": ["string", "null"]
+          },
+          "accountName": {
+            "type": ["string", "null"]
+          },
+          "resourceId": {
+            "type": ["string", "null"]
+          },
+          "resourceTypeId": {
+            "type": ["string", "null"]
+          },
+          "resourceName": {
+            "type": ["string", "null"]
+          },
+          "link": {
+            "$ref": "#/components/schemas/MomentEventLink"
+          }
+        },
+        "required": ["id", "feed", "kind", "timestamp", "title", "severity"],
+        "additionalProperties": false
+      },
+      "MomentIncidentSpan": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "impact": {
+            "type": "string",
+            "enum": ["maintenance", "minor", "major", "critical"]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resolvedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "url": {
+            "type": ["string", "null"]
+          }
+        },
+        "required": ["id", "pluginId", "pluginName", "title", "impact", "startedAt"],
+        "additionalProperties": false,
+        "description": "A provider incident whose span overlaps the window — returned alongside the events so clients can badge events that fall inside it (\"during DigitalOcean incident\")."
+      },
+      "MomentResponse": {
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The centre timestamp, normalized to ISO."
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "windowMinutes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "The half-window actually applied, after clamping to 1–4320 minutes."
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "feeds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MomentFeedStatus"
+            },
+            "description": "One entry per feed, in canonical order — including omitted and errored feeds."
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MomentEvent"
+            },
+            "description": "Chronological, oldest first."
+          },
+          "incidents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MomentIncidentSpan"
+            }
+          }
+        },
+        "required": [
+          "at",
+          "from",
+          "to",
+          "windowMinutes",
+          "generatedAt",
+          "feeds",
+          "events",
+          "incidents"
+        ],
         "additionalProperties": false
       },
       "SleepSchedule": {
@@ -18555,6 +18778,71 @@
         },
         "operationId": "putOrgOrgIdExpiringSettings",
         "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/moment": {
+      "get": {
+        "tags": ["Moment"],
+        "summary": "Everything that happened around a timestamp",
+        "description": "\"What changed around 03:14?\" — one merged, chronological narrative of everything the platform knows happened in a window: resource changes (including sleep/wake schedule attribution), provider status incidents that started/resolved in or overlap the window, cost anomalies, workflow runs, deployments, audit-log entries, change freezes, and the drift/expiry alert deliveries. Each feed is gated on the same permission its own endpoint requires; feeds the caller cannot read are reported as `omitted`, and a feed whose query fails is reported as `error` without blanking the rest of the response.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Centre of the window. Defaults to now."
+            },
+            "required": false,
+            "name": "at",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4320,
+              "description": "Half-window in minutes (the ± around `at`). Default 60, max 4320 (±3 days)."
+            },
+            "required": false,
+            "name": "window",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The merged window",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MomentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdMoment",
+        "x-required-permission": "resources:read"
       }
     },
     "/api/org/{orgId}/schedules": {

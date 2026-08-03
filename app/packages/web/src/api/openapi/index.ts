@@ -29,6 +29,7 @@ import { registerResourcePaths } from "./paths/resources";
 import { registerResourceChangePaths } from "./paths/resource-changes";
 import { registerStatusIncidentPaths } from "./paths/status-incidents";
 import { registerExpiringPaths } from "./paths/expiring";
+import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
 import { registerAssociationPaths } from "./paths/associations";
@@ -115,6 +116,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerResourceChangePaths(ctx);
   registerStatusIncidentPaths(ctx);
   registerExpiringPaths(ctx);
+  registerMomentPaths(ctx);
   registerSchedulePaths(ctx);
   registerConnectionFeaturePaths(ctx);
   registerAssociationPaths(ctx);
@@ -350,6 +352,10 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   // settings decide what the org's channels hear, the same trust level as the
   // drift alert settings
   "GET /expiring": "resources:read",
+  // The moment union spans six read scopes; `resources:read` is the floor —
+  // feeds needing more (costs, workflows, deployments, audit, freezes) are
+  // omitted per-feed rather than gating the whole endpoint.
+  "GET /moment": "resources:read",
   "GET /expiring/settings": "org:settings:write",
   "PUT /expiring/settings": "org:settings:write",
   // sleep/wake schedules — reads ride the resource read scope (the list is
