@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   compileLogSearch,
   computeAppendedLines,
@@ -80,13 +80,21 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
   const [saveBusy, setSaveBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const lastLinesRef = useRef(new Map<string, string[]>());
-  const inFlightRef = useRef(new Set<string>());
+  // Lazy instance state: stable mutable collections created once, without a
+  // per-render allocation and without mutating a ref during render.
+  const [lastLines] = useState(() => new Map<string, string[]>());
+  const [inFlight] = useState(() => new Set<string>());
   const seqRef = useRef(0);
   const streamsRef = useRef(streams);
-  streamsRef.current = streams;
   const tailRef = useRef(tailLines);
-  tailRef.current = tailLines;
+  // Layout effects run during commit, before any microtask queued by the
+  // event handlers below — so queueMicrotask(pollAll) always sees fresh refs.
+  useLayoutEffect(() => {
+    streamsRef.current = streams;
+  }, [streams]);
+  useLayoutEffect(() => {
+    tailRef.current = tailLines;
+  }, [tailLines]);
 
   useEffect(() => {
     let cancelled = false;
@@ -128,8 +136,8 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
   const pollStream = useCallback(
     async (stream: StreamState) => {
       const key = logStreamKey(stream.selector);
-      if (inFlightRef.current.has(key)) return;
-      inFlightRef.current.add(key);
+      if (inFlight.has(key)) return;
+      inFlight.add(key);
       try {
         const params = {
           tailLines: tailRef.current,
@@ -139,9 +147,9 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
         // The stream may have been removed while the fetch was in flight.
         if (!streamsRef.current.some((s) => logStreamKey(s.selector) === key)) return;
         const nextLines = splitLogLines(result.text);
-        const prevLines = lastLinesRef.current.get(key);
+        const prevLines = lastLines.get(key);
         const appended = prevLines ? computeAppendedLines(prevLines, nextLines) : nextLines;
-        lastLinesRef.current.set(key, nextLines);
+        lastLines.set(key, nextLines);
         if (appended.length > 0) {
           const startSeq = seqRef.current;
           seqRef.current += appended.length;
@@ -167,10 +175,10 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
           ),
         );
       } finally {
-        inFlightRef.current.delete(key);
+        inFlight.delete(key);
       }
     },
-    [client],
+    [client, inFlight, lastLines],
   );
 
   const pollAll = useCallback(() => {
@@ -183,10 +191,13 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
     return () => clearInterval(t);
   }, [paused, streams.length, pollAll]);
 
-  const purgeStream = useCallback((key: string) => {
-    lastLinesRef.current.delete(key);
-    setMerged((m) => m.filter((line) => line.streamKey !== key));
-  }, []);
+  const purgeStream = useCallback(
+    (key: string) => {
+      lastLines.delete(key);
+      setMerged((m) => m.filter((line) => line.streamKey !== key));
+    },
+    [lastLines],
+  );
 
   const addStream = useCallback(
     (option: LogResourceOption) => {
@@ -197,24 +208,23 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
         resourceTypeId: option.resourceTypeId,
       };
       const key = logStreamKey(selector);
-      let added: StreamState | null = null;
-      setStreams((all) => {
-        if (all.some((s) => logStreamKey(s.selector) === key)) return all;
-        added = {
-          selector,
-          label: option.displayName,
-          colorIdx: all.length % STREAM_COLORS.length,
-          containers: [],
-          error: null,
-          loaded: false,
-        };
-        return [...all, added];
-      });
+      if (streamsRef.current.some((s) => logStreamKey(s.selector) === key)) return;
+      const added: StreamState = {
+        selector,
+        label: option.displayName,
+        colorIdx: 0,
+        containers: [],
+        error: null,
+        loaded: false,
+      };
+      setStreams((all) =>
+        all.some((s) => logStreamKey(s.selector) === key)
+          ? all
+          : [...all, { ...added, colorIdx: all.length % STREAM_COLORS.length }],
+      );
       // Fetch immediately so the pane fills without waiting for the interval.
-      queueMicrotask(() => {
-        const stream = streamsRef.current.find((s) => logStreamKey(s.selector) === key);
-        if (stream) void pollStream(stream);
-      });
+      // pollStream only needs the selector, so the pre-commit copy is fine.
+      queueMicrotask(() => void pollStream(added));
     },
     [pollStream],
   );
@@ -249,7 +259,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
   /** Replace the whole workspace with a saved query's streams and search. */
   const loadQuery = useCallback(
     (query: LogWorkspaceQuery) => {
-      lastLinesRef.current.clear();
+      lastLines.clear();
       setMerged([]);
       const optionByKey = new Map(
         options.map((o) => [`${o.accountId}:${o.resourceId}`, o] as const),
@@ -277,7 +287,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
       setSaveError(null);
       queueMicrotask(pollAll);
     },
-    [options, pollAll],
+    [options, pollAll, lastLines],
   );
 
   const resetToNewQuery = useCallback(() => {
@@ -386,6 +396,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
             value={queryName}
             onChange={(e) => setQueryName(e.target.value)}
             placeholder="Query name"
+            aria-label="Query name"
             maxLength={LOG_WORKSPACE_LIMITS.maxNameLength}
             className="text-xs bg-surface-overlay text-on-surface border border-border-strong rounded px-2 py-0.5 w-40"
           />
@@ -498,10 +509,8 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
         <button
           type="button"
           onClick={() => {
-            setPaused((p) => {
-              if (p) queueMicrotask(pollAll);
-              return !p;
-            });
+            if (paused) queueMicrotask(pollAll);
+            setPaused((p) => !p);
           }}
           className={`px-3 py-1 text-xs border border-border-strong rounded-md transition-colors ${
             paused ? "text-amber-400" : "text-on-surface-tertiary hover:text-white"
@@ -520,7 +529,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
         <button
           type="button"
           onClick={() => {
-            lastLinesRef.current.clear();
+            lastLines.clear();
             setMerged([]);
             queueMicrotask(pollAll);
           }}

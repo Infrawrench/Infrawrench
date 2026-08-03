@@ -253,7 +253,7 @@ export async function runFanout(
 
   // Pre-load resource rows in one query; hosts are resolved server-side from
   // stored state, never trusted from the client.
-  const resourceIds = opts.targets.filter((t) => t.kind === "resource").map((t) => t.id);
+  const resourceIds = opts.targets.flatMap((t) => (t.kind === "resource" ? [t.id] : []));
   const resourceRows =
     resourceIds.length > 0
       ? await db

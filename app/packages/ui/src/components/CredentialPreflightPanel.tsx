@@ -115,6 +115,7 @@ export function CredentialPreflightPanel({
 
   const rows = useMemo(() => buildPreflightChecklist(declaration, report), [declaration, report]);
   const summary = useMemo(() => summarizePreflight(rows), [rows]);
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
   async function check() {
     if (!runPreflight) return;
@@ -256,7 +257,7 @@ export function CredentialPreflightPanel({
                     >
                       <input
                         type="checkbox"
-                        checked={selectedIds.includes(cap.id)}
+                        checked={selectedIdSet.has(cap.id)}
                         onChange={(e) => {
                           const next = e.target.checked
                             ? [...selectedIds, cap.id]

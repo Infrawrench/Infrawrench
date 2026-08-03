@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   SshFanoutView,
@@ -55,14 +55,17 @@ function CloudFanout({ orgId }: { orgId: string }) {
   const [sshKeys, setSshKeys] = useState<Array<{ id: string; name: string }>>([]);
   const [snippets, setSnippets] = useState<SshFanoutSnippetInfo[]>([]);
 
-  async function loadSnippets(isStale?: () => boolean) {
-    try {
-      const rows = await listCloudFanoutSnippets(orgId);
-      if (!isStale?.()) setSnippets(rows);
-    } catch {
-      /* snippets are a convenience */
-    }
-  }
+  const loadSnippets = useCallback(
+    async (isStale?: () => boolean) => {
+      try {
+        const rows = await listCloudFanoutSnippets(orgId);
+        if (!isStale?.()) setSnippets(rows);
+      } catch {
+        /* snippets are a convenience */
+      }
+    },
+    [orgId],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -91,7 +94,7 @@ function CloudFanout({ orgId }: { orgId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [orgId]);
+  }, [orgId, loadSnippets]);
 
   async function onRun(input: SshFanoutRunRequest): Promise<SshFanoutRunOutcome> {
     return runCloudFanout(

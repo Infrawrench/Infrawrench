@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   SshFanoutView,
@@ -42,14 +42,17 @@ function SshFanoutPage() {
   const [sshKeys, setSshKeys] = useState<SshKeyRow[]>([]);
   const [snippets, setSnippets] = useState<SshFanoutSnippetInfo[]>([]);
 
-  async function loadSnippets(isStale?: () => boolean) {
-    try {
-      const res = await apiGet<SnippetsResponse>(`/api/org/${orgId}/ssh-fanout/snippets`);
-      if (!isStale?.()) setSnippets(res.snippets);
-    } catch {
-      // Snippets are a convenience — the page still works without them.
-    }
-  }
+  const loadSnippets = useCallback(
+    async (isStale?: () => boolean) => {
+      try {
+        const res = await apiGet<SnippetsResponse>(`/api/org/${orgId}/ssh-fanout/snippets`);
+        if (!isStale?.()) setSnippets(res.snippets);
+      } catch {
+        // Snippets are a convenience — the page still works without them.
+      }
+    },
+    [orgId],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -78,7 +81,7 @@ function SshFanoutPage() {
     return () => {
       cancelled = true;
     };
-  }, [orgId]);
+  }, [orgId, loadSnippets]);
 
   async function onRun(input: SshFanoutRunRequest): Promise<SshFanoutRunOutcome> {
     try {

@@ -307,12 +307,10 @@ async function costSummaryMrkdwn(member: LinkedMember, showOrgName: boolean): Pr
 }
 
 async function handleCostsCommand(members: LinkedMember[]): Promise<SlackReply> {
-  const allowed: LinkedMember[] = [];
-  for (const m of members) {
-    if (hasPermission(await memberPermissions(m.organizationId, m.userId), "costs:read")) {
-      allowed.push(m);
-    }
-  }
+  const perms = await Promise.all(
+    members.map((m) => memberPermissions(m.organizationId, m.userId)),
+  );
+  const allowed = members.filter((_, i) => hasPermission(perms[i]!, "costs:read"));
   if (allowed.length === 0) {
     return ephemeral("You need the costs:read permission to see cost summaries.");
   }
@@ -442,12 +440,10 @@ async function handleStatusCommand(members: LinkedMember[], query: string): Prom
   if (!query) {
     return ephemeral("Usage: `/infrawrench status <resource name>`");
   }
-  const allowed: LinkedMember[] = [];
-  for (const m of members) {
-    if (hasPermission(await memberPermissions(m.organizationId, m.userId), "resources:read")) {
-      allowed.push(m);
-    }
-  }
+  const perms = await Promise.all(
+    members.map((m) => memberPermissions(m.organizationId, m.userId)),
+  );
+  const allowed = members.filter((_, i) => hasPermission(perms[i]!, "resources:read"));
   if (allowed.length === 0) {
     return ephemeral("You need the resources:read permission to look up resources.");
   }
@@ -930,22 +926,24 @@ app.get("/slack/link", async (c) => {
   if (resolved instanceof Response) return resolved;
   const { verified } = resolved;
 
-  const [org] = await db
-    .select({ displayName: organizations.displayName })
-    .from(organizations)
-    .where(eq(organizations.id, verified.organizationId))
-    .limit(1);
-  const [install] = await db
-    .select({ teamName: slackInstallations.teamName })
-    .from(slackInstallations)
-    .where(
-      and(
-        eq(slackInstallations.organizationId, verified.organizationId),
-        eq(slackInstallations.teamId, verified.teamId),
-        isNull(slackInstallations.deletedAt),
-      ),
-    )
-    .limit(1);
+  const [[org], [install]] = await Promise.all([
+    db
+      .select({ displayName: organizations.displayName })
+      .from(organizations)
+      .where(eq(organizations.id, verified.organizationId))
+      .limit(1),
+    db
+      .select({ teamName: slackInstallations.teamName })
+      .from(slackInstallations)
+      .where(
+        and(
+          eq(slackInstallations.organizationId, verified.organizationId),
+          eq(slackInstallations.teamId, verified.teamId),
+          isNull(slackInstallations.deletedAt),
+        ),
+      )
+      .limit(1),
+  ]);
   const orgName = org?.displayName ?? verified.organizationId;
   const workspace = install?.teamName ?? verified.teamId;
 
