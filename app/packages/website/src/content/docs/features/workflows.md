@@ -472,7 +472,7 @@ A pin never crosses the local/cloud boundary: in Local mode you pin local workfl
 Open the trigger settings to choose how a workflow runs:
 
 - **Manual** — run on demand from the UI. The only mode that allows `infra.prompt`. Available everywhere (desktop, web, proxy).
-- **Cron** — run on a schedule. Pick a preset (every 15 minutes, daily at 9am, weekly…) or type a raw 5-field cron expression; the editor shows a plain-English summary of what you entered.
+- **Cron** — run on a schedule. Pick a preset (every 15 minutes, daily at 9am, weekly…) or type a raw 5-field cron expression; see [Cron schedules](#cron-schedules) below.
 - **Git** — run on each new commit to a branch. **Connect GitHub**, choose a repository from the picker, and set the branch — the Infrawrench GitHub App watches that repo as a bot and runs the workflow when the branch head changes. Needs an organization: a local workflow has no always-on host to watch a repo.
 - **Budget** — run when a [cost budget](./cloud-costs.md) crosses a threshold. Pick a budget, a percentage of its monthly amount, and whether to compare **spend so far** or the **forecast** month-end total. Needs an organization (budgets are a cloud feature).
 
@@ -486,6 +486,18 @@ Open the trigger settings to choose how a workflow runs:
 | Budget  | —                 | ✅            | ✅  | ✅        |
 
 Organization workflows run their cron and git triggers on an always-on cloud host, whichever app created them. **Local** workflows are run by the desktop app itself: while at least one local cron workflow is enabled, Infrawrench keeps running in the background after you close the window (just like active metric-ping alerts) so the schedule keeps firing. \*It can't fire while the app is fully quit — quit it and the local schedule pauses until you reopen. For schedules that must run 24/7 regardless, put the workflow in an organization or use the [web proxy](../core-concepts/desktop-vs-web.md).
+
+### Cron schedules
+
+The cron trigger takes a standard **5-field expression** (minute, hour, day of month, month, day of week) supporting `*`, lists (`1,15`), ranges (`9-17`), steps (`*/5`, `9-17/2`), and 3-letter month/weekday names (`JAN`, `MON`); `7` works as Sunday. When both day fields are restricted, a date matches if _either_ does — `0 0 13 * 5` is "the 13th, or any Friday", the classic cron behaviour.
+
+Next to the expression is an optional **timezone** field taking an IANA name like `Europe/London`. Leave it empty for UTC. Wall times are evaluated in that zone, so `0 9 * * *` in `America/New_York` keeps firing at 9am local across daylight-saving changes; a wall time skipped by spring-forward simply doesn't fire that day, and during fall-back's repeated hour the schedule fires once, at the first occurrence.
+
+As you type, the editor validates the expression (a typo shows the parse error instead of saving something that would never fire), summarises it in plain English, and previews the **next few run times** — computed by exactly the same code the scheduler uses, so what you see is what will run. Saving never fires the workflow immediately: the first run happens at the schedule's next occurrence. The enable toggle on the workflow pauses the schedule without losing it, and each schedule fires **exactly once** per occurrence no matter how many scheduler replicas are running.
+
+<insert [Screenshot of the cron trigger settings showing the preset picker, the 5-field expression input, the timezone field, and the plain-English summary with the next three run times] here>
+
+A workflow's schedule is also a small API surface of its own — `GET`/`PUT`/`DELETE /api/org/{orgId}/workflows/{id}/schedule` — so an SDK or script can manage when a workflow runs (or pause it) without round-tripping the whole workflow. See the [API docs](../team-and-billing/openapi.md).
 
 ### Connecting GitHub
 

@@ -301,3 +301,12 @@ export * from "./orphans";
 export * from "./chat/types";
 export { createBearerChatClient } from "./chat/bearer-client";
 export * from "./ws-protocol";
+export {
+  parseCronExpression,
+  validateCronExpression,
+  isValidCronTimezone,
+  nextCronOccurrence,
+  nextCronOccurrences,
+  type ParsedCron,
+  type CronOccurrenceOptions,
+} from "./cron";

@@ -10,6 +10,12 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 
 import {
+  isValidCronTimezone,
+  nextCronOccurrence,
+  nextCronOccurrences,
+  validateCronExpression,
+} from "@infrawrench/client-core";
+import {
   DEFAULT_BUDGET_TRIGGER_PERCENT,
   generateInfraDts,
   typecheckWorkflow,
@@ -80,9 +86,12 @@ function triggerDerived(
   enabled: boolean,
 ): { nextRunAt: Date | null; webhookToken: string | null } {
   if (trigger.kind === "cron" && enabled) {
-    // Poller computes the precise next time from the cron expression; seed "now"
-    // so it gets picked up on the next tick.
-    return { nextRunAt: new Date(), webhookToken: null };
+    // Schedule the true next occurrence (the poller recomputes after each
+    // fire). Seeding "now" instead would make every save of a cron workflow
+    // fire it immediately on the next poller tick. `validateTrigger` has
+    // already rejected unparseable expressions, so a null here only means the
+    // schedule never matches — leave it unscheduled.
+    return { nextRunAt: cronNextRun(trigger), webhookToken: null };
   }
   if (trigger.kind === "git") {
     return { nextRunAt: null, webhookToken: crypto.randomUUID() };
@@ -91,12 +100,36 @@ function triggerDerived(
   return { nextRunAt: null, webhookToken: null };
 }
 
+/** Next fire time of a cron trigger, or null when it never matches / is invalid. */
+function cronNextRun(trigger: Extract<WorkflowTrigger, { kind: "cron" }>): Date | null {
+  try {
+    return nextCronOccurrence(trigger.expression, {
+      ...(trigger.timezone ? { timezone: trigger.timezone } : {}),
+    });
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Reject a trigger the runner could never act on. Budget triggers are checked
  * against the org's real budgets — a typo'd id would otherwise save cleanly and
  * then silently never fire.
  */
 async function validateTrigger(organizationId: string, trigger: WorkflowTrigger): Promise<void> {
+  if (trigger.kind === "cron") {
+    if (!trigger.expression?.trim()) {
+      throw new WorkflowError("A cron trigger needs an expression (5 fields, e.g. '0 9 * * 1').");
+    }
+    const error = validateCronExpression(trigger.expression);
+    if (error) throw new WorkflowError(`Invalid cron expression: ${error}`);
+    if (trigger.timezone && !isValidCronTimezone(trigger.timezone)) {
+      throw new WorkflowError(
+        `Unknown timezone "${trigger.timezone}" — use an IANA name like "Europe/London".`,
+      );
+    }
+    return;
+  }
   if (trigger.kind !== "budget") return;
   if (!trigger.budgetId) {
     throw new WorkflowError("A budget trigger needs a budgetId. Call list_budgets to find one.");
@@ -127,6 +160,14 @@ async function validateTrigger(organizationId: string, trigger: WorkflowTrigger)
 
 /** Normalize a trigger for storage (fills in budget-trigger defaults). */
 function normalizeTrigger(trigger: WorkflowTrigger): WorkflowTrigger {
+  if (trigger.kind === "cron") {
+    const timezone = trigger.timezone?.trim();
+    return {
+      kind: "cron",
+      expression: trigger.expression?.trim() ?? "",
+      ...(timezone ? { timezone } : {}),
+    };
+  }
   if (trigger.kind !== "budget") return trigger;
   return {
     kind: "budget",
@@ -237,6 +278,89 @@ export async function softDeleteWorkflow(organizationId: string, id: string): Pr
     .update(workflows)
     .set({ deletedAt: new Date(), updatedAt: new Date() })
     .where(eq(workflows.id, id));
+}
+
+// --- Cron schedule sub-resource ---------------------------------------------
+//
+// A workflow's cron trigger, exposed as a small CRUD surface of its own so
+// programmatic clients (SDKs, CLI) can manage schedules without round-tripping
+// the whole workflow body. It reads and writes the same `trigger` jsonb the
+// full update path uses.
+
+/** How many upcoming fire times the schedule read model previews. */
+const SCHEDULE_PREVIEW_COUNT = 3;
+
+export interface WorkflowScheduleView {
+  expression: string;
+  /** IANA zone the expression is evaluated in; null means UTC. */
+  timezone: string | null;
+  /** Mirrors the workflow's `enabled` flag — a disabled workflow never fires. */
+  enabled: boolean;
+  lastRunAt: Date | null;
+  nextRunAt: Date | null;
+  /** The next few fire times, computed from the expression right now. */
+  nextRuns: Date[];
+}
+
+export interface WorkflowScheduleBody {
+  expression: string;
+  timezone?: string | null;
+  /** Sets the workflow's `enabled` flag (schedules on a disabled workflow don't fire). */
+  enabled?: boolean;
+}
+
+/** The schedule view of a workflow row, or null when its trigger isn't cron. */
+export function workflowScheduleView(row: WorkflowRow): WorkflowScheduleView | null {
+  const trigger = row.trigger as WorkflowTrigger;
+  if (trigger.kind !== "cron") return null;
+  let nextRuns: Date[] = [];
+  try {
+    nextRuns = nextCronOccurrences(trigger.expression, SCHEDULE_PREVIEW_COUNT, {
+      ...(trigger.timezone ? { timezone: trigger.timezone } : {}),
+    });
+  } catch {
+    // Stored expression predates validation and no longer parses — show none.
+  }
+  return {
+    expression: trigger.expression,
+    timezone: trigger.timezone ?? null,
+    enabled: row.enabled,
+    lastRunAt: row.lastRunAt,
+    nextRunAt: row.nextRunAt,
+    nextRuns,
+  };
+}
+
+/**
+ * Create or replace a workflow's cron schedule (its trigger becomes cron).
+ * Validates the expression/timezone and computes the real `nextRunAt`.
+ */
+export async function setWorkflowSchedule(
+  organizationId: string,
+  id: string,
+  body: WorkflowScheduleBody,
+): Promise<WorkflowRow> {
+  return updateWorkflow(organizationId, id, {
+    trigger: {
+      kind: "cron",
+      expression: body.expression,
+      ...(body.timezone ? { timezone: body.timezone } : {}),
+    },
+    ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
+  });
+}
+
+/**
+ * Remove a workflow's cron schedule, reverting its trigger to manual. A no-op
+ * when the trigger isn't cron (still 404s on a missing workflow).
+ */
+export async function clearWorkflowSchedule(
+  organizationId: string,
+  id: string,
+): Promise<WorkflowRow> {
+  const existing = await requireWorkflow(organizationId, id);
+  if ((existing.trigger as WorkflowTrigger).kind !== "cron") return existing;
+  return updateWorkflow(organizationId, id, { trigger: { kind: "manual" } });
 }
 
 export async function listWorkflowRuns(workflowId: string, limit = 50) {

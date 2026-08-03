@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { CronExpressionParser } from "cron-parser";
+import { nextCronOccurrence } from "@infrawrench/client-core";
 import { db } from "@infrawrench/server-core/db/client";
 import { workflows } from "@infrawrench/server-core/db/schema";
 import { runOrgWorkflow } from "@infrawrench/server-core/workflows/runner";
@@ -41,11 +41,10 @@ function nextRunAtFromTrigger(trigger: unknown, from: Date): Date | null {
   const t = trigger as CronTrigger | null;
   if (!t || t.kind !== "cron" || !t.expression) return null;
   try {
-    const interval = CronExpressionParser.parse(t.expression, {
-      currentDate: from,
-      ...(t.timezone ? { tz: t.timezone } : {}),
+    return nextCronOccurrence(t.expression, {
+      from,
+      ...(t.timezone ? { timezone: t.timezone } : {}),
     });
-    return interval.next().toDate();
   } catch {
     return null;
   }
