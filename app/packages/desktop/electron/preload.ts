@@ -154,6 +154,7 @@ const INVOKE_CHANNELS = [
   "cloud_expiring",
   "cloud_changes_list",
   "cloud_status_incidents",
+  "cloud_moment",
   "cloud_schedules_list",
   "cloud_schedules_create",
   "cloud_schedules_update",

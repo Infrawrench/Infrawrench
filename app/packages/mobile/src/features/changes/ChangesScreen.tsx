@@ -184,6 +184,12 @@ export function ChangesScreen({ since, accountId: initialAccountId }: ChangesScr
     <Screen onRefresh={() => void feed.refetch()} refreshing={feed.isRefetching}>
       <ProviderIncidentNotice showResolvedCorrelation />
 
+      <Button
+        label="Investigate a moment"
+        variant="secondary"
+        onPress={() => router.push(`/org/${orgId}/moment`)}
+      />
+
       {filters}
 
       {entries.length === 0 ? (

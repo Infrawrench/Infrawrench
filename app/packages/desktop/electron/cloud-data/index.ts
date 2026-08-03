@@ -7,6 +7,7 @@ import "./orphans";
 import "./rightsizing";
 import "./expiring";
 import "./changes";
+import "./moment";
 import "./schedules";
 import "./custom-graphs";
 import "./dashboards";

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkflowsRouteImport } from './routes/workflows'
 import { Route as SavingsRouteImport } from './routes/savings'
+import { Route as MomentRouteImport } from './routes/moment'
 import { Route as GraphRouteImport } from './routes/graph'
 import { Route as ExpiringRouteImport } from './routes/expiring'
 import { Route as DeploymentsRouteImport } from './routes/deployments'
@@ -31,6 +32,11 @@ const WorkflowsRoute = WorkflowsRouteImport.update({
 const SavingsRoute = SavingsRouteImport.update({
   id: '/savings',
   path: '/savings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MomentRoute = MomentRouteImport.update({
+  id: '/moment',
+  path: '/moment',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GraphRoute = GraphRouteImport.update({
@@ -99,6 +105,7 @@ export interface FileRoutesByFullPath {
   '/deployments': typeof DeploymentsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
+  '/moment': typeof MomentRoute
   '/savings': typeof SavingsRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
@@ -114,6 +121,7 @@ export interface FileRoutesByTo {
   '/deployments': typeof DeploymentsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
+  '/moment': typeof MomentRoute
   '/savings': typeof SavingsRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
@@ -130,6 +138,7 @@ export interface FileRoutesById {
   '/deployments': typeof DeploymentsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
+  '/moment': typeof MomentRoute
   '/savings': typeof SavingsRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
@@ -147,6 +156,7 @@ export interface FileRouteTypes {
     | '/deployments'
     | '/expiring'
     | '/graph'
+    | '/moment'
     | '/savings'
     | '/workflows'
     | '/accounts/$accountId'
@@ -162,6 +172,7 @@ export interface FileRouteTypes {
     | '/deployments'
     | '/expiring'
     | '/graph'
+    | '/moment'
     | '/savings'
     | '/workflows'
     | '/accounts/$accountId'
@@ -177,6 +188,7 @@ export interface FileRouteTypes {
     | '/deployments'
     | '/expiring'
     | '/graph'
+    | '/moment'
     | '/savings'
     | '/workflows'
     | '/accounts/$accountId'
@@ -193,6 +205,7 @@ export interface RootRouteChildren {
   DeploymentsRoute: typeof DeploymentsRoute
   ExpiringRoute: typeof ExpiringRoute
   GraphRoute: typeof GraphRoute
+  MomentRoute: typeof MomentRoute
   SavingsRoute: typeof SavingsRoute
   WorkflowsRoute: typeof WorkflowsRoute
   AccountsAccountIdRoute: typeof AccountsAccountIdRoute
@@ -214,6 +227,13 @@ declare module '@tanstack/react-router' {
       path: '/savings'
       fullPath: '/savings'
       preLoaderRoute: typeof SavingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/moment': {
+      id: '/moment'
+      path: '/moment'
+      fullPath: '/moment'
+      preLoaderRoute: typeof MomentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/graph': {
@@ -305,6 +325,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeploymentsRoute: DeploymentsRoute,
   ExpiringRoute: ExpiringRoute,
   GraphRoute: GraphRoute,
+  MomentRoute: MomentRoute,
   SavingsRoute: SavingsRoute,
   WorkflowsRoute: WorkflowsRoute,
   AccountsAccountIdRoute: AccountsAccountIdRoute,

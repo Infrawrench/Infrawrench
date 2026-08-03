@@ -23,6 +23,11 @@ export interface RangeFlags {
   kind?: string | undefined;
   /** Resource id to filter/focus on (`changes`, `graph`). */
   resource?: string | undefined;
+  /**
+   * `moment` half-window, in `parseDuration` form (`30m`, `6h`). Named apart
+   * from `--last` because it is a ± around a centre, not a lookback.
+   */
+  window?: string | undefined;
 }
 
 /** Flags for the push-up commands (`page`, `costs push`). */
@@ -104,6 +109,8 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         limit: { type: "string" },
         kind: { type: "string" },
         resource: { type: "string" },
+        // `moment` half-window (± around the timestamp).
+        window: { type: "string", short: "w" },
         // `costs --anomalies` — same command, different question.
         anomalies: { type: "boolean", default: false },
         // Push-up flags (`page`, `costs push`).
@@ -193,6 +200,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       limit: positiveInt("limit"),
       kind: str("kind"),
       resource: str("resource"),
+      window: str("window"),
     },
     deploy: {
       env: str("env"),

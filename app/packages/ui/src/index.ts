@@ -599,6 +599,28 @@ export {
   type ChangeFeedAccount,
 } from "./changes/index.js";
 
+// Moment view ("what changed around 03:14?") — panel + host contract. The
+// wire types and pure timeline logic come straight from client-core, named
+// for the same redeclaration reason as the changes block above.
+export { MomentPanel, type MomentPanelProps, type MomentClient } from "./moment/index.js";
+export {
+  buildMomentTimeline,
+  describeIncidentBadge,
+  momentSearchParams,
+  MOMENT_FEED_LABELS,
+  MOMENT_WINDOW_PRESETS,
+  DEFAULT_MOMENT_WINDOW_MINUTES,
+  type MomentEvent,
+  type MomentEventLink,
+  type MomentFeedId,
+  type MomentFeedStatus,
+  type MomentIncidentSpan,
+  type MomentRequest,
+  type MomentResponse,
+  type MomentSeverity,
+  type MomentTimelineItem,
+} from "@infrawrench/client-core";
+
 export {
   ProviderIncidentBanner,
   ProviderIncidentChangesSection,

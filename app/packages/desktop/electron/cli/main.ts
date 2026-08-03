@@ -19,6 +19,7 @@ import { cmdOrphans } from "./commands/orphans";
 import { cmdOversized } from "./commands/oversized";
 import { cmdExpiring } from "./commands/expiring";
 import { cmdChanges } from "./commands/changes";
+import { cmdMoment } from "./commands/moment";
 import { cmdIncidents } from "./commands/incidents";
 import { cmdSchedules } from "./commands/schedules";
 import { cmdGraph } from "./commands/graph";
@@ -56,6 +57,8 @@ COMMANDS
   changes             what appeared / changed / disappeared across your providers
                       [--last 7d] [--limit 50] [--kind created|updated|deleted] [-a <account>] [--resource <id>]
   incidents           provider status-page incidents overlapping your resources ("is it me or is it them?")
+  moment [timestamp]  everything that happened around a timestamp, across every feed
+                      [-w/--window 15m|1h|6h]  (omit the timestamp for "around now")
   schedules           sleep/wake schedules: windows, next transitions & projected savings
   graph               resource dependency tree   [--resource <id>: what it needs + its blast radius]
   page <message>      alert the org's on-call transports   --source <name> [--key k] [--voice]
@@ -81,6 +84,7 @@ FLAGS
   --limit <n>         row cap for changes (max 200)
   --kind <k>          changes filter: created | updated | deleted
   --resource <id>     focus one resource (graph) / filter to it (changes)
+  -w, --window <d>    moment half-window, e.g. 30m, 1h, 6h (± around the timestamp)
   --type <typeId>     filter resources by resource type
   --source <name>     who is pushing (required by page and costs push)
   --key <k>           page throttle key   --title <t>   --cooldown <min>   --voice
@@ -256,6 +260,9 @@ export async function runCli(): Promise<void> {
         break;
       case "incidents":
         await cmdIncidents(ctx);
+        break;
+      case "moment":
+        await cmdMoment(ctx, parsed.range);
         break;
       case "schedules":
         await cmdSchedules(ctx);

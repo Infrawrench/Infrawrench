@@ -27,6 +27,7 @@ function ChangesFeedPage() {
       client={client}
       statusClient={statusClient}
       onOpenUrl={(url) => window.open(url, "_blank", "noopener,noreferrer")}
+      onInvestigateMoment={() => void navigate({ to: "/org/$orgId/moment", params: { orgId } })}
       onOpenResource={(entry) =>
         void navigate({
           to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",

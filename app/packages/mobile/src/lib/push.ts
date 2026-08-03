@@ -187,23 +187,31 @@ export function pushDataToPath(data: MobilePushData): string {
       return `/org/${data.orgId}`;
     case "budget_breach":
       return `/org/${data.orgId}/costs`;
-    // A cost anomaly is about a spend series, and the Costs tab is where the
-    // org's spend lives — same reasoning as budget breaches.
+    // A cost anomaly is a "what happened just now?" alert, so it opens the
+    // moment view centred on the tap — the anomaly event, plus whatever else
+    // (deploys, incidents, drift) coincided with it. The Costs tab is one tap
+    // away via the anomaly row's deep link.
     case "cost_anomaly":
-      return `/org/${data.orgId}/costs`;
-    // A drift digest describes a window of the change timeline, so it opens the
-    // Changes screen already narrowed to that window: `since` becomes the feed's
-    // `from` filter, and `accountId` rides along only when the server said every
-    // change in the window came from one account.
+      return `/org/${data.orgId}/moment`;
+    // A drift digest describes the window `since → now`, so it opens the
+    // moment view centred on that window's midpoint with a half-width that
+    // covers it — the digest's changes merged with everything else that
+    // happened around them. (This supersedes the old Changes-screen `since`
+    // filter target; the screen still honours the param for old links.)
     case "resource_drift": {
-      const query = new URLSearchParams({ since: data.since });
-      if (data.accountId) query.set("accountId", data.accountId);
-      return `/org/${data.orgId}/changes?${query.toString()}`;
+      const since = Date.parse(data.since);
+      if (Number.isNaN(since)) return `/org/${data.orgId}/moment`;
+      const now = Date.now();
+      const centre = new Date((since + now) / 2).toISOString();
+      const halfMinutes = Math.max(15, Math.ceil((now - since) / 2 / 60_000) + 5);
+      const query = new URLSearchParams({ at: centre, window: String(halfMinutes) });
+      return `/org/${data.orgId}/moment?${query.toString()}`;
     }
-    // A provider incident is surfaced as a banner/section on the Changes
-    // screen, which is where the affected resources' churn shows up.
+    // A provider incident push also lands on the moment view: the question it
+    // raises is "what did this coincide with?", and the view badges every
+    // event inside the incident's span.
     case "provider_incident":
-      return `/org/${data.orgId}/changes`;
+      return `/org/${data.orgId}/moment`;
     // An expiry alert summarises the whole feed, so it opens the feed. Read
     // both id keys so this stays correct if the shared union grows a variant
     // carrying the wire's raw `organizationId` rather than the normalised one.

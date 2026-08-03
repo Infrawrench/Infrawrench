@@ -47,6 +47,7 @@ function ChangesPage() {
       client={client}
       statusClient={statusClient}
       onOpenUrl={(url) => void invoke("open_external_url", { url })}
+      onInvestigateMoment={() => void navigate({ to: "/moment" })}
       onOpenResource={(entry) =>
         void navigate(
           getWorkspaceNavigateArgs(

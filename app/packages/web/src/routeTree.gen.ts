@@ -18,6 +18,7 @@ import { Route as OrgOrgIdIndexRouteImport } from './routes/org.$orgId.index'
 import { Route as OrgOrgIdWorkflowsRouteImport } from './routes/org.$orgId.workflows'
 import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settings'
 import { Route as OrgOrgIdSavingsRouteImport } from './routes/org.$orgId.savings'
+import { Route as OrgOrgIdMomentRouteImport } from './routes/org.$orgId.moment'
 import { Route as OrgOrgIdGraphRouteImport } from './routes/org.$orgId.graph'
 import { Route as OrgOrgIdExpiringRouteImport } from './routes/org.$orgId.expiring'
 import { Route as OrgOrgIdDeploymentsRouteImport } from './routes/org.$orgId.deployments'
@@ -87,6 +88,11 @@ const OrgOrgIdSettingsRoute = OrgOrgIdSettingsRouteImport.update({
 const OrgOrgIdSavingsRoute = OrgOrgIdSavingsRouteImport.update({
   id: '/savings',
   path: '/savings',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdMomentRoute = OrgOrgIdMomentRouteImport.update({
+  id: '/moment',
+  path: '/moment',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdGraphRoute = OrgOrgIdGraphRouteImport.update({
@@ -237,6 +243,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
@@ -271,6 +278,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
   '/org/$orgId': typeof OrgOrgIdIndexRoute
@@ -307,6 +315,7 @@ export interface FileRoutesById {
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
@@ -345,6 +354,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/deployments'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/moment'
     | '/org/$orgId/savings'
     | '/org/$orgId/settings'
     | '/org/$orgId/workflows'
@@ -379,6 +389,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/deployments'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/moment'
     | '/org/$orgId/savings'
     | '/org/$orgId/workflows'
     | '/org/$orgId'
@@ -414,6 +425,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/deployments'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/moment'
     | '/org/$orgId/savings'
     | '/org/$orgId/settings'
     | '/org/$orgId/workflows'
@@ -509,6 +521,13 @@ declare module '@tanstack/react-router' {
       path: '/savings'
       fullPath: '/org/$orgId/savings'
       preLoaderRoute: typeof OrgOrgIdSavingsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/moment': {
+      id: '/org/$orgId/moment'
+      path: '/moment'
+      fullPath: '/org/$orgId/moment'
+      preLoaderRoute: typeof OrgOrgIdMomentRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/graph': {
@@ -746,6 +765,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdDeploymentsRoute: typeof OrgOrgIdDeploymentsRoute
   OrgOrgIdExpiringRoute: typeof OrgOrgIdExpiringRoute
   OrgOrgIdGraphRoute: typeof OrgOrgIdGraphRoute
+  OrgOrgIdMomentRoute: typeof OrgOrgIdMomentRoute
   OrgOrgIdSavingsRoute: typeof OrgOrgIdSavingsRoute
   OrgOrgIdSettingsRoute: typeof OrgOrgIdSettingsRouteWithChildren
   OrgOrgIdWorkflowsRoute: typeof OrgOrgIdWorkflowsRoute
@@ -763,6 +783,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdDeploymentsRoute: OrgOrgIdDeploymentsRoute,
   OrgOrgIdExpiringRoute: OrgOrgIdExpiringRoute,
   OrgOrgIdGraphRoute: OrgOrgIdGraphRoute,
+  OrgOrgIdMomentRoute: OrgOrgIdMomentRoute,
   OrgOrgIdSavingsRoute: OrgOrgIdSavingsRoute,
   OrgOrgIdSettingsRoute: OrgOrgIdSettingsRouteWithChildren,
   OrgOrgIdWorkflowsRoute: OrgOrgIdWorkflowsRoute,

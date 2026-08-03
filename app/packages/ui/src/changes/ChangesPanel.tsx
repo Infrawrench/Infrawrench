@@ -30,6 +30,11 @@ export interface ChangesPanelProps {
   statusClient?: StatusIncidentsClient | undefined;
   /** Open an external URL (provider status page). */
   onOpenUrl?: ((url: string) => void) | undefined;
+  /**
+   * Open the moment view ("what changed around 03:14?"). When present, an
+   * "Investigate a moment" button renders in the filter row.
+   */
+  onInvestigateMoment?: (() => void) | undefined;
 }
 
 /**
@@ -45,6 +50,7 @@ export function ChangesPanel({
   onOpenResource,
   statusClient,
   onOpenUrl,
+  onInvestigateMoment,
 }: ChangesPanelProps) {
   const [entries, setEntries] = useState<ResourceChangeEntry[]>([]);
   const [total, setTotal] = useState(0);
@@ -157,6 +163,16 @@ export function ChangesPanel({
             </option>
           ))}
         </select>
+        {onInvestigateMoment && (
+          <button
+            type="button"
+            onClick={onInvestigateMoment}
+            className="ml-auto px-3 py-1.5 text-sm border border-border-strong rounded-lg text-on-surface-tertiary hover:text-on-surface-secondary whitespace-nowrap"
+            title="Merge every feed around one timestamp — changes, incidents, anomalies, runs, deployments, audit entries and freezes."
+          >
+            Investigate a moment
+          </button>
+        )}
       </div>
 
       {error !== null && (
