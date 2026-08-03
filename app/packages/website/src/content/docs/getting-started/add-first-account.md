@@ -23,6 +23,8 @@ This walkthrough uses DigitalOcean because it has the simplest credential: a sin
 
 <insert [Add-account modal with provider picker and DigitalOcean form] here>
 
+For some providers (AWS, Google Cloud, Cloudflare) the form also offers a **Check credentials** button that verifies, per capability, what the pasted credential can actually do — and a generator for the exact least-privilege policy to grant. See [Credential preflight](../core-concepts/credential-preflight.md).
+
 ## 3. Watch your resources appear
 
 Within a few seconds the sidebar populates with your Droplets, Kubernetes clusters, databases, Spaces, and domains. Click any resource to see its detail page.

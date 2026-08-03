@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef } from "react";
+import type {
+  PolicyTemplate,
+  PreflightDeclaration,
+  PreflightReport,
+} from "@infrawrench/client-core";
 import { Modal } from "./Modal.js";
 import { RegionPicker } from "./create-resource/RegionPicker.js";
+import { CredentialPreflightPanel } from "./CredentialPreflightPanel.js";
 import { formatErrorMessage } from "../utils.js";
 
 export interface PluginInfo {
@@ -20,6 +26,8 @@ export interface PluginInfo {
     accountReference?: { pluginId: string };
     helpLink?: { label: string; url: string };
   }>;
+  /** Declared when the plugin supports credential preflight; absent otherwise. */
+  preflight?: PreflightDeclaration | null;
 }
 
 export interface BastionOption {
@@ -80,6 +88,19 @@ interface AddAccountModalProps {
    * anchor's native new-tab behavior.
    */
   onOpenExternal?: (url: string) => void;
+  /**
+   * Runs the plugin's credential preflight against the values currently in
+   * the form. Only offered for plugins whose `PluginInfo.preflight` is set;
+   * hosts that can't probe (no server, no local plugin) omit it and the
+   * checklist affordance is hidden.
+   */
+  runPreflight?: (
+    pluginId: string,
+    credentials: Record<string, string>,
+    bastionId: string | null,
+  ) => Promise<PreflightReport>;
+  /** Builds the least-privilege credential template for the selected capabilities. */
+  fetchPolicyTemplate?: (pluginId: string, capabilityIds: string[]) => Promise<PolicyTemplate>;
 }
 
 type Step = "pick-plugin" | "enter-credentials";
@@ -95,6 +116,8 @@ export function AddAccountModal({
   prefilledCredentials,
   prefilledDisplayName,
   onOpenExternal,
+  runPreflight,
+  fetchPolicyTemplate,
 }: AddAccountModalProps) {
   const [step, setStep] = useState<Step>(prefilledPluginId ? "enter-credentials" : "pick-plugin");
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
@@ -248,10 +271,16 @@ export function AddAccountModal({
           {step === "enter-credentials" &&
             selected &&
             (() => {
-              const isValid =
-                accountName.trim().length > 0 &&
-                selected.credentialFields.every(
-                  (f) => f.optional || !!fieldValues[f.key]?.trim() || !!f.defaultValue,
+              const credsReady = selected.credentialFields.every(
+                (f) => f.optional || !!fieldValues[f.key]?.trim() || !!f.defaultValue,
+              );
+              const isValid = accountName.trim().length > 0 && credsReady;
+              const buildCredentials = () =>
+                Object.fromEntries(
+                  selected.credentialFields.map((f) => [
+                    f.key,
+                    fieldValues[f.key]?.trim() || f.defaultValue || "",
+                  ]),
                 );
               return (
                 <div className="space-y-4">
@@ -391,6 +420,24 @@ export function AddAccountModal({
                         ))}
                       </select>
                     </div>
+                  )}
+
+                  {selected.preflight && (
+                    <CredentialPreflightPanel
+                      key={selected.id}
+                      declaration={selected.preflight}
+                      runPreflight={
+                        runPreflight && credsReady
+                          ? () => runPreflight(selected.id, buildCredentials(), bastionId || null)
+                          : undefined
+                      }
+                      fetchPolicyTemplate={
+                        fetchPolicyTemplate
+                          ? (capabilityIds) => fetchPolicyTemplate(selected.id, capabilityIds)
+                          : undefined
+                      }
+                      onOpenExternal={onOpenExternal}
+                    />
                   )}
 
                   {error && <p className="text-xs text-red-400">{error}</p>}

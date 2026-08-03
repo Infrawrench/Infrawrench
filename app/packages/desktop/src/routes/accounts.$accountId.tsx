@@ -7,6 +7,7 @@ import {
   useTabId,
   ConfirmDeleteModal,
   EditCredentialsModal,
+  CredentialPreflightModal,
   RESOURCES_CHANGED_EVENT,
   dispatchResourcesChanged,
   dispatchRefreshResource,
@@ -89,6 +90,9 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     plugin: import("@infrawrench/ui").PluginInfo;
     current: Record<string, string>;
   } | null>(null);
+  const [preflightDeclaration, setPreflightDeclaration] = useState<
+    import("@infrawrench/client-core").PreflightDeclaration | null
+  >(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(account?.display_name ?? "");
   const [isSaving, setIsSaving] = useState(false);
@@ -698,6 +702,46 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     }
   }
 
+  async function openPreflight() {
+    if (!account) return;
+    try {
+      const loaded = await getPlugin(account.plugin_id);
+      const declaration = loaded?.plugin.manifest.preflight;
+      if (!declaration) throw new Error("This plugin doesn't support credential checks yet");
+      setPreflightDeclaration(declaration);
+    } catch (err) {
+      toast.error(`Couldn't open credential check: ${formatErrorMessage(err)}`);
+    }
+  }
+
+  /**
+   * Runs preflight in the renderer with the account's stored credentials —
+   * local accounts read from sqlite, cloud accounts through the cloud IPC.
+   * Same in-process plugin-client path the rest of this route uses.
+   */
+  async function runPreflightForAccount() {
+    const { runAccountPreflight } = await import("@infrawrench/client-core");
+    const credentials = activeCloudOrgId
+      ? await invoke<Record<string, string>>("cloud_get_account_credentials", {
+          orgId: activeCloudOrgId,
+          accountId,
+        })
+      : await invoke<Record<string, string>>("account_get_credentials", { accountId });
+    const loaded = await getPlugin(account!.plugin_id);
+    if (!loaded) throw new Error(`Plugin "${account!.plugin_id}" not loaded`);
+    const services = buildPluginHostServices(loaded.plugin.manifest, credentials);
+    const client = loaded.plugin.createClient(credentials, services);
+    return runAccountPreflight(loaded.plugin, client);
+  }
+
+  async function fetchPolicyTemplateForAccount(capabilityIds: string[]) {
+    const loaded = await getPlugin(account!.plugin_id);
+    if (!loaded?.plugin.policyTemplate) {
+      throw new Error(`Plugin "${account!.plugin_id}" does not provide a policy template`);
+    }
+    return loaded.plugin.policyTemplate(capabilityIds);
+  }
+
   async function saveCredentials(credentials: Record<string, string>) {
     if (activeCloudOrgId) {
       await updateCloudAccountCredentials(activeCloudOrgId, accountId, credentials);
@@ -795,6 +839,13 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
                 className="text-xs text-on-surface-faint hover:text-on-surface transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
               >
                 Update credentials
+              </button>
+              <button
+                type="button"
+                onClick={() => void openPreflight()}
+                className="text-xs text-on-surface-faint hover:text-on-surface transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
+              >
+                Check credentials
               </button>
             </>
           )}
@@ -1025,6 +1076,17 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           name={account.display_name}
           onConfirm={() => deleteAccount()}
           onClose={() => setConfirmDelete(false)}
+        />
+      )}
+
+      {preflightDeclaration && account && (
+        <CredentialPreflightModal
+          accountName={account.display_name}
+          declaration={preflightDeclaration}
+          runPreflight={runPreflightForAccount}
+          fetchPolicyTemplate={fetchPolicyTemplateForAccount}
+          onOpenExternal={(url) => void invoke("open_external_url", { url })}
+          onClose={() => setPreflightDeclaration(null)}
         />
       )}
 

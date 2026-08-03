@@ -53,6 +53,11 @@ vi.mock("@infrawrench/server-core/tunnel-resolver", () => ({
   rewriteCredentialsThroughTunnel: vi.fn().mockResolvedValue(undefined),
 }));
 
+const mockGetClientForAccount = vi.fn();
+vi.mock("@/services/plugin-clients", () => ({
+  getClientForAccount: (...args: unknown[]) => mockGetClientForAccount(...args),
+}));
+
 vi.mock("uuid", () => ({ v4: () => "acct-uuid-1" }));
 
 vi.mock("@/services/entitlements", () => ({
@@ -400,6 +405,177 @@ describe("Account routes", () => {
       // The upsert should include deletedAt: null to clear soft-delete
       const insertCall = mockInsert.mock.calls[0];
       expect(insertCall).toBeDefined();
+    });
+  });
+
+  const preflightManifest = {
+    id: "aws",
+    displayName: "AWS",
+    logoSvg: "<svg/>",
+    credentialFields: [],
+    preflight: {
+      capabilities: [
+        {
+          id: "resources",
+          label: "Resource inventory",
+          requiredPermissions: [{ id: "ec2:DescribeInstances", label: "List EC2 instances" }],
+          essential: true,
+        },
+      ],
+      templateFormat: { label: "AWS IAM policy (JSON)", language: "json" },
+    },
+  };
+
+  describe("POST /preflight — ad-hoc credential probe", () => {
+    it("runs the plugin probe against submitted credentials without storing anything", async () => {
+      const verifyCredentials = vi.fn().mockResolvedValue({
+        identity: "arn:aws:iam::1:user/x",
+        checks: [{ capabilityId: "resources", status: "ok" }],
+      });
+      mockGetPlugin.mockResolvedValue({
+        plugin: {
+          manifest: preflightManifest,
+          createClient: vi.fn().mockReturnValue({ verifyCredentials }),
+        },
+      });
+
+      const app = buildApp();
+      const res = await app.request("/preflight", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pluginId: "aws", credentials: { accessKeyId: "AKIA" } }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.supported).toBe(true);
+      expect(body.identity).toBe("arn:aws:iam::1:user/x");
+      expect(body.checks).toEqual([
+        {
+          capabilityId: "resources",
+          status: "ok",
+          missingPermissions: [],
+          message: null,
+          helpLink: null,
+        },
+      ]);
+      expect(verifyCredentials).toHaveBeenCalled();
+      expect(mockInsert).not.toHaveBeenCalled();
+    });
+
+    it("400s when the plugin rejects the credentials at construction", async () => {
+      mockGetPlugin.mockResolvedValue({
+        plugin: {
+          manifest: preflightManifest,
+          createClient: vi.fn(() => {
+            throw new Error("missing accessKeyId");
+          }),
+        },
+      });
+
+      const app = buildApp();
+      const res = await app.request("/preflight", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pluginId: "aws", credentials: {} }),
+      });
+
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain("missing accessKeyId");
+    });
+
+    it("404s for an unknown plugin", async () => {
+      mockGetPlugin.mockResolvedValue(undefined);
+      const app = buildApp();
+      const res = await app.request("/preflight", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pluginId: "nope", credentials: {} }),
+      });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("POST /:accountId/preflight — stored-account probe", () => {
+    it("resolves the account client and returns the normalized report", async () => {
+      mockGetClientForAccount.mockResolvedValue({
+        plugin: { manifest: preflightManifest },
+        client: {
+          verifyCredentials: vi.fn().mockResolvedValue({
+            checks: [
+              {
+                capabilityId: "resources",
+                status: "missing",
+                missingPermissions: [{ id: "ec2:DescribeInstances", label: "List EC2 instances" }],
+                helpLink: { label: "IAM", url: "https://console.aws.amazon.com/iam" },
+              },
+            ],
+          }),
+        },
+      });
+
+      const app = buildApp();
+      const res = await app.request("/a1/preflight", { method: "POST" });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.checks[0]).toMatchObject({
+        capabilityId: "resources",
+        status: "missing",
+        missingPermissions: [{ id: "ec2:DescribeInstances" }],
+      });
+      expect(mockGetClientForAccount).toHaveBeenCalledWith("a1", "org-1");
+    });
+
+    it("404s when the account is not in the org", async () => {
+      mockGetClientForAccount.mockResolvedValue(null);
+      const app = buildApp();
+      const res = await app.request("/missing/preflight", { method: "POST" });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("GET /plugins/:pluginId/policy-template — least-privilege template", () => {
+    it("returns the template scoped to the requested capabilities", async () => {
+      const policyTemplate = vi.fn().mockReturnValue({
+        formatLabel: "AWS IAM policy (JSON)",
+        language: "json",
+        document: "{}",
+      });
+      mockGetPlugin.mockResolvedValue({
+        plugin: { manifest: preflightManifest, policyTemplate },
+      });
+
+      const app = buildApp();
+      const res = await app.request("/plugins/aws/policy-template?capabilities=resources,bogus");
+      expect(res.status).toBe(200);
+      expect((await res.json()).template.formatLabel).toBe("AWS IAM policy (JSON)");
+      // Unknown capability ids are filtered before reaching the plugin.
+      expect(policyTemplate).toHaveBeenCalledWith(["resources"]);
+    });
+
+    it("defaults to every declared capability when none are requested", async () => {
+      const policyTemplate = vi.fn().mockReturnValue({
+        formatLabel: "AWS IAM policy (JSON)",
+        language: "json",
+        document: "{}",
+      });
+      mockGetPlugin.mockResolvedValue({
+        plugin: { manifest: preflightManifest, policyTemplate },
+      });
+
+      const app = buildApp();
+      const res = await app.request("/plugins/aws/policy-template");
+      expect(res.status).toBe(200);
+      expect(policyTemplate).toHaveBeenCalledWith(["resources"]);
+    });
+
+    it("400s for plugins without a template", async () => {
+      mockGetPlugin.mockResolvedValue({
+        plugin: { manifest: { ...preflightManifest, preflight: undefined } },
+      });
+      const app = buildApp();
+      const res = await app.request("/plugins/aws/policy-template");
+      expect(res.status).toBe(400);
     });
   });
 });

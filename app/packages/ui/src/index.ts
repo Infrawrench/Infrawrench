@@ -162,6 +162,14 @@ export type {
   AccountReferenceOption,
 } from "./components/AddAccountModal.js";
 export { EditCredentialsModal } from "./components/EditCredentialsModal.js";
+export {
+  CredentialPreflightPanel,
+  CredentialPreflightModal,
+} from "./components/CredentialPreflightPanel.js";
+export type {
+  CredentialPreflightPanelProps,
+  CredentialPreflightModalProps,
+} from "./components/CredentialPreflightPanel.js";
 export { DockerActionsPanel } from "./components/DockerActionsPanel.js";
 export { SshFanoutView } from "./components/SshFanoutView.js";
 export type {

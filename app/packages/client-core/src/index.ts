@@ -172,6 +172,20 @@ export {
   type CostQueryResponse,
 } from "./costs";
 export {
+  buildPreflightChecklist,
+  summarizePreflight,
+  defaultTemplateCapabilityIds,
+  runAccountPreflight,
+  type PolicyTemplate,
+  type PreflightCapability,
+  type PreflightCheck,
+  type PreflightChecklistRow,
+  type PreflightDeclaration,
+  type PreflightPermission,
+  type PreflightReport,
+  type PreflightSummary,
+} from "./preflight";
+export {
   DEFAULT_TAG_POLICY,
   TAG_POLICY_LIMITS,
   TAG_POLICY_UNMET_CODE,

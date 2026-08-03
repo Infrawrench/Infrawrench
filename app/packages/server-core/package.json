@@ -23,6 +23,7 @@
     "./sync-resources": "./src/sync-resources.ts",
     "./resource-changes": "./src/resource-changes.ts",
     "./org-accounts": "./src/org-accounts.ts",
+    "./preflight": "./src/preflight.ts",
     "./peer-clients": "./src/peer-clients.ts",
     "./twilio-pager": "./src/twilio-pager.ts",
     "./source-name": "./src/source-name.ts",

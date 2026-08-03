@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { CloudflareClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { cloudflarePreflight, buildCloudflarePolicyTemplate } from "./preflight.js";
 import { ZoneResourceType } from "./resources/zone.js";
 import { DnsRecordResourceType } from "./resources/dns-record.js";
 import { WorkerResourceType } from "./resources/worker.js";
@@ -116,6 +117,7 @@ const manifest: PluginManifest = {
   // follow the billing cycle, hence periodNative.
   costs: { dimensions: ["service", "tag"], maxHistoryDays: 90, periodNative: true },
   statusFeed,
+  preflight: cloudflarePreflight,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -159,4 +161,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials) => new CloudflareClient(credentials, resourceTypes),
   parseStatusFeed,
+  policyTemplate: buildCloudflarePolicyTemplate,
 };

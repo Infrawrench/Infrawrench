@@ -13,6 +13,7 @@ import type {
   CostRow,
   CredentialExport,
   HostServices,
+  PreflightResult,
   ChatMessage,
   ChatStreamEvent,
   PublishMessagePayload,
@@ -121,6 +122,7 @@ import { executeFieldAction as executeFieldActionImpl } from "./field-actions.js
 import { executeDynamoDbCommand } from "./dynamodb-handlers.js";
 import { publishSqs, publishSns, publishKinesis, publishEventBridge } from "./publish-handlers.js";
 import { fetchSigned } from "./signed-request.js";
+import { runAwsPreflight } from "./preflight.js";
 
 export class AWSClient implements PluginClient {
   private readonly creds: AwsCredentials;
@@ -347,6 +349,10 @@ export class AWSClient implements PluginClient {
     "cognito-user-pool": listCognitoUserPools,
     "backup-vault": listBackupVaults,
   };
+
+  async verifyCredentials(): Promise<PreflightResult> {
+    return runAwsPreflight(this.creds);
+  }
 
   async listResources(
     typeId: string,

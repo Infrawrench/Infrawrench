@@ -24,7 +24,8 @@ import type {
   CostFetchRange,
   CostRow,
 } from "@infrawrench/plugin-base";
-import type { HostServices } from "@infrawrench/plugin-base";
+import type { HostServices, PreflightResult } from "@infrawrench/plugin-base";
+import { runGcpPreflight } from "./preflight.js";
 import { streamOpenAiSseChat } from "@infrawrench/plugin-base";
 import {
   fetchAccessToken,
@@ -253,6 +254,10 @@ export class GcpClient implements PluginClient {
       project: this.project,
       resourceTypes: this.resourceTypes,
     };
+  }
+
+  async verifyCredentials(): Promise<PreflightResult> {
+    return runGcpPreflight(this.key, this.project, this.billingExportTable);
   }
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {

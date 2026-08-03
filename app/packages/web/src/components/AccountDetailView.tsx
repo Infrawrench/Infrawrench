@@ -4,6 +4,7 @@ import {
   ResourcePill,
   ConfirmDeleteModal,
   EditCredentialsModal,
+  CredentialPreflightModal,
   dispatchResourcesChanged,
   AccountResourceSections,
   type DraggableResource,
@@ -13,7 +14,12 @@ import {
   formatErrorMessage,
   toast,
 } from "@infrawrench/ui";
-import { apiDelete, apiGet, apiPatch, apiPut } from "@/lib/api";
+import type {
+  PolicyTemplate,
+  PreflightDeclaration,
+  PreflightReport,
+} from "@infrawrench/client-core";
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api";
 import { fetchPluginCatalog } from "@/lib/plugin-catalog";
 import { useOrgId } from "@/lib/useOrgId";
 import type { AccountListItem, ResourceTypeSummary } from "@/lib/api-types";
@@ -70,6 +76,9 @@ export function AccountDetailView({
     plugin: PluginInfo;
     current: Record<string, string>;
   } | null>(null);
+  const [preflightDeclaration, setPreflightDeclaration] = useState<PreflightDeclaration | null>(
+    null,
+  );
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(account.displayName);
   const [isSaving, setIsSaving] = useState(false);
@@ -97,6 +106,17 @@ export function AccountDetailView({
       setEditCredsState({ plugin, current });
     } catch (e) {
       toast.error(`Couldn't open credentials: ${formatErrorMessage(e)}`);
+    }
+  }
+
+  async function openPreflight() {
+    try {
+      const plugins = await fetchPluginCatalog(orgId);
+      const declaration = plugins.find((p) => p.id === account.pluginId)?.preflight;
+      if (!declaration) throw new Error("This plugin doesn't support credential checks yet");
+      setPreflightDeclaration(declaration);
+    } catch (e) {
+      toast.error(`Couldn't open credential check: ${formatErrorMessage(e)}`);
     }
   }
 
@@ -199,6 +219,13 @@ export function AccountDetailView({
               >
                 Update credentials
               </button>
+              <button
+                type="button"
+                onClick={() => void openPreflight()}
+                className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay rounded transition-colors"
+              >
+                Check credentials
+              </button>
             </>
           )}
           <button
@@ -217,6 +244,25 @@ export function AccountDetailView({
           name={account.displayName}
           onConfirm={handleDeleteAccount}
           onClose={() => setConfirmDelete(false)}
+        />
+      )}
+
+      {preflightDeclaration && (
+        <CredentialPreflightModal
+          accountName={account.displayName}
+          declaration={preflightDeclaration}
+          runPreflight={() =>
+            apiPost<PreflightReport>(`/api/org/${orgId}/accounts/${account.id}/preflight`)
+          }
+          fetchPolicyTemplate={async (capabilityIds) => {
+            const { template } = await apiGet<{ template: PolicyTemplate }>(
+              `/api/org/${orgId}/accounts/plugins/${account.pluginId}/policy-template?capabilities=${encodeURIComponent(
+                capabilityIds.join(","),
+              )}`,
+            );
+            return template;
+          }}
+          onClose={() => setPreflightDeclaration(null)}
         />
       )}
 

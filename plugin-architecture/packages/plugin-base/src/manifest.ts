@@ -157,6 +157,13 @@ export interface PluginManifest {
    * resources an org holds on this plugin.
    */
   statusFeed?: StatusFeedDeclaration;
+  /**
+   * If present, this plugin supports credential preflight: the host offers a
+   * per-capability permission checklist at add-account time (backed by
+   * `PluginClient.verifyCredentials`) and, when `templateFormat` is set, a
+   * least-privilege policy generator (backed by `Plugin.policyTemplate`).
+   */
+  preflight?: PreflightDeclaration;
 }
 
 export interface RateLimitDeclaration {
@@ -295,6 +302,16 @@ export interface PeerPaneContext {
 }
 
 export interface PluginClient {
+  /**
+   * Probe the provider with this client's credentials and report what each
+   * declared capability can actually do — ok / missing (with which
+   * permissions) / unknown. Only called when the manifest declares
+   * `preflight`. Run at add-account time and re-runnable from account
+   * settings, so implementations must be read-only and side-effect free.
+   * Failures to reach the provider at all should be reported as `unknown`
+   * checks rather than thrown, so a partial probe still renders.
+   */
+  verifyCredentials?(): Promise<PreflightResult>;
   /**
    * List all instances of a resource type for an account.
    *
@@ -816,10 +833,19 @@ export interface Plugin {
    * the feed rather than silently treating it as "no incidents".
    */
   parseStatusFeed?(body: string): StatusIncident[];
+  /**
+   * Build the paste-ready least-privilege credential document scoped to the
+   * given capability ids (a subset of `manifest.preflight.capabilities`).
+   * Required when `manifest.preflight.templateFormat` is set. Lives on the
+   * Plugin (not the client) because generating a template needs no
+   * credentials — the host offers it even before the user has working keys.
+   */
+  policyTemplate?(capabilityIds: string[]): PolicyTemplate;
 }
 
 // Forward declarations — defined in their own modules but used here
 import type { CostCapabilityDeclaration, CostFetchRange, CostRow } from "./cost.js";
+import type { PolicyTemplate, PreflightDeclaration, PreflightResult } from "./preflight.js";
 import type { StatusFeedDeclaration, StatusIncident } from "./status-feed.js";
 import type { ResourceCreateReturn, ResourceInstance } from "./instance.js";
 import type {

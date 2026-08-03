@@ -81,4 +81,30 @@ export const pluginManifestSchema = z.object({
       statusPageUrl: z.string().url().optional(),
     })
     .optional(),
+  preflight: z
+    .object({
+      capabilities: z
+        .array(
+          z.object({
+            id: z.string().min(1),
+            label: z.string().min(1),
+            description: z.string().optional(),
+            requiredPermissions: z.array(
+              z.object({
+                id: z.string().min(1),
+                label: z.string().min(1),
+              }),
+            ),
+            essential: z.boolean().optional(),
+          }),
+        )
+        .min(1),
+      templateFormat: z
+        .object({
+          label: z.string().min(1),
+          language: z.enum(["json", "yaml", "text"]),
+        })
+        .optional(),
+    })
+    .optional(),
 });

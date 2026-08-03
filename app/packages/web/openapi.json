@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.32.0",
+    "version": "0.33.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -722,6 +722,74 @@
         "required": ["key", "label"],
         "additionalProperties": false
       },
+      "PreflightPermission": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Provider-native permission string, e.g. `ce:GetCostAndUsage`."
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "label"],
+        "additionalProperties": false
+      },
+      "PreflightCapability": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "costs"
+          },
+          "label": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "requiredPermissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreflightPermission"
+            }
+          },
+          "essential": {
+            "type": "boolean"
+          }
+        },
+        "required": ["id", "label", "requiredPermissions"],
+        "additionalProperties": false
+      },
+      "PreflightDeclaration": {
+        "type": ["object", "null"],
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreflightCapability"
+            }
+          },
+          "templateFormat": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "language": {
+                "type": "string",
+                "enum": ["json", "yaml", "text"]
+              }
+            },
+            "required": ["label", "language"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["capabilities"],
+        "additionalProperties": false,
+        "description": "Declared when the plugin supports credential preflight (per-capability permission checks). `null` for plugins without it."
+      },
       "PluginSummary": {
         "type": "object",
         "properties": {
@@ -739,59 +807,55 @@
             "items": {
               "$ref": "#/components/schemas/CredentialField"
             }
+          },
+          "preflight": {
+            "$ref": "#/components/schemas/PreflightDeclaration"
           }
         },
-        "required": ["id", "displayName", "logoSvg", "credentialFields"],
+        "required": ["id", "displayName", "logoSvg", "credentialFields", "preflight"],
         "additionalProperties": false
       },
-      "Account": {
+      "PolicyTemplate": {
         "type": "object",
         "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "example": "00000000-0000-0000-0000-000000000000"
-          },
-          "pluginId": {
+          "formatLabel": {
             "type": "string"
           },
-          "displayName": {
+          "language": {
+            "type": "string",
+            "enum": ["json", "yaml", "text"]
+          },
+          "document": {
             "type": "string"
           },
-          "bastionId": {
-            "type": ["string", "null"],
-            "format": "uuid",
-            "description": "Bastion this account's cloud-API egress is routed through. `null` ⇒ direct egress.",
-            "example": "00000000-0000-0000-0000-000000000000"
+          "instructions": {
+            "type": "string"
           },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": ["id", "pluginId", "displayName", "bastionId", "createdAt"],
-        "additionalProperties": false
-      },
-      "CreateAccountResponse": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "example": "00000000-0000-0000-0000-000000000000"
-          },
-          "syncError": {
+          "helpLink": {
             "type": "object",
             "properties": {
-              "message": {
+              "label": {
+                "type": "string"
+              },
+              "url": {
                 "type": "string"
               }
             },
-            "required": ["message"],
+            "required": ["label", "url"],
             "additionalProperties": false
           }
         },
-        "required": ["id"],
+        "required": ["formatLabel", "language", "document"],
+        "additionalProperties": false
+      },
+      "PolicyTemplateResponse": {
+        "type": "object",
+        "properties": {
+          "template": {
+            "$ref": "#/components/schemas/PolicyTemplate"
+          }
+        },
+        "required": ["template"],
         "additionalProperties": false
       },
       "PluginId": {
@@ -847,6 +911,137 @@
         ],
         "description": "Manifest id of an installed plugin.",
         "example": "anthropic"
+      },
+      "PreflightCheck": {
+        "type": "object",
+        "properties": {
+          "capabilityId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["ok", "missing", "unknown"]
+          },
+          "missingPermissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreflightPermission"
+            }
+          },
+          "message": {
+            "type": ["string", "null"]
+          },
+          "helpLink": {
+            "type": ["object", "null"],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": ["label", "url"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["capabilityId", "status", "missingPermissions", "message", "helpLink"],
+        "additionalProperties": false
+      },
+      "PreflightReport": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "supported": {
+            "type": "boolean"
+          },
+          "identity": {
+            "type": ["string", "null"],
+            "description": "Provider-side identity the credential resolved to (ARN, service account…)."
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreflightCheck"
+            }
+          }
+        },
+        "required": ["pluginId", "supported", "identity", "checks"],
+        "additionalProperties": false
+      },
+      "PreflightRequest": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "credentials": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "bastionId": {
+            "type": ["string", "null"],
+            "format": "uuid",
+            "description": "Probe through this bastion, matching how the account will egress once created.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "required": ["pluginId", "credentials"],
+        "additionalProperties": false
+      },
+      "Account": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "bastionId": {
+            "type": ["string", "null"],
+            "format": "uuid",
+            "description": "Bastion this account's cloud-API egress is routed through. `null` ⇒ direct egress.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["id", "pluginId", "displayName", "bastionId", "createdAt"],
+        "additionalProperties": false
+      },
+      "CreateAccountResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "syncError": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id"],
+        "additionalProperties": false
       },
       "CreateAccountRequest": {
         "type": "object",
@@ -11542,6 +11737,206 @@
         "operationId": "getOrgOrgIdAccountsPlugins",
         "x-required-permission": "accounts:read",
         "description": "_Requires permission: `accounts:read`._"
+      }
+    },
+    "/api/org/{orgId}/accounts/plugins/{pluginId}/policy-template": {
+      "get": {
+        "tags": ["Accounts"],
+        "summary": "Generate a least-privilege credential template for a plugin",
+        "description": "Returns the paste-ready credential document (IAM policy JSON, custom role YAML, token template…) scoped to the requested capability ids. Omitting `capabilities` selects every declared capability. 400 for plugins that don't provide a template.\n\n_Requires permission: `accounts:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/PluginId"
+            },
+            "required": true,
+            "name": "pluginId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated capability ids, e.g. `resources,costs`.",
+              "example": "resources,costs"
+            },
+            "required": false,
+            "name": "capabilities",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyTemplateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAccountsPluginsPluginIdPolicyTemplate",
+        "x-required-permission": "accounts:read"
+      }
+    },
+    "/api/org/{orgId}/accounts/preflight": {
+      "post": {
+        "tags": ["Accounts"],
+        "summary": "Probe credentials before creating an account",
+        "description": "Runs the plugin's per-capability permission checks against the submitted credentials. Nothing is stored — use it from the add-account flow before committing.\n\n_Requires permission: `accounts:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreflightRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preflight report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreflightReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdAccountsPreflight",
+        "x-required-permission": "accounts:write"
+      }
+    },
+    "/api/org/{orgId}/accounts/{id}/preflight": {
+      "post": {
+        "tags": ["Accounts"],
+        "summary": "Re-run credential preflight on a stored account",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Preflight report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreflightReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdAccountsIdPreflight",
+        "x-required-permission": "accounts:write",
+        "description": "_Requires permission: `accounts:write`._"
       }
     },
     "/api/org/{orgId}/accounts": {

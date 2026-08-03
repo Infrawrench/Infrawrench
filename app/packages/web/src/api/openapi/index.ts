@@ -284,6 +284,9 @@ function injectOperationIds(doc: { paths?: Record<string, unknown> }) {
 const REQUIRED_PERMISSION: Record<string, string | null> = {
   // accounts
   "GET /accounts/plugins": "accounts:read",
+  "GET /accounts/plugins/{pluginId}/policy-template": "accounts:read",
+  "POST /accounts/preflight": "accounts:write",
+  "POST /accounts/{id}/preflight": "accounts:write",
   "GET /accounts": "accounts:read",
   "POST /accounts": "accounts:write",
   "DELETE /accounts/{id}": "accounts:delete",

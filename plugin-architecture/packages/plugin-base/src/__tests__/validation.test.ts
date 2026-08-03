@@ -68,6 +68,40 @@ describe("pluginManifestSchema", () => {
   it("rejects empty logoSvg", () => {
     expect(pluginManifestSchema.safeParse({ ...validManifest, logoSvg: "" }).success).toBe(false);
   });
+
+  it("accepts a preflight declaration", () => {
+    const result = pluginManifestSchema.safeParse({
+      ...validManifest,
+      preflight: {
+        capabilities: [
+          {
+            id: "resources",
+            label: "Resource inventory",
+            description: "Read-only listing",
+            requiredPermissions: [{ id: "ec2:DescribeInstances", label: "List EC2 instances" }],
+            essential: true,
+          },
+        ],
+        templateFormat: { label: "AWS IAM policy (JSON)", language: "json" },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a preflight declaration with no capabilities or bad language", () => {
+    expect(
+      pluginManifestSchema.safeParse({ ...validManifest, preflight: { capabilities: [] } }).success,
+    ).toBe(false);
+    expect(
+      pluginManifestSchema.safeParse({
+        ...validManifest,
+        preflight: {
+          capabilities: [{ id: "resources", label: "R", requiredPermissions: [] }],
+          templateFormat: { label: "X", language: "toml" },
+        },
+      }).success,
+    ).toBe(false);
+  });
 });
 
 const validResourceType = {

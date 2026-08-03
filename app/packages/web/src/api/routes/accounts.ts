@@ -6,6 +6,9 @@ import { accounts, bastionVms, resources } from "../../db/schema";
 import { refreshAllowlistById } from "@infrawrench/server-core/bastion/registry";
 import { encrypt, decrypt, buildAad } from "../../services/encryption";
 import { loadPlugins, getPlugin } from "../../plugins/loader";
+import { getClientForAccount } from "../../services/plugin-clients";
+import { buildPluginHostServices } from "@infrawrench/server-core/host-services";
+import { runAccountPreflight } from "@infrawrench/server-core/preflight";
 import { syncAccountResources, syncAccountResourceType } from "../../services/sync-resources";
 import { requirePermission } from "../../auth/permissions";
 import { planAccess, FREE_PLAN_LIMITS } from "../../services/entitlements";
@@ -42,8 +45,85 @@ app.get("/plugins", async (c) => {
         accountReference: f.accountReference,
         helpLink: f.helpLink,
       })),
+      preflight: p.plugin.manifest.preflight ?? null,
     })),
   );
+});
+
+/** GET /api/plugins/:pluginId/policy-template — least-privilege credential template */
+app.get("/plugins/:pluginId/policy-template", async (c) => {
+  requirePermission(c, "accounts:read");
+  const pluginId = c.req.param("pluginId");
+  const loaded = await getPlugin(pluginId);
+  if (!loaded) return c.json({ error: "Plugin not found" }, 404);
+  const declaration = loaded.plugin.manifest.preflight;
+  if (!declaration?.templateFormat || !loaded.plugin.policyTemplate) {
+    return c.json({ error: "Plugin does not provide a policy template" }, 400);
+  }
+  const declaredIds = declaration.capabilities.map((cap) => cap.id);
+  const raw = c.req.query("capabilities") ?? "";
+  const requested = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => declaredIds.includes(s));
+  const capabilityIds = requested.length > 0 ? requested : declaredIds;
+  return c.json({ template: loaded.plugin.policyTemplate(capabilityIds) });
+});
+
+/**
+ * POST /api/accounts/preflight — probe credentials before an account exists.
+ * The credentials are used for the probe only; nothing is stored.
+ */
+app.post("/preflight", async (c) => {
+  requirePermission(c, "accounts:write");
+  const { pluginId, credentials, bastionId } = await c.req.json<{
+    pluginId: string;
+    credentials: Record<string, string>;
+    bastionId?: string | null;
+  }>();
+  const organizationId = c.get("organizationId");
+  const loaded = await getPlugin(pluginId);
+  if (!loaded) return c.json({ error: "Plugin not found" }, 404);
+
+  // Same never-trust-the-client check as account creation, so the probe
+  // egresses through the same path the account will.
+  let validatedBastionId: string | null = null;
+  if (bastionId) {
+    const [b] = await db
+      .select({ id: bastionVms.id })
+      .from(bastionVms)
+      .where(and(eq(bastionVms.id, bastionId), eq(bastionVms.organizationId, organizationId)))
+      .limit(1);
+    if (!b) return c.json({ error: "Bastion not found" }, 400);
+    validatedBastionId = b.id;
+  }
+
+  try {
+    const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
+      bastionId: validatedBastionId,
+    });
+    const client = loaded.plugin.createClient(credentials, hostServices);
+    return c.json(await runAccountPreflight(loaded.plugin, client));
+  } catch (e) {
+    // createClient throws on malformed credentials (bad JSON key, missing
+    // field) — that's a user-fixable state, not a 500.
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+});
+
+/** POST /api/accounts/:accountId/preflight — re-run preflight on a stored account */
+app.post("/:accountId/preflight", async (c) => {
+  requirePermission(c, "accounts:write");
+  const organizationId = c.get("organizationId");
+  const accountId = c.req.param("accountId");
+  let ctx;
+  try {
+    ctx = await getClientForAccount(accountId, organizationId);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+  if (!ctx) return c.json({ error: "Account or plugin not found" }, 404);
+  return c.json(await runAccountPreflight(ctx.plugin, ctx.client));
 });
 
 /** GET /api/accounts — list accounts */

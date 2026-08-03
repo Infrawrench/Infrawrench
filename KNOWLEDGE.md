@@ -2421,3 +2421,49 @@ the payload carrying it was signature-verified (do not post to URLs from unverif
 Tests: `server-core/__tests__/slack.test.ts` (signature + link tokens + tracked send),
 `slack-approvals.test.ts`, and `web/routes/__tests__/slack-inbound.test.ts` (the layer-ordering
 and permission matrix).
+
+## Credential preflight + least-privilege policy generator
+
+Generalizes the `CostSetupError` "your credential can't do X, here's the fix" signal to every
+capability, at add-account time and on demand. Contract lives in
+`plugin-architecture/packages/plugin-base/src/preflight.ts`: a plugin declares
+`manifest.preflight.capabilities` (each with provider-native `requiredPermissions` strings +
+human labels), implements `PluginClient.verifyCredentials()` (read-only probe → per-capability
+ok / missing-with-permissions / unknown), and optionally `Plugin.policyTemplate(capabilityIds)`
+(paste-ready least-privilege document; credential-free, so it sits on the Plugin, not the
+client). Manifest zod schema validates the declaration; plugins without it change nothing.
+
+The host-side runner `runAccountPreflight(plugin, client)` lives in **client-core**
+(`preflight.ts`), not server-core, because both hosts execute it: the web server (against
+submitted or stored credentials — creds never reach the browser) and the desktop renderer
+(local + cloud accounts both resolve credentials renderer-side and run in-process).
+`@infrawrench/server-core/preflight` is a re-export. The runner never throws: no declaration ⇒
+`supported:false`; thrown probes / skipped capabilities ⇒ `unknown` rows; messages clamped to
+600 chars and helpLinks https-only (same discipline as `describeCostFailure`, structural not
+instanceof). Pure checklist merging (`buildPreflightChecklist`/`summarizePreflight`) is also in
+client-core; the generic UI (`CredentialPreflightPanel`/`CredentialPreflightModal` in
+`@infrawrench/ui`) renders declaration + report with zero provider knowledge and is embedded in
+the shared `AddAccountModal` (gated on `PluginInfo.preflight`) and behind "Check credentials"
+buttons on both account detail pages. Routes: `POST /accounts/preflight` (ad-hoc, pre-create,
+validates bastion like account create), `POST /accounts/{id}/preflight`,
+`GET /accounts/plugins/{pluginId}/policy-template?capabilities=…`. Nothing is persisted —
+reports are computed on demand, no schema change.
+
+Flagship implementations (permission names verified against provider docs 2026-08):
+**AWS** (`aws/src/preflight.ts`) — `sts:GetCallerIdentity` (needs no permission; failure ⇒ bad
+keys) then `iam:SimulatePrincipalPolicy` for exact per-action verdicts (assumed-role ARNs map
+back to the role; `:root` short-circuits to all-ok), falling back to one cheap probe per
+capability when the simulator is denied (the CE probe costs ~$0.01, fallback only). Template:
+IAM policy JSON, per-capability Sids + always-on `iam:SimulatePrincipalPolicy`. Note
+`parseXml` unwraps the response root — read `SimulatePrincipalPolicyResult` at top level.
+**GCP** (`gcp/src/preflight.ts`) — one `cloudresourcemanager v3 projects:testIamPermissions`
+POST (raw fetch; the GcpClient `get` helper is GET-only), granted-subset diff; blank
+`billingExportTable` downgrades costs to missing with the export-setup helpLink. Template:
+custom role YAML for `gcloud iam roles create --file` (no wildcards allowed in custom roles).
+**Cloudflare** (`cloudflare/src/preflight.ts`) — `/user/tokens/verify` (account-owned tokens
+are rejected there with code 1000 — treated as "can't verify", not invalid; non-active status
+flags every row), then per-capability probes: `/zones` + `/accounts` (Zone Read / Account
+Settings Read), GraphQL `viewer.budget` (Analytics Read), `/accounts/{id}/billable-usage/info`
+(Billing Read). Template: text permission-group list + the documented
+`dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=…` deep link (same mechanism as the
+manifest's create-token helpLink).

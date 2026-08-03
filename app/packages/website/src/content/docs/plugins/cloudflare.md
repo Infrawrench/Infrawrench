@@ -47,6 +47,16 @@ If you'd rather scope a token by hand, go to the Cloudflare dashboard → **My P
 
 <insert [Cloudflare Add-account form with the API token field and the "Create a token with these scopes" link highlighted] here>
 
+### Credential preflight & token template
+
+The add-account form (and **Check credentials** on the account page) verifies the token and probes what it can reach, per capability — see [Credential preflight](../core-concepts/credential-preflight.md):
+
+- **Resource inventory** — **Zone Read** (zone listing underpins every zone-scoped resource) and **Account Settings Read** (account-scoped resources: Workers, R2, KV, D1…). Individual resource types may need further per-feature scopes; the resource tab tells you which when one is missing.
+- **Metrics & dashboards** — **Analytics Read** and **Account Analytics Read**.
+- **Cost reporting** — **Billing Read**, checked against the Billable Usage API.
+
+An expired or disabled token is flagged across every row. The generator produces a token template scoped to the capabilities you tick: the permission-group list plus a link that opens Cloudflare's token creator with exactly those scopes pre-filled.
+
 ## Notable flows
 
 - **DNS records table** — a zone's records render as a Cloudflare-style table (type, name, content, proxy, TTL) with inline create and delete. See [DNS records](../features/dns-records.md).

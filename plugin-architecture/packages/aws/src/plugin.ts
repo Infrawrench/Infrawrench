@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { AWSClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { awsPreflight, buildAwsPolicyTemplate } from "./preflight.js";
 import { AWS_REGIONS } from "./constants.js";
 import { EC2InstanceResourceType } from "./resources/ec2-instance.js";
 import { EBSVolumeResourceType } from "./resources/ebs-volume.js";
@@ -104,6 +105,7 @@ const manifest: PluginManifest = {
   // explodes cardinality). Needs the ce:GetCostAndUsage IAM action.
   costs: { dimensions: ["service", "region"], maxHistoryDays: 365, restatementDays: 3 },
   statusFeed,
+  preflight: awsPreflight,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -187,4 +189,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new AWSClient(credentials, resourceTypes, services),
   parseStatusFeed,
+  policyTemplate: buildAwsPolicyTemplate,
 };

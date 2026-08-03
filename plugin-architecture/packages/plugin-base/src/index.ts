@@ -26,6 +26,15 @@ export type { CostCapabilityDeclaration, CostFetchRange, CostHelpLink, CostRow }
 export { CostSetupError } from "./cost.js";
 
 export type {
+  PolicyTemplate,
+  PreflightCapability,
+  PreflightCapabilityCheck,
+  PreflightDeclaration,
+  PreflightPermission,
+  PreflightResult,
+} from "./preflight.js";
+
+export type {
   StatusFeedDeclaration,
   StatusIncident,
   StatusIncidentImpact,

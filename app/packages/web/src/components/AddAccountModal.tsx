@@ -5,6 +5,7 @@ import {
   type AccountReferenceOption,
   type BastionOption,
 } from "@infrawrench/ui";
+import type { PolicyTemplate, PreflightReport } from "@infrawrench/client-core";
 import { apiGet, apiPost } from "@/lib/api";
 import { fetchPluginCatalog } from "@/lib/plugin-catalog";
 import { useOrgId } from "@/lib/useOrgId";
@@ -83,12 +84,36 @@ export function AddAccountModal({
     [orgId],
   );
 
+  const runPreflight = useCallback(
+    (pluginId: string, credentials: Record<string, string>, bastionId: string | null) =>
+      apiPost<PreflightReport>(`/api/org/${orgId}/accounts/preflight`, {
+        pluginId,
+        credentials,
+        bastionId,
+      }),
+    [orgId],
+  );
+
+  const fetchPolicyTemplate = useCallback(
+    async (pluginId: string, capabilityIds: string[]) => {
+      const { template } = await apiGet<{ template: PolicyTemplate }>(
+        `/api/org/${orgId}/accounts/plugins/${pluginId}/policy-template?capabilities=${encodeURIComponent(
+          capabilityIds.join(","),
+        )}`,
+      );
+      return template;
+    },
+    [orgId],
+  );
+
   return (
     <SharedAddAccountModal
       onClose={onClose}
       onAdded={onAdded}
       loadPlugins={loadPlugins}
       saveAccount={saveAccount}
+      runPreflight={runPreflight}
+      fetchPolicyTemplate={fetchPolicyTemplate}
       bastions={bastions}
       accounts={accounts}
       {...(prefilledPluginId ? { prefilledPluginId } : {})}
