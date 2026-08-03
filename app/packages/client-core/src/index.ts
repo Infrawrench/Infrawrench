@@ -239,6 +239,19 @@ export {
 } from "./account-sections";
 export { deriveSSHUsername, pickQuickConnectKeyId } from "./ssh-quick-connect";
 export {
+  FANOUT_DEFAULT_CONCURRENCY,
+  FANOUT_MAX_TARGETS,
+  normalizeFanoutOutput,
+  groupFanoutResults,
+  diffLines,
+  compactDiff,
+  runWithConcurrency,
+  type FanoutHostStatus,
+  type FanoutHostResult,
+  type FanoutOutputGroup,
+  type DiffLine,
+} from "./ssh-fanout";
+export {
   CHANGE_KIND_LABELS,
   DEFAULT_DRIFT_ALERT_SETTINGS,
   DRIFT_ALERT_LIMITS,

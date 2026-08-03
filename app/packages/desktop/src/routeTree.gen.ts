@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkflowsRouteImport } from './routes/workflows'
+import { Route as SshFanoutRouteImport } from './routes/ssh-fanout'
 import { Route as SavingsRouteImport } from './routes/savings'
 import { Route as MomentRouteImport } from './routes/moment'
 import { Route as GraphRouteImport } from './routes/graph'
@@ -27,6 +28,11 @@ import { Route as ResourceAccountIdResourceIdRouteImport } from './routes/resour
 const WorkflowsRoute = WorkflowsRouteImport.update({
   id: '/workflows',
   path: '/workflows',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SshFanoutRoute = SshFanoutRouteImport.update({
+  id: '/ssh-fanout',
+  path: '/ssh-fanout',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SavingsRoute = SavingsRouteImport.update({
@@ -107,6 +113,7 @@ export interface FileRoutesByFullPath {
   '/graph': typeof GraphRoute
   '/moment': typeof MomentRoute
   '/savings': typeof SavingsRoute
+  '/ssh-fanout': typeof SshFanoutRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
   '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
@@ -123,6 +130,7 @@ export interface FileRoutesByTo {
   '/graph': typeof GraphRoute
   '/moment': typeof MomentRoute
   '/savings': typeof SavingsRoute
+  '/ssh-fanout': typeof SshFanoutRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
   '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
@@ -140,6 +148,7 @@ export interface FileRoutesById {
   '/graph': typeof GraphRoute
   '/moment': typeof MomentRoute
   '/savings': typeof SavingsRoute
+  '/ssh-fanout': typeof SshFanoutRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
   '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
@@ -158,6 +167,7 @@ export interface FileRouteTypes {
     | '/graph'
     | '/moment'
     | '/savings'
+    | '/ssh-fanout'
     | '/workflows'
     | '/accounts/$accountId'
     | '/dashboard/$dashboardId'
@@ -174,6 +184,7 @@ export interface FileRouteTypes {
     | '/graph'
     | '/moment'
     | '/savings'
+    | '/ssh-fanout'
     | '/workflows'
     | '/accounts/$accountId'
     | '/dashboard/$dashboardId'
@@ -190,6 +201,7 @@ export interface FileRouteTypes {
     | '/graph'
     | '/moment'
     | '/savings'
+    | '/ssh-fanout'
     | '/workflows'
     | '/accounts/$accountId'
     | '/dashboard/$dashboardId'
@@ -207,6 +219,7 @@ export interface RootRouteChildren {
   GraphRoute: typeof GraphRoute
   MomentRoute: typeof MomentRoute
   SavingsRoute: typeof SavingsRoute
+  SshFanoutRoute: typeof SshFanoutRoute
   WorkflowsRoute: typeof WorkflowsRoute
   AccountsAccountIdRoute: typeof AccountsAccountIdRoute
   DashboardDashboardIdRoute: typeof DashboardDashboardIdRoute
@@ -220,6 +233,13 @@ declare module '@tanstack/react-router' {
       path: '/workflows'
       fullPath: '/workflows'
       preLoaderRoute: typeof WorkflowsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ssh-fanout': {
+      id: '/ssh-fanout'
+      path: '/ssh-fanout'
+      fullPath: '/ssh-fanout'
+      preLoaderRoute: typeof SshFanoutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/savings': {
@@ -327,6 +347,7 @@ const rootRouteChildren: RootRouteChildren = {
   GraphRoute: GraphRoute,
   MomentRoute: MomentRoute,
   SavingsRoute: SavingsRoute,
+  SshFanoutRoute: SshFanoutRoute,
   WorkflowsRoute: WorkflowsRoute,
   AccountsAccountIdRoute: AccountsAccountIdRoute,
   DashboardDashboardIdRoute: DashboardDashboardIdRoute,

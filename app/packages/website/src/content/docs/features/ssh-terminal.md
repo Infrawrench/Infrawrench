@@ -52,6 +52,10 @@ The SSH view has a **Forward SSH agent** checkbox above the terminal. When enabl
 - In web mode, the server proxies the SSH connection; private keys are stored encrypted server-side and held in memory only for the duration of the session.
 - Host-key pinning is on by default. The first connection to a host — and any connection where the host key has changed — shows a trust prompt with the presented fingerprint before continuing. This applies everywhere a terminal opens: the desktop app (native prompt), the web app, the [mobile app](./mobile-app.md), and desktop sessions proxied through the cloud. On mobile the prompt also covers the file browser — anything that dials SSH asks before it connects, and accepting reconnects for you. Web/cloud pins are stored per organization and can be reviewed under **Settings → SSH host keys**; desktop-local pins live on your machine.
 
+## Running one command on many hosts
+
+A terminal is one shell on one box. To ask the same question of a whole fleet — which machines are on the old kernel, which are low on disk — use [Fan-out SSH](./ssh-fanout.md): pick the hosts, type one command, and identical output is collapsed so only the odd one out needs reading.
+
 ## Not seeing the SSH button?
 
 - The resource type may not be SSH-capable (e.g. managed databases — use the [SQL editor](./sql-editor.md) instead).

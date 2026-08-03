@@ -149,6 +149,21 @@ infrawrench graph --resource <id>          # what it needs, and its blast radius
 
 Both read data the cloud poller collects, so they need an organization; `--local` says so rather than printing an empty table.
 
+## Running a command on many hosts
+
+`infrawrench ssh-fanout` is [Fan-out SSH](./ssh-fanout.md) in the terminal — one command over many boxes, with identical output collapsed and outliers diffed against the majority:
+
+```bash
+infrawrench ssh-fanout --list --plugin hetzner       # what can I fan out to?
+infrawrench ssh-fanout "uname -r" --tag env:prod --key ops
+infrawrench ssh-fanout --snippet kernel --hosts web- --key ops --yes --json
+infrawrench ssh-fanout snippets                      # the org's saved commands
+```
+
+Like the app, it names the host count before it runs anything — `Run on 14 hosts?` — and refuses to fan out on a non-interactive terminal unless you pass `-y/--yes`. `--hosts` matches a name, address or tag; `--plugin` and `--tag` narrow further; `--key <id|name>` supplies the org SSH key that VM hosts need; `--user` overrides the username; `--concurrency <n>` changes how many connections run at once (default 8, max 16).
+
+Text output prints one block per distinct result — `majority`, `outlier`, `failed` — with outliers rendered as a `+`/`-` diff instead of repeating output you have already read. `--json` gives the raw per-host `stdout`, `stderr` and `exitCode`. Runs are cloud-only and audit-logged; use the desktop app's Fan-out screen for local-only SSH accounts.
+
 ## Pushing back up
 
 The CLI is often already installed on the machine that has the news, so it wraps both [push endpoints](./server-push.md) — an on-call page, and cost rows for spend Infrawrench has no plugin for:

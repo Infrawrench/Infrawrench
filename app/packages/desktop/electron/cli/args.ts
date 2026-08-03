@@ -2,6 +2,7 @@
 // subcommand routing happens in main.ts over the returned positionals.
 import { parseArgs } from "node:util";
 import { CliError, type CliFlags } from "./context";
+import type { FanoutFlags } from "./commands/ssh-fanout";
 
 export interface RangeFlags {
   last?: string | undefined;
@@ -75,6 +76,7 @@ export interface ParsedCli {
   range: RangeFlags;
   push: PushFlags;
   deploy: DeployFlags;
+  fanout: FanoutFlags;
   positionals: string[];
   version: boolean;
   /** `costs --anomalies` — the spend-spike list instead of the spend chart. */
@@ -128,6 +130,16 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         "to-run": { type: "string" },
         "delete-created": { type: "boolean", default: false },
         created: { type: "boolean", default: false },
+        // Fan-out SSH flags (`ssh-fanout`). `--list` and `--yes` are booleans;
+        // the rest narrow the host set or supply credentials.
+        list: { type: "boolean", default: false },
+        hosts: { type: "string" },
+        plugin: { type: "string" },
+        tag: { type: "string" },
+        user: { type: "string" },
+        snippet: { type: "string" },
+        yes: { type: "boolean", short: "y", default: false },
+        concurrency: { type: "string" },
       },
     });
   } catch (e) {
@@ -209,6 +221,17 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       toRun: str("to-run"),
       deleteCreated: values["delete-created"] === true,
       created: values.created === true,
+    },
+    fanout: {
+      list: values.list === true,
+      hosts: str("hosts"),
+      plugin: str("plugin"),
+      tag: str("tag"),
+      key: str("key"),
+      user: str("user"),
+      snippet: str("snippet"),
+      yes: values.yes === true,
+      concurrency: positiveInt("concurrency"),
     },
     push: {
       source: str("source"),

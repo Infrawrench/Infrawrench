@@ -19,4 +19,5 @@ import "./sql-kv-docker";
 import "./workflows";
 import "./sftp";
 import "./ssh-tunnels";
+import "./ssh-fanout";
 import "./host-key-trust";

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.31.0",
+    "version": "0.32.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -107,6 +107,10 @@
     {
       "name": "SSH tunnels",
       "description": "Server-side SSH tunnel lifecycle."
+    },
+    {
+      "name": "SSH fan-out",
+      "description": "Run one command across many SSH hosts, with saved snippets."
     },
     {
       "name": "Bastions",
@@ -8193,6 +8197,239 @@
           }
         },
         "required": ["sshHost", "sshPort", "sshUser", "sshKeyId", "command"],
+        "additionalProperties": false
+      },
+      "SshFanoutTarget": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["account", "resource"]
+          },
+          "id": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          },
+          "defaultUsername": {
+            "type": "string"
+          },
+          "running": {
+            "type": "boolean"
+          },
+          "needsKey": {
+            "type": "boolean"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["kind", "id", "accountId", "label", "pluginId", "running", "needsKey", "tags"],
+        "additionalProperties": false
+      },
+      "SshFanoutTargetsResponse": {
+        "type": "object",
+        "properties": {
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SshFanoutTarget"
+            }
+          }
+        },
+        "required": ["targets"],
+        "additionalProperties": false
+      },
+      "SshFanoutHostResult": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["account", "resource"]
+          },
+          "targetId": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["done", "error", "blocked"]
+          },
+          "exitCode": {
+            "type": ["integer", "null"]
+          },
+          "stdout": {
+            "type": "string"
+          },
+          "stderr": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "hostKeyTrust": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["unknown", "mismatch"]
+              },
+              "host": {
+                "type": "string"
+              },
+              "port": {
+                "type": "integer"
+              },
+              "presentedFingerprint": {
+                "type": "string"
+              },
+              "storedFingerprint": {
+                "type": ["string", "null"]
+              }
+            },
+            "required": ["kind", "host", "port", "presentedFingerprint", "storedFingerprint"],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "kind",
+          "targetId",
+          "label",
+          "status",
+          "exitCode",
+          "stdout",
+          "stderr",
+          "durationMs"
+        ],
+        "additionalProperties": false
+      },
+      "SshFanoutRunResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SshFanoutHostResult"
+            }
+          }
+        },
+        "required": ["results"],
+        "additionalProperties": false
+      },
+      "SshFanoutRunRequest": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": ["account", "resource"]
+                },
+                "id": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "id"],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 100
+          },
+          "sshKeyId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "username": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "concurrency": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16
+          }
+        },
+        "required": ["command", "targets"],
+        "additionalProperties": false
+      },
+      "SshSnippet": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "description": {
+            "type": ["string", "null"]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["id", "name", "command", "description", "createdAt", "updatedAt"],
+        "additionalProperties": false
+      },
+      "SshSnippetInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "command": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": ["name", "command"],
         "additionalProperties": false
       },
       "BastionStatus": {
@@ -21137,6 +21374,345 @@
           }
         },
         "operationId": "postOrgOrgIdSshTunnelsExec",
+        "x-required-permission": "resources:execute",
+        "description": "_Requires permission: `resources:execute`._"
+      }
+    },
+    "/api/org/{orgId}/ssh-fanout/targets": {
+      "get": {
+        "tags": ["SSH fan-out"],
+        "summary": "List SSH-capable fan-out targets",
+        "description": "Every SSH-capable target in the org: `ssh` plugin accounts (native credentials) plus resources whose type declares an sshEndpoint with a resolvable host (EC2 instances, droplets, Hetzner servers, …).\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Targets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SshFanoutTargetsResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSshFanoutTargets",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/ssh-fanout/run": {
+      "post": {
+        "tags": ["SSH fan-out"],
+        "summary": "Run one command across many SSH hosts",
+        "description": "Executes the command on every selected target under a concurrency cap (default 8, max 16). Per-host results carry stdout, stderr, and exit code; transport failures (unreachable, untrusted host key, blocked internal host) are per-host too. Resource targets need `sshKeyId` (an org SSH key owned by the caller). Blocked with HTTP 423 while a change freeze is in effect; audit-logged.\n\n_Requires permission: `resources:execute`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SshFanoutRunRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Per-host results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SshFanoutRunResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "Blocked by an active change freeze. Retry with the `x-change-freeze-override: true` header if you hold `freezes:override`; both blocks and overrides are audit-logged.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeFreezeBlocked"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSshFanoutRun",
+        "x-required-permission": "resources:execute"
+      }
+    },
+    "/api/org/{orgId}/ssh-fanout/snippets": {
+      "get": {
+        "tags": ["SSH fan-out"],
+        "summary": "List saved command snippets",
+        "description": "Org-shared saved commands for reuse from the fan-out screen and CLI.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snippets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "snippets": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SshSnippet"
+                      }
+                    }
+                  },
+                  "required": ["snippets"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSshFanoutSnippets",
+        "x-required-permission": "resources:read"
+      },
+      "post": {
+        "tags": ["SSH fan-out"],
+        "summary": "Save a command snippet",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SshSnippetInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "00000000-0000-0000-0000-000000000000"
+                    }
+                  },
+                  "required": ["id"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSshFanoutSnippets",
+        "x-required-permission": "resources:execute",
+        "description": "_Requires permission: `resources:execute`._"
+      }
+    },
+    "/api/org/{orgId}/ssh-fanout/snippets/{id}": {
+      "put": {
+        "tags": ["SSH fan-out"],
+        "summary": "Update a saved command snippet",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SshSnippetInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdSshFanoutSnippetsId",
+        "x-required-permission": "resources:execute",
+        "description": "_Requires permission: `resources:execute`._"
+      },
+      "delete": {
+        "tags": ["SSH fan-out"],
+        "summary": "Delete a saved command snippet",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdSshFanoutSnippetsId",
         "x-required-permission": "resources:execute",
         "description": "_Requires permission: `resources:execute`._"
       }

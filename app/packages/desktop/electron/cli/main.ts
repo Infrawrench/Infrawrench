@@ -26,6 +26,7 @@ import { cmdGraph } from "./commands/graph";
 import { cmdPage, cmdCostsPush } from "./commands/push";
 import { cmdCli } from "./commands/cli-install";
 import { cmdDeploy } from "./commands/deploy";
+import { cmdSshFanout } from "./commands/ssh-fanout";
 import { runTui } from "./tui";
 
 const HELP = `infrawrench — manage your infrastructure from the terminal
@@ -61,6 +62,10 @@ COMMANDS
                       [-w/--window 15m|1h|6h]  (omit the timestamp for "around now")
   schedules           sleep/wake schedules: windows, next transitions & projected savings
   graph               resource dependency tree   [--resource <id>: what it needs + its blast radius]
+  ssh-fanout <cmd>    run one command across many SSH hosts; identical output is collapsed and
+                      outliers are diffed against the majority   [--list] [--hosts <q>] [--plugin <id>]
+                      [--tag k:v] [--key <id|name>] [--user <name>] [--snippet <name>] [-y]
+  ssh-fanout snippets the organization's saved fan-out commands
   page <message>      alert the org's on-call transports   --source <name> [--key k] [--voice]
   page clear          drop a page key's cooldown after a recovery   --source <name> [--key k]
   deploy              build & ship this project via its Infrafile   [-e <env>] [--plan]
@@ -95,6 +100,15 @@ FLAGS
   --to-run <runId>    deploy rollback: which run to go back to
   --delete-created    deploy rollback: also delete resources newer runs created
   --created           deploy destroy: delete what the local ledger says the env created (needs -e)
+  --list              ssh-fanout: show the selectable hosts instead of running
+  --hosts <q>         ssh-fanout: match host name / address / tag
+  --plugin <id>       ssh-fanout: restrict to one provider
+  --tag <key:value>   ssh-fanout: restrict to hosts carrying this tag
+  --key <id|name>     ssh-fanout: org SSH key for VM hosts (also: page throttle key)
+  --user <name>       ssh-fanout: username override for VM hosts
+  --snippet <name>    ssh-fanout: run a saved command instead of a literal one
+  -y, --yes           ssh-fanout: skip the "Run on N hosts?" confirmation
+  --concurrency <n>   ssh-fanout: simultaneous connections (default 8, max 16)
   --no-color          disable ANSI colors
   -v, --version       app version
 
@@ -277,6 +291,9 @@ export async function runCli(): Promise<void> {
         break;
       case "deploy":
         await cmdDeploy(ctx, parsed.deploy);
+        break;
+      case "ssh-fanout":
+        await cmdSshFanout(ctx, rest, parsed.fanout);
         break;
       case "cli":
         await cmdCli(ctx, rest[0]);

@@ -8,6 +8,7 @@ import {
   ChangesIcon,
   DeployIcon,
   ExpiryIcon,
+  FanoutIcon,
   GraphIcon,
   DroppableDashboardItem,
   emitChatConversationsChanged,
@@ -232,6 +233,15 @@ export function SidebarDashboards() {
       label: "Expiring",
       icon: <ExpiryIcon />,
       onClick: () => void navigate({ to: "/expiring" }),
+    },
+    // Fan-out SSH has a local half — local SSH accounts exec through the
+    // machine's own ssh machinery — so, like Graph, it shows in both modes.
+    // A plain route, same as web.
+    {
+      key: "ssh-fanout",
+      label: "Fan-out",
+      icon: <FanoutIcon />,
+      onClick: () => void navigate({ to: "/ssh-fanout" }),
     },
   ];
 

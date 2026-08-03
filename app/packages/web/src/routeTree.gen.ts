@@ -16,6 +16,7 @@ import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as DeploySplatRouteImport } from './routes/deploy.$'
 import { Route as OrgOrgIdIndexRouteImport } from './routes/org.$orgId.index'
 import { Route as OrgOrgIdWorkflowsRouteImport } from './routes/org.$orgId.workflows'
+import { Route as OrgOrgIdSshFanoutRouteImport } from './routes/org.$orgId.ssh-fanout'
 import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settings'
 import { Route as OrgOrgIdSavingsRouteImport } from './routes/org.$orgId.savings'
 import { Route as OrgOrgIdMomentRouteImport } from './routes/org.$orgId.moment'
@@ -78,6 +79,11 @@ const OrgOrgIdIndexRoute = OrgOrgIdIndexRouteImport.update({
 const OrgOrgIdWorkflowsRoute = OrgOrgIdWorkflowsRouteImport.update({
   id: '/workflows',
   path: '/workflows',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdSshFanoutRoute = OrgOrgIdSshFanoutRouteImport.update({
+  id: '/ssh-fanout',
+  path: '/ssh-fanout',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdSettingsRoute = OrgOrgIdSettingsRouteImport.update({
@@ -246,6 +252,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
+  '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
@@ -280,6 +287,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
+  '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
   '/org/$orgId': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
@@ -318,6 +326,7 @@ export interface FileRoutesById {
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
+  '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
@@ -357,6 +366,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/moment'
     | '/org/$orgId/savings'
     | '/org/$orgId/settings'
+    | '/org/$orgId/ssh-fanout'
     | '/org/$orgId/workflows'
     | '/org/$orgId/'
     | '/org/$orgId/accounts/$accountId'
@@ -391,6 +401,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/graph'
     | '/org/$orgId/moment'
     | '/org/$orgId/savings'
+    | '/org/$orgId/ssh-fanout'
     | '/org/$orgId/workflows'
     | '/org/$orgId'
     | '/org/$orgId/accounts/$accountId'
@@ -428,6 +439,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/moment'
     | '/org/$orgId/savings'
     | '/org/$orgId/settings'
+    | '/org/$orgId/ssh-fanout'
     | '/org/$orgId/workflows'
     | '/org/$orgId/'
     | '/org/$orgId/accounts/$accountId'
@@ -507,6 +519,13 @@ declare module '@tanstack/react-router' {
       path: '/workflows'
       fullPath: '/org/$orgId/workflows'
       preLoaderRoute: typeof OrgOrgIdWorkflowsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/ssh-fanout': {
+      id: '/org/$orgId/ssh-fanout'
+      path: '/ssh-fanout'
+      fullPath: '/org/$orgId/ssh-fanout'
+      preLoaderRoute: typeof OrgOrgIdSshFanoutRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/settings': {
@@ -768,6 +787,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdMomentRoute: typeof OrgOrgIdMomentRoute
   OrgOrgIdSavingsRoute: typeof OrgOrgIdSavingsRoute
   OrgOrgIdSettingsRoute: typeof OrgOrgIdSettingsRouteWithChildren
+  OrgOrgIdSshFanoutRoute: typeof OrgOrgIdSshFanoutRoute
   OrgOrgIdWorkflowsRoute: typeof OrgOrgIdWorkflowsRoute
   OrgOrgIdIndexRoute: typeof OrgOrgIdIndexRoute
   OrgOrgIdAccountsAccountIdRoute: typeof OrgOrgIdAccountsAccountIdRoute
@@ -786,6 +806,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdMomentRoute: OrgOrgIdMomentRoute,
   OrgOrgIdSavingsRoute: OrgOrgIdSavingsRoute,
   OrgOrgIdSettingsRoute: OrgOrgIdSettingsRouteWithChildren,
+  OrgOrgIdSshFanoutRoute: OrgOrgIdSshFanoutRoute,
   OrgOrgIdWorkflowsRoute: OrgOrgIdWorkflowsRoute,
   OrgOrgIdIndexRoute: OrgOrgIdIndexRoute,
   OrgOrgIdAccountsAccountIdRoute: OrgOrgIdAccountsAccountIdRoute,

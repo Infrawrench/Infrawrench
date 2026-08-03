@@ -14,7 +14,7 @@ import {
 } from "@infrawrench/ui";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
-import { DeployIcon, ChangesIcon, GraphIcon, ExpiryIcon } from "@infrawrench/ui";
+import { DeployIcon, ChangesIcon, GraphIcon, ExpiryIcon, FanoutIcon } from "@infrawrench/ui";
 import { CHAT_CONVERSATIONS_CHANGED_EVENT, type ConversationSummary } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { chatTabTarget, navigateToWorkspaceTarget } from "@/lib/workspace-tabs";
@@ -489,6 +489,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <ExpiryIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/expiring", params: { orgId: orgId! } }),
+              },
+              {
+                key: "ssh-fanout",
+                label: "Fan-out",
+                icon: <FanoutIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/ssh-fanout", params: { orgId: orgId! } }),
               },
             ]}
           />

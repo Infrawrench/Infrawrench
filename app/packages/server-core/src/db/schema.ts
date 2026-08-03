@@ -590,6 +590,34 @@ export const sshKeys = pgTable(
   }),
 );
 
+/**
+ * Saved fan-out SSH command snippets — org-shared, so the whole team reuses
+ * the same "check kernel", "disk usage" one-liners from the fan-out screen,
+ * the desktop app, and the CLI. Commands are not secret (they run over hosts
+ * the org already administers), so they are stored in plaintext.
+ */
+export const sshSnippets = pgTable(
+  "ssh_snippets",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    command: text("command").notNull(),
+    description: text("description"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("ssh_snippets_org_idx").on(t.organizationId),
+    orgNameUnique: uniqueIndex("ssh_snippets_org_name_unique").on(t.organizationId, t.name),
+  }),
+);
+
 export const auditLogs = pgTable(
   "audit_logs",
   {

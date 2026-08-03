@@ -40,6 +40,7 @@ import { registerStorageUploadPaths } from "./paths/storage-upload";
 import { registerSftpUploadPaths } from "./paths/sftp-upload";
 import { registerSshKeyPaths } from "./paths/ssh-keys";
 import { registerSshTunnelPaths } from "./paths/ssh-tunnels";
+import { registerSshFanoutPaths } from "./paths/ssh-fanout";
 import { registerBastionPaths } from "./paths/bastions";
 import { registerAgentPaths } from "./paths/agents";
 import { registerTeamPaths } from "./paths/team";
@@ -127,6 +128,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerSftpUploadPaths(ctx);
   registerSshKeyPaths(ctx);
   registerSshTunnelPaths(ctx);
+  registerSshFanoutPaths(ctx);
   registerBastionPaths(ctx);
   registerAgentPaths(ctx);
   registerTeamPaths(ctx);
@@ -207,6 +209,10 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       { name: "SFTP", description: "SFTP helpers (uploads via API key)." },
       { name: "SSH keys", description: "Org SSH keys for tunnel/SSH access." },
       { name: "SSH tunnels", description: "Server-side SSH tunnel lifecycle." },
+      {
+        name: "SSH fan-out",
+        description: "Run one command across many SSH hosts, with saved snippets.",
+      },
       {
         name: "Bastions",
         description:
@@ -460,6 +466,13 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "DELETE /ssh-keys/{id}": "ssh-keys:write",
   // ssh tunnels
   "POST /ssh-tunnels/create-account": "accounts:write",
+  // ssh fan-out
+  "GET /ssh-fanout/targets": "resources:read",
+  "POST /ssh-fanout/run": "resources:execute",
+  "GET /ssh-fanout/snippets": "resources:read",
+  "POST /ssh-fanout/snippets": "resources:execute",
+  "PUT /ssh-fanout/snippets/{id}": "resources:execute",
+  "DELETE /ssh-fanout/snippets/{id}": "resources:execute",
   "POST /ssh-tunnels/open": "resources:execute",
   "POST /ssh-tunnels/close": "resources:execute",
   "GET /ssh-tunnels/active": "resources:execute",

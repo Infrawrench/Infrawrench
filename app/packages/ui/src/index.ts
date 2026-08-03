@@ -163,6 +163,14 @@ export type {
 } from "./components/AddAccountModal.js";
 export { EditCredentialsModal } from "./components/EditCredentialsModal.js";
 export { DockerActionsPanel } from "./components/DockerActionsPanel.js";
+export { SshFanoutView } from "./components/SshFanoutView.js";
+export type {
+  SshFanoutViewProps,
+  SshFanoutTargetInfo,
+  SshFanoutSnippetInfo,
+  SshFanoutRunRequest,
+  SshFanoutRunOutcome,
+} from "./components/SshFanoutView.js";
 export { KvConsole } from "./components/KvConsole.js";
 export { tokenize, formatRedisResult } from "./components/KvConsole.utils.js";
 export type { KvConsoleProps } from "./components/KvConsole.js";
@@ -515,6 +523,7 @@ export type {
 export { ExpirySection, formatDaysRemaining } from "./expiry/ExpirySection.js";
 export type { ExpirySectionProps } from "./expiry/ExpirySection.js";
 export { ExpiryIcon } from "./components/icons/ExpiryIcon.js";
+export { FanoutIcon } from "./components/icons/FanoutIcon.js";
 
 /**
  * SSH host-key trust handshake. Shared with mobile through client-core because

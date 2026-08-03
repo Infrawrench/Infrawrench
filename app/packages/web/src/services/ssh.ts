@@ -55,6 +55,91 @@ export async function resolveSshConfig(
   };
 }
 
+export interface SshExecResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+/** Caps for fan-out style captures — bound memory when many hosts stream at once. */
+const CAPTURE_MAX_BYTES = 256 * 1024;
+const CAPTURE_READY_TIMEOUT_MS = 30_000;
+const CAPTURE_COMMAND_TIMEOUT_MS = 120_000;
+
+/**
+ * Execute a single command over SSH and capture stdout, stderr, and the exit
+ * code. Unlike {@link sshExec}, a non-zero exit resolves normally — the caller
+ * (fan-out) surfaces per-host exit codes instead of treating them as
+ * transport errors. Still throws on SSH/connection failures, including
+ * {@link HostKeyTrustRequiredError}. Output is capped at 256 KiB per stream
+ * and the command is abandoned after 2 minutes.
+ */
+export function sshExecCapture(
+  organizationId: string,
+  config: SshConfig,
+  command: string,
+): Promise<SshExecResult> {
+  return new Promise((resolve, reject) => {
+    const client = new SshClient();
+    const hostKeyErrorRef = { value: null as HostKeyTrustRequiredError | null };
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      client.end();
+      reject(new Error(`Command timed out after ${CAPTURE_COMMAND_TIMEOUT_MS / 1000}s`));
+    }, CAPTURE_COMMAND_TIMEOUT_MS);
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn();
+    };
+    client.once("ready", () => {
+      client.exec(command, (err, stream) => {
+        if (err) {
+          client.end();
+          finish(() => reject(err));
+          return;
+        }
+        let stdout = "";
+        let stderr = "";
+        stream.on("data", (data: Buffer) => {
+          if (stdout.length < CAPTURE_MAX_BYTES) stdout += data.toString();
+        });
+        stream.stderr.on("data", (data: Buffer) => {
+          if (stderr.length < CAPTURE_MAX_BYTES) stderr += data.toString();
+        });
+        stream.on("close", (code: number | null) => {
+          client.end();
+          finish(() => resolve({ stdout, stderr, exitCode: code ?? 0 }));
+        });
+      });
+    });
+    client.once("error", (err) => {
+      if (hostKeyErrorRef.value) {
+        finish(() => reject(hostKeyErrorRef.value));
+        return;
+      }
+      finish(() => reject(new Error(`SSH error: ${err.message}`)));
+    });
+    client.connect({
+      host: config.host,
+      port: config.port,
+      username: config.username,
+      privateKey: config.privateKey,
+      readyTimeout: CAPTURE_READY_TIMEOUT_MS,
+      hostVerifier: makeHostKeyVerifier(
+        organizationId,
+        config.host,
+        config.port,
+        hostKeyErrorRef,
+        "ssh",
+      ),
+    });
+  });
+}
+
 /** Execute a single command over SSH and return stdout. Throws on non-zero exit or SSH error. */
 export function sshExec(
   organizationId: string,
