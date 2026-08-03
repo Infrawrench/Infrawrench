@@ -336,6 +336,7 @@ export {
 export * from "./api-types";
 export * from "./orphans";
 export * from "./expiry";
+export * from "./schedules";
 export * from "./chat/types";
 export { createBearerChatClient } from "./chat/bearer-client";
 export * from "./ws-protocol";

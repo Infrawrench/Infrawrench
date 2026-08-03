@@ -29,6 +29,15 @@ const ResourceChangeEntry = strict({
   diff: z.array(ResourceFieldChange).openapi({
     description: "Changed fields for `updated` events; empty for `created` and `deleted`.",
   }),
+  origin: z
+    .enum(["schedule"])
+    .nullable()
+    .optional()
+    .openapi({
+      description:
+        "Who caused the change when a non-sync writer knows: `schedule` for sleep/wake " +
+        "schedule transitions. Absent/null = observed by sync.",
+    }),
   createdAt: IsoDateTime,
 }).openapi("ResourceChangeEntry");
 

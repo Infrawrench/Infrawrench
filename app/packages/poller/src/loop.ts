@@ -7,6 +7,7 @@ import { loadPlugins } from "@infrawrench/server-core/plugin-loader";
 import { runWeeklyDigests } from "@infrawrench/server-core/digest/weekly";
 import { runStatusFeedCollection } from "@infrawrench/server-core/status/collect";
 import { runExpiryAlerts } from "@infrawrench/server-core/expiry/alerts";
+import { runSchedulePass } from "@infrawrench/server-core/schedules/pass";
 import {
   pruneResourceChanges,
   CHANGE_RETENTION_INTERVAL_MS,
@@ -113,6 +114,12 @@ export class PollerLoop extends TickLoop {
     // (`org_expiry_settings.last_notified_at`) makes it replica- and
     // restart-safe. Defensive like the others.
     await this.tickExpiryAlerts();
+
+    // Eighth pass: sleep/wake schedules. Claims due transitions with the
+    // accounts lease protocol (`resource_schedules.next_transition_at`
+    // doubles as the lease) and executes the plugin's declared lifecycle
+    // action; idempotency keys make restarts safe. Defensive like the others.
+    await this.tickSchedules();
   }
 
   private async runOne(row: PollAccountRow): Promise<void> {
@@ -169,6 +176,15 @@ export class PollerLoop extends TickLoop {
       await runExpiryAlerts({ limit: 4 });
     } catch (e) {
       console.error("[poller] expiry alert tick failed:", e);
+    }
+  }
+
+  /** Execute any sleep/wake schedule transitions that have come due. */
+  private async tickSchedules(): Promise<void> {
+    try {
+      await runSchedulePass({ limit: 4 });
+    } catch (e) {
+      console.error("[poller] schedule tick failed:", e);
     }
   }
 

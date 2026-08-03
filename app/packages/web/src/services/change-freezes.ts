@@ -1,10 +1,11 @@
 import { v4 as uuid } from "uuid";
-import { and, desc, eq, gt, isNull, lte, or } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { Context } from "hono";
 import type { PluginClient } from "@infrawrench/plugin-base";
 import { db } from "@/db/client";
 import { changeFreezes } from "@/db/schema";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
+import { findActiveChangeFreeze } from "@infrawrench/server-core/change-freezes";
 import { logAudit } from "./audit";
 
 /**
@@ -36,25 +37,16 @@ export interface ChangeFreezeRow {
   updatedAt: Date;
 }
 
-/** The freeze currently in effect for the org, or null. */
+/**
+ * The freeze currently in effect for the org, or null. The query itself lives
+ * in server-core (`findActiveChangeFreeze`) so the poller's schedule pass can
+ * respect freezes without importing the web package.
+ */
 export async function getActiveChangeFreeze(
   organizationId: string,
   at: Date = new Date(),
 ): Promise<ChangeFreezeRow | null> {
-  const rows = await db
-    .select()
-    .from(changeFreezes)
-    .where(
-      and(
-        eq(changeFreezes.organizationId, organizationId),
-        eq(changeFreezes.active, true),
-        lte(changeFreezes.startsAt, at),
-        or(isNull(changeFreezes.endsAt), gt(changeFreezes.endsAt, at)),
-      ),
-    )
-    .orderBy(desc(changeFreezes.startsAt))
-    .limit(1);
-  return rows[0] ?? null;
+  return findActiveChangeFreeze(organizationId, at);
 }
 
 export function describeFreeze(freeze: ChangeFreezeRow): string {

@@ -28,6 +28,7 @@ import { registerResourcePaths } from "./paths/resources";
 import { registerResourceChangePaths } from "./paths/resource-changes";
 import { registerStatusIncidentPaths } from "./paths/status-incidents";
 import { registerExpiringPaths } from "./paths/expiring";
+import { registerSchedulePaths } from "./paths/schedules";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
 import { registerAssociationPaths } from "./paths/associations";
 import { registerDependencyGraphPaths } from "./paths/dependency-graph";
@@ -112,6 +113,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerResourceChangePaths(ctx);
   registerStatusIncidentPaths(ctx);
   registerExpiringPaths(ctx);
+  registerSchedulePaths(ctx);
   registerConnectionFeaturePaths(ctx);
   registerAssociationPaths(ctx);
   registerDependencyGraphPaths(ctx);
@@ -190,6 +192,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Orphans",
         description:
           "Likely-orphaned and idle resources flagged by plugin heuristics, with best-effort cost.",
+      },
+      {
+        name: "Sleep schedules",
+        description:
+          "Off-at/on-at weekly windows on resources whose plugin declares lifecycle start/stop actions; the poller executes due transitions server-side.",
       },
       { name: "Connect", description: "Helpers for shipping credentials into other services." },
       { name: "Storage", description: "Object storage helpers (uploads via API key)." },
@@ -343,6 +350,15 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /expiring": "resources:read",
   "GET /expiring/settings": "org:settings:write",
   "PUT /expiring/settings": "org:settings:write",
+  // sleep/wake schedules — reads ride the resource read scope (the list is
+  // derived from the org's resource set, like orphans); mutations are a
+  // standing instruction to invoke the same actions `resources:write` already
+  // gates on /resources/invoke-action
+  "GET /schedules": "resources:read",
+  "POST /schedules": "resources:write",
+  "POST /schedules/preview": "resources:read",
+  "PUT /schedules/{scheduleId}": "resources:write",
+  "DELETE /schedules/{scheduleId}": "resources:write",
   // tag policy & showback — policy is org settings; compliance/untagged ride
   // the resource/cost read scopes their data is computed over
   "GET /tag-policy": "resources:read",

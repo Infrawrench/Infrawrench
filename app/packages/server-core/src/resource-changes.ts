@@ -39,6 +39,12 @@ export interface ResourceChangeEvent {
   displayName: string;
   changeKind: "created" | "updated" | "deleted";
   diff: ResourceFieldChange[];
+  /**
+   * Set by non-sync writers that know who caused the change — the sleep/wake
+   * schedule pass stamps `"schedule"` so a scheduled stop reads as intended in
+   * the feed rather than as drift. Sync-computed events leave it unset.
+   */
+  origin?: "schedule";
 }
 
 /**
@@ -196,6 +202,7 @@ export async function recordResourceChanges(
         displayName: e.displayName,
         changeKind: e.changeKind,
         diff: e.diff,
+        origin: e.origin ?? null,
         createdAt: now,
       })),
     );

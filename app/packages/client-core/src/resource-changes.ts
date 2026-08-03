@@ -35,6 +35,11 @@ export interface ResourceChangeEntry {
   changeKind: ResourceChangeKind;
   /** Changed fields for "updated" events; empty for created/deleted. */
   diff: ResourceFieldChange[];
+  /**
+   * Who caused the change when a non-sync writer knows: `"schedule"` for
+   * sleep/wake schedule transitions. Absent/null = observed by sync.
+   */
+  origin?: "schedule" | null;
   createdAt: string;
   /** Present on org-feed entries (joined server-side); absent per-resource. */
   accountName?: string | null;

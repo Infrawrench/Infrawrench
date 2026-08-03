@@ -108,6 +108,11 @@ const ResourceDetailResponse = strict({
   databaseName: z.string(),
   storageBucketName: z.string(),
   supportsMetrics: z.boolean(),
+  schedulable: z
+    .boolean()
+    .describe(
+      "The type declares lifecycle start/stop actions, so this resource can carry a sleep/wake schedule.",
+    ),
 }).openapi("ResourceDetail");
 
 const ManifestResponse = strict({ manifest: z.string() }).openapi("Manifest");

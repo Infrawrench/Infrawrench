@@ -386,6 +386,8 @@ app.get("/:id/detail", async (c) => {
       ...(rt.attachTargets ? { attachTargets: rt.attachTargets } : {}),
       ...(rt.sshEndpoint ? { isSshHost: true } : {}),
       ...(rt.sshTunnelAttachSource ? { sshTunnelAttachSource: true } : {}),
+      // Sleep/wake eligibility — the host never hard-codes provider names.
+      ...(rt.lifecycle ? { schedulable: true } : {}),
     })) ?? [];
 
   return c.json({

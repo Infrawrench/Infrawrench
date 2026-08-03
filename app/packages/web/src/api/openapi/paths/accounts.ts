@@ -114,6 +114,12 @@ const ResourceTypeSummary = strict({
     .optional(),
   isSshHost: z.boolean().optional(),
   sshTunnelAttachSource: z.boolean().optional(),
+  schedulable: z
+    .boolean()
+    .optional()
+    .describe(
+      "The type declares lifecycle start/stop actions, so its resources can carry a sleep/wake schedule.",
+    ),
 }).openapi("ResourceTypeSummary");
 
 const AccountDetail = strict({

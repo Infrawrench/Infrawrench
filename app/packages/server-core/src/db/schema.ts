@@ -162,6 +162,12 @@ export const resourceChanges = pgTable(
       .$type<{ field: string; from: unknown; to: unknown }[]>()
       .notNull()
       .default([]),
+    /**
+     * Who caused the change, when a non-sync writer knows: `"schedule"` for
+     * sleep/wake schedule transitions. Null = observed by sync (drift, or a
+     * user mutation the differ can't attribute).
+     */
+    origin: text("origin").$type<"schedule">(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({
@@ -1137,6 +1143,76 @@ export const orgExpirySettings = pgTable("org_expiry_settings", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+/**
+ * Sleep/wake schedules — "off at 19:00, on at 08:00, Mon–Fri" windows on
+ * resources whose plugin declares a `lifecycle` start/stop action pair.
+ *
+ * `nextTransitionAt` is the due-time column AND the claim lease, exactly like
+ * `accounts.next_poll_at`: the poller's schedule pass claims due rows with
+ * `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED)` writing
+ * `now() + lease` into it, so N replicas never double-fire, and the normal
+ * completion path overwrites the lease with the true next transition.
+ *
+ * `lastTransitionKey` (`"<ISO instant>:<stop|start>"`) is the idempotency
+ * record: the due transition is recomputed from the timing at claim time, and
+ * a key that matches means the transition already ran (or was deliberately
+ * skipped for a freeze) — the pass reschedules without re-invoking, so a
+ * restart mid-lease can't fire the same window twice.
+ *
+ * `resourceId` is not a FK (the `resource_changes` stance) — resource rows
+ * are churned by sync; cleanup rides the account cascade, and the pass skips
+ * schedules whose resource row is gone.
+ */
+export const resourceSchedules = pgTable(
+  "resource_schedules",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    resourceId: text("resource_id").notNull(),
+    pluginId: text("plugin_id").notNull(),
+    resourceTypeId: text("resource_type_id").notNull(),
+    /** ISO weekdays 1 (Mon) – 7 (Sun) the resource is worked on. */
+    daysOfWeek: jsonb("days_of_week").$type<number[]>().notNull(),
+    /** Wall-clock "HH:MM" in `timezone` at which the resource is stopped. */
+    stopTime: text("stop_time").notNull(),
+    /** Wall-clock "HH:MM" in `timezone` at which the resource is started. */
+    startTime: text("start_time").notNull(),
+    /** IANA zone the wall-clock times are computed in (DST-safe). */
+    timezone: text("timezone").notNull(),
+    paused: boolean("paused").notNull().default(false),
+    /** Due time + claim lease; null while paused. */
+    nextTransitionAt: timestamp("next_transition_at"),
+    /** "stop" | "start" — what fires at `nextTransitionAt`. */
+    nextTransitionAction: text("next_transition_action").$type<"stop" | "start">(),
+    /** Idempotency record of the last executed/skipped transition. */
+    lastTransitionKey: text("last_transition_key"),
+    lastRunAt: timestamp("last_run_at"),
+    lastRunAction: text("last_run_action").$type<"stop" | "start">(),
+    /** "ok" | "failed" | "skipped_freeze" — failures are never silent. */
+    lastRunStatus: text("last_run_status").$type<"ok" | "failed" | "skipped_freeze">(),
+    lastRunError: text("last_run_error"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("resource_schedules_org_idx").on(t.organizationId),
+    dueIdx: index("resource_schedules_due_idx").on(t.nextTransitionAt),
+    /** One schedule per resource — two windows on one VM would fight. */
+    resourceUnique: uniqueIndex("resource_schedules_org_resource_idx").on(
+      t.organizationId,
+      t.resourceId,
+    ),
+  }),
+);
 
 /**
  * Rolling-window record of poller sync failures, used by the Twilio pager to

@@ -67,6 +67,7 @@ app.get("/", async (c) => {
         displayName: resourceChanges.displayName,
         changeKind: resourceChanges.changeKind,
         diff: resourceChanges.diff,
+        origin: resourceChanges.origin,
         createdAt: resourceChanges.createdAt,
         accountName: accounts.displayName,
       })
@@ -172,6 +173,7 @@ app.get("/resource", async (c) => {
       displayName: resourceChanges.displayName,
       changeKind: resourceChanges.changeKind,
       diff: resourceChanges.diff,
+      origin: resourceChanges.origin,
       createdAt: resourceChanges.createdAt,
     })
     .from(resourceChanges)
