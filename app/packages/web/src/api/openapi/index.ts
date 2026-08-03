@@ -15,6 +15,7 @@ import { registerAccountPaths } from "./paths/accounts";
 import { registerDashboardPaths } from "./paths/dashboards";
 import { registerCostPaths } from "./paths/costs";
 import { registerOrphanPaths } from "./paths/orphans";
+import { registerRightsizingPaths } from "./paths/rightsizing";
 import { registerBudgetPaths } from "./paths/budgets";
 import { registerChangeFreezePaths } from "./paths/change-freezes";
 import { registerTagPolicyPaths } from "./paths/tag-policy";
@@ -100,6 +101,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerDashboardPaths(ctx);
   registerCostPaths(ctx);
   registerOrphanPaths(ctx);
+  registerRightsizingPaths(ctx);
   registerBudgetPaths(ctx);
   registerChangeFreezePaths(ctx);
   registerTagPolicyPaths(ctx);
@@ -442,6 +444,9 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /search": "resources:read",
   // orphans
   "GET /orphans": "resources:read",
+  // right-sizing — the list is derived from the org's resource set like
+  // orphans; prices are provider catalog rates, not the org's billing data
+  "GET /rightsizing": "resources:read",
   // ssh keys
   "GET /ssh-keys": "ssh-keys:read",
   "POST /ssh-keys": "ssh-keys:write",

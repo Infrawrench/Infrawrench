@@ -15,6 +15,7 @@ import type { OutputRefValue } from "@infrawrench/plugin-base";
 import { requirePermission } from "../../../auth/permissions";
 import { nextAssociationSyncVersion } from "../../../services/sync-versions";
 import { checkChangeFreeze } from "../../../services/change-freezes";
+import { logAudit } from "../../../services/audit";
 import { checkTagPolicyOnCreate } from "../../../services/tag-policy";
 
 /**
@@ -282,6 +283,21 @@ export function registerLifecycleRoutes(app: Hono): void {
     if (!ctx.client.updateResource)
       return c.json({ error: "Plugin does not support updates" }, 400);
 
+    // Same gate as delete: a change freeze means no provider mutations, and
+    // an edit (rename, resize) is one. The right-sizing "Apply resize" flow
+    // rides this route on purpose so it inherits the gate + the audit trail.
+    const frozen = await checkChangeFreeze(c, {
+      action: "resource.update",
+      entityType: "resource",
+      entityId: input.resourceId,
+      metadata: {
+        pluginId: input.pluginId,
+        resourceTypeId: input.resourceTypeId,
+        fieldKeys: Object.keys(input.fields ?? {}),
+      },
+    });
+    if (frozen) return frozen;
+
     let updated;
     try {
       updated = await ctx.client.updateResource(
@@ -294,6 +310,23 @@ export function registerLifecycleRoutes(app: Hono): void {
       const message = e instanceof Error ? e.message : "Resource update failed";
       return c.json({ error: message }, 400);
     }
+
+    // Every applied edit lands in the audit trail — resource updates carry
+    // real provider mutations (a resize restarts the machine).
+    void logAudit({
+      organizationId,
+      userId: (c.get("session") as { userId?: string } | undefined)?.userId,
+      action: "resource.update",
+      entityType: "resource",
+      entityId: input.resourceId,
+      metadata: {
+        pluginId: input.pluginId,
+        resourceTypeId: input.resourceTypeId,
+        // Keys only — edited values can include write-only password fields,
+        // which must never land in the audit table.
+        fieldKeys: Object.keys(input.fields ?? {}),
+      },
+    });
 
     // Mirror the refreshed fields/displayName into the DB so the next page
     // load sees the new values without waiting for a sync cycle. Peer-managed

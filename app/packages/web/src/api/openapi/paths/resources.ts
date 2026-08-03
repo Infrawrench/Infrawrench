@@ -719,7 +719,7 @@ export function registerResourcePaths(ctx: BuildContext) {
     tags: ["Resources"],
     summary: "Update a resource via its plugin",
     description:
-      "Applies the supplied field changes upstream and persists the refreshed fields/display name to the DB. The body's `fields` map only carries the keys the caller actually changed.",
+      "Applies the supplied field changes upstream and persists the refreshed fields/display name to the DB. The body's `fields` map only carries the keys the caller actually changed. Blocked with `423` while an org change freeze is in effect (this is also the path that applies right-sizing recommendations); every applied update is audit-logged.",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: UpdateRequest } }, required: true },
@@ -728,6 +728,7 @@ export function registerResourcePaths(ctx: BuildContext) {
       200: { description: "Updated", content: { "application/json": { schema: UpdateResponse } } },
       400: ErrorResponses[400],
       404: ErrorResponses[404],
+      423: FreezeLockedResponse,
     },
   });
 

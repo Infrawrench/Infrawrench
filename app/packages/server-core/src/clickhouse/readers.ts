@@ -193,6 +193,90 @@ export async function getLatestAccountCountsBatch(
   return result;
 }
 
+/** Per-series quantiles over a window — the right-sizing utilisation read. */
+export interface MetricSeriesQuantiles {
+  label: string;
+  unit: string;
+  /** 5th / 95th percentile of the per-minute averages inside the window. */
+  q05: number;
+  q95: number;
+  max: number;
+  /** Number of per-minute samples backing the quantiles. */
+  samples: number;
+}
+
+/**
+ * Batch p05/p95/max per series over the 1m rollup for many resources at once.
+ *
+ * Reads `metric_points_1m` (30-day TTL — callers must stay inside it; the
+ * right-sizing window is 14 days) rather than the 1h rollup: a p95 of hourly
+ * averages flattens the very peaks the recommendation must respect. The inner
+ * query finalizes the avg-state per minute, the outer one takes quantiles
+ * over those per-minute points.
+ */
+export async function getMetricQuantilesBatch(
+  organizationId: string,
+  resourceIds: string[],
+  fromMs: number,
+  toMs: number,
+): Promise<Map<string, MetricSeriesQuantiles[]>> {
+  const result = new Map<string, MetricSeriesQuantiles[]>();
+  if (resourceIds.length === 0) return result;
+  const rows = await query<{
+    resource_id: string;
+    series_label: string;
+    unit: string;
+    q05: number;
+    q95: number;
+    vmax: number;
+    samples: string | number;
+  }>(
+    `SELECT resource_id,
+            series_label,
+            unit,
+            quantile(0.05)(minute_avg) AS q05,
+            quantile(0.95)(minute_avg) AS q95,
+            max(minute_avg)            AS vmax,
+            count()                    AS samples
+     FROM (
+       SELECT resource_id,
+              series_label,
+              unit,
+              ts_minute,
+              avgMerge(value_avg) AS minute_avg
+       FROM metric_points_1m
+       WHERE organization_id = {orgId:String}
+         AND resource_id IN {ids:Array(String)}
+         AND ts_minute >= toDateTime({fromSec:Int64})
+         AND ts_minute <= toDateTime({toSec:Int64})
+       GROUP BY resource_id, series_label, unit, ts_minute
+     )
+     GROUP BY resource_id, series_label, unit`,
+    {
+      orgId: organizationId,
+      ids: resourceIds,
+      fromSec: Math.floor(fromMs / 1000),
+      toSec: Math.floor(toMs / 1000),
+    },
+  );
+  for (const r of rows) {
+    let list = result.get(r.resource_id);
+    if (!list) {
+      list = [];
+      result.set(r.resource_id, list);
+    }
+    list.push({
+      label: r.series_label,
+      unit: r.unit,
+      q05: Number(r.q05),
+      q95: Number(r.q95),
+      max: Number(r.vmax),
+      samples: Number(r.samples),
+    });
+  }
+  return result;
+}
+
 /**
  * Historical metric range. Auto-routes between raw / 1m / 1h based on span:
  *  <= 2h: raw

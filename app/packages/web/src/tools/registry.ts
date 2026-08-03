@@ -11,6 +11,7 @@ import { perPluginCreateTools } from "./per-plugin-create";
 import { connectionTools } from "./connections";
 import { costTools } from "./costs";
 import { scheduleTools } from "./schedules";
+import { rightsizingTools } from "./rightsizing";
 import { customGraphTools } from "./custom-graphs";
 import { workflowTools } from "./workflows";
 import { deploymentTools } from "./deployments";
@@ -27,6 +28,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...connectionTools(),
     ...costTools(),
     ...scheduleTools(),
+    ...rightsizingTools(),
     ...workflowTools(),
     ...customGraphTools(),
     ...deploymentTools(),

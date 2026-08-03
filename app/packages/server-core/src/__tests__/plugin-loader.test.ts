@@ -171,6 +171,61 @@ describe("expiryFields declarations", () => {
   });
 });
 
+/**
+ * The rightsizing declaration names stored fields and relies on host paths
+ * (updateResource, metrics) that nothing type-checks across the boundary —
+ * validate the whole registry so a typo'd field key or a declaration on a
+ * type whose resize can't actually be applied fails the build, not the user.
+ */
+describe("rightsizing declarations", () => {
+  it("name fields the type actually declares", async () => {
+    const loaded = await loader.loadPlugins();
+    const suspicious: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        const decl = type.rightsizing;
+        if (!decl) continue;
+        for (const key of [decl.sizeFieldKey, decl.regionFieldKey, decl.diskFieldKey]) {
+          if (key === undefined) continue;
+          if (!type.fields.some((f) => f.key === key)) {
+            suspicious.push(`${plugin.manifest.id}/${type.id}.${key}`);
+          }
+        }
+      }
+    }
+    expect(suspicious).toEqual([]);
+  });
+
+  it("only appear on types whose resize is actually appliable (update + metrics)", async () => {
+    const loaded = await loader.loadPlugins();
+    const bad: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        if (!type.rightsizing) continue;
+        // The Apply button submits sizeFieldKey through updateResource, and
+        // the recommendation itself needs stored metric series.
+        if (!type.supportsUpdate) bad.push(`${plugin.manifest.id}/${type.id}: no supportsUpdate`);
+        if (!type.supportsMetrics) bad.push(`${plugin.manifest.id}/${type.id}: no supportsMetrics`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("keep the size field editable so the edit form can apply a resize", async () => {
+    const loaded = await loader.loadPlugins();
+    const bad: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        const decl = type.rightsizing;
+        if (!decl) continue;
+        const field = type.fields.find((f) => f.key === decl.sizeFieldKey);
+        if (field?.editable === false) bad.push(`${plugin.manifest.id}/${type.id}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+});
+
 describe("getPlugin", () => {
   it("returns a loaded plugin by id", async () => {
     const p = await loader.getPlugin("aws");
