@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import type { LogsFetchResult } from "@infrawrench/plugin-base";
 import {
   compileLogSearch,
-  splitLogLines,
+  fetchLogStreamTail,
   logStreamKey,
   type LogStreamSelector,
 } from "@infrawrench/client-core";
@@ -27,9 +26,12 @@ interface StreamChunk {
 
 /**
  * Read-only viewer for one saved query: fetches a tail of every stream
- * through the same per-resource logs endpoint the Logs tool uses, interleaves
- * them with colored per-stream labels, and applies the saved search
- * expression (editable locally, client-side only). Pull down to refresh.
+ * through the same per-resource logs endpoint the Logs tool uses, merges them
+ * into one sequence with colored per-stream labels (arrival order, like the
+ * web/desktop panel — the generic `getLogs` contract returns raw text without
+ * timestamps, so chronological cross-stream ordering isn't possible), and
+ * applies the saved search expression (editable locally, client-side only).
+ * Pull down to refresh.
  */
 export function LogWorkspaceViewerScreen({ queryId }: { queryId: string }) {
   const { api, orgId } = useOrgApi();
@@ -56,20 +58,8 @@ export function LogWorkspaceViewerScreen({ queryId }: { queryId: string }) {
           error: null,
         };
         try {
-          const result = await api.org<LogsFetchResult>(
-            orgId,
-            `/resources/${encodeURIComponent(selector.pluginId)}/${encodeURIComponent(selector.resourceTypeId)}/logs`,
-            {
-              method: "POST",
-              body: JSON.stringify({
-                accountId: selector.accountId,
-                resourceId: selector.resourceId,
-                tailLines: TAIL_LINES,
-                ...(selector.container ? { container: selector.container } : {}),
-              }),
-            },
-          );
-          return { ...base, lines: splitLogLines(result?.text ?? "") };
+          const tail = await fetchLogStreamTail(api, orgId, selector, { tailLines: TAIL_LINES });
+          return { ...base, lines: tail.lines };
         } catch (e) {
           return { ...base, error: e instanceof Error ? e.message : "Failed to fetch logs" };
         }
@@ -83,16 +73,19 @@ export function LogWorkspaceViewerScreen({ queryId }: { queryId: string }) {
   }, [query, chunks, fetchAll]);
 
   const compiled = useMemo(() => compileLogSearch(effectiveSearch), [effectiveSearch]);
-  const visible = useMemo(() => {
+  // One merged sequence with per-line stream metadata, in arrival order (the
+  // generic getLogs contract returns raw text without timestamps, so a
+  // chronological cross-stream sort isn't possible — same as the web panel).
+  const merged = useMemo(() => {
     if (!chunks) return [];
-    return chunks.map((chunk) => ({
-      ...chunk,
-      lines:
-        compiled.error || compiled.matchAll
-          ? chunk.lines
-          : chunk.lines.filter((line) => compiled.test(line)),
-    }));
+    return chunks.flatMap((chunk) =>
+      (compiled.error || compiled.matchAll
+        ? chunk.lines
+        : chunk.lines.filter((line) => compiled.test(line))
+      ).map((text) => ({ streamKey: chunk.key, label: chunk.label, color: chunk.color, text })),
+    );
   }, [chunks, compiled]);
+  const errorChunks = useMemo(() => (chunks ?? []).filter((c) => c.error !== null), [chunks]);
 
   if (queries.isLoading) return <LoadingView />;
   if (queries.isError) {
@@ -136,22 +129,29 @@ export function LogWorkspaceViewerScreen({ queryId }: { queryId: string }) {
           />
         }
       >
-        {visible.map((chunk) => (
+        {errorChunks.map((chunk) => (
           <View key={chunk.key} style={styles.chunk}>
             <Text style={[styles.chunkLabel, { color: chunk.color }]}>{chunk.label}</Text>
-            {chunk.error ? (
-              <Text style={styles.error}>{chunk.error}</Text>
-            ) : chunk.lines.length === 0 ? (
-              <Text style={styles.emptyText}>
-                {compiled.matchAll ? "<no output>" : "<no lines match>"}
-              </Text>
-            ) : (
-              <Text style={styles.logText} selectable>
-                {chunk.lines.join("\n")}
-              </Text>
-            )}
+            <Text style={styles.error}>{chunk.error}</Text>
           </View>
         ))}
+        {merged.length === 0 ? (
+          errorChunks.length === chunks.length ? null : (
+            <Text style={styles.emptyText}>
+              {compiled.matchAll ? "<no output>" : "<no lines match>"}
+            </Text>
+          )
+        ) : (
+          <Text style={styles.logText} selectable>
+            {merged.map((line, i) => (
+              <Text key={`${line.streamKey}:${i}`}>
+                <Text style={{ color: line.color }}>[{line.label}] </Text>
+                {line.text}
+                {i < merged.length - 1 ? "\n" : ""}
+              </Text>
+            ))}
+          </Text>
+        )}
       </ScrollView>
     </View>
   );

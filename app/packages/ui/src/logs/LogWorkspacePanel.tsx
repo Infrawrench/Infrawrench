@@ -257,9 +257,12 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
       setStreams(
         query.resources.map((selector, i) => ({
           selector,
+          // `||` (not `??`): each fallback can be an empty string — a blank
+          // display name or an id with fewer than three `:` segments — and
+          // must fall through to the next non-empty label.
           label:
-            optionByKey.get(`${selector.accountId}:${selector.resourceId}`)?.displayName ??
-            selector.resourceId.split(":").slice(2).join(":") ??
+            optionByKey.get(`${selector.accountId}:${selector.resourceId}`)?.displayName ||
+            selector.resourceId.split(":").slice(2).join(":") ||
             selector.resourceId,
           colorIdx: i % STREAM_COLORS.length,
           containers: [],

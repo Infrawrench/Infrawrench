@@ -9,7 +9,7 @@
  * implements `getLogs` are considered at all), then an in-memory render per
  * stored row.
  */
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { db } from "../db/client";
 import { accounts, resources } from "../db/schema";
@@ -64,6 +64,9 @@ export async function listLogCapableResources(
         and(
           eq(resources.organizationId, organizationId),
           eq(resources.accountId, account.id),
+          // The synthetic account-root row is never a tailable stream —
+          // matches the desktop discovery's filter.
+          ne(resources.resourceTypeId, "__account__"),
           isNull(resources.deletedAt),
         ),
       )

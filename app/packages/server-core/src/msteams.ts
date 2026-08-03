@@ -158,18 +158,21 @@ export async function addMsTeamsWebhook(
   const enc = await encrypt(url, buildAad("msteams", organizationId, "webhookUrl"));
   const digest = await webhookDigest(url);
 
-  const syncIncidents = args.syncIncidents ?? true;
-  const budgetAlerts = args.budgetAlerts ?? true;
-  const anomalyAlerts = args.anomalyAlerts ?? true;
-  const metricAlerts = args.metricAlerts ?? true;
-  // Drift is the one trigger that defaults off — it is continuous and
-  // high-volume where the others are exceptional. See db/schema.ts.
-  const resourceDrift = args.resourceDrift ?? false;
-  const workflowPages = args.workflowPages ?? true;
-  const providerIncidents = args.providerIncidents ?? true;
-  const expiryAlerts = args.expiryAlerts ?? true;
-  const logMatchAlerts = args.logMatchAlerts ?? true;
-  const weeklyDigest = args.weeklyDigest ?? true;
+  // Per-trigger opt-ins the caller explicitly set. Defaults apply only when
+  // INSERTING a new webhook; re-pasting an existing URL with a field omitted
+  // must leave the stored value unchanged rather than reset it.
+  const explicitTriggers: Partial<typeof msteamsWebhooks.$inferInsert> = {
+    ...(args.syncIncidents !== undefined ? { syncIncidents: args.syncIncidents } : {}),
+    ...(args.budgetAlerts !== undefined ? { budgetAlerts: args.budgetAlerts } : {}),
+    ...(args.anomalyAlerts !== undefined ? { anomalyAlerts: args.anomalyAlerts } : {}),
+    ...(args.metricAlerts !== undefined ? { metricAlerts: args.metricAlerts } : {}),
+    ...(args.resourceDrift !== undefined ? { resourceDrift: args.resourceDrift } : {}),
+    ...(args.workflowPages !== undefined ? { workflowPages: args.workflowPages } : {}),
+    ...(args.providerIncidents !== undefined ? { providerIncidents: args.providerIncidents } : {}),
+    ...(args.expiryAlerts !== undefined ? { expiryAlerts: args.expiryAlerts } : {}),
+    ...(args.logMatchAlerts !== undefined ? { logMatchAlerts: args.logMatchAlerts } : {}),
+    ...(args.weeklyDigest !== undefined ? { weeklyDigest: args.weeklyDigest } : {}),
+  };
   const now = new Date();
 
   const [row] = await db
@@ -183,16 +186,18 @@ export async function addMsTeamsWebhook(
       urlDigest: digest,
       urlHost: host,
       urlHint: hint,
-      syncIncidents,
-      budgetAlerts,
-      anomalyAlerts,
-      metricAlerts,
-      resourceDrift,
-      workflowPages,
-      providerIncidents,
-      expiryAlerts,
-      logMatchAlerts,
-      weeklyDigest,
+      syncIncidents: args.syncIncidents ?? true,
+      budgetAlerts: args.budgetAlerts ?? true,
+      anomalyAlerts: args.anomalyAlerts ?? true,
+      metricAlerts: args.metricAlerts ?? true,
+      // Drift is the one trigger that defaults off — it is continuous and
+      // high-volume where the others are exceptional. See db/schema.ts.
+      resourceDrift: args.resourceDrift ?? false,
+      workflowPages: args.workflowPages ?? true,
+      providerIncidents: args.providerIncidents ?? true,
+      expiryAlerts: args.expiryAlerts ?? true,
+      logMatchAlerts: args.logMatchAlerts ?? true,
+      weeklyDigest: args.weeklyDigest ?? true,
       createdByUserId: userId,
     })
     .onConflictDoUpdate({
@@ -205,16 +210,7 @@ export async function addMsTeamsWebhook(
         urlIv: enc.iv,
         urlHost: host,
         urlHint: hint,
-        syncIncidents,
-        budgetAlerts,
-        anomalyAlerts,
-        metricAlerts,
-        resourceDrift,
-        workflowPages,
-        providerIncidents,
-        expiryAlerts,
-        logMatchAlerts,
-        weeklyDigest,
+        ...explicitTriggers,
         updatedAt: now,
       },
     })

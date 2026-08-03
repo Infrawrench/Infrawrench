@@ -10,6 +10,9 @@
  * appended lines, and the wire contract + Bearer fetch helpers for
  * `/api/org/:orgId/log-workspaces`.
  */
+// Type-only on purpose — client-core keeps zero runtime dependency on
+// plugin-base (the mobile bundle never pulls the manifest machinery in).
+import type { LogsFetchResult } from "@infrawrench/plugin-base";
 import type { CloudFetch } from "./fetch";
 
 // ---------------------------------------------------------------------------
@@ -131,6 +134,68 @@ function tokenizeSearch(expr: string): SearchTerm[] {
 }
 
 /**
+ * Best-effort static rejection of regex shapes whose backtracking can blow up
+ * on a hostile line: a `*`/`+`/`{n,m}` quantifier applied to a group that
+ * itself contains a quantifier (`(a+)+`, `(\w*)*`, `(?:x{2,}){3,}` — "star
+ * height" > 1), or applied to a group with top-level alternation (`(a|aa)+`),
+ * whose overlapping branches backtrack the same way. This is a shape check,
+ * not a full ReDoS analysis: patterns it cannot see through (e.g. adjacent
+ * ambiguous quantifiers like `a*a*a*b`) are additionally bounded by the
+ * per-line input cap the alert pass applies in `evaluateLogMatches`.
+ */
+export function hasCatastrophicRegexShape(pattern: string): boolean {
+  /** Does an unbounded-ish quantifier (`*`, `+` or `{…}`) start at `i`? */
+  const quantifierAt = (i: number): boolean => {
+    const ch = pattern[i];
+    return ch === "*" || ch === "+" || (ch === "{" && /^\{\d+(,\d*)?\}/.test(pattern.slice(i)));
+  };
+  interface GroupState {
+    sawQuantifier: boolean;
+    sawAlternation: boolean;
+  }
+  const stack: GroupState[] = [];
+  let current: GroupState = { sawQuantifier: false, sawAlternation: false };
+  let inClass = false;
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
+    if (ch === "\\") {
+      i++;
+      continue;
+    }
+    if (inClass) {
+      if (ch === "]") inClass = false;
+      continue;
+    }
+    if (ch === "[") {
+      inClass = true;
+      continue;
+    }
+    if (ch === "(") {
+      stack.push(current);
+      current = { sawQuantifier: false, sawAlternation: false };
+      continue;
+    }
+    if (ch === ")") {
+      const inner = current;
+      const outer = stack.pop() ?? { sawQuantifier: false, sawAlternation: false };
+      const quantified = quantifierAt(i + 1);
+      if (quantified && (inner.sawQuantifier || inner.sawAlternation)) return true;
+      current = {
+        sawQuantifier: outer.sawQuantifier || inner.sawQuantifier || quantified,
+        sawAlternation: outer.sawAlternation,
+      };
+      continue;
+    }
+    if (ch === "|") {
+      current.sawAlternation = true;
+      continue;
+    }
+    if (quantifierAt(i)) current.sawQuantifier = true;
+  }
+  return false;
+}
+
+/**
  * Compile a log search expression into a line predicate.
  *
  * Syntax (kept deliberately grep-simple):
@@ -140,6 +205,11 @@ function tokenizeSearch(expr: string): SearchTerm[] {
  * - otherwise: whitespace-separated terms, ALL of which must appear in the
  *   line (case-insensitive substring). `"quoted phrases"` keep their spaces;
  *   a leading `-` negates a term (`error -health` = has "error", not "health").
+ *
+ * Regex patterns are guarded: over-long patterns and shapes prone to
+ * catastrophic backtracking (see `hasCatastrophicRegexShape`) compile to an
+ * error rather than a predicate, so a user-supplied pattern can never
+ * monopolize the alert poller (or the filter box) synchronously.
  */
 export function compileLogSearch(expression: string): CompiledLogSearch {
   const expr = expression.trim();
@@ -149,8 +219,25 @@ export function compileLogSearch(expression: string): CompiledLogSearch {
 
   const regexForm = /^\/(.+)\/(i?)$/.exec(expr);
   if (regexForm) {
+    const pattern = regexForm[1]!;
+    if (pattern.length > LOG_WORKSPACE_LIMITS.maxSearchLength) {
+      return {
+        test: () => false,
+        error: `Invalid regex: pattern must be at most ${LOG_WORKSPACE_LIMITS.maxSearchLength} characters`,
+        matchAll: false,
+      };
+    }
+    if (hasCatastrophicRegexShape(pattern)) {
+      return {
+        test: () => false,
+        error:
+          "Invalid regex: a quantified group containing a quantifier or alternation " +
+          "(e.g. `(a+)+`, `(a|aa)*`) can backtrack catastrophically and is not supported",
+        matchAll: false,
+      };
+    }
     try {
-      const regex = new RegExp(regexForm[1]!, regexForm[2] === "i" ? "i" : "");
+      const regex = new RegExp(pattern, regexForm[2] === "i" ? "i" : "");
       return { test: (line) => regex.test(line), error: null, matchAll: false };
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -192,6 +279,17 @@ export interface LogMatchEvaluation {
 
 const SAMPLE_LINE_MAX_LENGTH = 300;
 
+/**
+ * Max characters of a line fed to `search.test` during a server-side
+ * evaluation. Together with the pattern-shape guard in `compileLogSearch`
+ * this bounds regex backtracking cost in the alert poller: the shape guard
+ * rejects the exponential patterns it can see, and this cap keeps the cost of
+ * anything it can't see (polynomially ambiguous patterns) small on hostile
+ * log lines. The trade-off: a match that only begins past this offset in a
+ * single very long line is not counted.
+ */
+const EVAL_LINE_MAX_LENGTH = 2000;
+
 function clipLine(line: string): string {
   return line.length > SAMPLE_LINE_MAX_LENGTH ? `${line.slice(0, SAMPLE_LINE_MAX_LENGTH)}…` : line;
 }
@@ -222,7 +320,10 @@ export function evaluateLogMatches(
   let truncated = false;
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i]!;
-    if (line.length === 0 || !search.test(line)) continue;
+    if (line.length === 0) continue;
+    // Cap the input the (user-supplied) predicate sees — see EVAL_LINE_MAX_LENGTH.
+    const probe = line.length > EVAL_LINE_MAX_LENGTH ? line.slice(0, EVAL_LINE_MAX_LENGTH) : line;
+    if (!search.test(probe)) continue;
     matchCount += 1;
     if (samples.length < sampleCap) samples.push(clipLine(line));
     if (matchCount >= matchCap) {
@@ -341,6 +442,42 @@ export async function updateLogWorkspaceQuery(
     method: "PUT",
     body: JSON.stringify(patch),
   });
+}
+
+/** What `fetchLogStreamTail` returns: the tail split into lines plus container metadata. */
+export interface LogStreamTail {
+  lines: string[];
+  /** Container names available for this resource; empty when not containerized. */
+  containers: string[];
+}
+
+/**
+ * Fetch one stream's log tail over the cloud API — the platform-neutral half
+ * of every Bearer-talking log viewer (mobile today). Builds the per-resource
+ * logs endpoint path from the selector, POSTs the tail request, and splits the
+ * raw text into lines with `splitLogLines`. Presentation (labels, colors,
+ * error rendering) stays with the caller.
+ */
+export async function fetchLogStreamTail(
+  api: CloudFetch,
+  orgId: string,
+  selector: LogStreamSelector,
+  options?: { tailLines?: number },
+): Promise<LogStreamTail> {
+  const result = await api.org<LogsFetchResult>(
+    orgId,
+    `/resources/${encodeURIComponent(selector.pluginId)}/${encodeURIComponent(selector.resourceTypeId)}/logs`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        accountId: selector.accountId,
+        resourceId: selector.resourceId,
+        ...(options?.tailLines !== undefined ? { tailLines: options.tailLines } : {}),
+        ...(selector.container ? { container: selector.container } : {}),
+      }),
+    },
+  );
+  return { lines: splitLogLines(result?.text ?? ""), containers: result?.containers ?? [] };
 }
 
 /** Delete a saved query (`resources:write`). */

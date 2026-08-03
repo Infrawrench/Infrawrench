@@ -16,9 +16,11 @@ import { getDb } from "../db/client";
 import { createPluginClient } from "./plugin-client";
 
 /**
- * Desktop log workspace client — dual-mode, resolved at call time (the
- * orphans-client rule) so an org switch under a mounted panel reaches the
- * right data:
+ * Desktop log workspace client — dual-mode, fixed at creation time: the org
+ * (or local mode) is captured when the client is built, and org switches are
+ * handled by DesktopWorkspaceTabsViewport remounting the panel via its
+ * active-organization key (`key={activeCloudOrgId ?? "local"}`), which picks
+ * up the cached client for the new mode.
  *
  * - **Cloud mode**: discovery and saved queries over the cloud API via IPC;
  *   stream fetches ride the existing `cloud_get_logs` path.

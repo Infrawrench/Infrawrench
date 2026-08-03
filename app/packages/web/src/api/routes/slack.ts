@@ -170,7 +170,10 @@ interface ChannelBody {
   weeklyDigest?: boolean;
 }
 
-/** Route a channel's alerts. Re-adding an existing channel updates its opt-ins. */
+/**
+ * Route a channel's alerts. Re-adding an existing channel updates only the
+ * opt-ins the request explicitly sets — omitted fields keep their stored value.
+ */
 app.post("/channels", async (c) => {
   requirePermission(c, "org:settings:write");
   const organizationId = c.get("organizationId");
@@ -189,18 +192,22 @@ app.post("/channels", async (c) => {
     return c.json({ error: "Slack workspace not found" }, 404);
   }
 
-  const syncIncidents = body.syncIncidents ?? true;
-  const budgetAlerts = body.budgetAlerts ?? true;
-  const anomalyAlerts = body.anomalyAlerts ?? true;
-  const metricAlerts = body.metricAlerts ?? true;
-  // Drift is the one trigger that defaults off — it is continuous and
-  // high-volume where the others are exceptional. See server-core db/schema.ts.
-  const resourceDrift = body.resourceDrift ?? false;
-  const workflowPages = body.workflowPages ?? true;
-  const providerIncidents = body.providerIncidents ?? true;
-  const expiryAlerts = body.expiryAlerts ?? true;
-  const logMatchAlerts = body.logMatchAlerts ?? true;
-  const weeklyDigest = body.weeklyDigest ?? true;
+  // Per-trigger opt-ins the request explicitly set. Defaults apply only when
+  // INSERTING a new channel; re-adding an existing channel with a field
+  // omitted must leave the stored value unchanged rather than reset it.
+  const explicitTriggers: Partial<typeof slackChannels.$inferInsert> = {
+    ...(body.isPrivate != null ? { isPrivate: body.isPrivate } : {}),
+    ...(body.syncIncidents != null ? { syncIncidents: body.syncIncidents } : {}),
+    ...(body.budgetAlerts != null ? { budgetAlerts: body.budgetAlerts } : {}),
+    ...(body.anomalyAlerts != null ? { anomalyAlerts: body.anomalyAlerts } : {}),
+    ...(body.metricAlerts != null ? { metricAlerts: body.metricAlerts } : {}),
+    ...(body.resourceDrift != null ? { resourceDrift: body.resourceDrift } : {}),
+    ...(body.workflowPages != null ? { workflowPages: body.workflowPages } : {}),
+    ...(body.providerIncidents != null ? { providerIncidents: body.providerIncidents } : {}),
+    ...(body.expiryAlerts != null ? { expiryAlerts: body.expiryAlerts } : {}),
+    ...(body.logMatchAlerts != null ? { logMatchAlerts: body.logMatchAlerts } : {}),
+    ...(body.weeklyDigest != null ? { weeklyDigest: body.weeklyDigest } : {}),
+  };
   const now = new Date();
   const [row] = await db
     .insert(slackChannels)
@@ -211,32 +218,24 @@ app.post("/channels", async (c) => {
       channelId,
       channelName,
       isPrivate: body.isPrivate ?? false,
-      syncIncidents,
-      budgetAlerts,
-      anomalyAlerts,
-      metricAlerts,
-      resourceDrift,
-      workflowPages,
-      providerIncidents,
-      expiryAlerts,
-      logMatchAlerts,
-      weeklyDigest,
+      syncIncidents: body.syncIncidents ?? true,
+      budgetAlerts: body.budgetAlerts ?? true,
+      anomalyAlerts: body.anomalyAlerts ?? true,
+      metricAlerts: body.metricAlerts ?? true,
+      // Drift is the one trigger that defaults off — it is continuous and
+      // high-volume where the others are exceptional. See server-core db/schema.ts.
+      resourceDrift: body.resourceDrift ?? false,
+      workflowPages: body.workflowPages ?? true,
+      providerIncidents: body.providerIncidents ?? true,
+      expiryAlerts: body.expiryAlerts ?? true,
+      logMatchAlerts: body.logMatchAlerts ?? true,
+      weeklyDigest: body.weeklyDigest ?? true,
     })
     .onConflictDoUpdate({
       target: [slackChannels.installationId, slackChannels.channelId],
       set: {
         channelName,
-        isPrivate: body.isPrivate ?? false,
-        syncIncidents,
-        budgetAlerts,
-        anomalyAlerts,
-        metricAlerts,
-        resourceDrift,
-        workflowPages,
-        providerIncidents,
-        expiryAlerts,
-        logMatchAlerts,
-        weeklyDigest,
+        ...explicitTriggers,
         updatedAt: now,
       },
     })

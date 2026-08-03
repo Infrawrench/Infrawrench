@@ -136,7 +136,7 @@ async function completeEval(
 function logWorkspacesUrl(organizationId: string): string | null {
   const base = process.env["APP_URL"];
   if (!base) return null;
-  return `${base.replace(/\/$/, "")}/org/${organizationId}/log-workspaces`;
+  return `${base.replace(/\/$/, "")}/org/${organizationId}/logs`;
 }
 
 interface StreamMatchResult {

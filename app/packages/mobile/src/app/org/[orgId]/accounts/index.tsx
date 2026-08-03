@@ -24,18 +24,15 @@ export default function AccountsScreen() {
   }
 
   const list = accounts.data ?? [];
-  if (list.length === 0) {
-    return (
-      <EmptyView message="No accounts connected. Add provider accounts on the web or desktop app." />
-    );
-  }
 
   return (
     <Screen onRefresh={() => void accounts.refetch()} refreshing={accounts.isRefetching}>
       {/*
-        The change timeline and expiry feed are org-wide but they are about
-        resources, so they hang off this tab rather than earning tabs of their
-        own — the tab bar is already at the width where labels ellipsize.
+        The change timeline, expiry feed and log workspace are org-wide but
+        they are about resources, so they hang off this tab rather than earning
+        tabs of their own — the tab bar is already at the width where labels
+        ellipsize. They render even with zero accounts connected: saved log
+        queries and the change feed are org rows, not per-account state.
       */}
       <Card list>
         <Row
@@ -54,16 +51,20 @@ export default function AccountsScreen() {
           onPress={() => router.push(`/org/${orgId}/log-workspaces`)}
         />
       </Card>
-      <Card list>
-        {list.map((a) => (
-          <Row
-            key={a.id}
-            title={a.displayName}
-            subtitle={a.pluginId}
-            onPress={() => router.push(`/org/${orgId}/accounts/${a.id}`)}
-          />
-        ))}
-      </Card>
+      {list.length === 0 ? (
+        <EmptyView message="No accounts connected. Add provider accounts on the web or desktop app." />
+      ) : (
+        <Card list>
+          {list.map((a) => (
+            <Row
+              key={a.id}
+              title={a.displayName}
+              subtitle={a.pluginId}
+              onPress={() => router.push(`/org/${orgId}/accounts/${a.id}`)}
+            />
+          ))}
+        </Card>
+      )}
     </Screen>
   );
 }

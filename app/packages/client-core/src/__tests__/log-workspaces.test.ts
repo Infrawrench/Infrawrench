@@ -4,6 +4,7 @@ import {
   compileLogSearch,
   computeAppendedLines,
   evaluateLogMatches,
+  hasCatastrophicRegexShape,
   logStreamKey,
   splitLogLines,
   validateLogWorkspaceQuery,
@@ -56,6 +57,41 @@ describe("compileLogSearch", () => {
     expect(s.error).toMatch(/Invalid regex/);
     expect(s.test("[unclosed")).toBe(false);
   });
+
+  it("rejects catastrophic-backtracking regex shapes instead of compiling them", () => {
+    for (const expr of ["/(a+)+$/", "/(\\w*)*x/", "/(?:x{2,}){3,}/", "/(a|aa)+b/i"]) {
+      const s = compileLogSearch(expr);
+      expect(s.error, expr).toMatch(/Invalid regex/);
+      expect(s.test("aaaaaaaa"), expr).toBe(false);
+    }
+  });
+
+  it("still compiles benign groups, alternations and quantifiers", () => {
+    for (const expr of ["/(error|warn)/", "/(?:foo)+/", "/HTTP [45]\\d\\d+/", "/x{2,5}y/"]) {
+      expect(compileLogSearch(expr).error, expr).toBeNull();
+    }
+  });
+
+  it("rejects an over-long regex pattern", () => {
+    const s = compileLogSearch(`/${"a".repeat(LOG_WORKSPACE_LIMITS.maxSearchLength + 1)}/`);
+    expect(s.error).toMatch(/at most/);
+  });
+});
+
+describe("hasCatastrophicRegexShape", () => {
+  it("flags a quantified group containing a quantifier or alternation", () => {
+    expect(hasCatastrophicRegexShape("(a+)+")).toBe(true);
+    expect(hasCatastrophicRegexShape("((a)b+)*")).toBe(true);
+    expect(hasCatastrophicRegexShape("(a|aa)+")).toBe(true);
+    expect(hasCatastrophicRegexShape("(?:x{2,}){3,}")).toBe(true);
+  });
+
+  it("passes plain groups, escaped metacharacters and character classes", () => {
+    expect(hasCatastrophicRegexShape("(a|b)c+")).toBe(false);
+    expect(hasCatastrophicRegexShape("\\(a+\\)+")).toBe(false);
+    expect(hasCatastrophicRegexShape("[+*]+")).toBe(false);
+    expect(hasCatastrophicRegexShape("(a+)?")).toBe(false);
+  });
 });
 
 describe("splitLogLines", () => {
@@ -96,6 +132,16 @@ describe("evaluateLogMatches", () => {
     const result = evaluateLogMatches(`${long}\n`, compileLogSearch("error"));
     expect(result.samples[0]!.length).toBeLessThanOrEqual(301);
     expect(result.samples[0]!.endsWith("…")).toBe(true);
+  });
+
+  it("caps the input a predicate sees on a hostile-length line", () => {
+    // A match within the cap on a long line still counts…
+    const early = `ERROR ${"x".repeat(5000)}`;
+    expect(evaluateLogMatches(`${early}\n`, compileLogSearch("error")).matchCount).toBe(1);
+    // …but a match that only begins past the cap is not evaluated (the
+    // trade-off that bounds regex backtracking cost in the alert pass).
+    const late = `${"x".repeat(5000)} ERROR`;
+    expect(evaluateLogMatches(`${late}\n`, compileLogSearch("error")).matchCount).toBe(0);
   });
 });
 
