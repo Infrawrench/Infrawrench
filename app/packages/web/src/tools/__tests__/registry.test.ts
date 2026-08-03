@@ -20,6 +20,11 @@ vi.mock("../schedules", () => ({
     { name: "sc1", title: "SC1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
   ],
 }));
+vi.mock("../rightsizing", () => ({
+  rightsizingTools: () => [
+    { name: "rz1", title: "RZ1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
 vi.mock("../workflows", () => ({
   workflowTools: () => [
     { name: "w1", title: "W1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },

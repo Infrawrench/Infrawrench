@@ -17,10 +17,11 @@ import { ResourcePanel } from "@/routes/resource.$accountId.$resourceId";
 import { getWorkspaceNavigateArgs, syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
 import { AgentsPanel, type AgentClient } from "@infrawrench/ui/agents";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
-import { type OrphansClient, type SchedulesClient } from "@infrawrench/ui";
+import { type OrphansClient, type RightsizingClient, type SchedulesClient } from "@infrawrench/ui";
 import { createDesktopCostsClient } from "@/lib/costs-client";
 import { createDesktopSchedulesClient } from "@/lib/schedules-client";
 import { createDesktopOrphansClient } from "@/lib/orphans-client";
+import { createDesktopRightsizingClient } from "@/lib/rightsizing-client";
 import { createDesktopAgentClient } from "@/lib/agent-client";
 import { createDesktopDeploymentClient } from "@/lib/cloud-deployments";
 import { CloudChatPanel } from "@/components/CloudChatPanel";
@@ -58,6 +59,12 @@ let schedulesClient: SchedulesClient | null = null;
 function getSchedulesClient(): SchedulesClient {
   if (!schedulesClient) schedulesClient = createDesktopSchedulesClient();
   return schedulesClient;
+}
+
+let rightsizingClient: RightsizingClient | null = null;
+function getRightsizingClient(): RightsizingClient {
+  if (!rightsizingClient) rightsizingClient = createDesktopRightsizingClient();
+  return rightsizingClient;
 }
 
 // Desktop-side glue between WorkspaceTabsViewport (in @infrawrench/ui) and the
@@ -149,6 +156,17 @@ function renderPanel(
           // dropping the section. The client picks the store — see
           // lib/orphans-client.ts.
           orphans={getOrphansClient()}
+          // Cloud-only: the percentiles live in the cloud metrics warehouse
+          // and the size catalogs need the org's credentials, so local mode
+          // omits the section entirely (the schedules rule).
+          rightsizing={activeCloudOrgId ? getRightsizingClient() : undefined}
+          onOpenOversizedResource={(r, accountId) => {
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(accountId, r.id, r.pluginId, r.resourceTypeId),
+              ),
+            );
+          }}
           // Cloud-only: the rows live server-side and the cloud poller runs
           // the transitions, so local mode omits the section entirely.
           schedules={activeCloudOrgId ? getSchedulesClient() : undefined}

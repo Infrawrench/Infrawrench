@@ -2,7 +2,13 @@ import { useCallback, useEffect, useId, useMemo, useState } from "react";
 
 import { Modal } from "../components/Modal.js";
 import { SavingsSection } from "../savings/SavingsSection.js";
-import type { OrphanedResource, OrphansClient } from "../savings/types.js";
+import { OversizedSection } from "../savings/OversizedSection.js";
+import type {
+  OrphanedResource,
+  OrphansClient,
+  OversizedResource,
+  RightsizingClient,
+} from "../savings/types.js";
 import { SleepSchedulesSection } from "../schedules/SleepSchedulesSection.js";
 import type { SchedulesClient, SleepSchedule } from "../schedules/types.js";
 import { BudgetCard } from "./BudgetCard.js";
@@ -64,6 +70,14 @@ export interface CostsPanelProps {
   /** Open a flagged resource's detail view from the savings section. */
   onOpenResource?: ((resource: OrphanedResource, accountId: string) => void) | undefined;
   /**
+   * Data access for the "Oversized" right-sizing section. Cloud-only — the
+   * percentiles live in the metrics warehouse — so desktop leaves it off in
+   * local mode, same rule as schedules.
+   */
+  rightsizing?: RightsizingClient | undefined;
+  /** Open an oversized resource's detail view. */
+  onOpenOversizedResource?: ((resource: OversizedResource, accountId: string) => void) | undefined;
+  /**
    * Data access for the "Sleep schedules" section. Omitted when the host has
    * no schedule store (desktop in local-only mode) — the section is then left
    * out rather than shown empty.
@@ -89,6 +103,8 @@ export function CostsPanel({
   onOpenDashboard,
   orphans,
   onOpenResource,
+  rightsizing,
+  onOpenOversizedResource,
   schedules,
   onOpenScheduledResource,
 }: CostsPanelProps) {
@@ -275,6 +291,9 @@ export function CostsPanel({
         <CostAnomaliesSection client={client} />
 
         {orphans && <SavingsSection client={orphans} onOpenResource={onOpenResource} />}
+        {rightsizing && (
+          <OversizedSection client={rightsizing} onOpenResource={onOpenOversizedResource} />
+        )}
         {schedules && (
           <SleepSchedulesSection client={schedules} onOpenResource={onOpenScheduledResource} />
         )}

@@ -24,8 +24,14 @@ import { WebAgentsPanel } from "./WebAgentsPanel";
 import { WebChatPanel } from "./WebChatPanel";
 import { WebGraphPanel } from "./WebGraphPanel";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
-import { resourceTabTarget, type OrphansClient, type SchedulesClient } from "@infrawrench/ui";
+import {
+  resourceTabTarget,
+  type OrphansClient,
+  type RightsizingClient,
+  type SchedulesClient,
+} from "@infrawrench/ui";
 import { createWebOrphansClient } from "@/lib/orphans-client";
+import { createWebRightsizingClient } from "@/lib/rightsizing-client";
 import { createWebSchedulesClient } from "@/lib/schedules-client";
 
 interface WebWorkspaceTabsViewportProps {
@@ -132,6 +138,16 @@ function getOrphansClient(orgId: string): OrphansClient {
   return client;
 }
 
+const rightsizingClients = new Map<string, RightsizingClient>();
+function getRightsizingClient(orgId: string): RightsizingClient {
+  let client = rightsizingClients.get(orgId);
+  if (!client) {
+    client = createWebRightsizingClient(orgId);
+    rightsizingClients.set(orgId, client);
+  }
+  return client;
+}
+
 const schedulesClients = new Map<string, SchedulesClient>();
 function getSchedulesClient(orgId: string): SchedulesClient {
   let client = schedulesClients.get(orgId);
@@ -180,6 +196,20 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           }
           orphans={getOrphansClient(orgId)}
           onOpenResource={(r, accountId) => {
+            if (!r.id) return;
+            void navigate(
+              getWorkspaceNavigateArgs({
+                kind: "resource",
+                accountId,
+                resourceId: r.id,
+                view: "details",
+                pluginId: r.pluginId,
+                resourceTypeId: r.resourceTypeId,
+              }),
+            );
+          }}
+          rightsizing={getRightsizingClient(orgId)}
+          onOpenOversizedResource={(r, accountId) => {
             if (!r.id) return;
             void navigate(
               getWorkspaceNavigateArgs({

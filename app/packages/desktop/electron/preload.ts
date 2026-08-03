@@ -149,6 +149,7 @@ const INVOKE_CHANNELS = [
   "cloud_costs_untagged",
   "cloud_costs_showback",
   "cloud_orphans_list",
+  "cloud_rightsizing_list",
   "local_orphans_list",
   "cloud_expiring",
   "cloud_changes_list",
