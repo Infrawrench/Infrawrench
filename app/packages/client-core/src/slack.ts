@@ -36,6 +36,8 @@ export interface SlackChannel {
   providerIncidents: boolean;
   /** Daily digests of approaching resource deadlines (certs, domains, keys). */
   expiryAlerts: boolean;
+  /** Saved log-query matches from the log workspace alert pass. */
+  logMatchAlerts: boolean;
   /** The Monday-morning weekly summary (only sends when the org enables it). */
   weeklyDigest: boolean;
 }
@@ -100,6 +102,7 @@ export interface AddSlackChannelArgs {
   workflowPages?: boolean;
   providerIncidents?: boolean;
   expiryAlerts?: boolean;
+  logMatchAlerts?: boolean;
   weeklyDigest?: boolean;
 }
 
@@ -123,6 +126,7 @@ export type SlackChannelTriggers = Pick<
   | "workflowPages"
   | "providerIncidents"
   | "expiryAlerts"
+  | "logMatchAlerts"
   | "weeklyDigest"
 >;
 

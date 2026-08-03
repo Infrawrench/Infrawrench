@@ -28,12 +28,13 @@ export type PushTrigger =
   | "resourceDrift"
   | "workflowPages"
   | "providerIncidents"
-  | "expiryAlerts";
+  | "expiryAlerts"
+  | "logMatchAlerts";
 
 /**
  * What a Slack channel or Teams webhook can opt into. A superset of the push
  * triggers: the weekly digest is a scheduled summary, not an alert, so it goes
- * to team channels but never to a phone — mobile push keeps the seven alert
+ * to team channels but never to a phone — mobile push keeps the eight alert
  * triggers only.
  */
 export type ChannelTrigger = PushTrigger | "weeklyDigest";

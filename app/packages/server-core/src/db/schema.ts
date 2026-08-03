@@ -884,6 +884,8 @@ export const slackChannels = pgTable(
     providerIncidents: boolean("provider_incidents").notNull().default(true),
     /** Approaching deadlines on synced resources (see `expiry/alerts.ts`). */
     expiryAlerts: boolean("expiry_alerts").notNull().default(true),
+    /** Saved log-query matches (see `log-workspaces/pass.ts`). */
+    logMatchAlerts: boolean("log_match_alerts").notNull().default(true),
     /**
      * The Monday-morning weekly summary. Channel opt-in defaults on like the
      * other triggers, but nothing sends until the org enables the digest in
@@ -1023,6 +1025,8 @@ export const msteamsWebhooks = pgTable(
     providerIncidents: boolean("provider_incidents").notNull().default(true),
     /** Approaching deadlines on synced resources (see `expiry/alerts.ts`). */
     expiryAlerts: boolean("expiry_alerts").notNull().default(true),
+    /** Saved log-query matches (see `log-workspaces/pass.ts`). */
+    logMatchAlerts: boolean("log_match_alerts").notNull().default(true),
     /**
      * The Monday-morning weekly summary. Channel opt-in defaults on like the
      * other triggers, but nothing sends until the org enables the digest in
@@ -1326,6 +1330,71 @@ export const resourceSchedules = pgTable(
 );
 
 /**
+ * Log workspace saved queries — a named set of log-capable resources plus a
+ * search expression, so a multi-resource tail workspace can be reopened.
+ *
+ * `alertEnabled` opts the query into the poller's log-alert pass:
+ * `nextEvalAt` is the due-time column AND the claim lease (the
+ * `resource_schedules.next_transition_at` protocol — `UPDATE … WHERE id IN
+ * (SELECT … FOR UPDATE SKIP LOCKED)` writes `now() + lease` into it), so N
+ * poller replicas never evaluate the same query twice. It is null while the
+ * alert is off. `lastAlertedAt` anchors the notification cooldown so a query
+ * that keeps matching doesn't re-fire every pass.
+ *
+ * `resources` is a jsonb array of stream selectors (`LogStreamSelector` in
+ * client-core), not FK rows — resource rows are churned by sync (the
+ * `resource_changes` stance); the pass and the UI simply report streams whose
+ * resource is gone instead of breaking the whole query.
+ */
+export const logWorkspaceQueries = pgTable(
+  "log_workspace_queries",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** Stream selectors: {resourceId, accountId, pluginId, resourceTypeId, container?}. */
+    resources: jsonb("resources")
+      .$type<
+        {
+          resourceId: string;
+          accountId: string;
+          pluginId: string;
+          resourceTypeId: string;
+          container?: string;
+        }[]
+      >()
+      .notNull(),
+    /** Search expression (client-core `compileLogSearch` syntax); "" = match all. */
+    search: text("search").notNull().default(""),
+    alertEnabled: boolean("alert_enabled").notNull().default(false),
+    /** Due time + claim lease for the alert pass; null while alerts are off. */
+    nextEvalAt: timestamp("next_eval_at"),
+    lastEvalAt: timestamp("last_eval_at"),
+    /** Last evaluation that found at least one matching line. */
+    lastMatchAt: timestamp("last_match_at"),
+    /** Last dispatched notification — the cooldown anchor. */
+    lastAlertedAt: timestamp("last_alerted_at"),
+    /** Failure detail from the last evaluation; never silent. */
+    lastEvalError: text("last_eval_error"),
+    /** Truncated sample of the most recent matching line. */
+    lastMatchSample: text("last_match_sample"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("log_workspace_queries_org_idx").on(t.organizationId),
+    dueIdx: index("log_workspace_queries_due_idx").on(t.nextEvalAt),
+    /** Names are the reopen handle — duplicates would be ambiguous. */
+    nameUnique: uniqueIndex("log_workspace_queries_org_name_idx").on(t.organizationId, t.name),
+  }),
+);
+
+/**
  * Rolling-window record of poller sync failures, used by the Twilio pager to
  * decide whether a (account, resourceType) has crossed its threshold. Rows
  * older than the org's `windowMinutes` are deleted on each tick.
@@ -1444,6 +1513,8 @@ export const pushPreferences = pgTable(
     providerIncidents: boolean("provider_incidents").notNull().default(true),
     /** Approaching deadlines on synced resources (see `expiry/alerts.ts`). */
     expiryAlerts: boolean("expiry_alerts").notNull().default(true),
+    /** Saved log-query matches (see `log-workspaces/pass.ts`). */
+    logMatchAlerts: boolean("log_match_alerts").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

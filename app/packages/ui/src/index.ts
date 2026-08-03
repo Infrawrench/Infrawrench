@@ -286,6 +286,7 @@ export {
   agentsTabTarget,
   costsTabTarget,
   graphTabTarget,
+  logsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -497,6 +498,7 @@ export {
   type ResourceChangeEntry,
 } from "@infrawrench/client-core";
 export { ChangesIcon } from "./components/icons/ChangesIcon.js";
+export { LogsIcon } from "./components/icons/LogsIcon.js";
 
 /**
  * Expiry radar — the pure contract (feed computation, wire types, settings
@@ -572,6 +574,7 @@ export {
 
 export * from "./cost/index.js";
 export * from "./savings/index.js";
+export * from "./logs/index.js";
 export { SleepSchedulesSection } from "./schedules/SleepSchedulesSection.js";
 export type { SleepSchedulesSectionProps } from "./schedules/SleepSchedulesSection.js";
 export { ScheduleEditorModal } from "./schedules/ScheduleEditorModal.js";

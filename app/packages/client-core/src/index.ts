@@ -365,6 +365,7 @@ export * from "./moment";
 export * from "./orphans";
 export * from "./expiry";
 export * from "./schedules";
+export * from "./log-workspaces";
 export * from "./rightsizing";
 export * from "./chat/types";
 export { createBearerChatClient } from "./chat/bearer-client";

@@ -34,6 +34,9 @@ const SlackChannel = strict({
     description:
       "Daily digests of approaching resource deadlines — expiring certificates, domains, tokens and keys past their rotation budget.",
   }),
+  logMatchAlerts: z.boolean().openapi({
+    description: "A saved log-workspace query with alerting enabled found matching log lines.",
+  }),
   weeklyDigest: z.boolean().openapi({
     description:
       "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest).",
@@ -66,6 +69,7 @@ const SlackChannelCreate = strict({
   workflowPages: z.boolean().optional(),
   providerIncidents: z.boolean().optional(),
   expiryAlerts: z.boolean().optional(),
+  logMatchAlerts: z.boolean().optional(),
   weeklyDigest: z.boolean().optional(),
 }).openapi("SlackChannelCreate");
 
@@ -79,6 +83,7 @@ const SlackChannelUpdate = strict({
   workflowPages: z.boolean().optional(),
   providerIncidents: z.boolean().optional(),
   expiryAlerts: z.boolean().optional(),
+  logMatchAlerts: z.boolean().optional(),
   weeklyDigest: z.boolean().optional(),
 }).openapi("SlackChannelUpdate");
 

@@ -13,6 +13,7 @@ import { Route as WorkflowsRouteImport } from './routes/workflows'
 import { Route as SshFanoutRouteImport } from './routes/ssh-fanout'
 import { Route as SavingsRouteImport } from './routes/savings'
 import { Route as MomentRouteImport } from './routes/moment'
+import { Route as LogsRouteImport } from './routes/logs'
 import { Route as GraphRouteImport } from './routes/graph'
 import { Route as ExpiringRouteImport } from './routes/expiring'
 import { Route as DeploymentsRouteImport } from './routes/deployments'
@@ -43,6 +44,11 @@ const SavingsRoute = SavingsRouteImport.update({
 const MomentRoute = MomentRouteImport.update({
   id: '/moment',
   path: '/moment',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LogsRoute = LogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GraphRoute = GraphRouteImport.update({
@@ -111,6 +117,7 @@ export interface FileRoutesByFullPath {
   '/deployments': typeof DeploymentsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
+  '/logs': typeof LogsRoute
   '/moment': typeof MomentRoute
   '/savings': typeof SavingsRoute
   '/ssh-fanout': typeof SshFanoutRoute
@@ -128,6 +135,7 @@ export interface FileRoutesByTo {
   '/deployments': typeof DeploymentsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
+  '/logs': typeof LogsRoute
   '/moment': typeof MomentRoute
   '/savings': typeof SavingsRoute
   '/ssh-fanout': typeof SshFanoutRoute
@@ -146,6 +154,7 @@ export interface FileRoutesById {
   '/deployments': typeof DeploymentsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
+  '/logs': typeof LogsRoute
   '/moment': typeof MomentRoute
   '/savings': typeof SavingsRoute
   '/ssh-fanout': typeof SshFanoutRoute
@@ -165,6 +174,7 @@ export interface FileRouteTypes {
     | '/deployments'
     | '/expiring'
     | '/graph'
+    | '/logs'
     | '/moment'
     | '/savings'
     | '/ssh-fanout'
@@ -182,6 +192,7 @@ export interface FileRouteTypes {
     | '/deployments'
     | '/expiring'
     | '/graph'
+    | '/logs'
     | '/moment'
     | '/savings'
     | '/ssh-fanout'
@@ -199,6 +210,7 @@ export interface FileRouteTypes {
     | '/deployments'
     | '/expiring'
     | '/graph'
+    | '/logs'
     | '/moment'
     | '/savings'
     | '/ssh-fanout'
@@ -217,6 +229,7 @@ export interface RootRouteChildren {
   DeploymentsRoute: typeof DeploymentsRoute
   ExpiringRoute: typeof ExpiringRoute
   GraphRoute: typeof GraphRoute
+  LogsRoute: typeof LogsRoute
   MomentRoute: typeof MomentRoute
   SavingsRoute: typeof SavingsRoute
   SshFanoutRoute: typeof SshFanoutRoute
@@ -254,6 +267,13 @@ declare module '@tanstack/react-router' {
       path: '/moment'
       fullPath: '/moment'
       preLoaderRoute: typeof MomentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/logs': {
+      id: '/logs'
+      path: '/logs'
+      fullPath: '/logs'
+      preLoaderRoute: typeof LogsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/graph': {
@@ -345,6 +365,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeploymentsRoute: DeploymentsRoute,
   ExpiringRoute: ExpiringRoute,
   GraphRoute: GraphRoute,
+  LogsRoute: LogsRoute,
   MomentRoute: MomentRoute,
   SavingsRoute: SavingsRoute,
   SshFanoutRoute: SshFanoutRoute,

@@ -136,12 +136,13 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     return rows[0] ? { ...tab, title: rows[0].display_name } : null;
   }
 
-  // Agents, Costs, Graph, Workflows, and Chat tabs aren't backed by a single
-  // resource row; keep them as-is.
+  // Agents, Costs, Graph, Logs, Workflows, and Chat tabs aren't backed by a
+  // single resource row; keep them as-is.
   if (
     target.kind === "agents" ||
     target.kind === "costs" ||
     target.kind === "graph" ||
+    target.kind === "logs" ||
     target.kind === "workflows" ||
     target.kind === "deployments" ||
     target.kind === "chat"

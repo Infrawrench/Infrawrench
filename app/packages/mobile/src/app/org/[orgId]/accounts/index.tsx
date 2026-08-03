@@ -48,6 +48,11 @@ export default function AccountsScreen() {
           subtitle="Certs, domains, tokens and keys with deadlines"
           onPress={() => router.push(`/org/${orgId}/expiring`)}
         />
+        <Row
+          title="Log workspace"
+          subtitle="Saved multi-resource log tails and match alerts"
+          onPress={() => router.push(`/org/${orgId}/log-workspaces`)}
+        />
       </Card>
       <Card list>
         {list.map((a) => (

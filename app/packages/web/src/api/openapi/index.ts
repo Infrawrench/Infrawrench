@@ -31,6 +31,7 @@ import { registerStatusIncidentPaths } from "./paths/status-incidents";
 import { registerExpiringPaths } from "./paths/expiring";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
+import { registerLogWorkspacePaths } from "./paths/log-workspaces";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
 import { registerAssociationPaths } from "./paths/associations";
 import { registerDependencyGraphPaths } from "./paths/dependency-graph";
@@ -119,6 +120,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerExpiringPaths(ctx);
   registerMomentPaths(ctx);
   registerSchedulePaths(ctx);
+  registerLogWorkspacePaths(ctx);
   registerConnectionFeaturePaths(ctx);
   registerAssociationPaths(ctx);
   registerDependencyGraphPaths(ctx);
@@ -203,6 +205,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Sleep schedules",
         description:
           "Off-at/on-at weekly windows on resources whose plugin declares lifecycle start/stop actions; the poller executes due transitions server-side.",
+      },
+      {
+        name: "Log workspaces",
+        description:
+          "Saved multi-resource log tails: a named set of log streams plus a search expression, optionally alert-evaluated server-side.",
       },
       { name: "Connect", description: "Helpers for shipping credentials into other services." },
       { name: "Storage", description: "Object storage helpers (uploads via API key)." },
@@ -376,6 +383,14 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /schedules/preview": "resources:read",
   "PUT /schedules/{scheduleId}": "resources:write",
   "DELETE /schedules/{scheduleId}": "resources:write",
+  // log workspace saved queries — the schedules stance: reads are a view over
+  // the org's resource logs (which resources:read already gates via
+  // /resources/{pluginId}/{typeId}/logs); mutations are resources:write
+  "GET /log-workspaces": "resources:read",
+  "GET /log-workspaces/resources": "resources:read",
+  "POST /log-workspaces": "resources:write",
+  "PUT /log-workspaces/{queryId}": "resources:write",
+  "DELETE /log-workspaces/{queryId}": "resources:write",
   // tag policy & showback — policy is org settings; compliance/untagged ride
   // the resource/cost read scopes their data is computed over
   "GET /tag-policy": "resources:read",

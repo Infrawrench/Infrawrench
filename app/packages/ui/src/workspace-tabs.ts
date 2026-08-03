@@ -29,6 +29,10 @@ export function workflowsTabTarget(workflowId?: string): WorkspaceTabTarget {
   return { kind: "workflows", ...(workflowId ? { workflowId } : {}) };
 }
 
+export function logsTabTarget(): WorkspaceTabTarget {
+  return { kind: "logs" };
+}
+
 export function deploymentsTabTarget(repo?: string): WorkspaceTabTarget {
   return { kind: "deployments", ...(repo ? { repo } : {}) };
 }

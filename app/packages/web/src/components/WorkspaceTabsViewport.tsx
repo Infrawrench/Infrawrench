@@ -33,6 +33,8 @@ import {
 import { createWebOrphansClient } from "@/lib/orphans-client";
 import { createWebRightsizingClient } from "@/lib/rightsizing-client";
 import { createWebSchedulesClient } from "@/lib/schedules-client";
+import { createWebLogWorkspaceClient } from "@/lib/log-workspace-client";
+import { LogWorkspacePanel, type LogWorkspaceClient } from "@infrawrench/ui";
 
 interface WebWorkspaceTabsViewportProps {
   orgId: string;
@@ -158,6 +160,16 @@ function getSchedulesClient(orgId: string): SchedulesClient {
   return client;
 }
 
+const logWorkspaceClients = new Map<string, LogWorkspaceClient>();
+function getLogWorkspaceClient(orgId: string): LogWorkspaceClient {
+  let client = logWorkspaceClients.get(orgId);
+  if (!client) {
+    client = createWebLogWorkspaceClient(orgId);
+    logWorkspaceClients.set(orgId, client);
+  }
+  return client;
+}
+
 function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<typeof useNavigate>) {
   const t = tab.target;
   switch (t.kind) {
@@ -245,6 +257,27 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
             void navigate(
               getWorkspaceNavigateArgs(
                 resourceTabTarget(node.accountId, node.id, node.pluginId, node.resourceTypeId),
+              ),
+            )
+          }
+        />
+      );
+    case "logs":
+      return (
+        <LogWorkspacePanel
+          // Keyed by org so switching org remounts the panel and refetches
+          // rather than tailing the previous org's streams.
+          key={orgId}
+          client={getLogWorkspaceClient(orgId)}
+          onOpenResource={(selector) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  selector.accountId,
+                  selector.resourceId,
+                  selector.pluginId,
+                  selector.resourceTypeId,
+                ),
               ),
             )
           }

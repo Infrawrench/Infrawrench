@@ -173,6 +173,7 @@ describe("push org routes", () => {
         workflowPages: true,
         providerIncidents: true,
         expiryAlerts: true,
+        logMatchAlerts: true,
       });
     });
   });

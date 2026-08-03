@@ -135,6 +135,22 @@ export type PushNotificationData =
       type: "expiry_alert";
       orgId: string;
     }
+  | {
+      /**
+       * A saved log-workspace query with alerting enabled found matching log
+       * lines (see server-core `log-workspaces/pass.ts`). At most one
+       * notification per cooldown window, never one per matching line.
+       *
+       * Target route: the log workspace list, `/org/{orgId}/log-workspaces`
+       * (the query's own viewer at `/org/{orgId}/log-workspaces/{queryId}`).
+       */
+      type: "log_match";
+      orgId: string;
+      /** Saved query row id (`log_workspace_queries.id`). */
+      queryId: string;
+      /** Matching lines counted this evaluation (capped server-side). */
+      matchCount: number;
+    }
   | { type: "test"; orgId: string };
 
 export async function registerPushToken(
@@ -175,6 +191,8 @@ export interface PushPreferences {
   providerIncidents: boolean;
   /** Daily digests of approaching resource deadlines (certs, domains, keys). */
   expiryAlerts: boolean;
+  /** Saved log-query matches from the log workspace alert pass. */
+  logMatchAlerts: boolean;
 }
 
 export async function getPushPreferences(api: CloudFetch, orgId: string): Promise<PushPreferences> {
@@ -187,6 +205,7 @@ export async function getPushPreferences(api: CloudFetch, orgId: string): Promis
       workflowPages: true,
       providerIncidents: true,
       expiryAlerts: true,
+      logMatchAlerts: true,
     }
   );
 }

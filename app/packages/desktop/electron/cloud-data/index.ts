@@ -9,6 +9,7 @@ import "./expiring";
 import "./changes";
 import "./moment";
 import "./schedules";
+import "./log-workspaces";
 import "./custom-graphs";
 import "./dashboards";
 import "./deployments";

@@ -127,6 +127,7 @@ export default function NotificationsScreen() {
     workflowPages: true,
     providerIncidents: true,
     expiryAlerts: true,
+    logMatchAlerts: true,
   };
   const deviceList = devices.data ?? [];
 
@@ -253,6 +254,19 @@ export default function NotificationsScreen() {
           <Switch
             value={current.expiryAlerts}
             onValueChange={(v) => updatePrefs.mutate({ expiryAlerts: v })}
+            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
+          />
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>Log matches</Text>
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+              A saved log query with alerting enabled found matching lines.
+            </Text>
+          </View>
+          <Switch
+            value={current.logMatchAlerts}
+            onValueChange={(v) => updatePrefs.mutate({ logMatchAlerts: v })}
             trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
           />
         </View>
@@ -533,6 +547,7 @@ const SLACK_TRIGGERS = [
   { key: "workflowPages", label: "Pages" },
   { key: "providerIncidents", label: "Provider incidents" },
   { key: "expiryAlerts", label: "Expiry" },
+  { key: "logMatchAlerts", label: "Log matches" },
   { key: "weeklyDigest", label: "Weekly digest" },
 ] as const satisfies ReadonlyArray<{ key: keyof SlackChannelTriggers; label: string }>;
 
@@ -819,6 +834,7 @@ const MSTEAMS_TRIGGERS = [
   { key: "workflowPages", label: "Pages" },
   { key: "providerIncidents", label: "Provider incidents" },
   { key: "expiryAlerts", label: "Expiry" },
+  { key: "logMatchAlerts", label: "Log matches" },
   { key: "weeklyDigest", label: "Weekly digest" },
 ] as const satisfies ReadonlyArray<{ key: keyof MsTeamsWebhookTriggers; label: string }>;
 

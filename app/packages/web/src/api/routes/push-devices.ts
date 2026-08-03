@@ -118,6 +118,7 @@ interface PreferencesPayload {
   workflowPages: boolean;
   providerIncidents: boolean;
   expiryAlerts: boolean;
+  logMatchAlerts: boolean;
 }
 
 const PREFERENCE_KEYS = [
@@ -128,6 +129,7 @@ const PREFERENCE_KEYS = [
   "workflowPages",
   "providerIncidents",
   "expiryAlerts",
+  "logMatchAlerts",
 ] as const;
 
 /**
@@ -143,6 +145,7 @@ const PREFERENCE_DEFAULTS: PreferencesPayload = {
   workflowPages: true,
   providerIncidents: true,
   expiryAlerts: true,
+  logMatchAlerts: true,
 };
 
 pushOrgRoutes.get("/preferences", async (c) => {
@@ -165,6 +168,7 @@ pushOrgRoutes.get("/preferences", async (c) => {
     workflowPages: row?.workflowPages ?? PREFERENCE_DEFAULTS.workflowPages,
     providerIncidents: row?.providerIncidents ?? PREFERENCE_DEFAULTS.providerIncidents,
     expiryAlerts: row?.expiryAlerts ?? PREFERENCE_DEFAULTS.expiryAlerts,
+    logMatchAlerts: row?.logMatchAlerts ?? PREFERENCE_DEFAULTS.logMatchAlerts,
   };
   return c.json(payload);
 });
@@ -194,6 +198,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
       workflowPages: body.workflowPages ?? PREFERENCE_DEFAULTS.workflowPages,
       providerIncidents: body.providerIncidents ?? PREFERENCE_DEFAULTS.providerIncidents,
       expiryAlerts: body.expiryAlerts ?? PREFERENCE_DEFAULTS.expiryAlerts,
+      logMatchAlerts: body.logMatchAlerts ?? PREFERENCE_DEFAULTS.logMatchAlerts,
     })
     .onConflictDoUpdate({
       target: [pushPreferences.userId, pushPreferences.organizationId],
@@ -205,6 +210,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
         ...(body.workflowPages != null ? { workflowPages: body.workflowPages } : {}),
         ...(body.providerIncidents != null ? { providerIncidents: body.providerIncidents } : {}),
         ...(body.expiryAlerts != null ? { expiryAlerts: body.expiryAlerts } : {}),
+        ...(body.logMatchAlerts != null ? { logMatchAlerts: body.logMatchAlerts } : {}),
         updatedAt: now,
       },
     });
@@ -251,6 +257,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
       workflowPages: pushPreferences.workflowPages,
       providerIncidents: pushPreferences.providerIncidents,
       expiryAlerts: pushPreferences.expiryAlerts,
+      logMatchAlerts: pushPreferences.logMatchAlerts,
     })
     .from(organizationMembers)
     .innerJoin(users, eq(organizationMembers.userId, users.id))
@@ -280,6 +287,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
       workflowPages: boolean;
       providerIncidents: boolean;
       expiryAlerts: boolean;
+      logMatchAlerts: boolean;
       devices: Array<{ id: string; platform: string; deviceName: string | null }>;
     }
   >();
@@ -297,6 +305,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
         workflowPages: r.workflowPages ?? PREFERENCE_DEFAULTS.workflowPages,
         providerIncidents: r.providerIncidents ?? PREFERENCE_DEFAULTS.providerIncidents,
         expiryAlerts: r.expiryAlerts ?? PREFERENCE_DEFAULTS.expiryAlerts,
+        logMatchAlerts: r.logMatchAlerts ?? PREFERENCE_DEFAULTS.logMatchAlerts,
         devices: [],
       };
       byUser.set(r.userId, entry);

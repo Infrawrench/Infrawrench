@@ -33,6 +33,9 @@ const PushPreferences = strict({
     description:
       "Daily digests of approaching resource deadlines — expiring certificates, domains, tokens and keys past their rotation budget.",
   }),
+  logMatchAlerts: z.boolean().openapi({
+    description: "A saved log-workspace query with alerting enabled found matching log lines.",
+  }),
 }).openapi("PushPreferences");
 
 // Registered under its own name — `.partial()` on a registered schema would
@@ -46,6 +49,7 @@ const PushPreferencesUpdate = strict({
   workflowPages: z.boolean().optional(),
   providerIncidents: z.boolean().optional(),
   expiryAlerts: z.boolean().optional(),
+  logMatchAlerts: z.boolean().optional(),
 }).openapi("PushPreferencesUpdate");
 
 const PushRecipient = strict({
@@ -59,6 +63,7 @@ const PushRecipient = strict({
   workflowPages: z.boolean(),
   providerIncidents: z.boolean(),
   expiryAlerts: z.boolean(),
+  logMatchAlerts: z.boolean(),
   devices: z.array(
     strict({
       id: z.string(),

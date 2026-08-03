@@ -418,6 +418,7 @@ const ALERT_TRIGGERS = [
   { key: "workflowPages", label: "Pages" },
   { key: "providerIncidents", label: "Provider incidents" },
   { key: "expiryAlerts", label: "Expiry alerts" },
+  { key: "logMatchAlerts", label: "Log matches" },
   { key: "weeklyDigest", label: "Weekly digest" },
 ] as const;
 
@@ -1471,6 +1472,17 @@ function PushPreferencesSection({ orgId }: { orgId: string }) {
           />
           <span>Expiry alerts</span>
         </label>
+        <label
+          className="flex items-center gap-2"
+          title="A saved log-workspace query with alerting enabled found matching lines."
+        >
+          <input
+            type="checkbox"
+            checked={prefs.logMatchAlerts}
+            onChange={(e) => void updatePref({ logMatchAlerts: e.target.checked })}
+          />
+          <span>Log matches</span>
+        </label>
       </div>
 
       {devices.length === 0 ? (
@@ -1534,6 +1546,8 @@ interface PushRecipientRow {
   providerIncidents: boolean;
   /** Expiry-radar alerts; on by default like the other exceptional triggers. */
   expiryAlerts: boolean;
+  /** Saved log-query matches; on by default like the other exceptional triggers. */
+  logMatchAlerts: boolean;
   devices: Array<{ id: string; platform: string; deviceName: string | null }>;
 }
 
@@ -1573,6 +1587,7 @@ function PushRosterSection({ orgId }: { orgId: string }) {
                   r.workflowPages && "pages",
                   r.providerIncidents && "provider incidents",
                   r.expiryAlerts && "expiry",
+                  r.logMatchAlerts && "log matches",
                 ]
                   .filter(Boolean)
                   .join(", ") || "all triggers off"}

@@ -10,6 +10,7 @@ import {
   ExpiryIcon,
   FanoutIcon,
   GraphIcon,
+  LogsIcon,
   DroppableDashboardItem,
   emitChatConversationsChanged,
   SidebarNavGrid,
@@ -23,6 +24,7 @@ import {
   agentsTabTarget,
   costsTabTarget,
   graphTabTarget,
+  logsTabTarget,
   chatTabTarget,
   dashboardTabTarget,
   deploymentsTabTarget,
@@ -173,7 +175,7 @@ export function SidebarDashboards() {
   // and without one it is the history of what `infrawrench deploy` did on this
   // machine. Costs and Changes have no local half — spend is collected
   // server-side, change events are recorded by the cloud poller — so the grid
-  // is four tiles locally and six with an org; SidebarNavGrid squares off an
+  // is six tiles locally and eight with an org; SidebarNavGrid squares off an
   // odd count itself.
   const navTiles: SidebarNavTileDef[] = [
     {
@@ -242,6 +244,15 @@ export function SidebarDashboards() {
       label: "Fan-out",
       icon: <FanoutIcon />,
       onClick: () => void navigate({ to: "/ssh-fanout" }),
+    },
+    // Logs also has a local half — the in-renderer plugin clients fetch tails
+    // directly — so like Graph the tile shows in both modes (saved queries
+    // and alerting are the cloud-only part, hidden by the panel locally).
+    {
+      key: "logs",
+      label: "Logs",
+      icon: <LogsIcon />,
+      onClick: () => void navigateToWorkspaceTarget(navigate, logsTabTarget(), { label: "Logs" }),
     },
   ];
 

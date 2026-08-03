@@ -20,6 +20,7 @@ import { Route as OrgOrgIdSshFanoutRouteImport } from './routes/org.$orgId.ssh-f
 import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settings'
 import { Route as OrgOrgIdSavingsRouteImport } from './routes/org.$orgId.savings'
 import { Route as OrgOrgIdMomentRouteImport } from './routes/org.$orgId.moment'
+import { Route as OrgOrgIdLogsRouteImport } from './routes/org.$orgId.logs'
 import { Route as OrgOrgIdGraphRouteImport } from './routes/org.$orgId.graph'
 import { Route as OrgOrgIdExpiringRouteImport } from './routes/org.$orgId.expiring'
 import { Route as OrgOrgIdDeploymentsRouteImport } from './routes/org.$orgId.deployments'
@@ -99,6 +100,11 @@ const OrgOrgIdSavingsRoute = OrgOrgIdSavingsRouteImport.update({
 const OrgOrgIdMomentRoute = OrgOrgIdMomentRouteImport.update({
   id: '/moment',
   path: '/moment',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdLogsRoute = OrgOrgIdLogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdGraphRoute = OrgOrgIdGraphRouteImport.update({
@@ -249,6 +255,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
@@ -285,6 +292,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
@@ -323,6 +331,7 @@ export interface FileRoutesById {
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
@@ -363,6 +372,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/deployments'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/logs'
     | '/org/$orgId/moment'
     | '/org/$orgId/savings'
     | '/org/$orgId/settings'
@@ -399,6 +409,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/deployments'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/logs'
     | '/org/$orgId/moment'
     | '/org/$orgId/savings'
     | '/org/$orgId/ssh-fanout'
@@ -436,6 +447,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/deployments'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/logs'
     | '/org/$orgId/moment'
     | '/org/$orgId/savings'
     | '/org/$orgId/settings'
@@ -547,6 +559,13 @@ declare module '@tanstack/react-router' {
       path: '/moment'
       fullPath: '/org/$orgId/moment'
       preLoaderRoute: typeof OrgOrgIdMomentRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/logs': {
+      id: '/org/$orgId/logs'
+      path: '/logs'
+      fullPath: '/org/$orgId/logs'
+      preLoaderRoute: typeof OrgOrgIdLogsRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/graph': {
@@ -784,6 +803,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdDeploymentsRoute: typeof OrgOrgIdDeploymentsRoute
   OrgOrgIdExpiringRoute: typeof OrgOrgIdExpiringRoute
   OrgOrgIdGraphRoute: typeof OrgOrgIdGraphRoute
+  OrgOrgIdLogsRoute: typeof OrgOrgIdLogsRoute
   OrgOrgIdMomentRoute: typeof OrgOrgIdMomentRoute
   OrgOrgIdSavingsRoute: typeof OrgOrgIdSavingsRoute
   OrgOrgIdSettingsRoute: typeof OrgOrgIdSettingsRouteWithChildren
@@ -803,6 +823,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdDeploymentsRoute: OrgOrgIdDeploymentsRoute,
   OrgOrgIdExpiringRoute: OrgOrgIdExpiringRoute,
   OrgOrgIdGraphRoute: OrgOrgIdGraphRoute,
+  OrgOrgIdLogsRoute: OrgOrgIdLogsRoute,
   OrgOrgIdMomentRoute: OrgOrgIdMomentRoute,
   OrgOrgIdSavingsRoute: OrgOrgIdSavingsRoute,
   OrgOrgIdSettingsRoute: OrgOrgIdSettingsRouteWithChildren,

@@ -7,6 +7,7 @@ export type WorkspaceTabTarget =
   | { kind: "agents" }
   | { kind: "costs" }
   | { kind: "graph" }
+  | { kind: "logs" }
   | { kind: "workflows"; workflowId?: string }
   | { kind: "deployments"; repo?: string }
   | { kind: "chat"; conversationId?: string }
@@ -53,6 +54,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "costs";
     case "graph":
       return "graph";
+    case "logs":
+      return "logs";
     case "workflows":
       return target.workflowId ? `workflows:${target.workflowId}` : "workflows";
     case "deployments":
@@ -84,6 +87,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Costs";
     case "graph":
       return "Graph";
+    case "logs":
+      return "Logs";
     case "workflows":
       return "Workflows";
     case "deployments":
@@ -109,6 +114,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "agents":
     case "costs":
     case "graph":
+    case "logs":
       return true;
     case "deployments":
       // Compared even though the tab *id* ignores it: the id keeps a second

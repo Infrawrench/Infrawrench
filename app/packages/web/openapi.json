@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.33.0",
+    "version": "0.34.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -87,6 +87,10 @@
     {
       "name": "Sleep schedules",
       "description": "Off-at/on-at weekly windows on resources whose plugin declares lifecycle start/stop actions; the poller executes due transitions server-side."
+    },
+    {
+      "name": "Log workspaces",
+      "description": "Saved multi-resource log tails: a named set of log streams plus a search expression, optionally alert-evaluated server-side."
     },
     {
       "name": "Connect",
@@ -7291,6 +7295,244 @@
         },
         "additionalProperties": false
       },
+      "LogStreamSelector": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string",
+            "description": "Infrawrench resource id of the stream to tail."
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "container": {
+            "type": "string",
+            "description": "Container to fetch when the resource has more than one; omit for the default."
+          }
+        },
+        "required": ["resourceId", "accountId", "pluginId", "resourceTypeId"],
+        "additionalProperties": false
+      },
+      "LogWorkspaceQuery": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogStreamSelector"
+            }
+          },
+          "search": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "The search expression. Empty matches every line; `/pattern/` (optionally `/pattern/i`) is a regular expression; otherwise whitespace-separated terms that must ALL appear in a line (case-insensitive), with `\"quoted phrases\"` and `-term` negation.",
+            "example": "error -healthcheck \"connection reset\""
+          },
+          "alertEnabled": {
+            "type": "boolean",
+            "description": "When true the poller periodically evaluates the query and alerts on match."
+          },
+          "lastEvalAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "Last time the alert pass evaluated this query; null until it has run."
+          },
+          "lastMatchAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "Last evaluation that found at least one matching line."
+          },
+          "lastAlertedAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "Last dispatched notification — the cooldown anchor."
+          },
+          "lastEvalError": {
+            "type": ["string", "null"],
+            "description": "Failure detail from the last evaluation."
+          },
+          "lastMatchSample": {
+            "type": ["string", "null"],
+            "description": "Truncated sample of the most recent matching line."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "resources",
+          "search",
+          "alertEnabled",
+          "lastEvalAt",
+          "lastMatchAt",
+          "lastAlertedAt",
+          "lastEvalError",
+          "lastMatchSample",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "LogWorkspaceQueryList": {
+        "type": "object",
+        "properties": {
+          "queries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogWorkspaceQuery"
+            }
+          }
+        },
+        "required": ["queries"],
+        "additionalProperties": false
+      },
+      "LogCapableResource": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "resourceId",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "resourceTypeId",
+          "displayName"
+        ],
+        "additionalProperties": false
+      },
+      "LogCapableResourceList": {
+        "type": "object",
+        "properties": {
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogCapableResource"
+            }
+          }
+        },
+        "required": ["resources"],
+        "additionalProperties": false
+      },
+      "LogWorkspaceQueryConflict": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["error"],
+        "additionalProperties": false
+      },
+      "LogWorkspaceQueryCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogStreamSelector"
+            },
+            "minItems": 1,
+            "maxItems": 8
+          },
+          "search": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "The search expression. Empty matches every line; `/pattern/` (optionally `/pattern/i`) is a regular expression; otherwise whitespace-separated terms that must ALL appear in a line (case-insensitive), with `\"quoted phrases\"` and `-term` negation.",
+            "example": "error -healthcheck \"connection reset\""
+          },
+          "alertEnabled": {
+            "type": "boolean"
+          }
+        },
+        "required": ["name", "resources", "search"],
+        "additionalProperties": false
+      },
+      "LogWorkspaceQueryUpdateConflict": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["error"],
+        "additionalProperties": false
+      },
+      "LogWorkspaceQueryUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogStreamSelector"
+            },
+            "minItems": 1,
+            "maxItems": 8
+          },
+          "search": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "The search expression. Empty matches every line; `/pattern/` (optionally `/pattern/i`) is a regular expression; otherwise whitespace-separated terms that must ALL appear in a line (case-insensitive), with `\"quoted phrases\"` and `-term` negation.",
+            "example": "error -healthcheck \"connection reset\""
+          },
+          "alertEnabled": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
       "SqlQueryResponse": {
         "type": "object",
         "properties": {
@@ -9929,6 +10171,10 @@
           "expiryAlerts": {
             "type": "boolean",
             "description": "Daily digests of approaching resource deadlines — expiring certificates, domains, tokens and keys past their rotation budget."
+          },
+          "logMatchAlerts": {
+            "type": "boolean",
+            "description": "A saved log-workspace query with alerting enabled found matching log lines."
           }
         },
         "required": [
@@ -9938,7 +10184,8 @@
           "resourceDrift",
           "workflowPages",
           "providerIncidents",
-          "expiryAlerts"
+          "expiryAlerts",
+          "logMatchAlerts"
         ],
         "additionalProperties": false
       },
@@ -9964,6 +10211,9 @@
             "type": "boolean"
           },
           "expiryAlerts": {
+            "type": "boolean"
+          },
+          "logMatchAlerts": {
             "type": "boolean"
           }
         },
@@ -10002,6 +10252,9 @@
           "expiryAlerts": {
             "type": "boolean"
           },
+          "logMatchAlerts": {
+            "type": "boolean"
+          },
           "devices": {
             "type": "array",
             "items": {
@@ -10034,6 +10287,7 @@
           "workflowPages",
           "providerIncidents",
           "expiryAlerts",
+          "logMatchAlerts",
           "devices"
         ],
         "additionalProperties": false
@@ -10102,6 +10356,10 @@
             "type": "boolean",
             "description": "Daily digests of approaching resource deadlines — expiring certificates, domains, tokens and keys past their rotation budget."
           },
+          "logMatchAlerts": {
+            "type": "boolean",
+            "description": "A saved log-workspace query with alerting enabled found matching log lines."
+          },
           "weeklyDigest": {
             "type": "boolean",
             "description": "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest)."
@@ -10120,6 +10378,7 @@
           "workflowPages",
           "providerIncidents",
           "expiryAlerts",
+          "logMatchAlerts",
           "weeklyDigest"
         ],
         "additionalProperties": false
@@ -10199,6 +10458,9 @@
           "expiryAlerts": {
             "type": "boolean"
           },
+          "logMatchAlerts": {
+            "type": "boolean"
+          },
           "weeklyDigest": {
             "type": "boolean"
           }
@@ -10228,6 +10490,9 @@
             "type": "boolean"
           },
           "expiryAlerts": {
+            "type": "boolean"
+          },
+          "logMatchAlerts": {
             "type": "boolean"
           },
           "weeklyDigest": {
@@ -10276,6 +10541,10 @@
             "type": "boolean",
             "description": "Daily digests of approaching resource deadlines — expiring certificates, domains, tokens and keys past their rotation budget."
           },
+          "logMatchAlerts": {
+            "type": "boolean",
+            "description": "A saved log-workspace query with alerting enabled found matching log lines."
+          },
           "weeklyDigest": {
             "type": "boolean",
             "description": "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest)."
@@ -10292,6 +10561,7 @@
           "workflowPages",
           "providerIncidents",
           "expiryAlerts",
+          "logMatchAlerts",
           "weeklyDigest"
         ],
         "additionalProperties": false
@@ -10341,6 +10611,9 @@
           "expiryAlerts": {
             "type": "boolean"
           },
+          "logMatchAlerts": {
+            "type": "boolean"
+          },
           "weeklyDigest": {
             "type": "boolean"
           }
@@ -10373,6 +10646,9 @@
             "type": "boolean"
           },
           "expiryAlerts": {
+            "type": "boolean"
+          },
+          "logMatchAlerts": {
             "type": "boolean"
           },
           "weeklyDigest": {
@@ -19768,6 +20044,275 @@
           }
         },
         "operationId": "deleteOrgOrgIdSchedulesScheduleId",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/log-workspaces": {
+      "get": {
+        "tags": ["Log workspaces"],
+        "summary": "List saved log queries",
+        "description": "Every saved log-workspace query in the organization: its name, the set of log streams it tails, the search expression, the alert flag and the alert pass's last evaluation state. Log text itself is fetched per resource via `POST /api/org/{orgId}/resources/{pluginId}/{typeId}/logs`.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The organization's saved log queries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogWorkspaceQueryList"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdLogWorkspaces",
+        "x-required-permission": "resources:read"
+      },
+      "post": {
+        "tags": ["Log workspaces"],
+        "summary": "Save a log workspace query",
+        "description": "Save a named multi-resource tail: up to 8 log streams plus a search expression, so the workspace can be reopened. With `alertEnabled` the poller evaluates the query every few minutes over a bounded tail window and notifies (push/Slack/Teams, `logMatchAlerts` trigger) when a line matches, with a cooldown between alerts. Alerting requires a non-empty search expression. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogWorkspaceQueryCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created saved query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogWorkspaceQuery"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A saved query with this name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogWorkspaceQueryConflict"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdLogWorkspaces",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/log-workspaces/resources": {
+      "get": {
+        "tags": ["Log workspaces"],
+        "summary": "List log-capable resources",
+        "description": "Synced resources whose rendered detail declares the logs capability — the candidates a log workspace can tail. Discovered from the plugin contract (never a hardcoded provider list), capped at 500 results.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resources whose plugin can fetch logs for them",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogCapableResourceList"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdLogWorkspacesResources",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/log-workspaces/{queryId}": {
+      "put": {
+        "tags": ["Log workspaces"],
+        "summary": "Update a saved log query",
+        "description": "Edit the name, resource set, search expression and/or the alert toggle. Changing the search or the resources resets the alert pass's evaluation state; turning the alert on makes the query due for evaluation immediately. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "queryId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogWorkspaceQueryUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated saved query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogWorkspaceQuery"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A saved query with this name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogWorkspaceQueryUpdateConflict"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdLogWorkspacesQueryId",
+        "x-required-permission": "resources:write"
+      },
+      "delete": {
+        "tags": ["Log workspaces"],
+        "summary": "Delete a saved log query",
+        "description": "Remove the saved query and stop any alerting it carried. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "queryId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdLogWorkspacesQueryId",
         "x-required-permission": "resources:write"
       }
     },

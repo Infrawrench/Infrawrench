@@ -449,6 +449,13 @@
       "when": 1785770138312,
       "tag": "0063_tricky_guardian",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1785770446280,
+      "tag": "0064_real_human_torch",
+      "breakpoints": true
     }
   ]
 }

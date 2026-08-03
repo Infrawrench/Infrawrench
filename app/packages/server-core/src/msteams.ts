@@ -167,6 +167,7 @@ export async function addMsTeamsWebhook(
   const workflowPages = args.workflowPages ?? true;
   const providerIncidents = args.providerIncidents ?? true;
   const expiryAlerts = args.expiryAlerts ?? true;
+  const logMatchAlerts = args.logMatchAlerts ?? true;
   const weeklyDigest = args.weeklyDigest ?? true;
   const now = new Date();
 
@@ -188,6 +189,7 @@ export async function addMsTeamsWebhook(
       workflowPages,
       providerIncidents,
       expiryAlerts,
+      logMatchAlerts,
       weeklyDigest,
       createdByUserId: userId,
     })
@@ -208,6 +210,7 @@ export async function addMsTeamsWebhook(
         workflowPages,
         providerIncidents,
         expiryAlerts,
+        logMatchAlerts,
         weeklyDigest,
         updatedAt: now,
       },
@@ -230,6 +233,7 @@ function toRecord(row: typeof msteamsWebhooks.$inferSelect): MsTeamsWebhookRecor
     workflowPages: row.workflowPages,
     providerIncidents: row.providerIncidents,
     expiryAlerts: row.expiryAlerts,
+    logMatchAlerts: row.logMatchAlerts,
     weeklyDigest: row.weeklyDigest,
   };
 }
@@ -398,6 +402,7 @@ const TRIGGER_COLUMN = {
   workflowPages: msteamsWebhooks.workflowPages,
   providerIncidents: msteamsWebhooks.providerIncidents,
   expiryAlerts: msteamsWebhooks.expiryAlerts,
+  logMatchAlerts: msteamsWebhooks.logMatchAlerts,
   weeklyDigest: msteamsWebhooks.weeklyDigest,
 } as const;
 

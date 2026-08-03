@@ -44,6 +44,7 @@ async function resolveTargets(
     workflowPages: pushPreferences.workflowPages,
     providerIncidents: pushPreferences.providerIncidents,
     expiryAlerts: pushPreferences.expiryAlerts,
+    logMatchAlerts: pushPreferences.logMatchAlerts,
   }[trigger];
   return db
     .select({ id: pushDevices.id, expoPushToken: pushDevices.expoPushToken })

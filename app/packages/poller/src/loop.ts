@@ -8,6 +8,7 @@ import { runWeeklyDigests } from "@infrawrench/server-core/digest/weekly";
 import { runStatusFeedCollection } from "@infrawrench/server-core/status/collect";
 import { runExpiryAlerts } from "@infrawrench/server-core/expiry/alerts";
 import { runSchedulePass } from "@infrawrench/server-core/schedules/pass";
+import { runLogAlertPass } from "@infrawrench/server-core/log-workspaces/pass";
 import {
   pruneResourceChanges,
   CHANGE_RETENTION_INTERVAL_MS,
@@ -120,6 +121,13 @@ export class PollerLoop extends TickLoop {
     // doubles as the lease) and executes the plugin's declared lifecycle
     // action; idempotency keys make restarts safe. Defensive like the others.
     await this.tickSchedules();
+
+    // Ninth pass: log-match alerts. Claims due alert-enabled saved log
+    // queries with the same lease protocol (`log_workspace_queries.
+    // next_eval_at` doubles as the lease), fetches a bounded tail per stream
+    // through the plugin `getLogs` contract and notifies on match, with a
+    // per-query cooldown. Defensive like the others.
+    await this.tickLogAlerts();
   }
 
   private async runOne(row: PollAccountRow): Promise<void> {
@@ -185,6 +193,15 @@ export class PollerLoop extends TickLoop {
       await runSchedulePass({ limit: 4 });
     } catch (e) {
       console.error("[poller] schedule tick failed:", e);
+    }
+  }
+
+  /** Evaluate any alert-enabled saved log queries that have come due. */
+  private async tickLogAlerts(): Promise<void> {
+    try {
+      await runLogAlertPass({ limit: 4 });
+    } catch (e) {
+      console.error("[poller] log alert tick failed:", e);
     }
   }
 

@@ -24,6 +24,8 @@ import { createDesktopOrphansClient } from "@/lib/orphans-client";
 import { createDesktopRightsizingClient } from "@/lib/rightsizing-client";
 import { createDesktopAgentClient } from "@/lib/agent-client";
 import { createDesktopDeploymentClient } from "@/lib/cloud-deployments";
+import { createDesktopLogWorkspaceClient } from "@/lib/log-workspace-client";
+import { LogWorkspacePanel, type LogWorkspaceClient } from "@infrawrench/ui";
 import { CloudChatPanel } from "@/components/CloudChatPanel";
 import { DesktopWorkflowsPanel } from "@/components/DesktopWorkflowsPanel";
 import { DesktopGraphPanel } from "@/components/DesktopGraphPanel";
@@ -65,6 +67,19 @@ let rightsizingClient: RightsizingClient | null = null;
 function getRightsizingClient(): RightsizingClient {
   if (!rightsizingClient) rightsizingClient = createDesktopRightsizingClient();
   return rightsizingClient;
+}
+
+// Keyed by mode (org id or "local") — cloud and local clients differ in both
+// transports and saved-query availability, and the panel remounts on switch.
+const logWorkspaceClients = new Map<string, LogWorkspaceClient>();
+function getLogWorkspaceClient(activeCloudOrgId: string | null): LogWorkspaceClient {
+  const key = activeCloudOrgId ?? "local";
+  let client = logWorkspaceClients.get(key);
+  if (!client) {
+    client = createDesktopLogWorkspaceClient(activeCloudOrgId);
+    logWorkspaceClients.set(key, client);
+  }
+  return client;
 }
 
 // Desktop-side glue between WorkspaceTabsViewport (in @infrawrench/ui) and the
@@ -194,6 +209,27 @@ function renderPanel(
             void navigate(
               getWorkspaceNavigateArgs(
                 resourceTabTarget(node.accountId, node.id, node.pluginId, node.resourceTypeId),
+              ),
+            )
+          }
+        />
+      );
+    case "logs":
+      return (
+        <LogWorkspacePanel
+          // Keyed by mode so switching org (or dropping to local) remounts
+          // and re-discovers streams rather than tailing the previous set.
+          key={activeCloudOrgId ?? "local"}
+          client={getLogWorkspaceClient(activeCloudOrgId)}
+          onOpenResource={(selector) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  selector.accountId,
+                  selector.resourceId,
+                  selector.pluginId,
+                  selector.resourceTypeId,
+                ),
               ),
             )
           }

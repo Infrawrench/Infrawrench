@@ -219,6 +219,10 @@ export function pushDataToPath(data: MobilePushData): string {
       const target = data as { orgId?: string; organizationId?: string };
       return `/org/${target.orgId ?? target.organizationId}/expiring`;
     }
+    // A log-match alert names the saved query that fired; open its viewer so
+    // the matching lines are one refresh away.
+    case "log_match":
+      return `/org/${data.orgId}/log-workspaces/${data.queryId}`;
     case "test":
       return `/org/${data.orgId}`;
     default:
@@ -349,6 +353,12 @@ export function parsePushData(raw: unknown): MobilePushData | null {
         return null;
       }
       return { type: "provider_incident", orgId, pluginId, incidentId, affectedResourceCount };
+    }
+    case "log_match": {
+      const queryId = data["queryId"];
+      const matchCount = data["matchCount"];
+      if (typeof queryId !== "string" || typeof matchCount !== "number") return null;
+      return { type: "log_match", orgId, queryId, matchCount };
     }
     case "test":
       return { type: "test", orgId };
