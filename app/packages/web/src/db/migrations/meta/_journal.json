@@ -428,6 +428,13 @@
       "when": 1785747797516,
       "tag": "0060_bumpy_famine",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1785768502073,
+      "tag": "0061_fluffy_doctor_octopus",
+      "breakpoints": true
     }
   ]
 }

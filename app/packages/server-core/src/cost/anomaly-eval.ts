@@ -54,6 +54,7 @@ import {
   optionsForCurrency,
   type AnomalyDetectionOptions,
 } from "./anomaly-detect";
+import { buildAnomalyHints } from "./anomaly-hints";
 import {
   anomalyOptionsFor,
   getOrgAnomalySettings,
@@ -392,6 +393,28 @@ export async function detectCostAnomaliesForOrg(
 
     for (const anomaly of pending) {
       try {
+        // Root-cause hints: what the change timeline and audit log say
+        // happened in the anomaly's window. Computed before the cooldown
+        // check on purpose — a suppressed anomaly still renders in the list
+        // UI and should carry its hints there. Stored on the row so clients
+        // read them without re-running the window queries; failures degrade
+        // to an un-annotated alert (`buildAnomalyHints` never throws, but the
+        // store is guarded too — hints must never cost a delivery).
+        let hints: string[] = [];
+        try {
+          hints = await buildAnomalyHints(organizationId, {
+            day: anomaly.day,
+            dimension: anomaly.dimension,
+            dimensionKey: anomaly.dimensionKey,
+          });
+          if (hints.length > 0) {
+            await db.update(costAnomalies).set({ hints }).where(eq(costAnomalies.id, anomaly.id));
+          }
+        } catch (err) {
+          console.error(`[anomaly-eval] hint build failed for anomaly ${anomaly.id}:`, err);
+          hints = [];
+        }
+
         if (await inCooldown(organizationId, anomaly)) continue;
 
         const label = dimension === "provider" ? "provider" : "service";
@@ -412,9 +435,16 @@ export async function detectCostAnomaliesForOrg(
               `${formatAmount(anomaly.mean, anomaly.currency)}/day baseline over the prior ${BASELINE_DAYS} days`;
         const context = `${anomaly.day} · ${label}${anomaly.kind === "new_source" ? " · new" : ""}`;
 
+        // Slack and Teams have room for the full list; a push notification is
+        // one or two lines on a lock screen, so it carries only the top hint.
+        // The batched SMS carries none — its 320-character budget is already
+        // spent naming the anomalies themselves (`anomaly-sms.ts`).
+        const hintedBody = hints.length > 0 ? `${body}\n\nAround then: ${hints.join("; ")}.` : body;
+        const pushBody = hints.length > 0 ? `${body}\nLikely related: ${hints[0]}.` : body;
+
         const pushed = await sendPushToOrg(organizationId, "anomalyAlerts", {
           title,
-          body,
+          body: pushBody,
           data: {
             type: "cost_anomaly",
             orgId: organizationId,
@@ -427,13 +457,13 @@ export async function detectCostAnomaliesForOrg(
         const url = costsUrl(organizationId);
         const slacked = await sendSlackToOrg(organizationId, "anomalyAlerts", {
           title,
-          body,
+          body: hintedBody,
           context,
           ...(url ? { url } : {}),
         });
         const teamed = await sendMsTeamsToOrg(organizationId, "anomalyAlerts", {
           title,
-          body,
+          body: hintedBody,
           context,
           ...(url ? { url } : {}),
         });

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.29.0",
+    "version": "0.30.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -2517,6 +2517,13 @@
             "type": ["string", "null"],
             "format": "date-time",
             "description": "When the anomaly was delivered to a notification channel; null when delivery failed or a recent anomaly for the same key suppressed it."
+          },
+          "hints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Root-cause hints computed when the anomaly fired: human-readable facts from the change timeline and audit log for the anomalous day and the day before (e.g. \"12 gce-instance resources appeared\", a workflow run, a lifted change freeze), ranked by likely relevance and capped at three. Empty when nothing notable happened in the window or the anomaly predates hint collection."
           }
         },
         "required": [
@@ -2530,7 +2537,8 @@
           "baselineCents",
           "thresholdCents",
           "detectedAt",
-          "notifiedAt"
+          "notifiedAt",
+          "hints"
         ],
         "additionalProperties": false
       },

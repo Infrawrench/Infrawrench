@@ -114,6 +114,36 @@ morning in between would be noise:
   stays eligible to be sent for as long as its day is still in the evaluation window. Connect
   Slack, Teams, or mobile push and the next collection pass delivers what is still pending.
 
+## Root-cause hints
+
+An anomaly tells you spend went up; the hints try to tell you why. When an anomaly fires,
+Infrawrench looks at what else it already knows about the same window — the
+[change timeline](./change-timeline.md) and the [audit log](../team-and-billing/audit-log.md)
+for the anomalous day and the day before — and attaches up to three short facts, ranked by how
+likely they are to explain a bill:
+
+- **Resources that appeared, changed, or disappeared**, aggregated by type — "12 gce-instance
+  resources appeared". For a provider anomaly only that provider's resources are considered; a
+  service anomaly can't be pinned to one provider generically, so it reads org-wide.
+- **Audited actions that plausibly cost money**, with the actor's name where one is recorded —
+  a workflow run ("Astrid ran workflow \"Nightly rebuild\""), a change freeze lifted or
+  overridden, a deployment, resources created from Infrawrench, a sleep/wake schedule change.
+  Actions performed with an API key are attributed to "an API key".
+
+The hints appear in the Slack message and Teams card body, as a single "likely related" line on
+the push notification, and under each row in the Anomalies list on web, desktop, and mobile.
+SMS texts never carry them — the text's length budget is already spent naming the anomalies
+themselves. Hints are computed once, when the anomaly is first detected, so an anomaly found
+before a related change landed in the timeline is not re-annotated later.
+
+They are hints, not verdicts: the queries find correlation in time, scoped to your org (and
+provider where possible), and an empty list just means nothing notable was recorded in that
+window.
+
+<insert [Costs panel Anomalies list showing a spike row with two root-cause hints beneath it — a "12 gce-instance resources appeared" line and a workflow-run line with the actor's name] here>
+
+<insert [Slack anomaly alert message whose body ends with an "Around then:" line listing the same root-cause hints] here>
+
 ## Where anomalies appear
 
 The Costs panel (web and desktop) has an **Anomalies** section listing the last 30 days:
@@ -215,6 +245,10 @@ The endpoint requires the `costs:read` permission and returns up to 200 anomalie
 requested window (1–90 days), newest first. Each row carries a `kind` of `spike` or
 `new_source`; rows detected before new-source detection existed read as `spike`. For a
 `new_source`, `baselineCents` is zero or near it — do not compute a percentage change from it.
+Each row also carries `hints` — the [root-cause hints](#root-cause-hints) computed when the
+anomaly fired, as an array of up to three strings, empty when nothing notable happened in the
+window or the row predates hint collection. The CLI's `costs --anomalies --json` output
+includes the same field.
 
 The thresholds are readable and writable too:
 

@@ -535,6 +535,15 @@ export const costAnomalies = pgTable(
     thresholdAmountCents: integer("threshold_amount_cents").notNull(),
     detectedAt: timestamp("detected_at").notNull().defaultNow(),
     notifiedAt: timestamp("notified_at"),
+    /**
+     * Root-cause hints computed when the anomaly first fired: a small ranked
+     * list of human-readable facts from the change timeline and audit log for
+     * the anomalous day and the day before ("12 gce-instance resources
+     * appeared", "Astrid ran workflow \"Nightly rebuild\"") — see
+     * `cost/anomaly-hints.ts`. Null for rows written before hints existed and
+     * for passes where the hint queries failed; capped at three entries.
+     */
+    hints: jsonb("hints").$type<string[]>(),
   },
   (t) => ({
     onceUnique: uniqueIndex("cost_anomalies_once_unique").on(

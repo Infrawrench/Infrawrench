@@ -119,6 +119,7 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
               {anomalies.map((a) => {
                 const delta = costAnomalyDeltaPercent(a);
                 const isNew = a.kind === "new_source";
+                const hints = a.hints ?? [];
                 return (
                   <tr key={a.id} className="text-on-surface-secondary">
                     <td className="whitespace-nowrap px-3 py-2">{formatDay(a.day)}</td>
@@ -131,6 +132,13 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                         <span className="ml-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-500">
                           New source
                         </span>
+                      )}
+                      {hints.length > 0 && (
+                        <ul className="mt-1 space-y-0.5 text-xs text-on-surface-faint">
+                          {hints.map((hint) => (
+                            <li key={hint}>· {hint}</li>
+                          ))}
+                        </ul>
                       )}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-right font-medium text-on-surface">

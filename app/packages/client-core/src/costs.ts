@@ -324,6 +324,15 @@ export interface CostAnomaly {
   detectedAt: string;
   /** Null when delivery failed or the cooldown suppressed the notification. */
   notifiedAt: string | null;
+  /**
+   * Root-cause hints computed when the anomaly fired — what the change
+   * timeline and audit log say happened in the anomaly's window ("12
+   * gce-instance resources appeared", "Astrid ran workflow \"Nightly
+   * rebuild\""), ranked, at most three. Empty for anomalies detected before
+   * hints existed. Optional so a client a release ahead of its server still
+   * renders the row.
+   */
+  hints?: string[];
 }
 
 export const COST_ANOMALY_DIMENSION_LABELS: Record<CostAnomalyDimension, string> = {

@@ -79,6 +79,8 @@ function formatDay(day: string): string {
 function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
   const isNew = anomaly.kind === "new_source";
   const delta = costAnomalyDeltaPercent(anomaly);
+  // Optional on the wire — an app a release ahead of its server still renders.
+  const hints = anomaly.hints ?? [];
 
   return (
     <View style={styles.row}>
@@ -101,6 +103,11 @@ function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
             ? "No prior spend in the trailing 28 days"
             : `Baseline ${formatMoney(anomaly.baselineCents / 100, anomaly.currency)}/day`}
         </Text>
+        {hints.map((hint) => (
+          <Text key={hint} style={styles.hint} numberOfLines={2}>
+            · {hint}
+          </Text>
+        ))}
       </View>
       <View style={styles.rowAmount}>
         <Text style={styles.amount}>
@@ -122,6 +129,7 @@ const styles = StyleSheet.create({
   title: { color: colors.text, fontSize: 15, fontWeight: "500", flexShrink: 1 },
   subtitle: { color: colors.textMuted, fontSize: 12 },
   baseline: { color: colors.textFaint, fontSize: 11 },
+  hint: { color: colors.textFaint, fontSize: 11 },
   amount: { color: colors.text, fontSize: 15, fontWeight: "600" },
   delta: { fontSize: 12, fontWeight: "500" },
   badge: {

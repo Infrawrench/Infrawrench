@@ -74,6 +74,27 @@ describe("CostAnomaliesSection", () => {
     expect(screen.queryByText(/%/)).toBeNull();
   });
 
+  it("renders root-cause hints under the anomaly, when the server sent any", async () => {
+    render(
+      <CostAnomaliesSection
+        client={makeClient([
+          anomaly({
+            hints: ["12 gce-instance resources appeared", 'Astrid ran workflow "Nightly rebuild"'],
+          }),
+        ])}
+      />,
+    );
+    expect(await screen.findByText(/12 gce-instance resources appeared/)).toBeTruthy();
+    expect(screen.getByText(/ran workflow "Nightly rebuild"/)).toBeTruthy();
+  });
+
+  it("renders a row from an older server that sent no hints field at all", async () => {
+    // `hints` is optional on the wire — a desktop build a release ahead of its
+    // cloud server must not crash the section.
+    render(<CostAnomaliesSection client={makeClient([anomaly()])} />);
+    expect(await screen.findByText("+173%")).toBeTruthy();
+  });
+
   it("hides the tuning controls when the host can't read settings", async () => {
     render(<CostAnomaliesSection client={makeClient([anomaly()])} />);
     await screen.findByText("+173%");
