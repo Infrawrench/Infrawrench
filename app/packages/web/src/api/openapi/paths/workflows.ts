@@ -47,7 +47,7 @@ const WorkflowSchedule = strict({
 }).openapi("WorkflowSchedule");
 
 const WorkflowScheduleResponse = strict({
-  schedule: WorkflowSchedule.nullable().openapi({
+  schedule: z.union([WorkflowSchedule, z.null()]).openapi({
     description: "Null when the workflow's trigger is not cron.",
   }),
 }).openapi("WorkflowScheduleResponse");

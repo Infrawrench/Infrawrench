@@ -3485,7 +3485,7 @@
         "additionalProperties": false
       },
       "WorkflowSchedule": {
-        "type": ["object", "null"],
+        "type": "object",
         "properties": {
           "expression": {
             "type": "string",
@@ -3525,14 +3525,24 @@
           }
         },
         "required": ["expression", "timezone", "enabled", "lastRunAt", "nextRunAt", "nextRuns"],
-        "additionalProperties": false,
-        "description": "Null when the workflow's trigger is not cron."
+        "additionalProperties": false
       },
       "WorkflowScheduleResponse": {
         "type": "object",
         "properties": {
           "schedule": {
-            "$ref": "#/components/schemas/WorkflowSchedule"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowSchedule"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when the workflow's trigger is not cron."
           }
         },
         "required": ["schedule"],

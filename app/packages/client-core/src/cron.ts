@@ -200,22 +200,39 @@ export function isValidCronTimezone(timezone: string): boolean {
 
 const formatterCache = new Map<string, Intl.DateTimeFormat>();
 
+/**
+ * Cap on distinct cached zone spellings. `Intl` accepts case variants, aliases,
+ * and offset strings, so one real zone has many spellings and the keys come
+ * from user-supplied trigger timezones — an unbounded map would be a slow leak
+ * in the long-lived poller and web processes. Well past the ~350 real IANA
+ * names, so a legitimate deployment never clears.
+ */
+const MAX_FORMATTERS = 256;
+
 function formatterFor(zone: string): Intl.DateTimeFormat {
-  let dtf = formatterCache.get(zone);
-  if (!dtf) {
-    dtf = new Intl.DateTimeFormat("en-US", {
-      timeZone: zone,
-      hourCycle: "h23",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-    formatterCache.set(zone, dtf);
-  }
-  return dtf;
+  const hit = formatterCache.get(zone);
+  if (hit) return hit;
+
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: zone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  // Variants of one zone resolve to a single canonical name — share one
+  // formatter across all of them rather than building a heavy `Intl` object per
+  // spelling.
+  const canonical = dtf.resolvedOptions().timeZone;
+  const shared = formatterCache.get(canonical) ?? dtf;
+
+  if (formatterCache.size >= MAX_FORMATTERS) formatterCache.clear();
+  formatterCache.set(canonical, shared);
+  formatterCache.set(zone, shared);
+  return shared;
 }
 
 interface WallParts {

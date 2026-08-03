@@ -194,3 +194,25 @@ describe("isValidCronTimezone", () => {
     expect(isValidCronTimezone("")).toBe(false);
   });
 });
+
+describe("timezone formatter cache", () => {
+  it("gives case variants of one zone the same wall time", () => {
+    const from = utc("2026-07-31T12:00:00Z");
+    const canonical = nextCronOccurrence("30 14 * * *", { from, timezone: "Europe/London" });
+    for (const variant of ["europe/london", "EUROPE/LONDON", "Europe/LONDON"]) {
+      expect(nextCronOccurrence("30 14 * * *", { from, timezone: variant })).toEqual(canonical);
+    }
+  });
+
+  it("stays correct after many distinct spellings evict the cache", () => {
+    const from = utc("2026-07-31T12:00:00Z");
+    const expected = nextCronOccurrence("30 14 * * *", { from, timezone: "Europe/London" });
+    // Push well past MAX_FORMATTERS so at least one clear() happens.
+    for (let i = 0; i < 300; i++) {
+      nextCronOccurrence("30 14 * * *", { from, timezone: i % 2 ? "UTC" : "America/New_York" });
+      expect(nextCronOccurrence("30 14 * * *", { from, timezone: "Europe/London" })).toEqual(
+        expected,
+      );
+    }
+  });
+});

@@ -117,6 +117,16 @@ app.put("/:id/schedule", async (c) => {
   if (!body || typeof body.expression !== "string") {
     return c.json({ error: "Body must be JSON with an `expression` string." }, 400);
   }
+  // The cast above is a compile-time convenience, not a check — validate the
+  // optional fields too, or a non-boolean `enabled` reaches the column while
+  // `computeSchedule` reads it as truthy (a disabled workflow with a live
+  // `next_run_at`).
+  if (body.enabled !== undefined && typeof body.enabled !== "boolean") {
+    return c.json({ error: "`enabled` must be a boolean." }, 400);
+  }
+  if (body.timezone !== undefined && body.timezone !== null && typeof body.timezone !== "string") {
+    return c.json({ error: "`timezone` must be a string or null." }, 400);
+  }
   try {
     const wf = await setWorkflowSchedule(orgId(c), c.req.param("id"), body);
     return c.json({ schedule: workflowScheduleView(wf) });
