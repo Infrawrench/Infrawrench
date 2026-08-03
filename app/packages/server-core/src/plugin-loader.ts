@@ -1,5 +1,5 @@
 import type { Plugin } from "@infrawrench/plugin-base";
-import { pluginManifestSchema } from "@infrawrench/plugin-base";
+import { pluginManifestSchema, validatePreflightContract } from "@infrawrench/plugin-base";
 
 // Static imports — keep plugin registration eager so esbuild bundles them all
 import { plugin as awsPlugin } from "@infrawrench/plugin-aws";
@@ -121,6 +121,13 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
       console.error(
         `[plugin-loader] Invalid manifest for "${plugin.manifest?.id ?? "unknown"}":`,
         result.error.flatten(),
+      );
+      continue;
+    }
+    const contractProblem = validatePreflightContract(plugin);
+    if (contractProblem) {
+      console.error(
+        `[plugin-loader] Invalid preflight contract for "${plugin.manifest.id}": ${contractProblem}`,
       );
       continue;
     }

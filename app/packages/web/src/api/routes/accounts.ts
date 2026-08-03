@@ -65,8 +65,14 @@ app.get("/plugins/:pluginId/policy-template", async (c) => {
   const requested = raw
     .split(",")
     .map((s) => s.trim())
-    .filter((s) => declaredIds.includes(s));
-  const capabilityIds = requested.length > 0 ? requested : declaredIds;
+    .filter((s) => s.length > 0);
+  // A typo'd capability id must not silently widen the template to
+  // everything — that's the opposite of least privilege.
+  const unknown = requested.filter((s) => !declaredIds.includes(s));
+  if (unknown.length > 0) {
+    return c.json({ error: `Unknown capability ids: ${unknown.join(", ")}` }, 400);
+  }
+  const capabilityIds = requested.length > 0 ? Array.from(new Set(requested)) : declaredIds;
   return c.json({ template: loaded.plugin.policyTemplate(capabilityIds) });
 });
 

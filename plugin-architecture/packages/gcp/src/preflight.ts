@@ -88,31 +88,52 @@ const BILLING_EXPORT_HELP_LINK = {
  */
 const TEMPLATE_PERMISSIONS: Record<string, string[]> = {
   resources: [
+    "aiplatform.endpoints.list",
+    "alloydb.clusters.list",
+    "alloydb.instances.list",
+    "appengine.services.list",
     "artifactregistry.repositories.list",
     "bigquery.datasets.get",
     "bigquery.tables.list",
     "bigtable.instances.list",
+    // ListBuildTriggers checks cloudbuild.builds.list — there is no separate
+    // triggers.list permission.
+    "cloudbuild.builds.list",
+    "clouddeploy.deliveryPipelines.list",
     "cloudfunctions.functions.list",
+    "cloudkms.cryptoKeys.list",
+    "cloudkms.keyRings.list",
+    // The KMS lister fans out via ListLocations, which checks this.
+    "cloudkms.locations.list",
+    // Scheduler/Tasks listers also fan out via their ListLocations calls.
     "cloudscheduler.jobs.list",
+    "cloudscheduler.locations.list",
     "cloudsql.instances.list",
+    "cloudtasks.locations.list",
     "cloudtasks.queues.list",
+    "composer.environments.list",
     "compute.addresses.list",
     "compute.backendServices.list",
     "compute.disks.list",
     "compute.firewalls.list",
     "compute.forwardingRules.list",
     "compute.healthChecks.list",
-    "compute.instanceGroups.list",
+    // The instance-group lister reads aggregated instanceGroupManagers.
+    "compute.instanceGroupManagers.list",
     "compute.instanceTemplates.list",
     "compute.instances.list",
     "compute.networks.list",
     "compute.routers.list",
+    "compute.securityPolicies.list",
     "compute.sslCertificates.list",
     "compute.subnetworks.list",
     "container.clusters.list",
+    "dataflow.jobs.list",
     "datastore.databases.list",
     "dns.managedZones.list",
     "dns.resourceRecordSets.list",
+    "file.instances.list",
+    "iam.serviceAccounts.list",
     "logging.sinks.list",
     "memcache.instances.list",
     "monitoring.alertPolicies.list",
@@ -236,10 +257,13 @@ export async function runGcpPreflight(
   if (!billingExportTable) {
     const idx = checks.findIndex((c) => c.capabilityId === "costs");
     if (idx !== -1) {
+      // Both failure states matter: keep any IAM permissions the probe already
+      // found missing and add the setup-step message on top.
+      const prior = checks[idx]!;
       checks[idx] = {
         capabilityId: "costs",
         status: "missing",
-        missingPermissions: [],
+        missingPermissions: prior.status === "missing" ? prior.missingPermissions : [],
         message:
           'The "Billing export table" field is blank. Enable the Cloud Billing "standard usage cost" export to BigQuery and enter the table as project.dataset.table.',
         helpLink: BILLING_EXPORT_HELP_LINK,

@@ -546,10 +546,56 @@ describe("Account routes", () => {
       });
 
       const app = buildApp();
-      const res = await app.request("/plugins/aws/policy-template?capabilities=resources,bogus");
+      const res = await app.request("/plugins/aws/policy-template?capabilities=resources");
       expect(res.status).toBe(200);
       expect((await res.json()).template.formatLabel).toBe("AWS IAM policy (JSON)");
-      // Unknown capability ids are filtered before reaching the plugin.
+      expect(policyTemplate).toHaveBeenCalledWith(["resources"]);
+    });
+
+    it("400s naming the unknown capability ids instead of widening the template", async () => {
+      const policyTemplate = vi.fn();
+      mockGetPlugin.mockResolvedValue({
+        plugin: { manifest: preflightManifest, policyTemplate },
+      });
+
+      const app = buildApp();
+      const res = await app.request("/plugins/aws/policy-template?capabilities=resources,bogus");
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain("bogus");
+      expect(policyTemplate).not.toHaveBeenCalled();
+    });
+
+    it("deduplicates repeated capability ids before calling the plugin", async () => {
+      const policyTemplate = vi.fn().mockReturnValue({
+        formatLabel: "AWS IAM policy (JSON)",
+        language: "json",
+        document: "{}",
+      });
+      mockGetPlugin.mockResolvedValue({
+        plugin: { manifest: preflightManifest, policyTemplate },
+      });
+
+      const app = buildApp();
+      const res = await app.request(
+        "/plugins/aws/policy-template?capabilities=resources,%20resources",
+      );
+      expect(res.status).toBe(200);
+      expect(policyTemplate).toHaveBeenCalledWith(["resources"]);
+    });
+
+    it("treats an empty capabilities query as select-all", async () => {
+      const policyTemplate = vi.fn().mockReturnValue({
+        formatLabel: "AWS IAM policy (JSON)",
+        language: "json",
+        document: "{}",
+      });
+      mockGetPlugin.mockResolvedValue({
+        plugin: { manifest: preflightManifest, policyTemplate },
+      });
+
+      const app = buildApp();
+      const res = await app.request("/plugins/aws/policy-template?capabilities=");
+      expect(res.status).toBe(200);
       expect(policyTemplate).toHaveBeenCalledWith(["resources"]);
     });
 

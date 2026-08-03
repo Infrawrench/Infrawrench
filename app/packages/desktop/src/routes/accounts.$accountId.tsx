@@ -93,6 +93,10 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
   const [preflightDeclaration, setPreflightDeclaration] = useState<
     import("@infrawrench/client-core").PreflightDeclaration | null
   >(null);
+  // Whether the account's plugin declares preflight at all — set by the load
+  // effects (which already resolve the plugin) and gates the
+  // "Check credentials" button so it never renders for unsupported plugins.
+  const [preflightSupported, setPreflightSupported] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(account?.display_name ?? "");
   const [isSaving, setIsSaving] = useState(false);
@@ -361,6 +365,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           // detail only returns ids and labels.
           const loaded = await getPlugin(detail.account.pluginId);
           const allTypes: ResourceTypeDefinition[] = loaded?.plugin.resourceTypes ?? [];
+          if (!cancelled) setPreflightSupported(Boolean(loaded?.plugin.manifest.preflight));
 
           const kcTypes = new Set<string>();
           for (const rt of allTypes) {
@@ -449,6 +454,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         const loaded = await getPlugin(row.plugin_id);
         if (!loaded) throw new Error(`Plugin "${row.plugin_id}" not loaded`);
         const { plugin } = loaded;
+        if (!cancelled) setPreflightSupported(Boolean(plugin.manifest.preflight));
         const services = buildPluginHostServices(plugin.manifest, credentials);
         const client = plugin.createClient(credentials, services);
         const allTypes = plugin.resourceTypes;
@@ -840,13 +846,15 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
               >
                 Update credentials
               </button>
-              <button
-                type="button"
-                onClick={() => void openPreflight()}
-                className="text-xs text-on-surface-faint hover:text-on-surface transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
-              >
-                Check credentials
-              </button>
+              {preflightSupported && (
+                <button
+                  type="button"
+                  onClick={() => void openPreflight()}
+                  className="text-xs text-on-surface-faint hover:text-on-surface transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
+                >
+                  Check credentials
+                </button>
+              )}
             </>
           )}
           <button

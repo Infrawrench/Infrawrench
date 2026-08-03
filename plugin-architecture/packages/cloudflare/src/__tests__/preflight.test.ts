@@ -145,6 +145,64 @@ describe("runCloudflarePreflight", () => {
     }
   });
 
+  it("marks resources unknown (not ok) when a probe fails without an auth error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      stubFetch({
+        "/user/tokens/verify": { status: 200, body: okEnvelope({ id: "tok1", status: "active" }) },
+        "/zones?per_page=1": {
+          status: 500,
+          body: { success: false, result: null, errors: [{ code: 1, message: "server error" }] },
+        },
+        "/accounts?per_page=1": { status: 200, body: okEnvelope([{ id: "acc1" }]) },
+        "/graphql": { status: 200, body: { data: { viewer: { budget: 100 } } } },
+        "/billable-usage/info": { status: 200, body: okEnvelope({ covered: true }) },
+      }),
+    );
+    const result = await runCloudflarePreflight("t");
+    const resources = result.checks.find((c) => c.capabilityId === "resources")!;
+    expect(resources.status).toBe("unknown");
+    expect(resources.status === "unknown" && resources.message).toContain("server error");
+  });
+
+  it("prefers missing over unknown when one resource probe is denied and the other errors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      stubFetch({
+        "/user/tokens/verify": { status: 200, body: okEnvelope({ id: "tok1", status: "active" }) },
+        "/zones?per_page=1": { status: 403, body: authFail },
+        "/accounts?per_page=1": { status: 500, body: { success: false, errors: [] } },
+        "/graphql": { status: 200, body: { data: { viewer: { budget: 100 } } } },
+      }),
+    );
+    const result = await runCloudflarePreflight("t");
+    const resources = result.checks.find((c) => c.capabilityId === "resources")!;
+    expect(resources.status).toBe("missing");
+    expect(resources.status === "missing" && resources.missingPermissions.map((p) => p.id)).toEqual(
+      ["Zone Read"],
+    );
+  });
+
+  it("marks metrics unknown on a non-auth GraphQL failure instead of missing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      stubFetch({
+        "/user/tokens/verify": { status: 200, body: okEnvelope({ id: "tok1", status: "active" }) },
+        "/zones?per_page=1": { status: 200, body: okEnvelope([]) },
+        "/accounts?per_page=1": { status: 200, body: okEnvelope([{ id: "acc1" }]) },
+        "/graphql": {
+          status: 200,
+          body: { data: null, errors: [{ message: "internal server error" }] },
+        },
+        "/billable-usage/info": { status: 200, body: okEnvelope({ covered: true }) },
+      }),
+    );
+    const result = await runCloudflarePreflight("t");
+    const metrics = result.checks.find((c) => c.capabilityId === "metrics")!;
+    expect(metrics.status).toBe("unknown");
+    expect(metrics.status === "unknown" && metrics.message).toContain("internal server error");
+  });
+
   it("marks costs unknown when no account id could be resolved", async () => {
     vi.stubGlobal(
       "fetch",

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   buildPreflightChecklist,
   defaultTemplateCapabilityIds,
@@ -129,17 +129,23 @@ export function CredentialPreflightPanel({
     }
   }
 
+  // Rapidly toggling capability checkboxes fires overlapping generate calls;
+  // only the newest request may write the template (or its error) back.
+  const generateSeq = useRef(0);
+
   async function generate(ids: string[]) {
     if (!fetchPolicyTemplate) return;
+    const seq = ++generateSeq.current;
     setGenerating(true);
     setGeneratorError(null);
     setCopied(false);
     try {
-      setTemplate(await fetchPolicyTemplate(ids));
+      const next = await fetchPolicyTemplate(ids);
+      if (seq === generateSeq.current) setTemplate(next);
     } catch (e) {
-      setGeneratorError(formatErrorMessage(e));
+      if (seq === generateSeq.current) setGeneratorError(formatErrorMessage(e));
     } finally {
-      setGenerating(false);
+      if (seq === generateSeq.current) setGenerating(false);
     }
   }
 

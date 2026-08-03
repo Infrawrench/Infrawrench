@@ -98,7 +98,10 @@ export const pluginManifestSchema = z.object({
             essential: z.boolean().optional(),
           }),
         )
-        .min(1),
+        .min(1)
+        .refine((caps) => new Set(caps.map((c) => c.id)).size === caps.length, {
+          message: "capability ids must be unique within the plugin",
+        }),
       templateFormat: z
         .object({
           label: z.string().min(1),

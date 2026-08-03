@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.35.2",
+    "version": "0.35.3",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -12459,7 +12459,7 @@
       "get": {
         "tags": ["Accounts"],
         "summary": "Generate a least-privilege credential template for a plugin",
-        "description": "Returns the paste-ready credential document (IAM policy JSON, custom role YAML, token template…) scoped to the requested capability ids. Omitting `capabilities` selects every declared capability. 400 for plugins that don't provide a template.\n\n_Requires permission: `accounts:read`._",
+        "description": "Returns the paste-ready credential document (IAM policy JSON, custom role YAML, token template…) scoped to the requested capability ids. Omitting `capabilities` (or sending it empty) selects every declared capability; any unknown capability id is rejected with 400. 400 also for plugins that don't provide a template.\n\n_Requires permission: `accounts:read`._",
         "parameters": [
           {
             "schema": {

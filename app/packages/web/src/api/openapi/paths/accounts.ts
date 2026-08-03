@@ -218,7 +218,7 @@ export function registerAccountPaths(ctx: BuildContext) {
     tags: ["Accounts"],
     summary: "Generate a least-privilege credential template for a plugin",
     description:
-      "Returns the paste-ready credential document (IAM policy JSON, custom role YAML, token template…) scoped to the requested capability ids. Omitting `capabilities` selects every declared capability. 400 for plugins that don't provide a template.",
+      "Returns the paste-ready credential document (IAM policy JSON, custom role YAML, token template…) scoped to the requested capability ids. Omitting `capabilities` (or sending it empty) selects every declared capability; any unknown capability id is rejected with 400. 400 also for plugins that don't provide a template.",
     request: {
       params: OrgIdParam.extend({
         pluginId: enums.PluginId.openapi({ param: { name: "pluginId", in: "path" } }),

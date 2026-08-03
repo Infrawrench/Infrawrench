@@ -179,6 +179,15 @@ function shortMessage(e: unknown): string {
   return raw.length > 300 ? `${raw.slice(0, 299)}…` : raw;
 }
 
+/** Human summary of a failed (non-auth) envelope response, for `unknown` checks. */
+function probeFailureMessage(label: string, status: number, body: CfEnvelope<unknown> | null) {
+  const msg = (body?.errors ?? [])
+    .map((e) => e.message)
+    .filter(Boolean)
+    .join("; ");
+  return msg ? `${label}: ${msg}` : `${label} returned status ${status}.`;
+}
+
 function unknownChecks(message: string): PreflightCapabilityCheck[] {
   return cloudflarePreflight.capabilities.map((c) => ({
     capabilityId: c.id,
@@ -219,53 +228,87 @@ export async function runCloudflarePreflight(token: string): Promise<PreflightRe
   const checks: PreflightCapabilityCheck[] = [];
   let accountId: string | null = null;
 
-  // 2. Resources: zone list + account list.
+  // 2. Resources: zone list + account list. Same three-way handling as the
+  //    costs probe: ok only on explicit success, missing only on authorization
+  //    failures, unknown (with detail) for everything else — a 500 or a
+  //    malformed body is not evidence the permission is granted.
   try {
     const missing: PreflightPermission[] = [];
+    const probeFailures: string[] = [];
     const zones = await cfGet<unknown[]>(token, "/zones?per_page=1");
-    if (!zones.body?.success && isAuthFailure(zones.status, zones.body)) {
-      missing.push(RESOURCES_PERMISSIONS[0]!);
+    if (!zones.body?.success) {
+      if (isAuthFailure(zones.status, zones.body)) {
+        missing.push(RESOURCES_PERMISSIONS[0]!);
+      } else {
+        probeFailures.push(probeFailureMessage("Zone list", zones.status, zones.body));
+      }
     }
     const accounts = await cfGet<Array<{ id?: string }>>(token, "/accounts?per_page=1");
     if (accounts.body?.success) {
       accountId = accounts.body.result?.[0]?.id ?? null;
     } else if (isAuthFailure(accounts.status, accounts.body)) {
       missing.push(RESOURCES_PERMISSIONS[1]!);
+    } else {
+      probeFailures.push(probeFailureMessage("Account list", accounts.status, accounts.body));
     }
-    checks.push(
-      missing.length === 0
-        ? { capabilityId: "resources", status: "ok" }
-        : {
-            capabilityId: "resources",
-            status: "missing",
-            missingPermissions: missing,
-            helpLink: TOKENS_HELP_LINK,
-          },
-    );
+    if (missing.length > 0) {
+      checks.push({
+        capabilityId: "resources",
+        status: "missing",
+        missingPermissions: missing,
+        helpLink: TOKENS_HELP_LINK,
+      });
+    } else if (probeFailures.length > 0) {
+      checks.push({
+        capabilityId: "resources",
+        status: "unknown",
+        message: probeFailures.join(" "),
+      });
+    } else {
+      checks.push({ capabilityId: "resources", status: "ok" });
+    }
   } catch (e) {
     checks.push({ capabilityId: "resources", status: "unknown", message: shortMessage(e) });
   }
 
-  // 3. Metrics: the cheapest possible GraphQL query.
+  // 3. Metrics: the cheapest possible GraphQL query. Missing only on an
+  //    authorization failure; a 5xx, a non-JSON body or GraphQL-level errors
+  //    without an auth status are `unknown`, not evidence of a missing scope.
   try {
     const res = await fetch(`${API}/graphql`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ query: "query { viewer { budget } }" }),
     });
-    const body = (await res.json()) as {
+    interface GraphqlProbeBody {
       data?: { viewer?: unknown } | null;
       errors?: Array<{ message?: string }> | null;
-    };
-    if (res.status === 401 || res.status === 403 || body.data?.viewer == null) {
+    }
+    let body: GraphqlProbeBody | null = null;
+    try {
+      body = (await res.json()) as GraphqlProbeBody;
+    } catch {
+      // non-JSON body — handled below
+    }
+    if (res.status === 401 || res.status === 403) {
       checks.push({
         capabilityId: "metrics",
         status: "missing",
         missingPermissions: METRICS_PERMISSIONS,
         helpLink: TOKENS_HELP_LINK,
       });
-    } else {
+    } else if (res.ok && body?.data?.viewer != null) {
       checks.push({ capabilityId: "metrics", status: "ok" });
+    } else {
+      const msg = (body?.errors ?? [])
+        .map((e) => e?.message)
+        .filter(Boolean)
+        .join("; ");
+      checks.push({
+        capabilityId: "metrics",
+        status: "unknown",
+        message: msg || `GraphQL analytics probe returned status ${res.status}.`,
+      });
     }
   } catch (e) {
     checks.push({ capabilityId: "metrics", status: "unknown", message: shortMessage(e) });

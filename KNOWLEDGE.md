@@ -2465,7 +2465,12 @@ capability, at add-account time and on demand. Contract lives in
 human labels), implements `PluginClient.verifyCredentials()` (read-only probe → per-capability
 ok / missing-with-permissions / unknown), and optionally `Plugin.policyTemplate(capabilityIds)`
 (paste-ready least-privilege document; credential-free, so it sits on the Plugin, not the
-client). Manifest zod schema validates the declaration; plugins without it change nothing.
+client). Manifest zod schema validates the declaration (capability ids must be unique); plugins without
+it change nothing. `validatePreflightContract` (plugin-base) runs in both plugin loaders:
+declaring `preflight.templateFormat` without implementing `policyTemplate()` rejects the plugin
+at registration. A missing `verifyCredentials` can't be checked at registration (no client
+exists until `createClient` runs with credentials) — the bundled-plugin test harness pins it
+down instead, and `runAccountPreflight` degrades it to all-`unknown` checks at probe time.
 
 The host-side runner `runAccountPreflight(plugin, client)` lives in **client-core**
 (`preflight.ts`), not server-core, because both hosts execute it: the web server (against
@@ -2480,8 +2485,9 @@ client-core; the generic UI (`CredentialPreflightPanel`/`CredentialPreflightModa
 the shared `AddAccountModal` (gated on `PluginInfo.preflight`) and behind "Check credentials"
 buttons on both account detail pages. Routes: `POST /accounts/preflight` (ad-hoc, pre-create,
 validates bastion like account create), `POST /accounts/{id}/preflight`,
-`GET /accounts/plugins/{pluginId}/policy-template?capabilities=…`. Nothing is persisted —
-reports are computed on demand, no schema change.
+`GET /accounts/plugins/{pluginId}/policy-template?capabilities=…` (unknown capability ids are
+rejected with 400 — a typo must not silently widen the template to select-all; valid ids are
+deduplicated). Nothing is persisted — reports are computed on demand, no schema change.
 
 Flagship implementations (permission names verified against provider docs 2026-08):
 **AWS** (`aws/src/preflight.ts`) — `sts:GetCallerIdentity` (needs no permission; failure ⇒ bad
@@ -2492,12 +2498,20 @@ IAM policy JSON, per-capability Sids + always-on `iam:SimulatePrincipalPolicy`. 
 `parseXml` unwraps the response root — read `SimulatePrincipalPolicyResult` at top level.
 **GCP** (`gcp/src/preflight.ts`) — one `cloudresourcemanager v3 projects:testIamPermissions`
 POST (raw fetch; the GcpClient `get` helper is GET-only), granted-subset diff; blank
-`billingExportTable` downgrades costs to missing with the export-setup helpLink. Template:
-custom role YAML for `gcloud iam roles create --file` (no wildcards allowed in custom roles).
+`billingExportTable` downgrades costs to missing with the export-setup helpLink while keeping
+any IAM permissions the probe already found missing. Template: custom role YAML for
+`gcloud iam roles create --file` (no wildcards allowed in custom roles); the `resources` set
+spells out one verified list permission per lister in `client.ts listResources` — note the
+instance-group lister reads aggregated **instanceGroupManagers**, so the permission is
+`compute.instanceGroupManagers.list`, and the KMS/Tasks/Scheduler listers fan out via
+ListLocations, which has its own `*.locations.list` permission.
 **Cloudflare** (`cloudflare/src/preflight.ts`) — `/user/tokens/verify` (account-owned tokens
 are rejected there with code 1000 — treated as "can't verify", not invalid; non-active status
 flags every row), then per-capability probes: `/zones` + `/accounts` (Zone Read / Account
 Settings Read), GraphQL `viewer.budget` (Analytics Read), `/accounts/{id}/billable-usage/info`
-(Billing Read). Template: text permission-group list + the documented
+(Billing Read). Every probe is three-way: ok only on explicit success, missing only on
+401/403/auth-coded envelope errors, anything else (5xx, malformed body) is `unknown` with the
+provider's message — a server error is not evidence a scope is granted or missing. Template:
+text permission-group list + the documented
 `dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=…` deep link (same mechanism as the
 manifest's create-token helpLink).

@@ -302,6 +302,20 @@ export function runPluginContractTests(plugin: Plugin, credentials?: Record<stri
         });
       }
 
+      if (plugin.manifest.preflight) {
+        // Not enforceable at registration (no client exists yet), so the
+        // bundled-plugin contract tests pin it down here instead.
+        it("manifest.preflight → client has verifyCredentials", () => {
+          expect(typeof client.verifyCredentials).toBe("function");
+        });
+
+        if (plugin.manifest.preflight.templateFormat) {
+          it("preflight.templateFormat → plugin has policyTemplate", () => {
+            expect(typeof plugin.policyTemplate).toBe("function");
+          });
+        }
+      }
+
       const hasSupportsStorageBrowser = plugin.resourceTypes.some(
         (rt) => rt.supportsStorageBrowser,
       );

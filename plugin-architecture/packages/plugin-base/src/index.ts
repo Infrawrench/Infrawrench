@@ -33,6 +33,7 @@ export type {
   PreflightPermission,
   PreflightResult,
 } from "./preflight.js";
+export { validatePreflightContract } from "./preflight.js";
 
 export type {
   StatusFeedDeclaration,

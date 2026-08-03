@@ -112,6 +112,27 @@ export interface PreflightResult {
   identity?: string;
 }
 
+/**
+ * Registration-time check of the preflight contract — everything that is
+ * checkable without instantiating a client. `PluginClient.verifyCredentials`
+ * only exists once `createClient` runs with real credentials, so it cannot be
+ * verified here; a missing probe is handled gracefully at probe time by
+ * `runAccountPreflight` (every capability reports `unknown` with a clear
+ * message). Returns a human-readable problem description, or `null` when the
+ * plugin's shape is consistent. Loaders reject plugins that return a problem.
+ */
+export function validatePreflightContract(plugin: {
+  manifest: { preflight?: PreflightDeclaration };
+  policyTemplate?(capabilityIds: string[]): PolicyTemplate;
+}): string | null {
+  const declaration = plugin.manifest.preflight;
+  if (!declaration) return null;
+  if (declaration.templateFormat && typeof plugin.policyTemplate !== "function") {
+    return "manifest.preflight.templateFormat is declared but the plugin does not implement policyTemplate()";
+  }
+  return null;
+}
+
 /** Paste-ready least-privilege credential document. */
 export interface PolicyTemplate {
   /** e.g. "AWS IAM policy (JSON)" — same string as the manifest declares. */

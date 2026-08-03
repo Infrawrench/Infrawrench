@@ -7,6 +7,7 @@ import {
   dashboardCardSchema,
   detailViewSchema,
 } from "../validation/index.js";
+import { validatePreflightContract } from "../preflight.js";
 
 const validManifest = {
   id: "digitalocean",
@@ -101,6 +102,78 @@ describe("pluginManifestSchema", () => {
         },
       }).success,
     ).toBe(false);
+  });
+
+  it("rejects duplicate preflight capability ids", () => {
+    const capability = {
+      id: "resources",
+      label: "Resource inventory",
+      requiredPermissions: [{ id: "ec2:DescribeInstances", label: "List EC2 instances" }],
+    };
+    expect(
+      pluginManifestSchema.safeParse({
+        ...validManifest,
+        preflight: { capabilities: [capability, { ...capability, label: "Duplicate" }] },
+      }).success,
+    ).toBe(false);
+    // Distinct ids stay accepted.
+    expect(
+      pluginManifestSchema.safeParse({
+        ...validManifest,
+        preflight: { capabilities: [capability, { ...capability, id: "metrics" }] },
+      }).success,
+    ).toBe(true);
+  });
+});
+
+describe("validatePreflightContract", () => {
+  const declaration = {
+    capabilities: [
+      {
+        id: "resources",
+        label: "Resource inventory",
+        requiredPermissions: [{ id: "ec2:DescribeInstances", label: "List EC2 instances" }],
+      },
+    ],
+  };
+
+  it("accepts plugins without a preflight declaration", () => {
+    expect(validatePreflightContract({ manifest: {} })).toBeNull();
+  });
+
+  it("accepts a declaration without templateFormat and no policyTemplate", () => {
+    expect(validatePreflightContract({ manifest: { preflight: declaration } })).toBeNull();
+  });
+
+  it("accepts templateFormat when policyTemplate is implemented", () => {
+    expect(
+      validatePreflightContract({
+        manifest: {
+          preflight: {
+            ...declaration,
+            templateFormat: { label: "AWS IAM policy (JSON)", language: "json" },
+          },
+        },
+        policyTemplate: () => ({
+          formatLabel: "AWS IAM policy (JSON)",
+          language: "json",
+          document: "{}",
+        }),
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects templateFormat without a policyTemplate implementation", () => {
+    expect(
+      validatePreflightContract({
+        manifest: {
+          preflight: {
+            ...declaration,
+            templateFormat: { label: "AWS IAM policy (JSON)", language: "json" },
+          },
+        },
+      }),
+    ).toContain("policyTemplate");
   });
 });
 

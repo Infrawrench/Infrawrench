@@ -76,9 +76,14 @@ export function AccountDetailView({
     plugin: PluginInfo;
     current: Record<string, string>;
   } | null>(null);
+  // The plugin's preflight declaration, loaded from the catalog whenever the
+  // account (and therefore plugin) changes. Null both while loading and for
+  // plugins without preflight support — the "Check credentials" button only
+  // renders once a declaration exists.
   const [preflightDeclaration, setPreflightDeclaration] = useState<PreflightDeclaration | null>(
     null,
   );
+  const [preflightOpen, setPreflightOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(account.displayName);
   const [isSaving, setIsSaving] = useState(false);
@@ -87,6 +92,23 @@ export function AccountDetailView({
   useEffect(() => {
     if (isEditing) editInputRef.current?.focus();
   }, [isEditing]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPreflightDeclaration(null);
+    setPreflightOpen(false);
+    fetchPluginCatalog(orgId)
+      .then((plugins) => {
+        if (cancelled) return;
+        setPreflightDeclaration(plugins.find((p) => p.id === account.pluginId)?.preflight ?? null);
+      })
+      .catch(() => {
+        // Catalog unavailable — leave the affordance hidden rather than error.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, account.id, account.pluginId]);
 
   async function handleDeleteAccount() {
     await apiDelete(`/api/org/${orgId}/accounts/${account.id}`);
@@ -109,15 +131,14 @@ export function AccountDetailView({
     }
   }
 
-  async function openPreflight() {
-    try {
-      const plugins = await fetchPluginCatalog(orgId);
-      const declaration = plugins.find((p) => p.id === account.pluginId)?.preflight;
-      if (!declaration) throw new Error("This plugin doesn't support credential checks yet");
-      setPreflightDeclaration(declaration);
-    } catch (e) {
-      toast.error(`Couldn't open credential check: ${formatErrorMessage(e)}`);
+  function openPreflight() {
+    // The button only renders once the declaration is loaded; this guard is
+    // defensive for the instant around a plugin change.
+    if (!preflightDeclaration) {
+      toast.error("Couldn't open credential check: this plugin doesn't support it yet");
+      return;
     }
+    setPreflightOpen(true);
   }
 
   async function saveCredentials(credentials: Record<string, string>) {
@@ -219,13 +240,15 @@ export function AccountDetailView({
               >
                 Update credentials
               </button>
-              <button
-                type="button"
-                onClick={() => void openPreflight()}
-                className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay rounded transition-colors"
-              >
-                Check credentials
-              </button>
+              {preflightDeclaration && (
+                <button
+                  type="button"
+                  onClick={openPreflight}
+                  className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay rounded transition-colors"
+                >
+                  Check credentials
+                </button>
+              )}
             </>
           )}
           <button
@@ -247,7 +270,7 @@ export function AccountDetailView({
         />
       )}
 
-      {preflightDeclaration && (
+      {preflightOpen && preflightDeclaration && (
         <CredentialPreflightModal
           accountName={account.displayName}
           declaration={preflightDeclaration}
@@ -262,7 +285,7 @@ export function AccountDetailView({
             );
             return template;
           }}
-          onClose={() => setPreflightDeclaration(null)}
+          onClose={() => setPreflightOpen(false)}
         />
       )}
 
