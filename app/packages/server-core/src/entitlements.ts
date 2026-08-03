@@ -21,8 +21,25 @@ import { organizations, subscriptions } from "./db/schema.js";
  * shipping ability away during exactly the window they are least able to notice
  * why — often mid-incident. Losing access should follow a cancellation, not a
  * transient billing failure.
+ *
+ * `trialing` is NOT here unconditionally: the checkout route stamps `trialing`
+ * on the placeholder row it inserts before Stripe Checkout even opens, so a
+ * status of `trialing` alone only proves someone clicked Upgrade. It counts as
+ * paid only when the row carries a `stripeSubscriptionId` — i.e. Stripe itself
+ * reported the subscription as being in a trial (see {@link isPaidRow}).
  */
-const PAID_STATUSES = new Set(["active", "trialing", "past_due"]);
+const PAID_STATUSES = new Set(["active", "past_due"]);
+
+/**
+ * Whether one subscription row grants paid access. A `trialing` row without a
+ * Stripe subscription behind it is an abandoned checkout, not a trial — it
+ * must grant nothing, or starting checkout and closing the tab would be a
+ * permanent free ride.
+ */
+function isPaidRow(row: { status: string; stripeSubscriptionId: string | null }): boolean {
+  if (PAID_STATUSES.has(row.status)) return true;
+  return row.status === "trialing" && row.stripeSubscriptionId !== null;
+}
 
 /**
  * What the free tier includes. Enforced at the invite and account-creation
@@ -55,13 +72,21 @@ export async function planAccess(organizationId: string): Promise<PlanAccess> {
   // Postgres is free to hand back either — which would deny a paying customer
   // or admit a lapsed one depending on the day.
   const subs = await db
-    .select({ status: subscriptions.status })
+    .select({
+      status: subscriptions.status,
+      stripeSubscriptionId: subscriptions.stripeSubscriptionId,
+    })
     .from(subscriptions)
     .where(eq(subscriptions.organizationId, organizationId));
   if (subs.length === 0) return { paid: false, reason: "none" };
-  const paid = subs.find((s) => PAID_STATUSES.has(s.status));
+  const paid = subs.find(isPaidRow);
   if (paid) return { paid: true, reason: "subscription", status: paid.status };
-  return { paid: false, reason: "inactive", status: subs[0]!.status };
+  // Rows that never became a Stripe subscription are abandoned checkouts, not
+  // lapsed plans — an org that only has those has never subscribed, so the
+  // caller's message should say "upgrade", not "reactivate".
+  const lapsed = subs.find((s) => s.status !== "trialing" || s.stripeSubscriptionId !== null);
+  if (!lapsed) return { paid: false, reason: "none" };
+  return { paid: false, reason: "inactive", status: lapsed.status };
 }
 
 /** Thrown when a paid-only feature is reached on a free organization. */

@@ -14,12 +14,20 @@ import { apiGet } from "@/lib/api";
 
 // Mirrors PAID_STATUSES in @infrawrench/server-core/entitlements: past_due
 // still counts as paid while Stripe retries the card.
-const PAID_STATUSES = new Set(["active", "trialing", "past_due"]);
+const PAID_STATUSES = new Set(["active", "past_due"]);
 
 function isPaid(status: BillingStatus): boolean {
   if (status.complimentary) return true;
   const sub = status.subscription;
-  return sub !== null && PAID_STATUSES.has(sub.status);
+  if (sub === null) return false;
+  if (PAID_STATUSES.has(sub.status)) return true;
+  // `trialing` is also what the checkout route stamps on the placeholder row
+  // before payment, and an abandoned checkout is not a paid plan. The server
+  // (planAccess) tells the two apart by stripeSubscriptionId, which this
+  // response doesn't carry — but only the Stripe webhooks ever set the billing
+  // period, so a period end is the same signal: a real Stripe-reported trial
+  // has one, a placeholder never does.
+  return sub.status === "trialing" && sub.currentPeriodEnd !== null;
 }
 
 export function WebDeploymentsPanel({

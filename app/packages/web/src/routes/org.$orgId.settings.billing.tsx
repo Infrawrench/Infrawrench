@@ -48,7 +48,13 @@ function BillingPage() {
   const sub = status.subscription;
   const complimentary = status.complimentary;
   const isActive = sub?.status === "active";
-  const isFree = !complimentary && (!sub || sub.status === "trialing" || sub.status === "canceled");
+  // "trialing" with no billing period is the placeholder row from a checkout
+  // that was never completed — that org is on the free plan. A trial Stripe
+  // itself reported (the webhooks set the period) is a paid plan mid-trial.
+  const isTrial = sub?.status === "trialing" && sub.currentPeriodEnd != null;
+  const isFree =
+    !complimentary &&
+    (!sub || sub.status === "canceled" || (sub.status === "trialing" && !isTrial));
 
   return (
     <div>
@@ -72,7 +78,7 @@ function BillingPage() {
             className={`text-xs font-medium px-2 py-1 rounded-full ${
               complimentary
                 ? "bg-purple-500/10 text-purple-400"
-                : isActive
+                : isActive || isTrial
                   ? "bg-green-500/10 text-green-400"
                   : sub?.status === "past_due"
                     ? "bg-yellow-500/10 text-yellow-400"
@@ -83,9 +89,11 @@ function BillingPage() {
               ? "Complimentary"
               : isActive
                 ? "Active"
-                : sub?.status === "past_due"
-                  ? "Past due"
-                  : "Free"}
+                : isTrial
+                  ? "Trial"
+                  : sub?.status === "past_due"
+                    ? "Past due"
+                    : "Free"}
           </span>
         </div>
 

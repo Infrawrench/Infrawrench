@@ -52,7 +52,7 @@ Removing a member (or a member deleting their own account) frees their seat auto
 
 ## Trial
 
-New orgs get a 14-day trial of the paid plan automatically. No card required. You will get a reminder 3 days before it ends.
+There is no separate time-limited trial: the free plan does not expire, so you can evaluate for as long as you like and upgrade when you are ready. Starting checkout without completing payment does not change your plan — you stay on the free tier until Stripe confirms the subscription. If a trial period is applied to your Stripe subscription itself (for example a promotional offer), the plan shows as a trial and works like the paid plan until the trial ends.
 
 ## Hosted build time
 

@@ -122,6 +122,23 @@ describe("Billing routes", () => {
       );
     });
 
+    it("re-opens checkout on a placeholder row without inserting a second one", async () => {
+      // An abandoned checkout leaves a "trialing" row with no Stripe
+      // subscription. Coming back to upgrade must reuse that row's customer,
+      // not create another customer or row.
+      selectSequence(orgRow(false), [
+        { stripeCustomerId: "cus_placeholder", status: "trialing", stripeSubscriptionId: null },
+      ]);
+      mockCheckoutCreate.mockResolvedValue({ url: "https://stripe/checkout-again" });
+      const res = await buildApp().request("/checkout", { method: "POST" });
+      expect(res.status).toBe(200);
+      expect(mockCustomersCreate).not.toHaveBeenCalled();
+      expect(mockInsert).not.toHaveBeenCalled();
+      expect(mockCheckoutCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ customer: "cus_placeholder" }),
+      );
+    });
+
     it("sends adjustable seat quantity plus the metered chat price", async () => {
       selectSequence(orgRow(false), [{ stripeCustomerId: "cus_existing" }]);
       mockCheckoutCreate.mockResolvedValue({ url: "https://stripe/checkout3" });
