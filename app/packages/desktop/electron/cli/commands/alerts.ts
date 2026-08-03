@@ -43,7 +43,7 @@ export async function cmdAlerts(ctx: CliContext): Promise<void> {
   const firingTotal = rules.reduce((sum, r) => sum + r.firingCount, 0);
   println(
     `${c.bold(org.displayName)} ${c.dim(
-      `· ${rules.length} rule${rules.length === 1 ? "" : "s"} · ${firingTotal} firing`,
+      `· ${rules.length} rule${rules.length === 1 ? "" : "s"} · ${firingTotal} firing${firingTotal === 1 ? "" : "s"}`,
     )}`,
   );
   println();

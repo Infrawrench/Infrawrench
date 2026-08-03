@@ -9,7 +9,7 @@
  * report reads (`web/src/services/tag-policy.ts`) — tags live inside
  * `fields_json`/`outputs_json`, not in a column.
  */
-import { and, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { extractRecordTags } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { resources } from "../db/schema";
@@ -33,6 +33,16 @@ export interface SelectedResource {
  * the ClickHouse read rather than failing the rule.
  */
 export const MAX_SELECTED_RESOURCES = 500;
+
+/**
+ * Most rows a tag-filtered selector reads from Postgres before matching in
+ * JS. Tags live inside the JSON payloads, so the tag half cannot narrow in
+ * SQL — this bounds the memory of that scan the way
+ * {@link MAX_SELECTED_RESOURCES} bounds the ClickHouse read. Both caps take
+ * rows in `id` order, so an over-cap selector picks a stable subset instead
+ * of flapping between passes.
+ */
+export const MAX_TAG_SCAN_ROWS = 10_000;
 
 interface TaggableRow extends SelectedResource {
   fieldsJson: Record<string, unknown>;
@@ -70,6 +80,18 @@ export async function resolveSelectorResources(
     ...(selector.pluginId ? [eq(resources.pluginId, selector.pluginId)] : []),
     ...(selector.resourceTypeId ? [eq(resources.resourceTypeId, selector.resourceTypeId)] : []),
   ];
+
+  // No tag half: the SQL narrowing is the whole selector, so the cap pushes
+  // into the query and the JSON payloads never leave Postgres.
+  if (!selector.tagKey) {
+    return db
+      .select({ id: resources.id, displayName: resources.displayName })
+      .from(resources)
+      .where(and(...conditions))
+      .orderBy(asc(resources.id))
+      .limit(MAX_SELECTED_RESOURCES);
+  }
+
   const rows: TaggableRow[] = await db
     .select({
       id: resources.id,
@@ -78,7 +100,9 @@ export async function resolveSelectorResources(
       outputsJson: resources.outputsJson,
     })
     .from(resources)
-    .where(and(...conditions));
+    .where(and(...conditions))
+    .orderBy(asc(resources.id))
+    .limit(MAX_TAG_SCAN_ROWS);
 
   const matched: SelectedResource[] = [];
   for (const row of rows) {

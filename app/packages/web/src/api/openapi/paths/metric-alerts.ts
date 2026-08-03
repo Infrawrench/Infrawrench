@@ -4,7 +4,14 @@ import type { BuildContext } from "../context";
 
 const Comparator = z.enum([">", ">=", "<", "<="]).openapi({ example: ">" });
 
-const MetricAlertRuleInput = strict({
+/**
+ * The rule fields shared by the input and response schemas. Spread into flat
+ * `strict` objects rather than composed with `.extend()`: extending a
+ * registered schema emits `allOf` over the registered `$ref`, and an `allOf`
+ * whose branches are all `additionalProperties: false` can never validate —
+ * each branch rejects the other's fields.
+ */
+const ruleInputShape = {
   name: z.string().min(1).max(120),
   pluginId: z.string().min(1).max(100).nullable().openapi({
     description: "Selector: plugin the resource must belong to. Null matches any plugin.",
@@ -33,16 +40,22 @@ const MetricAlertRuleInput = strict({
     description: "Least minutes between notified firings for one (rule, resource).",
   }),
   enabled: z.boolean(),
-}).openapi("MetricAlertRuleInput");
+};
 
-const MetricAlertRule = MetricAlertRuleInput.extend({
+const MetricAlertRuleInput = strict(ruleInputShape).openapi("MetricAlertRuleInput");
+
+const ruleShape = {
+  ...ruleInputShape,
   id: Uuid,
   lastEvalAt: IsoDateTime.nullable(),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
-}).openapi("MetricAlertRule");
+};
 
-const MetricAlertRuleWithStatus = MetricAlertRule.extend({
+const MetricAlertRule = strict(ruleShape).openapi("MetricAlertRule");
+
+const MetricAlertRuleWithStatus = strict({
+  ...ruleShape,
   firingCount: z.number().int().openapi({
     description: "Resources currently in breach of this rule.",
   }),

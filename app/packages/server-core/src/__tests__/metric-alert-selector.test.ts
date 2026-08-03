@@ -9,9 +9,26 @@ import { describe, expect, it, vi } from "vitest";
 
 // selector.ts imports db/client, which throws without DATABASE_URL.
 let resourceRows: unknown[] = [];
+/** Projection and SQL limit of the last select, for the bounded-read tests. */
+let lastProjection: Record<string, unknown> = {};
+let lastLimit: number | undefined;
 vi.mock("../db/client", () => ({
   db: {
-    select: () => ({ from: () => ({ where: () => Promise.resolve(resourceRows) }) }),
+    select: (projection: Record<string, unknown>) => {
+      lastProjection = projection;
+      return {
+        from: () => ({
+          where: () => ({
+            orderBy: () => ({
+              limit: (n: number) => {
+                lastLimit = n;
+                return Promise.resolve(resourceRows.slice(0, n));
+              },
+            }),
+          }),
+        }),
+      };
+    },
   },
 }));
 vi.mock("../db/schema", () => ({
@@ -27,7 +44,7 @@ vi.mock("../db/schema", () => ({
   },
 }));
 
-const { MAX_SELECTED_RESOURCES, resolveSelectorResources, rowMatchesTag } =
+const { MAX_SELECTED_RESOURCES, MAX_TAG_SCAN_ROWS, resolveSelectorResources, rowMatchesTag } =
   await import("../metric-alerts/selector");
 
 function row(
@@ -101,5 +118,20 @@ describe("resolveSelectorResources", () => {
     );
     const matched = await resolveSelectorResources(selector);
     expect(matched).toHaveLength(MAX_SELECTED_RESOURCES);
+  });
+
+  it("bounds the tag scan at MAX_TAG_SCAN_ROWS in SQL", async () => {
+    resourceRows = [row("a", { tags: { env: "prod" } })];
+    await resolveSelectorResources(selector);
+    expect(lastLimit).toBe(MAX_TAG_SCAN_ROWS);
+    expect(Object.keys(lastProjection)).toContain("fieldsJson");
+  });
+
+  it("pushes the cap into SQL and skips the JSON payloads when there is no tag filter", async () => {
+    resourceRows = [{ id: "a", displayName: "a" }];
+    const matched = await resolveSelectorResources({ ...selector, tagKey: null, tagValue: null });
+    expect(matched).toEqual([{ id: "a", displayName: "a" }]);
+    expect(lastLimit).toBe(MAX_SELECTED_RESOURCES);
+    expect(Object.keys(lastProjection)).toEqual(["id", "displayName"]);
   });
 });

@@ -7,9 +7,10 @@ Infrawrench collects metrics for your resources and charts them on dashboards an
 views. Metric alerts turn those same metrics into pages: a rule like **"CPU % > 90 for 15
 minutes"** watches every resource it covers and — if you have notifications configured —
 fires as a push notification, a Slack message, or a Teams card the moment the condition has
-held for the whole window. When the metric drops back under the threshold, a matching
-**resolved** notification follows, so an alert channel always tells you both halves of the
-story.
+held for the whole window. When the metric drops back under the threshold, every firing you
+were notified about is followed by a matching **resolved** notification, so an alert channel
+tells you both halves of the story. (Firings suppressed by the rule's cooldown recover just
+as quietly as they fired — see below.)
 
 <insert [The Metric alerts page showing a list of rules — one firing (red dot, "firing on 2 resources"), one healthy, one disabled — above the Recent firings table] here>
 
@@ -56,7 +57,8 @@ name. If the list is empty, resources of that shape have not reported metrics ye
   condition clear (or the metric stops being reported entirely), which sends the resolved
   notification.
 - The rule's **cooldown** bounds flapping: after a notified firing, new firings for the same
-  resource within the cooldown are recorded in the history but not delivered.
+  resource within the cooldown are recorded in the history but not delivered — and since they
+  were never announced, their recoveries are not delivered either.
 
 The window is between 5 minutes and 24 hours; the default is 15 minutes with a one-hour
 cooldown. All four comparators are available (`>`, `>=`, `<`, `<=`), so "healthy replicas

@@ -209,7 +209,9 @@ export async function listEvents(
     .select({
       id: metricAlertEvents.id,
       ruleId: metricAlertEvents.ruleId,
-      ruleName: metricAlertRules.name,
+      // Snapshotted at firing time — no join, and the event keeps its name
+      // even if the rule row is renamed or goes away.
+      ruleName: metricAlertEvents.ruleName,
       resourceId: metricAlertEvents.resourceId,
       resourceName: metricAlertEvents.resourceName,
       status: metricAlertEvents.status,
@@ -218,7 +220,6 @@ export async function listEvents(
       resolvedAt: metricAlertEvents.resolvedAt,
     })
     .from(metricAlertEvents)
-    .innerJoin(metricAlertRules, eq(metricAlertRules.id, metricAlertEvents.ruleId))
     .where(
       and(
         eq(metricAlertEvents.organizationId, organizationId),

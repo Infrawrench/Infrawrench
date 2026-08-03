@@ -182,6 +182,7 @@ async function openFiring(
     .values({
       id: randomUUID(),
       ruleId: rule.id,
+      ruleName: rule.name,
       organizationId: rule.organizationId,
       resourceId: resource.id,
       resourceName: resource.displayName,

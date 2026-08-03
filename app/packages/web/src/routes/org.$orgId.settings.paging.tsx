@@ -403,9 +403,9 @@ function RecipientsPanel({
 
 /**
  * The triggers a channel can opt into, shared by the Slack and Teams sections.
- * The first five are the alert triggers mobile push also has; the weekly
- * digest is channel-only (it goes to a team channel, not a phone) and only
- * sends once the org enables it in the Weekly digest section below.
+ * All but the weekly digest are the alert triggers mobile push also has; the
+ * weekly digest is channel-only (it goes to a team channel, not a phone) and
+ * only sends once the org enables it in the Weekly digest section below.
  *
  * Drift is the one that arrives off: adding a channel opts it into everything
  * else, but drift is a continuous feed and turning it on has to be a decision.

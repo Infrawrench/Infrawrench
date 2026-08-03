@@ -156,6 +156,7 @@ describe("evaluateMetricAlertRule — opening firings", () => {
     expect(inserted).toHaveLength(1);
     expect(inserted[0]).toMatchObject({
       ruleId: "rule1",
+      ruleName: "High CPU",
       resourceId: "res1",
       resourceName: "vm-1",
       status: "firing",

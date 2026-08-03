@@ -38,7 +38,9 @@ app.post("/", async (c) => {
   const organizationId = c.get("organizationId");
   const session = c.get("session");
 
-  const parsed = metricAlertRuleInputSchema.safeParse(await c.req.json());
+  // The `.catch(() => null)` turns malformed JSON into a schema failure and
+  // the documented 400, instead of an unhandled parse error (pages.ts stance).
+  const parsed = metricAlertRuleInputSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
     return c.json({ error: "Invalid metric alert rule", issues: parsed.error.issues }, 400);
   }
@@ -105,7 +107,7 @@ app.put("/:id", async (c) => {
   requirePermission(c, "metric-alerts:write");
   const organizationId = c.get("organizationId");
 
-  const parsed = metricAlertRuleInputSchema.safeParse(await c.req.json());
+  const parsed = metricAlertRuleInputSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
     return c.json({ error: "Invalid metric alert rule", issues: parsed.error.issues }, 400);
   }

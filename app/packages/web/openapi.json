@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.35.0",
+    "version": "0.35.1",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -3467,6 +3467,214 @@
         ],
         "additionalProperties": false
       },
+      "MetricAlertRuleWithStatus": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "pluginId": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Selector: plugin the resource must belong to. Null matches any plugin."
+          },
+          "resourceTypeId": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Selector: resource type within the plugin. Null matches any type."
+          },
+          "tagKey": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Selector: tag key the resource must carry (matched case-insensitively). Null applies no tag filter. Resources are always selected by this query, never by id, so rules cover resources created later."
+          },
+          "tagValue": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Selector: exact value tagKey must have. Null matches any value."
+          },
+          "metricKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The metric series label as the resource's charts report it (see /metric-alerts/metric-keys).",
+            "example": "CPU %"
+          },
+          "comparator": {
+            "type": "string",
+            "enum": [">", ">=", "<", "<="],
+            "example": ">"
+          },
+          "threshold": {
+            "type": "number"
+          },
+          "forMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 1440,
+            "description": "Trailing window (minutes) the condition must hold for before firing."
+          },
+          "cooldownMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10080,
+            "description": "Least minutes between notified firings for one (rule, resource)."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "lastEvalAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "firingCount": {
+            "type": "integer",
+            "description": "Resources currently in breach of this rule."
+          },
+          "matchingResourceCount": {
+            "type": "integer",
+            "description": "Resources the selector matches right now."
+          }
+        },
+        "required": [
+          "name",
+          "pluginId",
+          "resourceTypeId",
+          "tagKey",
+          "tagValue",
+          "metricKey",
+          "comparator",
+          "threshold",
+          "forMinutes",
+          "cooldownMinutes",
+          "enabled",
+          "id",
+          "lastEvalAt",
+          "createdAt",
+          "updatedAt",
+          "firingCount",
+          "matchingResourceCount"
+        ],
+        "additionalProperties": false
+      },
+      "MetricAlertRule": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "pluginId": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Selector: plugin the resource must belong to. Null matches any plugin."
+          },
+          "resourceTypeId": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Selector: resource type within the plugin. Null matches any type."
+          },
+          "tagKey": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Selector: tag key the resource must carry (matched case-insensitively). Null applies no tag filter. Resources are always selected by this query, never by id, so rules cover resources created later."
+          },
+          "tagValue": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Selector: exact value tagKey must have. Null matches any value."
+          },
+          "metricKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The metric series label as the resource's charts report it (see /metric-alerts/metric-keys).",
+            "example": "CPU %"
+          },
+          "comparator": {
+            "type": "string",
+            "enum": [">", ">=", "<", "<="],
+            "example": ">"
+          },
+          "threshold": {
+            "type": "number"
+          },
+          "forMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 1440,
+            "description": "Trailing window (minutes) the condition must hold for before firing."
+          },
+          "cooldownMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10080,
+            "description": "Least minutes between notified firings for one (rule, resource)."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "lastEvalAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "name",
+          "pluginId",
+          "resourceTypeId",
+          "tagKey",
+          "tagValue",
+          "metricKey",
+          "comparator",
+          "threshold",
+          "forMinutes",
+          "cooldownMinutes",
+          "enabled",
+          "id",
+          "lastEvalAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
       "MetricAlertRuleInput": {
         "type": "object",
         "properties": {
@@ -3544,59 +3752,6 @@
           "enabled"
         ],
         "additionalProperties": false
-      },
-      "MetricAlertRule": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/MetricAlertRuleInput"
-          },
-          {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "format": "uuid",
-                "example": "00000000-0000-0000-0000-000000000000"
-              },
-              "lastEvalAt": {
-                "type": ["string", "null"],
-                "format": "date-time"
-              },
-              "createdAt": {
-                "type": "string",
-                "format": "date-time"
-              },
-              "updatedAt": {
-                "type": "string",
-                "format": "date-time"
-              }
-            },
-            "required": ["id", "lastEvalAt", "createdAt", "updatedAt"],
-            "additionalProperties": false
-          }
-        ]
-      },
-      "MetricAlertRuleWithStatus": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/MetricAlertRule"
-          },
-          {
-            "type": "object",
-            "properties": {
-              "firingCount": {
-                "type": "integer",
-                "description": "Resources currently in breach of this rule."
-              },
-              "matchingResourceCount": {
-                "type": "integer",
-                "description": "Resources the selector matches right now."
-              }
-            },
-            "required": ["firingCount", "matchingResourceCount"],
-            "additionalProperties": false
-          }
-        ]
       },
       "MetricSeriesKey": {
         "type": "object",

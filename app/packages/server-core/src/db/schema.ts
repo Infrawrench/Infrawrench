@@ -633,6 +633,13 @@ export const metricAlertRules = pgTable(
  * resource rows are churned by sync, and the history must keep rendering for
  * resources that disappeared upstream. `notifiedAt` stays null when delivery
  * failed or the firing was suppressed by the rule's cooldown.
+ *
+ * Rules only ever soft-delete (`deletedAt`), so `ruleId`'s FK is `restrict`
+ * rather than `cascade`: history is an audit surface, and a stray hard delete
+ * of a rule must fail loudly instead of silently erasing its firings.
+ * `ruleName` is denormalized at firing time for the same reason
+ * `resourceName` is — the event renders on its own, whatever happens to the
+ * rule row later.
  */
 export const metricAlertEvents = pgTable(
   "metric_alert_events",
@@ -640,7 +647,9 @@ export const metricAlertEvents = pgTable(
     id: text("id").primaryKey(),
     ruleId: text("rule_id")
       .notNull()
-      .references(() => metricAlertRules.id, { onDelete: "cascade" }),
+      .references(() => metricAlertRules.id, { onDelete: "restrict" }),
+    /** The rule's name when the firing opened, snapshotted (see above). */
+    ruleName: text("rule_name").notNull(),
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),

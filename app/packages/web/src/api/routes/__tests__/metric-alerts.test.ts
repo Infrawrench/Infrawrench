@@ -110,6 +110,17 @@ describe("metric alert routes", () => {
     expect(mockCreateRule).not.toHaveBeenCalled();
   });
 
+  it("rejects malformed JSON with the documented 400, not a 500", async () => {
+    const res = await buildApp().request("/", {
+      method: "POST",
+      body: "{not json",
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "Invalid metric alert rule" });
+    expect(mockCreateRule).not.toHaveBeenCalled();
+  });
+
   it("rejects a window below the floor with 400", async () => {
     const res = await buildApp().request("/", {
       method: "POST",
