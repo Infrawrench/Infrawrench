@@ -119,7 +119,8 @@ describe("discoverSidecarLogStreams", () => {
   });
 
   it("skips log-incapable peer plugins without rebuilding their client next time", async () => {
-    const noLogs = peerClient({ getLogs: undefined });
+    const noLogs = peerClient();
+    delete (noLogs as { getLogs?: unknown }).getLogs;
     const getPeerClient = vi.fn(async () => noLogs);
     const d = deps({ getPeerClient });
     expect(await discoverSidecarLogStreams([parent()], d)).toEqual([]);
