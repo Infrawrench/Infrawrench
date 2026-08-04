@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { validateLeaseInput } from "@infrawrench/client-core";
+import { Modal } from "../components/Modal.js";
 import type { LeasesClient, ResourceLease } from "./types.js";
 
 const inputClass =
@@ -57,18 +58,6 @@ export function LeaseEditorModal({
   const [autoDelete, setAutoDelete] = useState(existing?.autoDelete ?? false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const panelRef = useRef<HTMLDivElement | null>(null);
-
-  // Dialog basics: focus the panel on mount so keyboard users land inside it,
-  // and let Escape close it.
-  useEffect(() => {
-    panelRef.current?.focus();
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
 
   const expiresMs = Date.parse(expiresLocal);
   const expiresIso = Number.isNaN(expiresMs) ? "" : new Date(expiresMs).toISOString();
@@ -110,21 +99,8 @@ export function LeaseEditorModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label={existing ? "Edit lease" : "New lease"}
-      // mousedown (not click) so a drag or text selection that starts inside
-      // the panel and ends over the backdrop doesn't dismiss the editor.
-      onMouseDown={onClose}
-    >
-      <div
-        ref={panelRef}
-        tabIndex={-1}
-        className="w-full max-w-md rounded-2xl border border-border bg-surface p-5 shadow-xl"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={onClose} ariaLabel={existing ? "Edit lease" : "New lease"}>
+      <div className="w-[28rem] max-w-[90vw] rounded-2xl border border-border bg-surface p-5 shadow-xl">
         <h2 className="text-sm font-semibold text-on-surface">
           {existing ? "Edit lease" : "New lease"}
         </h2>
@@ -218,6 +194,6 @@ export function LeaseEditorModal({
           </div>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

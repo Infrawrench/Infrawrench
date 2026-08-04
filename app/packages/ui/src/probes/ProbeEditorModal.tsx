@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   PROBE_DEFAULTS,
   PROBE_LIMITS,
@@ -7,6 +7,7 @@ import {
   type ProbeSuggestion,
   type SyntheticProbe,
 } from "@infrawrench/client-core";
+import { Modal } from "../components/Modal.js";
 import type { ProbesClient } from "./types.js";
 
 const inputClass =
@@ -25,6 +26,18 @@ export interface ProbeEditorModalProps {
 const CUSTOM = "__custom__";
 
 /**
+ * A numeric field's string as a whole number, or null when empty/partial —
+ * `Number("")` is 0 and `Number("1e")` is NaN, and neither belongs in state
+ * or a request body.
+ */
+function parseFieldInt(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  const n = Number(trimmed);
+  return Number.isInteger(n) ? n : null;
+}
+
+/**
  * The probe editor. The endpoint field is a *picker* first: it lists every
  * URL mined from the org's synced resource outputs (`GET /probes/suggestions`)
  * so nobody has to remember what their load balancer's hostname is — with a
@@ -34,28 +47,23 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
   const [name, setName] = useState(existing?.name ?? "");
   const [url, setUrl] = useState(existing?.url ?? "");
   const [method, setMethod] = useState(existing?.method ?? PROBE_DEFAULTS.method);
+  // The numeric fields hold the input's raw string — parsing happens at the
+  // edge (parseFieldInt) so a cleared or half-typed field can't leak 0/NaN
+  // into state or the request body.
   const [intervalSeconds, setIntervalSeconds] = useState(
-    existing?.intervalSeconds ?? PROBE_DEFAULTS.intervalSeconds,
+    String(existing?.intervalSeconds ?? PROBE_DEFAULTS.intervalSeconds),
   );
-  const [timeoutMs, setTimeoutMs] = useState(existing?.timeoutMs ?? PROBE_DEFAULTS.timeoutMs);
+  const [timeoutMs, setTimeoutMs] = useState(
+    String(existing?.timeoutMs ?? PROBE_DEFAULTS.timeoutMs),
+  );
   const [failureThreshold, setFailureThreshold] = useState(
-    existing?.failureThreshold ?? PROBE_DEFAULTS.failureThreshold,
+    String(existing?.failureThreshold ?? PROBE_DEFAULTS.failureThreshold),
   );
   // null = loading; [] = loaded, nothing to suggest.
   const [suggestions, setSuggestions] = useState<ProbeSuggestion[] | null>(null);
   const [picked, setPicked] = useState<string>(existing ? CUSTOM : "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const panelRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    panelRef.current?.focus();
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,6 +101,15 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
       })()
     : null;
 
+  const intervalNum = parseFieldInt(intervalSeconds);
+  const timeoutNum = parseFieldInt(timeoutMs);
+  const thresholdNum = parseFieldInt(failureThreshold);
+  const numbersProblem =
+    intervalNum === null || timeoutNum === null || thresholdNum === null
+      ? "Interval, timeout and failure threshold must be whole numbers."
+      : null;
+  const thresholdForCopy = thresholdNum ?? PROBE_DEFAULTS.failureThreshold;
+
   const save = async () => {
     if (!name.trim()) {
       setError("A name is required.");
@@ -103,6 +120,10 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
       setError(parsed.error);
       return;
     }
+    if (intervalNum === null || timeoutNum === null || thresholdNum === null) {
+      setError(numbersProblem);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -111,17 +132,17 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
             name: name.trim(),
             url: parsed.url,
             method,
-            intervalSeconds,
-            timeoutMs,
-            failureThreshold,
+            intervalSeconds: intervalNum,
+            timeoutMs: timeoutNum,
+            failureThreshold: thresholdNum,
           })
         : await client.createProbe?.({
             name: name.trim(),
             url: parsed.url,
             method,
-            intervalSeconds,
-            timeoutMs,
-            failureThreshold,
+            intervalSeconds: intervalNum,
+            timeoutMs: timeoutNum,
+            failureThreshold: thresholdNum,
             ...(pickedSuggestion
               ? {
                   resourceId: pickedSuggestion.resourceId,
@@ -139,26 +160,15 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label={existing ? "Edit probe" : "New probe"}
-      onMouseDown={onClose}
-    >
-      <div
-        ref={panelRef}
-        tabIndex={-1}
-        className="w-full max-w-md rounded-2xl border border-border bg-surface p-5 shadow-xl"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={onClose} ariaLabel={existing ? "Edit probe" : "New probe"}>
+      <div className="w-[28rem] max-w-[90vw] rounded-2xl border border-border bg-surface p-5 shadow-xl">
         <h2 className="text-sm font-semibold text-on-surface">
           {existing ? "Edit probe" : "New probe"}
         </h2>
         <p className="mt-1 text-xs text-on-surface-secondary">
           The endpoint is checked every interval from outside your infrastructure, so latency and
-          reachability reflect what your users see. {failureThreshold} consecutive failure
-          {failureThreshold === 1 ? "" : "s"} raise{failureThreshold === 1 ? "s" : ""} an alert.
+          reachability reflect what your users see. {thresholdForCopy} consecutive failure
+          {thresholdForCopy === 1 ? "" : "s"} raise{thresholdForCopy === 1 ? "s" : ""} an alert.
         </p>
 
         <div className="mt-4 flex flex-col gap-3">
@@ -250,7 +260,7 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
                 max={PROBE_LIMITS.maxIntervalSeconds}
                 className={inputClass}
                 value={intervalSeconds}
-                onChange={(e) => setIntervalSeconds(Number(e.target.value))}
+                onChange={(e) => setIntervalSeconds(e.target.value)}
               />
             </div>
           </div>
@@ -268,7 +278,7 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
                 step={500}
                 className={inputClass}
                 value={timeoutMs}
-                onChange={(e) => setTimeoutMs(Number(e.target.value))}
+                onChange={(e) => setTimeoutMs(e.target.value)}
               />
             </div>
             <div>
@@ -282,7 +292,7 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
                 max={PROBE_LIMITS.maxFailureThreshold}
                 className={inputClass}
                 value={failureThreshold}
-                onChange={(e) => setFailureThreshold(Number(e.target.value))}
+                onChange={(e) => setFailureThreshold(e.target.value)}
               />
             </div>
           </div>
@@ -304,7 +314,13 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
             <button
               type="button"
               onClick={() => void save()}
-              disabled={saving || !url.trim() || urlProblem !== null || !name.trim()}
+              disabled={
+                saving ||
+                !url.trim() ||
+                urlProblem !== null ||
+                !name.trim() ||
+                numbersProblem !== null
+              }
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
             >
               {saving ? "Saving…" : existing ? "Save changes" : "Create probe"}
@@ -312,6 +328,6 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
           </div>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

@@ -52,8 +52,8 @@ function parseBag(json: string | null): unknown {
 export async function listLocalPosture(): Promise<PostureListResponse> {
   const db = await getDb();
 
-  // Independent reads; neither feeds the other's query.
-  const [resourceRows, accountRows, plugins] = await Promise.all([
+  // Independent reads (and the lazy evaluator import); none feeds another.
+  const [resourceRows, accountRows, plugins, { computePostureFindings }] = await Promise.all([
     db.select<LocalResourceRow[]>(
       `SELECT id, plugin_id, resource_type_id, account_id, display_name,
               external_id, fields_json
@@ -63,9 +63,8 @@ export async function listLocalPosture(): Promise<PostureListResponse> {
       `SELECT id, display_name, plugin_id FROM accounts WHERE deleted_at IS NULL`,
     ),
     loadPlugins(),
+    import("@infrawrench/client-core"),
   ]);
-
-  const { computePostureFindings } = await import("@infrawrench/client-core");
 
   return computePostureFindings({
     plugins: plugins.map(({ plugin }) => ({
