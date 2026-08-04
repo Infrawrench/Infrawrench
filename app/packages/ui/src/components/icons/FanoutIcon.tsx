@@ -4,8 +4,10 @@ interface FanoutIconProps {
 }
 
 /**
- * Fan-out SSH nav icon — one node broadcasting to two, the classic share
- * shape read here as "one command, many hosts".
+ * Fan-out SSH nav icon — one root node with elbow connectors branching to
+ * three hosts: "one command, many hosts". Elbow connectors rather than the
+ * diagonal share shape so it doesn't read as a twin of GraphIcon. Same 24x24
+ * stroke grid and 2px weight as the rest of the sidebar family.
  */
 export function FanoutIcon({ className, size = 14 }: FanoutIconProps) {
   return (
@@ -21,11 +23,14 @@ export function FanoutIcon({ className, size = 14 }: FanoutIconProps) {
       aria-hidden="true"
       className={className}
     >
-      <circle cx="18" cy="5" r="3" />
-      <circle cx="6" cy="12" r="3" />
-      <circle cx="18" cy="19" r="3" />
-      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+      <circle cx="4.5" cy="12" r="2.5" />
+      <circle cx="19.5" cy="4.5" r="2" />
+      <circle cx="19.5" cy="12" r="2" />
+      <circle cx="19.5" cy="19.5" r="2" />
+      <path d="M7 12h3.5" />
+      <path d="M10.5 12V4.5h7" />
+      <path d="M10.5 12h7" />
+      <path d="M10.5 12v7.5h7" />
     </svg>
   );
 }
