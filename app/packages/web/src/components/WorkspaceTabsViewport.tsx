@@ -35,6 +35,10 @@ import { createWebRightsizingClient } from "@/lib/rightsizing-client";
 import { createWebSchedulesClient } from "@/lib/schedules-client";
 import { createWebLogWorkspaceClient } from "@/lib/log-workspace-client";
 import { LogWorkspacePanel, type LogWorkspaceClient } from "@infrawrench/ui";
+import { WebChangesPanel } from "./WebChangesPanel";
+import { WebExpiryPanel } from "./WebExpiryPanel";
+import { WebMetricAlertsPanel } from "./WebMetricAlertsPanel";
+import { WebSshFanoutPanel } from "./WebSshFanoutPanel";
 
 interface WebWorkspaceTabsViewportProps {
   orgId: string;
@@ -283,6 +287,33 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           }
         />
       );
+    case "changes":
+      return <WebChangesPanel key={orgId} orgId={orgId} />;
+    case "expiring":
+      return (
+        <WebExpiryPanel
+          // Keyed by org so switching org remounts and refetches rather than
+          // showing the previous org's deadlines.
+          key={orgId}
+          orgId={orgId}
+          openResource={(item) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  item.accountId,
+                  item.resourceId,
+                  item.pluginId,
+                  item.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "ssh-fanout":
+      return <WebSshFanoutPanel key={orgId} orgId={orgId} />;
+    case "metric-alerts":
+      return <WebMetricAlertsPanel key={orgId} orgId={orgId} />;
     case "chat":
       return <WebChatPanel orgId={orgId} conversationId={t.conversationId} />;
     case "resource":

@@ -63,6 +63,7 @@ import {
   workflowsTabTarget,
   getWorkspaceNavigateArgs,
   navigateToWorkspaceTarget,
+  plainRouteDocumentTitle,
   syncWorkspaceRouteFromPath,
 } from "../lib/workspace-tabs";
 import { BANNERS, SHOW_SIGN_IN_BUTTON } from "../../env";
@@ -136,13 +137,18 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     return rows[0] ? { ...tab, title: rows[0].display_name } : null;
   }
 
-  // Agents, Costs, Graph, Logs, Workflows, and Chat tabs aren't backed by a
-  // single resource row; keep them as-is.
+  // Agents, Costs, Graph, Logs, Changes, Expiring, Fan-out, Alerts,
+  // Workflows, and Chat tabs aren't backed by a single resource row; keep
+  // them as-is.
   if (
     target.kind === "agents" ||
     target.kind === "costs" ||
     target.kind === "graph" ||
     target.kind === "logs" ||
+    target.kind === "changes" ||
+    target.kind === "expiring" ||
+    target.kind === "ssh-fanout" ||
+    target.kind === "metric-alerts" ||
     target.kind === "workflows" ||
     target.kind === "deployments" ||
     target.kind === "chat"
@@ -242,9 +248,11 @@ function RootLayout() {
     getWorkspaceNavigateArgs,
   );
 
-  useWorkspaceTabDocumentTitle({ suffix: false });
   const router = useRouter();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  // On plain routes (Changes, Expiring, Fan-out, Alerts, …) the workspace
+  // tabs are all background — the page's own title wins over the active tab.
+  useWorkspaceTabDocumentTitle({ suffix: false, routeTitle: plainRouteDocumentTitle(pathname) });
   const hash = useRouterState({ select: (state) => state.location.hash });
   // Under hash history the query string lives inside the hash fragment, so
   // window.location.search is always empty — read it from router state.

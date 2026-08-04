@@ -33,6 +33,22 @@ export function logsTabTarget(): WorkspaceTabTarget {
   return { kind: "logs" };
 }
 
+export function changesTabTarget(): WorkspaceTabTarget {
+  return { kind: "changes" };
+}
+
+export function expiringTabTarget(): WorkspaceTabTarget {
+  return { kind: "expiring" };
+}
+
+export function sshFanoutTabTarget(): WorkspaceTabTarget {
+  return { kind: "ssh-fanout" };
+}
+
+export function metricAlertsTabTarget(): WorkspaceTabTarget {
+  return { kind: "metric-alerts" };
+}
+
 export function deploymentsTabTarget(repo?: string): WorkspaceTabTarget {
   return { kind: "deployments", ...(repo ? { repo } : {}) };
 }

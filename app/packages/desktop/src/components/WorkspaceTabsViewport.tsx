@@ -30,6 +30,10 @@ import { CloudChatPanel } from "@/components/CloudChatPanel";
 import { DesktopWorkflowsPanel } from "@/components/DesktopWorkflowsPanel";
 import { DesktopGraphPanel } from "@/components/DesktopGraphPanel";
 import { LocalDeploymentsPanel } from "@/components/LocalDeploymentsPanel";
+import { DesktopChangesPanel } from "@/components/DesktopChangesPanel";
+import { DesktopExpiryPanel } from "@/components/DesktopExpiryPanel";
+import { DesktopMetricAlertsPanel } from "@/components/DesktopMetricAlertsPanel";
+import { DesktopSshFanoutPanel } from "@/components/DesktopSshFanoutPanel";
 
 let agentClient: AgentClient | null = null;
 function getAgentClient(): AgentClient {
@@ -235,6 +239,32 @@ function renderPanel(
           }
         />
       );
+    case "changes":
+      return <DesktopChangesPanel />;
+    case "expiring":
+      return (
+        <DesktopExpiryPanel
+          // Keyed by mode so switching org (or dropping to local) remounts
+          // and refetches rather than showing the previous mode's deadlines.
+          key={activeCloudOrgId ?? "local"}
+          openResource={(item) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  item.accountId,
+                  item.resourceId,
+                  item.pluginId,
+                  item.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "ssh-fanout":
+      return <DesktopSshFanoutPanel />;
+    case "metric-alerts":
+      return <DesktopMetricAlertsPanel />;
     case "chat":
       return <CloudChatPanel conversationId={t.conversationId} />;
     case "resource":

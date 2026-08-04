@@ -25,6 +25,7 @@ import { apiGet, apiPost } from "@/lib/api";
 import {
   dashboardTabTarget,
   getWorkspaceNavigateArgs,
+  plainRouteDocumentTitle,
   syncWorkspaceRouteFromPath,
 } from "@/lib/workspace-tabs";
 import { useGithubInstallResultToast } from "@/lib/github-install-result";
@@ -170,7 +171,9 @@ function AuthenticatedShell() {
     getWorkspaceNavigateArgs,
   );
 
-  useWorkspaceTabDocumentTitle();
+  // On plain routes (Changes, Expiring, Fan-out, Alerts, …) the workspace
+  // tabs are all background — the page's own title wins over the active tab.
+  useWorkspaceTabDocumentTitle({ routeTitle: plainRouteDocumentTitle(pathname) });
 
   useEffect(() => {
     if (!tabsHydrated) return;

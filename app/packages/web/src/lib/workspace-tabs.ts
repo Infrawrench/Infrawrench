@@ -7,6 +7,10 @@ import {
   costsTabTarget,
   graphTabTarget,
   logsTabTarget,
+  changesTabTarget,
+  expiringTabTarget,
+  sshFanoutTabTarget,
+  metricAlertsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -91,6 +95,30 @@ export function getWorkspaceNavigateArgs(
     case "logs":
       return {
         to: "/org/$orgId/logs",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "changes":
+      return {
+        to: "/org/$orgId/changes",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "expiring":
+      return {
+        to: "/org/$orgId/expiring",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "ssh-fanout":
+      return {
+        to: "/org/$orgId/ssh-fanout",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "metric-alerts":
+      return {
+        to: "/org/$orgId/metric-alerts",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -204,6 +232,18 @@ export function syncWorkspaceRouteFromPath(
   if (s[0] === "logs") {
     return logsTabTarget();
   }
+  if (s[0] === "changes") {
+    return changesTabTarget();
+  }
+  if (s[0] === "expiring") {
+    return expiringTabTarget();
+  }
+  if (s[0] === "ssh-fanout") {
+    return sshFanoutTabTarget();
+  }
+  if (s[0] === "metric-alerts") {
+    return metricAlertsTabTarget();
+  }
   if (s[0] === "chat") {
     // /chat is the conversation list; /chat/{id} is one conversation. Each
     // gets its own tab, same as desktop.
@@ -241,4 +281,26 @@ export function syncWorkspaceRouteFromPath(
     return resourceTabTarget(accountId, resourceId, pluginId, resourceTypeId);
   }
   return null;
+}
+
+/**
+ * Document title for *plain* routes — pages that render outside the
+ * workspace-tab system, where `syncWorkspaceRouteFromPath` returns null and
+ * the active tab's title would therefore go stale in the browser tab.
+ * Labels match the sidebar tiles the pages are opened from. Returns null on
+ * tab routes (the tab title applies) and on unknown paths.
+ */
+export function plainRouteDocumentTitle(pathname: string): string | null {
+  const segments = pathname.split("/").filter(Boolean);
+  const s = segments[0] === "org" && segments[1] ? segments.slice(2) : segments;
+  switch (s[0]) {
+    case "moment":
+      return "Moment";
+    case "settings":
+      return "Settings";
+    case "admin":
+      return "Admin";
+    default:
+      return null;
+  }
 }

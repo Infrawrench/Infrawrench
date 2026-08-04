@@ -185,6 +185,11 @@ const TabTarget = strict({
     // reject that client's whole tab list rather than the one dead tab.
     "savings",
     "graph",
+    "logs",
+    "changes",
+    "expiring",
+    "ssh-fanout",
+    "metric-alerts",
     "workflows",
     "deployments",
     "chat",
