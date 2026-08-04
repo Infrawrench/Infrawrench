@@ -10,6 +10,8 @@ Chasing a request across a pod, the deployment behind it, and the managed databa
 
 Click **Logs** in the sidebar (web and desktop). Add resources with the picker — it lists every synced resource whose plugin can fetch logs for it, discovered from the plugin contract rather than a hardcoded provider list. Typical sources are Kubernetes pods, deployments, jobs and the other workload types, GCP Cloud Run services and Cloud Functions, and DigitalOcean managed databases.
 
+The picker also reaches _inside_ managed clusters: a GKE, DOKS, or other managed Kubernetes cluster's pods and workloads are listed live through the cluster's Kubernetes integration — the same connection its Kubernetes tab uses — and appear labelled with the cluster they belong to (`api-0 · prod-cluster · My GCP`). You don't need to connect the cluster as a separate Kubernetes account. Because these entries are listed from the provider on the spot, a cluster that is unreachable at that moment simply contributes no entries until the picker is reopened.
+
 <insert [Screenshot of the Log workspace with three streams added (two Kubernetes pods and a Cloud Run service), interleaved view, showing colour-coded resource labels on each line] here>
 
 Each stream is tailed through the same per-resource log machinery as the resource's own Logs tab, refreshed every few seconds. Per stream you can pick the container (when the resource has more than one) or remove it; workspace-wide you get:
@@ -49,6 +51,8 @@ The pass is deliberately conservative:
 - **Never silent** — evaluation failures (a resource deleted upstream, credentials gone stale) are recorded on the query and shown wherever it is listed.
 
 An alert needs a non-empty search expression — an empty query matches every line and would fire forever.
+
+Cluster streams can be alerted on like any other: the pass reconnects through the parent cluster each run. Keep in mind that pods are ephemeral — if a saved query tails a pod that has since been replaced, that stream reports an error until you re-pick the new pod (tailing the deployment instead sidesteps this, since its logs follow whichever pod is currently running).
 
 ## Other surfaces
 

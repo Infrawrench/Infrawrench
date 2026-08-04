@@ -48,7 +48,22 @@ export interface LogWorkspacePanelProps {
 }
 
 function optionLabel(option: LogResourceOption): string {
-  return `${option.displayName} · ${option.accountName}`;
+  return option.parentDisplayName
+    ? `${option.displayName} · ${option.parentDisplayName} · ${option.accountName}`
+    : `${option.displayName} · ${option.accountName}`;
+}
+
+/**
+ * Identity of an option / added stream in the picker. Includes the parent:
+ * two clusters in one account can both run a pod with the same
+ * namespace/name, so account + resource id alone is ambiguous.
+ */
+function optionKey(option: {
+  accountId: string;
+  resourceId: string;
+  parentResourceId?: string | undefined;
+}): string {
+  return `${option.accountId}:${option.parentResourceId ?? ""}:${option.resourceId}`;
 }
 
 /**
@@ -206,6 +221,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
         accountId: option.accountId,
         pluginId: option.pluginId,
         resourceTypeId: option.resourceTypeId,
+        ...(option.parentResourceId ? { parentResourceId: option.parentResourceId } : {}),
       };
       const key = logStreamKey(selector);
       if (streamsRef.current.some((s) => logStreamKey(s.selector) === key)) return;
@@ -261,9 +277,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
     (query: LogWorkspaceQuery) => {
       lastLines.clear();
       setMerged([]);
-      const optionByKey = new Map(
-        options.map((o) => [`${o.accountId}:${o.resourceId}`, o] as const),
-      );
+      const optionByKey = new Map(options.map((o) => [optionKey(o), o] as const));
       setStreams(
         query.resources.map((selector, i) => ({
           selector,
@@ -271,7 +285,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
           // display name or an id with fewer than three `:` segments — and
           // must fall through to the next non-empty label.
           label:
-            optionByKey.get(`${selector.accountId}:${selector.resourceId}`)?.displayName ||
+            optionByKey.get(optionKey(selector))?.displayName ||
             selector.resourceId.split(":").slice(2).join(":") ||
             selector.resourceId,
           colorIdx: i % STREAM_COLORS.length,
@@ -349,12 +363,9 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
     return merged.filter((line) => compiled.test(line.text));
   }, [merged, compiled]);
 
-  const addedKeys = useMemo(
-    () => new Set(streams.map((s) => `${s.selector.accountId}:${s.selector.resourceId}`)),
-    [streams],
-  );
+  const addedKeys = useMemo(() => new Set(streams.map((s) => optionKey(s.selector))), [streams]);
   const addableOptions = useMemo(
-    () => options.filter((o) => !addedKeys.has(`${o.accountId}:${o.resourceId}`)),
+    () => options.filter((o) => !addedKeys.has(optionKey(o))),
     [options, addedKeys],
   );
   const activeQuery = activeQueryId ? (saved.find((q) => q.id === activeQueryId) ?? null) : null;
@@ -461,9 +472,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
         <select
           value=""
           onChange={(e) => {
-            const option = addableOptions.find(
-              (o) => `${o.accountId}:${o.resourceId}` === e.target.value,
-            );
+            const option = addableOptions.find((o) => optionKey(o) === e.target.value);
             if (option) addStream(option);
           }}
           disabled={optionsLoading || addableOptions.length === 0}
@@ -480,7 +489,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
                 : "+ Add resource…"}
           </option>
           {addableOptions.map((o) => (
-            <option key={`${o.accountId}:${o.resourceId}`} value={`${o.accountId}:${o.resourceId}`}>
+            <option key={optionKey(o)} value={optionKey(o)}>
               {optionLabel(o)}
             </option>
           ))}
@@ -543,6 +552,9 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
         <div className="flex items-center gap-2 px-3 py-1 border-b border-border bg-surface shrink-0 flex-wrap">
           {streams.map((stream) => {
             const key = logStreamKey(stream.selector);
+            // Sidecar streams (pods behind a managed cluster) have no detail
+            // page of their own — the chip stays a plain label.
+            const openable = onOpenResource && !stream.selector.parentResourceId;
             return (
               <span
                 key={key}
@@ -550,8 +562,8 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
               >
                 <button
                   type="button"
-                  onClick={() => onOpenResource?.(stream.selector)}
-                  className={`font-medium ${STREAM_COLORS[stream.colorIdx]} ${onOpenResource ? "hover:underline" : "cursor-default"}`}
+                  onClick={() => (openable ? onOpenResource(stream.selector) : undefined)}
+                  className={`font-medium ${STREAM_COLORS[stream.colorIdx]} ${openable ? "hover:underline" : "cursor-default"}`}
                   title={stream.selector.resourceId}
                 >
                   {stream.label}

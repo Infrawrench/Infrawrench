@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.30.0",
+    "version": "0.31.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -7704,7 +7704,7 @@
         "properties": {
           "resourceId": {
             "type": "string",
-            "description": "Infrawrench resource id of the stream to tail."
+            "description": "Infrawrench resource id of the stream to tail — or, for a sidecar stream, the peer plugin's own resource id (not a stored row)."
           },
           "accountId": {
             "type": "string",
@@ -7716,6 +7716,10 @@
           },
           "resourceTypeId": {
             "type": "string"
+          },
+          "parentResourceId": {
+            "type": "string",
+            "description": "Set for sidecar streams (e.g. a pod inside a managed cluster): the stored parent resource whose outputs mint the peer plugin's credentials. The logs endpoint routes through the peer client when present."
           },
           "container": {
             "type": "string",
@@ -7834,6 +7838,13 @@
             "type": "string"
           },
           "displayName": {
+            "type": "string"
+          },
+          "parentResourceId": {
+            "type": "string",
+            "description": "Set for sidecar streams: the stored parent resource the peer client is built through."
+          },
+          "parentDisplayName": {
             "type": "string"
           }
         },
@@ -21069,7 +21080,7 @@
       "get": {
         "tags": ["Log workspaces"],
         "summary": "List log-capable resources",
-        "description": "Synced resources whose rendered detail declares the logs capability — the candidates a log workspace can tail. Discovered from the plugin contract (never a hardcoded provider list), capped at 500 results.\n\n_Requires permission: `resources:read`._",
+        "description": "Synced resources whose rendered detail declares the logs capability — the candidates a log workspace can tail — plus sidecar streams reached through a peer integration (pods and workloads inside a managed cluster, listed live from the provider and marked with `parentResourceId`). Discovered from the plugin contract (never a hardcoded provider list), capped at 500 results.\n\n_Requires permission: `resources:read`._",
         "parameters": [
           {
             "schema": {

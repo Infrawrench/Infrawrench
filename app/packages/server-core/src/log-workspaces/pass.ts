@@ -37,6 +37,7 @@ import {
 import { db } from "../db/client";
 import { logWorkspaceQueries, resources } from "../db/schema";
 import { getOrgAccountClient } from "../org-accounts";
+import { getClientForResource } from "../peer-clients";
 import { sendPushToOrg } from "../push/dispatch";
 import { sendSlackToOrg } from "../slack";
 import { sendMsTeamsToOrg } from "../msteams";
@@ -148,12 +149,17 @@ interface StreamMatchResult {
   error: string | null;
 }
 
-/** Display names for the query's resources; missing rows report as gone. */
+/**
+ * Display names for the query's resources; missing rows report as gone. A
+ * sidecar selector's stream is never a stored row — the anchor is its parent
+ * (whose outputs mint the peer client), so the lookup keys on the parent id
+ * and the stream name is derived from the peer resource id's tail.
+ */
 async function loadStreamNames(
   organizationId: string,
   selectors: LogStreamSelector[],
 ): Promise<Map<string, { displayName: string; deleted: boolean }>> {
-  const ids = [...new Set(selectors.map((s) => s.resourceId))];
+  const ids = [...new Set(selectors.map((s) => s.parentResourceId ?? s.resourceId))];
   const rows = await db
     .select({
       id: resources.id,
@@ -167,7 +173,21 @@ async function loadStreamNames(
   );
 }
 
+/** Human name for a sidecar stream: `cluster/ns:pod-name`. */
+function sidecarStreamName(selector: LogStreamSelector, parentName: string): string {
+  const tail = selector.resourceId.split(":").slice(2).join(":") || selector.resourceId;
+  return `${parentName}/${tail}`;
+}
+
+/**
+ * One client per (account, parent) per run: native streams share the account
+ * client, sidecar streams share the peer client built through their parent.
+ */
 type AccountClientCache = Map<string, Awaited<ReturnType<typeof getOrgAccountClient>>>;
+
+function clientCacheKey(selector: LogStreamSelector): string {
+  return `${selector.accountId}:${selector.parentResourceId ?? ""}:${selector.parentResourceId ? selector.pluginId : ""}`;
+}
 
 async function evaluateStream(
   row: LogWorkspaceQueryRecord,
@@ -185,13 +205,26 @@ async function evaluateStream(
     error: null,
   };
   try {
-    let ctx = clients.get(selector.accountId);
-    if (!clients.has(selector.accountId)) {
-      ctx = await getOrgAccountClient(selector.accountId, row.organizationId);
-      clients.set(selector.accountId, ctx);
+    const cacheKey = clientCacheKey(selector);
+    let ctx = clients.get(cacheKey);
+    if (!clients.has(cacheKey)) {
+      ctx = selector.parentResourceId
+        ? await getClientForResource(
+            selector.pluginId,
+            selector.accountId,
+            row.organizationId,
+            selector.parentResourceId,
+          )
+        : await getOrgAccountClient(selector.accountId, row.organizationId);
+      clients.set(cacheKey, ctx);
     }
     if (!ctx) {
-      return { ...base, error: `${displayName}: account not found or its plugin failed to load` };
+      return {
+        ...base,
+        error: selector.parentResourceId
+          ? `${displayName}: parent resource no longer exposes a ${selector.pluginId} sidecar`
+          : `${displayName}: account not found or its plugin failed to load`,
+      };
     }
     if (!ctx.client.getLogs) {
       return { ...base, error: `${displayName}: plugin no longer supports logs` };
@@ -256,7 +289,8 @@ async function evaluateQuery(
   const clients: AccountClientCache = new Map();
   const results: StreamMatchResult[] = [];
   for (const selector of row.resources) {
-    const name = names.get(selector.resourceId);
+    const anchorId = selector.parentResourceId ?? selector.resourceId;
+    const name = names.get(anchorId);
     if (!name || name.deleted) {
       results.push({
         selector,
@@ -264,11 +298,16 @@ async function evaluateQuery(
         matchCount: 0,
         truncated: false,
         samples: [],
-        error: `Resource ${selector.resourceId} is no longer synced`,
+        error: selector.parentResourceId
+          ? `Parent resource ${anchorId} is no longer synced`
+          : `Resource ${anchorId} is no longer synced`,
       });
       continue;
     }
-    results.push(await evaluateStream(row, selector, name.displayName, search, clients));
+    const displayName = selector.parentResourceId
+      ? sidecarStreamName(selector, name.displayName)
+      : name.displayName;
+    results.push(await evaluateStream(row, selector, displayName, search, clients));
   }
 
   const errors = results.filter((r) => r.error !== null).map((r) => r.error!);

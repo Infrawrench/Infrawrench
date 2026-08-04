@@ -123,7 +123,32 @@ describe("log workspace routes", () => {
       expect((await post({ name: "x", resources: [{ resourceId: "r" }], search: "" })).status).toBe(
         400,
       );
+      expect(
+        (
+          await post({
+            name: "x",
+            resources: [{ ...selector, parentResourceId: 7 }],
+            search: "",
+          })
+        ).status,
+      ).toBe(400);
       expect(createLogWorkspaceRecord).not.toHaveBeenCalled();
+    });
+
+    it("passes a sidecar selector's parentResourceId through to the store", async () => {
+      createLogWorkspaceRecord.mockResolvedValue(record);
+      const sidecar = { ...selector, parentResourceId: "parent-1" };
+      const res = await buildApp().request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "pods", resources: [sidecar], search: "error" }),
+      });
+      expect(res.status).toBe(201);
+      expect(createLogWorkspaceRecord).toHaveBeenCalledWith(
+        "org-1",
+        { name: "pods", resources: [sidecar], search: "error" },
+        "user-1",
+      );
     });
 
     it("maps store input errors onto their HTTP status", async () => {

@@ -9,7 +9,9 @@ const completionWrites: Array<Record<string, unknown>> = [];
 let completionMatches = true;
 
 const getLogs = vi.fn();
+const peerGetLogs = vi.fn();
 const getOrgAccountClient = vi.fn();
+const getClientForResource = vi.fn();
 const sendPushToOrg = vi.fn();
 const sendSlackToOrg = vi.fn();
 const sendMsTeamsToOrg = vi.fn();
@@ -70,6 +72,11 @@ vi.mock("drizzle-orm", () => ({
 
 vi.mock("../org-accounts", () => ({
   getOrgAccountClient: (...a: unknown[]) => getOrgAccountClient(...a),
+}));
+// Sidecar streams resolve their client through the peer path; mocked at the
+// same boundary as org-accounts (the real module pulls in the plugin loader).
+vi.mock("../peer-clients", () => ({
+  getClientForResource: (...a: unknown[]) => getClientForResource(...a),
 }));
 vi.mock("../push/dispatch", () => ({
   sendPushToOrg: (...a: unknown[]) => sendPushToOrg(...a),
@@ -136,6 +143,12 @@ beforeEach(() => {
     activeContainer: "app",
   });
   getOrgAccountClient.mockReset().mockResolvedValue({ client: { getLogs } });
+  peerGetLogs.mockReset().mockResolvedValue({
+    text: "ok line\nERROR pod boom\n",
+    containers: ["app"],
+    activeContainer: "app",
+  });
+  getClientForResource.mockReset().mockResolvedValue({ client: { getLogs: peerGetLogs } });
   sendPushToOrg.mockReset().mockResolvedValue({ attempted: 1, succeeded: 1 });
   sendSlackToOrg.mockReset().mockResolvedValue({ attempted: 0, succeeded: 0, failed: 0 });
   sendMsTeamsToOrg.mockReset().mockResolvedValue({ attempted: 0, succeeded: 0, failed: 0 });
@@ -238,6 +251,65 @@ describe("runLogAlertPass — no match", () => {
     const completion = completionWrites.at(-1)!;
     expect(completion["lastEvalAt"]).toEqual(new Date(NOW));
     expect(completion["lastMatchAt"]).toBeUndefined();
+  });
+});
+
+describe("runLogAlertPass — sidecar streams", () => {
+  const sidecarSelector = {
+    resourceId: "acc-1:k8s-pod:default:api-0",
+    accountId: "acc-1",
+    pluginId: "kubernetes",
+    resourceTypeId: "k8s-pod",
+    parentResourceId: "parent-1",
+  };
+
+  it("resolves the client through the peer path and anchors names on the parent", async () => {
+    queryRow = baseRow({ resources: [sidecarSelector] });
+    resourceRows = [{ id: "parent-1", displayName: "prod-cluster", deletedAt: null }];
+    const result = await runLogAlertPass({ now: NOW });
+    expect(result).toEqual({ claimed: 1, evaluated: 1, matched: 1, notified: 1, failed: 0 });
+
+    expect(getOrgAccountClient).not.toHaveBeenCalled();
+    expect(getClientForResource).toHaveBeenCalledWith("kubernetes", "acc-1", "org-1", "parent-1");
+    expect(peerGetLogs).toHaveBeenCalledWith("k8s-pod", "acc-1:k8s-pod:default:api-0", "acc-1", {
+      tailLines: LOG_WORKSPACE_LIMITS.alertTailLines,
+    });
+    // The notification names the stream through its parent, not the raw id.
+    const [, , msg] = sendPushToOrg.mock.calls[0]!;
+    expect(msg.body).toContain("prod-cluster/default:api-0");
+  });
+
+  it("reports a gone parent instead of evaluating", async () => {
+    queryRow = baseRow({ resources: [sidecarSelector] });
+    resourceRows = [{ id: "parent-1", displayName: "prod-cluster", deletedAt: new Date(NOW) }];
+    const result = await runLogAlertPass({ now: NOW });
+    expect(result.failed).toBe(1);
+    expect(getClientForResource).not.toHaveBeenCalled();
+    const completion = completionWrites.at(-1)!;
+    expect(completion["lastEvalError"]).toContain("Parent resource parent-1 is no longer synced");
+  });
+
+  it("reports a vanished peer integration as the stream's error", async () => {
+    queryRow = baseRow({ resources: [sidecarSelector] });
+    resourceRows = [{ id: "parent-1", displayName: "prod-cluster", deletedAt: null }];
+    getClientForResource.mockResolvedValue(null);
+    const result = await runLogAlertPass({ now: NOW });
+    expect(result.failed).toBe(1);
+    const completion = completionWrites.at(-1)!;
+    expect(completion["lastEvalError"]).toContain("no longer exposes a kubernetes sidecar");
+  });
+
+  it("caches one peer client per parent across a query's streams", async () => {
+    queryRow = baseRow({
+      resources: [
+        sidecarSelector,
+        { ...sidecarSelector, resourceId: "acc-1:k8s-pod:default:api-1" },
+      ],
+    });
+    resourceRows = [{ id: "parent-1", displayName: "prod-cluster", deletedAt: null }];
+    await runLogAlertPass({ now: NOW });
+    expect(getClientForResource).toHaveBeenCalledTimes(1);
+    expect(peerGetLogs).toHaveBeenCalledTimes(2);
   });
 });
 

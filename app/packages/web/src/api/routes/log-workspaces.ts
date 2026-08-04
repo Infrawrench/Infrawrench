@@ -61,11 +61,20 @@ function readSelectors(value: unknown): LogStreamSelector[] | { error: string } 
     if (record["container"] !== undefined && typeof record["container"] !== "string") {
       return { error: "container must be a string when present" };
     }
+    if (
+      record["parentResourceId"] !== undefined &&
+      typeof record["parentResourceId"] !== "string"
+    ) {
+      return { error: "parentResourceId must be a string when present" };
+    }
     selectors.push({
       resourceId: record["resourceId"] as string,
       accountId: record["accountId"] as string,
       pluginId: record["pluginId"] as string,
       resourceTypeId: record["resourceTypeId"] as string,
+      ...(record["parentResourceId"]
+        ? { parentResourceId: record["parentResourceId"] as string }
+        : {}),
       ...(record["container"] ? { container: record["container"] as string } : {}),
     });
   }

@@ -211,4 +211,14 @@ describe("logStreamKey", () => {
     );
     expect(logStreamKey(selector())).toBe(logStreamKey(selector()));
   });
+
+  it("distinguishes the same peer resource id under different parents", () => {
+    // Two clusters in one account can both run `kube-system:coredns-abc`.
+    expect(logStreamKey(selector({ parentResourceId: "cluster-a" }))).not.toBe(
+      logStreamKey(selector({ parentResourceId: "cluster-b" })),
+    );
+    expect(logStreamKey(selector({ parentResourceId: "cluster-a" }))).not.toBe(
+      logStreamKey(selector()),
+    );
+  });
 });

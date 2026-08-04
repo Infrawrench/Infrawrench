@@ -21,11 +21,22 @@ import type { CloudFetch } from "./fetch";
 
 /** One resource a saved query tails — enough to call the per-resource logs endpoint. */
 export interface LogStreamSelector {
-  /** Infrawrench resource id (`resources.id`). */
+  /**
+   * Infrawrench resource id (`resources.id`), or — for a sidecar stream — the
+   * peer plugin's own resource id (e.g. `{accountId}:k8s-pod:{ns}:{name}`),
+   * which is not a stored row.
+   */
   resourceId: string;
   accountId: string;
   pluginId: string;
   resourceTypeId: string;
+  /**
+   * Set when the stream lives behind a peer integration (a pod inside a
+   * managed cluster): the stored parent resource (`resources.id`) whose
+   * outputs mint the peer plugin's credentials. The logs endpoint routes
+   * through the peer client when present.
+   */
+  parentResourceId?: string;
   /** Container to fetch when the resource has more than one; omit for the default. */
   container?: string;
 }
@@ -361,9 +372,13 @@ export function computeAppendedLines(prev: string[], next: string[]): string[] {
   return next.slice();
 }
 
-/** Stable key for a selector — used for React keys and per-stream state maps. */
+/**
+ * Stable key for a selector — used for React keys and per-stream state maps.
+ * Includes the parent: two clusters in one account can both run a pod with
+ * the same namespace/name, so the peer resource id alone is ambiguous.
+ */
 export function logStreamKey(selector: LogStreamSelector): string {
-  return `${selector.accountId}:${selector.resourceId}:${selector.container ?? ""}`;
+  return `${selector.accountId}:${selector.parentResourceId ?? ""}:${selector.resourceId}:${selector.container ?? ""}`;
 }
 
 /**
@@ -472,6 +487,7 @@ export async function fetchLogStreamTail(
       body: JSON.stringify({
         accountId: selector.accountId,
         resourceId: selector.resourceId,
+        ...(selector.parentResourceId ? { parentResourceId: selector.parentResourceId } : {}),
         ...(options?.tailLines !== undefined ? { tailLines: options.tailLines } : {}),
         ...(selector.container ? { container: selector.container } : {}),
       }),

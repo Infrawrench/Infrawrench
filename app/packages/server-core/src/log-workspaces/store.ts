@@ -132,20 +132,24 @@ function normalizeSelectors(selectors: LogStreamSelector[]): LogStreamSelector[]
     accountId: s.accountId,
     pluginId: s.pluginId,
     resourceTypeId: s.resourceTypeId,
+    ...(s.parentResourceId ? { parentResourceId: s.parentResourceId } : {}),
     ...(s.container ? { container: s.container } : {}),
   }));
 }
 
 /**
  * Verify every selector points at a live synced resource in this org whose
- * account matches. Best-effort resource-name checks stay out of here — a
- * resource deleted later just shows as gone in the workspace.
+ * account matches. For a sidecar selector the peer resource is never a stored
+ * row — the *parent* is what must resolve (its outputs mint the peer client's
+ * credentials), so the same checks apply to `parentResourceId` instead.
+ * Best-effort resource-name checks stay out of here — a resource deleted
+ * later just shows as gone in the workspace.
  */
 async function assertSelectorsResolve(
   organizationId: string,
   selectors: LogStreamSelector[],
 ): Promise<void> {
-  const ids = [...new Set(selectors.map((s) => s.resourceId))];
+  const ids = [...new Set(selectors.map((s) => s.parentResourceId ?? s.resourceId))];
   const rows = await db
     .select({
       id: resources.id,
@@ -156,17 +160,16 @@ async function assertSelectorsResolve(
     .where(and(eq(resources.organizationId, organizationId), inArray(resources.id, ids)));
   const byId = new Map(rows.map((r) => [r.id, r]));
   for (const selector of selectors) {
-    const row = byId.get(selector.resourceId);
+    const anchorId = selector.parentResourceId ?? selector.resourceId;
+    const row = byId.get(anchorId);
     if (!row || row.deletedAt !== null) {
       throw new LogWorkspaceInputError(
-        `Resource ${selector.resourceId} was not found in this organization`,
+        `Resource ${anchorId} was not found in this organization`,
         404,
       );
     }
     if (row.accountId !== selector.accountId) {
-      throw new LogWorkspaceInputError(
-        `Resource ${selector.resourceId} does not belong to that account`,
-      );
+      throw new LogWorkspaceInputError(`Resource ${anchorId} does not belong to that account`);
     }
   }
 }

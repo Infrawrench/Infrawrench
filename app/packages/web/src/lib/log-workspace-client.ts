@@ -28,6 +28,9 @@ export function createWebLogWorkspaceClient(orgId: string): LogWorkspaceClient {
         {
           accountId: selector.accountId,
           resourceId: selector.resourceId,
+          // Sidecar streams (pods behind a managed cluster) route the logs
+          // endpoint through the peer client built from this parent.
+          ...(selector.parentResourceId ? { parentResourceId: selector.parentResourceId } : {}),
           ...params,
         },
       );

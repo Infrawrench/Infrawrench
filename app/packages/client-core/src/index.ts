@@ -366,6 +366,7 @@ export * from "./orphans";
 export * from "./expiry";
 export * from "./schedules";
 export * from "./log-workspaces";
+export * from "./log-discovery";
 export * from "./metric-alerts";
 export * from "./rightsizing";
 export * from "./chat/types";

@@ -17,10 +17,23 @@ export function registerLogWorkspacePaths(ctx: BuildContext) {
   const { registry, enums } = ctx;
 
   const LogStreamSelector = strict({
-    resourceId: z.string().describe("Infrawrench resource id of the stream to tail."),
+    resourceId: z
+      .string()
+      .describe(
+        "Infrawrench resource id of the stream to tail — or, for a sidecar stream, the peer " +
+          "plugin's own resource id (not a stored row).",
+      ),
     accountId: Uuid,
     pluginId: enums.PluginId,
     resourceTypeId: z.string(),
+    parentResourceId: z
+      .string()
+      .optional()
+      .describe(
+        "Set for sidecar streams (e.g. a pod inside a managed cluster): the stored parent " +
+          "resource whose outputs mint the peer plugin's credentials. The logs endpoint routes " +
+          "through the peer client when present.",
+      ),
     container: z
       .string()
       .optional()
@@ -97,6 +110,13 @@ export function registerLogWorkspacePaths(ctx: BuildContext) {
     pluginId: enums.PluginId,
     resourceTypeId: z.string(),
     displayName: z.string(),
+    parentResourceId: z
+      .string()
+      .optional()
+      .describe(
+        "Set for sidecar streams: the stored parent resource the peer client is built through.",
+      ),
+    parentDisplayName: z.string().optional(),
   }).openapi("LogCapableResource");
 
   const LogCapableResourceList = strict({
@@ -110,7 +130,9 @@ export function registerLogWorkspacePaths(ctx: BuildContext) {
     summary: "List log-capable resources",
     description:
       "Synced resources whose rendered detail declares the logs capability — the candidates a " +
-      "log workspace can tail. Discovered from the plugin contract (never a hardcoded provider " +
+      "log workspace can tail — plus sidecar streams reached through a peer integration (pods " +
+      "and workloads inside a managed cluster, listed live from the provider and marked with " +
+      "`parentResourceId`). Discovered from the plugin contract (never a hardcoded provider " +
       "list), capped at 500 results.",
     request: { params: OrgIdParam },
     responses: {

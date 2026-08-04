@@ -1,10 +1,12 @@
 import type { LogsFetchParams, LogsFetchResult, PluginClient } from "@infrawrench/plugin-base";
-import type {
-  LogStreamSelector,
-  LogWorkspaceQuery,
-  LogWorkspaceQueryCreate,
-  LogWorkspaceQueryListResponse,
-  LogWorkspaceQueryPatch,
+import {
+  discoverSidecarLogStreams,
+  type LogStreamSelector,
+  type LogWorkspaceQuery,
+  type LogWorkspaceQueryCreate,
+  type LogWorkspaceQueryListResponse,
+  type LogWorkspaceQueryPatch,
+  type SidecarLogParent,
 } from "@infrawrench/client-core";
 import type {
   LogResourceOption,
@@ -13,7 +15,8 @@ import type {
 } from "@infrawrench/ui";
 import { invoke } from "./invoke";
 import { getDb } from "../db/client";
-import { createPluginClient } from "./plugin-client";
+import { getPlugin } from "../plugins/loader";
+import { createPeerPluginClient, createPluginClient } from "./plugin-client";
 
 /**
  * Desktop log workspace client — dual-mode, fixed at creation time: the org
@@ -56,6 +59,9 @@ function getLocalClient(accountId: string, pluginId: string): Promise<PluginClie
   return client;
 }
 
+/** Cap matching the cloud discovery's, so both pickers stay bounded alike. */
+const MAX_RESULTS = 500;
+
 async function listLocalLogResources(): Promise<LogResourceOption[]> {
   const db = await getDb();
   const [accountRows, resourceRows] = await Promise.all([
@@ -72,16 +78,21 @@ async function listLocalLogResources(): Promise<LogResourceOption[]> {
   ]);
 
   const out: LogResourceOption[] = [];
+  const sidecarParents: (SidecarLogParent & { parentPluginId: string })[] = [];
   for (const account of accountRows) {
     const rows = resourceRows.filter((r) => r.account_id === account.id);
     if (rows.length === 0) continue;
-    let client: PluginClient;
+    const loaded = await getPlugin(account.plugin_id).catch(() => undefined);
+    const peerTypeDefs = (loaded?.plugin.resourceTypes ?? []).filter(
+      (t) => (t.peerIntegrations?.length ?? 0) > 0,
+    );
+    let client: PluginClient | null = null;
     try {
       client = await getLocalClient(account.id, account.plugin_id);
     } catch {
-      continue; // Broken credentials never break the picker for other accounts.
+      client = null; // Broken credentials never break the picker for other accounts.
     }
-    if (!client.getLogs) continue;
+    if ((client === null || !client.getLogs) && peerTypeDefs.length === 0) continue;
     for (const row of rows) {
       const fields = (() => {
         try {
@@ -90,6 +101,19 @@ async function listLocalLogResources(): Promise<LogResourceOption[]> {
           return {};
         }
       })();
+      const peerTypeDef = peerTypeDefs.find((t) => t.id === row.resource_type_id);
+      if (peerTypeDef) {
+        sidecarParents.push({
+          accountId: account.id,
+          accountName: account.display_name,
+          resourceId: row.id,
+          displayName: row.display_name,
+          fields,
+          integrations: peerTypeDef.peerIntegrations ?? [],
+          parentPluginId: account.plugin_id,
+        });
+      }
+      if (!client?.getLogs || out.length >= MAX_RESULTS) continue;
       try {
         const schema = client.renderDetail({
           id: row.id,
@@ -118,6 +142,31 @@ async function listLocalLogResources(): Promise<LogResourceOption[]> {
         displayName: row.display_name,
       });
     }
+  }
+
+  // Sidecar streams (pods inside a managed cluster) — same shared walk as the
+  // cloud discovery, over in-renderer peer clients.
+  if (out.length < MAX_RESULTS && sidecarParents.length > 0) {
+    const byParentId = new Map(sidecarParents.map((p) => [p.resourceId, p]));
+    const sidecars = await discoverSidecarLogStreams(sidecarParents, {
+      async getPeerClient(parent, pluginId) {
+        const parentPluginId = byParentId.get(parent.resourceId)?.parentPluginId;
+        if (!parentPluginId) return null;
+        return createPeerPluginClient(
+          parent.accountId,
+          parentPluginId,
+          parent.resourceId,
+          pluginId,
+        );
+      },
+      async peerResourceTypeIds(pluginId) {
+        const loaded = await getPlugin(pluginId);
+        return loaded ? loaded.plugin.resourceTypes.map((t) => t.id) : [];
+      },
+      warn: (message) => console.warn(`[log-workspaces] ${message}`),
+      maxResults: MAX_RESULTS - out.length,
+    });
+    out.push(...sidecars);
   }
   return out;
 }
@@ -154,7 +203,26 @@ export function createDesktopLogWorkspaceClient(orgId: string | null): LogWorksp
         selector: LogStreamSelector,
         params: LogsFetchParams,
       ): Promise<LogsFetchResult> {
-        const client = await getLocalClient(selector.accountId, selector.pluginId);
+        let client: PluginClient;
+        if (selector.parentResourceId) {
+          // Sidecar stream: the peer client is minted from the parent's
+          // outputs; the account's own plugin is looked up from the row.
+          const db = await getDb();
+          const accountRows = await db.select<{ plugin_id: string }[]>(
+            "SELECT plugin_id FROM accounts WHERE id = ? AND deleted_at IS NULL",
+            [selector.accountId],
+          );
+          const parentPluginId = accountRows[0]?.plugin_id;
+          if (!parentPluginId) throw new Error("Account not found");
+          client = await createPeerPluginClient(
+            selector.accountId,
+            parentPluginId,
+            selector.parentResourceId,
+            selector.pluginId,
+          );
+        } else {
+          client = await getLocalClient(selector.accountId, selector.pluginId);
+        }
         if (!client.getLogs) throw new Error("Plugin does not support logs");
         return client.getLogs(
           selector.resourceTypeId,
@@ -180,6 +248,9 @@ export function createDesktopLogWorkspaceClient(orgId: string | null): LogWorksp
         resourceTypeId: selector.resourceTypeId,
         resourceId: selector.resourceId,
         accountId: selector.accountId,
+        // Sidecar streams route the cloud logs endpoint through the peer
+        // client built from this parent (the IPC already forwards it).
+        ...(selector.parentResourceId ? { parentResourceId: selector.parentResourceId } : {}),
         ...params,
       });
     },

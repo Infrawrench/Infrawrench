@@ -14,6 +14,13 @@ export interface LogResourceOption {
   pluginId: string;
   resourceTypeId: string;
   displayName: string;
+  /**
+   * Set for sidecar streams (a pod inside a managed cluster): the stored
+   * parent resource the peer client is built through. Carried onto the
+   * stream's `LogStreamSelector` so the fetch path can route via the peer.
+   */
+  parentResourceId?: string;
+  parentDisplayName?: string;
 }
 
 /**
