@@ -144,10 +144,13 @@ app_env = {
   STRIPE_BUILD_PRICE_ID                = "price_..."
 
   # Optional: egress proxy Worker (app/packages/egress-proxy) for workflow
-  # fetch(), the chat agent's web_fetch, and the poller's provider status-feed
-  # pass. Token = the Worker's PROXY_TOKEN secret. Without both, workflow
-  # fetch() throws and web_fetch is withheld from the model; status feeds fall
-  # back to a direct in-pod fetch (manifest-declared public URLs only).
+  # fetch(), the chat agent's web_fetch, the poller's provider status-feed
+  # pass, and the poller's synthetic-probe pass. Token = the Worker's
+  # PROXY_TOKEN secret. Without both, workflow fetch() throws, web_fetch is
+  # withheld from the model, and synthetic probes silently skip (they exist to
+  # measure from an external vantage point, so there is no in-pod fallback);
+  # status feeds fall back to a direct in-pod fetch (manifest-declared public
+  # URLs only).
   WORKFLOW_FETCH_PROXY_URL   = "https://egress.infrawrench.com"
   WORKFLOW_FETCH_PROXY_TOKEN = "<openssl rand -base64 32>"
 

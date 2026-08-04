@@ -130,6 +130,7 @@ export default function NotificationsScreen() {
     expiryAlerts: true,
     logMatchAlerts: true,
     postureAlerts: true,
+    probeAlerts: true,
   };
   const deviceList = devices.data ?? [];
 
@@ -297,6 +298,19 @@ export default function NotificationsScreen() {
           <Switch
             value={current.postureAlerts}
             onValueChange={(v) => updatePrefs.mutate({ postureAlerts: v })}
+            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
+          />
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>Probes</Text>
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+              A synthetic probe goes down after consecutive failures, or recovers.
+            </Text>
+          </View>
+          <Switch
+            value={current.probeAlerts}
+            onValueChange={(v) => updatePrefs.mutate({ probeAlerts: v })}
             trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
           />
         </View>
@@ -580,6 +594,7 @@ const SLACK_TRIGGERS = [
   { key: "expiryAlerts", label: "Expiry" },
   { key: "logMatchAlerts", label: "Log matches" },
   { key: "postureAlerts", label: "Posture" },
+  { key: "probeAlerts", label: "Probes" },
   { key: "weeklyDigest", label: "Weekly digest" },
 ] as const satisfies ReadonlyArray<{ key: keyof SlackChannelTriggers; label: string }>;
 
@@ -869,6 +884,7 @@ const MSTEAMS_TRIGGERS = [
   { key: "expiryAlerts", label: "Expiry" },
   { key: "logMatchAlerts", label: "Log matches" },
   { key: "postureAlerts", label: "Posture" },
+  { key: "probeAlerts", label: "Probes" },
   { key: "weeklyDigest", label: "Weekly digest" },
 ] as const satisfies ReadonlyArray<{ key: keyof MsTeamsWebhookTriggers; label: string }>;
 

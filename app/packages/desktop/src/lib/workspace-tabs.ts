@@ -12,6 +12,7 @@ import {
   postureTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
+  probesTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -35,6 +36,7 @@ export {
   postureTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
+  probesTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -92,6 +94,8 @@ export function getWorkspaceNavigateArgs(
       return { to: "/ssh-fanout", ...(replace ? { replace: true } : {}) };
     case "metric-alerts":
       return { to: "/metric-alerts", ...(replace ? { replace: true } : {}) };
+    case "probes":
+      return { to: "/probes", ...(replace ? { replace: true } : {}) };
     case "chat":
       // Always pass search explicitly: navigating from a conversation
       // (?conversation=x) to the list must CLEAR the param, or the route
@@ -194,6 +198,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "metric-alerts") {
     return metricAlertsTabTarget();
+  }
+  if (segments[0] === "probes") {
+    return probesTabTarget();
   }
   if (segments[0] === "chat") {
     const params = new URLSearchParams(search ?? "");

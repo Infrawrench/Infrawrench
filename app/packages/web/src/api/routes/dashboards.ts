@@ -684,6 +684,7 @@ app.post("/validate-tabs", async (c) => {
       target.kind === "posture" ||
       target.kind === "ssh-fanout" ||
       target.kind === "metric-alerts" ||
+      target.kind === "probes" ||
       target.kind === "workflows" ||
       target.kind === "deployments"
     ) {

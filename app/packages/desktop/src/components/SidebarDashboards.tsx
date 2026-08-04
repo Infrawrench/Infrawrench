@@ -7,6 +7,7 @@ import {
   DEFAULT_CHAT_MODEL,
   ChangesIcon,
   MetricAlertIcon,
+  ProbesIcon,
   DeployIcon,
   ExpiryIcon,
   PostureIcon,
@@ -227,6 +228,14 @@ export function SidebarDashboards() {
             label: "Changes",
             icon: <ChangesIcon />,
             onClick: () => void navigate({ to: "/changes" }),
+          },
+          // Cloud-only like Changes: probes run in the cloud poller through
+          // the egress proxy, and results live in the cloud metric store.
+          {
+            key: "probes",
+            label: "Probes",
+            icon: <ProbesIcon />,
+            onClick: () => void navigate({ to: "/probes" }),
           },
         ]
       : []),

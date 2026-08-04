@@ -421,6 +421,7 @@ const ALERT_TRIGGERS = [
   { key: "expiryAlerts", label: "Expiry alerts" },
   { key: "logMatchAlerts", label: "Log matches" },
   { key: "postureAlerts", label: "Posture" },
+  { key: "probeAlerts", label: "Probes" },
   { key: "weeklyDigest", label: "Weekly digest" },
 ] as const;
 
@@ -1507,6 +1508,17 @@ function PushPreferencesSection({ orgId }: { orgId: string }) {
           />
           <span>Posture</span>
         </label>
+        <label
+          className="flex items-center gap-2"
+          title="A synthetic probe went down (consecutive failures) or recovered."
+        >
+          <input
+            type="checkbox"
+            checked={prefs.probeAlerts}
+            onChange={(e) => void updatePref({ probeAlerts: e.target.checked })}
+          />
+          <span>Probes</span>
+        </label>
       </div>
 
       {devices.length === 0 ? (
@@ -1575,6 +1587,8 @@ interface PushRecipientRow {
   logMatchAlerts: boolean;
   /** Posture findings; on by default like the other exceptional triggers. */
   postureAlerts: boolean;
+  /** Synthetic probe down/recovered transitions; on by default. */
+  probeAlerts: boolean;
   devices: Array<{ id: string; platform: string; deviceName: string | null }>;
 }
 
@@ -1617,6 +1631,7 @@ function PushRosterSection({ orgId }: { orgId: string }) {
                   r.expiryAlerts && "expiry",
                   r.logMatchAlerts && "log matches",
                   r.postureAlerts && "posture",
+                  r.probeAlerts && "probes",
                 ]
                   .filter(Boolean)
                   .join(", ") || "all triggers off"}

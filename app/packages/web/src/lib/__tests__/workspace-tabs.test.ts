@@ -98,6 +98,14 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns probes route args", () => {
+    const args = getWorkspaceNavigateArgs({ kind: "probes" });
+    expect(args).toEqual({
+      to: "/org/$orgId/probes",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("returns resource route args with ssh hash (fallback without pluginId)", () => {
     const args = getWorkspaceNavigateArgs({
       kind: "resource",
@@ -199,6 +207,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the org-scoped posture path", () => {
     expect(syncWorkspaceRouteFromPath("/org/test-org/posture")).toEqual({ kind: "posture" });
+  });
+
+  it("parses the probes path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/probes")).toEqual({ kind: "probes" });
   });
 
   it("parses the chat list path", () => {

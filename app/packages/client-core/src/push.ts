@@ -177,6 +177,21 @@ export type PushNotificationData =
       /** Matching lines counted this evaluation (capped server-side). */
       matchCount: number;
     }
+  | {
+      /**
+       * A synthetic probe crossed its consecutive-failure threshold and went
+       * down, or a down probe answered again (see server-core
+       * `probes/pass.ts`). One notification per transition, never per check.
+       *
+       * Target route: the probes list, `/org/{orgId}/probes`.
+       */
+      type: "probe_alert";
+      orgId: string;
+      /** Probe row id (`synthetic_probes.id`). */
+      probeId: string;
+      /** Whether this notification announces the outage or the recovery. */
+      status: "down" | "up";
+    }
   | { type: "test"; orgId: string };
 
 export async function registerPushToken(
@@ -223,6 +238,8 @@ export interface PushPreferences {
   logMatchAlerts: boolean;
   /** Critical/high security posture findings from the posture alert pass. */
   postureAlerts: boolean;
+  /** Synthetic probe down/recovered transitions. */
+  probeAlerts: boolean;
 }
 
 export async function getPushPreferences(api: CloudFetch, orgId: string): Promise<PushPreferences> {
@@ -238,6 +255,7 @@ export async function getPushPreferences(api: CloudFetch, orgId: string): Promis
       expiryAlerts: true,
       logMatchAlerts: true,
       postureAlerts: true,
+      probeAlerts: true,
     }
   );
 }

@@ -44,6 +44,10 @@ const SlackChannel = strict({
     description:
       "Daily digests of critical/high security posture findings on synced resources — public buckets, world-open ingress, unencrypted disks.",
   }),
+  probeAlerts: z.boolean().openapi({
+    description:
+      "A synthetic probe crossed its consecutive-failure threshold (down) or answered again (recovered).",
+  }),
   weeklyDigest: z.boolean().openapi({
     description:
       "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest).",
@@ -79,6 +83,7 @@ const SlackChannelCreate = strict({
   expiryAlerts: z.boolean().optional(),
   logMatchAlerts: z.boolean().optional(),
   postureAlerts: z.boolean().optional(),
+  probeAlerts: z.boolean().optional(),
   weeklyDigest: z.boolean().optional(),
 }).openapi("SlackChannelCreate");
 
@@ -95,6 +100,7 @@ const SlackChannelUpdate = strict({
   expiryAlerts: z.boolean().optional(),
   logMatchAlerts: z.boolean().optional(),
   postureAlerts: z.boolean().optional(),
+  probeAlerts: z.boolean().optional(),
   weeklyDigest: z.boolean().optional(),
 }).openapi("SlackChannelUpdate");
 

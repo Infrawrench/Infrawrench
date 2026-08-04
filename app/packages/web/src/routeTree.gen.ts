@@ -19,6 +19,7 @@ import { Route as OrgOrgIdWorkflowsRouteImport } from './routes/org.$orgId.workf
 import { Route as OrgOrgIdSshFanoutRouteImport } from './routes/org.$orgId.ssh-fanout'
 import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settings'
 import { Route as OrgOrgIdSavingsRouteImport } from './routes/org.$orgId.savings'
+import { Route as OrgOrgIdProbesRouteImport } from './routes/org.$orgId.probes'
 import { Route as OrgOrgIdPostureRouteImport } from './routes/org.$orgId.posture'
 import { Route as OrgOrgIdMomentRouteImport } from './routes/org.$orgId.moment'
 import { Route as OrgOrgIdMetricAlertsRouteImport } from './routes/org.$orgId.metric-alerts'
@@ -97,6 +98,11 @@ const OrgOrgIdSettingsRoute = OrgOrgIdSettingsRouteImport.update({
 const OrgOrgIdSavingsRoute = OrgOrgIdSavingsRouteImport.update({
   id: '/savings',
   path: '/savings',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdProbesRoute = OrgOrgIdProbesRouteImport.update({
+  id: '/probes',
+  path: '/probes',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdPostureRoute = OrgOrgIdPostureRouteImport.update({
@@ -271,6 +277,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/posture': typeof OrgOrgIdPostureRoute
+  '/org/$orgId/probes': typeof OrgOrgIdProbesRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
@@ -310,6 +317,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/posture': typeof OrgOrgIdPostureRoute
+  '/org/$orgId/probes': typeof OrgOrgIdProbesRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
@@ -351,6 +359,7 @@ export interface FileRoutesById {
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/posture': typeof OrgOrgIdPostureRoute
+  '/org/$orgId/probes': typeof OrgOrgIdProbesRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
@@ -394,6 +403,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/metric-alerts'
     | '/org/$orgId/moment'
     | '/org/$orgId/posture'
+    | '/org/$orgId/probes'
     | '/org/$orgId/savings'
     | '/org/$orgId/settings'
     | '/org/$orgId/ssh-fanout'
@@ -433,6 +443,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/metric-alerts'
     | '/org/$orgId/moment'
     | '/org/$orgId/posture'
+    | '/org/$orgId/probes'
     | '/org/$orgId/savings'
     | '/org/$orgId/ssh-fanout'
     | '/org/$orgId/workflows'
@@ -473,6 +484,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/metric-alerts'
     | '/org/$orgId/moment'
     | '/org/$orgId/posture'
+    | '/org/$orgId/probes'
     | '/org/$orgId/savings'
     | '/org/$orgId/settings'
     | '/org/$orgId/ssh-fanout'
@@ -576,6 +588,13 @@ declare module '@tanstack/react-router' {
       path: '/savings'
       fullPath: '/org/$orgId/savings'
       preLoaderRoute: typeof OrgOrgIdSavingsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/probes': {
+      id: '/org/$orgId/probes'
+      path: '/probes'
+      fullPath: '/org/$orgId/probes'
+      preLoaderRoute: typeof OrgOrgIdProbesRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/posture': {
@@ -845,6 +864,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdMetricAlertsRoute: typeof OrgOrgIdMetricAlertsRoute
   OrgOrgIdMomentRoute: typeof OrgOrgIdMomentRoute
   OrgOrgIdPostureRoute: typeof OrgOrgIdPostureRoute
+  OrgOrgIdProbesRoute: typeof OrgOrgIdProbesRoute
   OrgOrgIdSavingsRoute: typeof OrgOrgIdSavingsRoute
   OrgOrgIdSettingsRoute: typeof OrgOrgIdSettingsRouteWithChildren
   OrgOrgIdSshFanoutRoute: typeof OrgOrgIdSshFanoutRoute
@@ -867,6 +887,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdMetricAlertsRoute: OrgOrgIdMetricAlertsRoute,
   OrgOrgIdMomentRoute: OrgOrgIdMomentRoute,
   OrgOrgIdPostureRoute: OrgOrgIdPostureRoute,
+  OrgOrgIdProbesRoute: OrgOrgIdProbesRoute,
   OrgOrgIdSavingsRoute: OrgOrgIdSavingsRoute,
   OrgOrgIdSettingsRoute: OrgOrgIdSettingsRouteWithChildren,
   OrgOrgIdSshFanoutRoute: OrgOrgIdSshFanoutRoute,

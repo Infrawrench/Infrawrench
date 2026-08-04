@@ -85,6 +85,20 @@ describe("getWorkspaceTabId", () => {
   });
 });
 
+describe("probes tab kind", () => {
+  it("is a singleton tab id", () => {
+    expect(getWorkspaceTabId({ kind: "probes" })).toBe("probes");
+  });
+
+  it("falls back to the sidebar tile's title", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "probes" })).toBe("Probes");
+  });
+
+  it("compares equal to itself", () => {
+    expect(workspaceTabTargetsEqual({ kind: "probes" }, { kind: "probes" })).toBe(true);
+  });
+});
+
 describe("getWorkspaceTabFallbackTitle", () => {
   it("returns 'Dashboard' for dashboard target", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "dashboard", dashboardId: "x" })).toBe("Dashboard");

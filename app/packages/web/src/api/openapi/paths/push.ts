@@ -43,6 +43,10 @@ const PushPreferences = strict({
     description:
       "Daily digests of critical/high security posture findings on synced resources — public buckets, world-open ingress, unencrypted disks.",
   }),
+  probeAlerts: z.boolean().openapi({
+    description:
+      "A synthetic probe crossed its consecutive-failure threshold (down) or answered again (recovered).",
+  }),
 }).openapi("PushPreferences");
 
 // Registered under its own name — `.partial()` on a registered schema would
@@ -59,6 +63,7 @@ const PushPreferencesUpdate = strict({
   expiryAlerts: z.boolean().optional(),
   logMatchAlerts: z.boolean().optional(),
   postureAlerts: z.boolean().optional(),
+  probeAlerts: z.boolean().optional(),
 }).openapi("PushPreferencesUpdate");
 
 const PushRecipient = strict({
@@ -75,6 +80,7 @@ const PushRecipient = strict({
   expiryAlerts: z.boolean(),
   logMatchAlerts: z.boolean(),
   postureAlerts: z.boolean(),
+  probeAlerts: z.boolean(),
   devices: z.array(
     strict({
       id: z.string(),

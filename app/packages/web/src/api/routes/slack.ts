@@ -101,6 +101,7 @@ app.get("/status", async (c) => {
               expiryAlerts: ch.expiryAlerts,
               logMatchAlerts: ch.logMatchAlerts,
               postureAlerts: ch.postureAlerts,
+              probeAlerts: ch.probeAlerts,
               weeklyDigest: ch.weeklyDigest,
             },
           ]
@@ -169,6 +170,7 @@ interface ChannelBody {
   expiryAlerts?: boolean;
   logMatchAlerts?: boolean;
   postureAlerts?: boolean;
+  probeAlerts?: boolean;
   weeklyDigest?: boolean;
 }
 
@@ -209,6 +211,7 @@ app.post("/channels", async (c) => {
     ...(body.expiryAlerts != null ? { expiryAlerts: body.expiryAlerts } : {}),
     ...(body.logMatchAlerts != null ? { logMatchAlerts: body.logMatchAlerts } : {}),
     ...(body.postureAlerts != null ? { postureAlerts: body.postureAlerts } : {}),
+    ...(body.probeAlerts != null ? { probeAlerts: body.probeAlerts } : {}),
     ...(body.weeklyDigest != null ? { weeklyDigest: body.weeklyDigest } : {}),
   };
   const now = new Date();
@@ -233,6 +236,7 @@ app.post("/channels", async (c) => {
       expiryAlerts: body.expiryAlerts ?? true,
       logMatchAlerts: body.logMatchAlerts ?? true,
       postureAlerts: body.postureAlerts ?? true,
+      probeAlerts: body.probeAlerts ?? true,
       weeklyDigest: body.weeklyDigest ?? true,
     })
     .onConflictDoUpdate({
@@ -258,6 +262,7 @@ interface ChannelPatchBody {
   expiryAlerts?: boolean;
   logMatchAlerts?: boolean;
   postureAlerts?: boolean;
+  probeAlerts?: boolean;
   weeklyDigest?: boolean;
 }
 
@@ -278,6 +283,7 @@ app.patch("/channels/:id", async (c) => {
   if (body.expiryAlerts != null) patch.expiryAlerts = body.expiryAlerts;
   if (body.logMatchAlerts != null) patch.logMatchAlerts = body.logMatchAlerts;
   if (body.postureAlerts != null) patch.postureAlerts = body.postureAlerts;
+  if (body.probeAlerts != null) patch.probeAlerts = body.probeAlerts;
   if (body.weeklyDigest != null) patch.weeklyDigest = body.weeklyDigest;
 
   const result = await db

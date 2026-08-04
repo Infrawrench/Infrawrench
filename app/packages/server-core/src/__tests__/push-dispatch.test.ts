@@ -25,6 +25,7 @@ const tables = {
     syncIncidents: "s",
     budgetAlerts: "b",
     workflowPages: "w",
+    probeAlerts: "p",
   },
 };
 vi.mock("../db/schema", () => tables);
@@ -177,6 +178,16 @@ describe("sendPushToOrg", () => {
     const out = await dispatch.sendPushToOrg("org1", "postureAlerts", msg);
     expect(out).toEqual({ attempted: 1, succeeded: 1 });
     const body = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body));
+    expect(body[0].interruptionLevel).toBe("time-sensitive");
+  });
+
+  it("dispatches the probeAlerts trigger through its preference column", async () => {
+    targets = [device(1)];
+    fetchSpy.mockResolvedValue(expoResponse([{ status: "ok" }]));
+    const out = await dispatch.sendPushToOrg("org1", "probeAlerts", msg);
+    expect(out).toEqual({ attempted: 1, succeeded: 1 });
+    const body = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body));
+    // Probe alerts are ordinary alerts, not pages: time-sensitive, never critical.
     expect(body[0].interruptionLevel).toBe("time-sensitive");
   });
 

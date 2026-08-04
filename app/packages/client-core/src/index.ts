@@ -367,6 +367,7 @@ export * from "./expiry";
 export * from "./leases";
 export * from "./posture";
 export * from "./schedules";
+export * from "./probes";
 export * from "./log-workspaces";
 export * from "./log-discovery";
 export * from "./metric-alerts";

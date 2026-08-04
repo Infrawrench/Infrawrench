@@ -25,6 +25,7 @@ import { cmdMoment } from "./commands/moment";
 import { cmdIncidents } from "./commands/incidents";
 import { cmdSchedules } from "./commands/schedules";
 import { cmdLeases } from "./commands/leases";
+import { cmdProbes } from "./commands/probes";
 import { cmdGraph } from "./commands/graph";
 import { cmdPage, cmdCostsPush } from "./commands/push";
 import { cmdCli } from "./commands/cli-install";
@@ -69,6 +70,8 @@ COMMANDS
                       [-w/--window 15m|1h|6h]  (omit the timestamp for "around now")
   schedules           sleep/wake schedules: windows, next transitions & projected savings
   leases              resource leases (TTLs): deadlines, auto-delete flags & status
+  probes [id|name]    synthetic uptime/latency checks probed from outside your infra, with
+                      live status, 24h uptime & last latency (give an id/name for its chart)
   graph               resource dependency tree   [--resource <id>: what it needs + its blast radius]
   ssh-fanout <cmd>    run one command across many SSH hosts; identical output is collapsed and
                       outliers are diffed against the majority   [--list] [--hosts <q>] [--plugin <id>]
@@ -303,6 +306,10 @@ export async function runCli(): Promise<void> {
         break;
       case "leases":
         await cmdLeases(ctx);
+        break;
+      case "probes":
+        // `infrawrench probes <id|name>` charts one probe's latency history.
+        await cmdProbes(ctx, rest[0]);
         break;
       case "graph":
         // `infrawrench graph <resource-id>` is the same as --resource; a

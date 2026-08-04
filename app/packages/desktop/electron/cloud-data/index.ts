@@ -12,6 +12,7 @@ import "./changes";
 import "./moment";
 import "./schedules";
 import "./leases";
+import "./probes";
 import "./log-workspaces";
 import "./custom-graphs";
 import "./dashboards";

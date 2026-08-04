@@ -47,6 +47,7 @@ async function resolveTargets(
     expiryAlerts: pushPreferences.expiryAlerts,
     logMatchAlerts: pushPreferences.logMatchAlerts,
     postureAlerts: pushPreferences.postureAlerts,
+    probeAlerts: pushPreferences.probeAlerts,
   }[trigger];
   return db
     .select({ id: pushDevices.id, expoPushToken: pushDevices.expoPushToken })

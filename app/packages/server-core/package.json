@@ -74,6 +74,8 @@
     "./leases/store": "./src/leases/store.ts",
     "./leases/timing": "./src/leases/timing.ts",
     "./leases/pass": "./src/leases/pass.ts",
+    "./probes/store": "./src/probes/store.ts",
+    "./probes/pass": "./src/probes/pass.ts",
     "./log-workspaces/store": "./src/log-workspaces/store.ts",
     "./log-workspaces/pass": "./src/log-workspaces/pass.ts",
     "./digest/compose": "./src/digest/compose.ts",

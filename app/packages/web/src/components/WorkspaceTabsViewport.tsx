@@ -39,6 +39,7 @@ import { WebChangesPanel } from "./WebChangesPanel";
 import { WebExpiryPanel } from "./WebExpiryPanel";
 import { WebPosturePanel } from "./WebPosturePanel";
 import { WebMetricAlertsPanel } from "./WebMetricAlertsPanel";
+import { WebProbesPanel } from "./WebProbesPanel";
 import { WebSshFanoutPanel } from "./WebSshFanoutPanel";
 
 interface WebWorkspaceTabsViewportProps {
@@ -336,6 +337,8 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
       return <WebSshFanoutPanel key={orgId} orgId={orgId} />;
     case "metric-alerts":
       return <WebMetricAlertsPanel key={orgId} orgId={orgId} />;
+    case "probes":
+      return <WebProbesPanel key={orgId} orgId={orgId} />;
     case "chat":
       return <WebChatPanel orgId={orgId} conversationId={t.conversationId} />;
     case "resource":

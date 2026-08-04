@@ -79,6 +79,7 @@ describe("POST /channels upsert", () => {
     expect(res.status).toBe(200);
     expect(captured.values).toMatchObject({
       logMatchAlerts: true,
+      probeAlerts: true,
       expiryAlerts: true,
       postureAlerts: true,
       metricAlerts: true,
@@ -105,6 +106,7 @@ describe("POST /channels upsert", () => {
       "expiryAlerts",
       "logMatchAlerts",
       "postureAlerts",
+      "probeAlerts",
       "weeklyDigest",
     ]) {
       expect(captured.set, column).not.toHaveProperty(column);

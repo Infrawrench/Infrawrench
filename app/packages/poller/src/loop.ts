@@ -12,6 +12,7 @@ import { runSchedulePass } from "@infrawrench/server-core/schedules/pass";
 import { runLeasePass } from "@infrawrench/server-core/leases/pass";
 import { runLogAlertPass } from "@infrawrench/server-core/log-workspaces/pass";
 import { runMetricAlertPass } from "@infrawrench/server-core/metric-alerts/pass";
+import { runProbePass } from "@infrawrench/server-core/probes/pass";
 import {
   pruneResourceChanges,
   CHANGE_RETENTION_INTERVAL_MS,
@@ -150,6 +151,15 @@ export class PollerLoop extends TickLoop {
     // the lease), judges each rule's trailing window against ClickHouse, and
     // opens/resolves firing events. Defensive like the others.
     await this.tickMetricAlerts();
+
+    // Eleventh pass: synthetic probes. Claims due probes with the accounts
+    // lease protocol (`synthetic_probes.next_probe_at` doubles as the lease —
+    // the claim writes the probe's own interval), runs each through the
+    // egress proxy's /probe endpoint from outside the cluster, records the
+    // result as metric points and runs the up/down state machine. Skips
+    // silently when the proxy env isn't configured. Defensive like the
+    // others.
+    await this.tickProbes();
   }
 
   private async runOne(row: PollAccountRow): Promise<void> {
@@ -251,6 +261,15 @@ export class PollerLoop extends TickLoop {
       await runMetricAlertPass({ limit: 8 });
     } catch (e) {
       console.error("[poller] metric alert tick failed:", e);
+    }
+  }
+
+  /** Run any synthetic probes that have come due. */
+  private async tickProbes(): Promise<void> {
+    try {
+      await runProbePass({ limit: 8 });
+    } catch (e) {
+      console.error("[poller] probe tick failed:", e);
     }
   }
 

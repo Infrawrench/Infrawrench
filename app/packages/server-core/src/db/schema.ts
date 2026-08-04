@@ -675,6 +675,81 @@ export const metricAlertEvents = pgTable(
   }),
 );
 
+/**
+ * Synthetic HTTP probes — "is this endpoint up, and how fast?" checks run on
+ * an interval from the egress-proxy Cloudflare Worker, i.e. from *outside* the
+ * cluster, so a probe measures what a user on the internet would see rather
+ * than pod-to-pod latency. Results land in ClickHouse as ordinary metric
+ * points (`resource_id = "probe:<id>"`, series "Latency"/"Up"), which is what
+ * lets the existing metric readers and chart components render them unchanged.
+ *
+ * `nextProbeAt` is the due-time column AND the claim lease, exactly like
+ * `metric_alert_rules.next_eval_at`: the poller claims due probes with
+ * `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED)` writing
+ * `now() + interval` into it, so N replicas never double-probe. Null means
+ * "due now" — fresh probes fire promptly.
+ *
+ * The linked resource identity (`accountId`/`resourceId`/`pluginId`/
+ * `resourceTypeId`/`outputKey`) remembers which resource output suggested the
+ * URL. `resourceId` is deliberately not a FK (the `resource_changes` stance):
+ * resource rows are churned by sync, and a probe must keep running for an
+ * endpoint whose resource row disappeared upstream.
+ *
+ * State machine: every failed probe increments `consecutiveFailures`; reaching
+ * `failureThreshold` flips `status` to "down" and notifies (`probeAlerts`
+ * trigger); any success resets the counter and flips back to "up", notifying
+ * only if the probe was previously "down".
+ */
+export const syntheticProbes = pgTable(
+  "synthetic_probes",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    url: text("url").notNull(),
+    method: text("method").notNull().default("GET"),
+    /** Seconds between probes; floored at 60 (see `PROBE_LIMITS`). */
+    intervalSeconds: integer("interval_seconds").notNull().default(60),
+    timeoutMs: integer("timeout_ms").notNull().default(10_000),
+    /** Consecutive failures before the probe flips to "down" and notifies. */
+    failureThreshold: integer("failure_threshold").notNull().default(3),
+    enabled: boolean("enabled").notNull().default(true),
+    /** Linked resource identity — which output suggested the URL. All nullable. */
+    accountId: text("account_id").references(() => accounts.id, { onDelete: "set null" }),
+    /** Not a FK — see above. */
+    resourceId: text("resource_id"),
+    pluginId: text("plugin_id"),
+    resourceTypeId: text("resource_type_id"),
+    /** The output/field key the URL was suggested from (e.g. "endpoint"). */
+    outputKey: text("output_key"),
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    status: text("status").$type<"up" | "down" | "unknown">().notNull().default("unknown"),
+    lastProbeAt: timestamp("last_probe_at"),
+    /** Due time + claim lease; null means "due now". */
+    nextProbeAt: timestamp("next_probe_at"),
+    lastStatusCode: integer("last_status_code"),
+    lastLatencyMs: integer("last_latency_ms"),
+    /** Failure detail for the last failed probe; null after a success. */
+    lastError: text("last_error"),
+    /** When `status` last flipped up↔down — "down for 23 minutes" rendering. */
+    lastStateChangeAt: timestamp("last_state_change_at"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("synthetic_probes_org_idx").on(t.organizationId),
+    dueIdx: index("synthetic_probes_due_idx").on(t.nextProbeAt),
+    intervalMin: check("synthetic_probes_interval_min", sql`${t.intervalSeconds} >= 60`),
+    timeoutPositive: check("synthetic_probes_timeout_positive", sql`${t.timeoutMs} > 0`),
+    thresholdPositive: check("synthetic_probes_threshold_positive", sql`${t.failureThreshold} > 0`),
+  }),
+);
+
 export const sshKeys = pgTable(
   "ssh_keys",
   {
@@ -1008,6 +1083,8 @@ export const slackChannels = pgTable(
     logMatchAlerts: boolean("log_match_alerts").notNull().default(true),
     /** Critical/high security posture findings (see `posture/alerts.ts`). */
     postureAlerts: boolean("posture_alerts").notNull().default(true),
+    /** Synthetic probe down/recovered transitions (see `probes/pass.ts`). */
+    probeAlerts: boolean("probe_alerts").notNull().default(true),
     /**
      * The Monday-morning weekly summary. Channel opt-in defaults on like the
      * other triggers, but nothing sends until the org enables the digest in
@@ -1153,6 +1230,8 @@ export const msteamsWebhooks = pgTable(
     logMatchAlerts: boolean("log_match_alerts").notNull().default(true),
     /** Critical/high security posture findings (see `posture/alerts.ts`). */
     postureAlerts: boolean("posture_alerts").notNull().default(true),
+    /** Synthetic probe down/recovered transitions (see `probes/pass.ts`). */
+    probeAlerts: boolean("probe_alerts").notNull().default(true),
     /**
      * The Monday-morning weekly summary. Channel opt-in defaults on like the
      * other triggers, but nothing sends until the org enables the digest in
@@ -1752,6 +1831,8 @@ export const pushPreferences = pgTable(
     logMatchAlerts: boolean("log_match_alerts").notNull().default(true),
     /** Critical/high security posture findings (see `posture/alerts.ts`). */
     postureAlerts: boolean("posture_alerts").notNull().default(true),
+    /** Synthetic probe down/recovered transitions (see `probes/pass.ts`). */
+    probeAlerts: boolean("probe_alerts").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

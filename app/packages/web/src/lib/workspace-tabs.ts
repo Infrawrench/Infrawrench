@@ -12,6 +12,7 @@ import {
   postureTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
+  probesTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -126,6 +127,12 @@ export function getWorkspaceNavigateArgs(
     case "metric-alerts":
       return {
         to: "/org/$orgId/metric-alerts",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "probes":
+      return {
+        to: "/org/$orgId/probes",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -253,6 +260,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "metric-alerts") {
     return metricAlertsTabTarget();
+  }
+  if (s[0] === "probes") {
+    return probesTabTarget();
   }
   if (s[0] === "chat") {
     // /chat is the conversation list; /chat/{id} is one conversation. Each

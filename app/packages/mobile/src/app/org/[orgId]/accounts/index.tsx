@@ -51,6 +51,11 @@ export default function AccountsScreen() {
           onPress={() => router.push(`/org/${orgId}/posture`)}
         />
         <Row
+          title="Probes"
+          subtitle="Uptime and latency checks from outside your infra"
+          onPress={() => router.push(`/org/${orgId}/probes`)}
+        />
+        <Row
           title="Log workspace"
           subtitle="Saved multi-resource log tails and match alerts"
           onPress={() => router.push(`/org/${orgId}/log-workspaces`)}

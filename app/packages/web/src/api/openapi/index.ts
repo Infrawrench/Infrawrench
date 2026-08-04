@@ -34,6 +34,7 @@ import { registerPosturePaths } from "./paths/posture";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
 import { registerLeasePaths } from "./paths/leases";
+import { registerProbePaths } from "./paths/probes";
 import { registerLogWorkspacePaths } from "./paths/log-workspaces";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
 import { registerAssociationPaths } from "./paths/associations";
@@ -126,6 +127,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerMomentPaths(ctx);
   registerSchedulePaths(ctx);
   registerLeasePaths(ctx);
+  registerProbePaths(ctx);
   registerLogWorkspacePaths(ctx);
   registerConnectionFeaturePaths(ctx);
   registerAssociationPaths(ctx);
@@ -216,6 +218,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Resource leases",
         description:
           "Optional TTLs on resources ('a test cluster for 3 days'). Active leases ride the expiry radar; auto-delete leases are announced twice and then deleted at expiry by the poller, deferring during change freezes.",
+      },
+      {
+        name: "Synthetic probes",
+        description:
+          "HTTP uptime/latency checks run on an interval from an edge proxy outside the cluster; results land in the shared metric store and alert after N consecutive failures.",
       },
       {
         name: "Log workspaces",
@@ -408,6 +415,15 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /leases/{leaseId}": "resources:write",
   "POST /leases/{leaseId}/cancel": "resources:write",
   "DELETE /leases/{leaseId}": "resources:write",
+  // synthetic probes — the schedules stance: reads (list, suggestions mined
+  // from resource outputs, recorded series) ride the resource read scope;
+  // mutations are resources:write
+  "GET /probes": "resources:read",
+  "GET /probes/suggestions": "resources:read",
+  "GET /probes/{probeId}/metrics": "resources:read",
+  "POST /probes": "resources:write",
+  "PUT /probes/{probeId}": "resources:write",
+  "DELETE /probes/{probeId}": "resources:write",
   // log workspace saved queries — the schedules stance: reads are a view over
   // the org's resource logs (which resources:read already gates via
   // /resources/{pluginId}/{typeId}/logs); mutations are resources:write

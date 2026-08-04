@@ -107,6 +107,14 @@ infrawrench schedules
 infrawrench schedules --json
 ```
 
+`probes` lists the org's [synthetic probes](./synthetic-probes.md) — each endpoint's live status, check interval, trailing-24h uptime and last latency, probed from outside your infrastructure. Give it a probe's id or name for that probe's detail plus a 24-hour latency sparkline. Cloud-only, and read-only: probes are created from the web or desktop Probes tab, where the endpoint suggestions live:
+
+```
+infrawrench probes
+infrawrench probes api-health     # one probe: state, facts, latency sparkline
+infrawrench probes --json
+```
+
 `oversized` lists [right-sizing recommendations](./right-sizing.md) — machines whose 14-day p95 CPU/memory sits well under their size, with the recommended smaller size and the live-priced monthly saving. Cloud-only (the percentiles live in the cloud metrics store), and read-only: applying a resize is done from the web or desktop Costs panel:
 
 ```

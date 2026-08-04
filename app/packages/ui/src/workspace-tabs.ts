@@ -53,6 +53,10 @@ export function metricAlertsTabTarget(): WorkspaceTabTarget {
   return { kind: "metric-alerts" };
 }
 
+export function probesTabTarget(): WorkspaceTabTarget {
+  return { kind: "probes" };
+}
+
 export function deploymentsTabTarget(repo?: string): WorkspaceTabTarget {
   return { kind: "deployments", ...(repo ? { repo } : {}) };
 }

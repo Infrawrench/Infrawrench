@@ -380,6 +380,46 @@ export async function getMetricMinuteSeriesBatch(
 }
 
 /**
+ * Average of one series per resource over a window, from the 1m rollup — the
+ * probe list's uptime read (averaging the 0/1 "Up" series over 24h yields the
+ * up fraction). The inner GROUP BY finalizes the per-minute avg state first so
+ * bursty raw reporting can't weight some minutes more than others.
+ */
+export async function getMetricSeriesAverageBatch(
+  organizationId: string,
+  resourceIds: string[],
+  seriesLabel: string,
+  fromMs: number,
+  toMs: number,
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (resourceIds.length === 0) return result;
+  const rows = await query<{ resource_id: string; value: number }>(
+    `SELECT resource_id, avg(value) AS value
+     FROM (
+       SELECT resource_id, ts_minute, avgMerge(value_avg) AS value
+       FROM metric_points_1m
+       WHERE organization_id = {orgId:String}
+         AND resource_id IN {ids:Array(String)}
+         AND series_label = {seriesLabel:String}
+         AND ts_minute >= toDateTime({fromSec:Int64})
+         AND ts_minute <= toDateTime({toSec:Int64})
+       GROUP BY resource_id, ts_minute
+     )
+     GROUP BY resource_id`,
+    {
+      orgId: organizationId,
+      ids: resourceIds,
+      seriesLabel,
+      fromSec: Math.floor(fromMs / 1000),
+      toSec: Math.floor(toMs / 1000),
+    },
+  );
+  for (const r of rows) result.set(r.resource_id, Number(r.value));
+  return result;
+}
+
+/**
  * Historical metric range. Auto-routes between raw / 1m / 1h based on span:
  *  <= 2h: raw
  *  <= 7d: 1m rollup

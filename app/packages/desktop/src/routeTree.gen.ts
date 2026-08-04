@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkflowsRouteImport } from './routes/workflows'
 import { Route as SshFanoutRouteImport } from './routes/ssh-fanout'
 import { Route as SavingsRouteImport } from './routes/savings'
+import { Route as ProbesRouteImport } from './routes/probes'
 import { Route as PostureRouteImport } from './routes/posture'
 import { Route as MomentRouteImport } from './routes/moment'
 import { Route as MetricAlertsRouteImport } from './routes/metric-alerts'
@@ -41,6 +42,11 @@ const SshFanoutRoute = SshFanoutRouteImport.update({
 const SavingsRoute = SavingsRouteImport.update({
   id: '/savings',
   path: '/savings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProbesRoute = ProbesRouteImport.update({
+  id: '/probes',
+  path: '/probes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PostureRoute = PostureRouteImport.update({
@@ -133,6 +139,7 @@ export interface FileRoutesByFullPath {
   '/metric-alerts': typeof MetricAlertsRoute
   '/moment': typeof MomentRoute
   '/posture': typeof PostureRoute
+  '/probes': typeof ProbesRoute
   '/savings': typeof SavingsRoute
   '/ssh-fanout': typeof SshFanoutRoute
   '/workflows': typeof WorkflowsRoute
@@ -153,6 +160,7 @@ export interface FileRoutesByTo {
   '/metric-alerts': typeof MetricAlertsRoute
   '/moment': typeof MomentRoute
   '/posture': typeof PostureRoute
+  '/probes': typeof ProbesRoute
   '/savings': typeof SavingsRoute
   '/ssh-fanout': typeof SshFanoutRoute
   '/workflows': typeof WorkflowsRoute
@@ -174,6 +182,7 @@ export interface FileRoutesById {
   '/metric-alerts': typeof MetricAlertsRoute
   '/moment': typeof MomentRoute
   '/posture': typeof PostureRoute
+  '/probes': typeof ProbesRoute
   '/savings': typeof SavingsRoute
   '/ssh-fanout': typeof SshFanoutRoute
   '/workflows': typeof WorkflowsRoute
@@ -196,6 +205,7 @@ export interface FileRouteTypes {
     | '/metric-alerts'
     | '/moment'
     | '/posture'
+    | '/probes'
     | '/savings'
     | '/ssh-fanout'
     | '/workflows'
@@ -216,6 +226,7 @@ export interface FileRouteTypes {
     | '/metric-alerts'
     | '/moment'
     | '/posture'
+    | '/probes'
     | '/savings'
     | '/ssh-fanout'
     | '/workflows'
@@ -236,6 +247,7 @@ export interface FileRouteTypes {
     | '/metric-alerts'
     | '/moment'
     | '/posture'
+    | '/probes'
     | '/savings'
     | '/ssh-fanout'
     | '/workflows'
@@ -257,6 +269,7 @@ export interface RootRouteChildren {
   MetricAlertsRoute: typeof MetricAlertsRoute
   MomentRoute: typeof MomentRoute
   PostureRoute: typeof PostureRoute
+  ProbesRoute: typeof ProbesRoute
   SavingsRoute: typeof SavingsRoute
   SshFanoutRoute: typeof SshFanoutRoute
   WorkflowsRoute: typeof WorkflowsRoute
@@ -286,6 +299,13 @@ declare module '@tanstack/react-router' {
       path: '/savings'
       fullPath: '/savings'
       preLoaderRoute: typeof SavingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/probes': {
+      id: '/probes'
+      path: '/probes'
+      fullPath: '/probes'
+      preLoaderRoute: typeof ProbesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/posture': {
@@ -409,6 +429,7 @@ const rootRouteChildren: RootRouteChildren = {
   MetricAlertsRoute: MetricAlertsRoute,
   MomentRoute: MomentRoute,
   PostureRoute: PostureRoute,
+  ProbesRoute: ProbesRoute,
   SavingsRoute: SavingsRoute,
   SshFanoutRoute: SshFanoutRoute,
   WorkflowsRoute: WorkflowsRoute,

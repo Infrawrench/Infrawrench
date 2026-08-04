@@ -588,6 +588,7 @@ const TRIGGER_COLUMN = {
   expiryAlerts: slackChannels.expiryAlerts,
   logMatchAlerts: slackChannels.logMatchAlerts,
   postureAlerts: slackChannels.postureAlerts,
+  probeAlerts: slackChannels.probeAlerts,
   weeklyDigest: slackChannels.weeklyDigest,
 } as const;
 

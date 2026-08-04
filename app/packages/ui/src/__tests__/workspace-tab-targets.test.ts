@@ -3,6 +3,7 @@ import {
   dashboardTabTarget,
   accountTabTarget,
   postureTabTarget,
+  probesTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -21,6 +22,10 @@ describe("tab target factories", () => {
 
   it("postureTabTarget", () => {
     expect(postureTabTarget()).toEqual({ kind: "posture" });
+  });
+
+  it("probesTabTarget", () => {
+    expect(probesTabTarget()).toEqual({ kind: "probes" });
   });
 
   it("resourceTabTarget normalizes id and defaults to details view", () => {

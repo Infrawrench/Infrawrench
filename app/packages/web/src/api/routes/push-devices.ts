@@ -121,6 +121,7 @@ interface PreferencesPayload {
   expiryAlerts: boolean;
   logMatchAlerts: boolean;
   postureAlerts: boolean;
+  probeAlerts: boolean;
 }
 
 const PREFERENCE_KEYS = [
@@ -134,6 +135,7 @@ const PREFERENCE_KEYS = [
   "expiryAlerts",
   "logMatchAlerts",
   "postureAlerts",
+  "probeAlerts",
 ] as const;
 
 /**
@@ -152,6 +154,7 @@ const PREFERENCE_DEFAULTS: PreferencesPayload = {
   expiryAlerts: true,
   logMatchAlerts: true,
   postureAlerts: true,
+  probeAlerts: true,
 };
 
 pushOrgRoutes.get("/preferences", async (c) => {
@@ -177,6 +180,7 @@ pushOrgRoutes.get("/preferences", async (c) => {
     expiryAlerts: row?.expiryAlerts ?? PREFERENCE_DEFAULTS.expiryAlerts,
     logMatchAlerts: row?.logMatchAlerts ?? PREFERENCE_DEFAULTS.logMatchAlerts,
     postureAlerts: row?.postureAlerts ?? PREFERENCE_DEFAULTS.postureAlerts,
+    probeAlerts: row?.probeAlerts ?? PREFERENCE_DEFAULTS.probeAlerts,
   };
   return c.json(payload);
 });
@@ -209,6 +213,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
       expiryAlerts: body.expiryAlerts ?? PREFERENCE_DEFAULTS.expiryAlerts,
       logMatchAlerts: body.logMatchAlerts ?? PREFERENCE_DEFAULTS.logMatchAlerts,
       postureAlerts: body.postureAlerts ?? PREFERENCE_DEFAULTS.postureAlerts,
+      probeAlerts: body.probeAlerts ?? PREFERENCE_DEFAULTS.probeAlerts,
     })
     .onConflictDoUpdate({
       target: [pushPreferences.userId, pushPreferences.organizationId],
@@ -223,6 +228,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
         ...(body.expiryAlerts != null ? { expiryAlerts: body.expiryAlerts } : {}),
         ...(body.logMatchAlerts != null ? { logMatchAlerts: body.logMatchAlerts } : {}),
         ...(body.postureAlerts != null ? { postureAlerts: body.postureAlerts } : {}),
+        ...(body.probeAlerts != null ? { probeAlerts: body.probeAlerts } : {}),
         updatedAt: now,
       },
     });
@@ -273,6 +279,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
       expiryAlerts: pushPreferences.expiryAlerts,
       logMatchAlerts: pushPreferences.logMatchAlerts,
       postureAlerts: pushPreferences.postureAlerts,
+      probeAlerts: pushPreferences.probeAlerts,
     })
     .from(organizationMembers)
     .innerJoin(users, eq(organizationMembers.userId, users.id))
@@ -305,6 +312,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
       expiryAlerts: boolean;
       logMatchAlerts: boolean;
       postureAlerts: boolean;
+      probeAlerts: boolean;
       devices: Array<{ id: string; platform: string; deviceName: string | null }>;
     }
   >();
@@ -325,6 +333,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
         expiryAlerts: r.expiryAlerts ?? PREFERENCE_DEFAULTS.expiryAlerts,
         logMatchAlerts: r.logMatchAlerts ?? PREFERENCE_DEFAULTS.logMatchAlerts,
         postureAlerts: r.postureAlerts ?? PREFERENCE_DEFAULTS.postureAlerts,
+        probeAlerts: r.probeAlerts ?? PREFERENCE_DEFAULTS.probeAlerts,
         devices: [],
       };
       byUser.set(r.userId, entry);

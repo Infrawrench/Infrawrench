@@ -34,6 +34,7 @@ import { DesktopChangesPanel } from "@/components/DesktopChangesPanel";
 import { DesktopExpiryPanel } from "@/components/DesktopExpiryPanel";
 import { DesktopPosturePanel } from "@/components/DesktopPosturePanel";
 import { DesktopMetricAlertsPanel } from "@/components/DesktopMetricAlertsPanel";
+import { DesktopProbesPanel } from "@/components/DesktopProbesPanel";
 import { DesktopSshFanoutPanel } from "@/components/DesktopSshFanoutPanel";
 
 let agentClient: AgentClient | null = null;
@@ -286,6 +287,8 @@ function renderPanel(
       return <DesktopSshFanoutPanel />;
     case "metric-alerts":
       return <DesktopMetricAlertsPanel />;
+    case "probes":
+      return <DesktopProbesPanel />;
     case "chat":
       return <CloudChatPanel conversationId={t.conversationId} />;
     case "resource":

@@ -292,6 +292,7 @@ export {
   postureTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
+  probesTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -575,6 +576,7 @@ export type { PostureSectionProps } from "./posture/PostureSection.js";
 export { PostureIcon } from "./components/icons/PostureIcon.js";
 export { FanoutIcon } from "./components/icons/FanoutIcon.js";
 export { MetricAlertIcon } from "./components/icons/MetricAlertIcon.js";
+export { ProbesIcon } from "./components/icons/ProbesIcon.js";
 
 /**
  * SSH host-key trust handshake. Shared with mobile through client-core because
@@ -615,6 +617,7 @@ export {
 
 export * from "./cost/index.js";
 export * from "./metric-alerts/index.js";
+export * from "./probes/index.js";
 export * from "./savings/index.js";
 export * from "./logs/index.js";
 export { SleepSchedulesSection } from "./schedules/SleepSchedulesSection.js";

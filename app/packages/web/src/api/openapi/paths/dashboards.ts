@@ -191,6 +191,7 @@ const TabTarget = strict({
     "posture",
     "ssh-fanout",
     "metric-alerts",
+    "probes",
     "workflows",
     "deployments",
     "chat",

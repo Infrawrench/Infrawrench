@@ -231,6 +231,10 @@ export function pushDataToPath(data: MobilePushData): string {
     // the matching lines are one refresh away.
     case "log_match":
       return `/org/${data.orgId}/log-workspaces/${data.queryId}`;
+    // A probe alert names one endpoint; the probes list shows its status dot,
+    // latency and history (mobile has no probe editor — web/desktop own that).
+    case "probe_alert":
+      return `/org/${data.orgId}/probes`;
     case "test":
       return `/org/${data.orgId}`;
     default:
@@ -380,6 +384,12 @@ export function parsePushData(raw: unknown): MobilePushData | null {
       const matchCount = data["matchCount"];
       if (typeof queryId !== "string" || typeof matchCount !== "number") return null;
       return { type: "log_match", orgId, queryId, matchCount };
+    }
+    case "probe_alert": {
+      const probeId = data["probeId"];
+      const status = data["status"];
+      if (typeof probeId !== "string" || (status !== "down" && status !== "up")) return null;
+      return { type: "probe_alert", orgId, probeId, status };
     }
     case "test":
       return { type: "test", orgId };

@@ -3,6 +3,7 @@ import {
   dashboardTabTarget,
   accountTabTarget,
   deploymentsTabTarget,
+  probesTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -57,6 +58,11 @@ describe("getWorkspaceNavigateArgs", () => {
     const args = getWorkspaceNavigateArgs(accountTabTarget("acc-1"));
     expect(args.to).toBe("/accounts/$accountId");
     expect(args.params).toEqual({ accountId: "acc-1" });
+  });
+
+  it("returns probes route args", () => {
+    const args = getWorkspaceNavigateArgs(probesTabTarget());
+    expect(args.to).toBe("/probes");
   });
 
   it("returns resource route args for details view", () => {
@@ -161,6 +167,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the posture path", () => {
     expect(syncWorkspaceRouteFromPath("/posture")).toEqual({ kind: "posture" });
+  });
+
+  it("parses the probes path", () => {
+    expect(syncWorkspaceRouteFromPath("/probes")).toEqual({ kind: "probes" });
   });
 
   // Under hash history the query lives inside the fragment, so the repo a

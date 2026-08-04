@@ -23,6 +23,7 @@ import {
   FanoutIcon,
   LogsIcon,
   MetricAlertIcon,
+  ProbesIcon,
 } from "@infrawrench/ui";
 import { CHAT_CONVERSATIONS_CHANGED_EVENT, type ConversationSummary } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
@@ -512,6 +513,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <PostureIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/posture", params: { orgId: orgId! } }),
+              },
+              {
+                key: "probes",
+                label: "Probes",
+                icon: <ProbesIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/probes", params: { orgId: orgId! } }),
               },
               {
                 key: "ssh-fanout",
