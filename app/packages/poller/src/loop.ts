@@ -7,6 +7,7 @@ import { loadPlugins } from "@infrawrench/server-core/plugin-loader";
 import { runWeeklyDigests } from "@infrawrench/server-core/digest/weekly";
 import { runStatusFeedCollection } from "@infrawrench/server-core/status/collect";
 import { runExpiryAlerts } from "@infrawrench/server-core/expiry/alerts";
+import { runPostureAlerts } from "@infrawrench/server-core/posture/alerts";
 import { runSchedulePass } from "@infrawrench/server-core/schedules/pass";
 import { runLeasePass } from "@infrawrench/server-core/leases/pass";
 import { runLogAlertPass } from "@infrawrench/server-core/log-workspaces/pass";
@@ -118,6 +119,12 @@ export class PollerLoop extends TickLoop {
     // restart-safe. Defensive like the others.
     await this.tickExpiryAlerts();
 
+    // Posture alerts: a bounded batch of orgs whose 24h posture-scan window
+    // has elapsed; the conditional-upsert claim inside
+    // (`org_posture_settings.last_notified_at`) makes it replica- and
+    // restart-safe. Defensive like the others.
+    await this.tickPostureAlerts();
+
     // Eighth pass: sleep/wake schedules. Claims due transitions with the
     // accounts lease protocol (`resource_schedules.next_transition_at`
     // doubles as the lease) and executes the plugin's declared lifecycle
@@ -199,6 +206,15 @@ export class PollerLoop extends TickLoop {
       await runExpiryAlerts({ limit: 4 });
     } catch (e) {
       console.error("[poller] expiry alert tick failed:", e);
+    }
+  }
+
+  /** Scan a bounded batch of orgs whose posture-alert window has come due. */
+  private async tickPostureAlerts(): Promise<void> {
+    try {
+      await runPostureAlerts({ limit: 4 });
+    } catch (e) {
+      console.error("[poller] posture alert tick failed:", e);
     }
   }
 

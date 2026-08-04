@@ -80,6 +80,7 @@ describe("POST /channels upsert", () => {
     expect(captured.values).toMatchObject({
       logMatchAlerts: true,
       expiryAlerts: true,
+      postureAlerts: true,
       metricAlerts: true,
       weeklyDigest: true,
       resourceDrift: false, // the one trigger that defaults off
@@ -103,6 +104,7 @@ describe("POST /channels upsert", () => {
       "providerIncidents",
       "expiryAlerts",
       "logMatchAlerts",
+      "postureAlerts",
       "weeklyDigest",
     ]) {
       expect(captured.set, column).not.toHaveProperty(column);
@@ -117,6 +119,7 @@ describe("POST /channels upsert", () => {
     expect(captured.set).toMatchObject({ logMatchAlerts: false, weeklyDigest: true });
     expect(captured.set).not.toHaveProperty("expiryAlerts");
     expect(captured.set).not.toHaveProperty("metricAlerts");
+    expect(captured.set).not.toHaveProperty("postureAlerts");
     expect(captured.values).toMatchObject({ logMatchAlerts: false, weeklyDigest: true });
   });
 

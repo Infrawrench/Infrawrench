@@ -19,6 +19,7 @@ import { cmdOrphans } from "./commands/orphans";
 import { cmdOversized } from "./commands/oversized";
 import { cmdAlerts, cmdAlertEvents } from "./commands/alerts";
 import { cmdExpiring } from "./commands/expiring";
+import { cmdPosture } from "./commands/posture";
 import { cmdChanges } from "./commands/changes";
 import { cmdMoment } from "./commands/moment";
 import { cmdIncidents } from "./commands/incidents";
@@ -59,6 +60,8 @@ COMMANDS
   alerts events       recent metric alert firings & recoveries   [--limit 50]
   expiring            certificates, domains, tokens & keys approaching expiry, soonest first
                       (--local scans this machine's workspace)
+  posture             security posture findings (public buckets, world-open ingress, unencrypted
+                      disks), ranked by severity   (--local scans this machine's workspace)
   changes             what appeared / changed / disappeared across your providers
                       [--last 7d] [--limit 50] [--kind created|updated|deleted] [-a <account>] [--resource <id>]
   incidents           provider status-page incidents overlapping your resources ("is it me or is it them?")
@@ -282,6 +285,9 @@ export async function runCli(): Promise<void> {
         break;
       case "expiring":
         await cmdExpiring(ctx);
+        break;
+      case "posture":
+        await cmdPosture(ctx);
         break;
       case "changes":
         await cmdChanges(ctx, parsed.range);

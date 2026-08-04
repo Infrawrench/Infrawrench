@@ -152,6 +152,17 @@ export type PushNotificationData =
     }
   | {
       /**
+       * Critical/high security posture findings on synced resources (see
+       * server-core `posture/alerts.ts`). At most one notification per
+       * cooldown window, never one per finding.
+       *
+       * Target route: the posture screen, `/org/{orgId}/posture`.
+       */
+      type: "posture_alert";
+      orgId: string;
+    }
+  | {
+      /**
        * A saved log-workspace query with alerting enabled found matching log
        * lines (see server-core `log-workspaces/pass.ts`). At most one
        * notification per cooldown window, never one per matching line.
@@ -210,6 +221,8 @@ export interface PushPreferences {
   expiryAlerts: boolean;
   /** Saved log-query matches from the log workspace alert pass. */
   logMatchAlerts: boolean;
+  /** Critical/high security posture findings from the posture alert pass. */
+  postureAlerts: boolean;
 }
 
 export async function getPushPreferences(api: CloudFetch, orgId: string): Promise<PushPreferences> {
@@ -224,6 +237,7 @@ export async function getPushPreferences(api: CloudFetch, orgId: string): Promis
       providerIncidents: true,
       expiryAlerts: true,
       logMatchAlerts: true,
+      postureAlerts: true,
     }
   );
 }

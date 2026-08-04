@@ -2,6 +2,7 @@ import type { AssociationSource } from "@infrawrench/plugin-base";
 import type {
   DependencyGraphData,
   ExpiryListResponse,
+  PostureListResponse,
   ResourcePickerOption,
 } from "@infrawrench/ui";
 import { invoke } from "./invoke";
@@ -24,6 +25,14 @@ export async function fetchCloudDependencyGraph(
  */
 export async function fetchCloudExpiring(orgId: string): Promise<ExpiryListResponse> {
   return invoke("cloud_expiring", { orgId });
+}
+
+/**
+ * The org posture findings, computed server-side over synced rows. The
+ * local-mode counterpart is `loadLocalPosture` in lib/local-posture.ts.
+ */
+export async function fetchCloudPosture(orgId: string): Promise<PostureListResponse> {
+  return invoke("cloud_posture", { orgId });
 }
 
 export async function getCloudResourceDetail(

@@ -57,4 +57,15 @@ export const NeptuneClusterResourceType = rt({
       ],
     },
   ],
+  postureChecks: [
+    {
+      id: "neptune-cluster-unencrypted",
+      title: "Storage not encrypted",
+      severity: "medium",
+      category: "encryption",
+      conditions: [{ fieldKey: "storageEncrypted", when: "falsy" }],
+      reason:
+        "The cluster's storage is not encrypted at rest; enabling encryption later requires restoring into a new encrypted cluster.",
+    },
+  ],
 });

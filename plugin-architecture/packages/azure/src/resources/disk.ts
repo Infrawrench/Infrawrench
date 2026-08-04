@@ -42,4 +42,15 @@ export const DiskResourceType = rt({
       verb: "Attach",
     },
   ],
+  postureChecks: [
+    {
+      id: "azure-disk-unencrypted",
+      title: "Disk not encrypted at rest",
+      severity: "medium",
+      category: "encryption",
+      conditions: [{ fieldKey: "encryption", when: "equals", value: "None" }],
+      reason:
+        "The managed disk reports no at-rest encryption setting; enable platform-managed or customer-managed key encryption.",
+    },
+  ],
 });

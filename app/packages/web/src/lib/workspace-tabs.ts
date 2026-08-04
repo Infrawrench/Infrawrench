@@ -9,6 +9,7 @@ import {
   logsTabTarget,
   changesTabTarget,
   expiringTabTarget,
+  postureTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   chatTabTarget,
@@ -107,6 +108,12 @@ export function getWorkspaceNavigateArgs(
     case "expiring":
       return {
         to: "/org/$orgId/expiring",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "posture":
+      return {
+        to: "/org/$orgId/posture",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -237,6 +244,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "expiring") {
     return expiringTabTarget();
+  }
+  if (s[0] === "posture") {
+    return postureTabTarget();
   }
   if (s[0] === "ssh-fanout") {
     return sshFanoutTabTarget();

@@ -32,6 +32,7 @@ import { DesktopGraphPanel } from "@/components/DesktopGraphPanel";
 import { LocalDeploymentsPanel } from "@/components/LocalDeploymentsPanel";
 import { DesktopChangesPanel } from "@/components/DesktopChangesPanel";
 import { DesktopExpiryPanel } from "@/components/DesktopExpiryPanel";
+import { DesktopPosturePanel } from "@/components/DesktopPosturePanel";
 import { DesktopMetricAlertsPanel } from "@/components/DesktopMetricAlertsPanel";
 import { DesktopSshFanoutPanel } from "@/components/DesktopSshFanoutPanel";
 
@@ -255,6 +256,26 @@ function renderPanel(
                   item.resourceId,
                   item.pluginId,
                   item.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "posture":
+      return (
+        <DesktopPosturePanel
+          // Keyed by mode so switching org (or dropping to local) remounts
+          // and refetches rather than showing the previous mode's findings.
+          key={activeCloudOrgId ?? "local"}
+          openResource={(finding) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  finding.accountId,
+                  finding.resourceId,
+                  finding.pluginId,
+                  finding.resourceTypeId,
                 ),
               ),
             )

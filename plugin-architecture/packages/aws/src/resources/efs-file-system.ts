@@ -40,4 +40,15 @@ export const EFSFileSystemResourceType = rt({
       ],
     },
   ],
+  postureChecks: [
+    {
+      id: "efs-unencrypted",
+      title: "File system not encrypted",
+      severity: "medium",
+      category: "encryption",
+      conditions: [{ fieldKey: "encrypted", when: "falsy" }],
+      reason:
+        "The file system is not encrypted at rest; encryption can only be chosen when the file system is created.",
+    },
+  ],
 });

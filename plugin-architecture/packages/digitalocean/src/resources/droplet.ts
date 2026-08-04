@@ -37,6 +37,12 @@ export const DropletResourceType = rt({
       editable: false,
     }),
     f("status", "Status", { required: false, editable: false }),
+    f("nextBackupStart", "Next Backup Window", {
+      required: false,
+      editable: false,
+      description:
+        "Start of the next scheduled backup window; empty when automated backups are disabled",
+    }),
     f("diskGb", "Disk (GB)", {
       kind: "number",
       required: false,
@@ -101,4 +107,17 @@ export const DropletResourceType = rt({
     resizeNote:
       "DigitalOcean powers the Droplet off for the resize and boots it again afterwards. CPU/RAM only — the disk is unchanged, so the change can be reverted.",
   },
+  // The lister always writes `nextBackupStart` ("" when backups are off), so
+  // `equals ""` can't flag rows synced before the field existed.
+  postureChecks: [
+    {
+      id: "droplet-backups-disabled",
+      title: "Backups disabled",
+      severity: "low",
+      category: "data-protection",
+      conditions: [{ fieldKey: "nextBackupStart", when: "equals", value: "" }],
+      reason:
+        "The Droplet has no scheduled backup window — automated backups are off, so recovery depends entirely on manual snapshots.",
+    },
+  ],
 });

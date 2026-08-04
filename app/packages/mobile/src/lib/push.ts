@@ -224,6 +224,9 @@ export function pushDataToPath(data: MobilePushData): string {
       const target = data as { orgId?: string; organizationId?: string };
       return `/org/${target.orgId ?? target.organizationId}/expiring`;
     }
+    // A posture alert summarises the whole feed, so it opens the feed.
+    case "posture_alert":
+      return `/org/${data.orgId}/posture`;
     // A log-match alert names the saved query that fired; open its viewer so
     // the matching lines are one refresh away.
     case "log_match":

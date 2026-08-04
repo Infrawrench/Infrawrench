@@ -36,6 +36,8 @@ export interface MsTeamsWebhook {
   expiryAlerts: boolean;
   /** Saved log-query matches from the log workspace alert pass. */
   logMatchAlerts: boolean;
+  /** Critical/high security posture findings from the posture alert pass. */
+  postureAlerts: boolean;
   /** The Monday-morning weekly summary (only sends when the org enables it). */
   weeklyDigest: boolean;
 }
@@ -70,6 +72,7 @@ export interface AddMsTeamsWebhookArgs {
   providerIncidents?: boolean;
   expiryAlerts?: boolean;
   logMatchAlerts?: boolean;
+  postureAlerts?: boolean;
   weeklyDigest?: boolean;
 }
 
@@ -95,6 +98,7 @@ export type MsTeamsWebhookTriggers = Pick<
   | "providerIncidents"
   | "expiryAlerts"
   | "logMatchAlerts"
+  | "postureAlerts"
   | "weeklyDigest"
 >;
 

@@ -188,6 +188,7 @@ const TabTarget = strict({
     "logs",
     "changes",
     "expiring",
+    "posture",
     "ssh-fanout",
     "metric-alerts",
     "workflows",

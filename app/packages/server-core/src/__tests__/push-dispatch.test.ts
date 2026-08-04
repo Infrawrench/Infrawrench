@@ -171,6 +171,15 @@ describe("sendPushToOrg", () => {
     expect(levels).toEqual(["time-sensitive", "time-sensitive"]);
   });
 
+  it("dispatches the postureAlerts trigger like the other alert triggers", async () => {
+    targets = [device(1)];
+    fetchSpy.mockResolvedValue(expoResponse([{ status: "ok" }]));
+    const out = await dispatch.sendPushToOrg("org1", "postureAlerts", msg);
+    expect(out).toEqual({ attempted: 1, succeeded: 1 });
+    const body = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body));
+    expect(body[0].interruptionLevel).toBe("time-sensitive");
+  });
+
   it("chunks requests at 100 messages", async () => {
     targets = Array.from({ length: 150 }, (_, i) => device(i));
     fetchSpy.mockImplementation(async (_url, init) => {

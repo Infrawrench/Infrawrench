@@ -41,6 +41,7 @@ import {
 import { itemsWithinLead } from "@infrawrench/client-core";
 import { queryCosts } from "../clickhouse/cost-readers";
 import { listExpiring } from "../expiry/feed";
+import { listPosture } from "../posture/feed";
 import { sendSlackToOrg } from "../slack";
 import { sendMsTeamsToOrg } from "../msteams";
 import { isEmailConfigured, sendEmails, type EmailMessage } from "../email";
@@ -146,67 +147,77 @@ export async function buildWeeklyDigest(
 
   const { fromDate, toDatePlusOne } = dayRange(window.weekStart, window.weekEnd);
   const count = sql<number>`count(*)::int`;
-  const [[incidents], [added], [removed], [providerIncidents], expiringSoon] = await Promise.all([
-    db
-      .select({ count })
-      .from(pagingIncidents)
-      .where(
-        and(
-          eq(pagingIncidents.organizationId, organizationId),
-          gte(pagingIncidents.openedAt, fromDate),
-          lt(pagingIncidents.openedAt, toDatePlusOne),
-        ),
-      ),
-    db
-      .select({ count })
-      .from(resources)
-      .where(
-        and(
-          eq(resources.organizationId, organizationId),
-          gte(resources.createdAt, fromDate),
-          lt(resources.createdAt, toDatePlusOne),
-        ),
-      ),
-    db
-      .select({ count })
-      .from(resources)
-      .where(
-        and(
-          eq(resources.organizationId, organizationId),
-          gte(resources.deletedAt, fromDate),
-          lt(resources.deletedAt, toDatePlusOne),
-        ),
-      ),
-    // Provider status-page incidents whose window overlapped the reported
-    // week, on providers the org holds accounts with. Provider-level, not
-    // per-resource: the digest line is a headcount, not a blast radius.
-    db
-      .select({ count })
-      .from(providerStatusIncidents)
-      .where(
-        and(
-          lt(providerStatusIncidents.startedAt, toDatePlusOne),
-          or(
-            isNull(providerStatusIncidents.resolvedAt),
-            gte(providerStatusIncidents.resolvedAt, fromDate),
+  const [[incidents], [added], [removed], [providerIncidents], expiringSoon, postureCounts] =
+    await Promise.all([
+      db
+        .select({ count })
+        .from(pagingIncidents)
+        .where(
+          and(
+            eq(pagingIncidents.organizationId, organizationId),
+            gte(pagingIncidents.openedAt, fromDate),
+            lt(pagingIncidents.openedAt, toDatePlusOne),
           ),
-          sql`${providerStatusIncidents.pluginId} IN (
+        ),
+      db
+        .select({ count })
+        .from(resources)
+        .where(
+          and(
+            eq(resources.organizationId, organizationId),
+            gte(resources.createdAt, fromDate),
+            lt(resources.createdAt, toDatePlusOne),
+          ),
+        ),
+      db
+        .select({ count })
+        .from(resources)
+        .where(
+          and(
+            eq(resources.organizationId, organizationId),
+            gte(resources.deletedAt, fromDate),
+            lt(resources.deletedAt, toDatePlusOne),
+          ),
+        ),
+      // Provider status-page incidents whose window overlapped the reported
+      // week, on providers the org holds accounts with. Provider-level, not
+      // per-resource: the digest line is a headcount, not a blast radius.
+      db
+        .select({ count })
+        .from(providerStatusIncidents)
+        .where(
+          and(
+            lt(providerStatusIncidents.startedAt, toDatePlusOne),
+            or(
+              isNull(providerStatusIncidents.resolvedAt),
+              gte(providerStatusIncidents.resolvedAt, fromDate),
+            ),
+            sql`${providerStatusIncidents.pluginId} IN (
             SELECT DISTINCT plugin_id FROM accounts
             WHERE organization_id = ${organizationId} AND deleted_at IS NULL
           )`,
+          ),
         ),
-      ),
-    // Deadlines currently inside the org's expiry lead time. A point-in-time
-    // headcount, not a weekly delta — "what needs attention now" is the useful
-    // digest line for deadlines. Defensive: a broken feed must cost the digest
-    // one line, not the whole send.
-    listExpiring(organizationId)
-      .then((feed) => itemsWithinLead(feed).length)
-      .catch((err) => {
-        console.error(`[expiry] digest feed for org ${organizationId} failed:`, err);
-        return 0;
-      }),
-  ]);
+      // Deadlines currently inside the org's expiry lead time. A point-in-time
+      // headcount, not a weekly delta — "what needs attention now" is the useful
+      // digest line for deadlines. Defensive: a broken feed must cost the digest
+      // one line, not the whole send.
+      listExpiring(organizationId)
+        .then((feed) => itemsWithinLead(feed).length)
+        .catch((err) => {
+          console.error(`[expiry] digest feed for org ${organizationId} failed:`, err);
+          return 0;
+        }),
+      // Current critical/high posture findings. Like the expiry line, a
+      // point-in-time headcount — and defensive: a broken feed must cost the
+      // digest one line, not the whole send.
+      listPosture(organizationId)
+        .then((feed) => ({ critical: feed.counts.critical, high: feed.counts.high }))
+        .catch((err) => {
+          console.error(`[posture] digest feed for org ${organizationId} failed:`, err);
+          return { critical: 0, high: 0 };
+        }),
+    ]);
 
   return composeWeeklyDigest({
     window,
@@ -217,6 +228,8 @@ export async function buildWeeklyDigest(
     resourcesRemoved: removed?.count ?? 0,
     providerIncidents: providerIncidents?.count ?? 0,
     expiringSoon,
+    postureCritical: postureCounts.critical,
+    postureHigh: postureCounts.high,
   });
 }
 

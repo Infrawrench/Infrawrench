@@ -7,6 +7,7 @@ import "./metric-alerts";
 import "./orphans";
 import "./rightsizing";
 import "./expiring";
+import "./posture";
 import "./changes";
 import "./moment";
 import "./schedules";

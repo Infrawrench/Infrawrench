@@ -1,5 +1,6 @@
 import type { PeerGuidanceAction } from "./schema.js";
 import type { AssociationSource } from "./create.js";
+import type { PostureCheckRule } from "./posture.js";
 
 export type { AssociationSource };
 
@@ -599,6 +600,20 @@ export interface ResourceTypeDefinition {
    * matches both, `equals`/`notEquals` never match an absent field).
    */
   orphanRule?: OrphanRule;
+  /**
+   * Declarative security posture rules — "this resource is probably exposed":
+   * a public bucket, a 0.0.0.0/0 ingress rule, an unencrypted disk, an access
+   * key past its rotation budget, missing deletion protection.
+   *
+   * The security sibling of {@link ResourceTypeDefinition.orphanRule}: each
+   * rule flags the resource when ALL its conditions hold against the
+   * instance's stored `fields`, evaluated by hosts over already-synced
+   * resources (`evaluatePostureRule`) — no plugin client, credentials, or
+   * extra API calls. Only declare rules over fields the type's lister already
+   * populates; a condition on a field that never lands in `fields` simply
+   * never matches. See `PostureCheckRule` in `posture.ts`.
+   */
+  postureChecks?: PostureCheckRule[];
   /**
    * Start/stop action pair for sleep/wake schedules; see
    * {@link LifecycleActionsDeclaration}. Absent = the type cannot be

@@ -19,4 +19,15 @@ export const FirewallRuleResourceType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   iconKey: "firewall",
+  postureChecks: [
+    {
+      id: "cloudflare-firewall-rule-disabled",
+      title: "Firewall rule disabled",
+      severity: "low",
+      category: "other",
+      conditions: [{ fieldKey: "enabled", when: "falsy" }],
+      reason:
+        "This custom firewall rule is disabled and filters no traffic; re-enable it or delete it so the zone's protections match what is actually configured.",
+    },
+  ],
 });

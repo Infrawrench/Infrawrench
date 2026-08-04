@@ -78,6 +78,17 @@ export type {
 export { normalizeResourceCreateResult } from "./instance.js";
 export { evaluatePeerIntegrationUnreachable, evaluateOrphanRule } from "./resource.js";
 
+// Posture checks — declarative security-exposure rules over already-synced
+// fields, the security sibling of `orphanRule`. The workspace-wide aggregation
+// lives in `@infrawrench/client-core` (`computePostureFindings`).
+export { evaluatePostureRule, evaluatePostureCondition, parsePostureInstant } from "./posture.js";
+export type {
+  PostureCheckRule,
+  PostureCondition,
+  PostureSeverity,
+  PostureCategory,
+} from "./posture.js";
+
 // Orphan aggregation — the host-side scan over already-stored resources, plus
 // the shape every surface renders. Shared so the web server, the desktop app
 // and the CLI classify a workspace identically.

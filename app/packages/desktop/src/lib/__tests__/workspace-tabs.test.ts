@@ -124,6 +124,10 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(getWorkspaceNavigateArgs(deploymentsTabTarget())).toEqual({ to: "/deployments" });
   });
 
+  it("returns posture route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "posture" })).toEqual({ to: "/posture" });
+  });
+
   it("carries a hotlinked repo through as a search param", () => {
     expect(getWorkspaceNavigateArgs(deploymentsTabTarget("owner/name"))).toEqual({
       to: "/deployments",
@@ -153,6 +157,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the deployments path", () => {
     expect(syncWorkspaceRouteFromPath("/deployments")).toEqual({ kind: "deployments" });
+  });
+
+  it("parses the posture path", () => {
+    expect(syncWorkspaceRouteFromPath("/posture")).toEqual({ kind: "posture" });
   });
 
   // Under hash history the query lives inside the fragment, so the repo a

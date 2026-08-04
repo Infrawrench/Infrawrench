@@ -165,6 +165,13 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(args).toMatchObject({ hash: "sftp" });
   });
 
+  it("returns posture route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "posture" })).toEqual({
+      to: "/org/$orgId/posture",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("sets replace when requested", () => {
     const args = getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId: "d1" }, true);
     expect(args.replace).toBe(true);
@@ -188,6 +195,10 @@ describe("syncWorkspaceRouteFromPath", () => {
       kind: "account",
       accountId: "a1",
     });
+  });
+
+  it("parses the org-scoped posture path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/test-org/posture")).toEqual({ kind: "posture" });
   });
 
   it("parses the chat list path", () => {

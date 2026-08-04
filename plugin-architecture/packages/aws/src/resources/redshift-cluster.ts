@@ -64,4 +64,23 @@ export const RedshiftClusterResourceType = rt({
       ],
     },
   ],
+  postureChecks: [
+    {
+      id: "redshift-publicly-accessible",
+      title: "Cluster publicly accessible",
+      severity: "critical",
+      category: "public-exposure",
+      conditions: [{ fieldKey: "publiclyAccessible", when: "truthy" }],
+      reason:
+        "The cluster endpoint resolves to a public IP reachable from outside the VPC — the data warehouse is one leaked credential away from the internet.",
+    },
+    {
+      id: "redshift-unencrypted",
+      title: "Cluster not encrypted",
+      severity: "medium",
+      category: "encryption",
+      conditions: [{ fieldKey: "encrypted", when: "falsy" }],
+      reason: "The cluster's data is not encrypted at rest.",
+    },
+  ],
 });

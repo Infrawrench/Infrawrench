@@ -49,6 +49,7 @@ interface WebhookBody {
   providerIncidents?: boolean;
   expiryAlerts?: boolean;
   logMatchAlerts?: boolean;
+  postureAlerts?: boolean;
   weeklyDigest?: boolean;
 }
 
@@ -79,6 +80,7 @@ app.post("/webhooks", async (c) => {
       ...(body.providerIncidents != null ? { providerIncidents: body.providerIncidents } : {}),
       ...(body.expiryAlerts != null ? { expiryAlerts: body.expiryAlerts } : {}),
       ...(body.logMatchAlerts != null ? { logMatchAlerts: body.logMatchAlerts } : {}),
+      ...(body.postureAlerts != null ? { postureAlerts: body.postureAlerts } : {}),
       ...(body.weeklyDigest != null ? { weeklyDigest: body.weeklyDigest } : {}),
     });
     return c.json(webhook);
@@ -99,6 +101,7 @@ interface WebhookPatchBody {
   providerIncidents?: boolean;
   expiryAlerts?: boolean;
   logMatchAlerts?: boolean;
+  postureAlerts?: boolean;
   weeklyDigest?: boolean;
 }
 
@@ -124,6 +127,7 @@ app.patch("/webhooks/:id", async (c) => {
   if (body.providerIncidents != null) patch.providerIncidents = body.providerIncidents;
   if (body.expiryAlerts != null) patch.expiryAlerts = body.expiryAlerts;
   if (body.logMatchAlerts != null) patch.logMatchAlerts = body.logMatchAlerts;
+  if (body.postureAlerts != null) patch.postureAlerts = body.postureAlerts;
   if (body.weeklyDigest != null) patch.weeklyDigest = body.weeklyDigest;
 
   const result = await db
@@ -146,6 +150,7 @@ app.patch("/webhooks/:id", async (c) => {
     providerIncidents: row.providerIncidents,
     expiryAlerts: row.expiryAlerts,
     logMatchAlerts: row.logMatchAlerts,
+    postureAlerts: row.postureAlerts,
     weeklyDigest: row.weeklyDigest,
   });
 });

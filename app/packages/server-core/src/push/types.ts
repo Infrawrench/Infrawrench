@@ -30,7 +30,8 @@ export type PushTrigger =
   | "workflowPages"
   | "providerIncidents"
   | "expiryAlerts"
-  | "logMatchAlerts";
+  | "logMatchAlerts"
+  | "postureAlerts";
 
 /**
  * What a Slack channel or Teams webhook can opt into. A superset of the push

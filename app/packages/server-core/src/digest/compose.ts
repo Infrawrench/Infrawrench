@@ -56,6 +56,10 @@ export interface DigestInput {
    * feed, severity expired/critical/warning/upcoming).
    */
   expiringSoon: number;
+  /** Critical security posture findings currently open (from the posture feed). */
+  postureCritical: number;
+  /** High-severity posture findings currently open. */
+  postureHigh: number;
 }
 
 export interface DigestTotal {
@@ -90,6 +94,10 @@ export interface WeeklyDigest {
   providerIncidents: number;
   /** Deadlines currently inside the org's expiry lead time. */
   expiringSoon: number;
+  /** Critical security posture findings currently open. */
+  postureCritical: number;
+  /** High-severity posture findings currently open. */
+  postureHigh: number;
 }
 
 const MAX_MOVERS = 3;
@@ -341,6 +349,8 @@ export function composeWeeklyDigest(input: DigestInput): WeeklyDigest {
     resourcesRemoved: input.resourcesRemoved,
     providerIncidents: input.providerIncidents,
     expiringSoon: input.expiringSoon,
+    postureCritical: input.postureCritical,
+    postureHigh: input.postureHigh,
   };
 }
 
@@ -480,6 +490,17 @@ export function digestSegments(digest: WeeklyDigest, narrative?: string | null):
       { text: "Expiring soon", bold: true },
       {
         text: `: ${pluralize(digest.expiringSoon, "deadline")} within your lead time`,
+        bold: false,
+      },
+    ]);
+  }
+  if (digest.postureCritical + digest.postureHigh > 0) {
+    lines.push([
+      { text: "Posture", bold: true },
+      {
+        text: `: ${digest.postureCritical} critical, ${digest.postureHigh} high ${
+          digest.postureCritical + digest.postureHigh === 1 ? "finding" : "findings"
+        }`,
         bold: false,
       },
     ]);

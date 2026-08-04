@@ -107,4 +107,23 @@ export const EC2InstanceResourceType = rt({
     resizeNote:
       "EC2 only changes the instance type of a stopped instance — stop it first, apply the resize, then start it again.",
   },
+  // The lister precomputes `sshAccess` from a DescribeSecurityGroups pass, so
+  // the world-open case is an exact stored string, not a CIDR parse.
+  postureChecks: [
+    {
+      id: "ec2-ssh-world-open",
+      title: "SSH open to the world",
+      severity: "high",
+      category: "public-exposure",
+      conditions: [
+        {
+          fieldKey: "sshAccess",
+          when: "equals",
+          value: "Port 22 open to the world (0.0.0.0/0).",
+        },
+      ],
+      reason:
+        "An attached security group allows inbound TCP/22 from 0.0.0.0/0, so anyone on the internet can attempt SSH logins against this instance.",
+    },
+  ],
 });

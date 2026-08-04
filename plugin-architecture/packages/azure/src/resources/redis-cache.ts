@@ -47,4 +47,15 @@ export const RedisCacheResourceType = rt({
       ],
     },
   ],
+  postureChecks: [
+    {
+      id: "azure-redis-non-ssl-port",
+      title: "Non-TLS port enabled",
+      severity: "high",
+      category: "encryption",
+      conditions: [{ fieldKey: "nonSslPort", when: "truthy" }],
+      reason:
+        "The cache accepts connections on the unencrypted 6379 port, so credentials and cached data cross the network in clear text.",
+    },
+  ],
 });

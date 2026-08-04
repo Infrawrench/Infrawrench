@@ -420,6 +420,7 @@ const ALERT_TRIGGERS = [
   { key: "providerIncidents", label: "Provider incidents" },
   { key: "expiryAlerts", label: "Expiry alerts" },
   { key: "logMatchAlerts", label: "Log matches" },
+  { key: "postureAlerts", label: "Posture" },
   { key: "weeklyDigest", label: "Weekly digest" },
 ] as const;
 
@@ -1495,6 +1496,17 @@ function PushPreferencesSection({ orgId }: { orgId: string }) {
           />
           <span>Log matches</span>
         </label>
+        <label
+          className="flex items-center gap-2"
+          title="Critical and high security posture findings on synced resources."
+        >
+          <input
+            type="checkbox"
+            checked={prefs.postureAlerts}
+            onChange={(e) => void updatePref({ postureAlerts: e.target.checked })}
+          />
+          <span>Posture</span>
+        </label>
       </div>
 
       {devices.length === 0 ? (
@@ -1561,6 +1573,8 @@ interface PushRecipientRow {
   expiryAlerts: boolean;
   /** Saved log-query matches; on by default like the other exceptional triggers. */
   logMatchAlerts: boolean;
+  /** Posture findings; on by default like the other exceptional triggers. */
+  postureAlerts: boolean;
   devices: Array<{ id: string; platform: string; deviceName: string | null }>;
 }
 
@@ -1602,6 +1616,7 @@ function PushRosterSection({ orgId }: { orgId: string }) {
                   r.providerIncidents && "provider incidents",
                   r.expiryAlerts && "expiry",
                   r.logMatchAlerts && "log matches",
+                  r.postureAlerts && "posture",
                 ]
                   .filter(Boolean)
                   .join(", ") || "all triggers off"}

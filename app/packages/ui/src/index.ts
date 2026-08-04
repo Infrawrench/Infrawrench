@@ -289,6 +289,7 @@ export {
   logsTabTarget,
   changesTabTarget,
   expiringTabTarget,
+  postureTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   chatTabTarget,
@@ -537,6 +538,41 @@ export type {
 export { ExpirySection, formatDaysRemaining } from "./expiry/ExpirySection.js";
 export type { ExpirySectionProps } from "./expiry/ExpirySection.js";
 export { ExpiryIcon } from "./components/icons/ExpiryIcon.js";
+
+/**
+ * Posture checks — the pure contract (finding computation, wire types,
+ * settings helpers) lives in `@infrawrench/client-core` so mobile and the CLI
+ * share one definition; re-exported here because web and desktop import it
+ * from `ui`.
+ */
+export {
+  computePostureFindings,
+  fetchPosture,
+  getPostureSettings,
+  updatePostureSettings,
+  alertablePostureFindings,
+  POSTURE_CATEGORY_LABELS,
+  POSTURE_SEVERITIES,
+  POSTURE_SEVERITY_LABELS,
+} from "@infrawrench/client-core";
+export type {
+  PostureCategory,
+  PostureCheckRule,
+  PostureCondition,
+  PostureFinding,
+  PostureListResponse,
+  PostureScanAccount,
+  PostureScanInput,
+  PostureScanPlugin,
+  PostureScanResource,
+  PostureScanResourceType,
+  PostureSettings,
+  PostureSettingsPatch,
+  PostureSeverity,
+} from "@infrawrench/client-core";
+export { PostureSection } from "./posture/PostureSection.js";
+export type { PostureSectionProps } from "./posture/PostureSection.js";
+export { PostureIcon } from "./components/icons/PostureIcon.js";
 export { FanoutIcon } from "./components/icons/FanoutIcon.js";
 export { MetricAlertIcon } from "./components/icons/MetricAlertIcon.js";
 

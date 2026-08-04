@@ -46,6 +46,11 @@ export default function AccountsScreen() {
           onPress={() => router.push(`/org/${orgId}/expiring`)}
         />
         <Row
+          title="Posture"
+          subtitle="Public buckets, world-open ingress, unencrypted disks"
+          onPress={() => router.push(`/org/${orgId}/posture`)}
+        />
+        <Row
           title="Log workspace"
           subtitle="Saved multi-resource log tails and match alerts"
           onPress={() => router.push(`/org/${orgId}/log-workspaces`)}

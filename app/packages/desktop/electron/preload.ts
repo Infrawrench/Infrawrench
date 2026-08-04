@@ -160,6 +160,7 @@ const INVOKE_CHANNELS = [
   "cloud_rightsizing_list",
   "local_orphans_list",
   "cloud_expiring",
+  "cloud_posture",
   "cloud_changes_list",
   "cloud_status_incidents",
   "cloud_moment",

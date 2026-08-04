@@ -123,6 +123,41 @@ const orphanRuleSchema = z.object({
   reason: z.string().min(1),
 });
 
+const postureConditionSchema = z.union([
+  z
+    .object({
+      fieldKey: z.string().min(1),
+      when: z.enum(["empty", "equals", "notEquals", "truthy", "falsy"]),
+      value: z.string().optional(),
+    })
+    // Same stance as orphan conditions: `evaluatePostureCondition` falls back
+    // to comparing against "" when `value` is absent, so an author who forgets
+    // it would silently get a rule that matches empty-valued fields instead of
+    // a manifest error.
+    .refine((c) => (c.when !== "equals" && c.when !== "notEquals") || c.value !== undefined, {
+      message: "posture condition requires `value` when `when` is 'equals' or 'notEquals'",
+      path: ["value"],
+    })
+    .refine((c) => c.when === "equals" || c.when === "notEquals" || c.value === undefined, {
+      message: "`value` only applies to 'equals' / 'notEquals' posture conditions",
+      path: ["value"],
+    }),
+  z.object({
+    fieldKey: z.string().min(1),
+    when: z.literal("olderThanDays"),
+    days: z.number().int().positive(),
+  }),
+]);
+
+const postureCheckRuleSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  severity: z.enum(["critical", "high", "medium", "low"]),
+  category: z.enum(["public-exposure", "encryption", "credential-age", "data-protection", "other"]),
+  conditions: z.array(postureConditionSchema).min(1),
+  reason: z.string().min(1),
+});
+
 const lifecycleActionsSchema = z
   .object({
     startActionId: z.string().min(1),
@@ -215,6 +250,7 @@ export const resourceTypeDefinitionSchema = z.object({
   attachTargets: z.array(attachTargetSchema).optional(),
   supportsMetrics: z.boolean().optional(),
   orphanRule: orphanRuleSchema.optional(),
+  postureChecks: z.array(postureCheckRuleSchema).optional(),
   expiryFields: z.array(expiryFieldRuleSchema).optional(),
   lifecycle: lifecycleActionsSchema.optional(),
   rightsizing: rightsizingSchema.optional(),

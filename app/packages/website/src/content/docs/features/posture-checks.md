@@ -1,0 +1,63 @@
+---
+title: Posture checks
+description: Plugin-declared security checks over already-synced resources — public buckets, world-open firewall rules, unencrypted disks, stale credentials — ranked by severity, with alerts on the worst of it.
+sidebar_order: 11
+---
+
+The bucket that quietly allows public access, the firewall rule someone opened to `0.0.0.0/0` "just for a minute", the volume that was never encrypted, the console password nobody has used since spring — each is one console page deep in a different provider. Posture checks fold them into one list: every security finding across every connected account, ranked by severity, with alerts when something critical shows up.
+
+Like the [orphan finder](./orphan-finder.md) and the [expiry radar](./expiry-radar.md), it costs nothing to have on. Findings are computed entirely from fields your accounts already sync — no extra provider API calls, nothing against your rate limits. Each plugin ships declarative rules over the fields its listers store, so the checks cover every provider that declares them and grow automatically as plugins do.
+
+## What it checks
+
+Rules fall into a handful of categories, each finding carrying the plugin's own explanation of why it matters:
+
+- **Public exposure** — a Redshift cluster reachable from outside its VPC, an EC2 instance with SSH open to the world, a GCP firewall rule allowing ingress from `0.0.0.0/0`, a Cloud SQL instance with a public IP, a GCS bucket without public-access prevention, an OpenSearch domain with no VPC attachment, a Hetzner server with no firewall attached, a paused Cloudflare zone exposing its origin.
+- **Encryption** — unencrypted EBS volumes, RDS/Neptune/DocumentDB cluster storage, EFS file systems, Redshift clusters and Azure managed disks; an Azure storage account allowing plain-HTTP transfer; an Azure Redis cache with its non-TLS port enabled.
+- **Credential age** — an IAM user whose console password hasn't been used in over 90 days.
+- **Data protection** — a CloudTrail trail without log-file validation, an Azure key vault without purge protection, a DigitalOcean Droplet with backups disabled.
+
+Every finding lands in a severity bucket: **critical**, **high**, **medium** or **low**. Critical and high findings are the alertable ones; medium and low are hygiene work that stays on the screen.
+
+## The Posture screen
+
+Web, desktop and mobile all get a **Posture** screen: severity totals up top, then the findings grouped by severity, category or account, each row naming the resource, the check that matched, and the plugin's reason. Click through to the resource itself to fix it.
+
+<insert [Web Posture screen showing the severity summary chips (critical / high / medium / low counts) and findings grouped by severity, with a publicly accessible Redshift cluster at the top marked critical] here>
+
+On desktop the screen works in both modes: signed into Infrawrench Cloud it shows the organization-wide findings; in local-only mode it computes the same findings from the workspace on your machine.
+
+<insert [Mobile Posture screen with severity chips and grouped finding rows, one "No firewall attached" high finding visible with its reason text] here>
+
+## Alerts on the worst of it
+
+The cloud poller sweeps every organization's findings and, when critical or high findings exist, sends one summary alert — counts per severity plus the worst findings — over the same transports as every other alert: Slack channels, Microsoft Teams webhooks, and mobile push. The **Posture** trigger is on by default and can be toggled per channel and per user in **Settings → Notifications** (and on the mobile notifications screen). Alerts are rate-limited to one per organization per day; medium and low findings never page anyone.
+
+Posture alerts can be switched off entirely per organization via the posture settings (`PUT /posture/settings`), without hiding the screen itself.
+
+**The weekly digest** gains a "Posture" line whenever critical or high findings are open, so even with alerts muted the exposure count reaches you once a week.
+
+## The CLI
+
+`infrawrench posture` prints the same findings, worst first, with `--json` for scripts and `--local` for the desktop workspace on your machine:
+
+```
+$ infrawrench posture
+Acme Corp · 6 findings  1 critical · 2 high · 3 medium
+
+severity   resource        type               account    finding
+critical   analytics       Redshift Cluster   Prod AWS   Cluster publicly accessible
+high       web-1           Server             Hetzner    No firewall attached
+high       logs-bucket     GCS Bucket         Data GCP   Public access prevention not enforced
+medium     scratch-vol     EBS Volume         Prod AWS   Volume not encrypted
+```
+
+## MCP
+
+The `list_posture_findings` tool exposes the findings to AI agents, filterable by severity and category — so an agent asked "is anything exposed?" can answer with your actual posture, and an agent about to open a port knows what is already open.
+
+## Caveats
+
+- The checks only see what listers sync. A field a provider never reports can't be checked — notably, S3 bucket public-access blocks, AWS security-group CIDRs, RDS instance public accessibility and IAM access-key ages aren't part of synced state today, so those specific checks don't exist yet. Rules are only ever written over fields that genuinely sync, so a finding is never a guess.
+- Findings reflect the last sync. A rule you just fixed clears on the next sync pass, not instantly.
+- Rules are plugin-declared, not user-editable: each plugin ships the checks its synced fields can honestly answer, with a stable rule id and a written reason.

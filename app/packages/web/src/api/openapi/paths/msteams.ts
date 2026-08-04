@@ -35,6 +35,10 @@ const MsTeamsWebhook = strict({
   logMatchAlerts: z.boolean().openapi({
     description: "A saved log-workspace query with alerting enabled found matching log lines.",
   }),
+  postureAlerts: z.boolean().openapi({
+    description:
+      "Daily digests of critical/high security posture findings on synced resources — public buckets, world-open ingress, unencrypted disks.",
+  }),
   weeklyDigest: z.boolean().openapi({
     description:
       "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest).",
@@ -60,6 +64,7 @@ const MsTeamsWebhookCreate = strict({
   providerIncidents: z.boolean().optional(),
   expiryAlerts: z.boolean().optional(),
   logMatchAlerts: z.boolean().optional(),
+  postureAlerts: z.boolean().optional(),
   weeklyDigest: z.boolean().optional(),
 }).openapi("MsTeamsWebhookCreate");
 
@@ -76,6 +81,7 @@ const MsTeamsWebhookUpdate = strict({
   providerIncidents: z.boolean().optional(),
   expiryAlerts: z.boolean().optional(),
   logMatchAlerts: z.boolean().optional(),
+  postureAlerts: z.boolean().optional(),
   weeklyDigest: z.boolean().optional(),
 }).openapi("MsTeamsWebhookUpdate");
 

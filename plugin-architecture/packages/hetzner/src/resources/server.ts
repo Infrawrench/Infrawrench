@@ -121,4 +121,17 @@ export const ServerResourceType = rt({
     resizeNote:
       "Hetzner requires the server to be powered off before changing its type. The disk keeps its current size, so the change can be reverted.",
   },
+  // The lister always writes `firewallIds` ("" when none are attached), so
+  // `equals ""` can't flag rows synced before the field existed.
+  postureChecks: [
+    {
+      id: "hetzner-server-no-firewall",
+      title: "No firewall attached",
+      severity: "high",
+      category: "public-exposure",
+      conditions: [{ fieldKey: "firewallIds", when: "equals", value: "" }],
+      reason:
+        "The server's public interface has no Hetzner Cloud firewall attached, so every listening port is reachable from the internet.",
+    },
+  ],
 });

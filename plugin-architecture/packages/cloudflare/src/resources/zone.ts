@@ -29,4 +29,15 @@ export const ZoneResourceType = rt({
       entries: [{ envKey: "CLOUDFLARE_ZONE_ID", outputKey: "zoneId" }],
     },
   ],
+  postureChecks: [
+    {
+      id: "cloudflare-zone-paused",
+      title: "Zone paused — proxy bypassed",
+      severity: "high",
+      category: "public-exposure",
+      conditions: [{ fieldKey: "paused", when: "truthy" }],
+      reason:
+        "The zone is paused: traffic goes straight to your origin, bypassing Cloudflare's proxy, WAF and DDoS protection, and exposing origin IPs.",
+    },
+  ],
 });

@@ -19,6 +19,7 @@ import {
   ChangesIcon,
   GraphIcon,
   ExpiryIcon,
+  PostureIcon,
   FanoutIcon,
   LogsIcon,
   MetricAlertIcon,
@@ -504,6 +505,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <ExpiryIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/expiring", params: { orgId: orgId! } }),
+              },
+              {
+                key: "posture",
+                label: "Posture",
+                icon: <PostureIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/posture", params: { orgId: orgId! } }),
               },
               {
                 key: "ssh-fanout",

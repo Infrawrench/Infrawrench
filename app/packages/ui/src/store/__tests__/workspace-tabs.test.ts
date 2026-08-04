@@ -79,6 +79,10 @@ describe("getWorkspaceTabId", () => {
       }),
     ).toBe("resource:acc-1:arn:aws");
   });
+
+  it("returns the singleton id for the posture target", () => {
+    expect(getWorkspaceTabId({ kind: "posture" })).toBe("posture");
+  });
 });
 
 describe("getWorkspaceTabFallbackTitle", () => {
@@ -120,6 +124,10 @@ describe("getWorkspaceTabFallbackTitle", () => {
         view: "sftp",
       }),
     ).toBe("SFTP");
+  });
+
+  it("returns 'Posture' for the posture target, matching the sidebar tile", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "posture" })).toBe("Posture");
   });
 });
 
@@ -209,5 +217,9 @@ describe("workspaceTabTargetsEqual", () => {
       view: "details",
     };
     expect(workspaceTabTargetsEqual(a, b)).toBe(true);
+  });
+
+  it("treats two posture targets as equal (singleton tab)", () => {
+    expect(workspaceTabTargetsEqual({ kind: "posture" }, { kind: "posture" })).toBe(true);
   });
 });

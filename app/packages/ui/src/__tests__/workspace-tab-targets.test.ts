@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   dashboardTabTarget,
   accountTabTarget,
+  postureTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -16,6 +17,10 @@ describe("tab target factories", () => {
 
   it("accountTabTarget", () => {
     expect(accountTabTarget("acc-1")).toEqual({ kind: "account", accountId: "acc-1" });
+  });
+
+  it("postureTabTarget", () => {
+    expect(postureTabTarget()).toEqual({ kind: "posture" });
   });
 
   it("resourceTabTarget normalizes id and defaults to details view", () => {

@@ -172,6 +172,46 @@ describe("expiryFields declarations", () => {
 });
 
 /**
+ * Same silent-failure class again: a `postureChecks` condition over a field
+ * the lister never stores simply never matches — no compile error, no runtime
+ * error, just a security check that silently watches nothing.
+ */
+describe("postureChecks declarations", () => {
+  it("condition on a field the type actually knows about", async () => {
+    const loaded = await loader.loadPlugins();
+    const suspicious: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        for (const rule of type.postureChecks ?? []) {
+          for (const cond of rule.conditions) {
+            const known = type.fields.some((f) => f.key === cond.fieldKey);
+            if (!known) {
+              suspicious.push(`${plugin.manifest.id}/${type.id}/${rule.id}.${cond.fieldKey}`);
+            }
+          }
+        }
+      }
+    }
+    expect(suspicious).toEqual([]);
+  });
+
+  it("use rule ids unique within their plugin", async () => {
+    const loaded = await loader.loadPlugins();
+    const dupes: string[] = [];
+    for (const { plugin } of loaded) {
+      const seen = new Set<string>();
+      for (const type of plugin.resourceTypes) {
+        for (const rule of type.postureChecks ?? []) {
+          if (seen.has(rule.id)) dupes.push(`${plugin.manifest.id}/${rule.id}`);
+          seen.add(rule.id);
+        }
+      }
+    }
+    expect(dupes).toEqual([]);
+  });
+});
+
+/**
  * The rightsizing declaration names stored fields and relies on host paths
  * (updateResource, metrics) that nothing type-checks across the boundary —
  * validate the whole registry so a typo'd field key or a declaration on a

@@ -100,6 +100,7 @@ app.get("/status", async (c) => {
               providerIncidents: ch.providerIncidents,
               expiryAlerts: ch.expiryAlerts,
               logMatchAlerts: ch.logMatchAlerts,
+              postureAlerts: ch.postureAlerts,
               weeklyDigest: ch.weeklyDigest,
             },
           ]
@@ -167,6 +168,7 @@ interface ChannelBody {
   providerIncidents?: boolean;
   expiryAlerts?: boolean;
   logMatchAlerts?: boolean;
+  postureAlerts?: boolean;
   weeklyDigest?: boolean;
 }
 
@@ -206,6 +208,7 @@ app.post("/channels", async (c) => {
     ...(body.providerIncidents != null ? { providerIncidents: body.providerIncidents } : {}),
     ...(body.expiryAlerts != null ? { expiryAlerts: body.expiryAlerts } : {}),
     ...(body.logMatchAlerts != null ? { logMatchAlerts: body.logMatchAlerts } : {}),
+    ...(body.postureAlerts != null ? { postureAlerts: body.postureAlerts } : {}),
     ...(body.weeklyDigest != null ? { weeklyDigest: body.weeklyDigest } : {}),
   };
   const now = new Date();
@@ -229,6 +232,7 @@ app.post("/channels", async (c) => {
       providerIncidents: body.providerIncidents ?? true,
       expiryAlerts: body.expiryAlerts ?? true,
       logMatchAlerts: body.logMatchAlerts ?? true,
+      postureAlerts: body.postureAlerts ?? true,
       weeklyDigest: body.weeklyDigest ?? true,
     })
     .onConflictDoUpdate({
@@ -253,6 +257,7 @@ interface ChannelPatchBody {
   providerIncidents?: boolean;
   expiryAlerts?: boolean;
   logMatchAlerts?: boolean;
+  postureAlerts?: boolean;
   weeklyDigest?: boolean;
 }
 
@@ -272,6 +277,7 @@ app.patch("/channels/:id", async (c) => {
   if (body.providerIncidents != null) patch.providerIncidents = body.providerIncidents;
   if (body.expiryAlerts != null) patch.expiryAlerts = body.expiryAlerts;
   if (body.logMatchAlerts != null) patch.logMatchAlerts = body.logMatchAlerts;
+  if (body.postureAlerts != null) patch.postureAlerts = body.postureAlerts;
   if (body.weeklyDigest != null) patch.weeklyDigest = body.weeklyDigest;
 
   const result = await db

@@ -10,6 +10,11 @@ export const CloudSqlInstanceResourceType = rt({
     f("region", "Region"),
     f("tier", "Machine Tier", { required: false }),
     f("state", "State", { required: false }),
+    f("publicIpAddress", "Public IP", {
+      required: false,
+      editable: false,
+      description: "Public IPv4 endpoint; empty when the instance is private-IP only",
+    }),
     f("availabilityType", "Availability Type", { required: false }),
     f("network", "VPC Network", {
       kind: "association",
@@ -124,6 +129,17 @@ export const CloudSqlInstanceResourceType = rt({
         { envKey: "DB_USER", outputKey: "username" },
         { envKey: "DB_PASSWORD", outputKey: "password" },
       ],
+    },
+  ],
+  postureChecks: [
+    {
+      id: "cloudsql-public-ip",
+      title: "Instance has a public IP",
+      severity: "high",
+      category: "public-exposure",
+      conditions: [{ fieldKey: "publicIpAddress", when: "notEquals", value: "" }],
+      reason:
+        "The instance exposes a public IPv4 endpoint, so the SQL port is reachable from the internet, guarded only by authorized networks and credentials. Prefer private IP over VPC peering.",
     },
   ],
 });

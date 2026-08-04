@@ -171,6 +171,7 @@ export async function addMsTeamsWebhook(
     ...(args.providerIncidents !== undefined ? { providerIncidents: args.providerIncidents } : {}),
     ...(args.expiryAlerts !== undefined ? { expiryAlerts: args.expiryAlerts } : {}),
     ...(args.logMatchAlerts !== undefined ? { logMatchAlerts: args.logMatchAlerts } : {}),
+    ...(args.postureAlerts !== undefined ? { postureAlerts: args.postureAlerts } : {}),
     ...(args.weeklyDigest !== undefined ? { weeklyDigest: args.weeklyDigest } : {}),
   };
   const now = new Date();
@@ -197,6 +198,7 @@ export async function addMsTeamsWebhook(
       providerIncidents: args.providerIncidents ?? true,
       expiryAlerts: args.expiryAlerts ?? true,
       logMatchAlerts: args.logMatchAlerts ?? true,
+      postureAlerts: args.postureAlerts ?? true,
       weeklyDigest: args.weeklyDigest ?? true,
       createdByUserId: userId,
     })
@@ -234,6 +236,7 @@ function toRecord(row: typeof msteamsWebhooks.$inferSelect): MsTeamsWebhookRecor
     providerIncidents: row.providerIncidents,
     expiryAlerts: row.expiryAlerts,
     logMatchAlerts: row.logMatchAlerts,
+    postureAlerts: row.postureAlerts,
     weeklyDigest: row.weeklyDigest,
   };
 }
@@ -404,6 +407,7 @@ const TRIGGER_COLUMN = {
   providerIncidents: msteamsWebhooks.providerIncidents,
   expiryAlerts: msteamsWebhooks.expiryAlerts,
   logMatchAlerts: msteamsWebhooks.logMatchAlerts,
+  postureAlerts: msteamsWebhooks.postureAlerts,
   weeklyDigest: msteamsWebhooks.weeklyDigest,
 } as const;
 

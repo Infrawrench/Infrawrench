@@ -68,4 +68,15 @@ export const StorageAccountResourceType = rt({
       ],
     },
   ],
+  postureChecks: [
+    {
+      id: "azure-storage-http-allowed",
+      title: "Plain HTTP transfer allowed",
+      severity: "high",
+      category: "encryption",
+      conditions: [{ fieldKey: "httpsOnly", when: "falsy" }],
+      reason:
+        '"Secure transfer required" is off, so clients can read and write blobs over unencrypted HTTP.',
+    },
+  ],
 });

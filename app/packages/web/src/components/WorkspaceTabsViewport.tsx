@@ -37,6 +37,7 @@ import { createWebLogWorkspaceClient } from "@/lib/log-workspace-client";
 import { LogWorkspacePanel, type LogWorkspaceClient } from "@infrawrench/ui";
 import { WebChangesPanel } from "./WebChangesPanel";
 import { WebExpiryPanel } from "./WebExpiryPanel";
+import { WebPosturePanel } from "./WebPosturePanel";
 import { WebMetricAlertsPanel } from "./WebMetricAlertsPanel";
 import { WebSshFanoutPanel } from "./WebSshFanoutPanel";
 
@@ -304,6 +305,27 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
                   item.resourceId,
                   item.pluginId,
                   item.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "posture":
+      return (
+        <WebPosturePanel
+          // Keyed by org so switching org remounts and refetches rather than
+          // showing the previous org's findings.
+          key={orgId}
+          orgId={orgId}
+          openResource={(finding) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  finding.accountId,
+                  finding.resourceId,
+                  finding.pluginId,
+                  finding.resourceTypeId,
                 ),
               ),
             )

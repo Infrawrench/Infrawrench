@@ -47,4 +47,15 @@ export const GcsBucketResourceType = rt({
       entries: [{ envKey: "GOOGLE_APPLICATION_CREDENTIALS_JSON", outputKey: "serviceAccountKey" }],
     },
   ],
+  postureChecks: [
+    {
+      id: "gcs-public-access-prevention-off",
+      title: "Public access prevention not enforced",
+      severity: "high",
+      category: "public-exposure",
+      conditions: [{ fieldKey: "publicAccessPrevention", when: "notEquals", value: "enforced" }],
+      reason:
+        "Public access prevention is not enforced on this bucket, so a single IAM binding or ACL can make objects world-readable. Enforce it unless the bucket intentionally serves public content.",
+    },
+  ],
 });

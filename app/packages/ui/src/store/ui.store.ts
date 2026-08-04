@@ -10,6 +10,7 @@ export type WorkspaceTabTarget =
   | { kind: "logs" }
   | { kind: "changes" }
   | { kind: "expiring" }
+  | { kind: "posture" }
   | { kind: "ssh-fanout" }
   | { kind: "metric-alerts" }
   | { kind: "workflows"; workflowId?: string }
@@ -64,6 +65,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "changes";
     case "expiring":
       return "expiring";
+    case "posture":
+      return "posture";
     case "ssh-fanout":
       return "ssh-fanout";
     case "metric-alerts":
@@ -105,6 +108,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Changes";
     case "expiring":
       return "Expiring";
+    case "posture":
+      return "Posture";
     // Titles match the sidebar tiles the pages are opened from.
     case "ssh-fanout":
       return "Fan-out";
@@ -138,6 +143,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "logs":
     case "changes":
     case "expiring":
+    case "posture":
     case "ssh-fanout":
     case "metric-alerts":
       return true;

@@ -31,4 +31,17 @@ export const IAMUserResourceType = rt({
       filenameTemplate: "{resource}.credentials",
     },
   ],
+  // `passwordLastUsed` is empty for users without console access, and an
+  // unparseable value never matches — only genuinely stale passwords flag.
+  postureChecks: [
+    {
+      id: "iam-user-stale-password",
+      title: "Console password unused for 90+ days",
+      severity: "low",
+      category: "credential-age",
+      conditions: [{ fieldKey: "passwordLastUsed", when: "olderThanDays", days: 90 }],
+      reason:
+        "This user's console password was last used more than 90 days ago — dormant credentials are a favorite target; disable console access or remove the user.",
+    },
+  ],
 });

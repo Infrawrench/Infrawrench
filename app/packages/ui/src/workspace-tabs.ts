@@ -41,6 +41,10 @@ export function expiringTabTarget(): WorkspaceTabTarget {
   return { kind: "expiring" };
 }
 
+export function postureTabTarget(): WorkspaceTabTarget {
+  return { kind: "posture" };
+}
+
 export function sshFanoutTabTarget(): WorkspaceTabTarget {
   return { kind: "ssh-fanout" };
 }

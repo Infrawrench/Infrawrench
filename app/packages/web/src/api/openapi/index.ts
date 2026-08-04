@@ -30,6 +30,7 @@ import { registerResourcePaths } from "./paths/resources";
 import { registerResourceChangePaths } from "./paths/resource-changes";
 import { registerStatusIncidentPaths } from "./paths/status-incidents";
 import { registerExpiringPaths } from "./paths/expiring";
+import { registerPosturePaths } from "./paths/posture";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
 import { registerLeasePaths } from "./paths/leases";
@@ -121,6 +122,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerResourceChangePaths(ctx);
   registerStatusIncidentPaths(ctx);
   registerExpiringPaths(ctx);
+  registerPosturePaths(ctx);
   registerMomentPaths(ctx);
   registerSchedulePaths(ctx);
   registerLeasePaths(ctx);
@@ -383,6 +385,9 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /moment": "resources:read",
   "GET /expiring/settings": "org:settings:write",
   "PUT /expiring/settings": "org:settings:write",
+  "GET /posture": "resources:read",
+  "GET /posture/settings": "org:settings:write",
+  "PUT /posture/settings": "org:settings:write",
   // sleep/wake schedules — reads ride the resource read scope (the list is
   // derived from the org's resource set, like orphans); mutations are a
   // standing instruction to invoke the same actions `resources:write` already

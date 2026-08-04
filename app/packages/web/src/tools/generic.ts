@@ -11,6 +11,7 @@ import {
 import { setLiteralSecretState } from "@infrawrench/server-core/secret-states";
 import { getOrgStatusIncidents } from "@infrawrench/server-core/status/match";
 import { listExpiring } from "@infrawrench/server-core/expiry/feed";
+import { listPosture } from "@infrawrench/server-core/posture/feed";
 import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
 import { resolveStoredSshPublicKey } from "./ssh-key-lookup";
 import { logAudit } from "../services/audit";
@@ -199,6 +200,48 @@ export function genericTools(): ToolDefinition[] {
           totalCount: feed.items.length,
           counts: feed.counts,
           leadDays: feed.leadDays,
+          generatedAt: feed.generatedAt,
+        });
+      },
+    },
+
+    {
+      name: "list_posture_findings",
+      title: "List security posture findings",
+      description:
+        "Plugin-declared security checks evaluated over the organization's synced resources — " +
+        "public buckets, security groups and firewall rules open to 0.0.0.0/0, unencrypted " +
+        "disks and databases, publicly reachable database endpoints, stale credentials, " +
+        "missing backup/deletion protection — ranked by severity (critical, high, medium, " +
+        "low). Purely a read over already-synced state; no provider API calls. Check this " +
+        "when auditing an account's exposure or before opening something to the internet.",
+      inputSchema: {
+        severity: z
+          .enum(["critical", "high", "medium", "low"])
+          .optional()
+          .describe("Only return findings of this severity."),
+        category: z
+          .enum(["public-exposure", "encryption", "credential-age", "data-protection", "other"])
+          .optional()
+          .describe("Only return findings in this category."),
+      },
+      risk: "read",
+      // Mirrors `GET /posture` — the findings are computed over the org's resource set.
+      permission: "resources:read",
+      handler: async (input, auth) => {
+        const severity = input["severity"] as string | undefined;
+        const category = input["category"] as string | undefined;
+        const feed = await listPosture(auth.organizationId);
+        const findings = feed.findings.filter(
+          (f) => (!severity || f.severity === severity) && (!category || f.category === category),
+        );
+        // Counts always describe the whole feed so a filtered view still shows
+        // the overall picture. matchedCount is the filtered length.
+        return ok({
+          findings,
+          matchedCount: findings.length,
+          totalCount: feed.findings.length,
+          counts: feed.counts,
           generatedAt: feed.generatedAt,
         });
       },

@@ -175,6 +175,7 @@ describe("push org routes", () => {
         providerIncidents: true,
         expiryAlerts: true,
         logMatchAlerts: true,
+        postureAlerts: true,
       });
     });
   });

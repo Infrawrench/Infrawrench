@@ -1006,6 +1006,8 @@ export const slackChannels = pgTable(
     expiryAlerts: boolean("expiry_alerts").notNull().default(true),
     /** Saved log-query matches (see `log-workspaces/pass.ts`). */
     logMatchAlerts: boolean("log_match_alerts").notNull().default(true),
+    /** Critical/high security posture findings (see `posture/alerts.ts`). */
+    postureAlerts: boolean("posture_alerts").notNull().default(true),
     /**
      * The Monday-morning weekly summary. Channel opt-in defaults on like the
      * other triggers, but nothing sends until the org enables the digest in
@@ -1149,6 +1151,8 @@ export const msteamsWebhooks = pgTable(
     expiryAlerts: boolean("expiry_alerts").notNull().default(true),
     /** Saved log-query matches (see `log-workspaces/pass.ts`). */
     logMatchAlerts: boolean("log_match_alerts").notNull().default(true),
+    /** Critical/high security posture findings (see `posture/alerts.ts`). */
+    postureAlerts: boolean("posture_alerts").notNull().default(true),
     /**
      * The Monday-morning weekly summary. Channel opt-in defaults on like the
      * other triggers, but nothing sends until the org enables the digest in
@@ -1376,6 +1380,33 @@ export const orgExpirySettings = pgTable("org_expiry_settings", {
   /** Days of lead time before a deadline counts as `upcoming` and alertable. */
   leadDays: integer("lead_days").notNull().default(60),
   /** The cooldown claim — when this org's expiry alert scan last completed. */
+  lastNotifiedAt: timestamp("last_notified_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * Per-org settings and throttle state for posture-check alerts, modelled on
+ * `org_expiry_settings` minus the lead time (findings have no clock). One row
+ * per org that has either tuned the settings or been through an alert scan;
+ * no row means the shipped defaults (enabled).
+ *
+ * `lastNotifiedAt` is a claim, not bookkeeping, and it records the last
+ * *completed alert scan*, not necessarily a delivered message:
+ * `posture/alerts.ts` advances it with one conditional upsert
+ * (`last_notified_at IS NULL OR <= now - 24h`), exactly like the expiry
+ * cooldown, so N poller replicas evaluating the same org produce one scan per
+ * day. A scan that finds nothing alertable keeps the window spent, while a
+ * scan whose message reached nobody is rolled back so the next tick can
+ * retry.
+ */
+export const orgPostureSettings = pgTable("org_posture_settings", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  /** Whether the poller sends posture alerts for this org at all. */
+  enabled: boolean("enabled").notNull().default(true),
+  /** The cooldown claim — when this org's posture alert scan last completed. */
   lastNotifiedAt: timestamp("last_notified_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -1719,6 +1750,8 @@ export const pushPreferences = pgTable(
     expiryAlerts: boolean("expiry_alerts").notNull().default(true),
     /** Saved log-query matches (see `log-workspaces/pass.ts`). */
     logMatchAlerts: boolean("log_match_alerts").notNull().default(true),
+    /** Critical/high security posture findings (see `posture/alerts.ts`). */
+    postureAlerts: boolean("posture_alerts").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

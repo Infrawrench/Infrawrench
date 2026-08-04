@@ -81,6 +81,11 @@ const mockListExpiring = vi.fn();
 vi.mock("@infrawrench/server-core/expiry/feed", () => ({
   listExpiring: (...a: unknown[]) => mockListExpiring(...a),
 }));
+
+const mockListPosture = vi.fn();
+vi.mock("@infrawrench/server-core/posture/feed", () => ({
+  listPosture: (...a: unknown[]) => mockListPosture(...a),
+}));
 const mockResolveSshKey = vi.fn();
 vi.mock("../ssh-key-lookup", () => ({
   resolveStoredSshPublicKey: (...a: unknown[]) => mockResolveSshKey(...a),
@@ -143,6 +148,68 @@ describe("genericTools", () => {
     expect(out[0].supportsCreate).toBe(true);
     expect(out[0].supportsDelete).toBe(false);
     expect(out[0].supportsMetrics).toBe(true);
+  });
+
+  it("list_posture_findings filters by severity but keeps whole-feed counts", async () => {
+    const finding = (ruleId: string, severity: string, category: string) => ({
+      resourceId: `r-${ruleId}`,
+      pluginId: "aws",
+      pluginName: "AWS",
+      resourceTypeId: "bucket",
+      resourceTypeName: "S3 Bucket",
+      accountId: "a1",
+      accountName: "Prod",
+      displayName: "b",
+      externalId: null,
+      ruleId,
+      title: "t",
+      severity,
+      category,
+      reason: "because",
+    });
+    mockListPosture.mockResolvedValue({
+      findings: [
+        finding("crit", "critical", "public-exposure"),
+        finding("med", "medium", "encryption"),
+      ],
+      totalCount: 2,
+      counts: { critical: 1, high: 0, medium: 1, low: 0 },
+      generatedAt: "2026-08-01T00:00:00.000Z",
+    });
+    const r = await tool("list_posture_findings").handler({ severity: "critical" }, auth);
+    const out = JSON.parse(r.content[0]!.text);
+    expect(mockListPosture).toHaveBeenCalledWith("o1");
+    expect(out.findings).toHaveLength(1);
+    expect(out.findings[0].ruleId).toBe("crit");
+    expect(out.matchedCount).toBe(1);
+    // Counts describe the whole feed, not the filtered view.
+    expect(out.totalCount).toBe(2);
+    expect(out.counts).toEqual({ critical: 1, high: 0, medium: 1, low: 0 });
+  });
+
+  it("list_posture_findings filters by category", async () => {
+    mockListPosture.mockResolvedValue({
+      findings: [
+        {
+          resourceId: "r1",
+          ruleId: "a",
+          severity: "high",
+          category: "encryption",
+        },
+        {
+          resourceId: "r2",
+          ruleId: "b",
+          severity: "high",
+          category: "public-exposure",
+        },
+      ],
+      totalCount: 2,
+      counts: { critical: 0, high: 2, medium: 0, low: 0 },
+      generatedAt: "2026-08-01T00:00:00.000Z",
+    });
+    const r = await tool("list_posture_findings").handler({ category: "encryption" }, auth);
+    const out = JSON.parse(r.content[0]!.text);
+    expect(out.findings.map((f: { ruleId: string }) => f.ruleId)).toEqual(["a"]);
   });
 
   it("list_accounts queries the org's accounts", async () => {
