@@ -104,7 +104,16 @@ export function validateLeaseInput(
   if (parsed > now + LEASE_LIMITS.maxHorizonDays * MS_PER_DAY) {
     return `Leases are limited to ${LEASE_LIMITS.maxHorizonDays} days out.`;
   }
-  if (input.note != null && input.note.length > LEASE_LIMITS.maxNoteLength) {
+  return validateLeaseNote(input.note);
+}
+
+/**
+ * Validate just the note — the deadline half of {@link validateLeaseInput} is
+ * skipped for patches that don't touch `expiresAt`, so a note edit on a lease
+ * whose deadline has already passed isn't rejected as "must be in the future".
+ */
+export function validateLeaseNote(note: string | null | undefined): string | null {
+  if (note != null && note.length > LEASE_LIMITS.maxNoteLength) {
     return `Notes are limited to ${LEASE_LIMITS.maxNoteLength} characters.`;
   }
   return null;

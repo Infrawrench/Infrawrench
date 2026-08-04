@@ -1,4 +1,5 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
+import { EC2_SSH_WORLD_OPEN } from "../constants.js";
 
 export const EC2InstanceResourceType = rt({
   name: "EC2 Instance",
@@ -119,7 +120,7 @@ export const EC2InstanceResourceType = rt({
         {
           fieldKey: "sshAccess",
           when: "equals",
-          value: "Port 22 open to the world (0.0.0.0/0).",
+          value: EC2_SSH_WORLD_OPEN,
         },
       ],
       reason:

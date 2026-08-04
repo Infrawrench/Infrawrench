@@ -106,7 +106,11 @@ export function formatPostureSlackBody(summary: PostureAlertSummary): string {
 
 /** Teams plain-text body — the Adaptive Card escaper strips markdown anyway. */
 export function formatPostureTeamsBody(summary: PostureAlertSummary): string {
-  return postureLines(summary, (s) => s).join("\n\n");
+  // The "\n\n" join already separates paragraphs; the empty spacer line the
+  // Slack body wants would double up here.
+  return postureLines(summary, (s) => s)
+    .filter((line) => line !== "")
+    .join("\n\n");
 }
 
 /**

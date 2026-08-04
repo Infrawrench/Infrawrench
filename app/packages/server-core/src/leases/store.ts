@@ -12,6 +12,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   LEASE_LIMITS,
   validateLeaseInput,
+  validateLeaseNote,
   type LeaseStatus,
   type ResourceLease,
   type ResourceLeaseListResponse,
@@ -211,12 +212,21 @@ export async function createLeaseRecord(
         await tx.delete(resourceLeases).where(eq(resourceLeases.id, existing.id));
       }
 
+      // Terminal leases (deleted/failed/canceled) stay behind as history and
+      // must not consume the cap, or a churny org eventually can't lease at all.
       const count = await tx
         .select({ id: resourceLeases.id })
         .from(resourceLeases)
-        .where(eq(resourceLeases.organizationId, organizationId));
+        .where(
+          and(
+            eq(resourceLeases.organizationId, organizationId),
+            eq(resourceLeases.status, "active"),
+          ),
+        );
       if (count.length >= LEASE_LIMITS.maxPerOrg) {
-        throw new LeaseInputError(`Organizations are limited to ${LEASE_LIMITS.maxPerOrg} leases`);
+        throw new LeaseInputError(
+          `Organizations are limited to ${LEASE_LIMITS.maxPerOrg} active leases`,
+        );
       }
 
       await tx.insert(resourceLeases).values(row);
@@ -251,7 +261,12 @@ export async function updateLeaseRecord(
 
   const expiresAt = patch.expiresAt ?? existing.expiresAt.toISOString();
   const note = patch.note !== undefined ? normalizeNote(patch.note) : existing.note;
-  const problem = validateLeaseInput({ expiresAt, note });
+  // Only re-validate the deadline when the patch changes it — a note-only edit
+  // must not be rejected because the existing deadline has already passed.
+  const problem =
+    patch.expiresAt !== undefined
+      ? validateLeaseInput({ expiresAt, note })
+      : validateLeaseNote(note);
   if (problem) throw new LeaseInputError(problem);
 
   const autoDelete = patch.autoDelete ?? existing.autoDelete;
