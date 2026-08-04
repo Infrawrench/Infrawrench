@@ -54,15 +54,20 @@ export async function listGceInstances(
       ),
     );
 
-    // The aggregated payload inlines each disk's licenses — Windows images
-    // carry a ".../licenses/windows-*" entry on the boot disk, which is the
-    // only agentless OS signal GCE exposes. Feeds the rdpEndpoint gate.
+    // Detect Windows from the boot disk, agentlessly, for the rdpEndpoint gate.
+    // Two signals, because the aggregated-instances payload doesn't reliably
+    // inline disk `licenses`: (1) a ".../licenses/windows-*" entry when present,
+    // and (2) a guestOsFeature of type "WINDOWS", which GCE always sets on a
+    // Windows boot disk and returns here.
     const instDisks = (inst["disks"] as Array<Record<string, unknown>> | undefined) ?? [];
     const bootDisk = instDisks.find((d) => d["boot"] === true) ?? instDisks[0];
     const licenses = (bootDisk?.["licenses"] as string[] | undefined) ?? [];
-    const osFamily = licenses.some((l) => String(l).toLowerCase().includes("windows"))
-      ? "windows"
-      : "linux";
+    const guestOsFeatures =
+      (bootDisk?.["guestOsFeatures"] as Array<Record<string, unknown>> | undefined) ?? [];
+    const isWindows =
+      licenses.some((l) => String(l).toLowerCase().includes("windows")) ||
+      guestOsFeatures.some((f) => String(f["type"] ?? "").toUpperCase() === "WINDOWS");
+    const osFamily = isWindows ? "windows" : "linux";
 
     // Extract SSH username from instance metadata ssh-keys entry
     let sshUsername = "";
