@@ -32,6 +32,7 @@ import { registerStatusIncidentPaths } from "./paths/status-incidents";
 import { registerExpiringPaths } from "./paths/expiring";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
+import { registerLeasePaths } from "./paths/leases";
 import { registerLogWorkspacePaths } from "./paths/log-workspaces";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
 import { registerAssociationPaths } from "./paths/associations";
@@ -122,6 +123,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerExpiringPaths(ctx);
   registerMomentPaths(ctx);
   registerSchedulePaths(ctx);
+  registerLeasePaths(ctx);
   registerLogWorkspacePaths(ctx);
   registerConnectionFeaturePaths(ctx);
   registerAssociationPaths(ctx);
@@ -207,6 +209,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Sleep schedules",
         description:
           "Off-at/on-at weekly windows on resources whose plugin declares lifecycle start/stop actions; the poller executes due transitions server-side.",
+      },
+      {
+        name: "Resource leases",
+        description:
+          "Optional TTLs on resources ('a test cluster for 3 days'). Active leases ride the expiry radar; auto-delete leases are announced twice and then deleted at expiry by the poller, deferring during change freezes.",
       },
       {
         name: "Log workspaces",
@@ -385,6 +392,17 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /schedules/preview": "resources:read",
   "PUT /schedules/{scheduleId}": "resources:write",
   "DELETE /schedules/{scheduleId}": "resources:write",
+  // resource leases — the schedules stance: reads are a view over the org's
+  // resource set; mutations are resources:write. Setting autoDelete: true
+  // additionally requires resources:delete (checked in the handler — the
+  // lease becomes a standing deletion), which this one-permission-per-route
+  // map cannot express.
+  "GET /leases": "resources:read",
+  "GET /leases/resource": "resources:read",
+  "POST /leases": "resources:write",
+  "PUT /leases/{leaseId}": "resources:write",
+  "POST /leases/{leaseId}/cancel": "resources:write",
+  "DELETE /leases/{leaseId}": "resources:write",
   // log workspace saved queries — the schedules stance: reads are a view over
   // the org's resource logs (which resources:read already gates via
   // /resources/{pluginId}/{typeId}/logs); mutations are resources:write

@@ -3,10 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_EXPIRY_LEAD_DAYS,
   DEFAULT_MAX_AGE_DAYS,
+  EXPIRY_KIND_LABELS,
   computeExpiryFeed,
   expirySeverity,
   itemsWithinLead,
+  mergeExpiryItems,
   parseExpiryInstant,
+  type ExpiryItem,
   type ExpiryScanInput,
 } from "../expiry";
 
@@ -256,6 +259,13 @@ describe("computeExpiryFeed", () => {
     expect(feed.totalCount).toBe(0);
   });
 
+  it("labels the host-injected lease kind", () => {
+    expect(EXPIRY_KIND_LABELS.lease).toBe("Leases");
+    // Leases never use age-derivation, but every kind must carry a budget so
+    // a declaration is never silently dropped.
+    expect(DEFAULT_MAX_AGE_DAYS.lease).toBeGreaterThan(0);
+  });
+
   it("emits several items for a resource declaring several rules", () => {
     const feed = computeExpiryFeed(
       {
@@ -291,5 +301,74 @@ describe("computeExpiryFeed", () => {
       { now: NOW },
     );
     expect(feed.items.map((i) => i.fieldKey)).toEqual(["a", "b"]);
+  });
+});
+
+describe("mergeExpiryItems", () => {
+  function leaseItem(overrides: Partial<ExpiryItem> & { resourceId: string }): ExpiryItem {
+    const dueAt = overrides.dueAt ?? iso(1);
+    const daysRemaining = Math.floor((Date.parse(dueAt) - NOW) / DAY);
+    return {
+      pluginId: "aws",
+      pluginName: "AWS",
+      resourceTypeId: "ec2-instance",
+      resourceTypeName: "EC2 Instance",
+      accountId: "acc-aws",
+      accountName: "Prod AWS",
+      displayName: overrides.resourceId,
+      externalId: null,
+      fieldKey: "lease",
+      kind: "lease",
+      label: "Lease ends",
+      basis: "expiry",
+      dueAt,
+      daysRemaining,
+      severity: expirySeverity(daysRemaining, DEFAULT_EXPIRY_LEAD_DAYS),
+      ...overrides,
+    };
+  }
+
+  it("re-sorts and recounts so lease items are full feed citizens", () => {
+    const feed = computeExpiryFeed(
+      {
+        plugins,
+        accounts,
+        resources: [
+          resource({ id: "cert-soon", fields: { notAfter: iso(3) } }),
+          resource({ id: "cert-ok", fields: { notAfter: iso(200) } }),
+        ],
+      },
+      { now: NOW },
+    );
+    const merged = mergeExpiryItems(feed, [
+      leaseItem({ resourceId: "lease-first", dueAt: iso(1), leaseAutoDelete: true }),
+      leaseItem({ resourceId: "lease-later", dueAt: iso(45) }),
+    ]);
+
+    expect(merged.items.map((i) => i.resourceId)).toEqual([
+      "lease-first",
+      "cert-soon",
+      "lease-later",
+      "cert-ok",
+    ]);
+    expect(merged.totalCount).toBe(4);
+    expect(merged.counts).toEqual({ expired: 0, critical: 2, warning: 0, upcoming: 1, ok: 1 });
+    // Lease items participate in the alertable set like any other deadline.
+    expect(itemsWithinLead(merged).map((i) => i.resourceId)).toEqual([
+      "lease-first",
+      "cert-soon",
+      "lease-later",
+    ]);
+    expect(merged.items[0]!.leaseAutoDelete).toBe(true);
+    // The original feed is not mutated.
+    expect(feed.totalCount).toBe(2);
+  });
+
+  it("returns the feed unchanged when there is nothing to merge", () => {
+    const feed = computeExpiryFeed(
+      { plugins, accounts, resources: [resource({ id: "c", fields: { notAfter: iso(3) } })] },
+      { now: NOW },
+    );
+    expect(mergeExpiryItems(feed, [])).toBe(feed);
   });
 });

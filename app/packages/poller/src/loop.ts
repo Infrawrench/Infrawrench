@@ -8,6 +8,7 @@ import { runWeeklyDigests } from "@infrawrench/server-core/digest/weekly";
 import { runStatusFeedCollection } from "@infrawrench/server-core/status/collect";
 import { runExpiryAlerts } from "@infrawrench/server-core/expiry/alerts";
 import { runSchedulePass } from "@infrawrench/server-core/schedules/pass";
+import { runLeasePass } from "@infrawrench/server-core/leases/pass";
 import { runLogAlertPass } from "@infrawrench/server-core/log-workspaces/pass";
 import { runMetricAlertPass } from "@infrawrench/server-core/metric-alerts/pass";
 import {
@@ -123,6 +124,13 @@ export class PollerLoop extends TickLoop {
     // action; idempotency keys make restarts safe. Defensive like the others.
     await this.tickSchedules();
 
+    // Lease pass: resource leases with auto-delete. Claims due leases with
+    // the accounts lease protocol (`resource_leases.next_check_at` doubles as
+    // the lease), sends the two mandatory announcements and deletes the
+    // resource at expiry, deferring during change freezes. Defensive like the
+    // others.
+    await this.tickLeases();
+
     // Ninth pass: log-match alerts. Claims due alert-enabled saved log
     // queries with the same lease protocol (`log_workspace_queries.
     // next_eval_at` doubles as the lease), fetches a bounded tail per stream
@@ -200,6 +208,15 @@ export class PollerLoop extends TickLoop {
       await runSchedulePass({ limit: 4 });
     } catch (e) {
       console.error("[poller] schedule tick failed:", e);
+    }
+  }
+
+  /** Advance any due auto-delete resource leases (announce / defer / delete). */
+  private async tickLeases(): Promise<void> {
+    try {
+      await runLeasePass({ limit: 4 });
+    } catch (e) {
+      console.error("[poller] lease tick failed:", e);
     }
   }
 

@@ -265,6 +265,12 @@ export type ExpiryKind =
   | "k8s-cert"
   | "ssh-key"
   | "secret-version"
+  /**
+   * A host-managed resource lease (TTL) — never declared by a plugin's
+   * `expiryFields`; the cloud host injects these items into the radar from
+   * its own lease rows.
+   */
+  | "lease"
   | "other";
 
 /**

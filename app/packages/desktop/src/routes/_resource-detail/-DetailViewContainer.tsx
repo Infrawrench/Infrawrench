@@ -26,6 +26,7 @@ import {
   DraggableChildPill,
   FirestoreDocumentBrowser,
   ResourceSchedulePanel,
+  ResourceLeasePanel,
   RESOURCES_CHANGED_EVENT,
   buildDependencyGraph,
   directDependencies,
@@ -43,7 +44,8 @@ import { PeerPaneView } from "../../components/PeerPaneView";
 import { FirestoreMongoPeerBrowser } from "../../components/FirestoreMongoPeerBrowser";
 import { getPlugin } from "../../plugins/loader";
 import { createDesktopSchedulesClient } from "../../lib/schedules-client";
-import type { SchedulesClient } from "@infrawrench/ui";
+import { createDesktopLeasesClient } from "../../lib/leases-client";
+import type { LeasesClient, SchedulesClient } from "@infrawrench/ui";
 import { navigateToWorkspaceTarget, resourceTabTarget } from "../../lib/workspace-tabs";
 import { fetchCloudDependencyGraph } from "../../lib/cloud-resources";
 import { loadLocalDependencyGraph } from "../../lib/local-dependency-graph";
@@ -109,6 +111,12 @@ let desktopSchedulesClient: SchedulesClient | null = null;
 function getSchedulesClient(): SchedulesClient {
   if (!desktopSchedulesClient) desktopSchedulesClient = createDesktopSchedulesClient();
   return desktopSchedulesClient;
+}
+
+let desktopLeasesClient: LeasesClient | null = null;
+function getLeasesClient(): LeasesClient {
+  if (!desktopLeasesClient) desktopLeasesClient = createDesktopLeasesClient();
+  return desktopLeasesClient;
 }
 
 export function DetailViewContainer({
@@ -339,6 +347,23 @@ export function DetailViewContainer({
               renderScheduleTab: () => (
                 <ResourceSchedulePanel
                   client={getSchedulesClient()}
+                  target={{
+                    resourceId: decodedResourceId,
+                    accountId,
+                    resourceName: resource?.displayName ?? decodedResourceId,
+                  }}
+                />
+              ),
+            }
+          : {})}
+        {...(activeCloudOrgId
+          ? {
+              // Lease tab — cloud mode only, like schedules (the rows live
+              // server-side and the cloud poller runs the auto-delete pass),
+              // but for every resource type: any resource can carry a TTL.
+              renderLeaseTab: () => (
+                <ResourceLeasePanel
+                  client={getLeasesClient()}
                   target={{
                     resourceId: decodedResourceId,
                     accountId,

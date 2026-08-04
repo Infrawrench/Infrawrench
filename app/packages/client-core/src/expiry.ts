@@ -61,6 +61,9 @@ export const DEFAULT_MAX_AGE_DAYS: Record<ExpiryKind, number> = {
   "k8s-cert": 365,
   "tls-cert": 365,
   domain: 365,
+  // Leases always carry an absolute `expires_at`, so age-derivation never
+  // applies to them; the entry exists only because every kind needs one.
+  lease: 365,
   other: 365,
 };
 
@@ -73,6 +76,7 @@ export const EXPIRY_KIND_LABELS: Record<ExpiryKind, string> = {
   "k8s-cert": "Kubernetes certificates",
   "ssh-key": "SSH keys",
   "secret-version": "Secret versions",
+  lease: "Leases",
   other: "Other",
 };
 
@@ -110,6 +114,12 @@ export interface ExpiryItem {
    */
   daysRemaining: number;
   severity: ExpirySeverity;
+  /**
+   * Present only on `kind: "lease"` items: true when the lease opted into
+   * auto-delete, so surfaces can badge "this one will actually be deleted"
+   * distinctly from a nag-only lease. Absent on every plugin-declared item.
+   */
+  leaseAutoDelete?: boolean;
 }
 
 /** Wire shape of `GET /api/org/:orgId/expiring` and the local CLI assembly. */
@@ -328,6 +338,35 @@ export function computeExpiryFeed(
     leadDays,
     generatedAt: new Date(now).toISOString(),
   };
+}
+
+/**
+ * Merge host-injected items (resource leases) into a computed feed, keeping
+ * the feed's contract intact: one sort order (due date, then display name,
+ * then field key — the exact comparator `computeExpiryFeed` uses) and counts
+ * that cover every item. Returns a new response; neither input is mutated.
+ */
+export function mergeExpiryItems(
+  feed: ExpiryListResponse,
+  extra: ExpiryItem[],
+): ExpiryListResponse {
+  if (extra.length === 0) return feed;
+  const items = [...feed.items, ...extra];
+  items.sort(
+    (a, b) =>
+      a.dueAt.localeCompare(b.dueAt) ||
+      a.displayName.localeCompare(b.displayName) ||
+      a.fieldKey.localeCompare(b.fieldKey),
+  );
+  const counts: Record<ExpirySeverity, number> = {
+    expired: 0,
+    critical: 0,
+    warning: 0,
+    upcoming: 0,
+    ok: 0,
+  };
+  for (const item of items) counts[item.severity] += 1;
+  return { ...feed, items, totalCount: items.length, counts };
 }
 
 /** Items at or past the org's lead time — what the poller alerts on. */

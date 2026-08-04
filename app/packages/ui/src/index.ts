@@ -599,6 +599,18 @@ export type {
   SchedulePreview,
   SchedulePreviewRequest,
 } from "./schedules/types.js";
+export { LeaseEditorModal } from "./leases/LeaseEditorModal.js";
+export type { LeaseEditorModalProps, LeaseEditorTarget } from "./leases/LeaseEditorModal.js";
+export { ResourceLeasePanel } from "./leases/ResourceLeasePanel.js";
+export type { ResourceLeasePanelProps } from "./leases/ResourceLeasePanel.js";
+export type {
+  LeasesClient,
+  LeaseStatus,
+  ResourceLease,
+  ResourceLeaseCreate,
+  ResourceLeaseListResponse,
+  ResourceLeasePatch,
+} from "./leases/types.js";
 
 // Named re-exports of cost/custom-graph wire types. The tsdown (tsgo) dts
 // bundler drops some `export *` type re-exports when the same name also

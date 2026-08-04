@@ -10,6 +10,7 @@ import "./expiring";
 import "./changes";
 import "./moment";
 import "./schedules";
+import "./leases";
 import "./log-workspaces";
 import "./custom-graphs";
 import "./dashboards";

@@ -1452,6 +1452,86 @@ export const resourceSchedules = pgTable(
 );
 
 /**
+ * Resource leases (TTL) — an optional "expires at" on any resource ("give me
+ * a test cluster for 3 days"). Active leases ride the expiry radar (kind
+ * `"lease"`), so the owner is nagged through the existing alert pass; a lease
+ * with `autoDelete` additionally opts into the poller's lease pass, which
+ * announces the deletion twice and then calls the plugin's `deleteResource`
+ * at expiry (freeze-aware — a delete during a change freeze is deferred and
+ * surfaced, never silently executed).
+ *
+ * `nextCheckAt` is the due-time column AND the claim lease for auto-delete
+ * leases, the `resource_schedules.next_transition_at` protocol: the pass
+ * claims due rows with `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP
+ * LOCKED)` writing `now() + lease` into it. Null means "due now" — a fresh
+ * auto-delete lease is picked up on the next tick, which computes the first
+ * warning instant and reschedules. Non-auto-delete leases keep it null and
+ * are never claimed (the pass filters on `autoDelete`).
+ *
+ * `firstWarningAt` / `finalWarningAt` record the two mandatory announcements
+ * (null until sent) — the pass never deletes until both are non-null AND the
+ * expiry has passed, even when that pushes the delete later.
+ *
+ * `resourceId` is not a FK (the `resource_schedules` stance) — resource rows
+ * are churned by sync; cleanup rides the account cascade. `displayName` is
+ * denormalized so completion messages can name the resource after its row is
+ * gone.
+ */
+export const resourceLeases = pgTable(
+  "resource_leases",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    resourceId: text("resource_id").notNull(),
+    pluginId: text("plugin_id").notNull(),
+    resourceTypeId: text("resource_type_id").notNull(),
+    /** Resource display name at lease time — survives the resource's deletion. */
+    displayName: text("display_name").notNull(),
+    /** The lease deadline. */
+    expiresAt: timestamp("expires_at").notNull(),
+    /** Opt-in: delete the resource at expiry (after two announcements). */
+    autoDelete: boolean("auto_delete").notNull().default(false),
+    /** Why/who-for, shown on the radar and in the announcements. */
+    note: text("note"),
+    /** "active" | "deleted" | "failed" | "canceled". */
+    status: text("status")
+      .$type<"active" | "deleted" | "failed" | "canceled">()
+      .notNull()
+      .default("active"),
+    /** First announcement instant; null until sent. */
+    firstWarningAt: timestamp("first_warning_at"),
+    /** Final (second) announcement instant; null until sent. */
+    finalWarningAt: timestamp("final_warning_at"),
+    /** Due time + claim lease for the auto-delete pass; null = due. */
+    nextCheckAt: timestamp("next_check_at"),
+    deleteAttempts: integer("delete_attempts").notNull().default(0),
+    /** Last failure/deferral detail — failures are never silent. */
+    lastError: text("last_error"),
+    /** When the lease reached a terminal status. */
+    completedAt: timestamp("completed_at"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("resource_leases_org_idx").on(t.organizationId),
+    dueIdx: index("resource_leases_due_idx").on(t.nextCheckAt),
+    /** One lease per resource — two TTLs on one resource would fight. */
+    resourceUnique: uniqueIndex("resource_leases_org_resource_idx").on(
+      t.organizationId,
+      t.resourceId,
+    ),
+  }),
+);
+
+/**
  * Log workspace saved queries — a named set of log-capable resources plus a
  * search expression, so a multi-resource tail workspace can be reopened.
  *

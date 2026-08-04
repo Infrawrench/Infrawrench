@@ -9,9 +9,15 @@
  * no provider API calls, ever.
  */
 import { and, eq, isNull } from "drizzle-orm";
-import { computeExpiryFeed, type ExpiryListResponse } from "@infrawrench/client-core";
+import {
+  computeExpiryFeed,
+  expirySeverity,
+  mergeExpiryItems,
+  type ExpiryItem,
+  type ExpiryListResponse,
+} from "@infrawrench/client-core";
 import { db } from "../db/client";
-import { accounts, resources } from "../db/schema";
+import { accounts, resourceLeases, resources } from "../db/schema";
 import { loadPlugins } from "../plugin-loader";
 import { getExpirySettings } from "./settings";
 
@@ -32,11 +38,76 @@ export interface ListExpiringOptions {
  * Soft-deleted accounts and resources are excluded, so a deadline can never
  * outlive the thing it belongs to.
  */
+const MS_PER_DAY = 86_400_000;
+
+interface LeaseFeedRow {
+  resourceId: string;
+  pluginId: string;
+  resourceTypeId: string;
+  accountId: string;
+  displayName: string;
+  expiresAt: Date;
+  autoDelete: boolean;
+  note: string | null;
+}
+
+/**
+ * Active lease rows as kind-`"lease"` expiry items, so leases inherit every
+ * surface the radar already has (Expiring tabs, mobile, CLI, digest, the
+ * alert pass). Host-injected rather than plugin-declared: the deadline lives
+ * on the lease row, not in a synced field. Leases on soft-deleted accounts
+ * are excluded (the feed's own stance); the resource name comes from the
+ * lease's denormalized copy, so a resource mid-churn still names itself.
+ */
+function leaseItems(
+  rows: LeaseFeedRow[],
+  orgAccounts: Array<{ id: string; displayName: string }>,
+  plugins: Array<{
+    id: string;
+    displayName: string;
+    resourceTypes: ReadonlyArray<{ id: string; displayName: string }>;
+  }>,
+  now: number,
+  leadDays: number,
+): ExpiryItem[] {
+  const accountById = new Map(orgAccounts.map((a) => [a.id, a.displayName]));
+  const pluginById = new Map(plugins.map((p) => [p.id, p]));
+  const items: ExpiryItem[] = [];
+  for (const row of rows) {
+    const accountName = accountById.get(row.accountId);
+    if (accountName === undefined) continue;
+    const plugin = pluginById.get(row.pluginId);
+    const typeName = plugin?.resourceTypes.find((t) => t.id === row.resourceTypeId)?.displayName;
+    const dueMs = row.expiresAt.getTime();
+    const daysRemaining = Math.floor((dueMs - now) / MS_PER_DAY);
+    items.push({
+      resourceId: row.resourceId,
+      pluginId: row.pluginId,
+      pluginName: plugin?.displayName ?? row.pluginId,
+      resourceTypeId: row.resourceTypeId,
+      resourceTypeName: typeName ?? row.resourceTypeId,
+      accountId: row.accountId,
+      accountName,
+      displayName: row.displayName,
+      externalId: null,
+      fieldKey: "lease",
+      kind: "lease",
+      label: row.note ? `Lease ends — ${row.note}` : "Lease ends",
+      basis: "expiry",
+      dueAt: new Date(dueMs).toISOString(),
+      daysRemaining,
+      severity: expirySeverity(daysRemaining, leadDays),
+      ...(row.autoDelete ? { leaseAutoDelete: true } : {}),
+    });
+  }
+  return items;
+}
+
 export async function listExpiring(
   organizationId: string,
   opts: ListExpiringOptions = {},
 ): Promise<ExpiryListResponse> {
-  const [orgResources, orgAccounts, plugins, leadDays] = await Promise.all([
+  const [orgResources, orgAccounts, plugins, leadDays, activeLeases] = await Promise.all([
     db
       .select({
         id: resources.id,
@@ -61,9 +132,25 @@ export async function listExpiring(
     opts.leadDays !== undefined
       ? Promise.resolve(opts.leadDays)
       : getExpirySettings(organizationId).then((s) => s.leadDays),
+    db
+      .select({
+        resourceId: resourceLeases.resourceId,
+        pluginId: resourceLeases.pluginId,
+        resourceTypeId: resourceLeases.resourceTypeId,
+        accountId: resourceLeases.accountId,
+        displayName: resourceLeases.displayName,
+        expiresAt: resourceLeases.expiresAt,
+        autoDelete: resourceLeases.autoDelete,
+        note: resourceLeases.note,
+      })
+      .from(resourceLeases)
+      .where(
+        and(eq(resourceLeases.organizationId, organizationId), eq(resourceLeases.status, "active")),
+      ),
   ]);
 
-  return computeExpiryFeed(
+  const now = opts.now ?? Date.now();
+  const feed = computeExpiryFeed(
     {
       plugins: plugins.map(({ plugin }) => ({
         id: plugin.manifest.id,
@@ -81,6 +168,25 @@ export async function listExpiring(
         fields: r.fieldsJson,
       })),
     },
-    { leadDays, ...(opts.now !== undefined ? { now: opts.now } : {}) },
+    { leadDays, now },
+  );
+
+  // Active resource leases ride the same feed as kind "lease" — merged after
+  // the scan (their deadline lives on the lease row, not in a synced field)
+  // with the evaluator's own sort and counts re-applied, so every consumer of
+  // the feed — including `itemsWithinLead` and the counts — sees them.
+  return mergeExpiryItems(
+    feed,
+    leaseItems(
+      activeLeases,
+      orgAccounts,
+      plugins.map(({ plugin }) => ({
+        id: plugin.manifest.id,
+        displayName: plugin.manifest.displayName,
+        resourceTypes: plugin.resourceTypes,
+      })),
+      now,
+      leadDays,
+    ),
   );
 }

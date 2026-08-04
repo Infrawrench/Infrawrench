@@ -23,6 +23,7 @@ import { cmdChanges } from "./commands/changes";
 import { cmdMoment } from "./commands/moment";
 import { cmdIncidents } from "./commands/incidents";
 import { cmdSchedules } from "./commands/schedules";
+import { cmdLeases } from "./commands/leases";
 import { cmdGraph } from "./commands/graph";
 import { cmdPage, cmdCostsPush } from "./commands/push";
 import { cmdCli } from "./commands/cli-install";
@@ -64,6 +65,7 @@ COMMANDS
   moment [timestamp]  everything that happened around a timestamp, across every feed
                       [-w/--window 15m|1h|6h]  (omit the timestamp for "around now")
   schedules           sleep/wake schedules: windows, next transitions & projected savings
+  leases              resource leases (TTLs): deadlines, auto-delete flags & status
   graph               resource dependency tree   [--resource <id>: what it needs + its blast radius]
   ssh-fanout <cmd>    run one command across many SSH hosts; identical output is collapsed and
                       outliers are diffed against the majority   [--list] [--hosts <q>] [--plugin <id>]
@@ -292,6 +294,9 @@ export async function runCli(): Promise<void> {
         break;
       case "schedules":
         await cmdSchedules(ctx);
+        break;
+      case "leases":
+        await cmdLeases(ctx);
         break;
       case "graph":
         // `infrawrench graph <resource-id>` is the same as --resource; a

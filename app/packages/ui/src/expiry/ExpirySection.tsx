@@ -276,6 +276,14 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
                               </td>
                               <td className="px-3 py-2.5 w-full text-on-surface-secondary">
                                 {item.label}
+                                {item.leaseAutoDelete === true && (
+                                  <span
+                                    className="ml-2 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-red-400"
+                                    title="This lease opted into auto-delete: the resource is deleted at expiry, after two warnings (change freezes pause deletion)."
+                                  >
+                                    auto-delete
+                                  </span>
+                                )}
                                 {item.basis === "age" && (
                                   <span
                                     className="text-xs text-on-surface-faint"

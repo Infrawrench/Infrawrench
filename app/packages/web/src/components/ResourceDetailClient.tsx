@@ -27,6 +27,7 @@ import {
   type NavigateToResourceDetail,
   type PeerPaneData,
   ResourceSchedulePanel,
+  ResourceLeasePanel,
 } from "@infrawrench/ui";
 import type {
   ArtifactEntry,
@@ -72,6 +73,7 @@ import { FirestoreMongoPeerBrowser } from "@/components/FirestoreMongoPeerBrowse
 import { StorageBrowser } from "@/components/StorageBrowser";
 import { ResourceChangesPanel } from "@/components/ResourceChangesPanel";
 import { createWebSchedulesClient } from "@/lib/schedules-client";
+import { createWebLeasesClient } from "@/lib/leases-client";
 import { SftpBrowser } from "@/components/SftpBrowser";
 import { WebTerminal } from "@/components/WebTerminal";
 import { SshQuickConnectPanel } from "@/components/SshQuickConnectPanel";
@@ -212,6 +214,7 @@ export function ResourceDetailClient({
   const router = useRouter();
   const orgId = useOrgId();
   const schedulesClient = useMemo(() => createWebSchedulesClient(orgId), [orgId]);
+  const leasesClient = useMemo(() => createWebLeasesClient(orgId), [orgId]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showExportCredential, setShowExportCredential] = useState(false);
@@ -1347,6 +1350,12 @@ export function ResourceDetailClient({
                     ),
                   }
                 : {})}
+              renderLeaseTab={() => (
+                <ResourceLeasePanel
+                  client={leasesClient}
+                  target={{ resourceId, accountId, resourceName: resourceDisplayName }}
+                />
+              )}
             />
           </div>
         </div>

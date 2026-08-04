@@ -98,6 +98,8 @@ const expiryFieldRuleSchema = z
       "k8s-cert",
       "ssh-key",
       "secret-version",
+      // "lease" is deliberately absent: leases are host-managed rows, not a
+      // kind a plugin's lister can declare a field for.
       "other",
     ]),
     label: z.string().min(1),

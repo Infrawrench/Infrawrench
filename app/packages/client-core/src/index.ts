@@ -364,6 +364,7 @@ export * from "./api-types";
 export * from "./moment";
 export * from "./orphans";
 export * from "./expiry";
+export * from "./leases";
 export * from "./schedules";
 export * from "./log-workspaces";
 export * from "./log-discovery";
