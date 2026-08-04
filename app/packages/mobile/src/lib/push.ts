@@ -385,6 +385,8 @@ export function parsePushData(raw: unknown): MobilePushData | null {
       if (typeof queryId !== "string" || typeof matchCount !== "number") return null;
       return { type: "log_match", orgId, queryId, matchCount };
     }
+    case "posture_alert":
+      return { type: "posture_alert", orgId };
     case "probe_alert": {
       const probeId = data["probeId"];
       const status = data["status"];

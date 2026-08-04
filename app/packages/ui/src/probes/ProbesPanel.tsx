@@ -68,6 +68,7 @@ export function ProbesPanel({ client }: ProbesPanelProps) {
   const canWrite = Boolean(client.createProbe && client.updateProbe && client.deleteProbe);
 
   const reload = useCallback(() => {
+    setError(null);
     client
       .listProbes()
       .then(setProbes)
@@ -96,14 +97,22 @@ export function ProbesPanel({ client }: ProbesPanelProps) {
   };
 
   const toggleEnabled = async (probe: SyntheticProbe) => {
-    await client.updateProbe?.(probe.id, { enabled: !probe.enabled });
-    reload();
+    try {
+      await client.updateProbe?.(probe.id, { enabled: !probe.enabled });
+      reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update the probe");
+    }
   };
 
   const remove = async (probe: SyntheticProbe) => {
     if (!window.confirm(`Delete probe "${probe.name}"?`)) return;
-    await client.deleteProbe?.(probe.id);
-    reload();
+    try {
+      await client.deleteProbe?.(probe.id);
+      reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete the probe");
+    }
   };
 
   return (
@@ -128,7 +137,14 @@ export function ProbesPanel({ client }: ProbesPanelProps) {
           )}
         </div>
 
-        {error && <p className="text-sm text-red-400">{error}</p>}
+        {error && (
+          <p className="text-sm text-red-400">
+            {error}{" "}
+            <button type="button" onClick={reload} className="underline hover:text-red-300">
+              Retry
+            </button>
+          </p>
+        )}
         {probes === null && !error && (
           <p className="text-sm text-on-surface-faint">Loading probes…</p>
         )}

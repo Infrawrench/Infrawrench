@@ -104,4 +104,8 @@ export const ErrorResponses = {
   /** The resource is busy — e.g. a deploy to this environment is already running. */
   409: { description: "Conflict", content: { "application/json": { schema: ErrorResponse } } },
   500: { description: "Server error", content: { "application/json": { schema: ErrorResponse } } },
+  503: {
+    description: "A backing service this endpoint depends on is not available",
+    content: { "application/json": { schema: ErrorResponse } },
+  },
 } as const;

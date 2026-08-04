@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LeaseEditorModal, type LeaseEditorTarget } from "./LeaseEditorModal.js";
 import type { LeasesClient, ResourceLease } from "./types.js";
 
@@ -40,18 +40,30 @@ export function ResourceLeasePanel({ client, target }: ResourceLeasePanelProps) 
   const [editorOpen, setEditorOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  // Guards against out-of-order responses when the panel's target switches:
+  // only the newest request may write state.
+  const refreshVersion = useRef(0);
+
   const refresh = useCallback(async () => {
+    const version = ++refreshVersion.current;
     setError(null);
     try {
-      setLease(await client.getResourceLease(target.resourceId));
+      const next = await client.getResourceLease(target.resourceId);
+      if (version !== refreshVersion.current) return;
+      setLease(next);
       setLoaded(true);
     } catch (e) {
+      if (version !== refreshVersion.current) return;
       setError(e instanceof Error ? e.message : String(e));
       setLoaded(true);
     }
   }, [client, target.resourceId]);
 
   useEffect(() => {
+    // Target switched: drop the previous resource's lease from view while the
+    // new fetch runs, instead of showing it against the wrong resource.
+    setLease(null);
+    setLoaded(false);
     void refresh();
   }, [refresh]);
 

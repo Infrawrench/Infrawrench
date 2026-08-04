@@ -328,6 +328,7 @@ export function DetailView({
     hasMetrics ||
     hasChangesTab ||
     hasScheduleTab ||
+    hasLeaseTab ||
     hasArtifacts ||
     hasKvBrowser ||
     hasSecretVersions ||

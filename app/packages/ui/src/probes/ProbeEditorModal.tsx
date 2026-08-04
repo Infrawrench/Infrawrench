@@ -124,11 +124,24 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
       setError(numbersProblem);
       return;
     }
+    const mutate = existing ? client.updateProbe : client.createProbe;
+    if (!mutate) {
+      // A read-only host opened the editor by mistake — fail loudly instead
+      // of "saving" nothing and closing as if it worked.
+      setError("Probe editing isn't available here.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
+      // The suggestion's resource attribution only holds while the URL still
+      // IS that suggestion — a hand-edited URL is not the resource's output.
+      const attribution =
+        pickedSuggestion && pickedSuggestion.url === parsed.url
+          ? { resourceId: pickedSuggestion.resourceId, outputKey: pickedSuggestion.outputKey }
+          : {};
       const saved = existing
-        ? await client.updateProbe?.(existing.id, {
+        ? await client.updateProbe!(existing.id, {
             name: name.trim(),
             url: parsed.url,
             method,
@@ -136,21 +149,16 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
             timeoutMs: timeoutNum,
             failureThreshold: thresholdNum,
           })
-        : await client.createProbe?.({
+        : await client.createProbe!({
             name: name.trim(),
             url: parsed.url,
             method,
             intervalSeconds: intervalNum,
             timeoutMs: timeoutNum,
             failureThreshold: thresholdNum,
-            ...(pickedSuggestion
-              ? {
-                  resourceId: pickedSuggestion.resourceId,
-                  outputKey: pickedSuggestion.outputKey,
-                }
-              : {}),
+            ...attribution,
           });
-      onSaved(saved ?? null);
+      onSaved(saved);
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save probe");
@@ -159,8 +167,14 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
     }
   };
 
+  // A dismissal mid-save would leave the request in flight with no surface
+  // for its outcome — the modal stays up until the save settles.
+  const dismiss = () => {
+    if (!saving) onClose();
+  };
+
   return (
-    <Modal onClose={onClose} ariaLabel={existing ? "Edit probe" : "New probe"}>
+    <Modal onClose={dismiss} ariaLabel={existing ? "Edit probe" : "New probe"}>
       <div className="w-[28rem] max-w-[90vw] rounded-2xl border border-border bg-surface p-5 shadow-xl">
         <h2 className="text-sm font-semibold text-on-surface">
           {existing ? "Edit probe" : "New probe"}
@@ -306,8 +320,9 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
           <div className="mt-1 flex justify-end gap-2">
             <button
               type="button"
-              onClick={onClose}
-              className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
+              onClick={dismiss}
+              disabled={saving}
+              className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50"
             >
               Cancel
             </button>

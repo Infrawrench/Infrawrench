@@ -98,8 +98,14 @@ export function LeaseEditorModal({
     }
   };
 
+  // A dismissal mid-save would leave the request in flight with no surface
+  // for its outcome — the modal stays up until the save settles.
+  const dismiss = () => {
+    if (!saving) onClose();
+  };
+
   return (
-    <Modal onClose={onClose} ariaLabel={existing ? "Edit lease" : "New lease"}>
+    <Modal onClose={dismiss} ariaLabel={existing ? "Edit lease" : "New lease"}>
       <div className="w-[28rem] max-w-[90vw] rounded-2xl border border-border bg-surface p-5 shadow-xl">
         <h2 className="text-sm font-semibold text-on-surface">
           {existing ? "Edit lease" : "New lease"}
@@ -178,8 +184,9 @@ export function LeaseEditorModal({
           <div className="mt-1 flex justify-end gap-2">
             <button
               type="button"
-              onClick={onClose}
-              className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
+              onClick={dismiss}
+              disabled={saving}
+              className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50"
             >
               Cancel
             </button>

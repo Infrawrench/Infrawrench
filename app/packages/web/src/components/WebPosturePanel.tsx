@@ -27,20 +27,24 @@ export function WebPosturePanel({ orgId, openResource }: WebPosturePanelProps) {
 
   useEffect(() => {
     let cancelled = false;
+    // Refreshes within this effect (initial load + RESOURCES_CHANGED_EVENT)
+    // can resolve out of order; only the newest request may write state.
+    let latestRequest = 0;
     // Clear on org change: without this the previous org's findings stay on
     // screen until the new fetch resolves, which reads as this org's feed.
     setData(null);
     setError(null);
     function load() {
+      const request = ++latestRequest;
       apiGet<PostureListResponse>(`/api/org/${orgId}/posture`)
         .then((d) => {
-          if (!cancelled) {
+          if (!cancelled && request === latestRequest) {
             setData(d);
             setError(null);
           }
         })
         .catch((e: unknown) => {
-          if (!cancelled)
+          if (!cancelled && request === latestRequest)
             setError(e instanceof Error ? e.message : "Failed to load the posture findings");
         });
     }

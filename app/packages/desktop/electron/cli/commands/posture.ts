@@ -84,7 +84,9 @@ export async function cmdPosture(ctx: CliContext): Promise<void> {
   const columns: Column<PostureFinding>[] = [
     {
       header: "severity",
-      value: (r) => SEVERITY_COLOR[r.severity](r.severity),
+      // Unknown severity buckets from a newer server render uncolored
+      // rather than crashing the whole listing.
+      value: (r) => (SEVERITY_COLOR[r.severity] ?? ((s: string) => s))(r.severity),
     },
     { header: "resource", value: (r) => r.displayName },
     { header: "type", value: (r) => c.dim(r.resourceTypeName) },

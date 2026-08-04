@@ -141,7 +141,9 @@ async function printProbeDetail(
   if (probe.lastProbeAt) facts.push(c.dim(`checked ${formatChangeTime(probe.lastProbeAt)}`));
   if (facts.length > 0) println(facts.join(c.dim(" · ")));
 
-  const latency = series.find((s) => s.label === "Latency");
+  // Match the latency series by label, falling back to unit so a server-side
+  // label rename degrades to the right chart — never the 0/1 "Up" series.
+  const latency = series.find((s) => s.label === "Latency") ?? series.find((s) => s.unit === "ms");
   const values = latency?.points.map((p) => p.value) ?? [];
   println();
   if (values.length === 0) {

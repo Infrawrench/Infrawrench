@@ -315,10 +315,21 @@ export interface ProbePassOutcome {
   claimed: number;
 }
 
+let warnedUnconfigured = false;
+
 /** Claim and run a bounded batch of due probes. Never throws. */
 export async function runProbePass(options: { limit?: number } = {}): Promise<ProbePassOutcome> {
-  // No proxy, no probes: skip silently — see the module comment.
-  if (!isProbeProxyConfigured()) return { claimed: 0 };
+  // No proxy, no probes — but say so once, or a misconfigured deployment
+  // reads as "everything is up" with zero samples to show for it.
+  if (!isProbeProxyConfigured()) {
+    if (!warnedUnconfigured) {
+      warnedUnconfigured = true;
+      console.warn(
+        "[probes] WORKFLOW_FETCH_PROXY_URL/_TOKEN not set — synthetic probes are disabled; no measurements or alerts will be produced",
+      );
+    }
+    return { claimed: 0 };
+  }
 
   const limit = options.limit ?? 8;
   let claimed: ProbeRecord[];

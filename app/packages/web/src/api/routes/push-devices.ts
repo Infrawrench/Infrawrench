@@ -248,6 +248,9 @@ pushOrgRoutes.put("/preferences", async (c) => {
       workflowPages: body.workflowPages,
       providerIncidents: body.providerIncidents,
       expiryAlerts: body.expiryAlerts,
+      logMatchAlerts: body.logMatchAlerts,
+      postureAlerts: body.postureAlerts,
+      probeAlerts: body.probeAlerts,
     },
   });
   return c.json({ ok: true });

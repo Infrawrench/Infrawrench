@@ -4,6 +4,7 @@ import {
   cancelLeaseRecord,
   createLeaseRecord,
   deleteLeaseRecord,
+  getLeaseRecord,
   getLeaseWire,
   getLeaseWireByResource,
   listLeases,
@@ -154,7 +155,15 @@ app.put("/:id", async (c) => {
     patch.note = body["note"] as string | null;
   }
   if (Object.keys(patch).length === 0) return c.json({ error: "No changes supplied" }, 400);
-  if (patch.autoDelete === true) requirePermission(c, "resources:delete");
+  // resources:delete gates auto-delete by *effective* state: turning it on,
+  // and reshaping a lease that stays armed because the patch omits the flag —
+  // otherwise resources:write could re-arm a delete with a new deadline.
+  if (patch.autoDelete === true) {
+    requirePermission(c, "resources:delete");
+  } else if (patch.autoDelete === undefined) {
+    const existing = await getLeaseRecord(organizationId, leaseId);
+    if (existing?.autoDelete) requirePermission(c, "resources:delete");
+  }
 
   try {
     const updated = await updateLeaseRecord(organizationId, leaseId, patch);

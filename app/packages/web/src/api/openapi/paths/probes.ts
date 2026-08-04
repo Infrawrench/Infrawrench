@@ -243,6 +243,7 @@ export function registerProbePaths(ctx: BuildContext) {
       },
       400: ErrorResponses[400],
       404: ErrorResponses[404],
+      503: ErrorResponses[503],
     },
   });
 }

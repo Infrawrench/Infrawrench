@@ -25048,6 +25048,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "operationId": "getOrgOrgIdProbesProbeIdMetrics",
