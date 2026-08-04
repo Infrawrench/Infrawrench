@@ -756,9 +756,9 @@ function MsTeamsSection({ orgId }: { orgId: string }) {
                 <p className="text-on-surface-secondary truncate">{w.label}</p>
                 <p className="text-xs text-on-surface-faint font-mono truncate">{w.urlHint}</p>
               </div>
-              <div className="flex items-center gap-4 text-xs text-on-surface-tertiary">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-on-surface-tertiary">
                 {ALERT_TRIGGERS.map((t) => (
-                  <label key={t.key} className="flex items-center gap-1.5">
+                  <label key={t.key} className="flex items-center gap-1.5 whitespace-nowrap">
                     <input
                       type="checkbox"
                       checked={w[t.key]}
@@ -1079,9 +1079,9 @@ function SlackSection({ orgId }: { orgId: string }) {
                       </span>
                     )}
                   </p>
-                  <div className="flex items-center gap-4 text-xs text-on-surface-tertiary">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-on-surface-tertiary">
                     {ALERT_TRIGGERS.map((t) => (
-                      <label key={t.key} className="flex items-center gap-1.5">
+                      <label key={t.key} className="flex items-center gap-1.5 whitespace-nowrap">
                         <input
                           type="checkbox"
                           checked={ch[t.key]}
