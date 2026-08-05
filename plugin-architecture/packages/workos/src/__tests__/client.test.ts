@@ -84,6 +84,17 @@ describe("listing", () => {
     expect(calls[0]!.url).toContain("https://api.workos.com/organizations?");
   });
 
+  it("stops following cursors at the page cap and warns about truncation", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // Every page returns a continuation cursor — the client must stop at the
+    // documented MAX_LIST_PAGES bound rather than looping forever.
+    installFetch(() => jsonResponse(list([{ id: "user_x", email: "x@acme.com" }], "cur")));
+    const users = await client().listResources("user", ACCOUNT);
+    expect(calls).toHaveLength(20);
+    expect(users).toHaveLength(20);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("truncated at 20 pages"));
+  });
+
   it("follows the after cursor across pages", async () => {
     let page = 0;
     installFetch(() => {
@@ -220,6 +231,31 @@ describe("create", () => {
 });
 
 describe("delete and actions", () => {
+  it("resolves an empty-body 204 DELETE", async () => {
+    installFetch(() => jsonResponse("", 204));
+    await expect(
+      client().deleteResource("organization", `${ACCOUNT}:organization:${ORG}`, ACCOUNT),
+    ).resolves.toBeUndefined();
+    expect(calls[0]!.url).toBe(`https://api.workos.com/organizations/${ORG}`);
+    expect(calls[0]!.init?.method).toBe("DELETE");
+  });
+
+  it("throws with the request path when a DELETE fails", async () => {
+    installFetch(() => jsonResponse({ message: "server error" }, 500));
+    await expect(
+      client().deleteResource("user", `${ACCOUNT}:user:user_1`, ACCOUNT),
+    ).rejects.toThrow(/500.*\/user_management\/users\/user_1/);
+  });
+
+  it("refuses a direct-fetch DELETE when a CA certificate is configured", async () => {
+    installFetch(() => jsonResponse("", 204));
+    const caClient = new WorkosClient({ apiKey: "sk_test_key", caCert: "-----BEGIN CERT" });
+    await expect(
+      caClient.deleteResource("organization", `${ACCOUNT}:organization:${ORG}`, ACCOUNT),
+    ).rejects.toThrow(/CA certificate/);
+    expect(calls).toHaveLength(0);
+  });
+
   it("revokes instead of deleting invitations", async () => {
     installFetch(() => jsonResponse({ id: "invitation_1", state: "revoked" }));
     await client().deleteResource("invitation", `${ACCOUNT}:invitation:invitation_1`, ACCOUNT);

@@ -12,7 +12,9 @@ export const UserResourceType = rt({
   description:
     "An AuthKit / User Management user. Environment-level: one user can belong to many organizations through organization memberships.",
   fields: [
-    f("email", "Email", { editable: false }),
+    f("email", "Email", {
+      description: "The user's sign-in email. Editing it changes the address WorkOS authenticates.",
+    }),
     f("firstName", "First Name", { required: false }),
     f("lastName", "Last Name", { required: false }),
     f("emailVerified", "Email Verified", { kind: "boolean", required: false }),

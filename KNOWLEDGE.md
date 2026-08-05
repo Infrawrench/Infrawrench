@@ -392,11 +392,9 @@ Desktop sync is push-only by design — see [Desktop cloud sync](#desktop-cloud-
 
 ## Plugin registry & loader
 
-`app/packages/web/src/plugins/blessed-plugins.json` is the authoritative blessed list. Both web and desktop import from this path via a Vite alias (`@blessed-plugins`).
+The registry is the static-import `PLUGINS` array in `app/packages/server-core/src/plugin-loader.ts` (48 plugins) — imports are eager so esbuild bundles them all. `app/packages/web/src/plugins/loader.ts` re-exports it; the poller imports it too. Desktop keeps its own lazy dynamic-import lists in `app/packages/desktop/src/plugins/loader.ts` and `electron/infrafile/plugins.ts`, plus two exclusion lists in `electron.vite.config.ts`.
 
-The loader (`app/packages/desktop/src/plugins/loader.ts`) validates each plugin's manifest against the Zod schema and checks the manifest `id` matches the registry `id` before mounting. Unknown packages are refused.
-
-Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`, `aws`, `azure`, `databricks`, `turso`, `planetscale`, `fly`, `vercel`, `netlify`, `cloudinary`, `clickhouse`.
+`loadPlugins()` validates each manifest with `pluginManifestSchema` and `validatePreflightContract`, **skipping (not throwing on) invalid ones** — a malformed manifest silently disappears from the registry, so watch the console. A new plugin also needs: workspace deps in `server-core/package.json` + `desktop/package.json`, a bastion egress allowlist entry (`server-core/src/bastion/registry.ts`), mock credentials in `plugin-base/src/test-harness.ts`, the count bump in `web/src/plugins/__tests__/loader.test.ts`, an `API_VERSION` minor bump + `generate:openapi`, a docs page under `website/src/content/docs/plugins/`, and the plugin-count copy updates (see CLAUDE.md).
 
 ---
 
@@ -1253,7 +1251,7 @@ Shared backend code consumed by `@infrawrench/web` and `@infrawrench/poller`. Li
 - `@infrawrench/server-core/host-services` — `HostServices` builders for plugin clients
 - `@infrawrench/server-core/tunnel-resolver` — credential rewriting through SSH tunnels
 - `@infrawrench/server-core/sync-resources` — `syncAccountResources` + `syncAccountResourceType`
-- `@infrawrench/server-core/plugin-loader` — `loadPlugins` / `getPlugin` (blessed-plugins.json registry)
+- `@infrawrench/server-core/plugin-loader` — `loadPlugins` / `getPlugin` (static-import registry)
 
 Web's `web/src/db/client.ts`, `web/src/db/schema.ts`, `web/src/services/{encryption,drivers,host-services,tunnel-resolver,sync-resources}.ts`, and `web/src/plugins/loader.ts` are now thin re-exports — no consumer-side import paths changed.
 

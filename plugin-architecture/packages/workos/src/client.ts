@@ -231,6 +231,12 @@ export class WorkosClient implements PluginClient {
   private readonly apiKey: string;
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
+  /**
+   * Per-instance cache of the webhook endpoint listing. There is no single-item
+   * GET on /webhook_endpoints/{id}, so `getResource` re-lists; without the
+   * cache every `resolveOutput` for a signing secret repeats the full sweep.
+   */
+  private webhookEndpointsCache: WosWebhookEndpoint[] | null = null;
 
   constructor(credentials: Record<string, string>, services?: HostServices) {
     const apiKey = credentials["apiKey"];
@@ -277,6 +283,15 @@ export class WorkosClient implements PluginClient {
       return;
     }
 
+    // Only the host HTTP service can install a custom trust anchor — silently
+    // falling back to global fetch would issue this DELETE under a different
+    // trust store than every other call in this client.
+    if (this.caCert) {
+      throw new Error(
+        `WorkOS plugin: cannot apply the configured CA certificate for ${path} without the host HTTP service`,
+      );
+    }
+
     const res = await fetch(url, { method, headers });
     if (!res.ok) {
       throw new Error(`WorkOS API error ${res.status} for ${path}: ${await res.text()}`);
@@ -301,6 +316,15 @@ export class WorkosClient implements PluginClient {
       if (!after || items.length === 0) break;
     }
 
+    // A cursor surviving the page cap means the listing is a prefix, not the
+    // whole set. There is no host warning channel for list results, so the
+    // console is the one place this can surface (visible in poller logs).
+    if (after) {
+      console.warn(
+        `WorkOS plugin: list ${path} truncated at ${MAX_LIST_PAGES} pages (${out.length} items) — a continuation cursor remains`,
+      );
+    }
+
     return out;
   }
 
@@ -319,6 +343,11 @@ export class WorkosClient implements PluginClient {
     const orgs = await this.fetchOrganizations();
     const ids = orgs.map((org) => str(org.id)).filter(Boolean);
     const settled = await Promise.allSettled(ids.map((id) => load(id)));
+    settled.forEach((result, index) => {
+      if (result.status === "rejected") {
+        console.warn(`WorkOS plugin: skipping organization ${ids[index]}: ${result.reason}`);
+      }
+    });
     return settled.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
   }
 
@@ -395,6 +424,7 @@ export class WorkosClient implements PluginClient {
       }
       case "webhook-endpoint": {
         const endpoints = await this.paginate<WosWebhookEndpoint>("/webhook_endpoints");
+        this.webhookEndpointsCache = endpoints;
         return endpoints.map((endpoint) => this.mapWebhookEndpoint(accountId, endpoint));
       }
       default:
@@ -406,6 +436,11 @@ export class WorkosClient implements PluginClient {
     const directories = await this.paginate<WosDirectory>("/directories");
     const ids = directories.map((d) => str(d.id)).filter(Boolean);
     const settled = await Promise.allSettled(ids.map((id) => load(id)));
+    settled.forEach((result, index) => {
+      if (result.status === "rejected") {
+        console.warn(`WorkOS plugin: skipping directory ${ids[index]}: ${result.reason}`);
+      }
+    });
     return settled.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
   }
 
@@ -469,9 +504,12 @@ export class WorkosClient implements PluginClient {
       }
       case "webhook-endpoint": {
         // The spec documents PATCH/DELETE on /webhook_endpoints/{id} but no
-        // GET, so re-list and pick the endpoint out.
-        const endpoints = await this.paginate<WosWebhookEndpoint>("/webhook_endpoints");
-        const match = endpoints.find((endpoint) => endpoint.id === id);
+        // GET, so re-list and pick the endpoint out. The list is cached per
+        // client instance — resolveOutput funnels through here, and resolving
+        // several signingSecret references must not repeat the full sweep.
+        this.webhookEndpointsCache ??=
+          await this.paginate<WosWebhookEndpoint>("/webhook_endpoints");
+        const match = this.webhookEndpointsCache.find((endpoint) => endpoint.id === id);
         if (!match) throw new Error(`WorkOS plugin: webhook endpoint "${id}" not found`);
         return this.mapWebhookEndpoint(accountId, match);
       }
@@ -1034,7 +1072,7 @@ export class WorkosClient implements PluginClient {
    */
   private async rolePickerField(parentResourceId?: string): Promise<CreateFieldConfig> {
     const path = parentResourceId
-      ? `/authorization/organizations/${encodeURIComponent(externalIdOf(parentResourceId))}/roles`
+      ? `/authorization/organizations/${encodeURIComponent(this.organizationIdOfParent(parentResourceId))}/roles`
       : "/authorization/roles";
     const roles = await this.fetch<WosList<WosRole>>(path)
       .then((body) => body.data ?? [])
@@ -1061,9 +1099,22 @@ export class WorkosClient implements PluginClient {
     };
   }
 
+  /**
+   * Read the organization external id out of a parent resource id, refusing
+   * parents of any other type — building organization-scoped URLs from a
+   * non-organization id would silently target the wrong tenant.
+   */
+  private organizationIdOfParent(parentResourceId: string): string {
+    const typeId = parentResourceId.split(":")[1];
+    if (typeId !== "organization") {
+      throw new Error(`WorkOS plugin: expected an organization parent, got "${typeId ?? ""}"`);
+    }
+    return externalIdOf(parentResourceId);
+  }
+
   private resolveOrganizationId(fields: Record<string, string>, parentResourceId?: string): string {
     const organizationId = parentResourceId
-      ? externalIdOf(parentResourceId)
+      ? this.organizationIdOfParent(parentResourceId)
       : fields["organizationId"];
     if (!organizationId) throw new Error("WorkOS plugin: an organization is required");
     return organizationId;
@@ -1191,6 +1242,7 @@ export class WorkosClient implements PluginClient {
       }
       case "user": {
         const body: Record<string, unknown> = {};
+        if (fields["email"]) body["email"] = fields["email"];
         if (fields["firstName"] !== undefined) body["first_name"] = fields["firstName"];
         if (fields["lastName"] !== undefined) body["last_name"] = fields["lastName"];
         if (fields["emailVerified"] !== undefined) {
