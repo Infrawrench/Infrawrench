@@ -33,7 +33,7 @@ import {
   sftpUpload as sftpHostUpload,
   sftpDownloadToBuffer as sftpHostDownload,
 } from "@infrawrench/sftp-host";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import ssh2 from "ssh2";
 
 const { Client: SshClient } = ssh2;
@@ -62,7 +62,7 @@ async function loadPrivateKey(organizationId: string, sshKeyId: string): Promise
       and(
         eq(sshKeys.organizationId, organizationId),
         // Allow referencing a key by id or by its display name.
-        sshKeyId.includes("-") ? eq(sshKeys.id, sshKeyId) : eq(sshKeys.name, sshKeyId),
+        or(eq(sshKeys.id, sshKeyId), eq(sshKeys.name, sshKeyId)),
       ),
     )
     .limit(1);
