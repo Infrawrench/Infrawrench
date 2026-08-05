@@ -38,6 +38,9 @@ app_env = {
   # authorize/token, and JWKS through it; api.workos.com is unsupported after
   # cutover. Omit only while still on the default WorkOS domain.
   WORKOS_API_HOSTNAME = "auth-api.infrawrench.com"
+  # WORKOS_API_HTTPS / WORKOS_API_PORT also exist but are dev-only knobs for
+  # the WorkOS emulator (docker-compose.dev.yml). Never set them in prod — the
+  # SDK must keep speaking https on the default port.
 
   # Stripe
   STRIPE_SECRET_KEY                   = "sk_live_..."

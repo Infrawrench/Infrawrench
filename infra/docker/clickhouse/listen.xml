@@ -1,0 +1,6 @@
+<!-- The image's docker_related_config.xml listens on "::", which fails on
+     Docker networks without IPv6 (the compose default) and leaves the server
+     not listening at all. Pin IPv4. -->
+<clickhouse>
+  <listen_host>0.0.0.0</listen_host>
+</clickhouse>
