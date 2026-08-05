@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.33.0",
+    "version": "0.34.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -14204,6 +14204,24 @@
             "required": false,
             "name": "state",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Error code WorkOS sends instead of `code` when sign-in failed on its side"
+            },
+            "required": false,
+            "name": "error",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Human-readable detail accompanying `error`"
+            },
+            "required": false,
+            "name": "error_description",
+            "in": "query"
           }
         ],
         "responses": {
@@ -14211,7 +14229,7 @@
             "description": "Redirect to `/`, or back to sign-in to restart a failed state check"
           },
           "400": {
-            "description": "Missing code, or a state check that already failed its one restart",
+            "description": "Missing code, a provider error redirect (`error` present), or a state check that already failed its one restart",
             "content": {
               "text/plain": {
                 "schema": {

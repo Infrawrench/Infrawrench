@@ -20,12 +20,25 @@ function constantTimeEqual(a: string, b: string): boolean {
   return timingSafeEqual(aBuf, bBuf);
 }
 
+/** Minimal HTML escape for provider-controlled strings rendered into the page. */
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+}
+
 /**
  * Terminal page for a sign-in that could not be recovered automatically. Plain
  * text would leave the user stranded on a blank 400 with no way back, which is
  * exactly the trap this route used to be, so give them a link.
+ *
+ * `message` must already be HTML-safe; the default covers the missing-state
+ * case this page was built for.
  */
-function signInFailedPage(): string {
+function signInFailedPage(message?: string): string {
+  const detail =
+    message ??
+    `Your browser did not send back the one-time token this sign-in started with.
+    This usually means the sign-in was finished in a different browser than it
+    was started in, or that cookies are blocked for this site.`;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -52,11 +65,7 @@ function signInFailedPage(): string {
 <body>
 <main>
   <h1>Sign-in could not be completed</h1>
-  <p>
-    Your browser did not send back the one-time token this sign-in started with.
-    This usually means the sign-in was finished in a different browser than it
-    was started in, or that cookies are blocked for this site.
-  </p>
+  <p>${detail}</p>
   <a href="/api/auth/sign-in"><span>Try signing in again</span></a>
 </main>
 </body>
@@ -67,6 +76,22 @@ function signInFailedPage(): string {
 app.get("/", async (c) => {
   const code = c.req.query("code");
   if (!code) {
+    // WorkOS redirects back with `error` (and sometimes `error_description`)
+    // instead of a code when sign-in fails on its side — an unknown user on
+    // the dev emulator, a cancelled flow, a misconfigured connection. Surface
+    // the reason; a bare 400 here reads like our bug instead of theirs.
+    const providerError = c.req.query("error");
+    if (providerError) {
+      const description = c.req.query("error_description");
+      const reason = escapeHtml(description ? `${providerError}: ${description}` : providerError);
+      return c.html(
+        signInFailedPage(
+          `The sign-in provider returned an error instead of completing sign-in:
+          <strong>${reason}</strong>.`,
+        ),
+        400,
+      );
+    }
     return c.text("Missing code parameter", 400);
   }
 

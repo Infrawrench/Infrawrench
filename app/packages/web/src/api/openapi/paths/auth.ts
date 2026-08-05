@@ -44,12 +44,21 @@ export function registerAuthPaths(ctx: BuildContext) {
       query: strict({
         code: z.string().openapi({ description: "Authorization code from WorkOS" }),
         state: z.string().optional().openapi({ description: "CSRF nonce echoed back by WorkOS" }),
+        error: z.string().optional().openapi({
+          description: "Error code WorkOS sends instead of `code` when sign-in failed on its side",
+        }),
+        error_description: z
+          .string()
+          .optional()
+          .openapi({ description: "Human-readable detail accompanying `error`" }),
       }),
     },
     responses: {
       302: { description: "Redirect to `/`, or back to sign-in to restart a failed state check" },
       400: {
-        description: "Missing code, or a state check that already failed its one restart",
+        description:
+          "Missing code, a provider error redirect (`error` present), or a state check " +
+          "that already failed its one restart",
         content: { "text/plain": { schema: z.string() }, "text/html": { schema: z.string() } },
       },
       500: {
