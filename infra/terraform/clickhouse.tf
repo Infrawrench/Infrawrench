@@ -719,3 +719,159 @@ resource "kubernetes_job" "clickhouse_bootstrap" {
 
   depends_on = [kubernetes_stateful_set.clickhouse]
 }
+
+# ---------------------------------------------------------------------------
+# Backups
+# ---------------------------------------------------------------------------
+# Replication covers a lost node or zone; these cover a bad DROP. A nightly
+# CronJob runs ClickHouse's native `BACKUP DATABASE ... TO S3(...)` against
+# the GCS bucket's S3-compatible XML endpoint (storage.googleapis.com), which
+# is why auth is an HMAC key rather than Workload Identity — the backup is
+# executed server-side by ClickHouse itself, whose S3 client doesn't speak
+# GCP's metadata server. Retention is the bucket's lifecycle rule, not
+# ClickHouse: the server only ever writes (each run under a fresh
+# timestamped prefix — reusing one fails with BACKUP_ALREADY_EXISTS), so
+# GCS's missing S3 batch-delete never comes into play.
+
+resource "google_service_account" "clickhouse_backup" {
+  account_id   = "${var.cluster_name}-ch-backup"
+  display_name = "ClickHouse backups — HMAC key owner, write access to the backup bucket"
+}
+
+resource "google_storage_bucket" "clickhouse_backups" {
+  name     = "${var.project_id}-clickhouse-backups"
+  location = var.region
+
+  # Nearline: backups are written once and read only during a restore, and
+  # the 30-day lifecycle delete matches Nearline's 30-day minimum charge.
+  storage_class               = "NEARLINE"
+  uniform_bucket_level_access = true
+
+  lifecycle_rule {
+    action {
+      type = "Delete"
+    }
+    condition {
+      age = 30
+    }
+  }
+}
+
+resource "google_storage_bucket_iam_member" "clickhouse_backup" {
+  bucket = google_storage_bucket.clickhouse_backups.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.clickhouse_backup.email}"
+}
+
+resource "google_storage_hmac_key" "clickhouse_backup" {
+  service_account_email = google_service_account.clickhouse_backup.email
+}
+
+resource "kubernetes_secret" "clickhouse_backup_hmac" {
+  metadata {
+    name      = "clickhouse-backup-hmac"
+    namespace = local.ch_namespace
+  }
+  type = "Opaque"
+
+  data = {
+    GCS_HMAC_ACCESS_ID = google_storage_hmac_key.clickhouse_backup.access_id
+    GCS_HMAC_SECRET    = google_storage_hmac_key.clickhouse_backup.secret
+  }
+}
+
+resource "kubernetes_cron_job_v1" "clickhouse_backup" {
+  metadata {
+    name      = "clickhouse-backup"
+    namespace = local.ch_namespace
+  }
+
+  spec {
+    # Nightly, an hour before the Sunday 04:00 UTC node maintenance window.
+    schedule                      = "0 3 * * *"
+    concurrency_policy            = "Forbid"
+    successful_jobs_history_limit = 3
+    failed_jobs_history_limit     = 3
+
+    job_template {
+      metadata {
+        labels = {
+          app = "clickhouse-backup"
+        }
+      }
+
+      spec {
+        backoff_limit              = 2
+        active_deadline_seconds    = 5400
+        ttl_seconds_after_finished = 259200 # 3 days
+
+        template {
+          metadata {
+            labels = {
+              app = "clickhouse-backup"
+            }
+          }
+
+          spec {
+            restart_policy = "Never"
+
+            container {
+              name  = "backup"
+              image = local.ch_image
+
+              env {
+                name = "CLICKHOUSE_APP_PASSWORD"
+                value_from {
+                  secret_key_ref {
+                    name = kubernetes_secret.clickhouse_auth.metadata[0].name
+                    key  = "CLICKHOUSE_APP_PASSWORD"
+                  }
+                }
+              }
+              env {
+                name = "GCS_HMAC_ACCESS_ID"
+                value_from {
+                  secret_key_ref {
+                    name = kubernetes_secret.clickhouse_backup_hmac.metadata[0].name
+                    key  = "GCS_HMAC_ACCESS_ID"
+                  }
+                }
+              }
+              env {
+                name = "GCS_HMAC_SECRET"
+                value_from {
+                  secret_key_ref {
+                    name = kubernetes_secret.clickhouse_backup_hmac.metadata[0].name
+                    key  = "GCS_HMAC_SECRET"
+                  }
+                }
+              }
+
+              resources {
+                requests = {
+                  cpu    = "50m"
+                  memory = "128Mi"
+                }
+              }
+
+              # The BACKUP statement runs inside the server (this pod only
+              # holds the connection open), so the client timeouts are the
+              # knob that matters for a long-running backup.
+              command = [
+                "/bin/sh",
+                "-c",
+                <<-EOT
+                  ts="$(date -u +%Y-%m-%dT%H-%M-%S)"
+                  clickhouse-client --host clickhouse --user ${local.ch_user} \
+                    --password "$CLICKHOUSE_APP_PASSWORD" \
+                    --send_timeout 5400 --receive_timeout 5400 \
+                    --query "BACKUP DATABASE ${local.ch_database} TO S3('https://storage.googleapis.com/${google_storage_bucket.clickhouse_backups.name}/full/$ts/', '$GCS_HMAC_ACCESS_ID', '$GCS_HMAC_SECRET')"
+                EOT
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}
