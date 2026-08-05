@@ -10,6 +10,10 @@ The mobile app (`app/packages/mobile`, Expo + expo-router) is a cloud companion 
 
 When you make code for providers remember that the user shouldn't have to know the API. If it needs a resource or a slug of some kind, add a picker. Also remember this replaces the cloud dash by in large and is not a replacement to it. If you add something, think about how the user can edit it if possible. Look online to verify API's, assume your memory is wrong. Make sure to include all possible metrics/side tools where possible. When you want a logo SVG, please also look online. You aren't good at freestyling logos.
 
+## Desktop changelog (git-cliff)
+
+`include_paths` in `cliff.toml` limits the changelog to commits touching the desktop app or a workspace package it transitively depends on. When you add or remove a workspace dependency of `@infrawrench/desktop` (or of anything in its closure), recompute the closure and update the glob list in the same change. Currently that closure is `app/packages/{desktop,client-core,ui,workflow-runtime}` plus all of `plugin-architecture/` — a new desktop dep on e.g. `@infrawrench/telemetry` would need its path added, and a config key typo fails silently (it's `include_paths`, plural — the CLI flag is singular), so verify with `git-cliff --unreleased` against a commit that should be excluded.
+
 ## API versioning and SDK releases
 
 `API_VERSION` in `app/packages/web/src/api/openapi/version.ts` is the single version number for the HTTP API. It is stamped into `openapi.json` and becomes the version of all nine generated client SDKs.
