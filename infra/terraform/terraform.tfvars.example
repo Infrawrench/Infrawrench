@@ -49,13 +49,28 @@ app_env = {
   STRIPE_CHAT_PRICE_ID                = "price_..." # metered price bound to the chat meter
   INFRAWRENCH_STRIPE_CHAT_METER_EVENT = "..."
 
-  # ClickHouse Cloud (metrics; all four together or writes/reads no-op).
-  # Stays on ClickHouse Cloud — if its IP access list is enabled, add the
-  # `egress_ip` output (the Cloud NAT address) to it.
-  CLICKHOUSE_METRICS_URL      = "https://xxxxx.clickhouse.cloud:8443"
-  CLICKHOUSE_METRICS_USER     = "default"
-  CLICKHOUSE_METRICS_PASSWORD = "..."
-  CLICKHOUSE_METRICS_DATABASE = "infrawrench"
+  # ClickHouse (metrics + costs; the four URL/USER/PASSWORD/DATABASE keys are
+  # required together or writes/reads no-op). Two options:
+  #
+  # In-cluster (default) — clickhouse.tf runs a 2-replica ClickHouse on its
+  # own node pool. Password comes from `terraform output clickhouse_app_password`.
+  # CLICKHOUSE_METRICS_REPLICATED="1" is required here: it makes the schema
+  # migrations create Replicated* table engines so data actually replicates
+  # between the two replicas. Never set it against ClickHouse Cloud, which
+  # rejects ReplicatedMergeTree DDL.
+  CLICKHOUSE_METRICS_URL        = "http://clickhouse.infrawrench.svc.cluster.local:8123"
+  CLICKHOUSE_METRICS_USER       = "infrawrench"
+  CLICKHOUSE_METRICS_PASSWORD   = "<terraform output clickhouse_app_password>"
+  CLICKHOUSE_METRICS_DATABASE   = "infrawrench"
+  CLICKHOUSE_METRICS_REPLICATED = "1"
+  #
+  # ClickHouse Cloud — point the URL at the service endpoint instead, omit
+  # CLICKHOUSE_METRICS_REPLICATED, and if the Cloud IP access list is enabled,
+  # add the `egress_ip` output (the Cloud NAT address) to it.
+  # CLICKHOUSE_METRICS_URL      = "https://xxxxx.clickhouse.cloud:8443"
+  # CLICKHOUSE_METRICS_USER     = "default"
+  # CLICKHOUSE_METRICS_PASSWORD = "..."
+  # CLICKHOUSE_METRICS_DATABASE = "infrawrench"
 
   # GitHub App (workflow git triggers; used by web + github-watcher)
   GITHUB_APP_ID          = "..."

@@ -324,9 +324,9 @@ Two migrations. Tables:
 - `dashboards` — named dashboards, `is_default` flag
 - `dashboard_pins` — `dashboard_id, resource_id, grid_x/y/w/h`
 
-**Metrics — ClickHouse Cloud (not Postgres):**
+**Metrics — ClickHouse (not Postgres):**
 
-The poller writes time-series data to a ClickHouse Cloud cluster, configured via `CLICKHOUSE_METRICS_*` env vars. Postgres holds no metric history; the `resources.latest_*_json` / `accounts.latest_stats_json` columns were removed in migration `0013_glamorous_sersi`. Tables (in `server-core/src/clickhouse/migrate.ts`, auto-created on web boot):
+The poller writes time-series data to a ClickHouse cluster, configured via `CLICKHOUSE_METRICS_*` env vars. In production this is a self-hosted 2-replica ClickHouse (26.3 LTS) inside the GKE cluster — `infra/terraform/clickhouse.tf`: a dedicated tainted node pool (one node per replica across two zones), a 3-pod ClickHouse Keeper StatefulSet on the default pool, and a bootstrap Job that creates the `infrawrench` database with the `Replicated` database engine so DDL propagates between replicas. `CLICKHOUSE_METRICS_REPLICATED=1` makes `migrate.ts` rewrite MergeTree-family engines to `Replicated*` (data replication); leave it unset for single-node dev or ClickHouse Cloud, which rejects `ReplicatedMergeTree` DDL. The app connects to the `clickhouse` Service over plain HTTP in-cluster; the generated app-user password is the `clickhouse_app_password` terraform output. Postgres holds no metric history; the `resources.latest_*_json` / `accounts.latest_stats_json` columns were removed in migration `0013_glamorous_sersi`. Tables (in `server-core/src/clickhouse/migrate.ts`, auto-created on web boot):
 
 - `metric_points_raw` — raw `(org, account, resource, plugin, type, series, unit, ts, value)`, TTL 7 days
 - `metric_points_1m` / `metric_points_1h` — `AggregatingMergeTree` rollups (TTL 30 d / 365 d) populated by materialized views

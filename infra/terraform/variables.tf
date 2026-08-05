@@ -42,6 +42,25 @@ variable "node_count_max" {
   default     = 4
 }
 
+variable "clickhouse_machine_type" {
+  description = <<-EOT
+    Machine type for the dedicated ClickHouse node pool (one node per replica,
+    two replicas). 4 vCPU / 16 GB by default — ClickHouse is memory-hungry and
+    shares its node with nothing else.
+  EOT
+  type        = string
+  default     = "e2-standard-4"
+}
+
+variable "clickhouse_disk_gb" {
+  description = <<-EOT
+    Size of each ClickHouse replica's data volume (pd-balanced), in GiB.
+    Growing it later is an online resize (edit + apply); shrinking is not.
+  EOT
+  type        = number
+  default     = 200
+}
+
 variable "repository_id" {
   description = <<-EOT
     Artifact Registry repository name. If you change this from the default,
