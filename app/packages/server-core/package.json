@@ -157,6 +157,7 @@
     "@infrawrench/plugin-together": "workspace:*",
     "@infrawrench/plugin-turso": "workspace:*",
     "@infrawrench/plugin-vercel": "workspace:*",
+    "@infrawrench/plugin-workos": "workspace:*",
     "@infrawrench/plugin-xai": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",

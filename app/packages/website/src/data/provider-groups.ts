@@ -337,6 +337,27 @@ export const providerGroups: ProviderGroup[] = [
     ],
   },
   {
+    name: "Identity & Auth",
+    providers: [
+      {
+        name: "WorkOS",
+        detail: "Organizations, memberships, SSO, Directory Sync, webhooks",
+        resources: [
+          "Organization",
+          "User",
+          "Membership",
+          "Invitation",
+          "SSO Connection",
+          "Directory",
+          "Directory User",
+          "Directory Group",
+          "Role",
+          "Webhook Endpoint",
+        ],
+      },
+    ],
+  },
+  {
     name: "AI & Speech",
     providers: [
       {

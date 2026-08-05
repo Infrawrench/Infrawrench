@@ -56,6 +56,7 @@ const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-speechmatics"),
   () => import("@infrawrench/plugin-together"),
   () => import("@infrawrench/plugin-xai"),
+  () => import("@infrawrench/plugin-workos"),
 ];
 
 interface LoadedPlugin {

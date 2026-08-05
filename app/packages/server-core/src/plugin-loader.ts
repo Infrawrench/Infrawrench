@@ -49,6 +49,7 @@ import { plugin as revaiPlugin } from "@infrawrench/plugin-revai";
 import { plugin as speechmaticsPlugin } from "@infrawrench/plugin-speechmatics";
 import { plugin as togetherPlugin } from "@infrawrench/plugin-together";
 import { plugin as xaiPlugin } from "@infrawrench/plugin-xai";
+import { plugin as workosPlugin } from "@infrawrench/plugin-workos";
 
 const PLUGINS: Plugin[] = [
   awsPlugin,
@@ -98,6 +99,7 @@ const PLUGINS: Plugin[] = [
   speechmaticsPlugin,
   togetherPlugin,
   xaiPlugin,
+  workosPlugin,
 ];
 
 export interface LoadedPlugin {
