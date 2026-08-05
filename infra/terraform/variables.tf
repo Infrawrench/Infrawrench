@@ -56,9 +56,12 @@ variable "clickhouse_disk_gb" {
   description = <<-EOT
     Size of each ClickHouse replica's data volume (pd-balanced), in GiB.
     Growing it later is an online resize (edit + apply); shrinking is not.
+    The default is sized to fit the project's 500 GB regional SSD_TOTAL_GB
+    quota (automated increase requests are denied on this account) — raise
+    the quota before raising this meaningfully.
   EOT
   type        = number
-  default     = 200
+  default     = 100
 }
 
 variable "repository_id" {

@@ -64,9 +64,12 @@ resource "google_container_node_pool" "clickhouse" {
   }
 
   node_config {
-    machine_type    = var.clickhouse_machine_type
-    disk_size_gb    = 50
-    disk_type       = "pd-balanced"
+    machine_type = var.clickhouse_machine_type
+    disk_size_gb = 50
+    # pd-standard, unlike everything else: boot disks only hold the node
+    # image, and this keeps them out of the tight regional SSD_TOTAL_GB
+    # quota that the data volumes (pd-balanced, in the StatefulSet) need.
+    disk_type       = "pd-standard"
     service_account = google_service_account.nodes.email
     oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
 
