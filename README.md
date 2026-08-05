@@ -75,6 +75,18 @@ pnpm --filter @infrawrench/mobile dev      # Expo; add ios / android to build na
 pnpm --filter @infrawrench/website dev
 ```
 
+### Cloud stack in Docker Compose
+
+The whole server-side stack (web, poller, github-watcher, Postgres, ClickHouse, [WorkOS emulator](https://github.com/workos/emulate)) can run containerized with hot reload — no WorkOS account or `.env` needed:
+
+```bash
+docker compose -f docker-compose.dev.yml watch
+```
+
+Then open http://localhost:3000 and log in as `dev@infrawrench.local` / `devpassword1!` (seeded in `infra/docker/workos-emulate/seed.yaml`). Migrations run automatically on `up`. Source edits sync into the containers and hot-reload; dependency changes (`pnpm-lock.yaml`) trigger an image rebuild.
+
+Stripe uses a real **test-mode** account: put `STRIPE_SECRET_KEY=sk_test_...` (plus `STRIPE_PRICE_ID`, and `STRIPE_WEBHOOK_SECRET` from `stripe listen --print-secret`) in a gitignored `.env` at the repo root, and optionally forward webhooks with `docker compose -f docker-compose.dev.yml --profile stripe up stripe-cli`. Details in the header of `docker-compose.dev.yml`.
+
 ## CLI
 
 The desktop app installs an `infrawrench` shell command (**Install shell command** in the app's sidebar footer, or `infrawrench cli install`). It launches the app headlessly and shares its data — local accounts, cloud session, all orgs.
