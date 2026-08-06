@@ -10,7 +10,9 @@
 # Runs from the repo root after checkout, before start.sh.
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+# Cloud Agent install/start run from the repo root; be explicit so this script
+# also works when invoked from a snapshot-resident copy outside the checkout.
+cd "${WORKSPACE_DIR:-/workspace}"
 
 export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 corepack enable

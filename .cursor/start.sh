@@ -12,7 +12,9 @@
 # dev@infrawrench.local / devpassword1!, seeded in the WorkOS emulator).
 set -uo pipefail
 
-cd "$(dirname "$0")/.."
+# Cloud Agent install/start run from the repo root; be explicit so this script
+# also works when invoked from a snapshot-resident copy outside the checkout.
+cd "${WORKSPACE_DIR:-/workspace}"
 
 WORKOS_HOME="$HOME/.infrawrench-dev"
 
