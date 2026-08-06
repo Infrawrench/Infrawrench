@@ -130,7 +130,15 @@ async function claimWindow(
     .onConflictDoUpdate({
       target: orgPostureSettings.organizationId,
       set: { lastNotifiedAt: now, updatedAt: now },
-      setWhere: sql`${orgPostureSettings.lastNotifiedAt} IS NULL OR ${orgPostureSettings.lastNotifiedAt} <= ${cutoff}`,
+      // or()/lte(), not a raw sql`` fragment: raw interpolation sends the
+      // Date object straight to postgres.js, which rejects it as a bind
+      // parameter — comparators map it through the column's serializer.
+      // (The ! is exactOptionalPropertyTypes noise; or() with arguments
+      // never returns undefined.)
+      setWhere: or(
+        isNull(orgPostureSettings.lastNotifiedAt),
+        lte(orgPostureSettings.lastNotifiedAt, cutoff),
+      )!,
     })
     .returning({ organizationId: orgPostureSettings.organizationId });
   return rows.length > 0;

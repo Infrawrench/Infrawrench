@@ -101,6 +101,9 @@ vi.mock("drizzle-orm", () => ({
   eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
   gt: (a: unknown, b: unknown) => ({ gt: [a, b] }),
   inArray: (a: unknown, b: unknown) => ({ inArray: [a, b] }),
+  isNull: (c: unknown) => ({ isNull: c }),
+  lte: (a: unknown, b: unknown) => ({ lte: [a, b] }),
+  or: (...parts: unknown[]) => ({ or: parts }),
   sql: Object.assign((..._a: unknown[]) => ({ sql: true }), { raw: () => ({ sql: true }) }),
 }));
 

@@ -35,7 +35,7 @@
  * Never throws. Drift alerting sits on the poller's hot path and must not be
  * able to fail a sync.
  */
-import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts, orgDriftAlertSettings, resourceChanges } from "../db/schema";
 import { sendPushToOrg } from "../push/dispatch";
@@ -111,7 +111,16 @@ async function claimWindow(
       set: { lastNotifiedAt: now, updatedAt: now },
       // Reading the *existing* row inside the same statement is what makes the
       // claim atomic: two replicas racing this insert produce one winner.
-      setWhere: sql`${orgDriftAlertSettings.lastNotifiedAt} IS NULL OR ${orgDriftAlertSettings.lastNotifiedAt} <= ${cutoff}`,
+      //
+      // or()/lte(), not a raw sql`` fragment: raw interpolation sends the
+      // Date object straight to postgres.js, which rejects it as a bind
+      // parameter — comparators map it through the column's serializer.
+      // (The ! is exactOptionalPropertyTypes noise; or() with arguments
+      // never returns undefined.)
+      setWhere: or(
+        isNull(orgDriftAlertSettings.lastNotifiedAt),
+        lte(orgDriftAlertSettings.lastNotifiedAt, cutoff),
+      )!,
     })
     .returning({ organizationId: orgDriftAlertSettings.organizationId });
   return rows.length > 0;
