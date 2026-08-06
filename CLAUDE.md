@@ -10,6 +10,28 @@ The mobile app (`app/packages/mobile`, Expo + expo-router) is a cloud companion 
 
 When you make code for providers remember that the user shouldn't have to know the API. If it needs a resource or a slug of some kind, add a picker. Also remember this replaces the cloud dash by in large and is not a replacement to it. If you add something, think about how the user can edit it if possible. Look online to verify API's, assume your memory is wrong. Make sure to include all possible metrics/side tools where possible. When you want a logo SVG, please also look online. You aren't good at freestyling logos.
 
+## Workspace tabs
+
+Org-level pages opened from the sidebar are **workspace-tab kinds, never plain routes** — a page outside the tab system leaves a stale active tab and a stale window title. The only exceptions are Moment and `/admin`, which get their titles from `plainRouteDocumentTitle` instead.
+
+Adding a tab kind touches the whole chain, in one change:
+
+- `ui/src/store/ui.store.ts` — the `WorkspaceTabTarget` union plus all three switches (`getWorkspaceTabId`, `getWorkspaceTabFallbackTitle`, `workspaceTabTargetsEqual`). For a single-instance tab with remembered state (Settings, Deploy), give it a fixed id but compare the state field in `workspaceTabTargetsEqual` — that is what makes the route sync record it and reactivation restore it.
+- `ui/src/workspace-tabs.ts` — a target factory, exported from `ui/src/index.ts`.
+- Both platforms' `lib/workspace-tabs.ts` — `getWorkspaceNavigateArgs` and `syncWorkspaceRouteFromPath` (desktop uses `?param=` search, web uses path segments).
+- Both viewports' `renderPanel`, plus a no-op route stub per platform (tab content renders in the viewport, which keeps every open tab mounted).
+- Desktop `__root.tsx` `validateWorkspaceTab` and the web `validate-tabs` kind list **and** the OpenAPI `TabTarget` enum — a kind missing there gets silently dropped on reload. The enum change means an `API_VERSION` minor bump.
+
+Tests enumerate kinds in `{web,desktop}/src/lib/__tests__/workspace-tabs.test.ts`; the full conversion recipe with rationale is in KNOWLEDGE.md.
+
+## Settings
+
+The 13 settings sections are shared components in `ui/src/settings/`, rendered by web's thin `/org/:orgId/settings/*` route wrappers and by the desktop cloud-mode Settings tab (`DesktopSettingsPanel`). They get everything platform-specific — API transport, permissions, `openExternal`, cross-surface navigation — from `SettingsHostProvider` (`ui/src/settings/host.tsx`); never import `@/lib/api` or router primitives inside a section.
+
+- **New section**: add it to `SETTINGS_SECTIONS` + `SettingsSectionBody`, a web route wrapper, and a docs page. Both platforms' navs derive from the registry.
+- **New endpoint used by a section**: the desktop reaches the cloud through the single `cloud_settings_request` IPC channel, whose handler (`electron/cloud-data/settings.ts`) enforces a method+path allowlist. Add the new path there in the same change, or the section works on web and silently fails on desktop.
+- Structured errors the sections branch on (seat limit, plan gate) live in `client-core/src/api-errors.ts` and must be thrown by both transports (web `apiFetch`, desktop `settings-client.ts`).
+
 ## Desktop changelog (git-cliff)
 
 `include_paths` in `cliff.toml` limits the changelog to commits touching the desktop app or a workspace package it transitively depends on. When you add or remove a workspace dependency of `@infrawrench/desktop` (or of anything in its closure), recompute the closure and update the glob list in the same change. Currently that closure is `app/packages/{desktop,client-core,ui,workflow-runtime}` plus all of `plugin-architecture/` — a new desktop dep on e.g. `@infrawrench/telemetry` would need its path added, and a config key typo fails silently (it's `include_paths`, plural — the CLI flag is singular), so verify with `git-cliff --unreleased` against a commit that should be excluded.
