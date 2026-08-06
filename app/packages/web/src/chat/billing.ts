@@ -13,6 +13,7 @@
  */
 import { v4 as uuidv4 } from "uuid";
 import { eq, and, gte, sql } from "drizzle-orm";
+import { activeCapacitySeats } from "@infrawrench/server-core/billing/capacity-slots";
 import { db } from "../db/client";
 import { chatUsage, organizations, subscriptions } from "../db/schema";
 import { computeCostMicros, computeSearchCostMicros, type TokenUsage } from "./pricing";
@@ -49,9 +50,17 @@ export async function getMonthlySpend(organizationId: string): Promise<SpendStat
   // Same definition of "paid" as the billing settings page: an org is free
   // when it has no subscription row or the subscription never activated.
   // Complimentary orgs count as paid everywhere without a Stripe subscription.
+  //
+  // A prepaid capacity slot counts too, and has to: it is a paid plan on its own
+  // (see `planAccess`), so an org holding one and no subscription would otherwise
+  // be handed the $5 free-tier chat cap after paying for two years of seats.
   const complimentary = org?.complimentary === true;
+  const subscriptionPaid = sub?.status === "active" || sub?.status === "past_due";
   const hasPaidSubscription =
-    complimentary || sub?.status === "active" || sub?.status === "past_due";
+    complimentary ||
+    subscriptionPaid ||
+    // Only asked when nothing cheaper already settled it.
+    (await activeCapacitySeats(organizationId)) > 0;
 
   const rows = await db
     .select({ total: sql<string>`coalesce(sum(${chatUsage.costMicros}), 0)` })

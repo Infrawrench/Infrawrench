@@ -1,5 +1,5 @@
 /**
- * Seat accounting against the Stripe subscription.
+ * Seat accounting across both ways an org can hold seats.
  *
  * Seats are bought at checkout and adjusted in the Stripe portal, and the
  * webhook keeps `subscriptions.seatCount` in sync. This module closes the two
@@ -11,11 +11,19 @@
  *   paid plan every member and pending invite occupies a seat, and inviting
  *   past capacity means buying one more first.
  *
- * Free-tier and self-hosted orgs have no live subscription row, so every
- * entry point below no-ops before constructing the Stripe client (which
- * throws without STRIPE_SECRET_KEY).
+ * **Capacity is the sum of two sources**, and every function here has to read
+ * both: the subscription's rented monthly seats, and prepaid capacity slots
+ * (`server-core/billing/capacity-slots.ts`) bought outright for a fixed term.
+ * Reading `subscriptions.seatCount` alone under-counts a slot-holding org — it
+ * would refuse an invite the org has already paid for — and an org can hold
+ * slots with no subscription row whatsoever.
+ *
+ * Free-tier and self-hosted orgs have neither, so every entry point below
+ * no-ops before constructing the Stripe client (which throws without
+ * STRIPE_SECRET_KEY).
  */
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { activeCapacitySeats } from "@infrawrench/server-core/billing/capacity-slots";
 import { db } from "../db/client";
 import { invitations, organizationMembers, subscriptions } from "../db/schema";
 import { getStripe } from "./stripe";
@@ -37,8 +45,16 @@ async function countRows(query: Promise<Array<{ n: number }>>): Promise<number> 
 }
 
 export interface SeatLimitStatus {
+  /** Total capacity: rented monthly seats plus prepaid capacity-slot seats. */
   seatCount: number;
   seatsUsed: number;
+  /**
+   * Whether one more monthly seat can be bought on the spot. False for an org
+   * whose capacity is entirely prepaid slots — there is no subscription item to
+   * increment, so the remedy is buying another slot on the billing page, and
+   * the caller's prompt has to say so rather than offering a one-click add.
+   */
+  canAddSeat: boolean;
 }
 
 /**
@@ -49,7 +65,11 @@ export async function checkSeatAvailability(
   organizationId: string,
 ): Promise<SeatLimitStatus | null> {
   const sub = await liveSubscription(organizationId);
-  if (!sub) return null;
+  const prepaidSeats = await activeCapacitySeats(organizationId);
+  const capacity = (sub?.seatCount ?? 0) + prepaidSeats;
+  // No capacity from either source is the free tier, whose user limit is
+  // enforced by the plan gate at the invite route, not here.
+  if (capacity === 0) return null;
 
   const members = await countRows(
     db
@@ -73,14 +93,18 @@ export async function checkSeatAvailability(
   );
 
   const seatsUsed = members + pending;
-  if (seatsUsed < sub.seatCount) return null;
-  return { seatCount: sub.seatCount, seatsUsed };
+  if (seatsUsed < capacity) return null;
+  return { seatCount: capacity, seatsUsed, canAddSeat: sub !== null };
 }
 
 /**
- * Buy one more seat. Throws on any failure — callers only reach this after
- * {@link checkSeatAvailability} said the plan is full, and the invite must
+ * Buy one more *monthly* seat. Throws on any failure — callers only reach this
+ * after {@link checkSeatAvailability} said the plan is full, and the invite must
  * not go out if the seat purchase didn't happen.
+ *
+ * Needs a live subscription to grow, so only call it when
+ * {@link SeatLimitStatus.canAddSeat} is true; a slot-only org has to buy another
+ * capacity slot instead, which is a checkout, not a quantity bump.
  */
 export async function addSeat(organizationId: string): Promise<void> {
   const sub = await liveSubscription(organizationId);
@@ -121,6 +145,7 @@ export async function releaseSeat(organizationId: string): Promise<void> {
       .from(organizationMembers)
       .where(eq(organizationMembers.organizationId, organizationId)),
   );
+  const prepaidSeats = await activeCapacitySeats(organizationId);
 
   const stripe = getStripe();
   const stripeSub = await stripe.subscriptions.retrieve(sub.stripeSubscriptionId!);
@@ -128,10 +153,16 @@ export async function releaseSeat(organizationId: string): Promise<void> {
   if (!seatItem) return;
 
   const current = seatItem.quantity ?? 1;
-  // Drop one seat, but never below the people still in the org (extra seats
-  // beyond that were bought deliberately and stay), never below one, and
-  // never upward — undersold orgs are an enforcement gap, not ours to charge.
-  const target = Math.max(1, remaining, current - 1);
+  // Drop one seat, but never below the people still in the org, never below
+  // one, and never upward — undersold orgs are an enforcement gap, not ours to
+  // charge. (Extra seats bought deliberately beyond the member count stay.)
+  //
+  // Prepaid slots cover that many members already, so the monthly floor is only
+  // the members they don't cover: an org with 3 slots and 3 members owes nothing
+  // monthly, and billing it for 3 rented seats would charge twice for the same
+  // people.
+  const monthlyMembers = Math.max(0, remaining - prepaidSeats);
+  const target = Math.max(1, monthlyMembers, current - 1);
   if (target >= current) return;
 
   await stripe.subscriptionItems.update(seatItem.id, {

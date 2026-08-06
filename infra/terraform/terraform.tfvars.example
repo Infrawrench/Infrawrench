@@ -48,6 +48,15 @@ app_env = {
   STRIPE_PRICE_ID                     = "price_..." # $20/seat/mo licensed price
   STRIPE_CHAT_PRICE_ID                = "price_..." # metered price bound to the chat meter
   INFRAWRENCH_STRIPE_CHAT_METER_EVENT = "..."
+  # Optional: sell prepaid capacity slots — one seat bought outright for 2 years
+  # at $200 instead of rented monthly. Must be a ONE-TIME price (Checkout opens
+  # in payment mode); a recurring price here fails at checkout. Unset = the
+  # billing page hides the offer and the purchase route returns 503, which is
+  # the right default for a monthly-only deployment. The term and the quoted
+  # price live in code (CAPACITY_SLOT_TERM_MONTHS / CAPACITY_SLOT_PRICE_USD in
+  # server-core/src/billing/capacity-slots.ts) — keep this price object in step
+  # with them, since the code number is only copy and this one is the charge.
+  STRIPE_CAPACITY_SLOT_PRICE_ID       = "price_..."
 
   # ClickHouse (metrics + costs; the four URL/USER/PASSWORD/DATABASE keys are
   # required together or writes/reads no-op). Two options:

@@ -889,6 +889,57 @@ export const subscriptions = pgTable(
   }),
 );
 
+/**
+ * Prepaid seat capacity, bought outright for a fixed term instead of rented by
+ * the month.
+ *
+ * One row per completed one-time Stripe payment, not per seat: a purchase of
+ * three slots is one row with `quantity` 3, because they were paid for together
+ * and therefore expire together. Rows are additive and never mutated by seat
+ * accounting — capacity is a `sum(quantity)` over the rows that are still
+ * `active` and not yet past `expiresAt`, so an expiring term needs no sweep job
+ * to take effect.
+ *
+ * Unlike `subscriptions` there is no unique index on the organization: an org
+ * accumulates slots, and each purchase carries its own term.
+ */
+export const capacitySlots = pgTable(
+  "capacity_slots",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Seats this purchase grants for the whole of its term. */
+    quantity: integer("quantity").notNull().default(1),
+    /**
+     * "active" | "refunded". A refunded slot stops granting capacity
+     * immediately; the row is kept so the purchase history stays honest.
+     */
+    status: text("status").notNull().default("active"),
+    /**
+     * The Checkout Session that paid for it. Unique, and that is what makes the
+     * webhook idempotent — Stripe redelivers events, and without this a retry
+     * would grant the same seats twice.
+     */
+    stripeCheckoutSessionId: text("stripe_checkout_session_id").notNull(),
+    stripePaymentIntentId: text("stripe_payment_intent_id"),
+    /** What was actually charged, in cents, for the purchase-history line. */
+    amountPaidCents: integer("amount_paid_cents"),
+    /** Term length as sold, recorded per row so changing the offer is safe. */
+    termMonths: integer("term_months").notNull(),
+    startsAt: timestamp("starts_at").notNull().defaultNow(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    sessionUnique: uniqueIndex("capacity_slots_session_unique").on(t.stripeCheckoutSessionId),
+    orgIdx: index("capacity_slots_org_idx").on(t.organizationId),
+    paymentIntentIdx: index("capacity_slots_payment_intent_idx").on(t.stripePaymentIntentId),
+  }),
+);
+
 export const invitations = pgTable(
   "invitations",
   {

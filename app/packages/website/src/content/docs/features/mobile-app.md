@@ -87,7 +87,7 @@ Pods listed by a Kubernetes integration have a **Shell** button that opens a `ku
 
 The mobile app is deliberately a read-and-respond surface. Some things are demoted or absent by design:
 
-- **Billing is read-only** — you can see your plan and seats, but plan changes and payment details are managed on the web (App Store rules).
+- **Billing is read-only** — you can see your plan, your monthly and prepaid seats, and your [capacity slot](../team-and-billing/billing-and-plans.md#prepaid-capacity-slots) purchases with their expiry dates, but plan changes, slot purchases and payment details are managed on the web (App Store rules).
 - **Code editors are absent** — manifest editing, the [bucket policy editor](./bucket-policy-editor.md), and [workflow](./workflows.md) editing all use Monaco, which stays on web and desktop.
 - **[Secret reroll](../core-concepts/secret-rerolls.md) wizard** is web/desktop-only. Plugin command prompts do work — the form renders natively, though the richer pickers (region, size, machine image) fall back to a plain text field.
 - **Dashboard drag-and-drop and custom date ranges** — dashboards are fully editable on mobile (see [above](#building-a-dashboard-on-the-phone)), but cards are reordered with **Move up** / **Move down** rather than dragged, and a cost graph's custom absolute date range is set on web or desktop.

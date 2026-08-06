@@ -5,6 +5,11 @@
  * than by each route reimplementing "is there a subscription row". The billing
  * routes own buying a plan; this owns reading what one grants.
  *
+ * "Is there a subscription row" is in any case no longer the whole question:
+ * an org can also be paid through a prepaid capacity slot with no subscription
+ * at all (see `billing/capacity-slots.ts`), which is exactly why every caller
+ * should come through {@link planAccess} rather than query `subscriptions`.
+ *
  * In server-core rather than web because the deployment runner needs it, and
  * that runner is shared with `github-watcher` — which cannot import web.
  */
@@ -12,6 +17,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "./db/client.js";
 import { organizations, subscriptions } from "./db/schema.js";
+import { activeCapacitySeats } from "./billing/capacity-slots.js";
 
 /**
  * Stripe statuses that still count as paid.
@@ -54,7 +60,7 @@ export const FREE_PLAN_LIMITS = {
 export interface PlanAccess {
   paid: boolean;
   /** Why access was granted or withheld, for the message the caller shows. */
-  reason: "complimentary" | "subscription" | "none" | "inactive";
+  reason: "complimentary" | "subscription" | "capacity_slot" | "none" | "inactive";
   /** The subscription's Stripe status, when there is a subscription at all. */
   status?: string;
 }
@@ -78,9 +84,19 @@ export async function planAccess(organizationId: string): Promise<PlanAccess> {
     })
     .from(subscriptions)
     .where(eq(subscriptions.organizationId, organizationId));
-  if (subs.length === 0) return { paid: false, reason: "none" };
   const paid = subs.find(isPaidRow);
   if (paid) return { paid: true, reason: "subscription", status: paid.status };
+
+  // A prepaid capacity slot is paid access on its own, checked before any
+  // "no plan"/"lapsed" verdict below. It was bought outright for a fixed term,
+  // so it has to keep granting the plan with no subscription row at all — an
+  // org that pays $200 for a seat and is then told to upgrade before it can use
+  // one has been sold nothing.
+  if ((await activeCapacitySeats(organizationId)) > 0) {
+    return { paid: true, reason: "capacity_slot" };
+  }
+
+  if (subs.length === 0) return { paid: false, reason: "none" };
   // Rows that never became a Stripe subscription are abandoned checkouts, not
   // lapsed plans — an org that only has those has never subscribed, so the
   // caller's message should say "upgrade", not "reactivate".

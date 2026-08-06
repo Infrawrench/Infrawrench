@@ -2,7 +2,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 // tools.ts reaches billing, which reaches the db client at import time. None of
 // these cases dispatch a tool, so a stub keeps the suite from needing a DATABASE_URL.
+// Billing also reaches server-core's capacity-slots, which imports server-core's
+// own db client — a separate module from the web alias above, so it needs its own
+// stub or the suite fails at import.
 vi.mock("@/db/client", () => ({ db: {} }));
+vi.mock("@infrawrench/server-core/billing/capacity-slots", () => ({
+  activeCapacitySeats: () => Promise.resolve(0),
+}));
 
 import { searchBackend, isWebSearchConfigured } from "../backend";
 import { webChatToolSpecs } from "../tools";

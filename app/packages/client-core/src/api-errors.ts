@@ -10,8 +10,17 @@
 export interface SeatLimitPayload {
   error: string;
   code: "seat_limit_reached";
+  /** Total capacity, monthly subscription seats plus prepaid capacity slots. */
   seatCount: number;
   seatsUsed: number;
+  /**
+   * Whether retrying with `addSeat: true` can work. False when the org's
+   * capacity is entirely prepaid capacity slots: there is no monthly seat to
+   * add, so the only remedy is buying another slot, and the prompt must send
+   * the user to Billing instead of offering a retry. Optional so a response
+   * from a server predating the field reads as the old add-a-seat behaviour.
+   */
+  canAddSeat?: boolean;
 }
 
 export function isSeatLimitResponse(parsed: unknown): parsed is SeatLimitPayload {

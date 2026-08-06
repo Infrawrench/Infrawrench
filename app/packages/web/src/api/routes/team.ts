@@ -324,6 +324,25 @@ app.post("/invitations", async (c) => {
   const seatLimit = await checkSeatAvailability(organizationId);
   let seatAdded = false;
   if (seatLimit) {
+    // An org whose capacity is entirely prepaid capacity slots has no monthly
+    // subscription item to increment, so there is no seat to opt into here —
+    // it has to buy another slot from the billing page first. Refusing before
+    // reading `addSeat` keeps that a clear 409 instead of a confusing 502 from
+    // `addSeat` finding nothing to grow.
+    if (!seatLimit.canAddSeat) {
+      return c.json(
+        {
+          error:
+            `All ${seatLimit.seatCount} prepaid seats are in use. ` +
+            `Buy another capacity slot under Settings → Billing to invite more teammates.`,
+          code: "seat_limit_reached",
+          seatCount: seatLimit.seatCount,
+          seatsUsed: seatLimit.seatsUsed,
+          canAddSeat: false,
+        },
+        409,
+      );
+    }
     if (!body.addSeat) {
       return c.json(
         {
@@ -331,6 +350,7 @@ app.post("/invitations", async (c) => {
           code: "seat_limit_reached",
           seatCount: seatLimit.seatCount,
           seatsUsed: seatLimit.seatsUsed,
+          canAddSeat: true,
         },
         409,
       );

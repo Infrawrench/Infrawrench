@@ -113,7 +113,9 @@ Caching behaves differently per provider, and you're only ever charged 1.5× wha
 
 ### Free tier
 
-Orgs without a paid subscription get **$5 of chat usage per month**. When that runs out, the agent refuses new turns until the next month — add a payment method in **Settings → Billing** to keep going. The chat header shows `(free tier)` next to the spend readout while the free cap applies.
+Orgs on the free plan get **$5 of chat usage per month**. When that runs out, the agent refuses new turns until the next month — add a payment method in **Settings → Billing** to keep going. The chat header shows `(free tier)` next to the spend readout while the free cap applies.
+
+Either kind of paid seat lifts the cap: a monthly subscription or a [prepaid capacity slot](../team-and-billing/billing-and-plans.md#prepaid-capacity-slots).
 
 ### Monthly cap
 

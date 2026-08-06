@@ -61,6 +61,14 @@ export function TeamSection() {
         // The paid plan is full — every member and pending invite holds a
         // seat. Confirm buying one more, then retry with the opt-in flag.
         const { seatCount } = e.payload;
+        // Capacity that is entirely prepaid slots has no monthly seat to add,
+        // so there is nothing to retry — the org has to buy another slot first.
+        if (e.payload.canAddSeat === false) {
+          setError(
+            `All ${seatCount} prepaid seats are in use. Buy another capacity slot under Billing to invite more teammates.`,
+          );
+          return;
+        }
         if (!has("billing:write")) {
           setError(
             `All ${seatCount} seats are in use. Ask someone with billing access to add a seat first.`,

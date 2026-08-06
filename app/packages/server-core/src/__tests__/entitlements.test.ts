@@ -3,6 +3,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockSelect = vi.fn();
 vi.mock("../db/client", () => ({ db: { select: (...a: unknown[]) => mockSelect(...a) } }));
 
+// Prepaid capacity queries its own table, so it is stubbed rather than queued
+// into selectSequence — these tests are about which source wins.
+const mockActiveCapacitySeats = vi.fn<() => Promise<number>>();
+vi.mock("../billing/capacity-slots", () => ({
+  activeCapacitySeats: () => mockActiveCapacitySeats(),
+}));
+
 const { planAccess, requirePaidPlan, PlanRequiredError } = await import("../entitlements");
 
 /** Queue one select chain per query, in call order: the org row, then subs. */
@@ -21,7 +28,11 @@ const sub = (status: string, stripeSubscriptionId: string | null = "sub_live") =
 });
 
 describe("planAccess", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // No prepaid capacity unless a test says otherwise.
+    mockActiveCapacitySeats.mockResolvedValue(0);
+  });
 
   it("grants complimentary orgs without consulting subscriptions", async () => {
     selectSequence(orgRow(true));
@@ -107,10 +118,57 @@ describe("planAccess", () => {
       status: "canceled",
     });
   });
+
+  it("grants an org holding only a prepaid capacity slot", async () => {
+    // The slot was bought outright. With no subscription row at all this org
+    // still has to be paid, or it could not use the seat it paid for.
+    mockActiveCapacitySeats.mockResolvedValue(1);
+    selectSequence(orgRow(false), []);
+    expect(await planAccess("org-1")).toEqual({ paid: true, reason: "capacity_slot" });
+  });
+
+  it("grants a prepaid slot even when the subscription has lapsed", async () => {
+    // A slot outlives the monthly plan by design — cancelling the subscription
+    // cannot revoke a term that is already paid for.
+    mockActiveCapacitySeats.mockResolvedValue(2);
+    selectSequence(orgRow(false), [sub("canceled")]);
+    expect(await planAccess("org-1")).toEqual({ paid: true, reason: "capacity_slot" });
+  });
+
+  it("reports the subscription, not the slot, when both are live", async () => {
+    // Reason drives the message shown on denial; a live subscription is the
+    // more useful thing to name, and this path never reaches the slot query.
+    mockActiveCapacitySeats.mockResolvedValue(2);
+    selectSequence(orgRow(false), [sub("active")]);
+    expect(await planAccess("org-1")).toEqual({
+      paid: true,
+      reason: "subscription",
+      status: "active",
+    });
+    expect(mockActiveCapacitySeats).not.toHaveBeenCalled();
+  });
+
+  it("denies once every slot has lapsed or been refunded", async () => {
+    // activeCapacitySeats excludes expired and refunded rows, so an org whose
+    // last term ran out reads as never having subscribed.
+    mockActiveCapacitySeats.mockResolvedValue(0);
+    selectSequence(orgRow(false), []);
+    expect(await planAccess("org-1")).toEqual({ paid: false, reason: "none" });
+  });
+
+  it("does not consult slots for a complimentary org", async () => {
+    selectSequence(orgRow(true));
+    await planAccess("org-1");
+    expect(mockActiveCapacitySeats).not.toHaveBeenCalled();
+  });
 });
 
 describe("requirePaidPlan", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // No prepaid capacity unless a test says otherwise.
+    mockActiveCapacitySeats.mockResolvedValue(0);
+  });
 
   it("passes silently for a paid org", async () => {
     selectSequence(orgRow(false), [sub("active")]);

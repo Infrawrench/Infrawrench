@@ -21,10 +21,20 @@ const mockGetStripe = vi.fn();
 vi.mock("../../services/stripe", () => ({ getStripe: (...a: unknown[]) => mockGetStripe(...a) }));
 vi.mock("uuid", () => ({ v4: () => "usage-uuid" }));
 
+// Prepaid capacity is a third way to be paid here, queried from its own table.
+const mockActiveCapacitySeats = vi.fn<() => Promise<number>>();
+vi.mock("@infrawrench/server-core/billing/capacity-slots", () => ({
+  activeCapacitySeats: () => mockActiveCapacitySeats(),
+}));
+
 const { getMonthlySpend, recordUsage } = await import("../billing");
 
 describe("getMonthlySpend", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // No prepaid capacity unless a test says otherwise.
+    mockActiveCapacitySeats.mockResolvedValue(0);
+  });
 
   function setup(
     cap: number | null,
@@ -111,6 +121,38 @@ describe("getMonthlySpend", () => {
     expect(s.monthlyCapMicros).toBe(1_000_000);
     expect(s.exceeded).toBe(true);
     expect(s.freeTier).toBe(false);
+  });
+
+  it("treats a prepaid capacity slot as paid, with no subscription at all", async () => {
+    // The org bought two years of seats outright. Handing it the $5 free-tier
+    // cap would contradict every other paid check.
+    mockActiveCapacitySeats.mockResolvedValue(1);
+    setup(null, "6000000", null);
+    const s = await getMonthlySpend("o1");
+    expect(s.monthlyCapMicros).toBeNull();
+    expect(s.freeTier).toBe(false);
+    expect(s.exceeded).toBe(false);
+  });
+
+  it("treats a prepaid slot as paid even when the subscription has lapsed", async () => {
+    mockActiveCapacitySeats.mockResolvedValue(3);
+    setup(null, "6000000", "canceled");
+    const s = await getMonthlySpend("o1");
+    expect(s.freeTier).toBe(false);
+  });
+
+  it("does not query slots when the subscription already settles it", async () => {
+    setup(null, "1000", "active");
+    await getMonthlySpend("o1");
+    expect(mockActiveCapacitySeats).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the free tier once every slot has lapsed", async () => {
+    mockActiveCapacitySeats.mockResolvedValue(0);
+    setup(null, "6000000", null);
+    const s = await getMonthlySpend("o1");
+    expect(s.monthlyCapMicros).toBe(5_000_000);
+    expect(s.freeTier).toBe(true);
   });
 });
 

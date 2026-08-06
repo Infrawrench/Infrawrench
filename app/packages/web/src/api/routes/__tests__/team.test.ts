@@ -289,7 +289,11 @@ describe("Team routes", () => {
   });
 
   it("POST /invitations returns the structured 409 when the plan is full", async () => {
-    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({ seatCount: 3, seatsUsed: 3 });
+    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({
+      seatCount: 3,
+      seatsUsed: 3,
+      canAddSeat: true,
+    });
     const values = vi.fn().mockResolvedValue(undefined);
     mockInsert.mockReturnValue({ values });
 
@@ -307,7 +311,11 @@ describe("Team routes", () => {
   });
 
   it("POST /invitations with addSeat buys a seat and sends the invite", async () => {
-    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({ seatCount: 3, seatsUsed: 3 });
+    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({
+      seatCount: 3,
+      seatsUsed: 3,
+      canAddSeat: true,
+    });
     const values = vi.fn().mockResolvedValue(undefined);
     mockInsert.mockReturnValue({ values });
 
@@ -323,7 +331,11 @@ describe("Team routes", () => {
   });
 
   it("POST /invitations with addSeat needs billing:write", async () => {
-    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({ seatCount: 3, seatsUsed: 3 });
+    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({
+      seatCount: 3,
+      seatsUsed: 3,
+      canAddSeat: true,
+    });
     mockHasPermission.mockImplementation((_granted, perm) => perm !== "billing:write");
     const values = vi.fn().mockResolvedValue(undefined);
     mockInsert.mockReturnValue({ values });
@@ -339,7 +351,11 @@ describe("Team routes", () => {
   });
 
   it("POST /invitations does not send the invite when the seat purchase fails", async () => {
-    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({ seatCount: 3, seatsUsed: 3 });
+    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({
+      seatCount: 3,
+      seatsUsed: 3,
+      canAddSeat: true,
+    });
     vi.mocked(addSeat).mockRejectedValueOnce(new Error("stripe down"));
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const values = vi.fn().mockResolvedValue(undefined);

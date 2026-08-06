@@ -100,7 +100,8 @@
     "./infrafile/triggers": "./src/infrafile/triggers.ts",
     "./entitlements": "./src/entitlements.ts",
     "./infrafile/runner": "./src/infrafile/runner.ts",
-    "./billing/build-meter": "./src/billing/build-meter.ts"
+    "./billing/build-meter": "./src/billing/build-meter.ts",
+    "./billing/capacity-slots": "./src/billing/capacity-slots.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

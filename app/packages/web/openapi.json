@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.36.0",
+    "version": "0.37.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -12434,18 +12434,23 @@
           },
           "seatCount": {
             "type": "integer",
-            "description": "Seats on the plan"
+            "description": "Total capacity: monthly subscription seats plus prepaid capacity-slot seats"
           },
           "seatsUsed": {
             "type": "integer",
             "description": "Members plus pending unexpired invitations"
+          },
+          "canAddSeat": {
+            "type": "boolean",
+            "description": "Whether retrying with `addSeat: true` can succeed. False when the org's capacity is entirely prepaid capacity slots: there is no monthly seat to buy, so the only remedy is another capacity slot."
           }
         },
         "required": [
           "error",
           "code",
           "seatCount",
-          "seatsUsed"
+          "seatsUsed",
+          "canAddSeat"
         ],
         "additionalProperties": false
       },
@@ -12466,7 +12471,7 @@
           },
           "addSeat": {
             "type": "boolean",
-            "description": "When the paid plan is full (409 seat_limit_reached), retry with this set to buy one more seat and send the invitation. Requires billing:write."
+            "description": "When the paid plan is full (409 seat_limit_reached), retry with this set to buy one more monthly seat and send the invitation. Requires billing:write. Only works when the 409 reported `canAddSeat: true` — an org whose capacity is entirely prepaid capacity slots has no monthly seat to add."
           }
         },
         "required": [
@@ -12527,6 +12532,94 @@
         ],
         "additionalProperties": false
       },
+      "CapacitySlot": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Seats this purchase grants for the whole of its term."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "refunded"
+            ],
+            "description": "A slot is only granting capacity when it is `active` AND `expiresAt` is still in the future."
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "termMonths": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "amountPaidCents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "quantity",
+          "status",
+          "startsAt",
+          "expiresAt",
+          "termMonths",
+          "amountPaidCents"
+        ],
+        "additionalProperties": false
+      },
+      "CapacityStatus": {
+        "type": "object",
+        "properties": {
+          "purchasable": {
+            "type": "boolean",
+            "description": "False when this deployment has no one-time capacity price configured; the purchase route returns 503 and clients should hide the offer."
+          },
+          "termMonths": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "priceUsd": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "List price of one slot in whole dollars, for display copy."
+          },
+          "seats": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Seats from slots still inside their term, excluding lapsed and refunded. ADDITIONAL to `subscription.seatCount` — an org's capacity is the two summed, and an org can hold slots with no subscription at all."
+          },
+          "slots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CapacitySlot"
+            },
+            "description": "Every purchase ever made, newest first, including lapsed and refunded."
+          }
+        },
+        "required": [
+          "purchasable",
+          "termMonths",
+          "priceUsd",
+          "seats",
+          "slots"
+        ],
+        "additionalProperties": false
+      },
       "BillingStatus": {
         "type": "object",
         "properties": {
@@ -12536,11 +12629,15 @@
           },
           "subscription": {
             "$ref": "#/components/schemas/Subscription"
+          },
+          "capacity": {
+            "$ref": "#/components/schemas/CapacityStatus"
           }
         },
         "required": [
           "complimentary",
-          "subscription"
+          "subscription",
+          "capacity"
         ],
         "additionalProperties": false
       },
@@ -12555,6 +12652,18 @@
         "required": [
           "url"
         ],
+        "additionalProperties": false
+      },
+      "CapacityCheckoutRequest": {
+        "type": "object",
+        "properties": {
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 25,
+            "description": "Slots to buy. Defaults to 1. The buyer can still adjust it in Checkout."
+          }
+        },
         "additionalProperties": false
       },
       "AuditEntry": {
@@ -29101,6 +29210,80 @@
         },
         "operationId": "postOrgOrgIdBillingCheckout",
         "x-required-permission": "billing:write"
+      }
+    },
+    "/api/org/{orgId}/billing/capacity/checkout": {
+      "post": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Start a Stripe Checkout session for prepaid capacity slots",
+        "description": "A capacity slot is one seat bought outright for a fixed term instead of rented monthly, and it grants paid-plan access on its own. This is a one-time payment, so the seats are granted by the `checkout.session.completed` webhook once Stripe confirms the payment — a 200 here only means the buyer was sent to a payment page. Rejected with 400 for complimentary organizations, and 503 when the deployment has no one-time capacity price configured.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CapacityCheckoutRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Redirect URL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StripeRedirectUrl"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdBillingCapacityCheckout"
       }
     },
     "/api/org/{orgId}/billing/portal": {

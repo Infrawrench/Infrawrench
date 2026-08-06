@@ -35,7 +35,10 @@ const ALLOWED: Array<{ methods: string[]; pattern: RegExp }> = [
     ),
   },
   { methods: ["GET"], pattern: new RegExp(`${ORG}/audit-logs(\\?|$)`) },
-  { methods: ["GET", "POST"], pattern: new RegExp(`${ORG}/billing/(status|checkout|portal)$`) },
+  {
+    methods: ["GET", "POST"],
+    pattern: new RegExp(`${ORG}/billing/(status|checkout|portal|capacity\\/checkout)$`),
+  },
   // Allocation-rule pickers on the Tag Policy page.
   { methods: ["GET"], pattern: new RegExp(`${ORG}/costs/dimensions(\\?|$)`) },
   // Drift/expiry alert settings cards on the Notifications page.

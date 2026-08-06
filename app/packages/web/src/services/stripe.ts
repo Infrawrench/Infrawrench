@@ -34,6 +34,20 @@ export function getStripeBuildPriceId(): string | null {
   return process.env["STRIPE_BUILD_PRICE_ID"] || null;
 }
 
+/**
+ * One-time price of a single prepaid capacity slot — a seat bought outright for
+ * a fixed term rather than rented monthly (see
+ * `server-core/billing/capacity-slots.ts`).
+ *
+ * Optional, and it must be a **one-time** price, not recurring: the purchase
+ * route opens Checkout in `payment` mode. Without it the billing page hides the
+ * option and the purchase route reports the feature as unconfigured, which is
+ * the right default for self-hosted deployments that only want the monthly plan.
+ */
+export function getStripeCapacitySlotPriceId(): string | null {
+  return process.env["STRIPE_CAPACITY_SLOT_PRICE_ID"] || null;
+}
+
 export function getStripeWebhookSecret(): string {
   const secret = process.env["STRIPE_WEBHOOK_SECRET"];
   if (!secret) throw new Error("STRIPE_WEBHOOK_SECRET environment variable is required");
