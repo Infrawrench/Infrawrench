@@ -7,10 +7,10 @@ const APP_NAME = "Infrawrench";
  * Keep `document.title` in sync with what the user is looking at.
  *
  * Two sources, in precedence order:
- * - `routeTitle` — the host passes this for *plain* routes (Changes, Expiring,
- *   Fan-out, Alerts, …) that render outside the workspace-tab system. While
- *   one is active the workspace tabs are all background, so the active tab's
- *   title would be stale.
+ * - `routeTitle` — the host passes this for *plain* routes (Moment, Admin)
+ *   that render outside the workspace-tab system. While one is active the
+ *   workspace tabs are all background, so the active tab's title would be
+ *   stale.
  * - the active workspace tab's title otherwise.
  */
 export function useWorkspaceTabDocumentTitle(options?: {

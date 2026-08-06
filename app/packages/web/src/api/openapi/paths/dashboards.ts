@@ -194,6 +194,7 @@ const TabTarget = strict({
     "probes",
     "workflows",
     "deployments",
+    "settings",
     "chat",
   ]),
   dashboardId: Uuid.optional(),

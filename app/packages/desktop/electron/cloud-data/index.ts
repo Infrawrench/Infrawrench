@@ -26,3 +26,4 @@ import "./sftp";
 import "./ssh-tunnels";
 import "./ssh-fanout";
 import "./host-key-trust";
+import "./settings";

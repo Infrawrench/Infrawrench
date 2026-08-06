@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkflowsRouteImport } from './routes/workflows'
 import { Route as SshFanoutRouteImport } from './routes/ssh-fanout'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SavingsRouteImport } from './routes/savings'
 import { Route as ProbesRouteImport } from './routes/probes'
 import { Route as PostureRouteImport } from './routes/posture'
@@ -37,6 +38,11 @@ const WorkflowsRoute = WorkflowsRouteImport.update({
 const SshFanoutRoute = SshFanoutRouteImport.update({
   id: '/ssh-fanout',
   path: '/ssh-fanout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SavingsRoute = SavingsRouteImport.update({
@@ -141,6 +147,7 @@ export interface FileRoutesByFullPath {
   '/posture': typeof PostureRoute
   '/probes': typeof ProbesRoute
   '/savings': typeof SavingsRoute
+  '/settings': typeof SettingsRoute
   '/ssh-fanout': typeof SshFanoutRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
@@ -162,6 +169,7 @@ export interface FileRoutesByTo {
   '/posture': typeof PostureRoute
   '/probes': typeof ProbesRoute
   '/savings': typeof SavingsRoute
+  '/settings': typeof SettingsRoute
   '/ssh-fanout': typeof SshFanoutRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
@@ -184,6 +192,7 @@ export interface FileRoutesById {
   '/posture': typeof PostureRoute
   '/probes': typeof ProbesRoute
   '/savings': typeof SavingsRoute
+  '/settings': typeof SettingsRoute
   '/ssh-fanout': typeof SshFanoutRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
@@ -207,6 +216,7 @@ export interface FileRouteTypes {
     | '/posture'
     | '/probes'
     | '/savings'
+    | '/settings'
     | '/ssh-fanout'
     | '/workflows'
     | '/accounts/$accountId'
@@ -228,6 +238,7 @@ export interface FileRouteTypes {
     | '/posture'
     | '/probes'
     | '/savings'
+    | '/settings'
     | '/ssh-fanout'
     | '/workflows'
     | '/accounts/$accountId'
@@ -249,6 +260,7 @@ export interface FileRouteTypes {
     | '/posture'
     | '/probes'
     | '/savings'
+    | '/settings'
     | '/ssh-fanout'
     | '/workflows'
     | '/accounts/$accountId'
@@ -271,6 +283,7 @@ export interface RootRouteChildren {
   PostureRoute: typeof PostureRoute
   ProbesRoute: typeof ProbesRoute
   SavingsRoute: typeof SavingsRoute
+  SettingsRoute: typeof SettingsRoute
   SshFanoutRoute: typeof SshFanoutRoute
   WorkflowsRoute: typeof WorkflowsRoute
   AccountsAccountIdRoute: typeof AccountsAccountIdRoute
@@ -292,6 +305,13 @@ declare module '@tanstack/react-router' {
       path: '/ssh-fanout'
       fullPath: '/ssh-fanout'
       preLoaderRoute: typeof SshFanoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/savings': {
@@ -431,6 +451,7 @@ const rootRouteChildren: RootRouteChildren = {
   PostureRoute: PostureRoute,
   ProbesRoute: ProbesRoute,
   SavingsRoute: SavingsRoute,
+  SettingsRoute: SettingsRoute,
   SshFanoutRoute: SshFanoutRoute,
   WorkflowsRoute: WorkflowsRoute,
   AccountsAccountIdRoute: AccountsAccountIdRoute,

@@ -4,7 +4,7 @@ description: Share a workspace with teammates.
 sidebar_order: 1
 ---
 
-> **Web only.** The desktop app is single-user by design.
+> The desktop app in local-only mode is single-user by design. Signed in to a cloud organization, the desktop app manages the same team from its Settings tab.
 
 An **organization** is a shared workspace. Accounts, resources, dashboards, SSH keys, API keys, and audit logs all live under exactly one organization. You can belong to many organizations and switch between them from the workspace picker in the top-left.
 

@@ -16,6 +16,7 @@ import {
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
+  settingsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -40,6 +41,7 @@ export {
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
+  settingsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -96,6 +98,14 @@ export function getWorkspaceNavigateArgs(
       return { to: "/metric-alerts", ...(replace ? { replace: true } : {}) };
     case "probes":
       return { to: "/probes", ...(replace ? { replace: true } : {}) };
+    case "settings":
+      // Like chat: search passed explicitly so navigating back to the General
+      // section CLEARS the ?section= param instead of resolving back to it.
+      return {
+        to: "/settings",
+        search: target.section ? { section: target.section } : {},
+        ...(replace ? { replace: true } : {}),
+      };
     case "chat":
       // Always pass search explicitly: navigating from a conversation
       // (?conversation=x) to the list must CLEAR the param, or the route
@@ -205,6 +215,10 @@ export function syncWorkspaceRouteFromPath(
   if (segments[0] === "chat") {
     const params = new URLSearchParams(search ?? "");
     return chatTabTarget(params.get("conversation") ?? undefined);
+  }
+  if (segments[0] === "settings") {
+    const params = new URLSearchParams(search ?? "");
+    return settingsTabTarget(params.get("section") ?? undefined);
   }
   if (segments[0] === "dashboard" && segments[1]) {
     return dashboardTabTarget(segments[1]);

@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import type {
   DigestEmailRecipient,
   DigestSendResult,
   DigestSettings,
   DigestSettingsPatch,
-} from "@infrawrench/ui";
+} from "@infrawrench/client-core";
+import { useSettingsHost } from "./host.js";
 
 /**
  * The weekly digest's org-level settings: the on/off switch, the send
@@ -82,7 +82,8 @@ const TONE_CLASS = {
   muted: "text-on-surface-tertiary",
 } as const;
 
-export function WeeklyDigestSection({ orgId }: { orgId: string }) {
+export function WeeklyDigestSection() {
+  const { orgId, api } = useSettingsHost();
   const [settings, setSettings] = useState<DigestSettings | null>(null);
   const [recipients, setRecipients] = useState<DigestEmailRecipient[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -106,8 +107,8 @@ export function WeeklyDigestSection({ orgId }: { orgId: string }) {
     void (async () => {
       try {
         const [next, list] = await Promise.all([
-          apiGet<DigestSettings>(`/api/org/${orgId}/digest`),
-          apiGet<{ recipients: DigestEmailRecipient[] }>(`/api/org/${orgId}/digest/recipients`),
+          api.get<DigestSettings>(`/api/org/${orgId}/digest`),
+          api.get<{ recipients: DigestEmailRecipient[] }>(`/api/org/${orgId}/digest/recipients`),
         ]);
         if (!cancelled) {
           setSettings(next);
@@ -122,7 +123,7 @@ export function WeeklyDigestSection({ orgId }: { orgId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [orgId, reloadNonce]);
+  }, [api, orgId, reloadNonce]);
 
   const save = useCallback(
     async (patch: DigestSettingsPatch) => {
@@ -134,20 +135,20 @@ export function WeeklyDigestSection({ orgId }: { orgId: string }) {
       setSettings({ ...settings, ...patch } as DigestSettings);
       setError(null);
       try {
-        setSettings(await apiPut<DigestSettings>(`/api/org/${orgId}/digest`, patch));
+        setSettings(await api.put<DigestSettings>(`/api/org/${orgId}/digest`, patch));
       } catch (e) {
         setSettings(previous);
         setError(e instanceof Error ? e.message : "Failed to save digest settings");
       }
     },
-    [orgId, settings],
+    [api, orgId, settings],
   );
 
   async function handleSendNow() {
     setSendBusy(true);
     setSendMessage(null);
     try {
-      const r = await apiPost<DigestSendResult>(`/api/org/${orgId}/digest/send`);
+      const r = await api.post<DigestSendResult>(`/api/org/${orgId}/digest/send`);
       setSendMessage({
         kind: "ok",
         text: `Sent to ${r.succeeded}/${r.attempted} destination(s) — Slack ${r.slack.succeeded}/${r.slack.attempted}, Teams ${r.teams.succeeded}/${r.teams.attempted}, email ${r.email.succeeded}/${r.email.attempted}.`,
@@ -166,7 +167,7 @@ export function WeeklyDigestSection({ orgId }: { orgId: string }) {
     setAddBusy(true);
     setRecipientError(null);
     try {
-      const added = await apiPost<DigestEmailRecipient>(`/api/org/${orgId}/digest/recipients`, {
+      const added = await api.post<DigestEmailRecipient>(`/api/org/${orgId}/digest/recipients`, {
         email,
       });
       setRecipients((list) =>
@@ -186,7 +187,7 @@ export function WeeklyDigestSection({ orgId }: { orgId: string }) {
     const previous = recipients;
     setRecipients((list) => list.filter((r) => r.id !== id));
     try {
-      await apiDelete(`/api/org/${orgId}/digest/recipients/${id}`);
+      await api.delete(`/api/org/${orgId}/digest/recipients/${id}`);
     } catch (e) {
       setRecipients(previous);
       setRecipientError(e instanceof Error ? e.message : "Failed to remove the recipient");

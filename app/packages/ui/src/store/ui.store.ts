@@ -16,6 +16,7 @@ export type WorkspaceTabTarget =
   | { kind: "probes" }
   | { kind: "workflows"; workflowId?: string }
   | { kind: "deployments"; repo?: string }
+  | { kind: "settings"; section?: string }
   | { kind: "chat"; conversationId?: string }
   | {
       kind: "resource";
@@ -80,6 +81,9 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       // Not keyed by repo: a hotlink to a different repo should retarget the
       // open Deploy tab rather than pile up a tab per repository.
       return "deployments";
+    case "settings":
+      // Not keyed by section: one Settings tab that remembers where you were.
+      return "settings";
     case "chat":
       return target.conversationId ? `chat:${target.conversationId}` : "chat";
     case "resource":
@@ -126,6 +130,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       // "Deploy" everywhere the user reads it — the sidebar tile, the panel
       // heading and the docs all say Deploy; only the tab used to disagree.
       return "Deploy";
+    case "settings":
+      return "Settings";
     case "chat":
       return "Chat";
     case "resource":
@@ -158,6 +164,10 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
       // hotlink reusing one tab, while this comparison is what makes the route
       // sync notice the repo changed and actually retarget it.
       return a.repo === (b as { repo?: string }).repo;
+    case "settings":
+      // Same deployments trick: single tab by id, but comparing the section
+      // lets the route sync record which settings page the tab is on.
+      return a.section === (b as { section?: string }).section;
     case "workflows":
       return a.workflowId === (b as { workflowId?: string }).workflowId;
     case "chat":

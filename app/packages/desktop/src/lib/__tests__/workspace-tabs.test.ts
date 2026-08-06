@@ -140,6 +140,17 @@ describe("getWorkspaceNavigateArgs", () => {
       search: { repo: "owner/name" },
     });
   });
+
+  it("returns settings route args, clearing the section param for General", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "settings" })).toEqual({
+      to: "/settings",
+      search: {},
+    });
+    expect(getWorkspaceNavigateArgs({ kind: "settings", section: "team" })).toEqual({
+      to: "/settings",
+      search: { section: "team" },
+    });
+  });
 });
 
 describe("syncWorkspaceRouteFromPath", () => {
@@ -171,6 +182,14 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the probes path", () => {
     expect(syncWorkspaceRouteFromPath("/probes")).toEqual({ kind: "probes" });
+  });
+
+  it("parses the settings path with its section param", () => {
+    expect(syncWorkspaceRouteFromPath("/settings")).toEqual({ kind: "settings" });
+    expect(syncWorkspaceRouteFromPath("/settings", undefined, "section=billing")).toEqual({
+      kind: "settings",
+      section: "billing",
+    });
   });
 
   // Under hash history the query lives inside the fragment, so the repo a
@@ -261,7 +280,7 @@ describe("syncWorkspaceRouteFromPath", () => {
   });
 
   it("returns null for unknown paths", () => {
-    expect(syncWorkspaceRouteFromPath("/settings")).toBeNull();
+    expect(syncWorkspaceRouteFromPath("/moment")).toBeNull();
   });
 
   it("returns null for incomplete paths", () => {

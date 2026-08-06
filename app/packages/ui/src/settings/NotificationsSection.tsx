@@ -1,0 +1,1687 @@
+import { useState, useEffect, useId, isValidElement, cloneElement } from "react";
+import type {
+  DriftAlertSettings,
+  MsTeamsWebhook,
+  PushDeviceSummary,
+  PushPreferences,
+  SlackAvailableChannel,
+  SlackChannel,
+  SlackStatus,
+} from "@infrawrench/client-core";
+import type { Recipient } from "../api-types.js";
+import { DRIFT_ALERT_LIMITS } from "@infrawrench/client-core";
+import { useSettingsHost } from "./host.js";
+import { WeeklyDigestSection } from "./WeeklyDigestSection.js";
+import { ExpiryAlertsSection } from "./ExpiryAlertsSection.js";
+
+interface PagingSettings {
+  enabled: boolean;
+  fromNumber: string | null;
+  failureThreshold: number;
+  windowMinutes: number;
+  cooldownMinutes: number;
+  credentialsConfigured: boolean;
+}
+
+export function NotificationsSection() {
+  const { orgId, api } = useSettingsHost();
+  const [settings, setSettings] = useState<PagingSettings | null>(null);
+  const [recipients, setRecipients] = useState<Recipient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [s, r] = await Promise.all([
+        api.get<PagingSettings>(`/api/org/${orgId}/twilio`),
+        api.get<Recipient[]>(`/api/org/${orgId}/twilio/recipients`),
+      ]);
+      setSettings(s);
+      setRecipients(r);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Failed to load paging settings");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId]);
+
+  if (loadError) {
+    return <p className="text-sm text-red-400">{loadError}</p>;
+  }
+  if (loading || !settings) {
+    return <p className="text-sm text-on-surface-faint">Loading…</p>;
+  }
+
+  return (
+    <div className="space-y-8 max-w-2xl">
+      <div>
+        <h1 className="text-xl font-semibold">Notifications</h1>
+        <p className="text-sm text-on-surface-muted mt-1">
+          Alert your team when a resource type fails to sync repeatedly, a budget threshold is
+          crossed, your infrastructure drifts, or a workflow calls <code>infra.page()</code> or{" "}
+          <code>infra.waitForApproval()</code>. Incidents are triggered by the background poller;
+          manual syncs from the UI never page. Delivery goes to mobile push (the Infrawrench app),
+          any Slack or Microsoft Teams channels you connect below, and — when Twilio credentials are
+          configured — SMS and voice calls.
+        </p>
+      </div>
+
+      <SlackSection orgId={orgId} />
+
+      <MsTeamsSection orgId={orgId} />
+
+      <DriftAlertsSection orgId={orgId} />
+
+      <ExpiryAlertsSection />
+
+      <WeeklyDigestSection />
+
+      <PushPreferencesSection orgId={orgId} />
+
+      <PushRosterSection orgId={orgId} />
+
+      <TwilioSection
+        orgId={orgId}
+        settings={settings}
+        recipients={recipients}
+        onChanged={() => void load()}
+      />
+    </div>
+  );
+}
+
+/**
+ * Everything SMS/voice in one card: the Twilio credentials, the recipients they
+ * page, and the test send that exercises both. They are one setup — splitting
+ * them across cards made the page read as three unrelated features.
+ */
+function TwilioSection({
+  orgId,
+  settings,
+  recipients,
+  onChanged,
+}: {
+  orgId: string;
+  settings: PagingSettings;
+  recipients: Recipient[];
+  onChanged: () => void;
+}) {
+  return (
+    <section className="border border-border rounded-xl p-5 space-y-5">
+      <div>
+        <h2 className="text-sm font-semibold text-on-surface-secondary">SMS &amp; voice</h2>
+        <p className="text-xs text-on-surface-muted mt-1">
+          Paging over Twilio. Add your credentials, list who should be reached, then send a test to
+          confirm the whole path works.
+        </p>
+      </div>
+
+      <SettingsForm orgId={orgId} initial={settings} onSaved={onChanged} />
+
+      <RecipientsPanel orgId={orgId} recipients={recipients} onChanged={onChanged} />
+
+      <TestPanel orgId={orgId} settings={settings} recipientCount={recipients.length} />
+    </section>
+  );
+}
+
+function SettingsForm({
+  orgId,
+  initial,
+  onSaved,
+}: {
+  orgId: string;
+  initial: PagingSettings;
+  onSaved: () => void;
+}) {
+  const { api } = useSettingsHost();
+  const [enabled, setEnabled] = useState(initial.enabled);
+  const [accountSid, setAccountSid] = useState("");
+  const [authToken, setAuthToken] = useState("");
+  const [fromNumber, setFromNumber] = useState(initial.fromNumber ?? "");
+  const [failureThreshold, setFailureThreshold] = useState(initial.failureThreshold);
+  const [windowMinutes, setWindowMinutes] = useState(initial.windowMinutes);
+  const [cooldownMinutes, setCooldownMinutes] = useState(initial.cooldownMinutes);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const body: Record<string, unknown> = {
+        enabled,
+        fromNumber: fromNumber.trim() || null,
+        failureThreshold,
+        windowMinutes,
+        cooldownMinutes,
+      };
+      if (accountSid.trim()) body["accountSid"] = accountSid.trim();
+      if (authToken.trim()) body["authToken"] = authToken.trim();
+      await api.put(`/api/org/${orgId}/twilio`, body);
+      setAccountSid("");
+      setAuthToken("");
+      setSaved(true);
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save settings");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <label className="flex items-center gap-2 text-sm text-on-surface-secondary">
+        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+        <span>Paging enabled</span>
+      </label>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Account SID">
+          <input
+            type="text"
+            aria-label="Account SID"
+            value={accountSid}
+            onChange={(e) => setAccountSid(e.target.value)}
+            placeholder={initial.credentialsConfigured ? "•••• (stored)" : "ACxxxxxxxx..."}
+            className={inputClass}
+            autoComplete="off"
+          />
+        </Field>
+        <Field label="Auth Token">
+          <input
+            type="password"
+            aria-label="Auth Token"
+            value={authToken}
+            onChange={(e) => setAuthToken(e.target.value)}
+            placeholder={initial.credentialsConfigured ? "•••• (stored)" : "Token"}
+            className={inputClass}
+            autoComplete="off"
+          />
+        </Field>
+      </div>
+
+      <Field label="From number (E.164)" hint="The Twilio number SMS and calls originate from.">
+        <input
+          type="text"
+          aria-label="From number (E.164)"
+          value={fromNumber}
+          onChange={(e) => setFromNumber(e.target.value)}
+          placeholder="+15551234567"
+          className={inputClass}
+        />
+      </Field>
+
+      <div className="grid grid-cols-3 gap-4">
+        <Field label="Failures" hint="Distinct sync failures…">
+          <input
+            type="number"
+            min={1}
+            aria-label="Failures"
+            value={failureThreshold}
+            onChange={(e) => setFailureThreshold(parsePositiveInt(e.target.value))}
+            className={inputClass}
+          />
+        </Field>
+        <Field label="Window (min)" hint="…within this many minutes.">
+          <input
+            type="number"
+            min={1}
+            aria-label="Window (min)"
+            value={windowMinutes}
+            onChange={(e) => setWindowMinutes(parsePositiveInt(e.target.value))}
+            className={inputClass}
+          />
+        </Field>
+        <Field label="Re-page after (min)" hint="Min interval between re-pages.">
+          <input
+            type="number"
+            min={1}
+            aria-label="Re-page after (min)"
+            value={cooldownMinutes}
+            onChange={(e) => setCooldownMinutes(parsePositiveInt(e.target.value))}
+            className={inputClass}
+          />
+        </Field>
+      </div>
+
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      {saved && <p className="text-xs text-green-400">Saved.</p>}
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => void handleSave()}
+          disabled={saving}
+          className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+        >
+          {saving ? "Saving..." : "Save settings"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RecipientsPanel({
+  orgId,
+  recipients,
+  onChanged,
+}: {
+  orgId: string;
+  recipients: Recipient[];
+  onChanged: () => void;
+}) {
+  const { api } = useSettingsHost();
+  const [displayName, setDisplayName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [sms, setSms] = useState(true);
+  const [voice, setVoice] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleAdd() {
+    setSaving(true);
+    setError(null);
+    try {
+      await api.post(`/api/org/${orgId}/twilio/recipients`, {
+        displayName: displayName.trim(),
+        phoneNumber: phoneNumber.trim(),
+        sms,
+        voice,
+      });
+      setDisplayName("");
+      setPhoneNumber("");
+      setSms(true);
+      setVoice(true);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to add recipient");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    await api.delete(`/api/org/${orgId}/twilio/recipients/${id}`);
+    onChanged();
+  }
+
+  return (
+    <div className="space-y-4 pt-5 border-t border-border/50">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-tertiary">
+        Recipients
+      </h3>
+
+      {recipients.length === 0 ? (
+        <p className="text-sm text-on-surface-muted">No recipients yet.</p>
+      ) : (
+        <ul className="divide-y divide-border/50">
+          {recipients.map((r) => (
+            <li key={r.id} className="flex items-center justify-between py-2 text-sm">
+              <div>
+                <p className="text-on-surface-secondary">{r.displayName}</p>
+                <p className="text-xs text-on-surface-tertiary font-mono">{r.phoneNumber}</p>
+              </div>
+              <div className="flex items-center gap-3 text-xs text-on-surface-tertiary">
+                <span>{r.sms ? "SMS" : ""}</span>
+                <span>{r.voice ? "Voice" : ""}</span>
+                <button
+                  type="button"
+                  onClick={() => void handleDelete(r.id)}
+                  className="text-red-400 hover:text-red-500 dark:text-red-300"
+                >
+                  Remove
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border/50">
+        <Field label="Name">
+          <input
+            type="text"
+            aria-label="Name"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="On-call"
+            className={inputClass}
+          />
+        </Field>
+        <Field label="Phone (E.164)">
+          <input
+            type="text"
+            aria-label="Phone (E.164)"
+            value={phoneNumber}
+            onChange={(e) => setPhoneNumber(e.target.value)}
+            placeholder="+15551234567"
+            className={inputClass}
+          />
+        </Field>
+      </div>
+      <div className="flex items-center gap-4 text-sm text-on-surface-secondary">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={sms} onChange={(e) => setSms(e.target.checked)} />
+          <span>SMS</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={voice} onChange={(e) => setVoice(e.target.checked)} />
+          <span>Voice call</span>
+        </label>
+      </div>
+
+      {error && <p className="text-xs text-red-400">{error}</p>}
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => void handleAdd()}
+          disabled={saving}
+          className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+        >
+          {saving ? "Adding..." : "Add recipient"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The triggers a channel can opt into, shared by the Slack and Teams sections.
+ * All but the weekly digest are the alert triggers mobile push also has; the
+ * weekly digest is channel-only (it goes to a team channel, not a phone) and
+ * only sends once the org enables it in the Weekly digest section below.
+ *
+ * Drift is the one that arrives off: adding a channel opts it into everything
+ * else, but drift is a continuous feed and turning it on has to be a decision.
+ */
+const ALERT_TRIGGERS = [
+  { key: "syncIncidents", label: "Sync failures" },
+  { key: "budgetAlerts", label: "Budgets" },
+  { key: "anomalyAlerts", label: "Anomalies" },
+  { key: "metricAlerts", label: "Metric alerts" },
+  { key: "resourceDrift", label: "Drift" },
+  { key: "workflowPages", label: "Pages" },
+  { key: "providerIncidents", label: "Provider incidents" },
+  { key: "expiryAlerts", label: "Expiry alerts" },
+  { key: "logMatchAlerts", label: "Log matches" },
+  { key: "postureAlerts", label: "Posture" },
+  { key: "probeAlerts", label: "Probes" },
+  { key: "weeklyDigest", label: "Weekly digest" },
+] as const;
+
+interface AccountOption {
+  id: string;
+  displayName: string;
+}
+
+/**
+ * What counts as drift worth notifying about, and how often. Separate from the
+ * per-channel `resourceDrift` opt-in above it: that decides *who* hears, this
+ * decides *what* and *how often*.
+ *
+ * The section exists because drift is the one alert whose volume is set by the
+ * infrastructure rather than by an exceptional event — a sync pass can record
+ * hundreds of changes — so the filter is not a nicety, it is the difference
+ * between a digest and a muted integration.
+ */
+function DriftAlertsSection({ orgId }: { orgId: string }) {
+  const { api, openWorkspace } = useSettingsHost();
+  const [settings, setSettings] = useState<DriftAlertSettings | null>(null);
+  const [accounts, setAccounts] = useState<AccountOption[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [forbidden, setForbidden] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const s = await api.get<DriftAlertSettings>(`/api/org/${orgId}/changes/alert-settings`);
+        if (!cancelled) setSettings(s);
+      } catch {
+        // Non-admins get a 403 — hide the section rather than show an error.
+        if (!cancelled) setForbidden(true);
+        return;
+      }
+      try {
+        const rows = await api.get<AccountOption[]>(`/api/org/${orgId}/accounts`);
+        if (!cancelled) setAccounts(rows);
+      } catch {
+        // The scope picker degrades to "all accounts"; the rest still works.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId]);
+
+  async function save(patch: Partial<DriftAlertSettings>) {
+    if (!settings) return;
+    const previous = settings;
+    setSettings({ ...settings, ...patch });
+    setError(null);
+    try {
+      const saved = await api.put<DriftAlertSettings>(
+        `/api/org/${orgId}/changes/alert-settings`,
+        patch,
+      );
+      setSettings(saved);
+    } catch (e) {
+      setSettings(previous);
+      setError(e instanceof Error ? e.message : "Failed to save drift alert settings");
+    }
+  }
+
+  function toggleAccount(accountId: string, checked: boolean) {
+    if (!settings) return;
+    const next = checked
+      ? [...settings.accountIds, accountId]
+      : settings.accountIds.filter((id) => id !== accountId);
+    void save({ accountIds: next });
+  }
+
+  if (forbidden || !settings) return null;
+
+  const { min: cooldownMin, max: cooldownMax } = DRIFT_ALERT_LIMITS.cooldownMinutes;
+  const { min: minChangesMin, max: minChangesMax } = DRIFT_ALERT_LIMITS.minChanges;
+
+  return (
+    <section className="border border-border rounded-xl p-5 space-y-4">
+      <div>
+        <h2 className="text-sm font-semibold text-on-surface-secondary">Resource drift alerts</h2>
+        <p className="text-xs text-on-surface-muted mt-1">
+          One batched digest of the{" "}
+          <button type="button" onClick={() => openWorkspace("changes")} className="underline">
+            change timeline
+          </button>{" "}
+          per organization per cooldown window — never one message per change. Turn the{" "}
+          <strong>Drift</strong> trigger on for a Slack channel, a Teams channel or your phone above
+          to receive it; it is off by default everywhere.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-on-surface-secondary">
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={settings.notifyCreated}
+            onChange={(e) => void save({ notifyCreated: e.target.checked })}
+          />
+          <span>Resources appearing</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={settings.notifyDeleted}
+            onChange={(e) => void save({ notifyDeleted: e.target.checked })}
+          />
+          <span>Resources disappearing</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={settings.notifyUpdated}
+            onChange={(e) => void save({ notifyUpdated: e.target.checked })}
+          />
+          <span>Field changes</span>
+        </label>
+      </div>
+      <p className="text-xs text-on-surface-tertiary">
+        Field changes are off by default: they are the bulk of the volume and are usually a provider
+        restating a value rather than someone changing something.
+      </p>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Field
+          label="Cooldown (minutes)"
+          hint={`At most one drift message per ${cooldownMin}–${cooldownMax} minute window.`}
+        >
+          <input
+            type="number"
+            min={cooldownMin}
+            max={cooldownMax}
+            value={settings.cooldownMinutes}
+            onChange={(e) =>
+              setSettings({ ...settings, cooldownMinutes: Number(e.target.value) || cooldownMin })
+            }
+            onBlur={(e) =>
+              void save({
+                cooldownMinutes: Math.min(
+                  Math.max(parsePositiveInt(e.target.value), cooldownMin),
+                  cooldownMax,
+                ),
+              })
+            }
+            className={inputClass}
+          />
+        </Field>
+        <Field label="Minimum changes" hint="Skip windows smaller than this.">
+          <input
+            type="number"
+            min={minChangesMin}
+            max={minChangesMax}
+            value={settings.minChanges}
+            onChange={(e) =>
+              setSettings({ ...settings, minChanges: Number(e.target.value) || minChangesMin })
+            }
+            onBlur={(e) =>
+              void save({
+                minChanges: Math.min(
+                  Math.max(parsePositiveInt(e.target.value), minChangesMin),
+                  minChangesMax,
+                ),
+              })
+            }
+            className={inputClass}
+          />
+        </Field>
+      </div>
+
+      {accounts.length > 0 && (
+        <div>
+          <p className="text-xs text-on-surface-tertiary mb-2">
+            Accounts to watch — leave every box unchecked to watch all {accounts.length}.
+          </p>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-on-surface-secondary">
+            {accounts.map((a) => (
+              <label key={a.id} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={settings.accountIds.includes(a.id)}
+                  onChange={(e) => toggleAccount(a.id, e.target.checked)}
+                />
+                <span>{a.displayName}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {settings.lastNotifiedAt && (
+        <p className="text-xs text-on-surface-tertiary">
+          Last drift digest sent {new Date(settings.lastNotifiedAt).toLocaleString()}.
+        </p>
+      )}
+      {error && <p className="text-xs text-red-400">{error}</p>}
+    </section>
+  );
+}
+
+/** The Microsoft Teams glyph, in the Teams brand purple. */
+function TeamsMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className={className}
+      fill="#6264A7"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M9.186 4.797a2.42 2.42 0 1 0-2.86-2.448h1.178c.929 0 1.682.753 1.682 1.682zm-4.295 7.738h2.613c.929 0 1.682-.753 1.682-1.682V5.58h2.783a.7.7 0 0 1 .682.716v4.294a4.197 4.197 0 0 1-4.093 4.293c-1.618-.04-3-.99-3.667-2.35Zm10.737-9.372a1.674 1.674 0 1 1-3.349 0 1.674 1.674 0 0 1 3.349 0m-2.238 9.488-.12-.002a5.2 5.2 0 0 0 .381-2.07V6.306a1.7 1.7 0 0 0-.15-.725h1.792c.39 0 .707.317.707.707v3.765a2.6 2.6 0 0 1-2.598 2.598z" />
+      <path d="M.682 3.349h6.822c.377 0 .682.305.682.682v6.822a.68.68 0 0 1-.682.682H.682A.68.68 0 0 1 0 10.853V4.03c0-.377.305-.682.682-.682Zm5.206 2.596v-.72h-3.59v.72h1.357V9.66h.87V5.945z" />
+    </svg>
+  );
+}
+
+/**
+ * Microsoft Teams channel routing.
+ *
+ * There is no "Add to Teams" button here, and that is not an omission. Teams
+ * has no app-only OAuth flow for posting channel messages — Graph requires a
+ * signed-in user — so the supported path is a webhook URL the user creates in
+ * the channel. That makes this section a paste-a-URL form rather than a picker,
+ * and the disclosure below carries the steps to get one.
+ */
+function MsTeamsSection({ orgId }: { orgId: string }) {
+  const { api } = useSettingsHost();
+  const [webhooks, setWebhooks] = useState<MsTeamsWebhook[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [testMessage, setTestMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(
+    null,
+  );
+
+  async function load() {
+    try {
+      const r = await api.get<{ webhooks: MsTeamsWebhook[] }>(`/api/org/${orgId}/msteams/status`);
+      setWebhooks(r.webhooks);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load Teams settings");
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId]);
+
+  async function handleToggle(hook: MsTeamsWebhook, patch: Partial<MsTeamsWebhook>) {
+    // Optimistic — the checkbox should not lag a round-trip.
+    setWebhooks((prev) => prev?.map((w) => (w.id === hook.id ? { ...w, ...patch } : w)) ?? prev);
+    try {
+      await api.patch(`/api/org/${orgId}/msteams/webhooks/${hook.id}`, patch);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update the channel");
+      void load();
+    }
+  }
+
+  async function handleRemove(id: string) {
+    await api.delete(`/api/org/${orgId}/msteams/webhooks/${id}`);
+    void load();
+  }
+
+  async function handleTest() {
+    setBusy(true);
+    setTestMessage(null);
+    try {
+      const r = await api.post<{ webhookCount: number; succeeded: number }>(
+        `/api/org/${orgId}/msteams/test`,
+      );
+      setTestMessage({
+        kind: "ok",
+        text: `Posted to ${r.succeeded}/${r.webhookCount} channel(s).`,
+      });
+    } catch (e) {
+      setTestMessage({ kind: "error", text: e instanceof Error ? e.message : "Test failed" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!webhooks) {
+    return (
+      <section className="border border-border rounded-xl p-5 space-y-2">
+        <h2 className="text-sm font-semibold text-on-surface-secondary">Microsoft Teams</h2>
+        {error ? (
+          <p className="text-xs text-red-400">{error}</p>
+        ) : (
+          <p className="text-sm text-on-surface-faint">Loading…</p>
+        )}
+      </section>
+    );
+  }
+
+  return (
+    <section className="border border-border rounded-xl p-5 space-y-4">
+      <div className="flex items-center gap-2">
+        <TeamsMark className="w-4 h-4" />
+        <h2 className="text-sm font-semibold text-on-surface-secondary">Microsoft Teams</h2>
+      </div>
+
+      <p className="text-xs text-on-surface-muted">
+        Add a channel by pasting the webhook URL from a Teams <strong>Workflows</strong> automation.
+      </p>
+
+      <details className="text-xs text-on-surface-muted">
+        <summary className="cursor-pointer text-on-surface-tertiary hover:text-on-surface-secondary">
+          How do I get one?
+        </summary>
+        <ol className="list-decimal ml-5 mt-2 space-y-1">
+          <li>
+            In Teams, hover the channel you want alerts in and choose{" "}
+            <strong>More options (…) → Workflows</strong>.
+          </li>
+          <li>
+            Pick the <strong>Post to a channel when a webhook request is received</strong> template.
+          </li>
+          <li>Name it, confirm the team and channel, and select Create.</li>
+          <li>Copy the webhook URL it shows you and paste it below.</li>
+        </ol>
+        <p className="mt-2">
+          The URL is a credential — anyone holding it can post to that channel. It&apos;s stored
+          encrypted and never shown again after you add it.
+        </p>
+      </details>
+
+      {webhooks.length > 0 && (
+        <ul className="divide-y divide-border/50">
+          {webhooks.map((w) => (
+            <li
+              key={w.id}
+              className="flex flex-wrap items-center justify-between gap-3 py-2 text-sm"
+            >
+              <div className="min-w-0">
+                <p className="text-on-surface-secondary truncate">{w.label}</p>
+                <p className="text-xs text-on-surface-faint font-mono truncate">{w.urlHint}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-on-surface-tertiary">
+                {ALERT_TRIGGERS.map((t) => (
+                  <label key={t.key} className="flex items-center gap-1.5 whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={w[t.key]}
+                      onChange={(e) => void handleToggle(w, { [t.key]: e.target.checked })}
+                    />
+                    <span>{t.label}</span>
+                  </label>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => void handleRemove(w.id)}
+                  className="text-red-400 hover:text-red-500 dark:text-red-300"
+                >
+                  Remove
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <AddMsTeamsWebhook orgId={orgId} onAdded={() => void load()} />
+
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      {testMessage && (
+        <p className={`text-xs ${testMessage.kind === "ok" ? "text-green-400" : "text-red-400"}`}>
+          {testMessage.text}
+        </p>
+      )}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => void handleTest()}
+          disabled={busy || webhooks.length === 0}
+          title={webhooks.length === 0 ? "Add a channel first" : undefined}
+          className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
+        >
+          {busy ? "Posting…" : "Send test message"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/** Paste-a-URL form. The server validates the host and returns the error to show. */
+function AddMsTeamsWebhook({ orgId, onAdded }: { orgId: string; onAdded: () => void }) {
+  const { api } = useSettingsHost();
+  const [label, setLabel] = useState("");
+  const [url, setUrl] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleAdd() {
+    setSaving(true);
+    setError(null);
+    try {
+      await api.post(`/api/org/${orgId}/msteams/webhooks`, { label, url });
+      setLabel("");
+      setUrl("");
+      onAdded();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to add the channel");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="pt-2 border-t border-border/50 space-y-2">
+      <Field label="Label">
+        <input
+          type="text"
+          aria-label="Label"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="#alerts (Platform)"
+          className={inputClass}
+        />
+      </Field>
+      <Field label="Webhook URL">
+        <input
+          type="url"
+          aria-label="Webhook URL"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://…/workflows/…/triggers/manual/paths/invoke?…"
+          className={inputClass}
+        />
+      </Field>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => void handleAdd()}
+          disabled={saving || !label.trim() || !url.trim()}
+          className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
+        >
+          {saving ? "Adding…" : "Add channel"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** The Slack mark, from Slack's brand assets. */
+function SlackMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 127 127" className={className} aria-hidden="true" focusable="false">
+      <path
+        d="M27.2 80c0 7.3-5.9 13.2-13.2 13.2C6.7 93.2.8 87.3.8 80c0-7.3 5.9-13.2 13.2-13.2h13.2V80zm6.6 0c0-7.3 5.9-13.2 13.2-13.2 7.3 0 13.2 5.9 13.2 13.2v33c0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V80z"
+        fill="#E01E5A"
+      />
+      <path
+        d="M47 27c-7.3 0-13.2-5.9-13.2-13.2C33.8 6.5 39.7.6 47 .6c7.3 0 13.2 5.9 13.2 13.2V27H47zm0 6.7c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H13.9C6.6 60.1.7 54.2.7 46.9c0-7.3 5.9-13.2 13.2-13.2H47z"
+        fill="#36C5F0"
+      />
+      <path
+        d="M99.9 46.9c0-7.3 5.9-13.2 13.2-13.2 7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H99.9V46.9zm-6.6 0c0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V13.8C66.9 6.5 72.8.6 80.1.6c7.3 0 13.2 5.9 13.2 13.2v33.1z"
+        fill="#2EB67D"
+      />
+      <path
+        d="M80.1 99.8c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V99.8h13.2zm0-6.6c-7.3 0-13.2-5.9-13.2-13.2 0-7.3 5.9-13.2 13.2-13.2h33.1c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H80.1z"
+        fill="#ECB22E"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Slack connection + per-channel alert routing. The install is a normal
+ * "Add to Slack" OAuth round-trip; the callback lands back on this page with
+ * `?slack=connected`, which the banner below reports.
+ */
+function SlackSection({ orgId }: { orgId: string }) {
+  const { api, openExternal } = useSettingsHost();
+  const [status, setStatus] = useState<SlackStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [testMessage, setTestMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(
+    null,
+  );
+
+  // The OAuth callback redirects here with a result; show it, then drop the
+  // param so a refresh doesn't repeat the banner.
+  const [installResult, setInstallResult] = useState<string | null>(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get("slack");
+    if (!result) return;
+    setInstallResult(result);
+    params.delete("slack");
+    const query = params.toString();
+    window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+  }, []);
+
+  async function load() {
+    try {
+      setStatus(await api.get<SlackStatus>(`/api/org/${orgId}/slack/status`));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load Slack settings");
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId]);
+
+  async function handleConnect() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { url } = await api.get<{ url: string }>(`/api/org/${orgId}/slack/install-url`);
+      // Web: same-tab redirect (the OAuth callback lands back on this page).
+      // Desktop: system browser — the callback finishes on the web app, and
+      // this card shows the connected state on the next load.
+      openExternal(url, { sameTab: true });
+      setBusy(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to start the Slack install");
+      setBusy(false);
+    }
+  }
+
+  async function handleDisconnect(installationId: string) {
+    await api.delete(`/api/org/${orgId}/slack/installations/${installationId}`);
+    void load();
+  }
+
+  async function handleToggle(channel: SlackChannel, patch: Partial<SlackChannel>) {
+    // Optimistic — the checkbox should not lag a round-trip.
+    setStatus((prev) =>
+      prev
+        ? {
+            ...prev,
+            channels: prev.channels.map((c) => (c.id === channel.id ? { ...c, ...patch } : c)),
+          }
+        : prev,
+    );
+    try {
+      await api.patch(`/api/org/${orgId}/slack/channels/${channel.id}`, patch);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update the channel");
+      void load();
+    }
+  }
+
+  async function handleRemoveChannel(id: string) {
+    await api.delete(`/api/org/${orgId}/slack/channels/${id}`);
+    void load();
+  }
+
+  async function handleTest() {
+    setBusy(true);
+    setTestMessage(null);
+    try {
+      const r = await api.post<{ channelCount: number; succeeded: number }>(
+        `/api/org/${orgId}/slack/test`,
+      );
+      setTestMessage({
+        kind: "ok",
+        text: `Posted to ${r.succeeded}/${r.channelCount} channel(s).`,
+      });
+    } catch (e) {
+      setTestMessage({ kind: "error", text: e instanceof Error ? e.message : "Test failed" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!status) {
+    return (
+      <section className="border border-border rounded-xl p-5 space-y-2">
+        <h2 className="text-sm font-semibold text-on-surface-secondary">Slack</h2>
+        {error ? (
+          <p className="text-xs text-red-400">{error}</p>
+        ) : (
+          <p className="text-sm text-on-surface-faint">Loading…</p>
+        )}
+      </section>
+    );
+  }
+
+  const install = status.installations[0] ?? null;
+
+  return (
+    <section className="border border-border rounded-xl p-5 space-y-4">
+      <div className="flex items-center gap-2">
+        <SlackMark className="w-4 h-4" />
+        <h2 className="text-sm font-semibold text-on-surface-secondary">Slack</h2>
+      </div>
+
+      {installResult === "connected" && (
+        <p className="text-xs text-green-400">Slack workspace connected.</p>
+      )}
+      {installResult === "cancelled" && (
+        <p className="text-xs text-on-surface-muted">Slack install was cancelled.</p>
+      )}
+      {installResult === "linked" && (
+        <p className="text-xs text-green-400">
+          Your Slack account is linked. You can now run /infrawrench commands and decide approvals
+          from Slack.
+        </p>
+      )}
+      {installResult === "error" && (
+        <p className="text-xs text-red-400">
+          The Slack install didn&apos;t complete. Try connecting again.
+        </p>
+      )}
+
+      {!status.configured ? (
+        <p className="text-sm text-on-surface-muted">
+          Slack isn&apos;t set up on this server. An administrator needs to register a Slack app and
+          set <code>SLACK_CLIENT_ID</code> and <code>SLACK_CLIENT_SECRET</code>.
+        </p>
+      ) : !install ? (
+        <>
+          <p className="text-xs text-on-surface-muted">
+            Connect a workspace, then pick the channels each kind of alert should go to.
+          </p>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => void handleConnect()}
+              disabled={busy}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium border border-border-strong hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
+            >
+              <SlackMark className="w-4 h-4" />
+              {busy ? "Opening Slack…" : "Add to Slack"}
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="flex items-center justify-between text-sm">
+            <p className="text-on-surface-secondary">
+              Connected to <span className="font-medium">{install.teamName ?? install.teamId}</span>
+            </p>
+            <button
+              type="button"
+              onClick={() => void handleDisconnect(install.id)}
+              className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+            >
+              Disconnect
+            </button>
+          </div>
+
+          {status.channels.length === 0 ? (
+            <p className="text-sm text-on-surface-muted">
+              No channels yet. Add one below to start receiving alerts.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border/50">
+              {status.channels.map((ch) => (
+                <li
+                  key={ch.id}
+                  className="flex flex-wrap items-center justify-between gap-3 py-2 text-sm"
+                >
+                  <p className="text-on-surface-secondary font-mono">
+                    #{ch.channelName}
+                    {ch.isPrivate && (
+                      <span className="ml-2 text-xs font-sans text-on-surface-tertiary">
+                        private
+                      </span>
+                    )}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-on-surface-tertiary">
+                    {ALERT_TRIGGERS.map((t) => (
+                      <label key={t.key} className="flex items-center gap-1.5 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={ch[t.key]}
+                          onChange={(e) => void handleToggle(ch, { [t.key]: e.target.checked })}
+                        />
+                        <span>{t.label}</span>
+                      </label>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => void handleRemoveChannel(ch.id)}
+                      className="text-red-400 hover:text-red-500 dark:text-red-300"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <AddSlackChannel
+            orgId={orgId}
+            installationId={install.id}
+            existing={status.channels.map((c) => c.channelId)}
+            onAdded={() => void load()}
+          />
+
+          <p className="text-xs text-on-surface-faint">
+            Public channels work as soon as you add them. For a private channel, invite the
+            Infrawrench app to it in Slack first — otherwise posting fails with{" "}
+            <code>not_in_channel</code>.
+          </p>
+
+          {error && <p className="text-xs text-red-400">{error}</p>}
+          {testMessage && (
+            <p
+              className={`text-xs ${testMessage.kind === "ok" ? "text-green-400" : "text-red-400"}`}
+            >
+              {testMessage.text}
+            </p>
+          )}
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => void handleTest()}
+              disabled={busy || status.channels.length === 0}
+              title={status.channels.length === 0 ? "Add a channel first" : undefined}
+              className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
+            >
+              {busy ? "Posting…" : "Send test message"}
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Channel picker. Channels come from Slack's conversations.list, so nobody has
+ * to know a channel id — the list is fetched lazily on first open because a
+ * large workspace makes it a slow call.
+ */
+function AddSlackChannel({
+  orgId,
+  installationId,
+  existing,
+  onAdded,
+}: {
+  orgId: string;
+  installationId: string;
+  existing: string[];
+  onAdded: () => void;
+}) {
+  const { api } = useSettingsHost();
+  const [available, setAvailable] = useState<SlackAvailableChannel[] | null>(null);
+  const [selected, setSelected] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function loadChannels() {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await api.get<{ channels: SlackAvailableChannel[] }>(
+        `/api/org/${orgId}/slack/installations/${installationId}/available-channels`,
+      );
+      setAvailable(r.channels);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to list Slack channels");
+      setAvailable([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleAdd() {
+    const channel = available?.find((c) => c.id === selected);
+    if (!channel) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.post(`/api/org/${orgId}/slack/channels`, {
+        installationId,
+        channelId: channel.id,
+        channelName: channel.name,
+        isPrivate: channel.isPrivate,
+      });
+      setSelected("");
+      onAdded();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to add the channel");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (available === null) {
+    return (
+      <div className="pt-2 border-t border-border/50">
+        <button
+          type="button"
+          onClick={() => void loadChannels()}
+          disabled={loading}
+          className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
+        >
+          {loading ? "Loading channels…" : "Add a channel"}
+        </button>
+        {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+      </div>
+    );
+  }
+
+  const options = available.filter((c) => !existing.includes(c.id));
+
+  return (
+    <div className="pt-2 border-t border-border/50 space-y-2">
+      <Field label="Channel">
+        <select
+          aria-label="Channel"
+          value={selected}
+          onChange={(e) => setSelected(e.target.value)}
+          className={inputClass}
+        >
+          <option value="">Select a channel…</option>
+          {options.map((c) => (
+            <option key={c.id} value={c.id}>
+              #{c.name}
+              {c.isPrivate ? " (private)" : ""}
+            </option>
+          ))}
+        </select>
+      </Field>
+      {options.length === 0 && (
+        <p className="text-xs text-on-surface-faint">
+          Every channel the app can see is already routed here.
+        </p>
+      )}
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => void handleAdd()}
+          disabled={saving || !selected}
+          className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+        >
+          {saving ? "Adding…" : "Add channel"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TestPanel({
+  orgId,
+  settings,
+  recipientCount,
+}: {
+  orgId: string;
+  settings: PagingSettings;
+  recipientCount: number;
+}) {
+  const { api } = useSettingsHost();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const ready = settings.credentialsConfigured && settings.fromNumber && recipientCount > 0;
+
+  async function handleTest() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const r = await api.post<{ recipientCount: number; attempted: number }>(
+        `/api/org/${orgId}/twilio/test`,
+      );
+      setMessage({
+        kind: "ok",
+        text: `Sent ${r.attempted} message(s) to ${r.recipientCount} recipient(s).`,
+      });
+    } catch (e) {
+      setMessage({ kind: "error", text: e instanceof Error ? e.message : "Test failed" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3 pt-5 border-t border-border/50">
+      <p className="text-xs text-on-surface-muted">
+        Sends a one-off SMS and/or voice call to every recipient to verify your Twilio setup. Save
+        credentials and add at least one recipient first.
+      </p>
+      {message && (
+        <p className={`text-xs ${message.kind === "ok" ? "text-green-400" : "text-red-400"}`}>
+          {message.text}
+        </p>
+      )}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => void handleTest()}
+          disabled={busy || !ready}
+          title={ready ? undefined : "Save Twilio creds and add a recipient first"}
+          className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
+        >
+          {busy ? "Sending..." : "Send test page"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The caller's own mobile push setup: per-org trigger toggles, registered
+ * devices, and a test send. Devices are enrolled by signing in on the mobile
+ * app — there is nothing to add here, only to review and remove.
+ */
+function PushPreferencesSection({ orgId }: { orgId: string }) {
+  const { api } = useSettingsHost();
+  const [prefs, setPrefs] = useState<PushPreferences | null>(null);
+  const [devices, setDevices] = useState<PushDeviceSummary[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [testMessage, setTestMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(
+    null,
+  );
+  const [testBusy, setTestBusy] = useState(false);
+
+  // Bumped to re-run the load effect after removing a device.
+  const [reloadNonce, setReloadNonce] = useState(0);
+
+  useEffect(() => {
+    // `cancelled` drops a response that lands after `orgId` changed, so a
+    // slower earlier request can't overwrite the newer org's preferences.
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [p, d] = await Promise.all([
+          api.get<PushPreferences>(`/api/org/${orgId}/push/preferences`),
+          api.get<PushDeviceSummary[]>(`/api/push/devices`),
+        ]);
+        if (!cancelled) {
+          setPrefs(p);
+          setDevices(d);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Failed to load push settings");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, reloadNonce]);
+
+  async function updatePref(patch: Partial<PushPreferences>) {
+    if (!prefs) return;
+    const next = { ...prefs, ...patch };
+    setPrefs(next);
+    try {
+      await api.put(`/api/org/${orgId}/push/preferences`, next);
+    } catch (e) {
+      setPrefs(prefs);
+      setError(e instanceof Error ? e.message : "Failed to save preferences");
+    }
+  }
+
+  async function handleRemoveDevice(id: string) {
+    await api.delete(`/api/push/devices/${id}`);
+    setReloadNonce((n) => n + 1);
+  }
+
+  async function handleTest() {
+    setTestBusy(true);
+    setTestMessage(null);
+    try {
+      const r = await api.post<{ attempted: number; succeeded: number }>(
+        `/api/org/${orgId}/push/test`,
+      );
+      setTestMessage({
+        kind: "ok",
+        text: `Delivered ${r.succeeded}/${r.attempted} test notification(s).`,
+      });
+    } catch (e) {
+      setTestMessage({ kind: "error", text: e instanceof Error ? e.message : "Test failed" });
+    } finally {
+      setTestBusy(false);
+    }
+  }
+
+  if (error) {
+    return (
+      <section className="border border-border rounded-xl p-5">
+        <h2 className="text-sm font-semibold text-on-surface-secondary">
+          Your mobile notifications
+        </h2>
+        <p className="text-xs text-red-400 mt-2">{error}</p>
+      </section>
+    );
+  }
+  if (!prefs) return null;
+
+  return (
+    <section className="border border-border rounded-xl p-5 space-y-4">
+      <h2 className="text-sm font-semibold text-on-surface-secondary">Your mobile notifications</h2>
+      <p className="text-xs text-on-surface-muted">
+        Push notifications go to the Infrawrench mobile app. Sign in on your phone to register a
+        device; these toggles apply to this organization only.
+      </p>
+
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-on-surface-secondary">
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={prefs.syncIncidents}
+            onChange={(e) => void updatePref({ syncIncidents: e.target.checked })}
+          />
+          <span>Sync-failure incidents</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={prefs.budgetAlerts}
+            onChange={(e) => void updatePref({ budgetAlerts: e.target.checked })}
+          />
+          <span>Budget alerts</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={prefs.anomalyAlerts}
+            onChange={(e) => void updatePref({ anomalyAlerts: e.target.checked })}
+          />
+          <span>Cost anomalies</span>
+        </label>
+        <label
+          className="flex items-center gap-2"
+          title="Metric threshold rules firing and recovering."
+        >
+          <input
+            type="checkbox"
+            checked={prefs.metricAlerts}
+            onChange={(e) => void updatePref({ metricAlerts: e.target.checked })}
+          />
+          <span>Metric alerts</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={prefs.resourceDrift}
+            onChange={(e) => void updatePref({ resourceDrift: e.target.checked })}
+          />
+          <span>Resource drift</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={prefs.workflowPages}
+            onChange={(e) => void updatePref({ workflowPages: e.target.checked })}
+          />
+          <span>Pages</span>
+        </label>
+        <label
+          className="flex items-center gap-2"
+          title="An upstream provider incident overlaps resources you hold."
+        >
+          <input
+            type="checkbox"
+            checked={prefs.providerIncidents}
+            onChange={(e) => void updatePref({ providerIncidents: e.target.checked })}
+          />
+          <span>Provider incidents</span>
+        </label>
+        <label
+          className="flex items-center gap-2"
+          title="Certificates, domains, tokens and keys approaching expiry."
+        >
+          <input
+            type="checkbox"
+            checked={prefs.expiryAlerts}
+            onChange={(e) => void updatePref({ expiryAlerts: e.target.checked })}
+          />
+          <span>Expiry alerts</span>
+        </label>
+        <label
+          className="flex items-center gap-2"
+          title="A saved log-workspace query with alerting enabled found matching lines."
+        >
+          <input
+            type="checkbox"
+            checked={prefs.logMatchAlerts}
+            onChange={(e) => void updatePref({ logMatchAlerts: e.target.checked })}
+          />
+          <span>Log matches</span>
+        </label>
+        <label
+          className="flex items-center gap-2"
+          title="Critical and high security posture findings on synced resources."
+        >
+          <input
+            type="checkbox"
+            checked={prefs.postureAlerts}
+            onChange={(e) => void updatePref({ postureAlerts: e.target.checked })}
+          />
+          <span>Posture</span>
+        </label>
+        <label
+          className="flex items-center gap-2"
+          title="A synthetic probe went down (consecutive failures) or recovered."
+        >
+          <input
+            type="checkbox"
+            checked={prefs.probeAlerts}
+            onChange={(e) => void updatePref({ probeAlerts: e.target.checked })}
+          />
+          <span>Probes</span>
+        </label>
+      </div>
+
+      {devices.length === 0 ? (
+        <p className="text-sm text-on-surface-muted">
+          No devices registered. Sign in on the mobile app to enroll this account.
+        </p>
+      ) : (
+        <ul className="divide-y divide-border/50">
+          {devices.map((d) => (
+            <li key={d.id} className="flex items-center justify-between py-2 text-sm">
+              <div>
+                <p className="text-on-surface-secondary">
+                  {d.deviceName ?? (d.platform === "ios" ? "iPhone" : "Android device")}
+                  {d.disabled && <span className="text-red-400 ml-2 text-xs">(disabled)</span>}
+                </p>
+                <p className="text-xs text-on-surface-tertiary">
+                  {d.platform} · last seen {new Date(d.lastSeenAt).toLocaleDateString()}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleRemoveDevice(d.id)}
+                className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {testMessage && (
+        <p className={`text-xs ${testMessage.kind === "ok" ? "text-green-400" : "text-red-400"}`}>
+          {testMessage.text}
+        </p>
+      )}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => void handleTest()}
+          disabled={testBusy || devices.length === 0}
+          title={devices.length === 0 ? "Register a device on the mobile app first" : undefined}
+          className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
+        >
+          {testBusy ? "Sending..." : "Send test push"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+interface PushRecipientRow {
+  userId: string;
+  email: string;
+  displayName: string | null;
+  syncIncidents: boolean;
+  budgetAlerts: boolean;
+  anomalyAlerts: boolean;
+  metricAlerts: boolean;
+  resourceDrift: boolean;
+  workflowPages: boolean;
+  providerIncidents: boolean;
+  /** Expiry-radar alerts; on by default like the other exceptional triggers. */
+  expiryAlerts: boolean;
+  /** Saved log-query matches; on by default like the other exceptional triggers. */
+  logMatchAlerts: boolean;
+  /** Posture findings; on by default like the other exceptional triggers. */
+  postureAlerts: boolean;
+  /** Synthetic probe down/recovered transitions; on by default. */
+  probeAlerts: boolean;
+  devices: Array<{ id: string; platform: string; deviceName: string | null }>;
+}
+
+/** Read-only admin roster of members with at least one active push device. */
+function PushRosterSection({ orgId }: { orgId: string }) {
+  const { api } = useSettingsHost();
+  const [rows, setRows] = useState<PushRecipientRow[] | null>(null);
+  const [forbidden, setForbidden] = useState(false);
+
+  useEffect(() => {
+    api
+      .get<PushRecipientRow[]>(`/api/org/${orgId}/push/recipients`)
+      .then(setRows)
+      // Non-admins get a 403 — just hide the section.
+      .catch(() => setForbidden(true));
+  }, [orgId]);
+
+  if (forbidden || rows === null) return null;
+
+  return (
+    <section className="border border-border rounded-xl p-5 space-y-3">
+      <h2 className="text-sm font-semibold text-on-surface-secondary">Members receiving push</h2>
+      {rows.length === 0 ? (
+        <p className="text-sm text-on-surface-muted">
+          No members have registered a mobile device yet.
+        </p>
+      ) : (
+        <ul className="divide-y divide-border/50">
+          {rows.map((r) => (
+            <li key={r.userId} className="py-2 text-sm">
+              <p className="text-on-surface-secondary">{r.displayName ?? r.email}</p>
+              <p className="text-xs text-on-surface-tertiary">
+                {r.devices.length} device(s) ·{" "}
+                {[
+                  r.syncIncidents && "incidents",
+                  r.budgetAlerts && "budgets",
+                  r.anomalyAlerts && "anomalies",
+                  r.metricAlerts && "metric alerts",
+                  r.resourceDrift && "drift",
+                  r.workflowPages && "pages",
+                  r.providerIncidents && "provider incidents",
+                  r.expiryAlerts && "expiry",
+                  r.logMatchAlerts && "log matches",
+                  r.postureAlerts && "posture",
+                  r.probeAlerts && "probes",
+                ]
+                  .filter(Boolean)
+                  .join(", ") || "all triggers off"}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+const inputClass =
+  "w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong";
+
+/** Parse a positive integer from a numeric input. Falls back to 1 on empty or
+ * non-numeric input so transient typing states don't poison the API payload. */
+function parsePositiveInt(value: string): number {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 1 ? n : 1;
+}
+
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  const generatedId = useId();
+  const child = isValidElement<{ id?: string }>(children) ? children : null;
+  const controlId = child?.props.id ?? generatedId;
+  return (
+    <div>
+      <label htmlFor={controlId} className="block text-xs text-on-surface-tertiary mb-1">
+        {label}
+      </label>
+      {child ? cloneElement(child, { id: controlId }) : children}
+      {hint && <p className="text-xs text-on-surface-faint mt-1">{hint}</p>}
+    </div>
+  );
+}

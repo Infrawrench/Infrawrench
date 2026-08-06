@@ -4,7 +4,7 @@ description: Issue tokens for programmatic access to your infrawrench organizati
 sidebar_order: 5
 ---
 
-> **Web only. Paid plan only.**
+> **Paid plan only.** Available on the web app and, when signed in to a cloud organization, in the desktop app's Settings tab.
 
 API keys let scripts and CI jobs list resources, create them, and read outputs programmatically. They act on behalf of the user who issued them, subject to that user’s role.
 

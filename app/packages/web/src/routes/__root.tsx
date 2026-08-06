@@ -171,8 +171,8 @@ function AuthenticatedShell() {
     getWorkspaceNavigateArgs,
   );
 
-  // On plain routes (Changes, Expiring, Fan-out, Alerts, …) the workspace
-  // tabs are all background — the page's own title wins over the active tab.
+  // On plain routes (Moment, Admin) the workspace tabs are all background —
+  // the page's own title wins over the active tab.
   useWorkspaceTabDocumentTitle({ routeTitle: plainRouteDocumentTitle(pathname) });
 
   useEffect(() => {
@@ -331,7 +331,8 @@ function AuthenticatedShell() {
             {/* Tabs are rendered via WorkspaceTabsViewport: every open tab
                 stays mounted so SSH sessions / xterm scrollback / websocket
                 subscriptions survive tab switches. <Outlet/> still renders
-                non-tab routes like /onboarding and /settings; tab routes'
+                non-tab routes like /onboarding, plus /settings (a tab in the
+                strip whose content is route-rendered); other tab routes'
                 components are no-ops. */}
             {orgId && <WebWorkspaceTabsViewport orgId={orgId} tabsValidated={tabsValidated} />}
             <Outlet />

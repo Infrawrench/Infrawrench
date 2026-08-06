@@ -61,6 +61,7 @@ import {
   dashboardTabTarget,
   resourceTabTarget,
   workflowsTabTarget,
+  settingsTabTarget,
   getWorkspaceNavigateArgs,
   navigateToWorkspaceTarget,
   plainRouteDocumentTitle,
@@ -153,7 +154,8 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     target.kind === "probes" ||
     target.kind === "workflows" ||
     target.kind === "deployments" ||
-    target.kind === "chat"
+    target.kind === "chat" ||
+    target.kind === "settings"
   ) {
     return tab;
   }
@@ -688,6 +690,23 @@ function RootLayout() {
                   <span className="text-base leading-none">+</span>
                   Add account
                 </button>
+                {/* Org settings are cloud-backed; local-only mode has no org
+                    to configure, so no tile without one. Same shared sections
+                    the web renders — see DesktopSettingsPanel. */}
+                {activeOrgId && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void navigateToWorkspaceTarget(navigate, settingsTabTarget(), {
+                        label: "Settings",
+                      })
+                    }
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+                  >
+                    <span className="text-base leading-none">&#9881;</span>
+                    Settings
+                  </button>
+                )}
                 {shellCommandInstalled === false && (
                   <button
                     type="button"
@@ -745,7 +764,7 @@ function RootLayout() {
             {/* Tabs render via WorkspaceTabsViewport: every open tab stays
                 mounted so SSH PTYs / xterm scrollback / port-forwards
                 survive tab switches. <Outlet/> still renders non-tab routes
-                (index, settings); tab routes' components are no-ops. */}
+                (index); tab routes' components are no-ops. */}
             <DesktopWorkspaceTabsViewport />
             <Outlet />
           </main>

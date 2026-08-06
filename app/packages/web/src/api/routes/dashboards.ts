@@ -686,7 +686,8 @@ app.post("/validate-tabs", async (c) => {
       target.kind === "metric-alerts" ||
       target.kind === "probes" ||
       target.kind === "workflows" ||
-      target.kind === "deployments"
+      target.kind === "deployments" ||
+      target.kind === "settings"
     ) {
       validIds.add(tab.id);
     } else if (target.kind === "chat") {

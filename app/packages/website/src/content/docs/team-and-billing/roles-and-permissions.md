@@ -4,7 +4,7 @@ description: System roles, custom roles, and the permission model.
 sidebar_order: 2
 ---
 
-> **Web only.**
+> Managed on the web app and, when signed in to a cloud organization, in the desktop app's Settings tab.
 
 Infrawrench uses a permission-based authorization model. Every API call and UI action is gated by one or more **permission strings**. Roles bundle permissions together, and members are assigned a role.
 

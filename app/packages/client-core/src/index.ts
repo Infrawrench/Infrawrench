@@ -6,6 +6,12 @@ export {
   type TokenManagerOptions,
 } from "./tokens";
 export { createCloudFetch, CloudApiError, type CloudFetch, type CloudFetchOptions } from "./fetch";
+export {
+  isSeatLimitResponse,
+  SeatLimitReachedClientError,
+  PlanRequiredClientError,
+  type SeatLimitPayload,
+} from "./api-errors";
 export { parseSseStream, parseNdjsonStream } from "./sse";
 export { fetchOrgs, fetchMe, type CloudOrg, type CloudMe } from "./orgs";
 export {

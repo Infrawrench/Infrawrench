@@ -63,10 +63,13 @@ export function WebWorkspaceTabsViewport({ orgId, tabsValidated }: WebWorkspaceT
   const tabsHydrated = useUIStore((s) => s.tabsHydrated);
 
   // The URL is a "tab URL" when syncWorkspaceRouteFromPath returns a target.
-  // On non-tab routes (settings, onboarding) we hide all tab panels so the
-  // route's <Outlet/> renders alone — tabs stay mounted in the DOM.
+  // On non-tab routes (onboarding) we hide all tab panels so the route's
+  // <Outlet/> renders alone — tabs stay mounted in the DOM. Settings is a
+  // hybrid: it lives in the tab strip like any other tab, but its content is
+  // route-rendered (the section pages are a router subtree), so its panel here
+  // is empty and the viewport steps aside for the <Outlet/> the same way.
   const routeTarget = syncWorkspaceRouteFromPath(pathname, hash);
-  const showActive = routeTarget !== null;
+  const showActive = routeTarget !== null && routeTarget.kind !== "settings";
 
   // Direct URL navigation (deep link, browser back/forward) needs to add the
   // matching tab to the workspace if it isn't already open. The viewport
@@ -341,6 +344,10 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
       return <WebProbesPanel key={orgId} orgId={orgId} />;
     case "chat":
       return <WebChatPanel orgId={orgId} conversationId={t.conversationId} />;
+    case "settings":
+      // Route-rendered (see showActive above) — the tab only marks the place
+      // in the strip; the settings router subtree draws the content.
+      return null;
     case "resource":
       if (!t.pluginId || !t.resourceTypeId) {
         // Without pluginId/resourceTypeId we can't construct the detail URL.

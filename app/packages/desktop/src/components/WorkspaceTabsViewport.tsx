@@ -36,6 +36,7 @@ import { DesktopPosturePanel } from "@/components/DesktopPosturePanel";
 import { DesktopMetricAlertsPanel } from "@/components/DesktopMetricAlertsPanel";
 import { DesktopProbesPanel } from "@/components/DesktopProbesPanel";
 import { DesktopSshFanoutPanel } from "@/components/DesktopSshFanoutPanel";
+import { DesktopSettingsPanel } from "@/components/DesktopSettingsPanel";
 
 let agentClient: AgentClient | null = null;
 function getAgentClient(): AgentClient {
@@ -102,7 +103,7 @@ export function DesktopWorkspaceTabsViewport() {
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
 
   // The URL is a "tab URL" when syncWorkspaceRouteFromPath returns a target.
-  // On non-tab routes (index, settings) we hide all tab panels so the route's
+  // On non-tab routes (index) we hide all tab panels so the route's
   // <Outlet/> renders alone — tabs stay mounted in the DOM.
   const showActive = syncWorkspaceRouteFromPath(pathname, hash, searchStr) !== null;
 
@@ -289,6 +290,8 @@ function renderPanel(
       return <DesktopMetricAlertsPanel />;
     case "probes":
       return <DesktopProbesPanel />;
+    case "settings":
+      return <DesktopSettingsPanel section={t.section ?? ""} />;
     case "chat":
       return <CloudChatPanel conversationId={t.conversationId} />;
     case "resource":

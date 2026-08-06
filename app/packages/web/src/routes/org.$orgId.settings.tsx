@@ -1,7 +1,9 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useState } from "react";
+import { SETTINGS_SECTIONS } from "@infrawrench/ui";
 import { apiPost } from "../lib/api";
 import { usePermissions } from "@/auth/permissions-context";
+import { WebSettingsHost } from "@/lib/settings-host";
 
 export const Route = createFileRoute("/org/$orgId/settings")({
   component: SettingsLayout,
@@ -24,25 +26,14 @@ function SettingsLayout() {
     }
   }
 
-  const navItems = [
-    { to: `/org/${orgId}/settings`, label: "General" },
-    { to: `/org/${orgId}/settings/team`, label: "Team" },
-    { to: `/org/${orgId}/settings/roles`, label: "Roles" },
-    { to: `/org/${orgId}/settings/ssh-keys`, label: "SSH Keys" },
-    { to: `/org/${orgId}/settings/ssh-host-keys`, label: "Trusted SSH Hosts" },
-    { to: `/org/${orgId}/settings/bastions`, label: "Bastions" },
-    { to: `/org/${orgId}/settings/api-keys`, label: "API Keys" },
-    { to: `/org/${orgId}/settings/freezes`, label: "Change Freezes" },
-    { to: `/org/${orgId}/settings/tag-policy`, label: "Tag Policy" },
-    // Hidden outright without `workflows:read` — the page would only be able to
-    // tell them they can't see it.
-    ...(has("workflows:read")
-      ? [{ to: `/org/${orgId}/settings/approvals`, label: "Approvals" }]
-      : []),
-    { to: `/org/${orgId}/settings/paging`, label: "Notifications" },
-    { to: `/org/${orgId}/settings/billing`, label: "Billing" },
-    { to: `/org/${orgId}/settings/audit-log`, label: "Audit Log" },
-  ];
+  // Hidden outright without the permission — the page would only be able to
+  // tell them they can't see it.
+  const navItems = SETTINGS_SECTIONS.filter(
+    (s) => !s.requiresPermission || has(s.requiresPermission),
+  ).map((s) => ({
+    to: s.key ? `/org/${orgId}/settings/${s.key}` : `/org/${orgId}/settings`,
+    label: s.label,
+  }));
 
   return (
     <div className="flex h-full">
@@ -80,7 +71,9 @@ function SettingsLayout() {
         </button>
       </nav>
       <div className="flex-1 overflow-auto p-6">
-        <Outlet />
+        <WebSettingsHost orgId={orgId}>
+          <Outlet />
+        </WebSettingsHost>
       </div>
     </div>
   );

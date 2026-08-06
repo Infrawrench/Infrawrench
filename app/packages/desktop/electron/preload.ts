@@ -163,6 +163,9 @@ const INVOKE_CHANNELS = [
   "cloud_posture",
   "cloud_changes_list",
   "cloud_status_incidents",
+  // Settings tab proxy — one channel for the whole settings API surface; the
+  // main-process handler enforces a method+path allowlist (cloud-data/settings.ts).
+  "cloud_settings_request",
   "cloud_moment",
   "cloud_schedules_list",
   "cloud_schedules_create",

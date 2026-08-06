@@ -4,7 +4,7 @@ description: What is free, what is paid, and how to upgrade.
 sidebar_order: 3
 ---
 
-> **Web only.** The desktop app is free and has no account.
+> The desktop app in local-only mode is free and has no account. Billing is managed on the web app or, when signed in to a cloud organization, from the desktop app's Settings tab (checkout opens in your browser).
 
 ## Plans
 

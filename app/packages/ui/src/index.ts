@@ -296,6 +296,7 @@ export {
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
+  settingsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -597,6 +598,13 @@ export {
  * depend on `@infrawrench/ui`, not on client-core directly.
  */
 export {
+  isSeatLimitResponse,
+  SeatLimitReachedClientError,
+  PlanRequiredClientError,
+  type SeatLimitPayload,
+} from "@infrawrench/client-core";
+
+export {
   formatProvider,
   formatAuthMethod,
   describeUserAgent,
@@ -616,6 +624,10 @@ export {
 } from "@infrawrench/client-core";
 
 export * from "./cost/index.js";
+
+// Org/user settings — shared sections rendered by the web settings routes and
+// the desktop cloud-mode settings tab (see settings/host.tsx for the contract).
+export * from "./settings/index.js";
 export * from "./metric-alerts/index.js";
 export * from "./probes/index.js";
 export * from "./savings/index.js";

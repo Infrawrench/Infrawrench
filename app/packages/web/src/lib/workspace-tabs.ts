@@ -16,6 +16,7 @@ import {
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
+  settingsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -134,6 +135,13 @@ export function getWorkspaceNavigateArgs(
       return {
         to: "/org/$orgId/probes",
         params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    // The section is a static child route, not a path param, so the path is
+    // built concretely rather than through `params`.
+    case "settings":
+      return {
+        to: `/org/${orgId}/settings${target.section ? `/${target.section}` : ""}`,
         ...(replace ? { replace: true } : {}),
       };
     // Web addresses conversations by path segment; desktop uses a
@@ -264,6 +272,9 @@ export function syncWorkspaceRouteFromPath(
   if (s[0] === "probes") {
     return probesTabTarget();
   }
+  if (s[0] === "settings") {
+    return settingsTabTarget(s.slice(1).join("/") || undefined);
+  }
   if (s[0] === "chat") {
     // /chat is the conversation list; /chat/{id} is one conversation. Each
     // gets its own tab, same as desktop.
@@ -316,8 +327,6 @@ export function plainRouteDocumentTitle(pathname: string): string | null {
   switch (s[0]) {
     case "moment":
       return "Moment";
-    case "settings":
-      return "Settings";
     case "admin":
       return "Admin";
     default:

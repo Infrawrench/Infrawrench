@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { apiGet, apiPut } from "@/lib/api";
-import type { ExpirySettings } from "@infrawrench/ui";
+import type { ExpirySettings } from "@infrawrench/client-core";
+import { useSettingsHost } from "./host.js";
 
 const inputClass =
   "w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong";
@@ -12,7 +12,8 @@ const inputClass =
  * the alert is the per-channel "Expiry alerts" trigger above, same split as
  * drift.
  */
-export function ExpiryAlertsSection({ orgId }: { orgId: string }) {
+export function ExpiryAlertsSection() {
+  const { orgId, api, openWorkspace } = useSettingsHost();
   const [settings, setSettings] = useState<ExpirySettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
@@ -22,7 +23,8 @@ export function ExpiryAlertsSection({ orgId }: { orgId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    apiGet<ExpirySettings>(`/api/org/${orgId}/expiring/settings`)
+    api
+      .get<ExpirySettings>(`/api/org/${orgId}/expiring/settings`)
       .then((s) => {
         if (!cancelled) {
           setSettings(s);
@@ -36,10 +38,11 @@ export function ExpiryAlertsSection({ orgId }: { orgId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [orgId]);
+  }, [api, orgId]);
 
   useEffect(() => {
     if (settings) setLeadDaysInput(String(settings.leadDays));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings?.leadDays]);
 
   async function save(patch: { enabled?: boolean; leadDays?: number }) {
@@ -48,7 +51,7 @@ export function ExpiryAlertsSection({ orgId }: { orgId: string }) {
     setSettings({ ...settings, ...patch });
     setError(null);
     try {
-      const saved = await apiPut<ExpirySettings>(`/api/org/${orgId}/expiring/settings`, patch);
+      const saved = await api.put<ExpirySettings>(`/api/org/${orgId}/expiring/settings`, patch);
       setSettings(saved);
     } catch (e) {
       setSettings(previous);
@@ -64,9 +67,9 @@ export function ExpiryAlertsSection({ orgId }: { orgId: string }) {
         <h2 className="text-sm font-semibold text-on-surface-secondary">Expiry radar</h2>
         <p className="text-xs text-on-surface-muted mt-1">
           Alerts for certificates, domains, tokens and keys approaching expiry — the deadlines the{" "}
-          <a href={`/org/${orgId}/expiring`} className="underline">
+          <button type="button" onClick={() => openWorkspace("expiring")} className="underline">
             Expiring screen
-          </a>{" "}
+          </button>{" "}
           tracks. Turn the <strong>Expiry alerts</strong> trigger on for a channel or your phone
           above to route them.
         </p>

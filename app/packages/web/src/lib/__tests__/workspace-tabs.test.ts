@@ -280,7 +280,19 @@ describe("syncWorkspaceRouteFromPath", () => {
   });
 
   it("returns null for unknown paths", () => {
-    expect(syncWorkspaceRouteFromPath("/settings")).toBeNull();
+    expect(syncWorkspaceRouteFromPath("/moment")).toBeNull();
+  });
+
+  it("parses settings paths into the single settings tab", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/settings")).toEqual({ kind: "settings" });
+    expect(syncWorkspaceRouteFromPath("/org/myorg/settings/team")).toEqual({
+      kind: "settings",
+      section: "team",
+    });
+    expect(syncWorkspaceRouteFromPath("/org/myorg/settings/ssh-host-keys")).toEqual({
+      kind: "settings",
+      section: "ssh-host-keys",
+    });
   });
 
   it("returns null for org path without sub-route", () => {

@@ -65,6 +65,10 @@ export function agentsTabTarget(): WorkspaceTabTarget {
   return { kind: "agents" };
 }
 
+export function settingsTabTarget(section?: string): WorkspaceTabTarget {
+  return { kind: "settings", ...(section ? { section } : {}) };
+}
+
 export function costsTabTarget(): WorkspaceTabTarget {
   return { kind: "costs" };
 }
