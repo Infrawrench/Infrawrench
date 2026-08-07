@@ -30,6 +30,7 @@ import { cmdLeases } from "./commands/leases";
 import { cmdRecordings } from "./commands/recordings";
 import { cmdAccess } from "./commands/access";
 import { cmdHygiene } from "./commands/hygiene";
+import { cmdCredits } from "./commands/credits";
 import { cmdProbes } from "./commands/probes";
 import { cmdGraph } from "./commands/graph";
 import { cmdPage, cmdCostsPush } from "./commands/push";
@@ -83,6 +84,7 @@ COMMANDS
   schedules           sleep/wake schedules: windows, next transitions & projected savings
   leases              resource leases (TTLs): deadlines, auto-delete flags & status
   access              break-glass requests & live permission elevations
+  credits             prepaid balances with burn rate & runway ("6 days left")
   hygiene             unused API keys, unreferenced SSH keys & unexercised
                       write permissions   [--days 30|90|180|365]
   access active       only the elevations in force right now
@@ -343,6 +345,9 @@ export async function runCli(): Promise<void> {
         break;
       case "hygiene":
         await cmdHygiene(ctx, { days: parsed.range.days });
+        break;
+      case "credits":
+        await cmdCredits(ctx);
         break;
       case "probes":
         // `infrawrench probes <id|name>` charts one probe's latency history.

@@ -5,6 +5,7 @@ import type {
   CostAnomalySettings,
   CostAnomalySettingsView,
   CostDimensionOption,
+  CreditBurndown,
   ShowbackReport,
   TagComplianceReport,
   UntaggedSpendReport,
@@ -16,6 +17,7 @@ import type { BudgetInput, CostQueryRequest, CostQueryResponse } from "./config.
  * this package) shares one definition of it; re-exported for web and desktop.
  */
 export type {
+  CreditBurndown,
   BudgetWithStatus,
   BudgetPlacement,
   /** A detected spend anomaly, as listed on the Costs panel. */
@@ -97,4 +99,11 @@ export interface CostsClient extends CostApi {
   getUntaggedSpend?(from?: string, to?: string): Promise<UntaggedSpendReport>;
   /** Spend grouped by cost centre through the org's allocation rules. */
   getShowback?(from?: string, to?: string): Promise<ShowbackReport>;
+  /**
+   * Prepaid credit balances with their burn rate and runway. Optional the way
+   * `listAnomalies` is: a host that hasn't wired it simply doesn't render the
+   * burndown section — and the section renders nothing anyway for an org with
+   * no credit-capable accounts, which is the common case.
+   */
+  getCreditBurndown?(): Promise<CreditBurndown>;
 }

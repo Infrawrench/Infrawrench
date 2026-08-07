@@ -38,6 +38,7 @@ import { registerLeasePaths } from "./paths/leases";
 import { registerSessionRecordingPaths } from "./paths/session-recordings";
 import { registerAccessRequestPaths } from "./paths/access-requests";
 import { registerCredentialHygienePaths } from "./paths/credential-hygiene";
+import { registerCreditPaths } from "./paths/credits";
 import { registerProbePaths } from "./paths/probes";
 import { registerLogWorkspacePaths } from "./paths/log-workspaces";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
@@ -135,6 +136,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerSessionRecordingPaths(ctx);
   registerAccessRequestPaths(ctx);
   registerCredentialHygienePaths(ctx);
+  registerCreditPaths(ctx);
   registerProbePaths(ctx);
   registerLogWorkspacePaths(ctx);
   registerConnectionFeaturePaths(ctx);
@@ -231,6 +233,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Resource leases",
         description:
           "Optional TTLs on resources ('a test cluster for 3 days'). Active leases ride the expiry radar; auto-delete leases are announced twice and then deleted at expiry by the poller, deferring during change freezes.",
+      },
+      {
+        name: "Credit burndown",
+        description:
+          "Prepaid credit balances with a burn rate measured from the server's own series of readings and a runway bounded by both the burn and the credit's own expiry. Only providers that expose a balance appear; most bill in arrears and have no pot to burn down.",
       },
       {
         name: "Credential hygiene",
@@ -461,6 +468,10 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   // credential hygiene — `audit:read`, not a family of its own. Every fact in
   // the report is already reachable by anyone who can read the audit log, so a
   // separate permission would only mean granting two things to get one view.
+  // credit burndown — `costs:read`. A prepaid balance is spend information,
+  // and the permission that already governs "what is this costing us" is the
+  // one that should govern "how much is left".
+  "GET /credits": "costs:read",
   "GET /credential-hygiene": "audit:read",
   "GET /access-requests": "access:read",
   "GET /access-requests/catalog": "access:read",

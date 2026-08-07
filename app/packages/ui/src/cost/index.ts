@@ -25,3 +25,4 @@ export { TagGovernanceSection } from "./TagGovernanceSection.js";
 export { CostAnomaliesSection, type CostAnomaliesSectionProps } from "./CostAnomaliesSection.js";
 export { CostsIcon } from "./CostsIcon.js";
 export { BudgetPickerModal, type BudgetPickerModalProps } from "./BudgetPickerModal.js";
+export { CreditBurndownSection } from "./CreditBurndownSection.js";

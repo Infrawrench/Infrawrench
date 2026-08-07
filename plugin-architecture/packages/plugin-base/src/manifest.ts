@@ -150,6 +150,14 @@ export interface PluginManifest {
    */
   costs?: CostCapabilityDeclaration;
   /**
+   * If present, this plugin can report a prepaid credit balance for an
+   * account via `fetchCreditBalance`, and the host schedules a low-frequency
+   * collection pass that turns the resulting series into a burn rate and a
+   * runway. Independent of `costs`: most prepaid providers bill nothing in
+   * arrears and expose no cost API at all.
+   */
+  credits?: CreditsCapabilityDeclaration;
+  /**
    * If present, this plugin's provider publishes a public status feed. The
    * host polls `statusFeed.url` (no credentials — the feed is public) on a
    * low-frequency background pass and hands the raw body to the plugin's
@@ -381,6 +389,16 @@ export interface PluginClient {
    * so bastion routing and custom CAs keep working.
    */
   fetchCostData?(accountId: string, range: CostFetchRange): Promise<CostRow[]>;
+  /**
+   * Read the account's prepaid credit balance(s). Only called when the
+   * manifest declares `credits`. Called on a low-frequency background pass
+   * (roughly daily), so it should be one cheap request; the host derives the
+   * burn rate from successive readings rather than asking the plugin for one.
+   *
+   * Throw {@link CreditAccessError} when the credential cannot see the balance
+   * — that is a different situation from a failure and the host says so.
+   */
+  fetchCreditBalance?(accountId: string): Promise<CreditBalance[]>;
   /** List objects in a storage bucket at a given prefix (delimiter="/") */
   listStorageObjects?(bucket: string, prefix: string): Promise<StorageObject[]>;
   /** Upload a file to the given key within a bucket */
@@ -860,6 +878,7 @@ export interface Plugin {
 
 // Forward declarations — defined in their own modules but used here
 import type { CostCapabilityDeclaration, CostEstimate, CostFetchRange, CostRow } from "./cost.js";
+import type { CreditBalance, CreditsCapabilityDeclaration } from "./credits.js";
 import type { PolicyTemplate, PreflightDeclaration, PreflightResult } from "./preflight.js";
 import type { StatusFeedDeclaration, StatusIncident } from "./status-feed.js";
 import type { ResourceCreateReturn, ResourceInstance } from "./instance.js";

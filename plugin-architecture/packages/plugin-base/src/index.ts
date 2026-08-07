@@ -31,6 +31,8 @@ export type {
   CostRow,
 } from "./cost.js";
 export { buildCostEstimate, costEstimateDelta, CostSetupError } from "./cost.js";
+export type { CreditBalance, CreditsCapabilityDeclaration } from "./credits.js";
+export { CreditAccessError } from "./credits.js";
 
 export type {
   PolicyTemplate,

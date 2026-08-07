@@ -107,6 +107,73 @@ export async function claimDueCostAccounts(
   }));
 }
 
+/**
+ * Claim up to `limit` accounts due a credit-balance read.
+ *
+ * Same SKIP LOCKED lease protocol as the cost claim, but keyed off
+ * `account_credit_polls` rather than columns on `accounts`. Credit-capable
+ * plugins are a small minority, so a row that exists only for accounts the
+ * pass has touched keeps this a scan of a tiny table — and the LEFT JOIN is
+ * what lets an account with no row yet still come due immediately.
+ */
+export async function claimDueCreditAccounts(
+  limit: number,
+  creditCapablePluginIds: string[],
+): Promise<PollAccountRow[]> {
+  if (creditCapablePluginIds.length === 0) return [];
+  const rows = await db.execute(sql`
+    INSERT INTO account_credit_polls (account_id, organization_id, next_poll_at)
+    SELECT a.id, a.organization_id,
+           now() + ${COST_LEASE_MS}::float8 * interval '1 millisecond'
+    FROM accounts a
+    LEFT JOIN account_credit_polls p ON p.account_id = a.id
+    WHERE a.deleted_at IS NULL
+      -- IN, not = ANY(): see the note on claimDueCostAccounts.
+      AND a.plugin_id IN ${creditCapablePluginIds}
+      AND (p.account_id IS NULL OR p.next_poll_at IS NULL OR p.next_poll_at <= now())
+    ORDER BY p.last_polled_at ASC NULLS FIRST, a.id ASC
+    LIMIT ${limit}
+    ON CONFLICT (account_id) DO UPDATE
+      SET next_poll_at = now() + ${COST_LEASE_MS}::float8 * interval '1 millisecond'
+    RETURNING account_id, organization_id, failure_count
+  `);
+
+  const claimed = Array.from(rows as Iterable<Record<string, unknown>>, (r) => ({
+    id: String(r["account_id"]),
+    organizationId: String(r["organization_id"]),
+    failureCount: Number(r["failure_count"]),
+  }));
+  if (claimed.length === 0) return [];
+
+  // The claim writes to `account_credit_polls`, which carries no plugin id or
+  // display name; both come back in one follow-up read rather than being
+  // denormalized onto the poll row, where they would go stale on a rename.
+  const details = await db.execute(sql`
+    SELECT id, plugin_id, display_name FROM accounts
+    WHERE id IN ${claimed.map((c) => c.id)}
+  `);
+  const byId = new Map(
+    Array.from(details as Iterable<Record<string, unknown>>, (r) => [
+      String(r["id"]),
+      { pluginId: String(r["plugin_id"]), displayName: String(r["display_name"]) },
+    ]),
+  );
+
+  return claimed.flatMap((c) => {
+    const detail = byId.get(c.id);
+    if (!detail) return [];
+    return [
+      {
+        id: c.id,
+        organizationId: c.organizationId,
+        pluginId: detail.pluginId,
+        displayName: detail.displayName,
+        pollFailureCount: c.failureCount,
+      },
+    ];
+  });
+}
+
 /** Claim up to `limit` due cron workflows, leasing each for {@link WORKFLOW_LEASE_MS}. */
 export async function claimDueWorkflows(limit: number): Promise<DueWorkflowRow[]> {
   const rows = await db.execute(sql`

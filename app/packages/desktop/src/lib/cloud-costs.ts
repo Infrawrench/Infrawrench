@@ -18,6 +18,7 @@ import type {
   TagComplianceReport,
   TagPolicy,
   UntaggedSpendReport,
+  CreditBurndown,
 } from "@infrawrench/ui/cost";
 import { invoke } from "./invoke";
 
@@ -91,6 +92,10 @@ export async function loadCloudShowback(
     ...(from ? { from } : {}),
     ...(to ? { to } : {}),
   });
+}
+
+export async function loadCloudCreditBurndown(orgId: string): Promise<CreditBurndown> {
+  return invoke("cloud_credit_burndown", { orgId });
 }
 
 export async function listCloudBudgets(orgId: string): Promise<BudgetWithStatus[]> {

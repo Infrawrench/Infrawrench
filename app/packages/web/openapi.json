@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.42.0",
+    "version": "0.43.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -95,6 +95,10 @@
     {
       "name": "Resource leases",
       "description": "Optional TTLs on resources ('a test cluster for 3 days'). Active leases ride the expiry radar; auto-delete leases are announced twice and then deleted at expiry by the poller, deferring during change freezes."
+    },
+    {
+      "name": "Credit burndown",
+      "description": "Prepaid credit balances with a burn rate measured from the server's own series of readings and a runway bounded by both the burn and the credit's own expiry. Only providers that expose a balance appear; most bill in arrears and have no pot to burn down."
     },
     {
       "name": "Credential hygiene",
@@ -10826,6 +10830,216 @@
           "permissionFindingsWithheld",
           "findings",
           "counts"
+        ],
+        "additionalProperties": false
+      },
+      "CreditPot": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "capabilityLabel": {
+            "type": "string",
+            "description": "The provider's own word for this pot \u2014 \"Credits\", \"Balance\"."
+          },
+          "topUpUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "potKey": {
+            "type": "string",
+            "description": "Stable identity for this pot within the account \u2014 a currency code, a project id \u2014 so successive readings line up into a series."
+          },
+          "label": {
+            "type": "string"
+          },
+          "remaining": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "granted": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "What was granted, when the provider reports it."
+          },
+          "creditExpiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Hard expiry on the credit itself, independent of burn."
+          },
+          "observedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "burnPerDay": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Spend per day over the observed span. **Null means there is not enough history to say** \u2014 never 0, which would read as 'nothing is being spent'."
+          },
+          "burnSpanDays": {
+            "type": "number"
+          },
+          "observations": {
+            "type": "integer"
+          },
+          "topUps": {
+            "type": "integer",
+            "description": "Increases seen between consecutive readings. A top-up is recorded, never netted off the burn \u2014 subtracting the endpoints of a window containing one reports a negative burn and an infinite runway."
+          },
+          "runwayDays": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "exhaustedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "neverEmpties": {
+            "type": "boolean",
+            "description": "Nothing has been spent over the observed span."
+          },
+          "limitedByExpiry": {
+            "type": "boolean",
+            "description": "The credit's own expiry, not the burn rate, is the binding deadline."
+          },
+          "urgency": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "warning",
+              "ok",
+              "unknown"
+            ]
+          }
+        },
+        "required": [
+          "accountId",
+          "accountName",
+          "pluginId",
+          "capabilityLabel",
+          "topUpUrl",
+          "potKey",
+          "label",
+          "remaining",
+          "currency",
+          "granted",
+          "creditExpiresAt",
+          "observedAt",
+          "burnPerDay",
+          "burnSpanDays",
+          "observations",
+          "topUps",
+          "runwayDays",
+          "exhaustedAt",
+          "neverEmpties",
+          "limitedByExpiry",
+          "urgency"
+        ],
+        "additionalProperties": false
+      },
+      "CreditPollFailure": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "error": {
+            "type": "string"
+          },
+          "helpLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "helpUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Set when the plugin reported a permission gap rather than an outage."
+          },
+          "failureCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accountId",
+          "accountName",
+          "pluginId",
+          "error",
+          "helpLabel",
+          "helpUrl",
+          "failureCount"
+        ],
+        "additionalProperties": false
+      },
+      "CreditBurndown": {
+        "type": "object",
+        "properties": {
+          "pots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreditPot"
+            }
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreditPollFailure"
+            }
+          },
+          "pendingAccountIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "description": "Credit-capable accounts never yet collected \u2014 named rather than omitted."
+          },
+          "burnWindowDays": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pots",
+          "failures",
+          "pendingAccountIds",
+          "burnWindowDays"
         ],
         "additionalProperties": false
       },
@@ -27226,6 +27440,42 @@
         },
         "operationId": "getOrgOrgIdCredentialHygiene",
         "x-required-permission": "audit:read"
+      }
+    },
+    "/api/org/{orgId}/credits": {
+      "get": {
+        "tags": [
+          "Credit burndown"
+        ],
+        "summary": "Prepaid credit balances, burn rate and runway",
+        "description": "Every prepaid pot the organization holds, most urgent first. A provider that bills in arrears sends an invoice you can argue with; a prepaid pot that empties simply stops answering \u2014 so this is an availability number as much as a finance one.\n\nThe burn rate is measured from the server's own series of readings rather than reported by the provider, and it is the sum of the **decreases** between consecutive readings: a top-up inside the window is recorded separately, never netted off. The runway is bounded by both the burn and the credit's own expiry, whichever comes first.\n\nOnly providers that expose a balance appear here; most bill in arrears and have no pot.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The organization's prepaid balances",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditBurndown"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCredits",
+        "x-required-permission": "costs:read"
       }
     },
     "/api/org/{orgId}/probes": {

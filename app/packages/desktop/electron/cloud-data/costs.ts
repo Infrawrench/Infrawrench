@@ -81,6 +81,15 @@ ipcMain.handle(
   },
 );
 
+/**
+ * Prepaid credit balances with their burn rate and runway. Cloud-only, like
+ * every other read here — the burn is derived from a server-side series of
+ * readings, and a local-only workspace has no series to derive it from.
+ */
+ipcMain.handle("cloud_credit_burndown", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetch(orgId, "/credits");
+});
+
 ipcMain.handle("cloud_list_budgets", async (_e, { orgId }: { orgId: string }) => {
   return (await cloudFetch(orgId, "/budgets")) ?? [];
 });
