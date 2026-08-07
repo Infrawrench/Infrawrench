@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   RESOURCES_CHANGED_EVENT,
   PostureSection,
@@ -6,8 +6,16 @@ import {
   type PostureFinding,
   type PostureListResponse,
 } from "@infrawrench/ui";
-import { fetchCloudPosture } from "@/lib/cloud-resources";
-import { loadLocalPosture } from "@/lib/local-posture";
+import {
+  dismissCloudPostureFinding,
+  fetchCloudPosture,
+  restoreCloudPostureFinding,
+} from "@/lib/cloud-resources";
+import {
+  dismissLocalPostureFinding,
+  loadLocalPosture,
+  restoreLocalPostureFinding,
+} from "@/lib/local-posture";
 
 interface DesktopPosturePanelProps {
   openResource: (finding: PostureFinding) => void;
@@ -25,8 +33,40 @@ export function DesktopPosturePanel({ openResource }: DesktopPosturePanelProps) 
   const [data, setData] = useState<PostureListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  // The load effect owns refreshing; dismiss/restore trigger one through a
+  // ref so they don't have to re-run the effect (and tear down its listener).
+  const reload = useRef<() => void>(() => {});
 
   const retry = useCallback(() => setReloadKey((k) => k + 1), []);
+
+  const dismiss = useCallback(
+    async (finding: PostureFinding, reason: string) => {
+      if (activeCloudOrgId) {
+        await dismissCloudPostureFinding(
+          activeCloudOrgId,
+          finding.resourceId,
+          finding.ruleId,
+          reason,
+        );
+      } else {
+        await dismissLocalPostureFinding(finding.resourceId, finding.ruleId, reason);
+      }
+      reload.current();
+    },
+    [activeCloudOrgId],
+  );
+
+  const restore = useCallback(
+    async (finding: PostureFinding) => {
+      if (activeCloudOrgId) {
+        await restoreCloudPostureFinding(activeCloudOrgId, finding.resourceId, finding.ruleId);
+      } else {
+        await restoreLocalPostureFinding(finding.resourceId, finding.ruleId);
+      }
+      reload.current();
+    },
+    [activeCloudOrgId],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -51,6 +91,7 @@ export function DesktopPosturePanel({ openResource }: DesktopPosturePanelProps) 
         });
     }
     load();
+    reload.current = load;
     window.addEventListener(RESOURCES_CHANGED_EVENT, load);
     return () => {
       cancelled = true;
@@ -58,5 +99,17 @@ export function DesktopPosturePanel({ openResource }: DesktopPosturePanelProps) 
     };
   }, [activeCloudOrgId, reloadKey]);
 
-  return <PostureSection data={data} error={error} onRetry={retry} onOpenResource={openResource} />;
+  return (
+    <PostureSection
+      data={data}
+      error={error}
+      onRetry={retry}
+      onOpenResource={openResource}
+      // Both modes can dismiss: cloud mode records it for the org through the
+      // API (and the server rejects a caller without `resources:write`),
+      // local mode writes this workspace's own SQLite table.
+      onDismiss={dismiss}
+      onRestore={restore}
+    />
+  );
 }

@@ -21,6 +21,8 @@ export interface CliFlags {
   org: string | null;
   local: boolean;
   account: string | null;
+  /** `posture dismiss --reason` — why an accepted risk is acceptable. */
+  reason: string | null;
   help: boolean;
 }
 

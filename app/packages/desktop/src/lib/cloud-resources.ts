@@ -35,6 +35,30 @@ export async function fetchCloudPosture(orgId: string): Promise<PostureListRespo
   return invoke("cloud_posture", { orgId });
 }
 
+/**
+ * Accept a posture finding for the org. Recorded server-side — a dismissal is
+ * a decision about the organization's exposure, not about this machine, so
+ * every surface sees the same one. Local mode's counterpart is
+ * `dismissLocalPostureFinding` in lib/local-posture.ts.
+ */
+export async function dismissCloudPostureFinding(
+  orgId: string,
+  resourceId: string,
+  ruleId: string,
+  reason: string,
+): Promise<void> {
+  await invoke("cloud_posture_dismiss", { orgId, resourceId, ruleId, reason });
+}
+
+/** Undo a dismissal, putting the finding back on the list and in the alerts. */
+export async function restoreCloudPostureFinding(
+  orgId: string,
+  resourceId: string,
+  ruleId: string,
+): Promise<void> {
+  await invoke("cloud_posture_restore", { orgId, resourceId, ruleId });
+}
+
 export async function getCloudResourceDetail(
   orgId: string,
   pluginId: string,

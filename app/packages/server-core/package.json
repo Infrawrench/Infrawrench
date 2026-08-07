@@ -64,6 +64,7 @@
     "./expiry/settings": "./src/expiry/settings.ts",
     "./expiry/summary": "./src/expiry/summary.ts",
     "./posture/alerts": "./src/posture/alerts.ts",
+    "./posture/dismissals": "./src/posture/dismissals.ts",
     "./posture/feed": "./src/posture/feed.ts",
     "./posture/settings": "./src/posture/settings.ts",
     "./posture/summary": "./src/posture/summary.ts",

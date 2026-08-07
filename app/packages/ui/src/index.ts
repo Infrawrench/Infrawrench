@@ -590,8 +590,11 @@ export { ExpiryIcon } from "./components/icons/ExpiryIcon.js";
  */
 export {
   computePostureFindings,
+  dismissPostureFinding,
   fetchPosture,
   getPostureSettings,
+  postureFindingKey,
+  restorePostureFinding,
   updatePostureSettings,
   alertablePostureFindings,
   POSTURE_CATEGORY_LABELS,
@@ -599,9 +602,12 @@ export {
   POSTURE_SEVERITY_LABELS,
 } from "@infrawrench/client-core";
 export type {
+  DismissedPostureFinding,
   PostureCategory,
   PostureCheckRule,
   PostureCondition,
+  PostureDismissal,
+  PostureDismissInput,
   PostureFinding,
   PostureListResponse,
   PostureScanAccount,

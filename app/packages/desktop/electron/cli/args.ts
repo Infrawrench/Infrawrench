@@ -115,6 +115,8 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         window: { type: "string", short: "w" },
         // `costs --anomalies` — same command, different question.
         anomalies: { type: "boolean", default: false },
+        // `posture dismiss` — why the finding is an accepted risk.
+        reason: { type: "string" },
         // Push-up flags (`page`, `costs push`).
         source: { type: "string" },
         key: { type: "string" },
@@ -199,6 +201,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       org: str("org") ?? null,
       local: values.local === true,
       account: str("account") ?? null,
+      reason: str("reason") ?? null,
       help: values.help === true,
     },
     range: {

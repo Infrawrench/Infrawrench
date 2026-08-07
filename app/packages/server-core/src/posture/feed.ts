@@ -14,6 +14,7 @@ import { computePostureFindings, type PostureListResponse } from "@infrawrench/c
 import { db } from "../db/client";
 import { accounts, resources } from "../db/schema";
 import { loadPlugins } from "../plugin-loader";
+import { listPostureDismissals } from "./dismissals";
 
 export interface ListPostureOptions {
   /** Scan instant; defaults to `Date.now()`. Fixed in tests. */
@@ -24,12 +25,16 @@ export interface ListPostureOptions {
  * Every matched posture rule on the org's stored resources, worst severity
  * first. Soft-deleted accounts and resources are excluded, so a finding can
  * never outlive the thing it belongs to.
+ *
+ * Findings the org has dismissed are partitioned into `dismissed` rather than
+ * listed — which is what keeps them out of the poller's alert pass, the
+ * digest and the MCP tool as well, since all of them read this one function.
  */
 export async function listPosture(
   organizationId: string,
   opts: ListPostureOptions = {},
 ): Promise<PostureListResponse> {
-  const [orgResources, orgAccounts, plugins] = await Promise.all([
+  const [orgResources, orgAccounts, plugins, dismissals] = await Promise.all([
     db
       .select({
         id: resources.id,
@@ -51,6 +56,7 @@ export async function listPosture(
       .from(accounts)
       .where(and(eq(accounts.organizationId, organizationId), isNull(accounts.deletedAt))),
     loadPlugins(),
+    listPostureDismissals(organizationId),
   ]);
 
   return computePostureFindings(
@@ -70,6 +76,7 @@ export async function listPosture(
         externalId: r.externalId,
         fields: r.fieldsJson,
       })),
+      dismissals,
     },
     opts.now !== undefined ? { now: opts.now } : {},
   );

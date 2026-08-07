@@ -14,6 +14,13 @@
  * in, findings out: no plugin client, no credentials, no provider API calls,
  * ever — exactly the `orphanRule` and expiry-radar contract.
  *
+ * Findings have no identity of their own — they are recomputed from scratch
+ * on every read — so an operator's decision to accept one is stored against
+ * `(resourceId, ruleId)` and applied here, at the end of the computation. A
+ * dismissed finding is still evaluated; it is only *partitioned* out of the
+ * list and the alert feed, so accepting a risk stays reviewable and
+ * reversible rather than being a delete.
+ *
  * The plugin-base import is type-only on purpose (the expiry radar's stance):
  * this module must stay free of a *runtime* dependency on plugin-base so the
  * mobile bundle doesn't pull in zod for the sake of a few interfaces. The
@@ -77,13 +84,50 @@ export interface PostureFinding {
   reason: string;
 }
 
+/**
+ * An operator's decision to accept one finding on one resource — the bucket
+ * really is meant to be public, the key really is rotated out of band.
+ *
+ * Keyed by `(resourceId, ruleId)` rather than by a finding row, because a
+ * finding is recomputed from scratch on every read and has no identity of its
+ * own. Both halves of the key are stable: resource ids come from the plugin's
+ * lister (the same id upserted on every sync) and rule ids are declared in
+ * the plugin manifest, so a dismissal survives syncs and re-deploys and stops
+ * applying the moment the rule stops matching.
+ */
+export interface PostureDismissal {
+  resourceId: string;
+  ruleId: string;
+  /** ISO instant the dismissal was recorded. */
+  dismissedAt: string;
+  /** Who accepted it — display name or email; null when unknown (local mode). */
+  dismissedBy: string | null;
+  /** The operator's note, when they left one. */
+  reason: string | null;
+}
+
+/** A finding that matched, and the dismissal that is holding it off the list. */
+export interface DismissedPostureFinding extends PostureFinding {
+  dismissal: PostureDismissal;
+}
+
 /** Wire shape of `GET /api/org/:orgId/posture` and the local CLI assembly. */
 export interface PostureListResponse {
-  /** All findings, worst severity first. */
+  /** Live findings, worst severity first. Dismissed ones are **not** here. */
   findings: PostureFinding[];
+  /** Live finding count — `findings.length`, dismissals excluded. */
   totalCount: number;
-  /** Finding count per severity; every bucket present, zeros included. */
+  /** Live finding count per severity; every bucket present, zeros included. */
   counts: Record<PostureSeverity, number>;
+  /**
+   * Findings a dismissal is currently suppressing, most recently dismissed
+   * first. Only dismissals whose rule still matches appear: a dismissal for a
+   * finding that has since been fixed (or whose resource is gone) is simply
+   * inert, so this list never claims a risk that no longer exists.
+   */
+  dismissed: DismissedPostureFinding[];
+  /** `dismissed.length`, so a caller can badge the count without the rows. */
+  dismissedCount: number;
   generatedAt: string;
 }
 
@@ -128,6 +172,13 @@ export interface PostureScanInput {
   plugins: readonly PostureScanPlugin[];
   accounts: readonly PostureScanAccount[];
   resources: readonly PostureScanResource[];
+  /**
+   * Accepted findings, keyed by `(resourceId, ruleId)`. Omitted means none —
+   * a host that has no dismissal store (or hasn't loaded it yet) gets the
+   * pre-dismissal behaviour, which is the safe direction: unknown dismissals
+   * show the finding rather than hide it.
+   */
+  dismissals?: readonly PostureDismissal[] | undefined;
 }
 
 export interface PostureScanOptions {
@@ -214,6 +265,19 @@ function ruleMatches(
 }
 
 /**
+ * The identity of a finding, and therefore of a dismissal: the resource it is
+ * on and the rule that matched. Every surface keys rows, dismissal lookups
+ * and API calls off this one function so the three can never drift apart.
+ *
+ * NUL is the separator because neither half is length-prefixed and both can
+ * contain punctuation — GCP resource ids are slash-paths, rule ids are
+ * hyphenated — so any printable delimiter could be forged into a collision.
+ */
+export function postureFindingKey(finding: { resourceId: string; ruleId: string }): string {
+  return `${finding.resourceId}\u0000${finding.ruleId}`;
+}
+
+/**
  * Compute the posture findings for a workspace: every declared rule matched
  * against every stored resource, worst severity first.
  *
@@ -222,12 +286,20 @@ function ruleMatches(
  * then rule id, so the order is stable across refreshes. Resources whose
  * account is missing from `accounts` are skipped (soft-deleted account, not a
  * finding worth alarming on), as is any bag that isn't a plain object.
+ *
+ * Dismissed findings are computed exactly like the rest and then *partitioned
+ * out* — they leave `findings`/`counts`/`totalCount` (so nothing the org has
+ * accepted can page anyone) and reappear in `dismissed` with the note and
+ * author attached (so accepting a risk is reviewable, not a delete).
  */
 export function computePostureFindings(
   input: PostureScanInput,
   options: PostureScanOptions = {},
 ): PostureListResponse {
   const now = options.now ?? Date.now();
+  const dismissals = new Map(
+    (input.dismissals ?? []).map((d) => [postureFindingKey(d), d] as const),
+  );
 
   // pluginId → { pluginName, types: typeId → { typeName, rules } }
   const ruleIndex = new Map<
@@ -248,6 +320,7 @@ export function computePostureFindings(
 
   const accountMap = new Map(input.accounts.map((a) => [a.id, a]));
   const findings: PostureFinding[] = [];
+  const dismissed: DismissedPostureFinding[] = [];
 
   if (ruleIndex.size > 0) {
     for (const r of input.resources) {
@@ -263,7 +336,7 @@ export function computePostureFindings(
 
       for (const rule of typeEntry.rules) {
         if (!ruleMatches(rule, fields, now)) continue;
-        findings.push({
+        const finding: PostureFinding = {
           resourceId: r.id,
           pluginId: r.pluginId,
           pluginName: pluginEntry.pluginName,
@@ -278,17 +351,26 @@ export function computePostureFindings(
           severity: rule.severity,
           category: rule.category,
           reason: rule.reason,
-        });
+        };
+        const dismissal = dismissals.get(postureFindingKey(finding));
+        if (dismissal) dismissed.push({ ...finding, dismissal });
+        else findings.push(finding);
       }
     }
   }
 
-  findings.sort(
-    (a, b) =>
-      SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||
-      a.accountName.localeCompare(b.accountName) ||
-      a.displayName.localeCompare(b.displayName) ||
-      a.ruleId.localeCompare(b.ruleId),
+  const bySeverity = (a: PostureFinding, b: PostureFinding) =>
+    SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||
+    a.accountName.localeCompare(b.accountName) ||
+    a.displayName.localeCompare(b.displayName) ||
+    a.ruleId.localeCompare(b.ruleId);
+
+  findings.sort(bySeverity);
+  // Most recently dismissed first — the list is read to undo a decision, and
+  // the decision most likely to be wrong is the one just made. Ties fall back
+  // to the severity order so the result stays deterministic.
+  dismissed.sort(
+    (a, b) => b.dismissal.dismissedAt.localeCompare(a.dismissal.dismissedAt) || bySeverity(a, b),
   );
 
   const counts: Record<PostureSeverity, number> = { critical: 0, high: 0, medium: 0, low: 0 };
@@ -298,6 +380,8 @@ export function computePostureFindings(
     findings,
     totalCount: findings.length,
     counts,
+    dismissed,
+    dismissedCount: dismissed.length,
     generatedAt: new Date(now).toISOString(),
   };
 }
@@ -356,7 +440,57 @@ export async function fetchPosture(api: CloudFetch, orgId: string): Promise<Post
       findings: [],
       totalCount: 0,
       counts: { critical: 0, high: 0, medium: 0, low: 0 },
+      dismissed: [],
+      dismissedCount: 0,
       generatedAt: new Date().toISOString(),
     }
   );
+}
+
+/** What a caller supplies to accept a finding. */
+export interface PostureDismissInput {
+  resourceId: string;
+  ruleId: string;
+  /** Why this one is acceptable. Optional, trimmed and capped server-side. */
+  reason?: string | undefined;
+}
+
+/**
+ * Accept a finding (`POST /api/org/:orgId/posture/dismissals`, permission
+ * `resources:write`). Idempotent: dismissing an already-dismissed finding
+ * rewrites the note and the author rather than failing.
+ *
+ * The finding leaves the list and stops feeding the posture alerts, but it is
+ * still evaluated on every scan — fixing the resource and then re-breaking it
+ * does not un-dismiss it, which is why the dismissed list is reviewable.
+ */
+export async function dismissPostureFinding(
+  api: CloudFetch,
+  orgId: string,
+  input: PostureDismissInput,
+): Promise<PostureDismissal> {
+  const res = await api.org<PostureDismissal>(orgId, "/posture/dismissals", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  if (!res) throw new Error("Dismissing the finding returned no dismissal");
+  return res;
+}
+
+/**
+ * Undo a dismissal, putting the finding back on the list
+ * (`DELETE /api/org/:orgId/posture/dismissals`, permission `resources:write`).
+ *
+ * The key travels as query parameters rather than path segments because
+ * resource ids are provider-native and routinely contain slashes (GCP's
+ * `projects/p/zones/z/instances/i`), which no amount of encoding survives
+ * every proxy in between.
+ */
+export async function restorePostureFinding(
+  api: CloudFetch,
+  orgId: string,
+  input: { resourceId: string; ruleId: string },
+): Promise<void> {
+  const query = new URLSearchParams({ resourceId: input.resourceId, ruleId: input.ruleId });
+  await api.org(orgId, `/posture/dismissals?${query.toString()}`, { method: "DELETE" });
 }
