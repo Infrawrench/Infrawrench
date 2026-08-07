@@ -40,6 +40,8 @@ import { registerAccessRequestPaths } from "./paths/access-requests";
 import { registerCredentialHygienePaths } from "./paths/credential-hygiene";
 import { registerCreditPaths } from "./paths/credits";
 import { registerProbePaths } from "./paths/probes";
+import { registerStatusPagePaths } from "./paths/status-pages";
+import { registerOwnershipPaths } from "./paths/ownership";
 import { registerLogWorkspacePaths } from "./paths/log-workspaces";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
 import { registerAssociationPaths } from "./paths/associations";
@@ -138,6 +140,8 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerCredentialHygienePaths(ctx);
   registerCreditPaths(ctx);
   registerProbePaths(ctx);
+  registerStatusPagePaths(ctx);
+  registerOwnershipPaths(ctx);
   registerLogWorkspacePaths(ctx);
   registerConnectionFeaturePaths(ctx);
   registerAssociationPaths(ctx);
@@ -258,6 +262,16 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Synthetic probes",
         description:
           "HTTP uptime/latency checks run on an interval from an edge proxy outside the cluster; results land in the shared metric store and alert after N consecutive failures.",
+      },
+      {
+        name: "Status pages",
+        description:
+          "Public, unauthenticated views of a chosen set of synthetic probes. A page is created unpublished and reachable only via an unguessable slug; the public payload carries labels, states and uptime history — never probe URLs, resource ids or account names.",
+      },
+      {
+        name: "Ownership",
+        description:
+          "Owner, purpose and authorizing ticket on any resource. The orphan finder annotates every flagged resource with its owner and counts the unowned ones; resource-scoped alerts are additionally delivered to the owning person.",
       },
       {
         name: "Log workspaces",
@@ -494,6 +508,23 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /probes": "resources:write",
   "PUT /probes/{probeId}": "resources:write",
   "DELETE /probes/{probeId}": "resources:write",
+  // status pages — a page is a view over probes, so it rides the probe stance:
+  // whoever may create the monitoring may decide what of it is public.
+  // GET /api/status/{slug} is deliberately absent: it is mounted outside the
+  // org tree and takes no credentials at all.
+  "GET /status-pages": "resources:read",
+  "POST /status-pages": "resources:write",
+  "PUT /status-pages/{id}": "resources:write",
+  "POST /status-pages/{id}/rotate-slug": "resources:write",
+  "DELETE /status-pages/{id}": "resources:write",
+  // resource ownership — the leases stance. Note /ownership/members is
+  // resources:read, not team:read: the person who can create a resource must
+  // be able to say it is theirs.
+  "GET /ownership": "resources:read",
+  "GET /ownership/members": "resources:read",
+  "GET /ownership/resource": "resources:read",
+  "PUT /ownership": "resources:write",
+  "DELETE /ownership": "resources:write",
   // log workspace saved queries — the schedules stance: reads are a view over
   // the org's resource logs (which resources:read already gates via
   // /resources/{pluginId}/{typeId}/logs); mutations are resources:write

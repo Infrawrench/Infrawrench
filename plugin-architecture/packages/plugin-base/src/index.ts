@@ -105,10 +105,11 @@ export type {
 // Orphan aggregation — the host-side scan over already-stored resources, plus
 // the shape every surface renders. Shared so the web server, the desktop app
 // and the CLI classify a workspace identically.
-export { collectOrphanGroups, countOrphans } from "./orphans.js";
+export { collectOrphanGroups, countOrphans, countUnownedOrphans } from "./orphans.js";
 export type {
   OrphanCostAnnotation,
   OrphanCostBasis,
+  ResourceOwnerAnnotation,
   OrphanedResource,
   OrphanAccountGroup,
   OrphanListResponse,

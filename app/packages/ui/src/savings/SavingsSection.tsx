@@ -1,6 +1,53 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { formatMoney } from "@infrawrench/client-core";
+import {
+  formatMoney,
+  formatTicketRef,
+  type ResourceOwnerAnnotation,
+} from "@infrawrench/client-core";
 import type { OrphanedResource, OrphanListResponse, OrphansClient } from "./types.js";
+
+/**
+ * The owner of a flagged resource, or an explicit "Unowned".
+ *
+ * Unowned is rendered as a real value rather than a blank cell, because it is
+ * the finding: a resource nobody has claimed is the one this list can do least
+ * about. A free-text owner is shown in the same place but without the ticket
+ * link's implication of a person to page — `isLabel` is what distinguishes
+ * "Sam Reyes" from "Platform team", and only the former gets alerts.
+ */
+function OwnerCell({ owner }: { owner: ResourceOwnerAnnotation | null }) {
+  if (!owner) {
+    return (
+      <span className="rounded-full border border-dashed border-border px-2 py-0.5 text-xs text-on-surface-faint">
+        Unowned
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-2">
+      <span className="text-on-surface">{owner.displayName}</span>
+      {owner.isLabel && (
+        <span
+          className="text-xs text-on-surface-faint"
+          title="A team name, not an Infrawrench member — alerts can't be routed to it."
+        >
+          team
+        </span>
+      )}
+      {owner.ticketUrl && (
+        <a
+          href={owner.ticketUrl}
+          target="_blank"
+          rel="noreferrer noopener"
+          onClick={(e) => e.stopPropagation()}
+          className="text-xs text-on-surface-tertiary underline hover:text-on-surface"
+        >
+          {formatTicketRef(owner.ticketUrl)}
+        </a>
+      )}
+    </span>
+  );
+}
 
 export interface SavingsSectionProps {
   /**
@@ -55,6 +102,10 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
   // A column of dashes in a headerless table reads as "this costs nothing";
   // drop it instead and say why below the list.
   const showCost = data !== null && data.costBasis !== "unavailable";
+  // Ownership is a cloud record too. Local mode reports every row unowned
+  // because it has no ownership data — which is not the same claim, so the
+  // column comes off there rather than labelling everything "Unowned".
+  const showOwner = data !== null && data.costBasis !== "unavailable";
 
   return (
     <section className="flex flex-col gap-3">
@@ -142,6 +193,11 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
                       </span>
                     </td>
                     <td className="px-3 py-2.5 w-full text-on-surface-secondary">{r.reason}</td>
+                    {showOwner && (
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <OwnerCell owner={r.owner} />
+                      </td>
+                    )}
                     {showCost && (
                       <td className="px-4 py-2.5 whitespace-nowrap text-right text-on-surface">
                         {r.cost ? (
@@ -163,6 +219,17 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
           </div>
         </div>
       ))}
+
+      {data !== null && data.accounts.length > 0 && showOwner && data.unownedCount > 0 && (
+        <p className="text-xs text-on-surface-secondary">
+          <strong className="font-medium text-on-surface">
+            {data.unownedCount} of {data.totalCount}
+          </strong>{" "}
+          {data.unownedCount === 1 ? "has" : "have"} no recorded owner — nobody to ask before
+          deleting, and nobody an alert can reach. Open a resource and set an owner on its{" "}
+          <span className="text-on-surface">Ownership</span> tab.
+        </p>
+      )}
 
       {data !== null && data.accounts.length > 0 && (
         <p className="text-xs text-on-surface-faint">

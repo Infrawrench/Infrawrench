@@ -147,6 +147,22 @@ infrawrench recordings get 3f9c21e8 --file incident-4417.cast
 infrawrench recordings --json         # list plus the org's policy and storage usage
 ```
 
+`status-pages` lists the org's [public status pages](./status-pages.md) — what each publishes, whether it is live, and the URL it is live at. The URL is shown for drafts too, so you can check a page before publishing it. Give it a page's name or id for its components and their states. Cloud-only, and read-only: pages are created and published from the web or desktop Probes tab:
+
+```
+infrawrench status-pages
+infrawrench status-pages "Acme API"   # one page: settings and its components
+infrawrench status-pages --json
+```
+
+`ownership` lists [resource ownership](../core-concepts/resource-ownership.md) — who owns each resource, what it is for, and its ticket link. Only resources with something recorded appear, so a resource absent from this list is unowned; `infrawrench orphans` is where the unowned resources that also look wasted show up. Pass a query to filter by resource name, owner or purpose. Cloud-only, and read-only: owners are set from a resource's Ownership tab, where the picker offers real org members:
+
+```
+infrawrench ownership
+infrawrench ownership sam            # filter by resource, owner or purpose
+infrawrench ownership --json
+```
+
 `oversized` lists [right-sizing recommendations](./right-sizing.md) — machines whose 14-day p95 CPU/memory sits well under their size, with the recommended smaller size and the live-priced monthly saving. Cloud-only (the percentiles live in the cloud metrics store), and read-only: applying a resize is done from the web or desktop Costs panel:
 
 ```

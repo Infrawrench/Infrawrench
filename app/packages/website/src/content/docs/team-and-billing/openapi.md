@@ -68,6 +68,17 @@ The `Permission` enum component lists every recognised scope. Granted scopes can
 
 A key's scopes are a ceiling, not a grant: the server intersects them with the current role of the user who created the key, so `x-required-permission` must be satisfied by **both**. See [API keys](./api-keys.md#keys-are-bounded-by-their-owner).
 
+### The one unauthenticated route
+
+`GET /api/status/{slug}` takes no credentials at all. It serves a
+[public status page](../features/status-pages.md), which exists precisely for callers who have no
+account, so it carries no `x-required-permission` and needs no bearer token. Sending one is
+pointless and slightly worse than pointless — the endpoint is meant to be anonymous.
+
+Everything else in the spec requires authentication. The slug is the page's only access control, so
+treat it like a credential you have chosen to share: an unpublished page and an unknown slug both
+answer 404, and the page's owner can revoke a leaked link by rotating the slug.
+
 ## Generating client SDKs
 
 There are first-party [client SDKs](./client-sdks.md) for nine languages —

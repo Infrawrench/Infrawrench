@@ -1,8 +1,15 @@
-import { StyleSheet, Text, View } from "react-native";
-import { formatUptime, type SyntheticProbe } from "@infrawrench/client-core";
-import { Card, EmptyView, ErrorView, LoadingView, Screen } from "@/components/ui";
+import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  formatUptime,
+  statusPageUrl,
+  type StatusPage,
+  type SyntheticProbe,
+} from "@infrawrench/client-core";
+import { Card, EmptyView, ErrorView, LoadingView, Screen, SectionTitle } from "@/components/ui";
 import { colors, spacing } from "@/lib/theme";
+import { CLOUD_URL } from "../../../env";
 import { useProbes } from "./useProbes";
+import { useStatusPages } from "./useStatusPages";
 
 /**
  * Synthetic probes — the native counterpart of the web/desktop Probes tab and
@@ -16,6 +23,7 @@ import { useProbes } from "./useProbes";
  */
 export function ProbesScreen() {
   const probes = useProbes();
+  const statusPages = useStatusPages();
 
   if (probes.isLoading) return <LoadingView />;
   if (probes.isError) {
@@ -34,8 +42,18 @@ export function ProbesScreen() {
     );
   }
 
+  // A status page failing to load must not take the probe list with it: the
+  // probes are what the push notification sent you here for.
+  const pages = statusPages.data?.pages ?? [];
+
   return (
-    <Screen onRefresh={() => void probes.refetch()} refreshing={probes.isRefetching}>
+    <Screen
+      onRefresh={() => {
+        void probes.refetch();
+        void statusPages.refetch();
+      }}
+      refreshing={probes.isRefetching}
+    >
       <Card list>
         {list.map((probe) => (
           <ProbeRow key={probe.id} probe={probe} />
@@ -45,7 +63,55 @@ export function ProbesScreen() {
         Checked on an interval from outside your infrastructure, so latency and reachability are
         what your users see. Probes are managed on the web or desktop app.
       </Text>
+
+      {pages.length > 0 && (
+        <>
+          <SectionTitle>Status pages</SectionTitle>
+          <Card list>
+            {pages.map((page) => (
+              <StatusPageRow key={page.id} page={page} />
+            ))}
+          </Card>
+          <Text style={styles.footnote}>
+            A live page is readable by anyone with its link. Pages are created and published on the
+            web or desktop app.
+          </Text>
+        </>
+      )}
     </Screen>
+  );
+}
+
+/**
+ * One status page, read-only: what it is called, whether it is live, and a tap
+ * to open it in the browser. Publishing stays on web/desktop — the deliberate
+ * omission this screen already makes for probes.
+ */
+function StatusPageRow({ page }: { page: StatusPage }) {
+  // The public page is served by the same app the API is on, which is what
+  // CLOUD_URL points at.
+  const url = statusPageUrl(CLOUD_URL, page.slug);
+  const live = page.published;
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={`${page.title}, ${live ? "live" : "draft"}`}
+      onPress={() => void Linking.openURL(url)}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+    >
+      <View style={[styles.dot, { backgroundColor: live ? colors.success : colors.textFaint }]} />
+      <View style={styles.rowMain}>
+        <Text style={styles.title} numberOfLines={1}>
+          {page.title}
+        </Text>
+        <Text style={styles.subtitle} numberOfLines={1}>
+          {page.components.length} component{page.components.length === 1 ? "" : "s"}
+        </Text>
+      </View>
+      <Text style={[styles.status, { color: live ? colors.success : colors.textFaint }]}>
+        {live ? "live" : "draft"}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -108,6 +174,7 @@ function ProbeRow({ probe }: { probe: SyntheticProbe }) {
 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: 10 },
+  rowPressed: { backgroundColor: colors.surfaceOverlay },
   dot: { width: 8, height: 8, borderRadius: 4 },
   rowMain: { flex: 1, gap: 2 },
   title: { color: colors.text, fontSize: 15, fontWeight: "500" },

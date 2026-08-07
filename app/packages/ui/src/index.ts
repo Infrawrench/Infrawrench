@@ -742,6 +742,34 @@ export type {
   ResourceLeaseListResponse,
   ResourceLeasePatch,
 } from "./leases/types.js";
+export { ResourceOwnershipPanel } from "./ownership/ResourceOwnershipPanel.js";
+export type { ResourceOwnershipPanelProps } from "./ownership/ResourceOwnershipPanel.js";
+// Named rather than `export *`, for the reason spelled out below the cost
+// block: the dts bundler drops `export *` type re-exports whose names also
+// reach the declaration graph from client-core by another path.
+export type {
+  OwnershipCandidate,
+  OwnershipClient,
+  ResourceOwnership,
+  ResourceOwnershipListResponse,
+  ResourceOwnershipPatch,
+} from "./ownership/types.js";
+export { StatusPagesPanel } from "./status-pages/StatusPagesPanel.js";
+export type { StatusPagesPanelProps } from "./status-pages/StatusPagesPanel.js";
+export { StatusPageEditorModal } from "./status-pages/StatusPageEditorModal.js";
+export type { StatusPageEditorModalProps } from "./status-pages/StatusPageEditorModal.js";
+export { PublicStatusPageView } from "./status-pages/PublicStatusPageView.js";
+export type { PublicStatusPageViewProps } from "./status-pages/PublicStatusPageView.js";
+export type {
+  StatusPage,
+  StatusPageComponent,
+  StatusPageComponentInput,
+  StatusPageCreate,
+  StatusPageListResponse,
+  StatusPagePatch,
+  StatusPagesClient,
+  PublicStatusPage,
+} from "./status-pages/types.js";
 
 // Named re-exports of cost/custom-graph wire types. The tsdown (tsgo) dts
 // bundler drops some `export *` type re-exports when the same name also

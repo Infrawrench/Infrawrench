@@ -17,6 +17,8 @@ import {
   restorePostureFinding,
 } from "@infrawrench/server-core/posture/dismissals";
 import { listDns } from "@infrawrench/server-core/dns/feed";
+import { listOwnership } from "@infrawrench/server-core/ownership/store";
+import { listStatusPages } from "@infrawrench/server-core/status-pages/store";
 import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
 import { resolveStoredSshPublicKey } from "./ssh-key-lookup";
 import { logAudit } from "../services/audit";
@@ -388,6 +390,73 @@ export function genericTools(): ToolDefinition[] {
           counts: inventory.counts,
           skippedNamespaces: inventory.skippedNamespaces,
           generatedAt: inventory.generatedAt,
+        });
+      },
+    },
+
+    {
+      name: "list_resource_ownership",
+      title: "List resource ownership",
+      description:
+        "Who owns each resource, what it is for, and the ticket that authorized it. Only " +
+        "resources somebody has recorded something about appear — a resource absent from this " +
+        "list is unowned, which is itself the answer to 'who do I ask before deleting this?'. " +
+        "Ownership also decides who resource-scoped alerts are delivered to, so an owner with " +
+        "`ownerUserId` set is reachable and one with only `ownerLabel` (a team name) is not. " +
+        "Use this before proposing a deletion, or to attribute waste from list_orphaned_resources.",
+      inputSchema: {
+        ownerUserId: z
+          .string()
+          .optional()
+          .describe("Only return resources owned by this org member."),
+        unownedOnly: z
+          .boolean()
+          .optional()
+          .describe(
+            "Return only records that name nobody — a purpose or ticket with no owner set.",
+          ),
+      },
+      risk: "read",
+      // Mirrors `GET /ownership`.
+      permission: "resources:read",
+      handler: async (input, auth) => {
+        const ownerUserId = input["ownerUserId"] as string | undefined;
+        const unownedOnly = input["unownedOnly"] === true;
+        const { ownership } = await listOwnership(auth.organizationId);
+        const records = ownership.filter((r) => {
+          if (ownerUserId && r.ownerUserId !== ownerUserId) return false;
+          if (unownedOnly && (r.ownerUserId || r.ownerLabel)) return false;
+          return true;
+        });
+        // `totalCount` always describes every record so a filtered view still
+        // shows the overall picture — the list_posture_findings stance.
+        return ok({
+          ownership: records,
+          matchedCount: records.length,
+          totalCount: ownership.length,
+        });
+      },
+    },
+
+    {
+      name: "list_status_pages",
+      title: "List public status pages",
+      description:
+        "The organization's public status pages: what each one publishes, whether it is live, " +
+        "and the slug its public URL is built from (`<app origin>/status/<slug>`). A page is " +
+        "readable by anyone with that link and no sign-in, so treat a `published: true` page as " +
+        "externally visible. Check this when asked what monitoring is public, or before " +
+        "changing a probe that a page publishes.",
+      inputSchema: {},
+      risk: "read",
+      // Mirrors `GET /status-pages`.
+      permission: "resources:read",
+      handler: async (_input, auth) => {
+        const { pages } = await listStatusPages(auth.organizationId);
+        return ok({
+          pages,
+          totalCount: pages.length,
+          publishedCount: pages.filter((p) => p.published).length,
         });
       },
     },

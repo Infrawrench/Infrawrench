@@ -39,6 +39,11 @@ export async function cmdOrphans(ctx: CliContext): Promise<void> {
   // Cost annotation comes from collected billing rows, which only the cloud
   // has. Saying "$0.00" for every local row would be a lie; drop the column.
   const showCost = response.costBasis !== "unavailable";
+  // Ownership is a cloud record too. A local scan reports everything
+  // unattributed because it knows of no owners — which is not the same claim
+  // as "nobody owns these", so the column comes off rather than printing
+  // "unowned" against every row.
+  const showOwner = showCost;
 
   if (ctx.flags.output === "json") {
     printJson({ ...scope.json, ...response });
@@ -70,6 +75,19 @@ export async function cmdOrphans(ctx: CliContext): Promise<void> {
     { header: "type", value: (r) => c.dim(r.resourceTypeName) },
     { header: "reason", value: (r) => r.reason },
   ];
+  if (showOwner) {
+    columns.push({
+      header: "owner",
+      // "unowned" is printed, not blanked: it is the finding, and a blank cell
+      // in a terminal table reads as "not looked up".
+      value: (r) =>
+        r.owner === null
+          ? c.dim("unowned")
+          : r.owner.isLabel
+            ? `${r.owner.displayName} ${c.dim("(team)")}`
+            : r.owner.displayName,
+    });
+  }
   if (showCost) {
     columns.push({
       header: `cost (${response.costWindowDays}d)`,
@@ -82,6 +100,15 @@ export async function cmdOrphans(ctx: CliContext): Promise<void> {
     println();
     println(`${c.bold(group.accountName)} ${c.dim(`· ${group.pluginName}`)}`);
     printTable(group.resources, columns);
+  }
+
+  if (showOwner && response.unownedCount > 0) {
+    println();
+    println(
+      c.dim(
+        `${response.unownedCount} of ${response.totalCount} have no recorded owner — nobody to ask before deleting, and nobody an alert can reach.`,
+      ),
+    );
   }
 
   println();

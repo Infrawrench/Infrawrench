@@ -15,6 +15,8 @@ import "./moment";
 import "./schedules";
 import "./leases";
 import "./probes";
+import "./status-pages";
+import "./ownership";
 import "./log-workspaces";
 import "./custom-graphs";
 import "./dashboards";

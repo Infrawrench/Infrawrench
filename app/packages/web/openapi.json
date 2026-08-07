@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.43.0",
+    "version": "0.44.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -115,6 +115,14 @@
     {
       "name": "Synthetic probes",
       "description": "HTTP uptime/latency checks run on an interval from an edge proxy outside the cluster; results land in the shared metric store and alert after N consecutive failures."
+    },
+    {
+      "name": "Status pages",
+      "description": "Public, unauthenticated views of a chosen set of synthetic probes. A page is created unpublished and reachable only via an unguessable slug; the public payload carries labels, states and uptime history — never probe URLs, resource ids or account names."
+    },
+    {
+      "name": "Ownership",
+      "description": "Owner, purpose and authorizing ticket on any resource. The orphan finder annotates every flagged resource with its owner and counts the unowned ones; resource-scoped alerts are additionally delivered to the owning person."
     },
     {
       "name": "Log workspaces",
@@ -3434,6 +3442,52 @@
         "additionalProperties": false,
         "description": "Best-effort trailing spend matched from collected per-resource cost rows; null when the provider reports no per-resource cost. The flag itself never depends on billing data."
       },
+      "ResourceOwnerAnnotation": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "userId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Set when a routable org member owns it.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "The member's name, or the free-text owner."
+          },
+          "isLabel": {
+            "type": "boolean",
+            "description": "True when the owner is free text — nothing can be routed to it."
+          },
+          "ticketUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "userId",
+          "displayName",
+          "isLabel",
+          "ticketUrl",
+          "purpose"
+        ],
+        "additionalProperties": false,
+        "description": "Who owns this resource, or null when nobody has claimed it. Present only when the owner can be named: a resource carrying a purpose but no owner reads as null, because the question this answers is who to tell."
+      },
       "OrphanedResource": {
         "type": "object",
         "properties": {
@@ -3469,6 +3523,9 @@
           "cost": {
             "$ref": "#/components/schemas/OrphanCostAnnotation"
           },
+          "owner": {
+            "$ref": "#/components/schemas/ResourceOwnerAnnotation"
+          },
           "lastSyncedAt": {
             "type": [
               "string",
@@ -3486,6 +3543,7 @@
           "externalId",
           "reason",
           "cost",
+          "owner",
           "lastSyncedAt"
         ],
         "additionalProperties": false
@@ -3537,6 +3595,10 @@
           "totalCount": {
             "type": "integer"
           },
+          "unownedCount": {
+            "type": "integer",
+            "description": "Flagged resources with no recorded owner — the 'nobody to ask' count."
+          },
           "costWindowDays": {
             "type": "integer",
             "description": "Days of trailing spend the annotations cover."
@@ -3549,6 +3611,7 @@
         "required": [
           "accounts",
           "totalCount",
+          "unownedCount",
           "costWindowDays",
           "generatedAt"
         ],
@@ -11412,6 +11475,604 @@
         },
         "required": [
           "series"
+        ],
+        "additionalProperties": false
+      },
+      "StatusPageComponent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "probeId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Public name; null falls back to the probe's own name."
+          },
+          "groupName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "position": {
+            "type": "integer",
+            "description": "Ascending display order."
+          },
+          "probeName": {
+            "type": "string",
+            "description": "The probe's internal name — editor-only."
+          },
+          "probeStatus": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down",
+              "unknown"
+            ]
+          },
+          "probeEnabled": {
+            "type": "boolean",
+            "description": "False when the probe is paused."
+          }
+        },
+        "required": [
+          "id",
+          "probeId",
+          "label",
+          "groupName",
+          "position",
+          "probeName",
+          "probeStatus",
+          "probeEnabled"
+        ],
+        "additionalProperties": false
+      },
+      "StatusPage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "slug": {
+            "type": "string",
+            "description": "The public URL segment, and the page's only access credential. Generated with real entropy rather than derived from the title."
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "published": {
+            "type": "boolean",
+            "description": "False until deliberately published; a fresh page is never reachable."
+          },
+          "showHistory": {
+            "type": "boolean"
+          },
+          "showUptime": {
+            "type": "boolean"
+          },
+          "supportUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatusPageComponent"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "description",
+          "published",
+          "showHistory",
+          "showUptime",
+          "supportUrl",
+          "components",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "StatusPageListResponse": {
+        "type": "object",
+        "properties": {
+          "pages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatusPage"
+            }
+          }
+        },
+        "required": [
+          "pages"
+        ],
+        "additionalProperties": false
+      },
+      "StatusPageComponentInput": {
+        "type": "object",
+        "properties": {
+          "probeId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "groupName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "probeId"
+        ],
+        "additionalProperties": false
+      },
+      "StatusPageCreate": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "published": {
+            "type": "boolean",
+            "description": "Defaults to false."
+          },
+          "showHistory": {
+            "type": "boolean"
+          },
+          "showUptime": {
+            "type": "boolean"
+          },
+          "supportUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatusPageComponentInput"
+            },
+            "description": "Order is significant — it is the public render order."
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "StatusPagePatch": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "published": {
+            "type": "boolean"
+          },
+          "showHistory": {
+            "type": "boolean"
+          },
+          "showUptime": {
+            "type": "boolean"
+          },
+          "supportUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatusPageComponentInput"
+            },
+            "description": "When present, replaces the whole set."
+          }
+        },
+        "additionalProperties": false
+      },
+      "StatusHistoryDay": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "description": "`YYYY-MM-DD`, UTC.",
+            "example": "2026-08-07"
+          },
+          "uptime": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Fraction of the day the endpoint was up (0–1), or null when nothing was recorded."
+          }
+        },
+        "required": [
+          "day",
+          "uptime"
+        ],
+        "additionalProperties": false
+      },
+      "PublicStatusComponent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Stable per page. Deliberately not the probe id.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "groupName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "operational",
+              "degraded",
+              "down",
+              "unknown"
+            ],
+            "description": "A component's public state. A paused probe reads `unknown` regardless of its last result — the page is a claim about what is being checked now."
+          },
+          "uptime24h": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatusHistoryDay"
+            },
+            "description": "Oldest first; empty when history is hidden."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "groupName",
+          "state",
+          "uptime24h",
+          "history"
+        ],
+        "additionalProperties": false
+      },
+      "PublicStatusPage": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "operational",
+              "degraded",
+              "major_outage",
+              "unknown"
+            ],
+            "description": "Rollup over the components. `degraded` means some but not all are down; components with no data are ignored rather than dragging the page to unknown."
+          },
+          "summary": {
+            "type": "string",
+            "description": "One sentence describing `state`."
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicStatusComponent"
+            }
+          },
+          "supportUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "showHistory": {
+            "type": "boolean"
+          },
+          "showUptime": {
+            "type": "boolean"
+          },
+          "historyDays": {
+            "type": "integer"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "state",
+          "summary",
+          "components",
+          "supportUrl",
+          "showHistory",
+          "showUptime",
+          "historyDays",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ResourceOwnership": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceName": {
+            "type": "string",
+            "description": "Resource display name, denormalized so a report can name a deleted resource."
+          },
+          "ownerUserId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The routable owner — an org member. Alerts about this resource reach them.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "ownerName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Resolved server-side; null when unset or removed."
+          },
+          "ownerEmail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ownerLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Free-text owner (a team, a rota, a contractor). Display-only, never routed."
+          },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What this resource is for."
+          },
+          "ticketUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Link to the ticket that authorized it."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "resourceId",
+          "accountId",
+          "pluginId",
+          "resourceTypeId",
+          "resourceName",
+          "ownerUserId",
+          "ownerName",
+          "ownerEmail",
+          "ownerLabel",
+          "purpose",
+          "ticketUrl",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ResourceOwnershipListResponse": {
+        "type": "object",
+        "properties": {
+          "ownership": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResourceOwnership"
+            }
+          }
+        },
+        "required": [
+          "ownership"
+        ],
+        "additionalProperties": false
+      },
+      "OwnerCandidate": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name, falling back to the email."
+          },
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "name",
+          "email"
+        ],
+        "additionalProperties": false
+      },
+      "OwnerCandidateListResponse": {
+        "type": "object",
+        "properties": {
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OwnerCandidate"
+            }
+          }
+        },
+        "required": [
+          "members"
+        ],
+        "additionalProperties": false
+      },
+      "ResourceOwnershipEnvelope": {
+        "type": "object",
+        "properties": {
+          "ownership": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ResourceOwnership"
+              },
+              {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "ownership"
+        ],
+        "additionalProperties": false
+      },
+      "ResourceOwnershipPatch": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "ownerUserId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Omit to keep, null to clear.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "ownerLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Omit to keep, null to clear."
+          },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Omit to keep, null to clear."
+          },
+          "ticketUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Omit to keep, null to clear."
+          }
+        },
+        "required": [
+          "resourceId"
         ],
         "additionalProperties": false
       },
@@ -27828,6 +28489,580 @@
           }
         },
         "operationId": "getOrgOrgIdProbesProbeIdMetrics",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/status-pages": {
+      "get": {
+        "tags": [
+          "Status pages"
+        ],
+        "summary": "List status pages",
+        "description": "Every status page in the organization, with the probes each publishes and whether it is currently reachable.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The organization's status pages",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusPageListResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdStatusPages",
+        "x-required-permission": "resources:read"
+      },
+      "post": {
+        "tags": [
+          "Status pages"
+        ],
+        "summary": "Create a status page",
+        "description": "Creates a page with a freshly generated slug. `published` defaults to false, so creating a page never exposes anything — publish it as a separate, deliberate step.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusPageCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdStatusPages",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/status-pages/{id}": {
+      "put": {
+        "tags": [
+          "Status pages"
+        ],
+        "summary": "Update a status page",
+        "description": "Omitted fields keep their value. `components`, when present, replaces the whole ordered set — which is also how a reorder is expressed.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusPagePatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdStatusPagesId",
+        "x-required-permission": "resources:write"
+      },
+      "delete": {
+        "tags": [
+          "Status pages"
+        ],
+        "summary": "Delete a status page",
+        "description": "The page's link stops working. The probes it published are untouched.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdStatusPagesId",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/status-pages/{id}/rotate-slug": {
+      "post": {
+        "tags": [
+          "Status pages"
+        ],
+        "summary": "Issue a new public link",
+        "description": "Replaces the slug, revoking the current public URL immediately — the reroll for a link that ended up somewhere unintended. The page stays published.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page, with its new slug",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusPage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdStatusPagesIdRotateSlug",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/status/{slug}": {
+      "get": {
+        "tags": [
+          "Status pages"
+        ],
+        "summary": "Read a public status page",
+        "security": [],
+        "description": "**Unauthenticated.** The only endpoint in this API that takes no credentials — a status page exists for people with no account. The payload carries labels, states and uptime history only: probe URLs, resource and account ids, the organization id and error detail are never included. An unpublished page and an unknown slug both answer 404, so the endpoint cannot be used to confirm that a slug is real.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The public status snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicStatusPage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getStatusSlug"
+      }
+    },
+    "/api/org/{orgId}/ownership": {
+      "get": {
+        "tags": [
+          "Ownership"
+        ],
+        "summary": "List resource ownership records",
+        "description": "Every ownership record in the organization — owner, purpose and authorizing ticket, per resource. Only resources somebody has recorded something about appear; an absent record means the resource is unowned.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The organization's ownership records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceOwnershipListResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdOwnership",
+        "x-required-permission": "resources:read"
+      },
+      "put": {
+        "tags": [
+          "Ownership"
+        ],
+        "summary": "Set a resource's ownership",
+        "description": "Upsert keyed by `resourceId` — ownership is a property of the resource, so there is no separate create and update. Omitted fields keep their value and `null` clears one. Clearing every field removes the record entirely and the response is `null`, which is the new truth rather than an empty record. An `ownerUserId` must be a member of this organization: ownership that looks routable but reaches nobody is worse than none.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResourceOwnershipPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The saved record, or null when nothing was left to record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResourceOwnership"
+                    },
+                    {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdOwnership",
+        "x-required-permission": "resources:write"
+      },
+      "delete": {
+        "tags": [
+          "Ownership"
+        ],
+        "summary": "Clear a resource's ownership",
+        "description": "Removes the ownership record. The resource itself is untouched.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "resourceId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Ownership cleared"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdOwnership",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/ownership/members": {
+      "get": {
+        "tags": [
+          "Ownership"
+        ],
+        "summary": "List people an owner can be set to",
+        "description": "Org members, as a minimal id/name/email projection for the owner picker. Requires only `resources:read`, deliberately not `team:read`: recording who owns a resource must not be reserved for whoever can also read roles and membership.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Members an owner can be set to",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerCandidateListResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdOwnershipMembers",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/ownership/resource": {
+      "get": {
+        "tags": [
+          "Ownership"
+        ],
+        "summary": "Get one resource's ownership",
+        "description": "The ownership record for a single resource, or null when none is recorded.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "resourceId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The resource's ownership, or null",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceOwnershipEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdOwnershipResource",
         "x-required-permission": "resources:read"
       }
     },

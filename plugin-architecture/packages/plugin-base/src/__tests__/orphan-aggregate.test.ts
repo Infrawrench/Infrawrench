@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   collectOrphanGroups,
   countOrphans,
+  countUnownedOrphans,
+  type OrphanAccountGroup,
+  type ResourceOwnerAnnotation,
   type OrphanScanAccount,
   type OrphanScanPlugin,
   type OrphanScanResource,
@@ -104,6 +107,7 @@ describe("collectOrphanGroups", () => {
         externalId: "1001",
         reason: "Volume is not attached to any server",
         cost: null,
+        owner: null,
         lastSyncedAt: null,
       },
     ]);
@@ -116,6 +120,15 @@ describe("collectOrphanGroups", () => {
       resources: [resource({ id: "vol-1" })],
     });
     expect(groups[0]!.resources[0]!.cost).toBeNull();
+  });
+
+  it("never annotates ownership either — the scan knows plugins, not people", () => {
+    const groups = collectOrphanGroups({
+      plugins: [hetzner],
+      accounts,
+      resources: [resource({ id: "vol-1" })],
+    });
+    expect(groups[0]!.resources[0]!.owner).toBeNull();
   });
 
   it("ignores resource types whose plugin declares no rule for them", () => {
@@ -206,5 +219,64 @@ describe("collectOrphanGroups", () => {
 describe("countOrphans", () => {
   it("is zero for no groups", () => {
     expect(countOrphans([])).toBe(0);
+  });
+});
+
+describe("countUnownedOrphans", () => {
+  const group = (...owners: (ResourceOwnerAnnotation | null)[]): OrphanAccountGroup => ({
+    accountId: "acc-1",
+    accountName: "Zurich",
+    pluginId: "hetzner",
+    pluginName: "Hetzner",
+    resources: owners.map((owner, i) => ({
+      id: `vol-${i}`,
+      pluginId: "hetzner",
+      resourceTypeId: "volume",
+      resourceTypeName: "Volume",
+      displayName: `vol-${i}`,
+      externalId: null,
+      reason: "unattached",
+      cost: null,
+      owner,
+      lastSyncedAt: null,
+    })),
+  });
+
+  const sam: ResourceOwnerAnnotation = {
+    userId: "user-1",
+    displayName: "Sam Reyes",
+    isLabel: false,
+    ticketUrl: null,
+    purpose: null,
+  };
+  const team: ResourceOwnerAnnotation = {
+    userId: null,
+    displayName: "Platform team",
+    isLabel: true,
+    ticketUrl: null,
+    purpose: null,
+  };
+
+  it("is zero for no groups", () => {
+    expect(countUnownedOrphans([])).toBe(0);
+  });
+
+  it("counts only the rows with no owner annotation", () => {
+    expect(countUnownedOrphans([group(sam, null, null)])).toBe(2);
+  });
+
+  it("counts a free-text owner as owned — it is still someone to ask", () => {
+    // isLabel decides whether an alert can be *routed*, not whether the
+    // resource is attributed. The finder's question is "who do I ask?".
+    expect(countUnownedOrphans([group(team)])).toBe(0);
+  });
+
+  it("equals the total on unannotated groups — nothing is known to be owned", () => {
+    const groups = [group(null, null)];
+    expect(countUnownedOrphans(groups)).toBe(countOrphans(groups));
+  });
+
+  it("sums across groups", () => {
+    expect(countUnownedOrphans([group(null), group(sam, null)])).toBe(2);
   });
 });

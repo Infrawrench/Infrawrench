@@ -28,6 +28,7 @@ import {
   FirestoreDocumentBrowser,
   ResourceSchedulePanel,
   ResourceLeasePanel,
+  ResourceOwnershipPanel,
   RESOURCES_CHANGED_EVENT,
   buildDependencyGraph,
   directDependencies,
@@ -46,7 +47,8 @@ import { FirestoreMongoPeerBrowser } from "../../components/FirestoreMongoPeerBr
 import { getPlugin } from "../../plugins/loader";
 import { createDesktopSchedulesClient } from "../../lib/schedules-client";
 import { createDesktopLeasesClient } from "../../lib/leases-client";
-import type { LeasesClient, SchedulesClient } from "@infrawrench/ui";
+import { createDesktopOwnershipClient } from "../../lib/ownership-client";
+import type { LeasesClient, OwnershipClient, SchedulesClient } from "@infrawrench/ui";
 import { navigateToWorkspaceTarget, resourceTabTarget } from "../../lib/workspace-tabs";
 import { fetchCloudDependencyGraph } from "../../lib/cloud-resources";
 import { loadLocalDependencyGraph } from "../../lib/local-dependency-graph";
@@ -125,6 +127,12 @@ let desktopLeasesClient: LeasesClient | null = null;
 function getLeasesClient(): LeasesClient {
   if (!desktopLeasesClient) desktopLeasesClient = createDesktopLeasesClient();
   return desktopLeasesClient;
+}
+
+let desktopOwnershipClient: OwnershipClient | null = null;
+function getOwnershipClient(): OwnershipClient {
+  if (!desktopOwnershipClient) desktopOwnershipClient = createDesktopOwnershipClient();
+  return desktopOwnershipClient;
 }
 
 export function DetailViewContainer({
@@ -397,6 +405,20 @@ export function DetailViewContainer({
                     accountId,
                     resourceName: resource?.displayName ?? decodedResourceId,
                   }}
+                />
+              ),
+            }
+          : {})}
+        {...(activeCloudOrgId
+          ? {
+              // Ownership tab — cloud mode only, like leases: the record lives
+              // server-side and names an org member. Ungated by type, since
+              // any resource can have an owner.
+              renderOwnershipTab: () => (
+                <ResourceOwnershipPanel
+                  client={getOwnershipClient()}
+                  resourceId={decodedResourceId}
+                  resourceName={resource?.displayName ?? decodedResourceId}
                 />
               ),
             }

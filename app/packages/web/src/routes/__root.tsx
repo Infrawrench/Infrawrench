@@ -48,6 +48,19 @@ interface TunnelAttachState {
   defaultUsername: string;
 }
 
+/**
+ * Routes that render with no account at all.
+ *
+ * Distinct from `/invite/` and `/admin`, which skip the *onboarding redirect*
+ * but still call `/api/auth/me`: a public status page must not make that call.
+ * Hitting an authenticated endpoint would redirect an anonymous visitor to
+ * sign-in, which is precisely what a public status page cannot do — the page
+ * exists for people who have no relationship with the org beyond the link.
+ */
+function isPublicRoute(pathname: string): boolean {
+  return pathname.startsWith("/status/");
+}
+
 function RootLayout() {
   const [authChecked, setAuthChecked] = useState(false);
   const navigate = useNavigate();
@@ -57,6 +70,7 @@ function RootLayout() {
   useGithubInstallResultToast();
 
   useEffect(() => {
+    if (isPublicRoute(pathname)) return;
     if (
       pathname.startsWith("/onboarding") ||
       pathname.startsWith("/invite/") ||
@@ -92,6 +106,9 @@ function RootLayout() {
         /* apiFetch redirects on 401 */
       });
   }, [navigate, pathname]);
+
+  // Rendered before any auth state is consulted — see isPublicRoute.
+  if (isPublicRoute(pathname)) return <Outlet />;
 
   if (!authChecked) {
     if (

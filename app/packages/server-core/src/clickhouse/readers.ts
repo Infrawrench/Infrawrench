@@ -419,6 +419,71 @@ export async function getMetricSeriesAverageBatch(
   return result;
 }
 
+/** One UTC day's average of a series for one resource. */
+export interface MetricDailyAverage {
+  resourceId: string;
+  /** `YYYY-MM-DD`, UTC. */
+  day: string;
+  value: number;
+}
+
+/**
+ * Daily averages of one series per resource, from the 1h rollup — the status
+ * page's uptime history read (averaging the 0/1 "Up" series per day yields a
+ * daily up fraction).
+ *
+ * The 1h rollup, not the 1m one, because the window is months: `metric_points_1h`
+ * keeps a year (`metric_points_1m` does not) and a 90-day span over minute rows
+ * would scan two orders of magnitude more data for the same answer.
+ *
+ * Days with no rows are simply absent rather than zero. That distinction is the
+ * whole point on a public page: a day nothing was recorded must render as a gap,
+ * never as a day of downtime, and never as a day of perfect uptime.
+ *
+ * Hours are weighted equally within a day, as minutes are within an hour in
+ * `getMetricSeriesAverageBatch` — an hour of sparse sampling counts the same as
+ * a busy one, which is what keeps a retry storm from skewing the figure.
+ */
+export async function getMetricDailyAverageBatch(
+  organizationId: string,
+  resourceIds: string[],
+  seriesLabel: string,
+  fromMs: number,
+  toMs: number,
+): Promise<MetricDailyAverage[]> {
+  if (resourceIds.length === 0) return [];
+  const rows = await query<{ resource_id: string; day: string; value: number }>(
+    `SELECT resource_id, day, avg(value) AS value
+     FROM (
+       SELECT resource_id,
+              toDate(ts_hour) AS day,
+              ts_hour,
+              avgMerge(value_avg) AS value
+       FROM metric_points_1h
+       WHERE organization_id = {orgId:String}
+         AND resource_id IN {ids:Array(String)}
+         AND series_label = {seriesLabel:String}
+         AND ts_hour >= toDateTime({fromSec:Int64})
+         AND ts_hour <= toDateTime({toSec:Int64})
+       GROUP BY resource_id, day, ts_hour
+     )
+     GROUP BY resource_id, day
+     ORDER BY day`,
+    {
+      orgId: organizationId,
+      ids: resourceIds,
+      seriesLabel,
+      fromSec: Math.floor(fromMs / 1000),
+      toSec: Math.floor(toMs / 1000),
+    },
+  );
+  return rows.map((r) => ({
+    resourceId: r.resource_id,
+    day: String(r.day).slice(0, 10),
+    value: Number(r.value),
+  }));
+}
+
 /**
  * Historical metric range. Auto-routes between raw / 1m / 1h based on span:
  *  <= 2h: raw

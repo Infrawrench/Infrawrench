@@ -28,15 +28,9 @@ interface TargetDevice {
   expoPushToken: string;
 }
 
-/**
- * Resolve the active devices of all org members whose per-org preference
- * enables `trigger` (no preference row = enabled).
- */
-async function resolveTargets(
-  organizationId: string,
-  trigger: PushTrigger,
-): Promise<TargetDevice[]> {
-  const prefColumn = {
+/** The `push_preferences` column backing each trigger's opt-in. */
+function prefColumnFor(trigger: PushTrigger) {
+  return {
     syncIncidents: pushPreferences.syncIncidents,
     budgetAlerts: pushPreferences.budgetAlerts,
     anomalyAlerts: pushPreferences.anomalyAlerts,
@@ -49,6 +43,23 @@ async function resolveTargets(
     postureAlerts: pushPreferences.postureAlerts,
     probeAlerts: pushPreferences.probeAlerts,
   }[trigger];
+}
+
+/**
+ * Resolve the active devices of all org members whose per-org preference
+ * enables `trigger` (no preference row = enabled).
+ *
+ * `userId`, when given, narrows the same query to one member — used by
+ * owner-routed alerts. It is a filter on top of the membership join, never a
+ * replacement for it: a user who has left the org must stop receiving its
+ * alerts even if something still records them as an owner.
+ */
+async function resolveTargets(
+  organizationId: string,
+  trigger: PushTrigger,
+  userId?: string,
+): Promise<TargetDevice[]> {
+  const prefColumn = prefColumnFor(trigger);
   return db
     .select({ id: pushDevices.id, expoPushToken: pushDevices.expoPushToken })
     .from(organizationMembers)
@@ -65,6 +76,7 @@ async function resolveTargets(
         eq(organizationMembers.organizationId, organizationId),
         isNull(pushDevices.disabledAt),
         sql`(${pushPreferences.id} IS NULL OR ${prefColumn} = true)`,
+        ...(userId ? [eq(organizationMembers.userId, userId)] : []),
       ),
     );
 }
@@ -192,6 +204,38 @@ export async function sendPushToOrg(
     return { attempted: devices.length, succeeded };
   } catch (err) {
     console.error("[push] sendPushToOrg failed:", err);
+    return { attempted: 0, succeeded: 0 };
+  }
+}
+
+/**
+ * Send `msg` to one member of the org — the owner-routed half of an alert.
+ *
+ * Same trigger opt-in and same membership requirement as the org fan-out; the
+ * only difference is who is asked. Callers use it *in addition to*
+ * `sendPushToOrg`, never instead of it: naming the owner makes an alert
+ * personal, but it must not make the rest of the team blind to an outage
+ * because one person is on holiday. Expo de-duplicates nothing, so an owner
+ * who is also in the org fan-out is spoken to twice — accepted deliberately,
+ * since suppressing the personal copy is the failure mode that matters.
+ *
+ * Never throws: like the org fan-out, delivery must not break a poller pass.
+ */
+export async function sendPushToOrgUser(
+  organizationId: string,
+  userId: string,
+  trigger: PushTrigger,
+  msg: PushMessage,
+): Promise<PushResult> {
+  try {
+    const devices = await resolveTargets(organizationId, trigger, userId);
+    if (devices.length === 0) return { attempted: 0, succeeded: 0 };
+    const level = interruptionLevelFor(trigger);
+    const tickets = await sendExpoPush(devices.map((d) => toExpoMessage(d, msg, level)));
+    const succeeded = await noteTickets(devices, tickets);
+    return { attempted: devices.length, succeeded };
+  } catch (err) {
+    console.error("[push] sendPushToOrgUser failed:", err);
     return { attempted: 0, succeeded: 0 };
   }
 }

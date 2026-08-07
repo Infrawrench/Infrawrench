@@ -750,6 +750,163 @@ export const syntheticProbes = pgTable(
   }),
 );
 
+/**
+ * Public status pages — a read-only view of a chosen set of synthetic probes,
+ * served unauthenticated at `/status/:slug` for anyone the org gives the link
+ * to. The monitoring already exists (`synthetic_probes`); this table only
+ * decides which of it is publishable and under what words.
+ *
+ * Two safety properties are structural rather than remembered:
+ *
+ * - `published` defaults to **false**. A page is created, previewed by the
+ *   org, and only then made reachable — creating one can never accidentally
+ *   expose an endpoint.
+ * - The slug is the only credential, so it is generated with real entropy
+ *   (`generateStatusPageSlug`) rather than derived from the title. It is
+ *   globally unique, not per-org: the public URL has no org in it, because
+ *   putting one there would leak the organization id to every visitor.
+ *
+ * What a visitor may learn is bounded by the *wire assembly*, not by this
+ * table: labels, current state, and uptime history. Probe URLs, resource ids,
+ * account names and error text never leave the org-scoped API.
+ */
+export const statusPages = pgTable(
+  "status_pages",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** The public URL segment; the page's only access credential. */
+    slug: text("slug").notNull(),
+    /** Headline shown to visitors, e.g. "Acme API status". */
+    title: text("title").notNull(),
+    /** Optional paragraph under the headline. */
+    description: text("description"),
+    /** False until someone deliberately publishes — see the note above. */
+    published: boolean("published").notNull().default(false),
+    /** Render the 90-day uptime bars, or just the current state. */
+    showHistory: boolean("show_history").notNull().default(true),
+    /** Show the per-component 24h uptime percentage. */
+    showUptime: boolean("show_uptime").notNull().default(true),
+    /** Optional "contact support" link rendered in the footer. */
+    supportUrl: text("support_url"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("status_pages_org_idx").on(t.organizationId),
+    slugUnique: uniqueIndex("status_pages_slug_unique").on(t.slug),
+  }),
+);
+
+/**
+ * Which probes a status page publishes, and what it calls them.
+ *
+ * `label` exists because a probe's internal name ("prod-api-lb health, eu-w1")
+ * is an operations detail, and the public equivalent ("API") is a product one.
+ * The public payload always renders `label`, falling back to the probe name
+ * only when the org left it blank — that fallback is a deliberate choice by
+ * the org, not an accident of the schema.
+ *
+ * `probeId` IS a FK with cascade, unlike the `resource_id` sidecars elsewhere:
+ * a deleted probe has no state left to publish, so the component must vanish
+ * with it rather than render a permanent "unknown" tile to the public.
+ */
+export const statusPageComponents = pgTable(
+  "status_page_components",
+  {
+    id: text("id").primaryKey(),
+    statusPageId: text("status_page_id")
+      .notNull()
+      .references(() => statusPages.id, { onDelete: "cascade" }),
+    probeId: text("probe_id")
+      .notNull()
+      .references(() => syntheticProbes.id, { onDelete: "cascade" }),
+    /** Public name; null falls back to the probe's own name. */
+    label: text("label"),
+    /** Optional heading this component sits under, e.g. "Core services". */
+    groupName: text("group_name"),
+    /** Ascending display order within the page. */
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    pageIdx: index("status_page_components_page_idx").on(t.statusPageId, t.position),
+    pageProbeUnique: uniqueIndex("status_page_components_page_probe_unique").on(
+      t.statusPageId,
+      t.probeId,
+    ),
+  }),
+);
+
+/**
+ * Ownership metadata on a resource — who owns it, what it is for, and the
+ * ticket that authorized it.
+ *
+ * This is the sidecar stance `resource_schedules` and `resource_leases`
+ * established, for the same reason: `resource_id` is deliberately **not** a
+ * foreign key. Resource rows are churned by sync, and the answer to "whose is
+ * this?" must survive a resource disappearing and coming back — losing it on
+ * every re-sync would make the field useless exactly when someone needs it.
+ * Cleanup rides the `account_id` cascade instead.
+ *
+ * Owner is modelled twice on purpose:
+ *
+ * - `owner_user_id` is a real org member, and is what makes an alert
+ *   *routable* — the orphan finder can name a person and the notifier can
+ *   reach them. `onDelete: "set null"` so removing a user orphans the
+ *   ownership row rather than deleting the purpose and ticket with it.
+ * - `owner_label` is free text for the cases a user id cannot express — a
+ *   team, a squad rota, a contractor. It is display-only and never routed.
+ *
+ * A row with neither is still worth keeping: purpose and ticket alone answer
+ * most of "why does this exist?".
+ */
+export const resourceOwnership = pgTable(
+  "resource_ownership",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    /** Not a FK — see above. */
+    resourceId: text("resource_id").notNull(),
+    pluginId: text("plugin_id").notNull(),
+    resourceTypeId: text("resource_type_id").notNull(),
+    /** Denormalized so an owner report can name a resource that has gone. */
+    resourceName: text("resource_name").notNull(),
+    /** The routable owner: an org member. Null = owned by nobody in-app. */
+    ownerUserId: text("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+    /** Free-text owner for teams/externals; display-only, never routed. */
+    ownerLabel: text("owner_label"),
+    /** What the resource is for, in the org's own words. */
+    purpose: text("purpose"),
+    /** Link to the ticket/issue/PR that authorized it. */
+    ticketUrl: text("ticket_url"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgResourceUnique: uniqueIndex("resource_ownership_org_resource_unique").on(
+      t.organizationId,
+      t.resourceId,
+    ),
+    orgIdx: index("resource_ownership_org_idx").on(t.organizationId),
+    ownerIdx: index("resource_ownership_owner_idx").on(t.organizationId, t.ownerUserId),
+    accountIdx: index("resource_ownership_account_idx").on(t.accountId),
+  }),
+);
+
 export const sshKeys = pgTable(
   "ssh_keys",
   {
