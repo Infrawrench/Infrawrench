@@ -9,6 +9,7 @@ import "./orphans";
 import "./rightsizing";
 import "./expiring";
 import "./posture";
+import "./dns";
 import "./changes";
 import "./moment";
 import "./schedules";

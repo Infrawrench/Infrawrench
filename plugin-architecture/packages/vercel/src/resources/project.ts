@@ -30,6 +30,19 @@ export const VercelProjectResourceType = rt({
   dependsOn: [{ fieldKey: "ownerId", targetTypeId: "vercel-team", label: "owned by" }],
   supportsCreate: true,
   iconKey: "vercel",
+  // A project's aliases live under `*.vercel.app`; the leftmost label is the
+  // project name for the stable alias, and `productionUrl` covers the
+  // deployment-suffixed form the lister stores.
+  dnsServiceHosts: [
+    {
+      id: "vercel-alias",
+      label: "Vercel deployment alias",
+      hostPattern: String.raw`([a-z0-9][a-z0-9-]*)\.vercel\.app`,
+      hostKeys: ["productionUrl"],
+      reason:
+        "Deleting or renaming the project frees the alias for any Vercel user to claim, and Vercel will serve their deployment under your hostname.",
+    },
+  ],
   secretExportTemplates: [
     {
       id: "vercel-project",

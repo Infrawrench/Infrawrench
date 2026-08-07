@@ -32,6 +32,7 @@ import { LocalDeploymentsPanel } from "@/components/LocalDeploymentsPanel";
 import { DesktopChangesPanel } from "@/components/DesktopChangesPanel";
 import { DesktopExpiryPanel } from "@/components/DesktopExpiryPanel";
 import { DesktopPosturePanel } from "@/components/DesktopPosturePanel";
+import { DesktopDnsPanel } from "@/components/DesktopDnsPanel";
 import { DesktopMetricAlertsPanel } from "@/components/DesktopMetricAlertsPanel";
 import { DesktopProbesPanel } from "@/components/DesktopProbesPanel";
 import { DesktopSshFanoutPanel } from "@/components/DesktopSshFanoutPanel";
@@ -267,6 +268,38 @@ function renderPanel(
                   finding.resourceId,
                   finding.pluginId,
                   finding.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "dns":
+      return (
+        <DesktopDnsPanel
+          // Keyed by mode so switching org (or dropping to local) remounts
+          // and refetches rather than showing the previous mode's zones.
+          key={activeCloudOrgId ?? "local"}
+          openRecord={(record) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  record.accountId,
+                  record.resourceId,
+                  record.pluginId,
+                  record.resourceTypeId,
+                ),
+              ),
+            )
+          }
+          openZone={(zone) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  zone.accountId,
+                  zone.resourceId,
+                  zone.pluginId,
+                  zone.resourceTypeId,
                 ),
               ),
             )

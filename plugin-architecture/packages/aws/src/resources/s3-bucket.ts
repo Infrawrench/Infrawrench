@@ -11,6 +11,19 @@ export const S3BucketResourceType = rt({
   ],
   outputs: [o("bucketArn", "Bucket ARN"), o("endpoint", "Endpoint URL")],
   iconKey: "storage",
+  // Covers every REST and website endpoint form: `b.s3.amazonaws.com`,
+  // `b.s3.eu-west-1.amazonaws.com`, `b.s3-website-us-east-1.amazonaws.com`,
+  // `b.s3-website.us-east-1.amazonaws.com`. Bucket names may contain dots, so
+  // the capture is greedy up to the `.s3` label.
+  dnsServiceHosts: [
+    {
+      id: "s3-endpoint",
+      label: "S3 bucket endpoint",
+      hostPattern: String.raw`([a-z0-9][a-z0-9.-]*)\.s3(?:[.-]website)?(?:[.-][a-z0-9-]+)?\.amazonaws\.com`,
+      reason:
+        "S3 bucket names are globally unique and freed the moment the bucket is deleted, so anyone can recreate it and serve their own objects from your hostname.",
+    },
+  ],
   supportsStorageBrowser: true,
   supportsCreate: true,
   supportsMetrics: true,

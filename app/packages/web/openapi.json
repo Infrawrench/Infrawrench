@@ -2508,6 +2508,7 @@
               "changes",
               "expiring",
               "posture",
+              "dns",
               "ssh-fanout",
               "metric-alerts",
               "probes",
@@ -8796,6 +8797,403 @@
             "type": "boolean"
           }
         },
+        "additionalProperties": false
+      },
+      "DnsZone": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string",
+            "example": "example.com"
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "isPrivate": {
+            "type": "boolean",
+            "description": "Split-horizon/internal zone; listed but never analysed for takeover."
+          },
+          "recordCount": {
+            "type": "integer",
+            "description": "Records synced into this zone."
+          },
+          "providerRecordCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The provider's own record count, when reported. May exceed `recordCount` — several plugins list zones without listing their records."
+          },
+          "danglingCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resourceId",
+          "pluginId",
+          "pluginName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "accountId",
+          "accountName",
+          "domain",
+          "status",
+          "isPrivate",
+          "recordCount",
+          "providerRecordCount",
+          "danglingCount"
+        ],
+        "additionalProperties": false
+      },
+      "DnsTargetResource": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string",
+            "example": "S3 Bucket"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "required": [
+          "resourceId",
+          "displayName",
+          "pluginId",
+          "resourceTypeId",
+          "resourceTypeName",
+          "accountId"
+        ],
+        "additionalProperties": false,
+        "description": "Set only when classification is \"owned\"."
+      },
+      "DnsTargetService": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string",
+            "example": "Vercel"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "ruleId": {
+            "type": "string",
+            "example": "vercel-alias"
+          },
+          "label": {
+            "type": "string",
+            "example": "Vercel deployment alias"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "Plugin-authored note on what claiming the name gets an attacker."
+          },
+          "claimLabel": {
+            "type": "string",
+            "description": "The instance-identifying part of the hostname, e.g. the bucket or app name."
+          }
+        },
+        "required": [
+          "pluginId",
+          "pluginName",
+          "resourceTypeId",
+          "ruleId",
+          "label",
+          "severity",
+          "reason",
+          "claimLabel"
+        ],
+        "additionalProperties": false,
+        "description": "Set only when classification is \"dangling\"."
+      },
+      "DnsRecordTarget": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string",
+            "description": "The target as stored, lowercased with any trailing dot removed."
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "owned",
+              "dangling",
+              "external",
+              "not-analysed"
+            ],
+            "description": "What can be said about a record target from synced state alone. `owned` — the value is an identity of a synced resource. `dangling` — the value falls inside a provider namespace this workspace manages (an S3 endpoint, a `*.vercel.app` alias) and no synced resource claims it, which is the subdomain-takeover signature. `external` — the value points somewhere there is no declaration for; not a finding. `not-analysed` — the record type carries no host target that is reasoned about (TXT, MX, SOA, CAA, SRV)."
+          },
+          "resource": {
+            "$ref": "#/components/schemas/DnsTargetResource"
+          },
+          "service": {
+            "$ref": "#/components/schemas/DnsTargetService"
+          }
+        },
+        "required": [
+          "value",
+          "classification",
+          "resource",
+          "service"
+        ],
+        "additionalProperties": false
+      },
+      "DnsRecord": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string",
+            "description": "Infrawrench resource id of the record itself."
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "zoneResourceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Owning zone's resource id, or null when the record could not be attributed."
+          },
+          "zoneDomain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Fully qualified, lowercased, no trailing dot."
+          },
+          "type": {
+            "type": "string",
+            "example": "CNAME"
+          },
+          "ttl": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "priority": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "proxied": {
+            "type": "boolean",
+            "description": "Whether the provider proxies the record (Cloudflare's orange cloud)."
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DnsRecordTarget"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "owned",
+              "dangling",
+              "external",
+              "not-analysed"
+            ],
+            "description": "What can be said about a record target from synced state alone. `owned` — the value is an identity of a synced resource. `dangling` — the value falls inside a provider namespace this workspace manages (an S3 endpoint, a `*.vercel.app` alias) and no synced resource claims it, which is the subdomain-takeover signature. `external` — the value points somewhere there is no declaration for; not a finding. `not-analysed` — the record type carries no host target that is reasoned about (TXT, MX, SOA, CAA, SRV)."
+          }
+        },
+        "required": [
+          "resourceId",
+          "pluginId",
+          "pluginName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "accountId",
+          "accountName",
+          "zoneResourceId",
+          "zoneDomain",
+          "name",
+          "type",
+          "ttl",
+          "priority",
+          "proxied",
+          "targets",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "DnsInventoryCounts": {
+        "type": "object",
+        "properties": {
+          "zones": {
+            "type": "integer"
+          },
+          "records": {
+            "type": "integer"
+          },
+          "owned": {
+            "type": "integer"
+          },
+          "dangling": {
+            "type": "integer"
+          },
+          "external": {
+            "type": "integer"
+          },
+          "notAnalysed": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "zones",
+          "records",
+          "owned",
+          "dangling",
+          "external",
+          "notAnalysed"
+        ],
+        "additionalProperties": false,
+        "description": "Record counts per status; zones counted separately."
+      },
+      "DnsSkippedNamespace": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pluginId",
+          "pluginName",
+          "label",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "DnsInventoryResponse": {
+        "type": "object",
+        "properties": {
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DnsZone"
+            },
+            "description": "Sorted by domain, then account name."
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DnsRecord"
+            },
+            "description": "Sorted worst status first, then by name."
+          },
+          "counts": {
+            "$ref": "#/components/schemas/DnsInventoryCounts"
+          },
+          "skippedNamespaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DnsSkippedNamespace"
+            },
+            "description": "Provider namespaces that were declared but not evaluated, and why — either no account for the plugin is connected, or no claimant resource has synced. Both are missing data rather than a clean bill of health, so they are reported rather than hidden."
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "zones",
+          "records",
+          "counts",
+          "skippedNamespaces",
+          "generatedAt"
+        ],
         "additionalProperties": false
       },
       "MomentFeedId": {
@@ -24442,6 +24840,42 @@
         },
         "operationId": "putOrgOrgIdPostureSettings",
         "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/dns": {
+      "get": {
+        "tags": [
+          "DNS"
+        ],
+        "summary": "List every DNS zone and record, with dangling targets flagged",
+        "description": "One view over every zone and record across the connected DNS providers (Cloudflare, Route 53, Cloud DNS, DigitalOcean, Netlify, Azure DNS, Vercel), with each record target classified against the rest of the workspace. No provider API calls are made and no DNS is resolved — results reflect the last sync.\n\nA `dangling` target is a subdomain-takeover candidate: the record points into a provider namespace this workspace manages and nothing synced claims it. The same records surface as `dns-dangling-target` findings on `GET /posture` and alert through the posture channel, so there is no separate DNS alert setting.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The organization's DNS inventory",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DnsInventoryResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdDns",
+        "x-required-permission": "resources:read"
       }
     },
     "/api/org/{orgId}/moment": {

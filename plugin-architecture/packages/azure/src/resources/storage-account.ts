@@ -35,6 +35,18 @@ export const StorageAccountResourceType = rt({
     },
   ],
   iconKey: "storage",
+  // Blob, static-website and the other service endpoints all hang off the
+  // globally-unique account name: `<account>.blob.core.windows.net`,
+  // `<account>.z13.web.core.windows.net`.
+  dnsServiceHosts: [
+    {
+      id: "storage-endpoint",
+      label: "Storage account endpoint",
+      hostPattern: String.raw`([a-z0-9]+)\.(?:blob|file|queue|table|dfs|z[0-9]+\.web)\.core\.windows\.net`,
+      reason:
+        "Storage account names are globally unique and released on delete, so any Azure customer can create an account with the same name and serve their blobs from your hostname.",
+    },
+  ],
   supportsStorageBrowser: true,
   supportsCreate: true,
   supportsMetrics: true,

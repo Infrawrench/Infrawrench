@@ -22,6 +22,17 @@ export const SpacesResourceType = rt({
   supportsCreate: true,
   supportsStorageBrowser: true,
   iconKey: "spaces",
+  // `bucket.nyc3.digitaloceanspaces.com`, plus the CDN form
+  // `bucket.nyc3.cdn.digitaloceanspaces.com`.
+  dnsServiceHosts: [
+    {
+      id: "spaces-endpoint",
+      label: "Spaces bucket endpoint",
+      hostPattern: String.raw`([a-z0-9][a-z0-9.-]*)\.[a-z0-9]+\.(?:cdn\.)?digitaloceanspaces\.com`,
+      reason:
+        "Spaces bucket names are unique per region and released on delete, so another DigitalOcean customer can recreate the bucket and serve their objects from your hostname.",
+    },
+  ],
   credentialFormats: [
     {
       id: "bucket-scoped-rw",

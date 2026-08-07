@@ -21,6 +21,7 @@ export const ZoneResourceType = rt({
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "dns",
+  dnsRole: { role: "zone", domainKey: "name", statusKey: "status" },
   secretExportTemplates: [
     {
       id: "zone-id",

@@ -325,6 +325,7 @@ export {
   changesTabTarget,
   expiringTabTarget,
   postureTabTarget,
+  dnsTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
@@ -622,6 +623,28 @@ export type {
 export { PostureSection } from "./posture/PostureSection.js";
 export type { PostureSectionProps } from "./posture/PostureSection.js";
 export { PostureIcon } from "./components/icons/PostureIcon.js";
+export {
+  DNS_CLASSIFICATION_LABELS,
+  computeDnsInventory,
+  danglingDnsRecords,
+  normalizeDnsHost,
+} from "@infrawrench/client-core";
+export type {
+  DnsInventoryResponse,
+  DnsRecordEntry,
+  DnsRecordTarget,
+  DnsScanAccount,
+  DnsScanInput,
+  DnsScanPlugin,
+  DnsScanResource,
+  DnsScanResourceType,
+  DnsSkippedNamespace,
+  DnsTargetClassification,
+  DnsZoneEntry,
+} from "@infrawrench/client-core";
+export { DnsSection } from "./dns/DnsSection.js";
+export type { DnsSectionProps } from "./dns/DnsSection.js";
+export { DomainsIcon } from "./components/icons/DomainsIcon.js";
 export { FanoutIcon } from "./components/icons/FanoutIcon.js";
 export { MetricAlertIcon } from "./components/icons/MetricAlertIcon.js";
 export { ProbesIcon } from "./components/icons/ProbesIcon.js";

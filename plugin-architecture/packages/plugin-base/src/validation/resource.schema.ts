@@ -158,6 +158,84 @@ const postureCheckRuleSchema = z.object({
   reason: z.string().min(1),
 });
 
+// A plain union, not `discriminatedUnion`: the zone arm carries `.refine`s,
+// and a refined option isn't a valid discriminated-union member in zod 3.
+const dnsRoleSchema = z.union([
+  z
+    .object({
+      role: z.literal("zone"),
+      domainKey: z.string().min(1).optional(),
+      recordCountKey: z.string().min(1).optional(),
+      statusKey: z.string().min(1).optional(),
+      privateKey: z.string().min(1).optional(),
+      privateValues: z.array(z.string().min(1)).min(1).optional(),
+      isPrivate: z.boolean().optional(),
+    })
+    // A value list with no field to read is dead config — the `maxAgeDays` and
+    // `runningValues` stance: fail the manifest rather than never match.
+    .refine((r) => r.privateKey !== undefined || r.privateValues === undefined, {
+      message: "privateValues requires privateKey",
+      path: ["privateKey"],
+    })
+    // Two answers to one question: which wins is a coin flip the author didn't
+    // intend, so fail rather than pick.
+    .refine((r) => r.isPrivate === undefined || r.privateKey === undefined, {
+      message: "isPrivate and privateKey are mutually exclusive",
+      path: ["isPrivate"],
+    }),
+  z.object({
+    role: z.literal("record"),
+    nameKey: z.string().min(1).optional(),
+    typeKey: z.string().min(1).optional(),
+    contentKey: z.string().min(1).optional(),
+    ttlKey: z.string().min(1).optional(),
+    priorityKey: z.string().min(1).optional(),
+    proxiedKey: z.string().min(1).optional(),
+    zoneKey: z.string().min(1).optional(),
+  }),
+]);
+
+const dnsServiceHostSchema = z
+  .object({
+    id: z.string().min(1),
+    label: z.string().min(1),
+    hostPattern: z.string().min(1),
+    labelIs: z.enum(["name", "opaque"]).optional(),
+    hostKeys: z.array(z.string().min(1)).min(1).optional(),
+    severity: z.enum(["critical", "high", "medium", "low"]).optional(),
+    reason: z.string().min(1),
+  })
+  // Same stance as `sizeFamilyPattern`: a pattern that doesn't compile, or has
+  // nothing to capture, would silently classify every record as unmatched.
+  .refine(
+    (r) => {
+      try {
+        new RegExp(r.hostPattern);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: "hostPattern must be a valid regular expression", path: ["hostPattern"] },
+  )
+  .refine(
+    (r) => {
+      try {
+        return (new RegExp(`${r.hostPattern}|`).exec("")?.length ?? 1) > 1;
+      } catch {
+        return false; // invalid regex — already reported above
+      }
+    },
+    { message: "hostPattern must contain at least one capture group", path: ["hostPattern"] },
+  )
+  // An opaque provider-minted label can never be matched by name, so without a
+  // field holding the full hostname nothing could ever claim it and every
+  // record into the namespace would read as dangling.
+  .refine((r) => r.labelIs !== "opaque" || (r.hostKeys?.length ?? 0) > 0, {
+    message: '`labelIs: "opaque"` requires hostKeys',
+    path: ["hostKeys"],
+  });
+
 const lifecycleActionsSchema = z
   .object({
     startActionId: z.string().min(1),
@@ -252,6 +330,8 @@ export const resourceTypeDefinitionSchema = z.object({
   orphanRule: orphanRuleSchema.optional(),
   postureChecks: z.array(postureCheckRuleSchema).optional(),
   expiryFields: z.array(expiryFieldRuleSchema).optional(),
+  dnsRole: dnsRoleSchema.optional(),
+  dnsServiceHosts: z.array(dnsServiceHostSchema).optional(),
   lifecycle: lifecycleActionsSchema.optional(),
   rightsizing: rightsizingSchema.optional(),
 });

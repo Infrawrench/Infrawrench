@@ -25,6 +25,17 @@ export const GcsBucketResourceType = rt({
   ],
   supportsCreate: true,
   supportsStorageBrowser: true,
+  // The virtual-hosted form (`bucket.storage.googleapis.com`) and the older
+  // `commondatastorage` alias. Bucket names may contain dots.
+  dnsServiceHosts: [
+    {
+      id: "gcs-endpoint",
+      label: "Cloud Storage bucket endpoint",
+      hostPattern: String.raw`([a-z0-9][a-z0-9._-]*)\.(?:storage|commondatastorage)\.googleapis\.com`,
+      reason:
+        "Cloud Storage bucket names are globally unique and released on delete, so anyone can recreate the bucket and serve their own objects from your hostname.",
+    },
+  ],
   secretExportTemplates: [
     {
       id: "gcs-full",

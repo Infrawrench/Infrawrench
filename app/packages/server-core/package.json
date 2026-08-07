@@ -68,6 +68,7 @@
     "./posture/feed": "./src/posture/feed.ts",
     "./posture/settings": "./src/posture/settings.ts",
     "./posture/summary": "./src/posture/summary.ts",
+    "./dns/feed": "./src/dns/feed.ts",
     "./change-freezes": "./src/change-freezes.ts",
     "./schedules/store": "./src/schedules/store.ts",
     "./schedules/feed": "./src/schedules/feed.ts",

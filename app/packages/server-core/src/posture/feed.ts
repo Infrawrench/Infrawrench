@@ -10,7 +10,11 @@
  * its input. No plugin clients, no credentials, no provider API calls, ever.
  */
 import { and, eq, isNull } from "drizzle-orm";
-import { computePostureFindings, type PostureListResponse } from "@infrawrench/client-core";
+import {
+  computeDnsInventory,
+  computePostureFindings,
+  type PostureListResponse,
+} from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { accounts, resources } from "../db/schema";
 import { loadPlugins } from "../plugin-loader";
@@ -43,6 +47,9 @@ export async function listPosture(
         accountId: resources.accountId,
         displayName: resources.displayName,
         externalId: resources.externalId,
+        // Only the DNS half needs the parent link — it is how a record finds
+        // the zone it lives in.
+        parentResourceId: resources.parentResourceId,
         fieldsJson: resources.fieldsJson,
       })
       .from(resources)
@@ -59,25 +66,40 @@ export async function listPosture(
     listPostureDismissals(organizationId),
   ]);
 
+  const scanPlugins = plugins.map(({ plugin }) => ({
+    id: plugin.manifest.id,
+    displayName: plugin.manifest.displayName,
+    resourceTypes: plugin.resourceTypes,
+  }));
+  // parentResourceId is only needed by the DNS half (zone attribution); the
+  // declarative posture rules ignore it.
+  const scanResources = orgResources.map((r) => ({
+    id: r.id,
+    pluginId: r.pluginId,
+    resourceTypeId: r.resourceTypeId,
+    accountId: r.accountId,
+    displayName: r.displayName,
+    externalId: r.externalId,
+    parentResourceId: r.parentResourceId,
+    fields: r.fieldsJson,
+  }));
+
+  // The one cross-resource check: a record is dangling relative to the whole
+  // workspace, so it has to be computed over the same rows and handed in.
+  // Recomputed here rather than fetched from `dns/feed` so the two never see
+  // different snapshots of the resource table.
+  const dns = computeDnsInventory(
+    { plugins: scanPlugins, accounts: orgAccounts, resources: scanResources },
+    opts.now !== undefined ? { now: opts.now } : {},
+  );
+
   return computePostureFindings(
     {
-      plugins: plugins.map(({ plugin }) => ({
-        id: plugin.manifest.id,
-        displayName: plugin.manifest.displayName,
-        resourceTypes: plugin.resourceTypes,
-      })),
+      plugins: scanPlugins,
       accounts: orgAccounts,
-      resources: orgResources.map((r) => ({
-        id: r.id,
-        pluginId: r.pluginId,
-        resourceTypeId: r.resourceTypeId,
-        accountId: r.accountId,
-        displayName: r.displayName,
-        externalId: r.externalId,
-        fields: r.fieldsJson,
-      })),
+      resources: scanResources,
       dismissals,
     },
-    opts.now !== undefined ? { now: opts.now } : {},
+    { dns, ...(opts.now !== undefined ? { now: opts.now } : {}) },
   );
 }

@@ -134,6 +134,10 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(getWorkspaceNavigateArgs({ kind: "posture" })).toEqual({ to: "/posture" });
   });
 
+  it("returns dns route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "dns" })).toEqual({ to: "/dns" });
+  });
+
   it("carries a hotlinked repo through as a search param", () => {
     expect(getWorkspaceNavigateArgs(deploymentsTabTarget("owner/name"))).toEqual({
       to: "/deployments",
@@ -178,6 +182,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the posture path", () => {
     expect(syncWorkspaceRouteFromPath("/posture")).toEqual({ kind: "posture" });
+  });
+
+  it("parses the dns path", () => {
+    expect(syncWorkspaceRouteFromPath("/dns")).toEqual({ kind: "dns" });
   });
 
   it("parses the probes path", () => {

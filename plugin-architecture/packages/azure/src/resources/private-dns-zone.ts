@@ -17,6 +17,12 @@ export const PrivateDNSZoneResourceType = rt({
   ],
   supportsMetrics: true,
   iconKey: "dns",
+  dnsRole: {
+    role: "zone",
+    domainKey: "name",
+    recordCountKey: "numberOfRecordSets",
+    isPrivate: true,
+  },
   attachTargets: [
     {
       pluginId: "azure",

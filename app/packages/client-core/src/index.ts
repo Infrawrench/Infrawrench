@@ -373,6 +373,7 @@ export * from "./orphans";
 export * from "./expiry";
 export * from "./leases";
 export * from "./posture";
+export * from "./dns";
 export * from "./schedules";
 export * from "./probes";
 export * from "./log-workspaces";

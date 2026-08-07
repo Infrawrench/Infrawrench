@@ -180,6 +180,13 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns dns route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "dns" })).toEqual({
+      to: "/org/$orgId/dns",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("sets replace when requested", () => {
     const args = getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId: "d1" }, true);
     expect(args.replace).toBe(true);
@@ -207,6 +214,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the org-scoped posture path", () => {
     expect(syncWorkspaceRouteFromPath("/org/test-org/posture")).toEqual({ kind: "posture" });
+  });
+
+  it("parses the org-scoped dns path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/test-org/dns")).toEqual({ kind: "dns" });
   });
 
   it("parses the probes path", () => {

@@ -26,6 +26,9 @@ export const VercelDomainResourceType = rt({
   ],
   supportsCreate: true,
   iconKey: "domain",
+  // Vercel's API lists domains but not their records, so the domain shows on
+  // the Domains surface as a zone with no records of its own.
+  dnsRole: { role: "zone", domainKey: "name" },
   attachTargets: [
     {
       pluginId: "vercel",

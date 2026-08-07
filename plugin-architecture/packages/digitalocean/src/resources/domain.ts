@@ -14,4 +14,5 @@ export const DomainResourceType = rt({
   ],
   supportsCreate: true,
   iconKey: "dns",
+  dnsRole: { role: "zone", domainKey: "name" },
 });

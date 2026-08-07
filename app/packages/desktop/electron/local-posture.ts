@@ -10,14 +10,20 @@
  * constructed, no account credentials are decrypted, and no provider is
  * contacted.
  *
+ * The rows come from `local-dns.ts`, which reads exactly what both scans need:
+ * the dangling-DNS finding is cross-resource, so the posture pass takes a DNS
+ * inventory computed over the same snapshot. Dismissals are local too, in the
+ * `posture_dismissals` table: accepting a finding on a workspace that has never
+ * seen the cloud must not require an account.
+ *
  * The renderer has its own twin (src/lib/local-posture.ts) because the GUI's
  * DB access goes over IPC; this one exists for the CLI, which has no
  * renderer.
  *
- * The `computePostureFindings` import is dynamic because this module graph is
- * CommonJS and client-core ships ESM (the same CJS→ESM bridge as
- * local-expiring.ts); electron-vite bundles it into the main chunk, so it
- * resolves at build time rather than being a runtime hop.
+ * The client-core import is dynamic because this module graph is CommonJS and
+ * client-core ships ESM (the same CJS→ESM bridge as local-expiring.ts);
+ * electron-vite bundles it into the main chunk, so it resolves at build time
+ * rather than being a runtime hop.
  *
  * No GUI side effects (no `ipcMain` import), per the rule in CLAUDE.md that
  * keeps electron/db.ts and its consumers importable from electron/cli/*.
@@ -27,33 +33,13 @@ import type { PostureDismissal, PostureListResponse } from "@infrawrench/client-
   "resolution-mode": "import",
 };
 import { getDb } from "./main-utils";
-import { loadPlugins } from "../src/plugins/loader";
-
-interface LocalResourceRow {
-  id: string;
-  plugin_id: string;
-  resource_type_id: string;
-  account_id: string;
-  display_name: string;
-  external_id: string | null;
-  fields_json: string | null;
-}
+import { localScanRows } from "./local-dns";
 
 interface LocalDismissalRow {
   resource_id: string;
   rule_id: string;
   reason: string | null;
   updated_at: string;
-}
-
-/** SQLite stores the fields bag as TEXT; a hand-edited row may not parse. */
-function parseBag(json: string | null): unknown {
-  if (!json) return undefined;
-  try {
-    return JSON.parse(json) as unknown;
-  } catch {
-    return undefined;
-  }
 }
 
 /** Local dismissals carry no author — the workspace is single-user. */
@@ -72,45 +58,18 @@ export async function listLocalPosture(): Promise<PostureListResponse> {
   const db = await getDb();
 
   // Independent reads (and the lazy evaluator import); none feeds another.
-  const [resourceRows, accountRows, dismissalRows, plugins, { computePostureFindings }] =
-    await Promise.all([
-      db.select<LocalResourceRow[]>(
-        `SELECT id, plugin_id, resource_type_id, account_id, display_name,
-              external_id, fields_json
-       FROM resources WHERE deleted_at IS NULL`,
-      ),
-      db.select<{ id: string; display_name: string; plugin_id: string }[]>(
-        `SELECT id, display_name, plugin_id FROM accounts WHERE deleted_at IS NULL`,
-      ),
-      db.select<LocalDismissalRow[]>(
-        `SELECT resource_id, rule_id, reason, updated_at FROM posture_dismissals`,
-      ),
-      loadPlugins(),
-      import("@infrawrench/client-core"),
-    ]);
+  const [rows, dismissalRows, { computeDnsInventory, computePostureFindings }] = await Promise.all([
+    localScanRows(),
+    db.select<LocalDismissalRow[]>(
+      `SELECT resource_id, rule_id, reason, updated_at FROM posture_dismissals`,
+    ),
+    import("@infrawrench/client-core"),
+  ]);
 
-  return computePostureFindings({
-    plugins: plugins.map(({ plugin }) => ({
-      id: plugin.manifest.id,
-      displayName: plugin.manifest.displayName,
-      resourceTypes: plugin.resourceTypes,
-    })),
-    accounts: accountRows.map((a) => ({
-      id: a.id,
-      displayName: a.display_name,
-      pluginId: a.plugin_id,
-    })),
-    resources: resourceRows.map((r) => ({
-      id: r.id,
-      pluginId: r.plugin_id,
-      resourceTypeId: r.resource_type_id,
-      accountId: r.account_id,
-      displayName: r.display_name,
-      externalId: r.external_id,
-      fields: parseBag(r.fields_json),
-    })),
-    dismissals: dismissalRows.map(toDismissal),
-  });
+  return computePostureFindings(
+    { ...rows, dismissals: dismissalRows.map(toDismissal) },
+    { dns: computeDnsInventory(rows) },
+  );
 }
 
 /**

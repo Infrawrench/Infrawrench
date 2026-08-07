@@ -15,6 +15,7 @@ import { Route as ChangesRouteImport } from './routes/changes'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as CostsRouteImport } from './routes/costs'
 import { Route as DeploymentsRouteImport } from './routes/deployments'
+import { Route as DnsRouteImport } from './routes/dns'
 import { Route as ExpiringRouteImport } from './routes/expiring'
 import { Route as GraphRouteImport } from './routes/graph'
 import { Route as LogsRouteImport } from './routes/logs'
@@ -58,6 +59,11 @@ const CostsRoute = CostsRouteImport.update({
 const DeploymentsRoute = DeploymentsRouteImport.update({
   id: '/deployments',
   path: '/deployments',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DnsRoute = DnsRouteImport.update({
+  id: '/dns',
+  path: '/dns',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ExpiringRoute = ExpiringRouteImport.update({
@@ -139,6 +145,7 @@ export interface FileRoutesByFullPath {
   '/chat': typeof ChatRoute
   '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
+  '/dns': typeof DnsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
   '/logs': typeof LogsRoute
@@ -161,6 +168,7 @@ export interface FileRoutesByTo {
   '/chat': typeof ChatRoute
   '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
+  '/dns': typeof DnsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
   '/logs': typeof LogsRoute
@@ -184,6 +192,7 @@ export interface FileRoutesById {
   '/chat': typeof ChatRoute
   '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
+  '/dns': typeof DnsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
   '/logs': typeof LogsRoute
@@ -208,6 +217,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/costs'
     | '/deployments'
+    | '/dns'
     | '/expiring'
     | '/graph'
     | '/logs'
@@ -230,6 +240,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/costs'
     | '/deployments'
+    | '/dns'
     | '/expiring'
     | '/graph'
     | '/logs'
@@ -252,6 +263,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/costs'
     | '/deployments'
+    | '/dns'
     | '/expiring'
     | '/graph'
     | '/logs'
@@ -275,6 +287,7 @@ export interface RootRouteChildren {
   ChatRoute: typeof ChatRoute
   CostsRoute: typeof CostsRoute
   DeploymentsRoute: typeof DeploymentsRoute
+  DnsRoute: typeof DnsRoute
   ExpiringRoute: typeof ExpiringRoute
   GraphRoute: typeof GraphRoute
   LogsRoute: typeof LogsRoute
@@ -333,6 +346,13 @@ declare module '@tanstack/react-router' {
       path: '/deployments'
       fullPath: '/deployments'
       preLoaderRoute: typeof DeploymentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dns': {
+      id: '/dns'
+      path: '/dns'
+      fullPath: '/dns'
+      preLoaderRoute: typeof DnsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/expiring': {
@@ -443,6 +463,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRoute,
   CostsRoute: CostsRoute,
   DeploymentsRoute: DeploymentsRoute,
+  DnsRoute: DnsRoute,
   ExpiringRoute: ExpiringRoute,
   GraphRoute: GraphRoute,
   LogsRoute: LogsRoute,
