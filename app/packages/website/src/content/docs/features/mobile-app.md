@@ -100,3 +100,9 @@ The mobile app is deliberately a read-and-respond surface. Some things are demot
 - **[SQL editor](./sql-editor.md) autocomplete** is absent (queries still run).
 
 If you try to do one of these, the app points you at the web app rather than offering a worse version of the same flow.
+
+## Break-glass approvals
+
+A colleague blocked mid-incident asking for a permission they do not have is exactly what you approve from wherever you are — so [break-glass requests](../team-and-billing/break-glass-access.md) land on the phone, with the same two-tap confirmation the workflow approvals inbox uses, and an `access_request` push deep-links straight to the request it was raised for.
+
+Deciding works here; _raising_ a request does not. Asking needs a permission picker that cannot drift from the server's catalog and a reason somebody will read six months later, and neither is a thing to compose one-handed — that stays on web and desktop.
