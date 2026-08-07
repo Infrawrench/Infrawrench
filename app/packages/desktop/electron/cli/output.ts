@@ -69,10 +69,16 @@ export interface Column<T> {
   align?: "left" | "right";
 }
 
+export interface TableOptions {
+  /** Spaces before every line, for a table nested under a heading. */
+  indent?: number;
+}
+
 /** Aligned two-space-gutter table with a dimmed header row. */
-export function printTable<T>(rows: T[], columns: Column<T>[]): void {
+export function printTable<T>(rows: T[], columns: Column<T>[], options: TableOptions = {}): void {
+  const pad = " ".repeat(options.indent ?? 0);
   if (rows.length === 0) {
-    println(c.dim("(none)"));
+    println(pad + c.dim("(none)"));
     return;
   }
   const cells = rows.map((row) => columns.map((col) => col.value(row)));
@@ -80,19 +86,23 @@ export function printTable<T>(rows: T[], columns: Column<T>[]): void {
     Math.max(visibleWidth(col.header), ...cells.map((r) => visibleWidth(r[i]!))),
   );
   println(
-    columns.map((col, i) => c.dim(padEndVisible(col.header.toUpperCase(), widths[i]!))).join("  "),
+    pad +
+      columns
+        .map((col, i) => c.dim(padEndVisible(col.header.toUpperCase(), widths[i]!)))
+        .join("  "),
   );
   for (const row of cells) {
     println(
-      row
-        .map((cell, i) => {
-          if (columns[i]!.align === "right") {
-            const pad = widths[i]! - visibleWidth(cell);
-            return (pad > 0 ? " ".repeat(pad) : "") + cell;
-          }
-          return padEndVisible(cell, widths[i]!);
-        })
-        .join("  "),
+      pad +
+        row
+          .map((cell, i) => {
+            if (columns[i]!.align === "right") {
+              const gap = widths[i]! - visibleWidth(cell);
+              return (gap > 0 ? " ".repeat(gap) : "") + cell;
+            }
+            return padEndVisible(cell, widths[i]!);
+          })
+          .join("  "),
     );
   }
 }

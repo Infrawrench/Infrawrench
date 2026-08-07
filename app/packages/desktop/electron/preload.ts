@@ -165,6 +165,7 @@ const INVOKE_CHANNELS = [
   "cloud_posture_dismiss",
   "cloud_posture_restore",
   "cloud_dns",
+  "cloud_environment_diff",
   "cloud_changes_list",
   "cloud_status_incidents",
   // Agents mode against an org — the local pipeline has its own (non-cloud)

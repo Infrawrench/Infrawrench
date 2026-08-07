@@ -3,6 +3,7 @@ import {
   dashboardTabTarget,
   accountTabTarget,
   postureTabTarget,
+  environmentDiffTabTarget,
   probesTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
@@ -22,6 +23,15 @@ describe("tab target factories", () => {
 
   it("postureTabTarget", () => {
     expect(postureTabTarget()).toEqual({ kind: "posture" });
+  });
+
+  it("environmentDiffTabTarget carries the pair when given, and omits it otherwise", () => {
+    expect(environmentDiffTabTarget()).toEqual({ kind: "environment-diff" });
+    expect(environmentDiffTabTarget("acc-a", "acc-b")).toEqual({
+      kind: "environment-diff",
+      a: "acc-a",
+      b: "acc-b",
+    });
   });
 
   it("probesTabTarget", () => {

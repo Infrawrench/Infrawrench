@@ -187,6 +187,18 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("carries the environment diff pair as query parameters", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "environment-diff" })).toEqual({
+      to: "/org/$orgId/environment-diff",
+      params: { orgId: "test-org" },
+    });
+    expect(getWorkspaceNavigateArgs({ kind: "environment-diff", a: "acc-a", b: "acc-b" })).toEqual({
+      to: "/org/$orgId/environment-diff",
+      params: { orgId: "test-org" },
+      search: { a: "acc-a", b: "acc-b" },
+    });
+  });
+
   it("sets replace when requested", () => {
     const args = getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId: "d1" }, true);
     expect(args.replace).toBe(true);
@@ -218,6 +230,15 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the org-scoped dns path", () => {
     expect(syncWorkspaceRouteFromPath("/org/test-org/dns")).toEqual({ kind: "dns" });
+  });
+
+  it("parses the environment diff path, with and without a pair", () => {
+    expect(syncWorkspaceRouteFromPath("/org/test-org/environment-diff", undefined, "")).toEqual({
+      kind: "environment-diff",
+    });
+    expect(
+      syncWorkspaceRouteFromPath("/org/test-org/environment-diff", undefined, "?a=acc-a&b=acc-b"),
+    ).toEqual({ kind: "environment-diff", a: "acc-a", b: "acc-b" });
   });
 
   it("parses the probes path", () => {

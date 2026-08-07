@@ -49,6 +49,15 @@ export function dnsTabTarget(): WorkspaceTabTarget {
   return { kind: "dns" };
 }
 
+/**
+ * Environment diff. The two account ids are optional: opened from the sidebar
+ * the panel asks which environments to compare, and opening it again with a
+ * pair retargets the same tab.
+ */
+export function environmentDiffTabTarget(a?: string, b?: string): WorkspaceTabTarget {
+  return { kind: "environment-diff", ...(a ? { a } : {}), ...(b ? { b } : {}) };
+}
+
 export function sshFanoutTabTarget(): WorkspaceTabTarget {
   return { kind: "ssh-fanout" };
 }

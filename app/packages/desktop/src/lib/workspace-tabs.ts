@@ -11,6 +11,7 @@ import {
   expiringTabTarget,
   postureTabTarget,
   dnsTabTarget,
+  environmentDiffTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
@@ -37,6 +38,7 @@ export {
   expiringTabTarget,
   postureTabTarget,
   dnsTabTarget,
+  environmentDiffTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
@@ -96,6 +98,19 @@ export function getWorkspaceNavigateArgs(
       return { to: "/posture", ...(replace ? { replace: true } : {}) };
     case "dns":
       return { to: "/dns", ...(replace ? { replace: true } : {}) };
+    // The two accounts ride as query parameters rather than path segments:
+    // they are a pair of optional ids, not a hierarchy, and the panel is
+    // reachable with neither of them chosen.
+    case "environment-diff": {
+      const search: Record<string, string> = {};
+      if (target.a) search["a"] = target.a;
+      if (target.b) search["b"] = target.b;
+      return {
+        to: "/environment-diff",
+        ...(Object.keys(search).length > 0 ? { search } : {}),
+        ...(replace ? { replace: true } : {}),
+      };
+    }
     case "ssh-fanout":
       return { to: "/ssh-fanout", ...(replace ? { replace: true } : {}) };
     case "metric-alerts":
@@ -209,6 +224,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "dns") {
     return dnsTabTarget();
+  if (segments[0] === "environment-diff") {
+    const params = new URLSearchParams(search ?? "");
+    return environmentDiffTabTarget(params.get("a") ?? undefined, params.get("b") ?? undefined);
   }
   if (segments[0] === "ssh-fanout") {
     return sshFanoutTabTarget();

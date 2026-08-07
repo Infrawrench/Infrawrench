@@ -12,6 +12,7 @@ export type WorkspaceTabTarget =
   | { kind: "expiring" }
   | { kind: "posture" }
   | { kind: "dns" }
+  | { kind: "environment-diff"; a?: string; b?: string }
   | { kind: "ssh-fanout" }
   | { kind: "metric-alerts" }
   | { kind: "probes" }
@@ -72,6 +73,10 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "posture";
     case "dns":
       return "dns";
+    // Not keyed by the two accounts: picking a different pair should retarget
+    // the open Diff tab rather than pile up a tab per comparison.
+    case "environment-diff":
+      return "environment-diff";
     case "ssh-fanout":
       return "ssh-fanout";
     case "metric-alerts":
@@ -122,6 +127,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Posture";
     case "dns":
       return "Domains";
+    case "environment-diff":
+      return "Env diff";
     // Titles match the sidebar tiles the pages are opened from.
     case "ssh-fanout":
       return "Fan-out";
@@ -170,6 +177,12 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
       // hotlink reusing one tab, while this comparison is what makes the route
       // sync notice the repo changed and actually retarget it.
       return a.repo === (b as { repo?: string }).repo;
+    // Same trick: one Diff tab by id, but comparing the two accounts lets the
+    // route sync record which comparison the tab is showing.
+    case "environment-diff": {
+      const other = b as { a?: string; b?: string };
+      return a.a === other.a && a.b === other.b;
+    }
     case "settings":
       // Same deployments trick: single tab by id, but comparing the section
       // lets the route sync record which settings page the tab is on.

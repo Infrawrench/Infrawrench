@@ -22,6 +22,7 @@
     "./bastion/errors": "./src/bastion/errors.ts",
     "./sync-resources": "./src/sync-resources.ts",
     "./resource-changes": "./src/resource-changes.ts",
+    "./environment-diff": "./src/environment-diff.ts",
     "./org-accounts": "./src/org-accounts.ts",
     "./preflight": "./src/preflight.ts",
     "./peer-clients": "./src/peer-clients.ts",

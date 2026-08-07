@@ -10,6 +10,7 @@ import "./rightsizing";
 import "./expiring";
 import "./posture";
 import "./dns";
+import "./environment-diff";
 import "./changes";
 import "./moment";
 import "./schedules";

@@ -24,6 +24,7 @@ import { cmdExpiring } from "./commands/expiring";
 import { cmdPosture, cmdPostureDismiss, cmdPostureRestore } from "./commands/posture";
 import { cmdDns } from "./commands/dns";
 import { cmdChanges } from "./commands/changes";
+import { cmdDiff } from "./commands/diff";
 import { cmdMoment } from "./commands/moment";
 import { cmdIncidents } from "./commands/incidents";
 import { cmdSchedules } from "./commands/schedules";
@@ -83,6 +84,9 @@ COMMANDS
                       (subdomain-takeover risks) flagged   (--local scans this machine's workspace)
   changes             what appeared / changed / disappeared across your providers
                       [--last 7d] [--limit 50] [--kind created|updated|deleted] [-a <account>] [--resource <id>]
+  diff                two accounts of one provider compared: resource types present in one and
+                      not the other, count deltas & field divergence   -a <account> -b <account>
+                      [--type <typeId>] [--all]  (--local compares two local accounts)
   incidents           provider status-page incidents overlapping your resources ("is it me or is it them?")
   moment [timestamp]  everything that happened around a timestamp, across every feed
                       [-w/--window 15m|1h|6h]  (omit the timestamp for "around now")
@@ -131,6 +135,8 @@ FLAGS
   --days <n>          whole-day window for costs --anomalies and changes
   --limit <n>         row cap for changes (max 200)
   --kind <k>          changes filter: created | updated | deleted
+  -b, --against <x>   diff: the second account (-a supplies the first)
+  --all               diff: compare ids, addresses & timestamps too
   --resource <id>     focus one resource (graph) / filter to it (changes)
   -w, --window <d>    moment half-window, e.g. 30m, 1h, 6h (± around the timestamp)
   --type <typeId>     filter resources by resource type
@@ -340,6 +346,11 @@ export async function runCli(): Promise<void> {
         break;
       case "changes":
         await cmdChanges(ctx, parsed.range);
+        break;
+      case "diff":
+        // `infrawrench diff staging prod` is the same as -a/-b; the two
+        // positionals are the only ones this command could take.
+        await cmdDiff(ctx, rest, parsed.diff, parsed.range);
         break;
       case "incidents":
         await cmdIncidents(ctx);

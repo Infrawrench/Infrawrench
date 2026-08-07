@@ -287,10 +287,17 @@ export {
   changeFeedSearchParams,
   fetchOrgChanges,
   fetchResourceChanges,
+  computeResourceChangeEvents,
+  diffResourceRecords,
+  valuesEqual,
   type ChangeFeedRequest,
   type ChangeFeedResult,
+  type ComputeChangeEventsArgs,
   type DriftAlertSettings,
   type DriftAlertSettingsPatch,
+  type FetchedResourceSnapshot,
+  type PriorResourceSnapshot,
+  type ResourceChangeEvent,
   type ResourceChangeKind,
   type ResourceFieldChange,
   type ResourceChangeEntry,
@@ -381,6 +388,7 @@ export * from "./expiry";
 export * from "./leases";
 export * from "./posture";
 export * from "./dns";
+export * from "./environment-diff";
 export * from "./schedules";
 export * from "./probes";
 export * from "./status-pages";

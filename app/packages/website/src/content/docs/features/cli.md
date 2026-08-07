@@ -190,13 +190,16 @@ infrawrench showback              # spend by cost centre; unmatched spend is "un
 
 ## What changed, and what depends on what
 
-Three read commands over the organization's own history and topology:
+Four read commands over the organization's own history and topology:
 
 ```
 infrawrench changes                        # the drift feed, newest first
 infrawrench changes --last 7d --kind deleted
 infrawrench changes -a "Production GCP"    # one account
 infrawrench changes --resource <id>        # one resource, with before → after diffs
+
+infrawrench diff -a staging -b prod        # two environments compared
+infrawrench diff staging prod --all        # positional, ids and timestamps included
 
 infrawrench moment                         # everything that happened around now, every feed merged
 infrawrench moment 2026-08-03T03:14 -w 1h  # ±1h around a timestamp
@@ -207,11 +210,13 @@ infrawrench graph --resource <id>          # what it needs, and its blast radius
 
 `changes` is the [change timeline](./change-timeline.md) in a table: when an event was seen, a `+`/`~`/`-` glyph for appeared / changed / disappeared, the resource, its type, its account, and which fields moved. `--limit` caps the rows (200 max); `--json` carries the full diffs and the `total` matching your filter.
 
+`diff` is the [environment diff](./environment-diff.md): two accounts of one provider side by side — an inventory table with per-type counts and deltas, then, per resource type, what exists on only one side and which fields two counterparts disagree on. Resources are paired by type and by name with environment words removed, so `api-staging` lines up with `api-prod`. Ids, addresses and timestamps are hidden by default because every resource has different ones; `--all` shows them, `--type <typeId>` narrows to one resource type, and `--json` carries the whole comparison. Unlike its neighbours here, `diff` also works with `--local`: it enumerates two of the desktop workspace's accounts through the provider instead of reading synced rows, and reports any resource type it couldn't list rather than counting it as missing.
+
 `moment` is the [moment view](./moment.md) in the terminal: one merged, chronological narrative of everything the platform knows happened around a timestamp — changes, provider incidents, cost anomalies, workflow runs, deployments, audit entries, freezes and alert deliveries — with per-feed permission omissions and failures reported inline rather than silently dropped. Omit the timestamp for "around now"; `-w/--window 15m|1h|6h` sets the ± half-window; `--json` carries the typed events, per-feed statuses and overlapping incident spans.
 
 `graph` prints the [dependency graph](./dependency-graph.md) as an ASCII tree rather than a picture — roots are the resources nothing depends on, and each child is something its parent depends on. Focused on one resource it becomes the terminal's **Dependencies** tab: a **Depends on** tree, and a **Depended on by** tree headed with the blast-radius count. `--json` emits the node and edge lists.
 
-Both read data the cloud poller collects, so they need an organization; `--local` says so rather than printing an empty table.
+`changes`, `moment` and `graph` read data the cloud poller collects, so they need an organization; `--local` says so rather than printing an empty table.
 
 ## Running a command on many hosts
 

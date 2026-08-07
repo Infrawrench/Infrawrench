@@ -326,6 +326,7 @@ export {
   expiringTabTarget,
   postureTabTarget,
   dnsTabTarget,
+  environmentDiffTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
@@ -648,6 +649,47 @@ export type {
 export { DnsSection } from "./dns/DnsSection.js";
 export type { DnsSectionProps } from "./dns/DnsSection.js";
 export { DomainsIcon } from "./components/icons/DomainsIcon.js";
+
+/**
+ * Environment diff — two accounts' inventories compared. The comparison is
+ * pure and lives in `@infrawrench/client-core` (a second caller of the
+ * change-timeline differ), so the CLI runs the identical computation over its
+ * own workspace; re-exported here because web and desktop import it from `ui`.
+ */
+export {
+  computeEnvironmentDiff,
+  fetchEnvironmentDiff,
+  environmentDiffSearchParams,
+  environmentTokens,
+  isIdentityChange,
+  normalizeEnvironmentName,
+  EnvironmentDiffPluginMismatchError,
+  ENVIRONMENT_NAME_TOKENS,
+} from "@infrawrench/client-core";
+export type {
+  EnvironmentDiffInput,
+  EnvironmentDiffRequest,
+  EnvironmentDiffResource,
+  EnvironmentDiffSide,
+} from "@infrawrench/client-core";
+export { EnvironmentDiffSection } from "./environment-diff/EnvironmentDiffSection.js";
+export type { EnvironmentDiffSectionProps } from "./environment-diff/EnvironmentDiffSection.js";
+export type {
+  EnvironmentDiffAccount,
+  EnvironmentDiffClient,
+  EnvironmentDiffEntry,
+  EnvironmentDiffFieldChange,
+  EnvironmentDiffQuery,
+  EnvironmentDiffResourceRef,
+  EnvironmentDiffResourceTarget,
+  EnvironmentDiffResponse,
+  EnvironmentDiffSideSummary,
+  EnvironmentDiffStatus,
+  EnvironmentDiffTotals,
+  EnvironmentDiffTypeSummary,
+  EnvironmentDiffUnavailableType,
+} from "./environment-diff/types.js";
+export { EnvironmentDiffIcon } from "./components/icons/EnvironmentDiffIcon.js";
 export { FanoutIcon } from "./components/icons/FanoutIcon.js";
 export { MetricAlertIcon } from "./components/icons/MetricAlertIcon.js";
 export { ProbesIcon } from "./components/icons/ProbesIcon.js";

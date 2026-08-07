@@ -11,6 +11,7 @@ import {
   expiringTabTarget,
   postureTabTarget,
   dnsTabTarget,
+  environmentDiffTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
@@ -126,6 +127,20 @@ export function getWorkspaceNavigateArgs(
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
+    // The two accounts ride as query parameters rather than path segments:
+    // they are a pair of optional ids, not a hierarchy, and the panel is
+    // reachable with neither of them chosen.
+    case "environment-diff": {
+      const search: Record<string, string> = {};
+      if (target.a) search["a"] = target.a;
+      if (target.b) search["b"] = target.b;
+      return {
+        to: "/org/$orgId/environment-diff",
+        params: { orgId },
+        ...(Object.keys(search).length > 0 ? { search } : {}),
+        ...(replace ? { replace: true } : {}),
+      };
+    }
     case "ssh-fanout":
       return {
         to: "/org/$orgId/ssh-fanout",
@@ -272,6 +287,12 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "dns") {
     return dnsTabTarget();
+  }
+  if (s[0] === "environment-diff") {
+    const params = new URLSearchParams(
+      search ?? (typeof window === "undefined" ? "" : window.location.search),
+    );
+    return environmentDiffTabTarget(params.get("a") ?? undefined, params.get("b") ?? undefined);
   }
   if (s[0] === "ssh-fanout") {
     return sshFanoutTabTarget();

@@ -19,6 +19,11 @@ import {
 import { listDns } from "@infrawrench/server-core/dns/feed";
 import { listOwnership } from "@infrawrench/server-core/ownership/store";
 import { listStatusPages } from "@infrawrench/server-core/status-pages/store";
+import {
+  loadEnvironmentDiff,
+  EnvironmentDiffAccountNotFoundError,
+  EnvironmentDiffPluginMismatchError,
+} from "@infrawrench/server-core/environment-diff";
 import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
 import { resolveStoredSshPublicKey } from "./ssh-key-lookup";
 import { logAudit } from "../services/audit";
@@ -209,6 +214,69 @@ export function genericTools(): ToolDefinition[] {
           leadDays: feed.leadDays,
           generatedAt: feed.generatedAt,
         });
+      },
+    },
+
+    {
+      name: "diff_environments",
+      title: "Compare two accounts' inventories",
+      description:
+        "Compares two accounts of the same provider — typically staging against production — " +
+        "over already-synced state: which resource types exist in one and not the other, the " +
+        "per-type count deltas, and the fields on which two corresponding resources disagree " +
+        "(instance class, engine version, replica count, feature flags). Resources are paired " +
+        "by type and by name with environment words stripped, so `api-staging` lines up with " +
+        '`api-prod`. This is the tool for "why does staging work and prod doesn\u2019t" and for ' +
+        "checking that a new environment matches the one it was cloned from. Purely a read " +
+        "over synced state; no provider API calls.",
+      inputSchema: {
+        a: z.string().describe("Baseline account: its id, or its exact display name."),
+        b: z
+          .string()
+          .describe("Compared account: its id, or its exact display name. Same provider as `a`."),
+        resourceTypeId: z.string().optional().describe("Compare one resource type only."),
+        includeIdentityFields: z
+          .boolean()
+          .optional()
+          .describe(
+            "Compare ids, links, network addresses and timestamps too. Off by default because " +
+              "every resource has different ones, which buries the fields that actually diverged.",
+          ),
+      },
+      risk: "read",
+      // Mirrors `GET /environment-diff` — it reads the same rows as the account pages.
+      permission: "resources:read",
+      handler: async (input, auth) => {
+        const rows = await db
+          .select({ id: accounts.id, displayName: accounts.displayName })
+          .from(accounts)
+          .where(and(eq(accounts.organizationId, auth.organizationId), isNull(accounts.deletedAt)));
+        // Agents reach for names before ids; resolve exact names so a diff
+        // doesn't need a list_accounts round trip first.
+        const resolve = (wanted: string): string =>
+          rows.find((r) => r.id === wanted)?.id ??
+          rows.find((r) => r.displayName.toLowerCase() === wanted.toLowerCase())?.id ??
+          wanted;
+
+        const a = resolve(input["a"] as string);
+        const b = resolve(input["b"] as string);
+        if (a === b) return err("`a` and `b` must be two different accounts.");
+        try {
+          return ok(
+            await loadEnvironmentDiff(auth.organizationId, a, b, {
+              resourceTypeId: input["resourceTypeId"] as string | undefined,
+              includeIdentityFields: input["includeIdentityFields"] === true,
+            }),
+          );
+        } catch (e) {
+          if (
+            e instanceof EnvironmentDiffAccountNotFoundError ||
+            e instanceof EnvironmentDiffPluginMismatchError
+          ) {
+            return err(e.message);
+          }
+          throw e;
+        }
       },
     },
 

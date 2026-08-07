@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -2541,6 +2541,7 @@
               "expiring",
               "posture",
               "dns",
+              "environment-diff",
               "ssh-fanout",
               "metric-alerts",
               "probes",
@@ -9341,6 +9342,324 @@
           "records",
           "counts",
           "skippedNamespaces",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentDiffSideSummary": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "resourceCount": {
+            "type": "integer",
+            "description": "Resources compared on this side."
+          }
+        },
+        "required": [
+          "accountId",
+          "accountName",
+          "resourceCount"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentDiffTypeSummary": {
+        "type": "object",
+        "properties": {
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string"
+          },
+          "countA": {
+            "type": "integer"
+          },
+          "countB": {
+            "type": "integer"
+          },
+          "delta": {
+            "type": "integer",
+            "description": "`countB - countA`."
+          },
+          "onlyInA": {
+            "type": "integer"
+          },
+          "onlyInB": {
+            "type": "integer"
+          },
+          "changed": {
+            "type": "integer",
+            "description": "Matched pairs that disagree on at least one field."
+          },
+          "identical": {
+            "type": "integer",
+            "description": "Matched pairs with no visible divergence."
+          },
+          "missingFrom": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "a",
+              "b"
+            ],
+            "description": "Set when the resource type is absent from that side entirely."
+          }
+        },
+        "required": [
+          "resourceTypeId",
+          "resourceTypeName",
+          "countA",
+          "countB",
+          "delta",
+          "onlyInA",
+          "onlyInB",
+          "changed",
+          "identical",
+          "missingFrom"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentDiffResourceRef": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "resourceId": {
+            "type": "string",
+            "description": "Infrawrench resource id."
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider-native id, when known."
+          }
+        },
+        "required": [
+          "resourceId",
+          "accountId",
+          "displayName",
+          "externalId"
+        ],
+        "additionalProperties": false,
+        "description": "Null when the resource exists only on B."
+      },
+      "EnvironmentDiffFieldChange": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "Field key; resolved-output keys are prefixed `outputs.`.",
+            "example": "instanceClass"
+          },
+          "a": {
+            "description": "Value on side A; null when the key is absent there."
+          },
+          "b": {
+            "description": "Value on side B."
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentDiffEntry": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The pairing key both sides matched on — the resource type plus the resource name with environment words removed. Stable across runs.",
+            "example": "droplet api#0"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string",
+            "example": "Droplet"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "only-in-a",
+              "only-in-b",
+              "changed"
+            ],
+            "description": "Whether the slot exists on side A only, side B only, or on both with a field divergence. Matched pairs that agree are counted in the type summary rather than listed."
+          },
+          "a": {
+            "$ref": "#/components/schemas/EnvironmentDiffResourceRef"
+          },
+          "b": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EnvironmentDiffResourceRef"
+              },
+              {
+                "description": "Null when the resource exists only on A."
+              }
+            ]
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentDiffFieldChange"
+            },
+            "description": "Field divergences. Empty unless `status` is `changed`."
+          },
+          "suppressedCount": {
+            "type": "integer",
+            "description": "Divergences hidden by the identity filter (ids, links, addresses, timestamps). Always 0 when `includeIdentityFields` was requested."
+          }
+        },
+        "required": [
+          "key",
+          "resourceTypeId",
+          "resourceTypeName",
+          "status",
+          "a",
+          "b",
+          "changes",
+          "suppressedCount"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentDiffTotals": {
+        "type": "object",
+        "properties": {
+          "onlyInA": {
+            "type": "integer"
+          },
+          "onlyInB": {
+            "type": "integer"
+          },
+          "changed": {
+            "type": "integer"
+          },
+          "identical": {
+            "type": "integer"
+          },
+          "typesOnlyInA": {
+            "type": "integer"
+          },
+          "typesOnlyInB": {
+            "type": "integer"
+          },
+          "suppressedFieldChanges": {
+            "type": "integer",
+            "description": "Field divergences the identity filter hid across every pair."
+          }
+        },
+        "required": [
+          "onlyInA",
+          "onlyInB",
+          "changed",
+          "identical",
+          "typesOnlyInA",
+          "typesOnlyInB",
+          "suppressedFieldChanges"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentDiffUnavailableType": {
+        "type": "object",
+        "properties": {
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string",
+            "description": "The provider's complaint, as the lister reported it."
+          }
+        },
+        "required": [
+          "resourceTypeId",
+          "resourceTypeName",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentDiffResponse": {
+        "type": "object",
+        "properties": {
+          "a": {
+            "$ref": "#/components/schemas/EnvironmentDiffSideSummary"
+          },
+          "b": {
+            "$ref": "#/components/schemas/EnvironmentDiffSideSummary"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string",
+            "example": "DigitalOcean"
+          },
+          "types": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentDiffTypeSummary"
+            },
+            "description": "Every resource type present on either side, most-divergent first."
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentDiffEntry"
+            },
+            "description": "Only the slots that differ; identical pairs are counted, not listed."
+          },
+          "totals": {
+            "$ref": "#/components/schemas/EnvironmentDiffTotals"
+          },
+          "unavailableTypes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentDiffUnavailableType"
+            },
+            "description": "Resource types excluded because they could not be listed. Always empty over this API — it reads already-synced rows, which cannot half-fail — and populated only by the desktop and CLI local modes, which list live."
+          },
+          "includeIdentityFields": {
+            "type": "boolean"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "a",
+          "b",
+          "pluginId",
+          "pluginName",
+          "types",
+          "entries",
+          "totals",
+          "unavailableTypes",
+          "includeIdentityFields",
           "generatedAt"
         ],
         "additionalProperties": false
@@ -26752,6 +27071,106 @@
           }
         },
         "operationId": "getOrgOrgIdDns",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/environment-diff": {
+      "get": {
+        "tags": [
+          "Environment diff"
+        ],
+        "summary": "Compare two accounts' resource inventories",
+        "description": "Compares two accounts of the same provider — typically staging against production — over already-synced state: which resource types exist in one and not the other, the per-type count deltas, and the fields on which two corresponding resources disagree (instance class, engine version, feature flags).\n\nResources are paired by resource type plus name with environment words removed, so `api-staging` lines up with `api-prod` without any naming convention to configure. By default the comparison hides divergences that are artefacts of being two different resources — ids, links, network addresses and timestamps — because every resource has different ones; pass `includeIdentityFields=true` to see them.\n\nRead-only and cheap: no provider API calls are made, so results reflect the last sync.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Baseline account id — by convention the environment that works.",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "a",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Compared account id. Must differ from `a` and use the same provider.",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "b",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Compare one resource type only."
+            },
+            "required": false,
+            "name": "resourceTypeId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "description": "Compare identity and timestamp fields too, instead of filtering them out."
+            },
+            "required": false,
+            "name": "includeIdentityFields",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The two inventories compared",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentDiffResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdEnvironmentDiff",
         "x-required-permission": "resources:read"
       }
     },

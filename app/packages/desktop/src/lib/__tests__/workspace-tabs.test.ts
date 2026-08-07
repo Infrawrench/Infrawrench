@@ -138,6 +138,16 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(getWorkspaceNavigateArgs({ kind: "dns" })).toEqual({ to: "/dns" });
   });
 
+  it("carries the environment diff pair as search params", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "environment-diff" })).toEqual({
+      to: "/environment-diff",
+    });
+    expect(getWorkspaceNavigateArgs({ kind: "environment-diff", a: "acc-a", b: "acc-b" })).toEqual({
+      to: "/environment-diff",
+      search: { a: "acc-a", b: "acc-b" },
+    });
+  });
+
   it("carries a hotlinked repo through as a search param", () => {
     expect(getWorkspaceNavigateArgs(deploymentsTabTarget("owner/name"))).toEqual({
       to: "/deployments",
@@ -190,6 +200,15 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the probes path", () => {
     expect(syncWorkspaceRouteFromPath("/probes")).toEqual({ kind: "probes" });
+  });
+
+  it("parses the environment diff path, with and without a pair", () => {
+    expect(syncWorkspaceRouteFromPath("/environment-diff")).toEqual({ kind: "environment-diff" });
+    expect(syncWorkspaceRouteFromPath("/environment-diff", undefined, "a=acc-a&b=acc-b")).toEqual({
+      kind: "environment-diff",
+      a: "acc-a",
+      b: "acc-b",
+    });
   });
 
   it("parses the settings path with its section param", () => {

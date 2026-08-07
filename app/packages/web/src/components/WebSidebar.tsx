@@ -21,6 +21,7 @@ import {
   ExpiryIcon,
   PostureIcon,
   DomainsIcon,
+  EnvironmentDiffIcon,
   FanoutIcon,
   LogsIcon,
   MetricAlertIcon,
@@ -520,6 +521,16 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 label: "Domains",
                 icon: <DomainsIcon />,
                 onClick: () => void navigate({ to: "/org/$orgId/dns", params: { orgId: orgId! } }),
+              },
+              {
+                key: "environment-diff",
+                label: "Env diff",
+                icon: <EnvironmentDiffIcon />,
+                onClick: () =>
+                  void navigate({
+                    to: "/org/$orgId/environment-diff",
+                    params: { orgId: orgId! },
+                  }),
               },
               {
                 key: "probes",

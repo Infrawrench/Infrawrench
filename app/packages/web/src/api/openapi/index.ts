@@ -15,6 +15,7 @@ import { registerAccountPaths } from "./paths/accounts";
 import { registerDashboardPaths } from "./paths/dashboards";
 import { registerCostPaths } from "./paths/costs";
 import { registerOrphanPaths } from "./paths/orphans";
+import { registerEnvironmentDiffPaths } from "./paths/environment-diff";
 import { registerRightsizingPaths } from "./paths/rightsizing";
 import { registerBudgetPaths } from "./paths/budgets";
 import { registerMetricAlertPaths } from "./paths/metric-alerts";
@@ -133,6 +134,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerExpiringPaths(ctx);
   registerPosturePaths(ctx);
   registerDnsPaths(ctx);
+  registerEnvironmentDiffPaths(ctx);
   registerMomentPaths(ctx);
   registerSchedulePaths(ctx);
   registerLeasePaths(ctx);
@@ -457,6 +459,8 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /posture/dismissals": "resources:write",
   "DELETE /posture/dismissals": "resources:write",
   "GET /dns": "resources:read",
+  // Environment diff — pure read over two accounts' already-synced inventories.
+  "GET /environment-diff": "resources:read",
   "GET /posture/settings": "org:settings:write",
   "PUT /posture/settings": "org:settings:write",
   // sleep/wake schedules — reads ride the resource read scope (the list is
