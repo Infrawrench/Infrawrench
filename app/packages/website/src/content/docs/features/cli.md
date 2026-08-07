@@ -115,6 +115,14 @@ infrawrench probes api-health     # one probe: state, facts, latency sparkline
 infrawrench probes --json
 ```
 
+`hygiene` is the [credential hygiene](../team-and-billing/credential-hygiene.md) report: unused API keys, unreferenced SSH keys, and members holding write permissions they never exercise. The `--json` form is the one worth scheduling — these accumulate slowly and nobody opens a settings page to check. Needs `audit:read`:
+
+```
+infrawrench hygiene
+infrawrench hygiene --days 180        # 7-365; default 90
+infrawrench hygiene --json
+```
+
 `access` lists [break-glass access](../team-and-billing/break-glass-access.md) requests and the elevations in force right now. Read-only: raising a request needs a reason someone will read and deciding one is a judgement call, but "who is elevated right now" is exactly the question you type at 3am. Needs `access:read`:
 
 ```

@@ -43,3 +43,7 @@ All tool-driven key changes appear in the [audit log](./audit-log.md) (`ssh-key.
 
 - Do not paste keys you use to sign git commits — use a dedicated key for server access.
 - Do not share a single key among many users; each human should have their own, so the [audit log](./audit-log.md) is meaningful.
+
+## Finding keys nothing uses
+
+The [credential hygiene report](./credential-hygiene.md) lists org SSH keys with no recorded use over a window you choose — terminal sessions, [fan-out](../features/ssh-fanout.md) runs, agent forwarding and the `ssh_exec` tool all count as use. Keys whose private half is stored server-side are ranked higher, because those are live credentials sitting in a database. Deleting one here removes Infrawrench's copy; the line in the host's `authorized_keys` is still yours to remove.

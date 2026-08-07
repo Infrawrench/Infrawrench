@@ -43,6 +43,7 @@ import { Route as OrgOrgIdSettingsApprovalsRouteImport } from './routes/org.$org
 import { Route as OrgOrgIdSettingsAuditLogRouteImport } from './routes/org.$orgId.settings.audit-log'
 import { Route as OrgOrgIdSettingsBastionsRouteImport } from './routes/org.$orgId.settings.bastions'
 import { Route as OrgOrgIdSettingsBillingRouteImport } from './routes/org.$orgId.settings.billing'
+import { Route as OrgOrgIdSettingsCredentialHygieneRouteImport } from './routes/org.$orgId.settings.credential-hygiene'
 import { Route as OrgOrgIdSettingsFreezesRouteImport } from './routes/org.$orgId.settings.freezes'
 import { Route as OrgOrgIdSettingsPagingRouteImport } from './routes/org.$orgId.settings.paging'
 import { Route as OrgOrgIdSettingsRolesRouteImport } from './routes/org.$orgId.settings.roles'
@@ -230,6 +231,12 @@ const OrgOrgIdSettingsBillingRoute = OrgOrgIdSettingsBillingRouteImport.update({
   path: '/billing',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsCredentialHygieneRoute =
+  OrgOrgIdSettingsCredentialHygieneRouteImport.update({
+    id: '/credential-hygiene',
+    path: '/credential-hygiene',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsFreezesRoute = OrgOrgIdSettingsFreezesRouteImport.update({
   id: '/freezes',
   path: '/freezes',
@@ -313,6 +320,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
+  '/org/$orgId/settings/credential-hygiene': typeof OrgOrgIdSettingsCredentialHygieneRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
@@ -355,6 +363,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
+  '/org/$orgId/settings/credential-hygiene': typeof OrgOrgIdSettingsCredentialHygieneRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
@@ -401,6 +410,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
+  '/org/$orgId/settings/credential-hygiene': typeof OrgOrgIdSettingsCredentialHygieneRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
@@ -448,6 +458,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
+    | '/org/$orgId/settings/credential-hygiene'
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
@@ -490,6 +501,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
+    | '/org/$orgId/settings/credential-hygiene'
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
@@ -535,6 +547,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
+    | '/org/$orgId/settings/credential-hygiene'
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
@@ -796,6 +809,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsBillingRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/credential-hygiene': {
+      id: '/org/$orgId/settings/credential-hygiene'
+      path: '/credential-hygiene'
+      fullPath: '/org/$orgId/settings/credential-hygiene'
+      preLoaderRoute: typeof OrgOrgIdSettingsCredentialHygieneRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/freezes': {
       id: '/org/$orgId/settings/freezes'
       path: '/freezes'
@@ -883,6 +903,7 @@ interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsAuditLogRoute: typeof OrgOrgIdSettingsAuditLogRoute
   OrgOrgIdSettingsBastionsRoute: typeof OrgOrgIdSettingsBastionsRoute
   OrgOrgIdSettingsBillingRoute: typeof OrgOrgIdSettingsBillingRoute
+  OrgOrgIdSettingsCredentialHygieneRoute: typeof OrgOrgIdSettingsCredentialHygieneRoute
   OrgOrgIdSettingsFreezesRoute: typeof OrgOrgIdSettingsFreezesRoute
   OrgOrgIdSettingsPagingRoute: typeof OrgOrgIdSettingsPagingRoute
   OrgOrgIdSettingsRolesRoute: typeof OrgOrgIdSettingsRolesRoute
@@ -901,6 +922,7 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsAuditLogRoute: OrgOrgIdSettingsAuditLogRoute,
   OrgOrgIdSettingsBastionsRoute: OrgOrgIdSettingsBastionsRoute,
   OrgOrgIdSettingsBillingRoute: OrgOrgIdSettingsBillingRoute,
+  OrgOrgIdSettingsCredentialHygieneRoute: OrgOrgIdSettingsCredentialHygieneRoute,
   OrgOrgIdSettingsFreezesRoute: OrgOrgIdSettingsFreezesRoute,
   OrgOrgIdSettingsPagingRoute: OrgOrgIdSettingsPagingRoute,
   OrgOrgIdSettingsRolesRoute: OrgOrgIdSettingsRolesRoute,

@@ -446,6 +446,31 @@ export async function handleSshSession(
       });
     }
 
+    // Every session, not just the agent-forwarded and jump-chained ones.
+    //
+    // Those two events predate this and are about *how* a session was set up;
+    // neither fires for the ordinary case of someone opening a terminal with an
+    // org SSH key, which left the audit log unable to answer "when was this key
+    // last used". That question is the whole basis of the credential-hygiene
+    // report, and a report built on partial evidence would confidently call a
+    // key unused because nobody had agent-forwarded with it.
+    if (directSsh?.sshKeyId) {
+      void logAudit({
+        organizationId,
+        userId,
+        action: "ssh.session.opened",
+        entityType: "ssh-session",
+        entityId: accountId,
+        metadata: {
+          sshKeyId: directSsh.sshKeyId,
+          sshHost: finalConfig.host,
+          sshUsername: finalConfig.username,
+          ...(resourceId ? { resourceId } : {}),
+          ...(hops.length > 1 ? { hopCount: hops.length } : {}),
+        },
+      });
+    }
+
     if (hops.length > 1) {
       void logAudit({
         organizationId,

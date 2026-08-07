@@ -31,7 +31,7 @@ const ALLOWED: Array<{ methods: string[]; pattern: RegExp }> = [
   {
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     pattern: new RegExp(
-      `${ORG}/(team|api-keys|ssh-keys|ssh-host-keys|session-recordings|access-requests|bastions|change-freezes|tag-policy|cost-centres|twilio|msteams|slack|push|digest)(\\/|$|\\?)`,
+      `${ORG}/(team|api-keys|ssh-keys|ssh-host-keys|session-recordings|access-requests|credential-hygiene|bastions|change-freezes|tag-policy|cost-centres|twilio|msteams|slack|push|digest)(\\/|$|\\?)`,
     ),
   },
   { methods: ["GET"], pattern: new RegExp(`${ORG}/audit-logs(\\?|$)`) },

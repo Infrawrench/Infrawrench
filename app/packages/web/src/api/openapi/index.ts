@@ -37,6 +37,7 @@ import { registerSchedulePaths } from "./paths/schedules";
 import { registerLeasePaths } from "./paths/leases";
 import { registerSessionRecordingPaths } from "./paths/session-recordings";
 import { registerAccessRequestPaths } from "./paths/access-requests";
+import { registerCredentialHygienePaths } from "./paths/credential-hygiene";
 import { registerProbePaths } from "./paths/probes";
 import { registerLogWorkspacePaths } from "./paths/log-workspaces";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
@@ -133,6 +134,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerLeasePaths(ctx);
   registerSessionRecordingPaths(ctx);
   registerAccessRequestPaths(ctx);
+  registerCredentialHygienePaths(ctx);
   registerProbePaths(ctx);
   registerLogWorkspacePaths(ctx);
   registerConnectionFeaturePaths(ctx);
@@ -229,6 +231,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Resource leases",
         description:
           "Optional TTLs on resources ('a test cluster for 3 days'). Active leases ride the expiry radar; auto-delete leases are announced twice and then deleted at expiry by the poller, deferring during change freezes.",
+      },
+      {
+        name: "Credential hygiene",
+        description:
+          "Unused API keys, unreferenced SSH keys, and members holding write permissions they never exercise — derived from the audit log and the credential tables, with no provider call. Only writes are audit-logged, so the report deliberately draws no conclusion about read permissions.",
       },
       {
         name: "Break-glass access",
@@ -451,6 +458,10 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   // `revoke` has no entry because its permission depends on who is calling —
   // the holder may always end their own grant — which this one-permission-per
   // -route map cannot express; the handler owns it.
+  // credential hygiene — `audit:read`, not a family of its own. Every fact in
+  // the report is already reachable by anyone who can read the audit log, so a
+  // separate permission would only mean granting two things to get one view.
+  "GET /credential-hygiene": "audit:read",
   "GET /access-requests": "access:read",
   "GET /access-requests/catalog": "access:read",
   "POST /access-requests": "access:request",

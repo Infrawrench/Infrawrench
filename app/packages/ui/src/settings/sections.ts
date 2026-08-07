@@ -24,6 +24,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   },
   { key: "bastions", label: "Bastions" },
   { key: "api-keys", label: "API Keys" },
+  { key: "credential-hygiene", label: "Credential Hygiene", requiresPermission: "audit:read" },
   { key: "freezes", label: "Change Freezes" },
   { key: "tag-policy", label: "Tag Policy" },
   { key: "approvals", label: "Approvals", requiresPermission: "workflows:read" },

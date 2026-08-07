@@ -82,6 +82,8 @@
     "./log-workspaces/store": "./src/log-workspaces/store.ts",
     "./log-workspaces/pass": "./src/log-workspaces/pass.ts",
     "./access/break-glass": "./src/access/break-glass.ts",
+    "./hygiene/report": "./src/hygiene/report.ts",
+    "./hygiene/action-permissions": "./src/hygiene/action-permissions.ts",
     "./approvals/notify": "./src/approvals/notify.ts",
     "./ssh-recording/cast": "./src/ssh-recording/cast.ts",
     "./ssh-recording/recorder": "./src/ssh-recording/recorder.ts",
