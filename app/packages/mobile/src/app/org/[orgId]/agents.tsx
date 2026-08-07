@@ -25,6 +25,8 @@ interface AgentSession {
   projectName: string;
   workspaceName: string;
   tool: string;
+  /** "terminal" (the tool's CLI in a terminal) or "t3-code". */
+  surface?: string;
   branchName: string;
   /** e.g. "setting-up" | "up" | "failed" */
   status: string;
@@ -45,6 +47,18 @@ function statusColor(status: string): string {
 
 function toolLabel(tool: string): string {
   return tool === "claude-code" ? "Claude Code" : tool === "codex" ? "Codex" : tool;
+}
+
+/**
+ * A T3 Code server has no Infrawrench-managed checkout, so its branch name is
+ * a placeholder — showing it would read as a branch the user can go find.
+ */
+function sessionSubtitle(session: AgentSession): string {
+  const created = new Date(session.createdAt).toLocaleString();
+  if (session.surface === "t3-code") {
+    return `T3 Code + ${toolLabel(session.tool)} · ${created}`;
+  }
+  return `${toolLabel(session.tool)} · ${session.branchName} · ${created}`;
 }
 
 export default function AgentsScreen() {
@@ -81,7 +95,7 @@ export default function AgentsScreen() {
             <Row
               key={session.id}
               title={session.projectName || session.repo}
-              subtitle={`${toolLabel(session.tool)} · ${session.branchName} · ${new Date(session.createdAt).toLocaleString()}`}
+              subtitle={sessionSubtitle(session)}
               right={
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                   <View

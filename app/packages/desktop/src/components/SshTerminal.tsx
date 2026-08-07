@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import {
   attachAltBufferScrollHandler,
   attachTerminalClipboard,
   buildInitialShellCommand,
+  createTerminalLinkHandler,
   getXtermTerminalOptions,
   hideXtermScrollbar,
   pastedImageFilename,
@@ -63,12 +65,23 @@ export function SshTerminal({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const term = new Terminal(
-      getXtermTerminalOptions(agentTerminal ? { scrollback: 0 } : undefined),
-    );
+    // URLs printed by the remote host (a `gh auth login` device-code page,
+    // the `t3 connect link` authorization URL) open in the real browser, not
+    // in the app shell. The handler validates the scheme first — terminal
+    // output is remote-controlled text.
+    const linkHandler = createTerminalLinkHandler({
+      openExternal: (url) => void invoke("open_external_url", { url }),
+    });
+    const term = new Terminal({
+      ...getXtermTerminalOptions(agentTerminal ? { scrollback: 0 } : undefined),
+      linkHandler,
+    });
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
+    // OSC 8 hyperlinks are handled by `linkHandler` above; this addon finds
+    // bare URLs in the buffer and routes clicks through the same policy.
+    term.loadAddon(new WebLinksAddon((event, uri) => linkHandler.activate(event, uri)));
     term.open(containerRef.current);
     if (agentTerminal) hideXtermScrollbar(containerRef.current);
 

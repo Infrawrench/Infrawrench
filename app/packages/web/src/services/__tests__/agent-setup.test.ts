@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { T3_CODE_PROJECTS_DIR } from "@infrawrench/ui/agents/t3-code";
 
 // Drizzle-style chain mocks. Selects resolve queued results in call order;
 // update captures the values passed to .set().
@@ -57,6 +58,7 @@ function sessionRow(overrides: Record<string, unknown> = {}) {
     pluginId: "hetzner",
     resourceTypeId: "server",
     tool: "codex",
+    surface: "terminal",
     branchName: "infrawrench/agent-session1",
     status: "setting-up",
     vmResourceId: "vm-1",
@@ -143,6 +145,16 @@ describe("setupPlanForRow", () => {
       expect(plan.initialCloneUrl).toBe(row.repo);
       expect(plan.workspaceName).toBe(row.workspaceName);
     }
+  });
+
+  // A T3 Code server has no repo, so the repo-derived fallback would invent a
+  // clone URL for a session that must never clone anything.
+  it("falls back to a T3 Code plan for a t3-code session", () => {
+    const row = sessionRow({ surface: "t3-code", repo: "", setupPlanJson: "not-json" });
+    const plan = setupPlanForRow(row);
+    expect(plan.initialCloneUrl).toBeUndefined();
+    expect(plan.workspaceName).toBe(T3_CODE_PROJECTS_DIR);
+    expect(plan.runtimes.map((runtime) => runtime.language)).toEqual(["node"]);
   });
 });
 

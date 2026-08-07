@@ -498,6 +498,13 @@
       "when": 1786030716413,
       "tag": "0070_graceful_deathstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1786095417430,
+      "tag": "0071_shiny_silver_samurai",
+      "breakpoints": true
     }
   ]
 }

@@ -11,6 +11,7 @@ import {
   type DeploymentClient,
   type WorkspaceTab,
 } from "@infrawrench/ui";
+import { invoke } from "@/lib/invoke";
 import { DashboardPanel } from "@/routes/dashboard.$dashboardId";
 import { AccountPanel } from "@/routes/accounts.$accountId";
 import { ResourcePanel } from "@/routes/resource.$accountId.$resourceId";

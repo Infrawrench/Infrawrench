@@ -13,6 +13,11 @@ export const agentSettings = pgTable("agent_settings", {
   pluginId: text("plugin_id").notNull(),
   resourceTypeId: text("resource_type_id").notNull(),
   tool: text("tool").notNull().default("codex"),
+  // How the session is driven: "terminal" (the tool's CLI in an SSH tab) or
+  // "t3-code" (the T3 Code server drives the tool, and is used from T3
+  // Code's own client). Orthogonal to `tool` — T3 Code is a control
+  // surface, not an agent, so a t3-code session still installs codex/claude.
+  surface: text("surface").notNull().default("terminal"),
   fieldsJson: jsonb("fields_json").$type<Record<string, string>>().notNull().default({}),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -33,6 +38,8 @@ export const agentSessions = pgTable(
     pluginId: text("plugin_id").notNull(),
     resourceTypeId: text("resource_type_id").notNull(),
     tool: text("tool").notNull().default("codex"),
+    /** See `agentSettings.surface`. */
+    surface: text("surface").notNull().default("terminal"),
     branchName: text("branch_name").notNull(),
     status: text("status").notNull().default("pending"),
     vmResourceId: text("vm_resource_id"),

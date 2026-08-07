@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.37.0",
+    "version": "0.38.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -11957,6 +11957,13 @@
               "claude-code"
             ]
           },
+          "surface": {
+            "type": "string",
+            "enum": [
+              "terminal",
+              "t3-code"
+            ]
+          },
           "fields": {
             "type": "object",
             "additionalProperties": {
@@ -12002,6 +12009,13 @@
             "enum": [
               "codex",
               "claude-code"
+            ]
+          },
+          "surface": {
+            "type": "string",
+            "enum": [
+              "terminal",
+              "t3-code"
             ]
           },
           "branchName": {
@@ -12061,8 +12075,7 @@
         "type": "object",
         "properties": {
           "repo": {
-            "type": "string",
-            "minLength": 1
+            "type": "string"
           },
           "projectName": {
             "type": "string"
@@ -12082,7 +12095,6 @@
           }
         },
         "required": [
-          "repo",
           "settings"
         ],
         "additionalProperties": false

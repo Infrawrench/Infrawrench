@@ -24,6 +24,11 @@
       "import": "./dist/agents/launch-command.js",
       "require": "./dist/agents/launch-command.cjs"
     },
+    "./agents/t3-code": {
+      "types": "./dist/agents/t3-code.d.ts",
+      "import": "./dist/agents/t3-code.js",
+      "require": "./dist/agents/t3-code.cjs"
+    },
     "./cost": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",

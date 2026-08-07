@@ -36,6 +36,12 @@ import {
   buildAgentBootstrapCommand,
   isCloneableGitRepo,
 } from "@infrawrench/ui/agents/launch-command";
+import {
+  buildT3CodeBootstrapCommand,
+  buildT3CodeLogoutCommand,
+  createT3CodeSetupPlan,
+  isT3CodeSurface,
+} from "@infrawrench/ui/agents/t3-code";
 
 import {
   getInstallationToken,
@@ -52,6 +58,7 @@ const AGENT_SSH_KEY_NAME = "infrawrench-agent";
 const AGENT_SETUP_STARTED_LOG = "Preparing VM for coding session.";
 const AGENT_SETUP_WAIT_SSH_LOG = "Waiting for VM SSH to become available.";
 const AGENT_SETUP_BOOTSTRAP_LOG = "Installing coding tools and preparing workspace.";
+const AGENT_SETUP_T3_CODE_LOG = "Installing the T3 Code server and its agent CLI.";
 const AGENT_SETUP_REFRESH_LOG = "Refreshing agent workspace and tool configuration.";
 export const AGENT_SETUP_COMPLETE_LOG = "Agent VM setup complete.";
 // Must exceed the bootstrap's own remote `timeout 420s` so a slow first
@@ -241,21 +248,13 @@ async function runAgentVmSetup(
   const target = await waitForAgentSshTarget(row, organizationId);
   await appendAgentSessionLog(row.id, AGENT_SETUP_WAIT_SSH_LOG, "setting-up");
 
-  await appendAgentSessionLog(row.id, AGENT_SETUP_BOOTSTRAP_LOG, "setting-up");
+  await appendAgentSessionLog(
+    row.id,
+    isT3CodeSurface(row.surface) ? AGENT_SETUP_T3_CODE_LOG : AGENT_SETUP_BOOTSTRAP_LOG,
+    "setting-up",
+  );
   const logger = createAgentSetupOutputLogger(row.id);
-  const cloneUrl = await resolveAgentCloneUrl(organizationId, row.repo);
-  const bootstrapCommand = buildAgentBootstrapCommand({
-    tool: sessionTool(row),
-    workspaceName: row.workspaceName,
-    branchName: row.branchName,
-    repo: row.repo,
-    ...(cloneUrl ? { cloneUrl } : {}),
-    setupPlan: setupPlanForRow(row),
-    // Web sessions clone inside the bootstrap, so the repo's optional
-    // .infrawrench/agent-setup.sh runs there too (desktop runs it
-    // client-side after the parallel workspace sync lands).
-    runRepoSetupScript: true,
-  });
+  const bootstrapCommand = await buildSetupBootstrapCommand(row, organizationId);
   const result = await (async () => {
     try {
       return await runAgentSetupCommandWithRetry(target, privateKey, bootstrapCommand, logger);
@@ -279,8 +278,41 @@ function sessionTool(row: Pick<SessionRow, "tool">): AgentTool {
   return row.tool === "claude-code" ? "claude-code" : "codex";
 }
 
+/**
+ * The bootstrap for this session's surface.
+ *
+ * T3 Code servers are provisioned without a repository — T3 Code manages its
+ * own projects — so that path neither mints a GitHub installation token nor
+ * clones anything; it installs the T3 Code server next to the session's agent
+ * CLI. Terminal sessions keep the original clone-on-the-VM behaviour.
+ */
+async function buildSetupBootstrapCommand(
+  row: SessionRow,
+  organizationId: string,
+): Promise<string> {
+  if (isT3CodeSurface(row.surface)) {
+    return buildT3CodeBootstrapCommand({
+      tool: sessionTool(row),
+      projectsDir: row.workspaceName,
+    });
+  }
+  const cloneUrl = await resolveAgentCloneUrl(organizationId, row.repo);
+  return buildAgentBootstrapCommand({
+    tool: sessionTool(row),
+    workspaceName: row.workspaceName,
+    branchName: row.branchName,
+    repo: row.repo,
+    ...(cloneUrl ? { cloneUrl } : {}),
+    setupPlan: setupPlanForRow(row),
+    // Web sessions clone inside the bootstrap, so the repo's optional
+    // .infrawrench/agent-setup.sh runs there too (desktop runs it
+    // client-side after the parallel workspace sync lands).
+    runRepoSetupScript: true,
+  });
+}
+
 export function setupPlanForRow(
-  row: Pick<SessionRow, "repo" | "tool" | "workspaceName" | "setupPlanJson">,
+  row: Pick<SessionRow, "repo" | "tool" | "surface" | "workspaceName" | "setupPlanJson">,
 ): AgentSetupPlan {
   try {
     const parsed = JSON.parse(row.setupPlanJson) as AgentSetupPlan;
@@ -288,6 +320,8 @@ export function setupPlanForRow(
   } catch {
     // fall through to the default plan
   }
+  // The repo-derived fallback can't describe a T3 Code server — it has no repo.
+  if (isT3CodeSurface(row.surface)) return createT3CodeSetupPlan(sessionTool(row));
   return createAgentSetupPlanForRepo(row.repo, sessionTool(row), row.workspaceName);
 }
 
@@ -469,6 +503,58 @@ async function runAgentSetupCommandWithRetry(
 function retryReason(message: string): string {
   const firstLine = message.split(/\r?\n/, 1)[0] ?? message;
   return firstLine.length > 140 ? `${firstLine.slice(0, 140)}…` : firstLine;
+}
+
+/**
+ * Revoke a T3 Code session's relay link on its VM, before the VM is destroyed.
+ *
+ * Deliberately best effort and never throws: an unreachable, powered-off, or
+ * already-deleted VM must not be able to block its own deletion. Losing the
+ * revocation is recoverable (the user can remove the environment from T3);
+ * being unable to delete a billing VM is not.
+ */
+export async function revokeT3CodeLinkOnVm(
+  sessionId: string,
+  organizationId: string,
+): Promise<void> {
+  const [row] = await db
+    .select()
+    .from(agentSessions)
+    .where(and(eq(agentSessions.id, sessionId), eq(agentSessions.organizationId, organizationId)))
+    .limit(1);
+  if (!row || !row.vmResourceId || !isT3CodeSurface(row.surface)) return;
+  try {
+    const privateKey = await loadOrgAgentSshPrivateKey(organizationId);
+    const target = await resolveAgentSshTargetNow(row, organizationId);
+    if (!target) return;
+    await agentSshExec(target, privateKey, buildT3CodeLogoutCommand());
+    await appendAgentSessionLog(row.id, "Revoked the T3 Connect environment link.");
+  } catch (error) {
+    console.warn(`[agent-setup] could not revoke the T3 Connect link for ${sessionId}`, error);
+  }
+}
+
+/**
+ * The VM's SSH endpoint right now, or null when it can't be resolved. Unlike
+ * `waitForAgentSshTarget` this does not retry — teardown should not sit for
+ * fifteen minutes waiting for a VM that may already be gone.
+ */
+async function resolveAgentSshTargetNow(
+  row: SessionRow,
+  organizationId: string,
+): Promise<AgentSshTarget | null> {
+  try {
+    const ctx = await getClientForAccount(row.accountId, organizationId);
+    if (!ctx || ctx.account.pluginId !== row.pluginId) return null;
+    const resource = await ctx.client.getResource(
+      row.resourceTypeId,
+      row.vmResourceId!,
+      row.accountId,
+    );
+    return resolveAgentSshTarget(ctx.plugin, row, resource);
+  } catch {
+    return null;
+  }
 }
 
 async function markAgentLaunchReady(

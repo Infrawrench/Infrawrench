@@ -367,6 +367,7 @@ export {
   type MongoCommand,
 } from "./mongo-browser";
 export * from "./api-types";
+export { normalizeTerminalLinkUrl } from "./terminal-links";
 export * from "./moment";
 export * from "./orphans";
 export * from "./expiry";

@@ -112,6 +112,342 @@ export function agentToolLabel(tool: AgentTool): string {
   return tool === "claude-code" ? "Claude Code" : "Codex";
 }
 
+/** The CLI executable each tool installs. */
+export function agentToolCommand(tool: AgentTool): string {
+  return tool === "claude-code" ? "claude" : "codex";
+}
+
+/** The npm package each tool's CLI ships in. */
+export function agentToolPackage(tool: AgentTool): string {
+  return tool === "claude-code" ? "@anthropic-ai/claude-code" : "@openai/codex";
+}
+
+/**
+ * The command that signs the tool's CLI in. Both are interactive, and both
+ * are chosen for a machine with no local browser: Codex's default flow wants
+ * a loopback callback the SSH client can't reach, so these sessions use its
+ * device-code flow instead.
+ */
+export function agentToolLoginCommand(tool: AgentTool): string {
+  return tool === "claude-code" ? "claude auth login" : "codex login --device-auth";
+}
+
+/** Command that exits 0 when the tool's CLI is already signed in. */
+export function agentToolAuthStatusCommand(tool: AgentTool): string {
+  return tool === "claude-code" ? "claude auth status" : "codex login status";
+}
+
+/* ------------------------------------------------------------------------ *
+ * Shared bootstrap snippets
+ *
+ * Extracted verbatim from `buildAgentBootstrapCommand` so the T3 Code
+ * bootstrap (`t3-code.ts`) prepares its VM with exactly the same, already
+ * field-proven code: the same background apt install with retries, the same
+ * mise wiring, the same npm-prefix/launcher repair dance. They are shell
+ * fragments, not standalone scripts — each documents the variables and
+ * functions the surrounding script must provide.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Defines `$SUDO`, starts the system package install in the BACKGROUND, and
+ * defines `wait_for_system_packages` to join it. Everything until that wait
+ * only needs curl/tar/gzip, which every cloud image ships; build-dependent
+ * work (compiled runtimes, git operations) must call the wait first.
+ *
+ * Requires: `log_step`. Provides: `$SUDO`, `wait_for_system_packages`.
+ */
+export const AGENT_SYSTEM_PACKAGES_SNIPPET = `
+SUDO=""
+if [ "$(id -u)" -ne 0 ]; then
+  if ! command -v sudo >/dev/null 2>&1; then
+    echo "sudo is required to prepare this VM as a non-root user" >&2
+    exit 1
+  fi
+  SUDO="sudo"
+fi
+
+# python3 is here for node-gyp, which every npm package with a native addon
+# shells out to (the T3 Code CLI's node-pty, and plenty of project deps).
+# Ubuntu images happen to ship it; minimal RHEL and Alpine images do not, and
+# without it node-gyp fails long after the package list looks complete.
+install_system_packages() {
+  if command -v apt-get >/dev/null 2>&1; then
+    # Fresh cloud VMs often run unattended-upgrades on first boot, which can
+    # hold the dpkg lock for many minutes. Wait for it instead of failing.
+    $SUDO apt-get -o DPkg::Lock::Timeout=600 update -y
+    $SUDO apt-get -o DPkg::Lock::Timeout=600 install -y ca-certificates curl git tar xz-utils unzip libatomic1 build-essential pkg-config python3 autoconf bison libssl-dev zlib1g-dev libreadline-dev libyaml-dev libffi-dev libgdbm-dev libncurses-dev libdb-dev libsqlite3-dev libgmp-dev
+  elif command -v dnf >/dev/null 2>&1; then
+    $SUDO dnf install -y ca-certificates curl git tar xz unzip libatomic gcc gcc-c++ make pkgconf-pkg-config python3 openssl-devel zlib-devel readline-devel libyaml-devel libffi-devel gdbm-devel ncurses-devel sqlite-devel gmp-devel
+  elif command -v apk >/dev/null 2>&1; then
+    $SUDO apk add --no-cache ca-certificates curl git tar xz unzip bash libatomic build-base pkgconf python3 openssl-dev zlib-dev readline-dev yaml-dev libffi-dev gdbm-dev ncurses-dev sqlite-dev gmp-dev
+  else
+    echo "Unsupported Linux package manager; install git, curl, and build tools manually" >&2
+    return 1
+  fi
+}
+# First-boot package installs are flaky (mirror hiccups, cloud-init races,
+# lock contention past the timeout) — retry before declaring the VM broken.
+install_system_packages_with_retry() {
+  attempt=1
+  until install_system_packages; do
+    if [ "$attempt" -ge 3 ]; then
+      echo "System package installation failed after $attempt attempts" >&2
+      return 1
+    fi
+    attempt=$((attempt + 1))
+    echo "System package installation failed; retrying (attempt $attempt of 3) in 15s." >&2
+    sleep 15
+  done
+}
+log_step "Installing system packages (in the background)."
+install_system_packages_with_retry &
+SYS_PKG_PID=$!
+
+wait_for_system_packages() {
+  if [ -z "$SYS_PKG_PID" ]; then return 0; fi
+  log_step "Waiting for system packages to finish."
+  if ! wait "$SYS_PKG_PID"; then
+    echo "System package installation failed" >&2
+    exit 1
+  fi
+  SYS_PKG_PID=""
+}
+`;
+
+/**
+ * Installs mise, puts it (and its shims) on the PATH of future login shells,
+ * and defines `install_runtime <runtime> <version>`.
+ *
+ * Requires: `log_step`. Provides: `install_runtime`.
+ */
+export const AGENT_MISE_SNIPPET = `
+if ! command -v mise >/dev/null 2>&1; then
+  log_step "Installing mise runtime manager."
+  curl -fsSL https://mise.run | sh
+fi
+export PATH="$HOME/.local/bin:$PATH"
+if ! command -v mise >/dev/null 2>&1; then
+  echo "mise did not install into PATH" >&2
+  exit 1
+fi
+
+ensure_shell_runtime_path() {
+  mkdir -p "$HOME/.local/bin"
+  for rc in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.bash_profile"; do
+    touch "$rc"
+    if ! grep -F 'export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"' "$rc" >/dev/null 2>&1; then
+      printf '%s\\n' 'export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"' >> "$rc"
+    fi
+    if ! grep -F 'mise activate bash' "$rc" >/dev/null 2>&1; then
+      printf '%s\\n' 'if command -v mise >/dev/null 2>&1; then eval "$(mise activate bash)"; fi' >> "$rc"
+    fi
+  done
+}
+
+ensure_shell_runtime_path
+
+install_runtime() {
+  runtime="$1"
+  version="$2"
+  if [ -z "$runtime" ] || [ -z "$version" ]; then
+    return 0
+  fi
+  if [ "$version" = "latest" ]; then
+    version="$(mise latest "$runtime")"
+  fi
+  log_step "Installing $runtime $version."
+  mise use -g "$runtime@$version"
+  mise install "$runtime@$version"
+}
+`;
+
+/**
+ * Points npm's global prefix at `~/.local` and defines `link_tool_command`,
+ * which hunts down a CLI launcher and symlinks it into `~/.local/bin`.
+ *
+ * Provides: `ensure_npm_global_prefix`, `link_tool_command`.
+ */
+export const AGENT_NPM_PREFIX_SNIPPET = `
+ensure_npm_global_prefix() {
+  if command -v npm >/dev/null 2>&1; then
+    npm config set prefix "$HOME/.local"
+    export PATH="$HOME/.local/bin:$PATH"
+  fi
+}
+
+ensure_npm_global_prefix
+
+link_tool_command() {
+  cmd="$1"
+  target="$(command -v "$cmd" 2>/dev/null || true)"
+  if [ -z "$target" ] && [ -x "$HOME/.local/bin/$cmd" ]; then
+    target="$HOME/.local/bin/$cmd"
+  fi
+  if [ -z "$target" ] && command -v npm >/dev/null 2>&1; then
+    prefix="$(npm config get prefix 2>/dev/null || true)"
+    if [ -n "$prefix" ] && [ -x "$prefix/bin/$cmd" ]; then
+      target="$prefix/bin/$cmd"
+    fi
+  fi
+  # Never link a path onto itself: when the launcher already lives in
+  # ~/.local/bin (npm prefix is ~/.local), ln -sf X X destroys the real file
+  # and leaves a self-looping symlink behind.
+  if [ -n "$target" ] && [ "$target" != "$HOME/.local/bin/$cmd" ]; then
+    ln -sf "$target" "$HOME/.local/bin/$cmd" || echo "warning: could not link $cmd into ~/.local/bin" >&2
+  fi
+}
+`;
+
+/**
+ * Defines `install_cli_command <command> <npm package> <label>`: installs a
+ * global npm CLI and then fights through every way npm can leave a CLI
+ * unusable (skipped postinstall, missing execute bit, dangling symlink, a
+ * binary parked outside this non-interactive shell's PATH). Exits non-zero
+ * with diagnostics when the command still isn't runnable.
+ *
+ * The three functions it defines read `$TOOL_COMMAND`/`$TOOL_PACKAGE`, which
+ * `install_cli_command` assigns from its arguments — so the surrounding
+ * script must not rely on those globals after calling it.
+ *
+ * Requires: `log_step`, `ensure_npm_global_prefix`, `link_tool_command`.
+ * Provides: `install_cli_command`, `tool_command_usable`.
+ */
+export const AGENT_CLI_INSTALL_SNIPPET = `
+# Strict usability check: command -v alone reports non-executable files as
+# found (running them then fails with 126), so also require the execute bit.
+tool_command_usable() {
+  usable_path="$(command -v "$TOOL_COMMAND" 2>/dev/null || true)"
+  [ -n "$usable_path" ] && [ -x "$usable_path" ]
+}
+
+# npm can leave a broken launcher behind (a dangling symlink or a stub with
+# no execute bit) when the package's postinstall was skipped or failed. Try
+# to repair it — and if that fails, remove it so a fallback installer can
+# install cleanly instead of being masked by the corpse.
+repair_tool_launcher() {
+  launcher="$HOME/.local/bin/$TOOL_COMMAND"
+  if ! [ -e "$launcher" ] && ! [ -L "$launcher" ]; then
+    return 0
+  fi
+  if tool_command_usable; then
+    return 0
+  fi
+  echo "launcher exists but is unusable: $(ls -l "$launcher" 2>/dev/null)" >&2
+  launcher_target="$(readlink -f "$launcher" 2>/dev/null || true)"
+  if [ -n "$launcher_target" ] && [ -f "$launcher_target" ]; then
+    chmod +x "$launcher" "$launcher_target" 2>/dev/null || true
+    hash -r
+    if tool_command_usable; then
+      echo "repaired launcher permissions for $TOOL_COMMAND" >&2
+      return 0
+    fi
+  fi
+  if command -v npm >/dev/null 2>&1; then
+    npm rebuild -g --allow-scripts="$TOOL_PACKAGE" "$TOOL_PACKAGE" >/dev/null 2>&1 || true
+    hash -r
+    if tool_command_usable; then
+      echo "repaired $TOOL_COMMAND by re-running its install scripts" >&2
+      return 0
+    fi
+  fi
+  echo "removing unusable $TOOL_COMMAND launcher" >&2
+  rm -f "$launcher"
+  hash -r
+}
+
+# Installers don't always put the binary on this (non-interactive) shell's
+# PATH — some drop it in their own directory and wire PATH via shell rc
+# "integration" that only interactive shells read. Hunt down the binary in
+# the known install locations and link it into ~/.local/bin ourselves.
+locate_and_link_tool() {
+  if tool_command_usable; then
+    return 0
+  fi
+  candidates="$HOME/.claude/local/$TOOL_COMMAND
+$HOME/.claude/local/bin/$TOOL_COMMAND
+$HOME/.claude/bin/$TOOL_COMMAND
+$HOME/.codex/bin/$TOOL_COMMAND
+$HOME/bin/$TOOL_COMMAND
+$(find "$HOME" -maxdepth 4 -name "$TOOL_COMMAND" -type f -perm -100 2>/dev/null | head -n 3)"
+  for candidate in $candidates; do
+    if [ "$candidate" = "$HOME/.local/bin/$TOOL_COMMAND" ]; then
+      continue
+    fi
+    if [ -x "$candidate" ] && [ -f "$candidate" ]; then
+      ln -sf "$candidate" "$HOME/.local/bin/$TOOL_COMMAND" || continue
+      hash -r
+      if tool_command_usable; then
+        echo "linked $TOOL_COMMAND from $candidate" >&2
+        return 0
+      fi
+    fi
+  done
+  return 0
+}
+
+install_cli_command() {
+  TOOL_COMMAND="$1"
+  TOOL_PACKAGE="$2"
+  TOOL_LABEL="$3"
+
+  if ! command -v "$TOOL_COMMAND" >/dev/null 2>&1; then
+    log_step "Installing $TOOL_LABEL CLI."
+    if command -v npm >/dev/null 2>&1; then
+      ensure_npm_global_prefix
+      # Newer npm blocks package install scripts unless allow-listed; the tool
+      # CLIs rely on a postinstall to set up their launcher, so without this the
+      # package "installs" but the command never lands in PATH. Don't abort on
+      # npm failure — a native-installer fallback may still succeed below.
+      npm install -g --allow-scripts="$TOOL_PACKAGE" "$TOOL_PACKAGE@latest" || echo "npm install of $TOOL_PACKAGE failed; trying fallback installer" >&2
+    else
+      echo "npm is not available; trying fallback installer for $TOOL_COMMAND" >&2
+    fi
+  fi
+
+  eval "$(mise activate bash)" || true
+  ensure_npm_global_prefix
+  hash -r
+  link_tool_command "$TOOL_COMMAND"
+  hash -r
+
+  repair_tool_launcher
+
+  # The npm route depends on prefix/shim wiring that varies across npm and mise
+  # versions. Claude Code ships a self-contained native installer that always
+  # lands in ~/.local/bin — use it whenever npm didn't produce a working CLI.
+  # Download to a file first: piping curl straight into bash fails with no
+  # output at all when the download itself errors.
+  if ! tool_command_usable && [ "$TOOL_COMMAND" = "claude" ]; then
+    log_step "Installing Claude Code via native installer."
+    CLAUDE_INSTALLER="$(mktemp)"
+    if curl -fsSL --retry 3 --retry-delay 2 -o "$CLAUDE_INSTALLER" https://claude.ai/install.sh; then
+      # Route installer output to stderr — the setup failure log keeps only the
+      # stderr tail, and the installer reports errors on stdout.
+      bash "$CLAUDE_INSTALLER" >&2 || echo "Claude Code native installer exited with status $?" >&2
+    else
+      echo "Failed to download the Claude Code installer (curl exit $?)" >&2
+    fi
+    rm -f "$CLAUDE_INSTALLER"
+    export PATH="$HOME/.local/bin:$PATH"
+    hash -r
+    link_tool_command "$TOOL_COMMAND"
+    hash -r
+  fi
+
+  locate_and_link_tool
+
+  if ! tool_command_usable; then
+    echo "$TOOL_COMMAND did not install into PATH" >&2
+    echo "diagnostics: npm prefix: $(npm config get prefix 2>/dev/null || echo unavailable)" >&2
+    echo "diagnostics: launcher: $(ls -l "$HOME/.local/bin/$TOOL_COMMAND" 2>/dev/null || echo none)" >&2
+    echo "diagnostics: ~/.local/bin: $(ls -m "$HOME/.local/bin" 2>/dev/null | tr -d '\\n' | head -c 300)" >&2
+    echo "diagnostics: mise shims: $(ls -m "$HOME/.local/share/mise/shims" 2>/dev/null | tr -d '\\n' | head -c 300)" >&2
+    echo "diagnostics: found on disk: $(find "$HOME" -maxdepth 4 -name "$TOOL_COMMAND" 2>/dev/null | head -n 5 | tr '\\n' ' ')" >&2
+    exit 1
+  fi
+}
+`;
+
 /**
  * Build the SSH command that waits for agent-VM setup to finish and then
  * attaches a detached `detachproc` session running the coding tool. Polls for
@@ -225,8 +561,8 @@ exec detachproc run --session "$SESSION" -- bash -lc "$START_SCRIPT"
  * the launch command polls for.
  */
 export function buildAgentBootstrapCommand(input: AgentBootstrapCommandInput): string {
-  const toolCommand = input.tool === "claude-code" ? "claude" : "codex";
-  const toolPackage = input.tool === "claude-code" ? "@anthropic-ai/claude-code" : "@openai/codex";
+  const toolCommand = agentToolCommand(input.tool);
+  const toolPackage = agentToolPackage(input.tool);
   const runtimeLines = runtimeInstallCommands(input.setupPlan);
   const packageManagerLines = packageManagerInstallCommands(input.setupPlan);
   const initialCloneUrl =
@@ -260,61 +596,11 @@ if command -v "$TOOL_COMMAND" >/dev/null 2>&1 && command -v detachproc >/dev/nul
   exit 0
 fi
 
-SUDO=""
-if [ "$(id -u)" -ne 0 ]; then
-  if ! command -v sudo >/dev/null 2>&1; then
-    echo "sudo is required to prepare this VM as a non-root user" >&2
-    exit 1
-  fi
-  SUDO="sudo"
-fi
-
 # System packages install in the BACKGROUND: everything until the wait
 # below (detachproc, mise, Node — a prebuilt tarball — and the tool CLI)
 # only needs curl/tar/gzip, which every cloud image ships. Build-dependent
 # work (compiled runtimes, the workspace clone) waits for it.
-install_system_packages() {
-  if command -v apt-get >/dev/null 2>&1; then
-    # Fresh cloud VMs often run unattended-upgrades on first boot, which can
-    # hold the dpkg lock for many minutes. Wait for it instead of failing.
-    $SUDO apt-get -o DPkg::Lock::Timeout=600 update -y
-    $SUDO apt-get -o DPkg::Lock::Timeout=600 install -y ca-certificates curl git tar xz-utils unzip libatomic1 build-essential pkg-config autoconf bison libssl-dev zlib1g-dev libreadline-dev libyaml-dev libffi-dev libgdbm-dev libncurses-dev libdb-dev libsqlite3-dev libgmp-dev
-  elif command -v dnf >/dev/null 2>&1; then
-    $SUDO dnf install -y ca-certificates curl git tar xz unzip libatomic gcc gcc-c++ make pkgconf-pkg-config openssl-devel zlib-devel readline-devel libyaml-devel libffi-devel gdbm-devel ncurses-devel sqlite-devel gmp-devel
-  elif command -v apk >/dev/null 2>&1; then
-    $SUDO apk add --no-cache ca-certificates curl git tar xz unzip bash libatomic build-base pkgconf openssl-dev zlib-dev readline-dev yaml-dev libffi-dev gdbm-dev ncurses-dev sqlite-dev gmp-dev
-  else
-    echo "Unsupported Linux package manager; install git, curl, and build tools manually" >&2
-    return 1
-  fi
-}
-# First-boot package installs are flaky (mirror hiccups, cloud-init races,
-# lock contention past the timeout) — retry before declaring the VM broken.
-install_system_packages_with_retry() {
-  attempt=1
-  until install_system_packages; do
-    if [ "$attempt" -ge 3 ]; then
-      echo "System package installation failed after $attempt attempts" >&2
-      return 1
-    fi
-    attempt=$((attempt + 1))
-    echo "System package installation failed; retrying (attempt $attempt of 3) in 15s." >&2
-    sleep 15
-  done
-}
-log_step "Installing system packages (in the background)."
-install_system_packages_with_retry &
-SYS_PKG_PID=$!
-
-wait_for_system_packages() {
-  if [ -z "$SYS_PKG_PID" ]; then return 0; fi
-  log_step "Waiting for system packages to finish."
-  if ! wait "$SYS_PKG_PID"; then
-    echo "System package installation failed" >&2
-    exit 1
-  fi
-  SYS_PKG_PID=""
-}
+${AGENT_SYSTEM_PACKAGES_SNIPPET}
 
 if ! command -v detachproc >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/detachproc" ]; then
   log_step "Installing detachproc session holder."
@@ -326,44 +612,7 @@ if ! command -v detachproc >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/detachpro
   chmod +x "$HOME/.local/bin/detachproc"
 fi
 
-if ! command -v mise >/dev/null 2>&1; then
-  log_step "Installing mise runtime manager."
-  curl -fsSL https://mise.run | sh
-fi
-export PATH="$HOME/.local/bin:$PATH"
-if ! command -v mise >/dev/null 2>&1; then
-  echo "mise did not install into PATH" >&2
-  exit 1
-fi
-
-ensure_shell_runtime_path() {
-  mkdir -p "$HOME/.local/bin"
-  for rc in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.bash_profile"; do
-    touch "$rc"
-    if ! grep -F 'export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"' "$rc" >/dev/null 2>&1; then
-      printf '%s\\n' 'export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"' >> "$rc"
-    fi
-    if ! grep -F 'mise activate bash' "$rc" >/dev/null 2>&1; then
-      printf '%s\\n' 'if command -v mise >/dev/null 2>&1; then eval "$(mise activate bash)"; fi' >> "$rc"
-    fi
-  done
-}
-
-ensure_shell_runtime_path
-
-install_runtime() {
-  runtime="$1"
-  version="$2"
-  if [ -z "$runtime" ] || [ -z "$version" ]; then
-    return 0
-  fi
-  if [ "$version" = "latest" ]; then
-    version="$(mise latest "$runtime")"
-  fi
-  log_step "Installing $runtime $version."
-  mise use -g "$runtime@$version"
-  mise install "$runtime@$version"
-}
+${AGENT_MISE_SNIPPET}
 
 # Node is a prebuilt tarball, but newer releases link shared libs the
 # minimal cloud images lack (e.g. libatomic.so.1) that arrive with the
@@ -380,34 +629,8 @@ fi
 eval "$(mise activate bash)" || true
 hash -r
 
-ensure_npm_global_prefix() {
-  if command -v npm >/dev/null 2>&1; then
-    npm config set prefix "$HOME/.local"
-    export PATH="$HOME/.local/bin:$PATH"
-  fi
-}
-
-ensure_npm_global_prefix
-
-link_tool_command() {
-  cmd="$1"
-  target="$(command -v "$cmd" 2>/dev/null || true)"
-  if [ -z "$target" ] && [ -x "$HOME/.local/bin/$cmd" ]; then
-    target="$HOME/.local/bin/$cmd"
-  fi
-  if [ -z "$target" ] && command -v npm >/dev/null 2>&1; then
-    prefix="$(npm config get prefix 2>/dev/null || true)"
-    if [ -n "$prefix" ] && [ -x "$prefix/bin/$cmd" ]; then
-      target="$prefix/bin/$cmd"
-    fi
-  fi
-  # Never link a path onto itself: when the launcher already lives in
-  # ~/.local/bin (npm prefix is ~/.local), ln -sf X X destroys the real file
-  # and leaves a self-looping symlink behind.
-  if [ -n "$target" ] && [ "$target" != "$HOME/.local/bin/$cmd" ]; then
-    ln -sf "$target" "$HOME/.local/bin/$cmd" || echo "warning: could not link $cmd into ~/.local/bin" >&2
-  fi
-}
+${AGENT_NPM_PREFIX_SNIPPET}
+${AGENT_CLI_INSTALL_SNIPPET}
 
 install_package_manager() {
   spec="$1"
@@ -473,133 +696,7 @@ install_package_manager() {
 
 ${packageManagerLines.nodeLines}
 
-if ! command -v "$TOOL_COMMAND" >/dev/null 2>&1; then
-  log_step "Installing ${agentToolLabel(input.tool)} CLI."
-  if command -v npm >/dev/null 2>&1; then
-    ensure_npm_global_prefix
-    # Newer npm blocks package install scripts unless allow-listed; the tool
-    # CLIs rely on a postinstall to set up their launcher, so without this the
-    # package "installs" but the command never lands in PATH. Don't abort on
-    # npm failure — a native-installer fallback may still succeed below.
-    npm install -g --allow-scripts="$TOOL_PACKAGE" "$TOOL_PACKAGE@latest" || echo "npm install of $TOOL_PACKAGE failed; trying fallback installer" >&2
-  else
-    echo "npm is not available; trying fallback installer for $TOOL_COMMAND" >&2
-  fi
-fi
-
-eval "$(mise activate bash)" || true
-ensure_npm_global_prefix
-hash -r
-link_tool_command "$TOOL_COMMAND"
-hash -r
-
-# Strict usability check: command -v alone reports non-executable files as
-# found (running them then fails with 126), so also require the execute bit.
-tool_command_usable() {
-  usable_path="$(command -v "$TOOL_COMMAND" 2>/dev/null || true)"
-  [ -n "$usable_path" ] && [ -x "$usable_path" ]
-}
-
-# npm can leave a broken launcher behind (a dangling symlink or a stub with
-# no execute bit) when the package's postinstall was skipped or failed. Try
-# to repair it — and if that fails, remove it so a fallback installer can
-# install cleanly instead of being masked by the corpse.
-repair_tool_launcher() {
-  launcher="$HOME/.local/bin/$TOOL_COMMAND"
-  if ! [ -e "$launcher" ] && ! [ -L "$launcher" ]; then
-    return 0
-  fi
-  if tool_command_usable; then
-    return 0
-  fi
-  echo "launcher exists but is unusable: $(ls -l "$launcher" 2>/dev/null)" >&2
-  launcher_target="$(readlink -f "$launcher" 2>/dev/null || true)"
-  if [ -n "$launcher_target" ] && [ -f "$launcher_target" ]; then
-    chmod +x "$launcher" "$launcher_target" 2>/dev/null || true
-    hash -r
-    if tool_command_usable; then
-      echo "repaired launcher permissions for $TOOL_COMMAND" >&2
-      return 0
-    fi
-  fi
-  if command -v npm >/dev/null 2>&1; then
-    npm rebuild -g --allow-scripts="$TOOL_PACKAGE" "$TOOL_PACKAGE" >/dev/null 2>&1 || true
-    hash -r
-    if tool_command_usable; then
-      echo "repaired $TOOL_COMMAND by re-running its install scripts" >&2
-      return 0
-    fi
-  fi
-  echo "removing unusable $TOOL_COMMAND launcher" >&2
-  rm -f "$launcher"
-  hash -r
-}
-
-repair_tool_launcher
-
-# The npm route depends on prefix/shim wiring that varies across npm and mise
-# versions. Claude Code ships a self-contained native installer that always
-# lands in ~/.local/bin — use it whenever npm didn't produce a working CLI.
-# Download to a file first: piping curl straight into bash fails with no
-# output at all when the download itself errors.
-if ! tool_command_usable && [ "$TOOL_COMMAND" = "claude" ]; then
-  log_step "Installing Claude Code via native installer."
-  CLAUDE_INSTALLER="$(mktemp)"
-  if curl -fsSL --retry 3 --retry-delay 2 -o "$CLAUDE_INSTALLER" https://claude.ai/install.sh; then
-    # Route installer output to stderr — the setup failure log keeps only the
-    # stderr tail, and the installer reports errors on stdout.
-    bash "$CLAUDE_INSTALLER" >&2 || echo "Claude Code native installer exited with status $?" >&2
-  else
-    echo "Failed to download the Claude Code installer (curl exit $?)" >&2
-  fi
-  rm -f "$CLAUDE_INSTALLER"
-  export PATH="$HOME/.local/bin:$PATH"
-  hash -r
-  link_tool_command "$TOOL_COMMAND"
-  hash -r
-fi
-
-# Installers don't always put the binary on this (non-interactive) shell's
-# PATH — some drop it in their own directory and wire PATH via shell rc
-# "integration" that only interactive shells read. Hunt down the binary in
-# the known install locations and link it into ~/.local/bin ourselves.
-locate_and_link_tool() {
-  if tool_command_usable; then
-    return 0
-  fi
-  candidates="$HOME/.claude/local/$TOOL_COMMAND
-$HOME/.claude/local/bin/$TOOL_COMMAND
-$HOME/.claude/bin/$TOOL_COMMAND
-$HOME/.codex/bin/$TOOL_COMMAND
-$HOME/bin/$TOOL_COMMAND
-$(find "$HOME" -maxdepth 4 -name "$TOOL_COMMAND" -type f -perm -100 2>/dev/null | head -n 3)"
-  for candidate in $candidates; do
-    if [ "$candidate" = "$HOME/.local/bin/$TOOL_COMMAND" ]; then
-      continue
-    fi
-    if [ -x "$candidate" ] && [ -f "$candidate" ]; then
-      ln -sf "$candidate" "$HOME/.local/bin/$TOOL_COMMAND" || continue
-      hash -r
-      if tool_command_usable; then
-        echo "linked $TOOL_COMMAND from $candidate" >&2
-        return 0
-      fi
-    fi
-  done
-  return 0
-}
-
-locate_and_link_tool
-
-if ! tool_command_usable; then
-  echo "$TOOL_COMMAND did not install into PATH" >&2
-  echo "diagnostics: npm prefix: $(npm config get prefix 2>/dev/null || echo unavailable)" >&2
-  echo "diagnostics: launcher: $(ls -l "$HOME/.local/bin/$TOOL_COMMAND" 2>/dev/null || echo none)" >&2
-  echo "diagnostics: ~/.local/bin: $(ls -m "$HOME/.local/bin" 2>/dev/null | tr -d '\\n' | head -c 300)" >&2
-  echo "diagnostics: mise shims: $(ls -m "$HOME/.local/share/mise/shims" 2>/dev/null | tr -d '\\n' | head -c 300)" >&2
-  echo "diagnostics: found on disk: $(find "$HOME" -maxdepth 4 -name "$TOOL_COMMAND" 2>/dev/null | head -n 5 | tr '\\n' ' ')" >&2
-  exit 1
-fi
+install_cli_command "$TOOL_COMMAND" "$TOOL_PACKAGE" ${shellQuote(agentToolLabel(input.tool))}
 
 # Everything below needs the system packages: compiled runtimes want build
 # tools, composer/bundler want those runtimes, and the clone wants git.

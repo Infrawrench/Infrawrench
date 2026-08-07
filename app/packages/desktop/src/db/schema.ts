@@ -330,3 +330,14 @@ ALTER TABLE agent_sessions ADD COLUMN created_resources_json TEXT NOT NULL DEFAU
 `;
 
 MIGRATIONS.push(AGENT_REPO_CONFIG_MIGRATION);
+
+// How the session is driven: "terminal" (the tool's CLI attached in an SSH
+// tab) or "t3-code" (the T3 Code server drives the same CLI, and is used
+// from T3 Code's own client). Orthogonal to `tool` — T3 Code is a control
+// surface, not an agent, so a T3 Code session still installs codex or claude.
+const AGENT_SURFACE_MIGRATION = `
+ALTER TABLE agent_sessions ADD COLUMN surface TEXT NOT NULL DEFAULT 'terminal';
+ALTER TABLE agent_settings ADD COLUMN surface TEXT NOT NULL DEFAULT 'terminal';
+`;
+
+MIGRATIONS.push(AGENT_SURFACE_MIGRATION);

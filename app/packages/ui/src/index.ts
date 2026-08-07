@@ -12,9 +12,17 @@ export { WorkspaceTabProvider, useTabId } from "./workspace/WorkspaceTabContext.
 
 export { AgentsPanel } from "./agents/AgentsPanel.js";
 export {
+  AGENT_CLI_INSTALL_SNIPPET,
+  AGENT_MISE_SNIPPET,
+  AGENT_NPM_PREFIX_SNIPPET,
   AGENT_SETUP_FAILED_LOG_PREFIX,
   AGENT_SETUP_STEP_PREFIX,
+  AGENT_SYSTEM_PACKAGES_SNIPPET,
+  agentToolAuthStatusCommand,
+  agentToolCommand,
   agentToolLabel,
+  agentToolLoginCommand,
+  agentToolPackage,
   buildAgentBootstrapCommand,
   buildAgentLaunchCommand,
   buildAgentRepoSetupCommand,
@@ -29,6 +37,27 @@ export {
   buildAgentEnvFile,
   resolveAgentEnvTemplate,
 } from "./agents/repo-config.js";
+export {
+  agentSurfaceOrDefault,
+  agentSurfaceRequiresRepo,
+  buildT3CodeBootstrapCommand,
+  buildT3CodeConnectCommand,
+  buildT3CodeLogoutCommand,
+  buildT3CodeStatusCommand,
+  createT3CodeSetupPlan,
+  isT3CodeSurface,
+  parseT3CodeConnectStatus,
+  t3CodeConnectNextStep,
+  T3_CODE_HOSTED_APP_URL,
+  T3_CODE_NODE_ENGINE_RANGE,
+  T3_CODE_NODE_VERSION,
+  T3_CODE_PROJECTS_DIR,
+} from "./agents/t3-code.js";
+export type {
+  T3CodeBootstrapCommandInput,
+  T3CodeConnectCommandInput,
+  T3CodeConnectStatus,
+} from "./agents/t3-code.js";
 export type {
   AgentClient,
   AgentCreateBody,
@@ -43,9 +72,12 @@ export type {
   AgentSetupPlan,
   AgentSshTarget,
   AgentStatus,
+  AgentSurface,
   AgentTool,
   AgentVmAccount,
 } from "./agents/types.js";
+export { closeSshTabsForAgentTarget, openAgentSshTerminalTab } from "./agents/open-ssh-tab.js";
+export type { AgentSshTabTarget, OpenAgentSshTerminalTabInput } from "./agents/open-ssh-tab.js";
 
 export {
   ApprovalCard,
@@ -404,6 +436,12 @@ export { getTerminalTheme } from "./terminal-theme.js";
 export type { TerminalThemeColors } from "./terminal-theme.js";
 export { getXtermTerminalOptions, hideXtermScrollbar } from "./xterm-options.js";
 export { attachTerminalClipboard, pastedImageFilename } from "./terminal-clipboard.js";
+export {
+  createTerminalLinkHandler,
+  normalizeTerminalLinkUrl,
+  openTerminalLinkInNewTab,
+} from "./terminal-links.js";
+export type { TerminalLinkHandler, TerminalLinkHandlerOptions } from "./terminal-links.js";
 export type {
   ClipboardTerminal,
   AttachTerminalClipboardHandle,

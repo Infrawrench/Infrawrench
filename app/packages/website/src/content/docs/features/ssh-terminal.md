@@ -31,6 +31,9 @@ Infrawrench auto-derives the username from the key comment if possible (e.g. `as
 - Paste with **Cmd + V** on macOS, **Ctrl + Shift + V** on Linux/Windows. Plain Ctrl + V is left alone so readline's quoted-insert keeps working.
 - Resize by dragging — the remote pty resizes with the pane.
 - Scrollback is kept per-session until you close the tab.
+- Click a URL to open it in your browser. Both plain URLs printed by a program and OSC 8 hyperlinks work, so a device-code page from `gh auth login` or an authorization link from a setup script is one click rather than a copy-paste out of the terminal.
+
+Only `http` and `https` links open. Terminal output is whatever the remote host chose to print, so a link is untrusted input — other schemes (`javascript:`, `file:`, `data:`) are refused and are not even drawn as links. Links always open in your real browser, never inside Infrawrench.
 
 ## Agent forwarding
 

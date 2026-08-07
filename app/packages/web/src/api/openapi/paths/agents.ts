@@ -3,6 +3,11 @@ import { strict, ErrorResponses, OrgIdParam, IsoDateTime, JsonObject } from "../
 import type { BuildContext } from "../context";
 
 const Tool = z.enum(["codex", "claude-code"]);
+// How the session is driven. "terminal" attaches the tool's CLI in an SSH
+// tab; "t3-code" runs the T3 Code server, which drives that same CLI and is
+// used from T3 Code's own client. Orthogonal to `tool` — T3 Code is a
+// control surface, not an agent. Optional for clients predating it.
+const Surface = z.enum(["terminal", "t3-code"]);
 const Status = z.enum(["pending", "provisioning", "setting-up", "up", "failed", "stopped"]);
 
 const AgentVmAccount = strict({
@@ -25,6 +30,7 @@ const AgentSettings = strict({
   pluginId: z.string(),
   resourceTypeId: z.string(),
   tool: Tool,
+  surface: Surface.optional(),
   fields: z.record(z.string()),
 }).openapi("AgentSettings");
 
@@ -37,6 +43,7 @@ const AgentSession = strict({
   pluginId: z.string(),
   resourceTypeId: z.string(),
   tool: Tool,
+  surface: Surface.optional(),
   branchName: z.string(),
   status: Status,
   vmResourceId: z.string().nullable(),
@@ -46,7 +53,9 @@ const AgentSession = strict({
 }).openapi("AgentSession");
 
 const CreateAgentSession = strict({
-  repo: z.string().min(1),
+  // Required for terminal sessions; a "t3-code" session provisions a bare
+  // server that manages its own projects, so it is omitted there.
+  repo: z.string().optional(),
   projectName: z.string().optional(),
   workspaceName: z.string().optional(),
   settings: AgentSettings,
