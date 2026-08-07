@@ -68,6 +68,12 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       "freezes:read",
       "team:read",
       "audit:read",
+      // Members are exactly who break-glass is for: ask for what you need,
+      // when you need it, instead of being made an admin so you never have to
+      // ask. Reading the queue comes with it — an elevation regime nobody can
+      // see is not a control. Deciding (`access:approve`) does not.
+      "access:read",
+      "access:request",
       "ssh-keys:read",
       "bastions:read",
       "billing:read",

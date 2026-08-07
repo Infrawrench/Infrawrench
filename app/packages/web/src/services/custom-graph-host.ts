@@ -243,10 +243,16 @@ export async function buildOrgCustomGraphInfra(
   authorUserId: string | null,
 ): Promise<GraphInfraAccess | null> {
   if (!authorUserId) return null;
-  const access = await resolveEffectivePermissions(organizationId, {
-    kind: "user",
-    userId: authorUserId,
-  });
+  const access = await resolveEffectivePermissions(
+    organizationId,
+    { kind: "user", userId: authorUserId },
+    // A saved graph runs unattended, long after its author wrote it. A
+    // break-glass elevation is authority handed to a person for a bounded
+    // window; a graph that captured one would keep exercising it every time it
+    // rendered, which is the opposite of time-boxed. The author's role is what
+    // the graph runs as.
+    { includeElevation: false },
+  );
 
   const authorize = (action: GraphInfraAction): void => {
     const permission = INFRA_ACTION_PERMISSION[action];

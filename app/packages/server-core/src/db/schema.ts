@@ -1210,8 +1210,12 @@ export const slackApprovalMessages = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    /** "workflow" (workflow_approvals) | "chat" (chat_pending_actions). */
-    kind: text("kind").$type<"workflow" | "chat">().notNull(),
+    /**
+     * Which table `approval_id` points at: "workflow" (`workflow_approvals`),
+     * "chat" (`chat_pending_actions`) or "access" (`access_requests`).
+     * Widening this is a `$type` change only — the column is already `text`.
+     */
+    kind: text("kind").$type<"workflow" | "chat" | "access">().notNull(),
     approvalId: text("approval_id").notNull(),
     installationId: text("installation_id")
       .notNull()
@@ -2251,6 +2255,7 @@ export const providerStatusNotifications = pgTable(
 export * from "./core-schema.js";
 export * from "./workflow-schema.js";
 export * from "./ssh-recording-schema.js";
+export * from "./access-schema.js";
 export * from "./custom-graph-schema.js";
 export * from "./deployment-schema.js";
 export * from "./agent-schema.js";

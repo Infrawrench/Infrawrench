@@ -9,6 +9,7 @@ export { SETTINGS_SECTIONS, type SettingsSectionDef } from "./sections.js";
 export { GeneralSection } from "./GeneralSection.js";
 export { TeamSection } from "./TeamSection.js";
 export { RolesSection } from "./RolesSection.js";
+export { AccessRequestsSection } from "./AccessRequestsSection.js";
 export { SshKeysSection } from "./SshKeysSection.js";
 export { SshHostKeysSection } from "./SshHostKeysSection.js";
 export { SessionRecordingsSection } from "./SessionRecordingsSection.js";

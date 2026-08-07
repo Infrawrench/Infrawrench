@@ -36,6 +36,7 @@ import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
 import { registerLeasePaths } from "./paths/leases";
 import { registerSessionRecordingPaths } from "./paths/session-recordings";
+import { registerAccessRequestPaths } from "./paths/access-requests";
 import { registerProbePaths } from "./paths/probes";
 import { registerLogWorkspacePaths } from "./paths/log-workspaces";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
@@ -131,6 +132,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerSchedulePaths(ctx);
   registerLeasePaths(ctx);
   registerSessionRecordingPaths(ctx);
+  registerAccessRequestPaths(ctx);
   registerProbePaths(ctx);
   registerLogWorkspacePaths(ctx);
   registerConnectionFeaturePaths(ctx);
@@ -227,6 +229,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Resource leases",
         description:
           "Optional TTLs on resources ('a test cluster for 3 days'). Active leases ride the expiry radar; auto-delete leases are announced twice and then deleted at expiry by the poller, deferring during change freezes.",
+      },
+      {
+        name: "Break-glass access",
+        description:
+          "Time-boxed permission elevation: ask for specific permissions for a specific number of minutes with a reason, someone else approves, the elevation lapses on its own. Grants are unioned into the requester's permissions at resolution time, so they reach every surface at once — and are deliberately excluded from API keys, which are not people.",
       },
       {
         name: "Session recordings",
@@ -438,6 +445,18 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   // security) are often not the people who administer keys. Deliberately
   // absent from the `member` system role — recording exists to watch
   // operators, so handing every operator the ability to watch defeats it.
+  // break-glass access — three verbs held by genuinely different people.
+  // `access:approve` is deliberately not implied by `team:role:write`: granting
+  // a role is a considered change, approving an elevation happens mid-incident.
+  // `revoke` has no entry because its permission depends on who is calling —
+  // the holder may always end their own grant — which this one-permission-per
+  // -route map cannot express; the handler owns it.
+  "GET /access-requests": "access:read",
+  "GET /access-requests/catalog": "access:read",
+  "POST /access-requests": "access:request",
+  "POST /access-requests/{requestId}/approve": "access:approve",
+  "POST /access-requests/{requestId}/deny": "access:approve",
+  "POST /access-requests/{requestId}/withdraw": "access:request",
   "GET /session-recordings": "session-recordings:read",
   "GET /session-recordings/settings": "session-recordings:read",
   "PUT /session-recordings/settings": "session-recordings:write",

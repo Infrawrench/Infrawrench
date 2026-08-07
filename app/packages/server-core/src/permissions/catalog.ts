@@ -46,6 +46,18 @@ export const ALL_PERMISSIONS = [
   // stays expressible, mirroring `freezes:override`.
   "tag-policy:override",
   "audit:read",
+  // Break-glass access. Its own family because the three verbs are held by
+  // genuinely different people: everyone can ask, everyone can see the queue
+  // (an elevation nobody can see is not a control), and only a subset decides.
+  //
+  // `access:approve` is the one that matters and it is deliberately NOT
+  // implied by `team:role:write`: granting someone a role is a considered
+  // change with a paper trail, while approving an elevation happens in the
+  // middle of an incident, and an org should be able to say who may do the
+  // second without also saying who may do the first.
+  "access:read",
+  "access:request",
+  "access:approve",
   "team:read",
   "team:invite",
   "team:role:write",

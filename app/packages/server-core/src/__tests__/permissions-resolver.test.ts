@@ -54,6 +54,16 @@ const dbUpdate = vi.fn(() => ({
 vi.mock("../db/client", () => ({
   db: { select: dbSelect, insert: dbInsert, update: dbUpdate },
 }));
+
+/**
+ * Break-glass grants are resolved alongside the role, but they have their own
+ * suite — here we only care that the resolver unions them in for people and
+ * leaves them out for keys and non-members.
+ */
+const mockActiveElevations = vi.fn(async () => [] as unknown[]);
+vi.mock("../access/break-glass", () => ({
+  activeElevations: (...a: unknown[]) => mockActiveElevations(...(a as [])),
+}));
 vi.mock("../db/schema", () => ({
   organizationMembers: {
     id: "om.id",
@@ -81,6 +91,7 @@ beforeEach(async () => {
   selectResults.length = 0;
   lastInsertValues = undefined;
   updateSetArg = undefined;
+  mockActiveElevations.mockResolvedValue([]);
   resolver = await import("../permissions/resolver");
   systemRoles = await import("../permissions/system-roles");
 });
@@ -134,8 +145,16 @@ describe("resolveEffectivePermissions — apiKey", () => {
       kind: "apiKey",
       scopes: ["accounts:read", "resources:read"],
     });
-    expect(out).toEqual({ permissions: ["accounts:read", "resources:read"], role: null });
+    expect(out).toEqual({
+      permissions: ["accounts:read", "resources:read"],
+      role: null,
+      elevations: [],
+    });
     expect(dbSelect).not.toHaveBeenCalled();
+    // A key must never pick up its owner's break-glass grant: the elevation
+    // was handed to a person for a bounded window on a stated reason, and a
+    // key they minted last quarter is neither.
+    expect(mockActiveElevations).not.toHaveBeenCalled();
   });
 });
 
@@ -146,7 +165,7 @@ describe("resolveEffectivePermissions — user", () => {
       kind: "user",
       userId: "u1",
     });
-    expect(out).toEqual({ permissions: [], role: null });
+    expect(out).toEqual({ permissions: [], role: null, elevations: [] });
   });
 
   it("resolves a custom (non-system) role's stored permissions", async () => {
@@ -300,7 +319,97 @@ describe("resolveEffectivePermissions — user", () => {
       kind: "user",
       userId: "u1",
     });
-    expect(out).toEqual({ permissions: [], role: null });
+    expect(out).toEqual({ permissions: [], role: null, elevations: [] });
+  });
+
+  it("unions a live break-glass grant into the effective permissions", async () => {
+    selectResults.push([{ roleId: "r-custom", legacyRole: null }]); // membership
+    selectResults.push([
+      {
+        id: "r-custom",
+        organizationId: "org1",
+        name: "Reader",
+        description: null,
+        isSystem: false,
+        systemKey: null,
+        permissions: ["resources:read"],
+      },
+    ]);
+    mockActiveElevations.mockResolvedValue([
+      {
+        requestId: "req-1",
+        permissions: ["resources:delete"],
+        expiresAt: "2026-08-07T12:00:00.000Z",
+        reason: "INC-4417",
+      },
+    ]);
+
+    const out = await resolver.resolveEffectivePermissions("org1", { kind: "user", userId: "u1" });
+
+    expect(out.permissions).toEqual(["resources:read", "resources:delete"]);
+    // The *role* still says what the role says. Folding the elevation in here
+    // too would make the role editor show a permission nobody assigned, that
+    // vanishes on its own an hour later.
+    expect(out.role?.permissions).toEqual(["resources:read"]);
+    expect(out.elevations).toHaveLength(1);
+  });
+
+  it("does not duplicate a granted permission the role already carries", async () => {
+    selectResults.push([{ roleId: "r-custom", legacyRole: null }]);
+    selectResults.push([
+      {
+        id: "r-custom",
+        organizationId: "org1",
+        name: "Reader",
+        description: null,
+        isSystem: false,
+        systemKey: null,
+        permissions: ["resources:read"],
+      },
+    ]);
+    mockActiveElevations.mockResolvedValue([
+      {
+        requestId: "req-1",
+        permissions: ["resources:read"],
+        expiresAt: "2026-08-07T12:00:00.000Z",
+        reason: "belt and braces",
+      },
+    ]);
+
+    const out = await resolver.resolveEffectivePermissions("org1", { kind: "user", userId: "u1" });
+    expect(out.permissions).toEqual(["resources:read"]);
+  });
+
+  it("ignores a grant when the membership is gone", async () => {
+    // A grant is scoped to a membership. Honouring one after the member was
+    // removed would be a way for them to keep access.
+    selectResults.push([]); // membership lookup -> none
+    mockActiveElevations.mockResolvedValue([
+      {
+        requestId: "req-1",
+        permissions: ["*"],
+        expiresAt: "2026-08-07T12:00:00.000Z",
+        reason: "should not apply",
+      },
+    ]);
+    const out = await resolver.resolveEffectivePermissions("org1", { kind: "user", userId: "u1" });
+    expect(out).toEqual({ permissions: [], role: null, elevations: [] });
+  });
+
+  it("skips the elevation read entirely when the caller opts out", async () => {
+    selectResults.push([{ roleId: null, legacyRole: "member" }]);
+    selectResults.push([{ systemKey: "owner" }, { systemKey: "admin" }, { systemKey: "member" }]);
+    selectResults.push([{ id: "r-member", name: "Member", description: null }]);
+
+    const out = await resolver.resolveEffectivePermissions(
+      "org1",
+      { kind: "user", userId: "u1" },
+      { includeElevation: false },
+    );
+
+    expect(mockActiveElevations).not.toHaveBeenCalled();
+    expect(out.elevations).toEqual([]);
+    expect(out.permissions).toEqual(systemRoles.systemRolePermissions("member"));
   });
 });
 

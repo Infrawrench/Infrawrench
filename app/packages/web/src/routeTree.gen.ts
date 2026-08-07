@@ -37,6 +37,7 @@ import { Route as OrgOrgIdChatIndexRouteImport } from './routes/org.$orgId.chat.
 import { Route as OrgOrgIdChatConversationIdRouteImport } from './routes/org.$orgId.chat.$conversationId'
 import { Route as OrgOrgIdDashboardDashboardIdRouteImport } from './routes/org.$orgId.dashboard.$dashboardId'
 import { Route as OrgOrgIdSettingsIndexRouteImport } from './routes/org.$orgId.settings.index'
+import { Route as OrgOrgIdSettingsAccessRequestsRouteImport } from './routes/org.$orgId.settings.access-requests'
 import { Route as OrgOrgIdSettingsApiKeysRouteImport } from './routes/org.$orgId.settings.api-keys'
 import { Route as OrgOrgIdSettingsApprovalsRouteImport } from './routes/org.$orgId.settings.approvals'
 import { Route as OrgOrgIdSettingsAuditLogRouteImport } from './routes/org.$orgId.settings.audit-log'
@@ -195,6 +196,12 @@ const OrgOrgIdSettingsIndexRoute = OrgOrgIdSettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsAccessRequestsRoute =
+  OrgOrgIdSettingsAccessRequestsRouteImport.update({
+    id: '/access-requests',
+    path: '/access-requests',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsApiKeysRoute = OrgOrgIdSettingsApiKeysRouteImport.update({
   id: '/api-keys',
   path: '/api-keys',
@@ -300,6 +307,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
@@ -341,6 +349,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
@@ -386,6 +395,7 @@ export interface FileRoutesById {
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
@@ -432,6 +442,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
     | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/audit-log'
@@ -473,6 +484,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
     | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/audit-log'
@@ -517,6 +529,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
     | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/audit-log'
@@ -741,6 +754,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsIndexRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/access-requests': {
+      id: '/org/$orgId/settings/access-requests'
+      path: '/access-requests'
+      fullPath: '/org/$orgId/settings/access-requests'
+      preLoaderRoute: typeof OrgOrgIdSettingsAccessRequestsRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/api-keys': {
       id: '/org/$orgId/settings/api-keys'
       path: '/api-keys'
@@ -857,6 +877,7 @@ const OrgOrgIdChatRouteWithChildren = OrgOrgIdChatRoute._addFileChildren(
 )
 
 interface OrgOrgIdSettingsRouteChildren {
+  OrgOrgIdSettingsAccessRequestsRoute: typeof OrgOrgIdSettingsAccessRequestsRoute
   OrgOrgIdSettingsApiKeysRoute: typeof OrgOrgIdSettingsApiKeysRoute
   OrgOrgIdSettingsApprovalsRoute: typeof OrgOrgIdSettingsApprovalsRoute
   OrgOrgIdSettingsAuditLogRoute: typeof OrgOrgIdSettingsAuditLogRoute
@@ -874,6 +895,7 @@ interface OrgOrgIdSettingsRouteChildren {
 }
 
 const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
+  OrgOrgIdSettingsAccessRequestsRoute: OrgOrgIdSettingsAccessRequestsRoute,
   OrgOrgIdSettingsApiKeysRoute: OrgOrgIdSettingsApiKeysRoute,
   OrgOrgIdSettingsApprovalsRoute: OrgOrgIdSettingsApprovalsRoute,
   OrgOrgIdSettingsAuditLogRoute: OrgOrgIdSettingsAuditLogRoute,

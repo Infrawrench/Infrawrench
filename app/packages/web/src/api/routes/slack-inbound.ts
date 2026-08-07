@@ -54,6 +54,7 @@ import {
 import { resolveEffectivePermissions } from "@infrawrench/server-core/permissions";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { decideWorkflowApproval } from "@infrawrench/server-core/workflows/approvals";
+import { decideAccessRequest } from "@infrawrench/server-core/access/break-glass";
 import { formatMoney } from "@infrawrench/client-core";
 
 import { db } from "../../db/client";
@@ -666,6 +667,44 @@ export async function handleBlockAction(payload: SlackInteractionPayload): Promi
     }
     // "decided" needs no ephemeral reply: decideWorkflowApproval retires the
     // message in place and threads the outcome, which is the visible answer.
+    return;
+  }
+
+  if (value.kind === "access") {
+    // Same gate as POST /access-requests/:id/approve.
+    if (!hasPermission(permissions, "access:approve")) {
+      await respond(
+        ephemeral(
+          `You need the access:approve permission in ${member.orgName} to decide break-glass requests.`,
+        ),
+      );
+      return;
+    }
+    const result = await decideAccessRequest(
+      value.organizationId,
+      value.approvalId,
+      decision,
+      // The Slack decider's live permissions are the ceiling on what they can
+      // grant, exactly as on the HTTP route — the button is a second front
+      // door to the same decision, not a way around its rules.
+      { userId: member.userId, name: memberName(member), permissions },
+      { decidedVia: "Slack" },
+    );
+    if (result.outcome === "not_found") {
+      await respond(ephemeral("This access request no longer exists."));
+    } else if (result.outcome === "self_approval") {
+      await respond(
+        ephemeral("You cannot decide your own access request — that is the point of the approval."),
+      );
+    } else if (result.outcome === "exceeds_approver") {
+      await respond(
+        ephemeral(
+          `You cannot grant permissions you do not hold yourself: ${result.missing.join(", ")}.`,
+        ),
+      );
+    } else if (result.outcome === "conflict") {
+      await respond(ephemeral("This request has already been decided or has expired."));
+    }
     return;
   }
 

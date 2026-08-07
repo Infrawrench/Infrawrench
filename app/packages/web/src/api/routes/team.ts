@@ -70,6 +70,13 @@ app.get("/me", async (c) => {
         }
       : null,
     permissions: [...permissions],
+    /**
+     * Live break-glass grants, already included in `permissions`. Returned
+     * separately so the app can show what is temporary and when it lapses —
+     * an elevation the holder cannot see the clock on is one they will forget
+     * they have.
+     */
+    elevations: [...(c.get("elevations") ?? [])],
   });
 });
 

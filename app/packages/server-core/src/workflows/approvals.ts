@@ -25,14 +25,8 @@ import {
 
 import { db } from "../db/client";
 import { workflowApprovals, workflows } from "../db/schema";
-import { sendPushToOrg } from "../push/dispatch";
-import { sendSlackToOrgTracked } from "../slack";
-import {
-  recordSlackApprovalMessages,
-  slackApprovalButtons,
-  updateSlackApprovalMessages,
-} from "../slack-approvals";
-import { sendMsTeamsToOrg } from "../msteams";
+import { appPath, fanOutApprovalRequest, formatApprovalExpiry } from "../approvals/notify";
+import { updateSlackApprovalMessages } from "../slack-approvals";
 import { sendOneShotPage } from "../twilio-pager";
 import { workflowPageCooldownStore } from "./paging";
 
@@ -111,25 +105,26 @@ function requesterText(triggerSource: string | undefined): string {
  * landed, and that is the screen with the buttons on it.
  */
 function approvalsUrl(organizationId: string): string | null {
-  const base = process.env["APP_URL"];
-  if (!base) return null;
-  return `${base.replace(/\/$/, "")}/org/${organizationId}/settings/approvals`;
-}
-
-function formatExpiry(expiresAt: Date, timeoutMinutes: number): string {
-  const unit = timeoutMinutes === 1 ? "minute" : "minutes";
-  return `expires in ${timeoutMinutes} ${unit} (${expiresAt.toISOString().replace("T", " ").slice(0, 16)} UTC)`;
+  return appPath(`/org/${organizationId}/settings/approvals`);
 }
 
 /**
  * Fan an approval request out over every transport the org has configured.
  *
- * Reuses the `workflowPages` trigger rather than adding a sixth column to three
- * tables, for the reason API pages do: an approval *is* a workflow asking for a
- * human, the opt-in a member or channel already made is the same one, and the
- * user-facing label ("Pages") already covers it. The `workflow_pages` columns
- * on `slack_channels` and `msteams_webhooks` predate this change — only the
- * push transport was wired, which is what the follow-up was about.
+ * Push, Slack and Teams go through the shared `approvals/notify.ts` fan-out,
+ * which break-glass access requests use too; only the wording and the deep
+ * link differ. It reuses the `workflowPages` trigger rather than adding a sixth
+ * column to three tables, for the reason API pages do: an approval *is*
+ * something asking for a human, the opt-in a member or channel already made is
+ * the same one, and the user-facing label ("Pages") already covers it. The
+ * `workflow_pages` columns on `slack_channels` and `msteams_webhooks` predate
+ * that change — only the push transport was wired, which is what the follow-up
+ * was about.
+ *
+ * The SMS leg stays here rather than in the shared module: it is throttled on a
+ * key only this caller knows (the workflow), and the two callers' cooldown
+ * stories differ enough that folding them in would take more parameters than it
+ * saved.
  *
  * SMS rides `sendOneShotPage` (the same one-shot path budget alerts and
  * `infra.page` use), SMS-only: an approval blocks a run until a human answers,
@@ -164,66 +159,30 @@ async function notifyApprovalRequest(args: {
 }): Promise<void> {
   const { ctx, approvalId, runId, title, message, expiresAt, timeoutMinutes } = args;
   const requester = requesterText(ctx.triggerSource);
-  const expiry = formatExpiry(expiresAt, timeoutMinutes);
+  const expiry = formatApprovalExpiry(expiresAt, timeoutMinutes);
 
-  const detail =
-    `${message}\n\n` +
-    `Workflow: ${ctx.workflowName} · run ${runId}\n` +
-    `Requested by: the run, ${requester}\n` +
-    `Timeout: ${expiry} — no decision counts as a denial.`;
-  const context = `${ctx.workflowName} · run ${runId} · ${expiry}`;
-  const url = approvalsUrl(ctx.organizationId);
-
-  await sendPushToOrg(ctx.organizationId, "workflowPages", {
-    title: `Approval needed: ${title}`,
-    body: message,
-    data: {
+  await fanOutApprovalRequest({
+    organizationId: ctx.organizationId,
+    kind: "workflow",
+    approvalId,
+    title,
+    message,
+    detailLines: [
+      `Workflow: ${ctx.workflowName} · run ${runId}`,
+      `Requested by: the run, ${requester}`,
+      `Timeout: ${expiry} — no decision counts as a denial.`,
+    ],
+    context: `${ctx.workflowName} · run ${runId} · ${expiry}`,
+    url: approvalsUrl(ctx.organizationId),
+    push: {
       type: "workflow_approval",
       orgId: ctx.organizationId,
       workflowId: ctx.workflowId,
       runId,
       approvalId,
     },
-  });
-
-  // Slack renders `*bold*`; the Teams Adaptive Card escaper turns `*` into a
-  // literal asterisk, so it gets the same text with the markup left out — the
-  // split the weekly digest and drift alerts already use. Slack's copy carries
-  // Approve/Deny buttons and is tracked so a decision can retire every copy in
-  // place — the buttons resolve through `decideWorkflowApproval`, the same
-  // conditional UPDATE the web UI uses.
-  const slackSent = await sendSlackToOrgTracked(ctx.organizationId, "workflowPages", {
-    title: `Approval needed: ${title}`,
-    body:
-      `*${ctx.workflowName}* needs a decision before run \`${runId}\` can continue.\n\n` + detail,
-    context,
-    ...(url ? { url } : {}),
-    buttons: slackApprovalButtons({
-      kind: "workflow",
-      approvalId,
-      organizationId: ctx.organizationId,
-    }),
-  });
-  try {
-    await recordSlackApprovalMessages(
-      ctx.organizationId,
-      "workflow",
-      approvalId,
-      slackSent.messages,
-      // The decided/expired rendering, should the recorder find the request
-      // already settled: the same title/body every later update uses.
-      { title: `Approval needed: ${title}`, body: message },
-    );
-  } catch (err) {
-    // Losing the refs only costs the in-place update later; the buttons still
-    // work, so this must not fail the fan-out.
-    console.error(`[approvals] recording Slack messages for ${approvalId} failed:`, err);
-  }
-  await sendMsTeamsToOrg(ctx.organizationId, "workflowPages", {
-    title: `Approval needed: ${title}`,
-    body: `${ctx.workflowName} needs a decision before run ${runId} can continue.\n\n` + detail,
-    context,
-    ...(url ? { url } : {}),
+    slackLead: `*${ctx.workflowName}* needs a decision before run \`${runId}\` can continue.`,
+    teamsLead: `${ctx.workflowName} needs a decision before run ${runId} can continue.`,
   });
 
   await pageAboutApproval(

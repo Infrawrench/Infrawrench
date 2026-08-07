@@ -526,6 +526,13 @@
       "when": 1786136505724,
       "tag": "0074_smart_slipstream",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1786141117184,
+      "tag": "0075_famous_arclight",
+      "breakpoints": true
     }
   ]
 }

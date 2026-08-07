@@ -14,6 +14,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { key: "", label: "General" },
   { key: "team", label: "Team" },
   { key: "roles", label: "Roles" },
+  { key: "access-requests", label: "Break-glass Access", requiresPermission: "access:read" },
   { key: "ssh-keys", label: "SSH Keys" },
   { key: "ssh-host-keys", label: "Trusted SSH Hosts" },
   {

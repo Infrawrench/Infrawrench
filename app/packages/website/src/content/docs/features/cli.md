@@ -115,6 +115,14 @@ infrawrench probes api-health     # one probe: state, facts, latency sparkline
 infrawrench probes --json
 ```
 
+`access` lists [break-glass access](../team-and-billing/break-glass-access.md) requests and the elevations in force right now. Read-only: raising a request needs a reason someone will read and deciding one is a judgement call, but "who is elevated right now" is exactly the question you type at 3am. Needs `access:read`:
+
+```
+infrawrench access                # every request, live elevations first
+infrawrench access active         # only what is in force right now
+infrawrench access --json
+```
+
 `recordings` lists the org's [recorded SSH sessions](./session-recording.md) — who connected, to what, how long for, and each session's status. `recordings get <id>` prints the asciicast itself, which is the point of the subcommand: the format is asciinema's, so a session replays on a machine that has never seen the UI. Needs `session-recordings:read`:
 
 ```

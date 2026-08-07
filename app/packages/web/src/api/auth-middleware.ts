@@ -7,6 +7,7 @@ import { db } from "../db/client";
 import { users, organizationMembers, organizations } from "../db/schema";
 import {
   type ResolvedRole,
+  type ActiveElevation,
   resolveEffectivePermissions,
 } from "@infrawrench/server-core/permissions";
 
@@ -28,6 +29,13 @@ declare module "hono" {
     organizationId: string;
     permissions: readonly string[];
     role: ResolvedRole | null;
+    /**
+     * Live break-glass grants already folded into `permissions`. Kept separate
+     * so a surface can say *why* the caller can do something — "until 14:32,
+     * because you asked for it" is a different statement from "your role
+     * grants this", and collapsing them quietly normalises elevation.
+     */
+    elevations: readonly ActiveElevation[];
   }
 }
 
@@ -148,6 +156,11 @@ export const orgMiddleware = createMiddleware(async (c, next) => {
  * by resolving the current principal's effective permissions in the org.
  * Must run after sessionMiddleware + orgMiddleware on session-authed routes,
  * or be called manually for bearer-token endpoints.
+ *
+ * `permissions` here is the caller's role **union any live break-glass grant**
+ * — the resolver folds those in for session principals. That is what makes an
+ * elevation reach every surface at once (HTTP, the WebSocket gateway through
+ * `POST /ws-token`, chat, MCP tools) instead of each having to remember.
  */
 export const permissionsMiddleware = createMiddleware(async (c, next) => {
   const session = c.get("session");
@@ -158,6 +171,7 @@ export const permissionsMiddleware = createMiddleware(async (c, next) => {
   });
   c.set("permissions", access.permissions);
   c.set("role", access.role);
+  c.set("elevations", access.elevations);
   return next();
 });
 

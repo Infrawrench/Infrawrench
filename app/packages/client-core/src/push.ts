@@ -112,6 +112,22 @@ export type PushNotificationData =
       approvalId: string;
     }
   | {
+      /**
+       * Someone asked for break-glass access: a time-boxed elevation above
+       * what their role grants (see server-core `access/break-glass.ts`).
+       *
+       * Target route: the org's **Break-glass access** settings section,
+       * which is the screen with the Approve/Deny buttons on it.
+       */
+      type: "access_request";
+      orgId: string;
+      requestId: string;
+      /** Who is asking, for a notification that reads without a fetch. */
+      requestedByName: string;
+      /** How long the elevation would last once granted. */
+      durationMinutes: number;
+    }
+  | {
       /** A page a server outside Infrawrench raised over `POST /pages`. */
       type: "api_page";
       orgId: string;

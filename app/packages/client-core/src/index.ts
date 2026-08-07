@@ -388,6 +388,7 @@ export * from "./log-discovery";
 export * from "./metric-alerts";
 export * from "./rightsizing";
 export * from "./session-recordings";
+export * from "./access-requests";
 export * from "./chat/types";
 export { createBearerChatClient } from "./chat/bearer-client";
 export * from "./ws-protocol";
