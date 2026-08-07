@@ -47,6 +47,14 @@ export const agentSessions = pgTable(
     // Serialized AgentSetupPlan (text to mirror the desktop app's local
     // schema); consumed by the server-side VM setup pipeline.
     setupPlanJson: text("setup_plan_json").notNull().default("{}"),
+    // Cross-replica lease for the VM setup pipeline. The web deployment runs
+    // two replicas and the in-process in-flight map only guards one heap, so
+    // without this both pods run setup for the same session against the same
+    // VM. Same lease protocol the poller uses for accounts (claim.ts): a
+    // conditional UPDATE hands the row to exactly one claimer, and an
+    // expired lease makes it claimable again if a pod dies mid-setup.
+    // NULL means "not being set up".
+    setupLeaseUntil: timestamp("setup_lease_until"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

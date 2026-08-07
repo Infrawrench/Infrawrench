@@ -505,6 +505,13 @@
       "when": 1786095417430,
       "tag": "0071_shiny_silver_samurai",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1786122839174,
+      "tag": "0072_gifted_starhawk",
+      "breakpoints": true
     }
   ]
 }

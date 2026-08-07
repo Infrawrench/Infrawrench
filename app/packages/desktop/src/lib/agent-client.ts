@@ -12,6 +12,7 @@ import {
   AGENT_SETUP_FAILED_LOG_PREFIX,
   AGENT_SETUP_STEP_PREFIX,
   agentToolLabel,
+  bootstrapReportedComplete,
   buildAgentBootstrapCommand,
   buildAgentEnvFile,
   buildAgentLaunchCommand,
@@ -894,6 +895,15 @@ async function runAgentSetupCommand(
         command,
         logger,
       );
+      // A bootstrap that announced completion did its job; a non-zero exit
+      // after that point (a dropped channel, a login shell's exit quirk) is
+      // not a setup failure and must not strand a ready VM in "failed".
+      if (result.code !== 0 && bootstrapReportedComplete(`${result.stderr}\n${result.stdout}`)) {
+        await logger.onData(
+          `${AGENT_SETUP_STEP_PREFIX}Bootstrap reported completion despite exit ${result.code}; treating the VM as set up.\n`,
+        );
+        return { ...result, code: 0 };
+      }
       if (result.code !== 0) {
         throw new Error(formatCommandFailure(result));
       }

@@ -12,10 +12,12 @@ export { WorkspaceTabProvider, useTabId } from "./workspace/WorkspaceTabContext.
 
 export { AgentsPanel } from "./agents/AgentsPanel.js";
 export {
+  AGENT_BOOTSTRAP_COMPLETE_MARKERS,
   AGENT_CLI_INSTALL_SNIPPET,
   AGENT_MISE_SNIPPET,
   AGENT_NPM_PREFIX_SNIPPET,
   AGENT_SETUP_FAILED_LOG_PREFIX,
+  AGENT_SETUP_LOCK_SNIPPET,
   AGENT_SETUP_STEP_PREFIX,
   AGENT_SYSTEM_PACKAGES_SNIPPET,
   agentToolAuthStatusCommand,
@@ -23,6 +25,7 @@ export {
   agentToolLabel,
   agentToolLoginCommand,
   agentToolPackage,
+  bootstrapReportedComplete,
   buildAgentBootstrapCommand,
   buildAgentLaunchCommand,
   buildAgentRepoSetupCommand,

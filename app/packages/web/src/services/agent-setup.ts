@@ -17,7 +17,7 @@
  * config/repo file sync step.
  */
 import ssh2 from "ssh2";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, lte, or } from "drizzle-orm";
 
 const { Client: SshClient } = ssh2;
 // Re-establish the class's dual value/type nature lost by destructuring.
@@ -33,6 +33,7 @@ import {
   AGENT_SETUP_FAILED_LOG_PREFIX,
   AGENT_SETUP_STEP_PREFIX,
   agentToolLabel,
+  bootstrapReportedComplete,
   buildAgentBootstrapCommand,
   isCloneableGitRepo,
 } from "@infrawrench/ui/agents/launch-command";
@@ -84,6 +85,48 @@ interface AgentSetupOptions {
 
 const agentSetupInflight = new Map<string, { promise: Promise<void>; forceSync: boolean }>();
 const agentSetupAutoResumeAttempted = new Set<string>();
+
+/**
+ * Cross-replica setup lease. Must exceed the worst case of a whole setup run
+ * (`AGENT_SETUP_TIMEOUT_MS` of SSH retries, each running the bootstrap), or a
+ * second replica would start setting up a VM the first is still working on.
+ */
+const AGENT_SETUP_LEASE_MS = AGENT_SETUP_TIMEOUT_MS + 5 * 60 * 1000;
+
+/**
+ * Claim the right to run setup for this session across ALL web replicas.
+ *
+ * `agentSetupInflight` is an in-memory Map, so it only guards one pod's heap —
+ * and the web deployment runs two. Both pods really did run setup for the same
+ * session against the same VM, which the VM-side `flock` then had to untangle;
+ * before that lock existed the two runs corrupted each other's `npm install`.
+ * Same conditional-UPDATE protocol the poller uses for accounts
+ * (`poller/src/claim.ts`): the row goes to exactly one claimer, and an expired
+ * lease makes it claimable again so a pod dying mid-setup cannot wedge the
+ * session forever.
+ */
+async function claimAgentSetupLease(sessionId: string, organizationId: string): Promise<boolean> {
+  const rows = await db
+    .update(agentSessions)
+    .set({ setupLeaseUntil: new Date(Date.now() + AGENT_SETUP_LEASE_MS) })
+    .where(
+      and(
+        eq(agentSessions.id, sessionId),
+        eq(agentSessions.organizationId, organizationId),
+        or(isNull(agentSessions.setupLeaseUntil), lte(agentSessions.setupLeaseUntil, new Date())),
+      ),
+    )
+    .returning({ id: agentSessions.id });
+  return rows.length > 0;
+}
+
+/** Release the lease so a later forceSync (Open/retry) can claim immediately. */
+async function releaseAgentSetupLease(sessionId: string): Promise<void> {
+  await db
+    .update(agentSessions)
+    .set({ setupLeaseUntil: null })
+    .where(eq(agentSessions.id, sessionId));
+}
 
 /** Whether the session's persisted logs record a completed setup run. */
 export function hasAgentSetupComplete(logs: string[] | null | undefined): boolean {
@@ -212,6 +255,17 @@ export async function ensureAgentVmSetupForSession(
       .limit(1);
     if (!row) throw new Error("Agent session not found");
     if (hasAgentSetupComplete(row.logs) && !opts?.forceSync) return;
+    // Another replica is already setting this session up. Returning is right
+    // for every caller: the open route fires this without awaiting, and the
+    // session list polls status, so the work still lands — it just isn't done
+    // twice against one VM.
+    if (!(await claimAgentSetupLease(sessionId, organizationId))) {
+      // Operator-facing only: this is normal, expected behaviour, not a
+      // problem the user needs in the session log. It is also the line that
+      // makes "why is nothing happening on this replica?" answerable.
+      console.info(`[agent-setup] ${sessionId}: another replica holds the setup lease; skipping`);
+      return;
+    }
     try {
       await runAgentVmSetup(row, organizationId, opts);
     } catch (error) {
@@ -221,6 +275,11 @@ export async function ensureAgentVmSetupForSession(
         "setting-up",
       );
       throw error;
+    } finally {
+      await releaseAgentSetupLease(sessionId).catch(() => {
+        // A stuck lease expires on its own; failing the run over the release
+        // would turn a completed setup into a reported failure.
+      });
     }
   })().finally(() => {
     agentSetupInflight.delete(sessionId);
@@ -483,6 +542,15 @@ async function runAgentSetupCommandWithRetry(
   while (Date.now() - startedAt < AGENT_SETUP_TIMEOUT_MS) {
     try {
       const result = await agentSshExec(target, privateKey, command, logger.onData);
+      // A bootstrap that announced completion did its job; a non-zero exit
+      // after that point (a dropped channel, a login shell's exit quirk) is
+      // not a setup failure and must not strand a ready VM in "failed".
+      if (result.code !== 0 && bootstrapReportedComplete(`${result.stderr}\n${result.stdout}`)) {
+        await logger.onData(
+          `${AGENT_SETUP_STEP_PREFIX}Bootstrap reported completion despite exit ${result.code}; treating the VM as set up.\n`,
+        );
+        return { ...result, code: 0 };
+      }
       if (result.code !== 0) {
         throw new Error(formatCommandFailure(result));
       }

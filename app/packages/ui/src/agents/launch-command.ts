@@ -21,6 +21,29 @@ export const AGENT_SETUP_STEP_PREFIX = "INFRAWRENCH_AGENT_STEP:";
  */
 export const AGENT_SETUP_FAILED_LOG_PREFIX = "Setup failed:";
 
+/**
+ * The two ways a bootstrap script reports that the VM is fully set up: it
+ * either just finished the work, or found everything already in place and
+ * short-circuited (the path a run takes after waiting on the setup lock).
+ *
+ * The setup pipelines match these against a *failed* command's output. A
+ * bootstrap that printed one of them provisioned the VM correctly, so a
+ * non-zero exit afterwards — a dropped channel, a shell quirk on the way out —
+ * must not mark the session failed and send the user back to a broken-looking
+ * "Retry setup" for a machine that is actually ready.
+ */
+export const AGENT_BOOTSTRAP_COMPLETE_MARKERS = [
+  "Bootstrap complete.",
+  "Bootstrap already complete.",
+] as const;
+
+/** Whether bootstrap output shows the VM reached a fully set-up state. */
+export function bootstrapReportedComplete(output: string): boolean {
+  return AGENT_BOOTSTRAP_COMPLETE_MARKERS.some((marker) =>
+    output.includes(`${AGENT_SETUP_STEP_PREFIX}${marker}`),
+  );
+}
+
 export interface AgentLaunchCommandInput {
   /** Agent session id; its first 8 chars name the remote detachproc session. */
   sessionId: string;
