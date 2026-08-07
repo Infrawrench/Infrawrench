@@ -261,6 +261,23 @@ infrawrench routing queue      # held and escalating alerts   [--limit 50]
 
 Both are read-only and need the **Organization settings** permission; editing rules lives on the web and desktop Notifications page.
 
+## Config as code
+
+`infrawrench config` exports the organization's dashboards, workflows, custom graphs, budgets, alert rules and policies as one JSON document — and applies one back:
+
+```bash
+# Snapshot the organization into a file you can commit.
+infrawrench config export --out infrawrench.json
+
+# What would applying it change? Writes nothing, so it's the CI check.
+infrawrench config plan -f infrawrench.json
+
+# Apply it — shows the plan, then asks. -y for unattended runs.
+infrawrench config apply -f infrawrench.json
+```
+
+`--sections budgets,workflows` narrows either direction, and `--prune` additionally deletes what the document doesn't name (within the sections it carries), which is how you make a staging organization an exact copy. See [config as code](./config-as-code.md) for what the document holds and what it deliberately leaves out.
+
 ## Deploying
 
 `infrawrench deploy` builds and ships the project in the current directory, driven by the [Infrafile](./infrafile.md) at its repository root:

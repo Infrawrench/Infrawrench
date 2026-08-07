@@ -397,6 +397,7 @@ export * from "./log-workspaces";
 export * from "./log-discovery";
 export * from "./alert-routing";
 export * from "./metric-alerts";
+export * from "./org-config";
 export * from "./rightsizing";
 export * from "./session-recordings";
 export * from "./access-requests";

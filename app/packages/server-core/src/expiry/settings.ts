@@ -13,14 +13,17 @@
  * page about every certificate an org owns.
  */
 import { eq } from "drizzle-orm";
-import { DEFAULT_EXPIRY_LEAD_DAYS } from "@infrawrench/client-core";
+import { DEFAULT_EXPIRY_LEAD_DAYS, EXPIRY_ALERT_LIMITS } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { orgExpirySettings } from "../db/schema";
 
-/** Bounds the API enforces on the tunable numbers. */
-export const EXPIRY_ALERT_LIMITS = {
-  leadDays: { min: 1, max: 365 },
-} as const;
+/**
+ * Bounds the API enforces on the tunable numbers. Defined in
+ * `@infrawrench/client-core` and re-exported here so existing server imports
+ * keep working — the form, the config-as-code schema and this clamp cannot
+ * disagree about what a valid lead time is.
+ */
+export { EXPIRY_ALERT_LIMITS };
 
 export interface ExpirySettingsRecord {
   organizationId: string;

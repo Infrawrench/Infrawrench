@@ -26,7 +26,7 @@ Tests enumerate kinds in `{web,desktop}/src/lib/__tests__/workspace-tabs.test.ts
 
 ## Settings
 
-The 13 settings sections are shared components in `ui/src/settings/`, rendered by web's thin `/org/:orgId/settings/*` route wrappers and by the desktop cloud-mode Settings tab (`DesktopSettingsPanel`). They get everything platform-specific — API transport, permissions, `openExternal`, cross-surface navigation — from `SettingsHostProvider` (`ui/src/settings/host.tsx`); never import `@/lib/api` or router primitives inside a section.
+The 14 settings sections are shared components in `ui/src/settings/`, rendered by web's thin `/org/:orgId/settings/*` route wrappers and by the desktop cloud-mode Settings tab (`DesktopSettingsPanel`). They get everything platform-specific — API transport, permissions, `openExternal`, cross-surface navigation — from `SettingsHostProvider` (`ui/src/settings/host.tsx`); never import `@/lib/api` or router primitives inside a section.
 
 - **New section**: add it to `SETTINGS_SECTIONS` + `SettingsSectionBody`, a web route wrapper, and a docs page. Both platforms' navs derive from the registry.
 - **New endpoint used by a section**: the desktop reaches the cloud through the single `cloud_settings_request` IPC channel, whose handler (`electron/cloud-data/settings.ts`) enforces a method+path allowlist. Add the new path there in the same change, or the section works on web and silently fails on desktop.

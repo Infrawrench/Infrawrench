@@ -45,6 +45,15 @@ export const ALL_PERMISSIONS = [
   // family (not `resources:*`) so "can create but cannot skip governance"
   // stays expressible, mirroring `freezes:override`.
   "tag-policy:override",
+  // Org config as code: exporting and applying the one JSON document that
+  // carries dashboards, workflows, budgets, custom graphs, alert rules and
+  // policies. Its own family because the *document* is the unit of trust —
+  // `config:read` hands over every workflow's source in one call, and
+  // `config:write` rewrites nine surfaces at once. Neither is a substitute for
+  // the per-section permissions: apply requires both, so a role denied
+  // `workflows:write` cannot reach workflows through a config document.
+  "config:read",
+  "config:write",
   "audit:read",
   // Break-glass access. Its own family because the three verbs are held by
   // genuinely different people: everyone can ask, everyone can see the queue

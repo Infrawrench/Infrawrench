@@ -23,6 +23,7 @@ import { registerChangeFreezePaths } from "./paths/change-freezes";
 import { registerTagPolicyPaths } from "./paths/tag-policy";
 import { registerCostCentrePaths } from "./paths/cost-centres";
 import { registerCustomGraphPaths } from "./paths/custom-graphs";
+import { registerOrgConfigPaths } from "./paths/org-config";
 import { registerWorkflowApprovalPaths } from "./paths/workflow-approvals";
 import { registerWorkflowPaths } from "./paths/workflows";
 import { registerDeploymentPaths } from "./paths/deployments";
@@ -124,6 +125,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerTagPolicyPaths(ctx);
   registerCostCentrePaths(ctx);
   registerCustomGraphPaths(ctx);
+  registerOrgConfigPaths(ctx);
   registerWorkflowApprovalPaths(ctx);
   registerWorkflowPaths(ctx);
   registerDeploymentPaths(ctx);
@@ -690,6 +692,11 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /api-keys": "apikeys:read",
   "POST /api-keys/{id}/revoke": "apikeys:write",
   "POST /api-keys/{id}/rotate": "apikeys:write",
+  // config as code (each route additionally checks the per-section permission
+  // of every section involved — see api/routes/org-config.ts)
+  "GET /config/export": "config:read",
+  "POST /config/plan": "config:read",
+  "POST /config/apply": "config:write",
   // sync (bearer-auth, scopes mirror permissions)
   "POST /v1/sync/pull": "resources:read",
   "POST /v1/sync/push": "resources:write",

@@ -97,6 +97,12 @@ The same permission set gates every surface, not just the web UI:
   - `workflows:write` — create, edit, delete, and run. Running sits here rather than in a permission of its own, because anyone who can edit a workflow can give it a cron or git trigger anyway. The workflow debug WebSocket enforces it too, so the editor's live-debug run is gated exactly like `POST /workflows/{id}/run`.
   - `workflows:approve` — decide a request raised by `infra.waitForApproval(...)`. Deliberately separate: the point of an approval step is that a second person signs off, so a custom role can grant authorship without sign-off, or sign-off without authorship. All three are in the Member role, matching what members could already do — the split is there for custom roles to use.
 
+- **[Config as code](../features/config-as-code.md)** has its own pair, because the _document_ is the unit of trust — one `config:read` call hands over every workflow's source, and one `config:write` rewrites nine surfaces at once:
+  - `config:read` — export the organization's configuration, and preview what applying a document would change.
+  - `config:write` — apply one.
+
+  Neither is a substitute for the per-section permissions: both routes additionally require the read (or write) permission of every section involved, so `config:write` cannot be used to reach past a role that deliberately withholds `workflows:write`. Export refuses rather than silently omitting a section you cannot read — a partial document looks complete, and applying it with `--prune` would delete everything the exporter was not allowed to see. Admin and Owner hold both through their wildcards; Member holds neither.
+
   Workflows used to be gated on `dashboards:read` / `dashboards:write`. Custom roles and API keys that granted those had the matching workflow permissions added to them once, during the upgrade that introduced them, so nobody lost access — the added permissions show up in the role editor, ticked, and you can untick them. Every grant since means exactly what it says: a custom role granting `workflows:write` while withholding `workflows:approve` withholds it. Custom graphs, which really are dashboard content, stayed on the dashboard permissions.
 
 - **[Break-glass access](./break-glass-access.md)** splits three ways, because the three verbs are held by genuinely different people:

@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 import { CliError, type CliFlags } from "./context";
 import type { FanoutFlags } from "./commands/ssh-fanout";
 import type { DiffFlags } from "./commands/diff";
+import type { ConfigFlags } from "./commands/config";
 
 export interface RangeFlags {
   last?: string | undefined;
@@ -79,6 +80,7 @@ export interface ParsedCli {
   deploy: DeployFlags;
   fanout: FanoutFlags;
   diff: DiffFlags;
+  config: ConfigFlags;
   positionals: string[];
   version: boolean;
   /** `costs --anomalies` — the spend-spike list instead of the spend chart. */
@@ -148,6 +150,11 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         // second side needs one of its own.
         against: { type: "string", short: "b" },
         all: { type: "boolean", default: false },
+        // Config-as-code flags (`config`). `--file` doubles as the export
+        // destination; `--out` is the name that reads right when writing.
+        out: { type: "string" },
+        sections: { type: "string" },
+        prune: { type: "boolean", default: false },
       },
     });
   } catch (e) {
@@ -245,6 +252,13 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       snippet: str("snippet"),
       yes: values.yes === true,
       concurrency: positiveInt("concurrency"),
+    },
+    config: {
+      file: str("file"),
+      out: str("out"),
+      sections: str("sections"),
+      prune: values.prune === true,
+      yes: values.yes === true,
     },
     push: {
       source: str("source"),
