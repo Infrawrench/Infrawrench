@@ -144,6 +144,40 @@ async function openCloudShell(params: CloudShellParams): Promise<SshShellHandle>
   let activeWs: WebSocket | null = null;
   const size = { cols: params.cols, rows: params.rows };
 
+  // Writes are buffered until the proxy reports `ssh:connected`.
+  //
+  // Unlike the local handle — which resolves only once the shell is actually
+  // spawned — this function returns as soon as the socket is *created*, so a
+  // caller that writes immediately (the agent tabs send their launch command
+  // the moment the handle resolves) would otherwise lose it twice over: the
+  // socket is still CONNECTING here, and on the server the `ws.on("message")`
+  // that forwards `ssh:data` is registered inside the `conn.shell()` callback,
+  // so anything sent before `ssh:connected` has no listener at all. The
+  // symptom is an agent terminal that connects to a normal shell prompt with
+  // the command silently dropped. WebTerminal already writes on
+  // `ssh:connected`; buffering here gives every desktop caller the same
+  // guarantee without each one having to know about the frame.
+  let connected = false;
+  let pending: string[] = [];
+  // A shell that never connects must not grow this without bound; a few
+  // keystrokes plus a launch command is the realistic worst case.
+  const MAX_PENDING_WRITES = 256;
+
+  const sendData = (ws: WebSocket, data: string): void => {
+    const bytes = new TextEncoder().encode(data);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
+    ws.send(JSON.stringify({ type: "ssh:data", data: btoa(binary) }));
+  };
+
+  const flushPending = (): void => {
+    if (!connected || killed) return;
+    if (!activeWs || activeWs.readyState !== WebSocket.OPEN) return;
+    const queued = pending;
+    pending = [];
+    for (const data of queued) sendData(activeWs, data);
+  };
+
   const getToken = async (): Promise<string> => {
     const token = await invoke<string | null>("cloud_auth_get_ws_token", { orgId: params.orgId });
     if (!token) throw new Error("Not authenticated to Infrawrench Cloud");
@@ -184,6 +218,9 @@ async function openCloudShell(params: CloudShellParams): Promise<SshShellHandle>
     const ws = new WebSocket(`${wsUrl}/api/ws?token=${encodeURIComponent(token)}`);
     ws.binaryType = "arraybuffer";
     activeWs = ws;
+    // A post-trust reconnect gets a fresh shell, so anything still queued must
+    // wait for the new one rather than being sent at a socket with no shell.
+    connected = false;
 
     ws.addEventListener("open", () => {
       ws.send(
@@ -207,7 +244,10 @@ async function openCloudShell(params: CloudShellParams): Promise<SshShellHandle>
     ws.addEventListener("message", (ev) => {
       try {
         const msg = JSON.parse(String(ev.data)) as CloudSshErrorFrame;
-        if (msg.type === "ssh:data" && msg.data) {
+        if (msg.type === "ssh:connected") {
+          connected = true;
+          flushPending();
+        } else if (msg.type === "ssh:data" && msg.data) {
           const bytes = Uint8Array.from(atob(msg.data), (c) => c.charCodeAt(0));
           for (const cb of dataListeners) cb(bytes);
         } else if (msg.type === "ssh:closed") {
@@ -237,11 +277,12 @@ async function openCloudShell(params: CloudShellParams): Promise<SshShellHandle>
   return {
     kind: "cloud",
     write: (data: string) => {
-      if (killed || activeWs?.readyState !== WebSocket.OPEN) return;
-      const bytes = new TextEncoder().encode(data);
-      let binary = "";
-      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
-      activeWs.send(JSON.stringify({ type: "ssh:data", data: btoa(binary) }));
+      if (killed) return;
+      if (!connected || activeWs?.readyState !== WebSocket.OPEN) {
+        if (pending.length < MAX_PENDING_WRITES) pending.push(data);
+        return;
+      }
+      sendData(activeWs, data);
     },
     resize: (cols: number, rows: number) => {
       size.cols = cols;
@@ -252,6 +293,7 @@ async function openCloudShell(params: CloudShellParams): Promise<SshShellHandle>
     kill: () => {
       if (killed) return;
       killed = true;
+      pending = [];
       activeWs?.close();
     },
     onData: (cb) => {
