@@ -12,7 +12,7 @@ import { useUIStore } from "@infrawrench/ui";
 import {
   getCloudCreateConfig,
   getCloudCreatePricing,
-  getCloudCreateCostEstimate,
+  getCloudCostEstimate,
   createCloudResource,
   loadCloudPickerResources,
 } from "../lib/cloud-api";
@@ -127,17 +127,12 @@ export function CreateResourceModal({
           );
           return (res ?? {}) as Record<string, number>;
         },
-        loadCostEstimate: async (fields: Record<string, string>) => {
-          const res = await getCloudCreateCostEstimate(
-            orgId,
-            accountId,
-            resourceType.id,
+        loadCostEstimate: (fields: Record<string, string>) =>
+          getCloudCostEstimate(orgId, accountId, resourceType.id, {
             fields,
             pluginId,
-            parentResourceId,
-          );
-          return (res?.estimate ?? null) as number | null;
-        },
+            ...(parentResourceId ? { parentResourceId } : {}),
+          }),
         create: async (fields: Record<string, string>) => {
           const created = await createCloudResource(orgId, {
             accountId,
@@ -270,8 +265,8 @@ export function CreateResourceModal({
       },
       loadCostEstimate: (fields: Record<string, string>) => {
         const client = clientRef.current;
-        if (!client?.getCreateCostEstimate) return Promise.resolve(null);
-        return client.getCreateCostEstimate(resourceType.id, fields);
+        if (!client?.estimateCost) return Promise.resolve(null);
+        return client.estimateCost(resourceType.id, fields);
       },
       create: async (fields: Record<string, string>) => {
         const client =

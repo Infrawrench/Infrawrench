@@ -37,6 +37,7 @@ import type {
   CredentialExport,
   DetailViewSchema,
   FieldDefinition,
+  CostEstimate,
   KvListResult,
   LogsFetchParams,
   LogsFetchResult,
@@ -217,6 +218,36 @@ export function ResourceDetailClient({
   const leasesClient = useMemo(() => createWebLeasesClient(orgId), [orgId]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+
+  // The resource's standing monthly estimate, from the plugin's
+  // `estimateCost`. Same call the create form makes, so the figure quoted
+  // here is the one the user was shown when they created it. Null whenever
+  // the plugin can't price this type, which is most of them — the header chip
+  // simply doesn't render.
+  const [costEstimate, setCostEstimate] = useState<CostEstimate | null>(null);
+  const loadCostEstimate = useCallback(
+    (fields: Record<string, string>) =>
+      apiPost<{ estimate: CostEstimate | null }>(`/api/org/${orgId}/resources/cost-estimate`, {
+        accountId,
+        resourceTypeId,
+        resourceId,
+        ...(Object.keys(fields).length > 0 ? { fields } : {}),
+      }).then(({ estimate }) => estimate),
+    [orgId, accountId, resourceTypeId, resourceId],
+  );
+  useEffect(() => {
+    let cancelled = false;
+    void loadCostEstimate({})
+      .then((estimate) => {
+        if (!cancelled) setCostEstimate(estimate);
+      })
+      .catch(() => {
+        if (!cancelled) setCostEstimate(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadCostEstimate]);
   const [showExportCredential, setShowExportCredential] = useState(false);
   const [metricSeries, setMetricSeries] = useState<MetricSeries[] | undefined>(undefined);
   const [consoleOpen, setConsoleOpen] = useState(false);
@@ -1187,6 +1218,7 @@ export function ResourceDetailClient({
               schema={detailSchema}
               resourceId={resourceId}
               pluginLogoSvg={pluginLogoSvg}
+              costEstimate={costEstimate}
               {...(hasSqlEditor
                 ? {
                     onRunQuery: handleRunQuery,
@@ -1452,6 +1484,7 @@ export function ResourceDetailClient({
             Object.entries(resourceFields ?? {}).map(([k, v]) => [k, String(v ?? "")]),
           )}
           onClose={() => setShowEditModal(false)}
+          loadCostEstimate={loadCostEstimate}
           onSubmit={async (changed) => {
             await handleUpdate(changed);
             // Server-rendered page: a full reload picks up the new fields.

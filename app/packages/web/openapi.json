@@ -7682,7 +7682,67 @@
         ],
         "additionalProperties": false
       },
-      "CreateCostEstimateRequest": {
+      "CostEstimateLineItem": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "monthlyAmount": {
+            "type": "number"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unit": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "monthlyAmount"
+        ],
+        "additionalProperties": false
+      },
+      "CostEstimate": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "monthlyAmount": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "lineItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostEstimateLineItem"
+            }
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "monthlyAmount",
+          "currency",
+          "lineItems"
+        ],
+        "additionalProperties": false
+      },
+      "CostEstimateRequest": {
         "type": "object",
         "properties": {
           "accountId": {
@@ -7699,6 +7759,9 @@
               "type": "string"
             }
           },
+          "resourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
           "pluginId": {
             "type": "string"
           },
@@ -7708,8 +7771,7 @@
         },
         "required": [
           "accountId",
-          "resourceTypeId",
-          "fields"
+          "resourceTypeId"
         ],
         "additionalProperties": false
       },
@@ -23945,12 +24007,13 @@
         "operationId": "postOrgOrgIdResourcesFieldAction"
       }
     },
-    "/api/org/{orgId}/resources/create-cost-estimate": {
+    "/api/org/{orgId}/resources/cost-estimate": {
       "post": {
         "tags": [
           "Resources"
         ],
-        "summary": "Cost estimate for the current create form values",
+        "summary": "Estimated monthly cost of a configuration",
+        "description": "Calls the plugin's `estimateCost` and returns a monthly total with the line items behind it. Price a proposed resource by passing `fields`, an existing one by passing `resourceId`, or a proposed change to an existing one by passing both — `fields` is merged over the resource's stored fields, so the caller only sends what changed. `estimate` is null when the plugin cannot price the configuration; that is not the same as an estimate of zero, and it should not be rendered as one.\n\n_Requires permission: `resources:read`._",
         "parameters": [
           {
             "schema": {
@@ -23969,31 +24032,21 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateCostEstimateRequest"
+                "$ref": "#/components/schemas/CostEstimateRequest"
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Estimate",
+            "description": "Estimate, or null when the plugin cannot price this configuration",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
                     "estimate": {
-                      "allOf": [
-                        {
-                          "$ref": "#/components/schemas/JsonObject"
-                        },
-                        {
-                          "type": [
-                            "object",
-                            "null"
-                          ]
-                        }
-                      ]
+                      "$ref": "#/components/schemas/CostEstimate"
                     }
                   },
                   "required": [
@@ -24003,11 +24056,20 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
-        "operationId": "postOrgOrgIdResourcesCreateCostEstimate",
-        "x-required-permission": "resources:read",
-        "description": "_Requires permission: `resources:read`._"
+        "operationId": "postOrgOrgIdResourcesCostEstimate",
+        "x-required-permission": "resources:read"
       }
     },
     "/api/org/{orgId}/resources/{pluginId}/{typeId}/peer-panes": {

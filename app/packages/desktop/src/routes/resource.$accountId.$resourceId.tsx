@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import type {
   ResourceInstance,
@@ -42,6 +42,7 @@ import type { AccountRow } from "../db/rows";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices, persistPlaintextSecret } from "../lib/sql-drivers";
 import { createPluginClient } from "../lib/plugin-client";
+import { makeResourceCostEstimator } from "../lib/cost-estimate";
 import { applyCredentialRewriters } from "../lib/credential-rewriters";
 import { invoke } from "../lib/invoke";
 import type { PluginClient, PeerPaneContext, AssociationSource } from "@infrawrench/plugin-base";
@@ -180,6 +181,21 @@ export function ResourcePanel({
   const [credentialFormats, setCredentialFormats] = useState<CredentialFormat[]>([]);
   const [showExportCredential, setShowExportCredential] = useState(false);
   const [resourceTypeLabel, setResourceTypeLabel] = useState<string>("Resource");
+
+  // One estimator for both surfaces that quote a monthly figure — the detail
+  // header's standing estimate and the edit modal's change delta — so the two
+  // are always the same plugin call over the same fields.
+  const loadCostEstimate = useMemo(
+    () =>
+      makeResourceCostEstimator({
+        resource,
+        accountId,
+        resourceId: decodedResourceId,
+        getLocalClient: () => clientRef.current,
+        getCloudCtx: () => cloudCtxRef.current,
+      }),
+    [resource, accountId, decodedResourceId],
+  );
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
@@ -1126,6 +1142,7 @@ export function ResourcePanel({
               activeCloudOrgId={activeCloudOrgId}
               cloudParentResourceId={cloudCtxRef.current?.parentResourceId}
               accountPluginId={account?.plugin_id}
+              loadCostEstimate={loadCostEstimate}
               onPeerPaneOpen={handlePeerPaneOpen}
               onRunQuery={handleRunQuery}
               onExecute={handleExecute}

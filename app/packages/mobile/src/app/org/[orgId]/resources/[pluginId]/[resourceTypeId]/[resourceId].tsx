@@ -19,6 +19,7 @@ import { ActionDispatchProvider, type ActionHandlers } from "@/schema/ActionDisp
 import { PromptCommandSheet } from "@/components/PromptCommandSheet";
 import { DockerActionsCard } from "@/features/tools/DockerActionsCard";
 import { ResourceChangesCard } from "@/features/changes/ResourceChangesCard";
+import { ResourceCostEstimateCard } from "@/features/costs/ResourceCostEstimateCard";
 import { ResourceDependenciesCard } from "@/features/graph/ResourceDependenciesCard";
 import { colors } from "@/lib/theme";
 
@@ -348,6 +349,11 @@ export default function ResourceDetailScreen() {
           self-guarding: each renders nothing when the resource has no wiring
           and no recorded changes, and neither can fail the screen.
         */}
+        <ResourceCostEstimateCard
+          accountId={data.accountId}
+          resourceTypeId={resourceTypeId}
+          resourceId={resourceId}
+        />
         <ResourceDependenciesCard resourceId={resourceId} />
         <ResourceChangesCard resourceId={resourceId} />
       </Screen>

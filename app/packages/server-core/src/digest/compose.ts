@@ -33,6 +33,32 @@ export interface DigestWindow {
   prevWeekEnd: string;
 }
 
+/**
+ * What last week's resource churn does to the *forward-looking* bill, from
+ * the plugins' `estimateCost`.
+ *
+ * This is a different question from the spend totals above, and the digest
+ * says so: those are what the providers billed for days that have already
+ * happened, while this is the run-rate the week's creates and deletes leave
+ * behind. A cluster spun up last Sunday barely shows in last week's spend and
+ * is most of next month's.
+ */
+export interface DigestProjection {
+  currency: string;
+  /** Monthly run-rate of the resources created during the week. */
+  addedMonthly: number;
+  /** Monthly run-rate of the resources deleted during the week. */
+  removedMonthly: number;
+  /**
+   * Resources in the week's churn that could not be priced at all — no
+   * `estimateCost` for their plugin, or no rate for their type. Surfaced so
+   * a small number is never read as "nothing else changed".
+   */
+  unpricedCount: number;
+  /** True when the churn was too large to price in full; the figure is a floor. */
+  truncated: boolean;
+}
+
 export interface DigestInput {
   window: DigestWindow;
   /** Daily costs from `prevWeekStart` through `weekEnd`, grouped by provider. */
@@ -60,6 +86,11 @@ export interface DigestInput {
   postureCritical: number;
   /** High-severity posture findings currently open. */
   postureHigh: number;
+  /**
+   * Projected monthly change from the week's churn. Null when no resource
+   * changed hands, or when nothing that did could be priced.
+   */
+  projection?: DigestProjection | null;
 }
 
 export interface DigestTotal {
@@ -98,6 +129,8 @@ export interface WeeklyDigest {
   postureCritical: number;
   /** High-severity posture findings currently open. */
   postureHigh: number;
+  /** Projected monthly change from the week's churn, when anything priced. */
+  projection: DigestProjection | null;
 }
 
 const MAX_MOVERS = 3;
@@ -351,7 +384,22 @@ export function composeWeeklyDigest(input: DigestInput): WeeklyDigest {
     expiringSoon: input.expiringSoon,
     postureCritical: input.postureCritical,
     postureHigh: input.postureHigh,
+    projection: normalizeProjection(input.projection),
   };
+}
+
+/**
+ * Drop a projection that has nothing to say. A week where every changed
+ * resource was unpriceable produces zeroes on both sides, and a
+ * "Projected spend: no change" line would claim knowledge the estimates do
+ * not have.
+ */
+function normalizeProjection(
+  projection: DigestProjection | null | undefined,
+): DigestProjection | null {
+  if (!projection) return null;
+  if (projection.addedMonthly === 0 && projection.removedMonthly === 0) return null;
+  return projection;
 }
 
 // --- Formatting ---
@@ -509,7 +557,45 @@ export function digestSegments(digest: WeeklyDigest, narrative?: string | null):
     { text: "Resources", bold: true },
     { text: `: ${digest.resourcesAdded} added, ${digest.resourcesRemoved} removed`, bold: false },
   ]);
+  const projectionLine = projectionSegments(digest.projection);
+  if (projectionLine) lines.push(projectionLine);
   return lines;
+}
+
+/**
+ * The forward-looking line: what last week's churn does to the monthly bill.
+ *
+ * Deliberately phrased as a run-rate rather than folded into the spend total
+ * above — one is billed history, the other is a projection, and a reader has
+ * to be able to tell which they are looking at.
+ */
+function projectionSegments(projection: DigestProjection | null): DigestLine | null {
+  if (!projection) return null;
+  const net = projection.addedMonthly - projection.removedMonthly;
+  const { currency } = projection;
+  const parts: string[] = [];
+  if (projection.addedMonthly > 0) {
+    parts.push(`${formatAmount(projection.addedMonthly, currency)}/mo added`);
+  }
+  if (projection.removedMonthly > 0) {
+    parts.push(`${formatAmount(projection.removedMonthly, currency)}/mo removed`);
+  }
+  const caveats: string[] = [];
+  if (projection.truncated) caveats.push("at least");
+  if (projection.unpricedCount > 0) {
+    caveats.push(`${pluralize(projection.unpricedCount, "resource")} could not be priced`);
+  }
+  const suffix = [
+    parts.length > 0 ? ` (${parts.join(", ")})` : "",
+    caveats.length > 0 ? ` — ${caveats.join("; ")}` : "",
+  ].join("");
+  return [
+    { text: "Projected spend", bold: true },
+    {
+      text: `: ${formatDelta(net, currency)}/month from last week's changes${suffix}`,
+      bold: false,
+    },
+  ];
 }
 
 /**

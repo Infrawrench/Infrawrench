@@ -1,4 +1,4 @@
-import type { AssociationSource } from "@infrawrench/plugin-base";
+import type { AssociationSource, CostEstimate } from "@infrawrench/plugin-base";
 import type {
   DependencyGraphData,
   DnsInventoryResponse,
@@ -176,22 +176,30 @@ export async function getCloudCreatePricing(
   });
 }
 
-export async function getCloudCreateCostEstimate(
+/**
+ * Monthly cost estimate for a configuration. Pass `fields` to price a
+ * proposed create, `resourceId` to price an existing resource, or both to
+ * price a proposed edit — the server merges `fields` over the resource's
+ * stored fields, so only the changed keys have to be sent.
+ */
+export async function getCloudCostEstimate(
   orgId: string,
   accountId: string,
   resourceTypeId: string,
-  fields: Record<string, string>,
-  pluginId?: string,
-  parentResourceId?: string,
-): Promise<{ estimate: unknown } | null> {
-  return invoke("cloud_get_create_cost_estimate", {
+  options: {
+    fields?: Record<string, string>;
+    resourceId?: string;
+    pluginId?: string;
+    parentResourceId?: string;
+  } = {},
+): Promise<CostEstimate | null> {
+  const res = await invoke<{ estimate: CostEstimate | null }>("cloud_get_cost_estimate", {
     orgId,
     accountId,
     resourceTypeId,
-    fields,
-    pluginId,
-    parentResourceId,
+    ...options,
   });
+  return res?.estimate ?? null;
 }
 
 export async function deleteCloudResource(

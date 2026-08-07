@@ -8,7 +8,7 @@ import {
 import {
   azureSupportsSizePricing,
   getAzureCreateSizePricing,
-  getAzureCreateCostEstimate,
+  estimateAzureCost,
 } from "../pricing-estimates.js";
 
 function priceResponse(items: unknown[]): Response {
@@ -195,23 +195,46 @@ describe("pricing-estimates", () => {
     expect(out["X"]).toBeGreaterThan(0);
   });
 
-  describe("getAzureCreateCostEstimate", () => {
-    it("VM = compute + disk", () => {
+  describe("estimateAzureCost", () => {
+    it("VM = compute + disk, itemized", () => {
       const rates = {
         ...emptyRates,
         vmHourlyUsd: { S: 0.1 },
         diskGbMonthUsd: { Premium_LRS: 0.1 },
       };
-      const est = getAzureCreateCostEstimate(
-        "azure-vm",
-        { size: "S", bootDiskSizeGb: "64" },
-        rates,
+      const est = estimateAzureCost("azure-vm", { size: "S", bootDiskSizeGb: "64" }, rates);
+      expect(est?.monthlyAmount).toBeCloseTo(0.1 * HOURS_PER_MONTH + 64 * 0.1, 1);
+      expect(est?.currency).toBe("USD");
+      // Compute first — line items are ordered largest-first.
+      expect(est?.lineItems.map((l) => l.label)).toEqual(["Virtual machine (S)", "OS disk"]);
+      expect(est?.lineItems[1]).toMatchObject({ quantity: 64, unit: "GB" });
+      // The total is the sum of what is itemized, never an independent figure.
+      expect(est?.monthlyAmount).toBeCloseTo(
+        est!.lineItems.reduce((sum, l) => sum + l.monthlyAmount, 0),
+        2,
       );
-      expect(est).toBeCloseTo(0.1 * HOURS_PER_MONTH + 64 * 0.1, 1);
+      expect(est?.partial).toBeUndefined();
     });
 
-    it("VM returns null for an unknown size", () => {
-      expect(getAzureCreateCostEstimate("azure-vm", { size: "?" }, emptyRates)).toBeNull();
+    it("accepts the lister's field spellings so an existing VM prices too", () => {
+      const rates = {
+        ...emptyRates,
+        vmHourlyUsd: { S: 0.1 },
+        diskGbMonthUsd: { Premium_LRS: 0.1 },
+      };
+      const est = estimateAzureCost("azure-vm", { vmSize: "S", osDiskSizeGb: "64" }, rates);
+      expect(est?.monthlyAmount).toBeCloseTo(0.1 * HOURS_PER_MONTH + 64 * 0.1, 1);
+    });
+
+    it("VM prices the disk alone and marks itself partial for an unknown size", () => {
+      const rates = { ...emptyRates, diskGbMonthUsd: { Premium_LRS: 0.1 } };
+      const est = estimateAzureCost("azure-vm", { size: "?", bootDiskSizeGb: "64" }, rates);
+      expect(est?.monthlyAmount).toBeCloseTo(6.4, 2);
+      expect(est?.partial).toBe(true);
+    });
+
+    it("VM returns null when nothing at all can be priced", () => {
+      expect(estimateAzureCost("azure-vm", { size: "?" }, emptyRates)).toBeNull();
     });
 
     it("AKS multiplies per-node cost by node count", () => {
@@ -220,12 +243,9 @@ describe("pricing-estimates", () => {
         vmHourlyUsd: { N: 0.1 },
         diskGbMonthUsd: { Premium_LRS: 0.1 },
       };
-      const est = getAzureCreateCostEstimate(
-        "azure-aks-cluster",
-        { nodeSize: "N", nodeCount: "2" },
-        rates,
-      );
-      expect(est).toBeCloseTo((0.1 * HOURS_PER_MONTH + 128 * 0.1) * 2, 1);
+      const est = estimateAzureCost("azure-aks-cluster", { nodeSize: "N", nodeCount: "2" }, rates);
+      expect(est?.monthlyAmount).toBeCloseTo((0.1 * HOURS_PER_MONTH + 128 * 0.1) * 2, 1);
+      expect(est?.lineItems[0]).toMatchObject({ quantity: 2, unit: "nodes" });
     });
 
     it("container instance derives from per-second rates", () => {
@@ -233,16 +253,17 @@ describe("pricing-estimates", () => {
         ...emptyRates,
         containerInstance: { vcpuPerSecondUsd: 0.00001, memoryGbPerSecondUsd: 0.000001 },
       };
-      const est = getAzureCreateCostEstimate(
+      const est = estimateAzureCost(
         "azure-container-instance",
         { cpu: "1", memoryGb: "1.5" },
         rates,
       );
-      expect(est).toBeGreaterThan(0);
+      expect(est?.monthlyAmount).toBeGreaterThan(0);
+      expect(est?.lineItems.map((l) => l.label).sort()).toEqual(["Memory", "vCPU"]);
     });
 
     it("container instance returns null without rates", () => {
-      expect(getAzureCreateCostEstimate("azure-container-instance", {}, emptyRates)).toBeNull();
+      expect(estimateAzureCost("azure-container-instance", {}, emptyRates)).toBeNull();
     });
 
     it("redis / app-service / function-app / sql look up by sku", () => {
@@ -253,22 +274,30 @@ describe("pricing-estimates", () => {
         functionAppMonthlyUsd: { Y1: 0 },
         sqlDbMonthlyUsd: { Basic: 5 },
       };
-      expect(getAzureCreateCostEstimate("azure-redis-cache", { capacity: "C1" }, rates)).toBe(50);
-      expect(getAzureCreateCostEstimate("azure-app-service", { sku: "B1" }, rates)).toBe(55);
-      expect(getAzureCreateCostEstimate("azure-function-app", { sku: "Y1" }, rates)).toBe(0);
-      expect(getAzureCreateCostEstimate("azure-sql-database", { sku: "Basic" }, rates)).toBe(5);
+      expect(estimateAzureCost("azure-redis-cache", { capacity: "C1" }, rates)?.monthlyAmount).toBe(
+        50,
+      );
+      expect(estimateAzureCost("azure-app-service", { sku: "B1" }, rates)?.monthlyAmount).toBe(55);
+      expect(estimateAzureCost("azure-sql-database", { sku: "Basic" }, rates)?.monthlyAmount).toBe(
+        5,
+      );
+      // A $0 rate is "free", not "unknown" — and the two must not be conflated
+      // into the same answer. The consumption plan has no standing charge, so
+      // it has no line item and therefore no estimate to quote.
+      expect(estimateAzureCost("azure-function-app", { sku: "Y1" }, rates)).toBeNull();
     });
 
     it("disk = size * per-gb, null when missing rate", () => {
       const rates = { ...emptyRates, diskGbMonthUsd: { Premium_LRS: 0.1 } };
       expect(
-        getAzureCreateCostEstimate("azure-disk", { diskSizeGb: "100", sku: "Premium_LRS" }, rates),
+        estimateAzureCost("azure-disk", { diskSizeGb: "100", sku: "Premium_LRS" }, rates)
+          ?.monthlyAmount,
       ).toBe(10);
-      expect(getAzureCreateCostEstimate("azure-disk", { sku: "Unknown" }, rates)).toBeNull();
+      expect(estimateAzureCost("azure-disk", { sku: "Unknown" }, rates)).toBeNull();
     });
 
     it("returns null for unhandled types", () => {
-      expect(getAzureCreateCostEstimate("azure-vnet", {}, emptyRates)).toBeNull();
+      expect(estimateAzureCost("azure-vnet", {}, emptyRates)).toBeNull();
     });
   });
 });

@@ -846,7 +846,7 @@ All reuse the DO SSE-parsing structure; the chat-capable resource sets `detail.c
 - Route 53: uses shared dns.ts helpers (renderDnsRecordDetail, renderDnsRecordSidebar, dnsZoneStatus) for DNS record rendering
 - Create support for 8 resource types: EC2 Instance (AMI picker, instance type picker, disk slider, SSH key), EKS Cluster (K8s version picker), S3 Bucket, VPC, Security Group, SQS Queue, SNS Topic, DynamoDB Table (partition/sort key, billing mode)
 - EC2 AMI resolution: image picker submits a family slug (`al2023`, `amzn2`, `ubuntu-2204`, `ubuntu-2404`, `debian-12`, `rhel-9`, `sles-15`) — `ami-lookup.ts` resolves it at create time to a real region+arch-specific AMI ID. Amazon Linux / Ubuntu / Debian go through SSM Public Parameters (`AmazonSSM.GetParameter`); RHEL / SUSE go through `DescribeImages` with vendor owner IDs (`309956199498`, `013907871322`). Architecture is derived from the instance type — Graviton families ending in `g[a-z]*` and `a1.*` map to `arm64`, everything else to `x86_64`. SSH username comes from a per-family table at create time; the legacy AMI→username map in `ssh-username.ts` remains as a fallback for synced/listed instances.
-- `getCreateCostEstimate` handles `ec2-instance` (instance + gp3 root volume), `ebs-volume` (sizeGb × per-volumeType rate for gp3/gp2/io2/st1/sc1/standard), and `rds-instance` (instance class + gp2 allocated storage); pricing is approximated for us-east-1
+- `estimateCost` handles `ec2-instance` (instance + gp3 root volume), `ebs-volume` (sizeGb × the selected volume type's rate), `rds-instance` (instance class + gp2 allocated storage; Aurora prices instance hours only — its volume is consumption-billed) and `eks-cluster` (nodes × instance + node volumes; control plane deliberately unpriced, so the estimate is `partial`). Every rate is live and per-region through `pricing.ts` (`pricing:GetProducts`), not a table — see the cost-estimate section below
 - 27 AWS regions configured for create form region picker
 - EC2 instance types: T3 burstable, M6i general purpose, C6i compute-optimized, R6i memory-optimized
 - Delete support for 18 resource types: EC2 Instance, EBS Volume, VPC, Subnet, Security Group, NAT Gateway, Elastic IP, Internet Gateway, S3 Bucket, Lambda Function, SQS Queue, SNS Topic, DynamoDB Table, Secrets Manager Secret, ECR Repository, CloudFormation Stack, SSM Parameter, CloudWatch Alarm, CloudWatch Log Group, CloudTrail Trail, SageMaker Endpoint
@@ -2158,6 +2158,24 @@ The sheets are `mobile/src/features/dashboard/{AddCard,CostGraph,Budget,BudgetPi
 
 Docs: `website/src/content/docs/features/cloud-costs.md` (+ dashboard.md "+"-menu update, roles doc, per-plugin pages).
 
+### Cost estimates (forward-looking, all four surfaces)
+
+`fetchCostData` reports what a provider **has** billed; `PluginClient.estimateCost(typeId, fields)` answers what a configuration **would** cost per month. It replaced `getCreateCostEstimate`, which returned a bare `number | null` and could therefore only ever be a badge — the shape is now `CostEstimate` (`plugin-base/src/cost.ts`): a `monthlyAmount` that is **always** the sum of its `lineItems`, a `currency`, an optional `partial` flag and `notes`. Build one with `buildCostEstimate(lineItems, opts)` rather than by hand: it drops unpriced/zero components, rounds each line to cents _before_ summing (so the displayed lines add up to the displayed total), sorts largest-first, and returns `null` when nothing priced.
+
+**`null` is not `$0`.** "We can't price this" and "this is free" are different answers and the whole capability exists to keep them apart — a `$0` quote for an unknown SKU is exactly the failure the old static AWS table produced. Same rule at every layer: `buildCostEstimate` returns null rather than an empty estimate, the API returns `estimate: null`, and no host renders a chip. When only _part_ of a resource can be priced, quote that part and set `partial` — hosts then say "at least $X/mo".
+
+**Field keys are the create form's.** That is the one spelling every caller can produce, and it is what the form has in hand mid-typing. Hosts pricing an _existing_ resource pass its stored fields, so a plugin whose lister spells a key differently must accept both — `fields["size"] ?? fields["vmSize"]` on Azure, the same split `rightsizing.createSizeFieldKey` already names. AWS needed none: its listers already store `region`/`instanceType`/`sizeGb`/`volumeType`/`instanceClass`/`allocatedStorage`/`engine`/`multiAZ` under the create form's names.
+
+**Implemented by four plugins** — aws, azure, gcp, digitalocean. All rates are live and per-region: AWS `pricing.ts` (Price List `GetProducts`, SigV4 against api.pricing.us-east-1, 6h cache per (service, region, dimensions) — which is what makes it safe to call on every keystroke), Azure Retail Prices, GCP Cloud Billing catalog, DO's published size prices. The static us-east-1 table that used to back AWS is gone; its `cost-estimate.ts` now takes credentials and fetches. Unverifiable filters fail **closed**: a `databaseEngine` string AWS spells differently matches no SKU, so the line drops and the estimate goes partial rather than falling through to another engine's rate.
+
+**One route, three questions** — `POST /api/org/:orgId/resources/cost-estimate` (renamed from `create-cost-estimate`; response changed from a number to an object, hence the `API_VERSION` minor bump). `fields` prices a proposed create, `resourceId` prices an existing resource, **both** prices a proposed edit — `fields` is merged over the stored fields, so the caller sends only what changed. `server-core/src/cost/estimate.ts` owns that merge (`estimateResourceCost`) so the route and the digest can't drift; the web route only handles the peer-client case itself, because peer plumbing is web-only.
+
+**Surfaces.** Create form: `useCreateResourceForm` debounces 220ms and the plugin's estimate _wins over_ the size-picker price (the picker can't see boot disks or node counts). Resource detail: a `costEstimate` prop on `DetailView` renders the same `CostEstimateChip` in the header, so the create-time quote and the after-the-fact one are one number. Edit modal: `EditResourceModal.loadCostEstimate` prices `{}` for the baseline and the changed keys for the projection, then `costEstimateDelta` → "This change adds $340/month" (null across currencies or with either side unpriced — an unknown end makes the delta unknown, not nil). Mobile: `features/costs/ResourceCostEstimateCard.tsx`, a card with the breakdown already open, because a phone header has no room for a disclosure. CLI: `infrawrench estimate <resource-id>` (`--json`), cloud-only. Weekly digest: a **Projected spend** line from `projectMonthlySpend`, deliberately separate from the spend totals — a cluster spun up last Sunday barely registers in last week's bill and is most of next month's.
+
+Formatting lives in `client-core/src/cost-estimate.ts` and deliberately does **not** reuse `formatMoney` from `costs.ts`: that one drops cents above $10, which is right for reported spend and wrong here — a create form's figure has to visibly move when a disk slider adds $0.37/month.
+
+`projectMonthlySpend` is the one part of the digest that talks to provider APIs, so it is bounded twice (250 resources, 12 accounts) and groups by account so each account's pricing cache is shared. It reports `unpricedCount` and `truncated` rather than hiding them, and the digest drops the line entirely when both sides are zero — "no change" would assert knowledge the estimates don't have.
+
 ### The Costs panel and budget lifecycle
 
 `CostsPanel` (`ui/src/cost/CostsPanel.tsx`) is a workspace tab beside Agents and Workflows — target kind `costs`, sidebar entry, `/costs` route on both hosts, and a read-only `costs` tab on mobile. It shows month-to-date spend (a fixed `mtd` config with only a group-by choice; anything configurable belongs on a dashboard where it can be saved) over the org's budgets.
@@ -2467,10 +2485,6 @@ one-time `POST /team/invitations` response. `decrypt()` now always takes an AAD;
   `aws/src/resource-listers-extended/security.ts`), never a plausible default. The WAF, Cognito and
   Step Function fallbacks in that file violate this and will display `defaultAction: ALLOW` /
   `mfaConfiguration: OFF` for resources whose real posture is unknown.
-- **Create-form cost estimates should come from the provider's pricing API**, per region — see
-  `azure/src/pricing.ts` and `gcp/src/pricing.ts`. `aws/src/cost-estimate.ts` is a static us-east-1
-  table covering instance generations the size picker no longer offers; treat it as known-broken
-  rather than the pattern to copy.
 - **Mobile secret fields render a "Tap to copy" affordance wired to nothing** — the
   `resolveFieldValue` handler it dispatches to is supplied by no screen, so it silently no-ops.
 - **`FilestoreInstanceResourceType`** is fully implemented in the GCP plugin — lister, create

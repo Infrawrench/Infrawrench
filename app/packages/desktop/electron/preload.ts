@@ -121,7 +121,7 @@ const INVOKE_CHANNELS = [
   "cloud_delete_resource",
   "cloud_get_create_config",
   "cloud_get_create_pricing",
-  "cloud_get_create_cost_estimate",
+  "cloud_get_cost_estimate",
   "cloud_invoke_action",
   "cloud_fetch_metrics",
   "cloud_get_logs",

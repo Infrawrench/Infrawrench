@@ -10,6 +10,8 @@ The **Costs** panel in the sidebar is where your budgets live. Dashboards show c
 
 > **Cloud only.** Cost collection runs on Infrawrench Cloud's background pollers and time-series store. On the desktop app the widgets appear when you are signed into a cloud org; local-only mode does not collect cost data.
 
+> Costs are **billed history**. For what a resource you are about to create or resize _would_ cost, see [live cost estimates](./cost-estimates.md).
+
 ## Add a cost graph
 
 1. Open a dashboard and click the **+** tile.

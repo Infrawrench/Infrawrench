@@ -10,6 +10,7 @@ import {
   setOutputRefSecretState,
 } from "@infrawrench/server-core/secret-states";
 import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
+import { estimateResourceCost } from "@infrawrench/server-core/cost/estimate";
 import { normalizeResourceCreateResult, parseOutputRef } from "@infrawrench/plugin-base";
 import type { OutputRefValue } from "@infrawrench/plugin-base";
 import { requirePermission } from "../../../auth/permissions";
@@ -20,7 +21,7 @@ import { checkTagPolicyOnCreate } from "../../../services/tag-policy";
 
 /**
  * Lifecycle routes: create / delete / picker-resources / field-action /
- * create-config / create-pricing / create-cost-estimate.
+ * create-config / create-pricing / cost-estimate.
  *
  * These cover the resource-creation form's needs (option lookups, pricing
  * estimates, action buttons) plus the create + delete endpoints. The create
@@ -550,30 +551,53 @@ export function registerLifecycleRoutes(app: Hono): void {
     return c.json(result);
   });
 
-  /** POST /api/resources/create-cost-estimate — get cost estimate for create form */
-  app.post("/create-cost-estimate", async (c) => {
+  /**
+   * POST /api/resources/cost-estimate — monthly cost of a configuration.
+   *
+   * One route for all three questions the UI asks: what would this create
+   * cost (`fields`), what does this resource cost (`resourceId`), and what
+   * would this edit cost (both — `fields` is merged over the resource's
+   * stored fields, so the caller sends only what changed).
+   *
+   * A peer-resource client (`pluginId` + `parentResourceId`) is resolved here
+   * rather than in server-core, because only the web host has the peer
+   * plumbing; the ordinary account path delegates so the digest and this
+   * route cannot drift in how they merge fields.
+   */
+  app.post("/cost-estimate", async (c) => {
     requirePermission(c, "resources:read");
     const organizationId = c.get("organizationId");
     const input = await c.req.json<{
       accountId: string;
       resourceTypeId: string;
-      fields: Record<string, string>;
+      fields?: Record<string, string>;
+      resourceId?: string;
       pluginId?: string;
       parentResourceId?: string;
     }>();
 
-    const ctx = input.pluginId
-      ? await getClientForResource(
-          input.pluginId,
-          input.accountId,
-          organizationId,
-          input.parentResourceId,
-        )
-      : await getClientForAccount(input.accountId, organizationId);
-    if (!ctx) return c.json({ error: "Account or peer resource not found" }, 404);
-    if (!ctx.client.getCreateCostEstimate) return c.json({ estimate: null });
+    if (!input.pluginId) {
+      const estimate = await estimateResourceCost(organizationId, {
+        accountId: input.accountId,
+        resourceTypeId: input.resourceTypeId,
+        fields: input.fields,
+        resourceId: input.resourceId,
+      });
+      return c.json({ estimate });
+    }
 
-    const estimate = await ctx.client.getCreateCostEstimate(input.resourceTypeId, input.fields);
+    const ctx = await getClientForResource(
+      input.pluginId,
+      input.accountId,
+      organizationId,
+      input.parentResourceId,
+    );
+    if (!ctx) return c.json({ error: "Account or peer resource not found" }, 404);
+    if (!ctx.client.estimateCost) return c.json({ estimate: null });
+
+    const estimate = await ctx.client
+      .estimateCost(input.resourceTypeId, input.fields ?? {})
+      .catch(() => null);
     return c.json({ estimate: estimate ?? null });
   });
 }

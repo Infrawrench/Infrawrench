@@ -13,7 +13,7 @@ import {
   fetchCloudMetrics,
   fetchCloudPeerPanes,
   getCloudCreateConfig,
-  getCloudCreateCostEstimate,
+  getCloudCostEstimate,
   getCloudCreatePricing,
   getCloudDescribe,
   getCloudLogs,
@@ -159,16 +159,30 @@ describe("cloud-resources straightforward wrappers", () => {
     });
   });
 
-  it("getCloudCreateCostEstimate", async () => {
-    invoke.mockResolvedValue({ estimate: {} });
-    await getCloudCreateCostEstimate("org1", "acc", "t", { f: "v" });
-    expect(invoke).toHaveBeenCalledWith("cloud_get_create_cost_estimate", {
+  it("getCloudCostEstimate unwraps the estimate and omits absent options", async () => {
+    const estimate = { monthlyAmount: 9.19, currency: "USD", lineItems: [] };
+    invoke.mockResolvedValue({ estimate });
+    expect(
+      await getCloudCostEstimate("org1", "acc", "ec2-instance", { fields: { f: "v" } }),
+    ).toEqual(estimate);
+    expect(invoke).toHaveBeenCalledWith("cloud_get_cost_estimate", {
       orgId: "org1",
       accountId: "acc",
-      resourceTypeId: "t",
+      resourceTypeId: "ec2-instance",
       fields: { f: "v" },
-      pluginId: undefined,
-      parentResourceId: undefined,
+    });
+  });
+
+  it("getCloudCostEstimate prices an existing resource by id", async () => {
+    invoke.mockResolvedValue({ estimate: null });
+    expect(
+      await getCloudCostEstimate("org1", "acc", "ec2-instance", { resourceId: "acc:t:i-1" }),
+    ).toBeNull();
+    expect(invoke).toHaveBeenCalledWith("cloud_get_cost_estimate", {
+      orgId: "org1",
+      accountId: "acc",
+      resourceTypeId: "ec2-instance",
+      resourceId: "acc:t:i-1",
     });
   });
 

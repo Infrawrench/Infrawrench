@@ -262,10 +262,10 @@ describe("AzureClient pricing", () => {
     expect(fetchSpy.mock.calls.length).toBe(callsAfterFirst);
   });
 
-  it("getCreateCostEstimate uses region rates (defaults region to eastus)", async () => {
+  it("estimateCost uses region rates (defaults region to eastus)", async () => {
     const client = new AzureClient(creds);
     vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ Items: [] }));
-    const est = await client.getCreateCostEstimate("azure-vm", { size: "unknown" });
+    const est = await client.estimateCost("azure-vm", { size: "unknown" });
     expect(est).toBeNull();
   });
 });

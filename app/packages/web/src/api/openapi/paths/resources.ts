@@ -321,13 +321,36 @@ const CreatePricingRequest = strict({
   parentResourceId: ResourceId.optional(),
 }).openapi("CreatePricingRequest");
 
-const CreateCostEstimateRequest = strict({
+const CostEstimateRequest = strict({
   accountId: Uuid,
   resourceTypeId: z.string(),
-  fields: z.record(z.string()),
+  /**
+   * Field values to price, keyed the way the create form keys them. Omit it
+   * together with `resourceId` to price an existing resource from its stored
+   * fields; supply both to price a proposed edit of one.
+   */
+  fields: z.record(z.string()).optional(),
+  /** An existing resource to price. Its stored fields seed the estimate. */
+  resourceId: ResourceId.optional(),
   pluginId: z.string().optional(),
   parentResourceId: ResourceId.optional(),
-}).openapi("CreateCostEstimateRequest");
+}).openapi("CostEstimateRequest");
+
+const CostEstimateLineItem = strict({
+  label: z.string(),
+  monthlyAmount: z.number(),
+  detail: z.string().optional(),
+  quantity: z.number().optional(),
+  unit: z.string().optional(),
+}).openapi("CostEstimateLineItem");
+
+const CostEstimate = strict({
+  monthlyAmount: z.number(),
+  currency: z.string(),
+  lineItems: z.array(CostEstimateLineItem),
+  partial: z.boolean().optional(),
+  notes: z.array(z.string()).optional(),
+}).openapi("CostEstimate");
 
 const FieldActionRequest = strict({
   accountId: Uuid,
@@ -808,21 +831,29 @@ export function registerResourcePaths(ctx: BuildContext) {
 
   registry.registerPath({
     method: "post",
-    path: "/api/org/{orgId}/resources/create-cost-estimate",
+    path: "/api/org/{orgId}/resources/cost-estimate",
     tags: ["Resources"],
-    summary: "Cost estimate for the current create form values",
+    summary: "Estimated monthly cost of a configuration",
+    description:
+      "Calls the plugin's `estimateCost` and returns a monthly total with the line items behind " +
+      "it. Price a proposed resource by passing `fields`, an existing one by passing " +
+      "`resourceId`, or a proposed change to an existing one by passing both — `fields` is " +
+      "merged over the resource's stored fields, so the caller only sends what changed. " +
+      "`estimate` is null when the plugin cannot price the configuration; that is not the same " +
+      "as an estimate of zero, and it should not be rendered as one.",
     request: {
       params: OrgIdParam,
       body: {
-        content: { "application/json": { schema: CreateCostEstimateRequest } },
+        content: { "application/json": { schema: CostEstimateRequest } },
         required: true,
       },
     },
     responses: {
       200: {
-        description: "Estimate",
-        content: { "application/json": { schema: strict({ estimate: JsonObject.nullable() }) } },
+        description: "Estimate, or null when the plugin cannot price this configuration",
+        content: { "application/json": { schema: strict({ estimate: CostEstimate.nullable() }) } },
       },
+      404: ErrorResponses[404],
     },
   });
 

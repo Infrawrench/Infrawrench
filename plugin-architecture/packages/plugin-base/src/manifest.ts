@@ -448,10 +448,25 @@ export interface PluginClient {
     request: CreateSizePricingRequest,
   ): Promise<Record<string, number>>;
   /**
-   * Optionally estimate the total monthly cost for the current create-form field values.
-   * Plugins can include provider-specific components like storage in this estimate.
+   * Estimate what a configuration would cost per month, as a total plus the
+   * line items that make it up. See {@link CostEstimate}.
+   *
+   * `fields` is a bag of field values keyed the way the *create form* keys
+   * them — that is the one spelling every caller can produce, and it is what
+   * the create form has in hand while the user is still typing. Hosts asking
+   * about an existing resource pass its stored fields instead, so a plugin
+   * whose lister spells a key differently from its create form (Azure's
+   * `vmSize` vs `size`, the same split `rightsizing.createSizeFieldKey`
+   * already names) should accept both spellings.
+   *
+   * Implementations must be cheap enough to call on every keystroke: the
+   * create form debounces and then calls this on each field change, so rates
+   * belong in the plugin's existing pricing cache, not in a fresh API round
+   * trip per call. Return `null` for a type this plugin cannot price, and
+   * quote a partial estimate (never a guessed one) when only some components
+   * have known rates.
    */
-  getCreateCostEstimate?(typeId: string, fields: Record<string, string>): Promise<number | null>;
+  estimateCost?(typeId: string, fields: Record<string, string>): Promise<CostEstimate | null>;
   /**
    * Execute an in-form field action (declared via `CreateFieldConfig.actions`).
    * Plugins typically use this to mint a dependency mid-form — e.g. generate
@@ -844,7 +859,7 @@ export interface Plugin {
 }
 
 // Forward declarations — defined in their own modules but used here
-import type { CostCapabilityDeclaration, CostFetchRange, CostRow } from "./cost.js";
+import type { CostCapabilityDeclaration, CostEstimate, CostFetchRange, CostRow } from "./cost.js";
 import type { PolicyTemplate, PreflightDeclaration, PreflightResult } from "./preflight.js";
 import type { StatusFeedDeclaration, StatusIncident } from "./status-feed.js";
 import type { ResourceCreateReturn, ResourceInstance } from "./instance.js";

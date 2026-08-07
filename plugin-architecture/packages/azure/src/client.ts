@@ -24,6 +24,7 @@
  *   - shared.ts                    common types/constants
  */
 import type {
+  CostEstimate,
   CostFetchRange,
   CostRow,
   PluginClient,
@@ -80,7 +81,7 @@ import { getAzureCreateConfig } from "./create-config-dispatch.js";
 import { createAzureResource } from "./create-dispatch.js";
 import {
   azureSupportsSizePricing,
-  getAzureCreateCostEstimate,
+  estimateAzureCost,
   getAzureCreateSizePricing,
 } from "./pricing-estimates.js";
 
@@ -463,13 +464,15 @@ export class AzureClient implements PluginClient {
     return getAzureCreateSizePricing(rates, request);
   }
 
-  async getCreateCostEstimate(
-    typeId: string,
-    fields: Record<string, string>,
-  ): Promise<number | null> {
-    const region = fields["region"] ?? "eastus";
+  /**
+   * Monthly estimate with line items, priced from the region's Retail Prices
+   * rates. `location` is the lister's spelling of the form's `region`, so the
+   * same call prices an existing resource from its stored fields.
+   */
+  async estimateCost(typeId: string, fields: Record<string, string>): Promise<CostEstimate | null> {
+    const region = fields["region"] || fields["location"] || "eastus";
     const rates = await this.getPricingRatesForRegion(region);
-    return getAzureCreateCostEstimate(typeId, fields, rates);
+    return estimateAzureCost(typeId, fields, rates);
   }
 
   // ─── Create / attach / delete / manifest / export ─────────────────────

@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseXml, ensureArray } from "../xml.js";
 import { ec2SshUsernameFromImageName, ec2SshUsername } from "../ssh-username.js";
-import { getCreateCostEstimate } from "../cost-estimate.js";
 import { instanceTypeArch, isImageFamily, FAMILY_SSH_USERNAME } from "../ami-lookup.js";
 import { policiesToOptions } from "../iam-policies.js";
 import { decodeIndexesField, buildDynamoSchemaTab } from "../dynamodb-detail.js";
@@ -93,53 +92,6 @@ describe("ssh-username", () => {
 
   it("ec2SshUsername always empty (id-only fallback)", () => {
     expect(ec2SshUsername("ami-123")).toBe("");
-  });
-});
-
-describe("cost-estimate", () => {
-  it("estimates ec2 with disk", () => {
-    const v = getCreateCostEstimate("ec2-instance", { instanceType: "t3.micro", diskSizeGb: "20" });
-    // base 7.59 + 20*0.08 = 9.19
-    expect(v).toBeCloseTo(9.19, 2);
-  });
-  it("ec2 defaults disk to 20 when missing", () => {
-    const v = getCreateCostEstimate("ec2-instance", { instanceType: "t3.nano" });
-    expect(v).toBeCloseTo(3.8 + 20 * 0.08, 2);
-  });
-  it("ec2 unknown type -> null", () => {
-    expect(getCreateCostEstimate("ec2-instance", { instanceType: "zz.huge" })).toBeNull();
-  });
-  it("ec2 non-finite disk treated as 0", () => {
-    const v = getCreateCostEstimate("ec2-instance", {
-      instanceType: "t3.nano",
-      diskSizeGb: "abc",
-    });
-    expect(v).toBeCloseTo(3.8, 2);
-  });
-  it("ebs gp3 and unknown-volume-type fallback", () => {
-    expect(getCreateCostEstimate("ebs-volume", { sizeGb: "100", volumeType: "gp3" })).toBeCloseTo(
-      8,
-      2,
-    );
-    expect(getCreateCostEstimate("ebs-volume", { sizeGb: "100", volumeType: "weird" })).toBeCloseTo(
-      8,
-      2,
-    );
-  });
-  it("ebs invalid size -> null", () => {
-    expect(getCreateCostEstimate("ebs-volume", { sizeGb: "0" })).toBeNull();
-    expect(getCreateCostEstimate("ebs-volume", { sizeGb: "-5" })).toBeNull();
-  });
-  it("rds estimate and unknown class", () => {
-    const v = getCreateCostEstimate("rds-instance", {
-      instanceClass: "db.t3.micro",
-      allocatedStorage: "20",
-    });
-    expect(v).toBeCloseTo(12.41 + 20 * 0.115, 2);
-    expect(getCreateCostEstimate("rds-instance", { instanceClass: "db.unknown" })).toBeNull();
-  });
-  it("unknown type -> null", () => {
-    expect(getCreateCostEstimate("s3-bucket", {})).toBeNull();
   });
 });
 

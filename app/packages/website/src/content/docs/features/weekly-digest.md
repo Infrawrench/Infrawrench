@@ -12,6 +12,7 @@ Each digest covers the last complete Monday-to-Sunday week and contains:
 - **Top movers** — the three providers and three services whose spend changed the most week-over-week, from the [cost pipeline](./cloud-costs.md).
 - **Sync incidents** opened during the week.
 - **Resources added and removed** during the week.
+- **Projected spend** — what those additions and removals do to your _monthly run-rate_, from the same [cost estimates](./cost-estimates.md) the create form quotes. This is deliberately separate from the spend total above: a cluster spun up last Sunday barely registers in last week's bill and is most of next month's. Omitted when nothing that changed could be priced.
 - Optionally, an **AI-written opening paragraph** summarizing what changed (off by default — see below).
 
 > **Cloud only.** Like the alert transports, the digest is composed and sent by the cloud's background poller. The desktop app does not send digests.

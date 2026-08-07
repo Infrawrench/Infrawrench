@@ -41,6 +41,7 @@ import {
 import { itemsWithinLead } from "@infrawrench/client-core";
 import { queryCosts } from "../clickhouse/cost-readers";
 import { listExpiring } from "../expiry/feed";
+import { MAX_RESOURCES_PER_PROJECTION, projectMonthlySpend } from "../cost/estimate";
 import { listPosture } from "../posture/feed";
 import { sendSlackToOrg } from "../slack";
 import { sendMsTeamsToOrg } from "../msteams";
@@ -58,6 +59,7 @@ import {
   formatDigestTeamsBody,
   isDigestDue,
   isValidTimeZone,
+  type DigestProjection,
   type DigestSchedule,
   type DigestWindow,
   type IsoWeekday,
@@ -230,7 +232,71 @@ export async function buildWeeklyDigest(
     expiringSoon,
     postureCritical: postureCounts.critical,
     postureHigh: postureCounts.high,
+    projection: await buildProjection(organizationId, fromDate, toDatePlusOne),
   });
+}
+
+/**
+ * The run-rate the week's churn leaves behind, from the plugins'
+ * `estimateCost`. Runs *after* the counts above rather than alongside them
+ * because it is the one part of the digest that talks to provider APIs — it
+ * is bounded (see `MAX_RESOURCES_PER_PROJECTION`), and it must never be the
+ * reason a digest fails to send, so the whole thing is wrapped.
+ *
+ * The id queries take one more row than the projection will price, which is
+ * how truncation is detected without a second count.
+ */
+async function buildProjection(
+  organizationId: string,
+  fromDate: Date,
+  toDatePlusOne: Date,
+): Promise<DigestProjection | null> {
+  try {
+    const idsIn = (column: typeof resources.createdAt | typeof resources.deletedAt) =>
+      db
+        .select({ id: resources.id })
+        .from(resources)
+        .where(
+          and(
+            eq(resources.organizationId, organizationId),
+            gte(column, fromDate),
+            lt(column, toDatePlusOne),
+          ),
+        )
+        .limit(MAX_RESOURCES_PER_PROJECTION + 1)
+        .then((rows) => rows.map((r) => r.id));
+
+    const [addedIds, removedIds] = await Promise.all([
+      idsIn(resources.createdAt),
+      idsIn(resources.deletedAt),
+    ]);
+    if (addedIds.length === 0 && removedIds.length === 0) return null;
+
+    const [addedSpend, removedSpend] = await Promise.all([
+      projectMonthlySpend(organizationId, addedIds),
+      projectMonthlySpend(organizationId, removedIds),
+    ]);
+    if (!addedSpend && !removedSpend) return null;
+
+    // Mixed currencies across the two sides would make the net meaningless,
+    // so the smaller side is dropped to `unpriced` rather than subtracted.
+    const currency = addedSpend?.currency ?? removedSpend?.currency ?? "USD";
+    const usable = (spend: typeof addedSpend) => (spend?.currency === currency ? spend : null);
+    const add = usable(addedSpend);
+    const remove = usable(removedSpend);
+    return {
+      currency,
+      addedMonthly: add?.monthlyAmount ?? 0,
+      removedMonthly: remove?.monthlyAmount ?? 0,
+      unpricedCount:
+        (add?.unpricedCount ?? addedSpend?.pricedCount ?? 0) +
+        (remove?.unpricedCount ?? removedSpend?.pricedCount ?? 0),
+      truncated: (add?.truncated ?? false) || (remove?.truncated ?? false),
+    };
+  } catch (err) {
+    console.error(`[digest] projected spend for org ${organizationId} failed:`, err);
+    return null;
+  }
 }
 
 export interface DigestDeliveryResult {

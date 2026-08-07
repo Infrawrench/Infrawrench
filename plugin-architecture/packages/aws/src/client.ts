@@ -9,6 +9,7 @@ import type {
   CreateResourceConfig,
   DashboardStat,
   MetricSeries,
+  CostEstimate,
   CostFetchRange,
   CostRow,
   CredentialExport,
@@ -112,7 +113,7 @@ import {
   fetchDashboardStats as fetchDashboardStatsImpl,
   fetchMetricSeries as fetchMetricSeriesImpl,
 } from "./dashboard-metrics.js";
-import { getCreateCostEstimate as getCreateCostEstimateImpl } from "./cost-estimate.js";
+import { estimateAwsCost } from "./cost-estimate.js";
 import { fetchEc2MonthlyPrices } from "./pricing.js";
 import { fetchAwsCostData } from "./cost-data.js";
 import { attachResource as attachResourceImpl } from "./attach-handlers.js";
@@ -639,18 +640,19 @@ export class AWSClient implements PluginClient {
     throw new Error(`AWS plugin: updateResource not supported for type "${typeId}"`);
   }
 
-  async getCreateCostEstimate(
-    typeId: string,
-    fields: Record<string, string>,
-  ): Promise<number | null> {
-    return getCreateCostEstimateImpl(typeId, fields);
+  /**
+   * Monthly cost estimate with line items, priced per region through the
+   * Price List Query API. Requires `pricing:GetProducts`; without it every
+   * rate resolves to null and no estimate is quoted at all.
+   */
+  async estimateCost(typeId: string, fields: Record<string, string>): Promise<CostEstimate | null> {
+    return estimateAwsCost(this.creds, typeId, fields);
   }
 
   /**
    * Per-region monthly on-demand prices for the size picker, via the Price
-   * List Query API — the live replacement for the static `cost-estimate.ts`
-   * table. Requires the `pricing:GetProducts` permission; without it the
-   * result is empty and the picker simply shows no price chips.
+   * List Query API. Requires the `pricing:GetProducts` permission; without it
+   * the result is empty and the picker simply shows no price chips.
    */
   async getCreateSizePricing(
     typeId: string,

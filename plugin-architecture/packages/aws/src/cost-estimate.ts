@@ -1,77 +1,212 @@
-// Approximate monthly on-demand pricing (us-east-1, Linux)
-const EC2_PRICING: Record<string, number> = {
-  "t3.nano": 3.8,
-  "t3.micro": 7.59,
-  "t3.small": 15.18,
-  "t3.medium": 30.37,
-  "t3.large": 60.74,
-  "t3.xlarge": 121.47,
-  "t3.2xlarge": 242.94,
-  "m6i.large": 69.35,
-  "m6i.xlarge": 138.7,
-  "m6i.2xlarge": 277.4,
-  "m6i.4xlarge": 554.8,
-  "m6i.8xlarge": 1109.6,
-  "c6i.large": 61.32,
-  "c6i.xlarge": 122.64,
-  "c6i.2xlarge": 245.28,
-  "c6i.4xlarge": 490.56,
-  "r6i.large": 91.98,
-  "r6i.xlarge": 183.96,
-  "r6i.2xlarge": 367.92,
-  "r6i.4xlarge": 735.84,
-};
+/**
+ * Per-type monthly cost estimation for AWS, built on the live Price List
+ * rates in `./pricing.ts`.
+ *
+ * This module used to be a static us-east-1 table. That table quoted the same
+ * number in Tokyo as in Virginia and had drifted to instance generations the
+ * size picker no longer offers, so it was recorded as known-broken rather
+ * than trusted. Everything here now resolves through `pricing:GetProducts`
+ * for the region the form has selected, and anything without a resolvable
+ * rate is left out of the estimate instead of being approximated — see
+ * `buildCostEstimate`, which drops unpriced components and returns `null`
+ * when nothing at all could be priced.
+ *
+ * Field keys are the create form's. The listers happen to store the same
+ * spellings (`region`, `instanceType`, `sizeGb`, `volumeType`,
+ * `instanceClass`, `allocatedStorage`, `engine`, `multiAZ`), so the same call
+ * prices an existing resource from its stored fields.
+ */
+import {
+  buildCostEstimate,
+  type CostEstimate,
+  type CostEstimateLineItem,
+} from "@infrawrench/plugin-base";
 
-// EBS per-GB-month pricing (us-east-1). Covers every volumeType offered
-// in the ebs-volume create form.
-const EBS_PER_GB_MONTH: Record<string, number> = {
-  gp3: 0.08,
-  gp2: 0.1,
-  io2: 0.125,
-  st1: 0.045,
-  sc1: 0.015,
-  standard: 0.05,
-};
+import type { AwsCredentials } from "./auth.js";
+import {
+  fetchEbsGbMonthPrice,
+  fetchEc2MonthlyPrice,
+  fetchRdsMonthlyPrice,
+  fetchRdsStorageGbMonthPrice,
+} from "./pricing.js";
 
-const ebsRate = (volumeType: string): number =>
-  EBS_PER_GB_MONTH[volumeType] ?? EBS_PER_GB_MONTH["gp3"]!;
+/** EC2 and EKS node groups both provision a gp3 root volume — see `createResource`. */
+const ROOT_VOLUME_TYPE = "gp3";
+/** `CreateDBInstance` defaults allocated storage to General Purpose (gp2). */
+const RDS_DEFAULT_STORAGE_GB = 20;
 
-export function getCreateCostEstimate(
+function positiveNumber(raw: string | undefined, fallback: number): number {
+  const n = Number(raw ?? fallback);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function isTrue(raw: string | undefined): boolean {
+  return raw === "true";
+}
+
+function money(usd: number): string {
+  // Storage rates run to four decimals ($0.0800/GB-month); instance-hour
+  // rates to five. Trailing zeros are trimmed so the common case reads as
+  // "$0.08" rather than "$0.08000".
+  return `$${Number(usd.toFixed(5))}`;
+}
+
+/** A `sizeGb × rate` line, or null when the rate or the size is unusable. */
+function storageLine(
+  label: string,
+  sizeGb: number,
+  gbMonthUsd: number | null,
+  detailSuffix = "",
+): CostEstimateLineItem | null {
+  if (gbMonthUsd == null || sizeGb <= 0) return null;
+  return {
+    label,
+    monthlyAmount: sizeGb * gbMonthUsd,
+    detail: `${sizeGb} GB × ${money(gbMonthUsd)}/GB-month${detailSuffix}`,
+    quantity: sizeGb,
+    unit: "GB",
+  };
+}
+
+/**
+ * Estimate the monthly cost of an AWS configuration.
+ *
+ * `region` comes from the form's region picker (and from the lister's stored
+ * `region` field for an existing resource); it falls back to the account's
+ * own region, which is what the region picker itself defaults to.
+ */
+export async function estimateAwsCost(
+  credentials: AwsCredentials,
   typeId: string,
   fields: Record<string, string>,
-): number | null {
+): Promise<CostEstimate | null> {
+  const region = fields["region"] || credentials.region;
+  if (!region) return null;
+
   if (typeId === "ec2-instance") {
     const instanceType = fields["instanceType"] ?? "";
-    const basePrice = EC2_PRICING[instanceType];
-    if (basePrice == null) return null;
-    // EC2 create provisions a gp3 root volume (see createResource).
-    const diskGb = Number(fields["diskSizeGb"] ?? "20");
-    const diskCost = (Number.isFinite(diskGb) ? diskGb : 0) * ebsRate("gp3");
-    return Number((basePrice + diskCost).toFixed(2));
+    if (!instanceType) return null;
+    const diskGb = positiveNumber(fields["diskSizeGb"], 20);
+    const [instanceMonthly, diskRate] = await Promise.all([
+      fetchEc2MonthlyPrice(credentials, region, instanceType),
+      diskGb > 0 ? fetchEbsGbMonthPrice(credentials, region, ROOT_VOLUME_TYPE) : null,
+    ]);
+    return buildCostEstimate(
+      [
+        instanceMonthly == null
+          ? null
+          : {
+              label: `Instance (${instanceType})`,
+              monthlyAmount: instanceMonthly,
+              detail: `${money(instanceMonthly / 730)}/hour × 730 h`,
+            },
+        storageLine(`Root volume (${ROOT_VOLUME_TYPE})`, diskGb, diskRate),
+      ],
+      {
+        partial: instanceMonthly == null || (diskGb > 0 && diskRate == null),
+        notes: ["On-demand Linux rate. Data transfer and snapshots are not included."],
+      },
+    );
   }
+
   if (typeId === "ebs-volume") {
-    const sizeGb = Number(fields["sizeGb"] ?? "20");
-    if (!Number.isFinite(sizeGb) || sizeGb <= 0) return null;
-    const volumeType = fields["volumeType"] ?? "gp3";
-    return Number((sizeGb * ebsRate(volumeType)).toFixed(2));
+    const sizeGb = positiveNumber(fields["sizeGb"], 20);
+    if (sizeGb <= 0) return null;
+    const volumeType = fields["volumeType"] || ROOT_VOLUME_TYPE;
+    const rate = await fetchEbsGbMonthPrice(credentials, region, volumeType);
+    return buildCostEstimate([storageLine(`Volume (${volumeType})`, sizeGb, rate)], {
+      partial: rate == null,
+      notes:
+        volumeType === "io2" || volumeType === "io1"
+          ? ["Capacity only — provisioned IOPS are billed separately."]
+          : [],
+    });
   }
+
   if (typeId === "rds-instance") {
-    // Approximate on-demand pricing (us-east-1, PostgreSQL, single-AZ, 730h/month)
-    const rdsPricing: Record<string, number> = {
-      "db.t3.micro": 12.41,
-      "db.t3.small": 24.82,
-      "db.t3.medium": 49.64,
-      "db.t3.large": 99.28,
-      "db.r6g.large": 175.2,
-      "db.r6g.xlarge": 350.4,
-    };
     const instanceClass = fields["instanceClass"] ?? "";
-    const basePrice = rdsPricing[instanceClass];
-    if (basePrice == null) return null;
-    // RDS defaults allocated storage to gp2 ($0.115/GB-month in us-east-1).
-    const storageGb = Number(fields["allocatedStorage"] ?? "20");
-    const storageCost = (Number.isFinite(storageGb) ? storageGb : 0) * 0.115;
-    return Number((basePrice + storageCost).toFixed(2));
+    if (!instanceClass) return null;
+    const engine = fields["engine"] || "postgres";
+    // The lister stores `multiAZ`; the create form has no such control yet, so
+    // an absent value means the single-AZ deployment `CreateDBInstance` makes.
+    const multiAz = isTrue(fields["multiAZ"]);
+    // Aurora has no allocated storage — its volume grows with the data and is
+    // billed per GB consumed, so there is no provisioned figure to multiply
+    // and quoting `allocatedStorage` here would invent one.
+    const isAurora = engine.startsWith("aurora-");
+    const storageGb = isAurora
+      ? 0
+      : positiveNumber(fields["allocatedStorage"], RDS_DEFAULT_STORAGE_GB);
+    const [instanceMonthly, storageRate] = await Promise.all([
+      fetchRdsMonthlyPrice(credentials, region, instanceClass, engine, multiAz),
+      storageGb > 0 ? fetchRdsStorageGbMonthPrice(credentials, region, multiAz) : null,
+    ]);
+    const deployment = multiAz ? "Multi-AZ" : "Single-AZ";
+    return buildCostEstimate(
+      [
+        instanceMonthly == null
+          ? null
+          : {
+              label: `Instance (${instanceClass})`,
+              monthlyAmount: instanceMonthly,
+              detail: `${deployment} ${engine}, ${money(instanceMonthly / 730)}/hour × 730 h`,
+            },
+        storageLine("Allocated storage", storageGb, storageRate, ` (${deployment})`),
+      ],
+      {
+        partial: instanceMonthly == null || (storageGb > 0 && storageRate == null) || isAurora,
+        notes: isAurora
+          ? ["Instance hours only — Aurora storage and I/O are billed per GB and per request."]
+          : ["Backups beyond the free allocation and I/O are not included."],
+      },
+    );
   }
+
+  if (typeId === "eks-cluster") {
+    // The control plane is a flat per-cluster hourly charge that the Price
+    // List API publishes under AmazonEKS; the nodes are ordinary EC2. Node
+    // count is the replica dimension here, so the estimate has to move when
+    // the count does — that is the whole point of quoting it live.
+    const instanceType = fields["instanceType"] ?? "";
+    const nodeCount = Math.max(1, Math.floor(positiveNumber(fields["nodeCount"], 2)));
+    const diskGb = positiveNumber(fields["diskSizeGb"], 20);
+    const [nodeMonthly, diskRate] = await Promise.all([
+      instanceType ? fetchEc2MonthlyPrice(credentials, region, instanceType) : null,
+      diskGb > 0 ? fetchEbsGbMonthPrice(credentials, region, ROOT_VOLUME_TYPE) : null,
+    ]);
+    const perNodeDisk = diskRate == null ? 0 : diskGb * diskRate;
+    return buildCostEstimate(
+      [
+        nodeMonthly == null
+          ? null
+          : {
+              label: `Nodes (${nodeCount} × ${instanceType})`,
+              monthlyAmount: nodeMonthly * nodeCount,
+              detail: `${nodeCount} × ${money(nodeMonthly)}/month`,
+              quantity: nodeCount,
+              unit: "nodes",
+            },
+        perNodeDisk === 0
+          ? null
+          : {
+              label: `Node volumes (${ROOT_VOLUME_TYPE})`,
+              monthlyAmount: perNodeDisk * nodeCount,
+              detail: `${nodeCount} × ${diskGb} GB × ${money(diskRate!)}/GB-month`,
+              quantity: nodeCount * diskGb,
+              unit: "GB",
+            },
+      ],
+      {
+        // The control-plane charge is real and is deliberately not guessed at
+        // — the estimate says so rather than quietly under-quoting.
+        partial: true,
+        notes: [
+          "Worker nodes only — the EKS control-plane hourly charge is not included.",
+          "Load balancers created by services are billed separately.",
+        ],
+      },
+    );
+  }
+
   return null;
 }

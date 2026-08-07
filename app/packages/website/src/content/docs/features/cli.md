@@ -122,6 +122,13 @@ infrawrench oversized
 infrawrench oversized --json
 ```
 
+`estimate` prints one resource's [monthly cost estimate](./cost-estimates.md) at the provider's list price, itemized — the same figure the create form and the resource page quote. Cloud-only, and a projection rather than a bill: `costs` is what you were actually charged, this is the run-rate the resource's current shape implies:
+
+```
+infrawrench estimate acc-123:ec2-instance:i-0abc
+infrawrench estimate acc-123:ec2-instance:i-0abc --json
+```
+
 `tags` and `showback` are the [tag governance](./tag-policy-and-showback.md) reports: the org's required tags with per-account compliance scores and the spend missing a required key, and spend grouped by cost centre through the org's allocation rules:
 
 ```
