@@ -163,6 +163,16 @@ const INVOKE_CHANNELS = [
   "cloud_posture",
   "cloud_changes_list",
   "cloud_status_incidents",
+  // Agents mode against an org — the local pipeline has its own (non-cloud)
+  // channels; these drive the org's sessions through the web API instead.
+  "cloud_agents_accounts",
+  "cloud_agents_get_settings",
+  "cloud_agents_save_settings",
+  "cloud_agents_list_sessions",
+  "cloud_agents_create_session",
+  "cloud_agents_open_session",
+  "cloud_agents_reconcile_session",
+  "cloud_agents_delete_session",
   // Settings tab proxy — one channel for the whole settings API surface; the
   // main-process handler enforces a method+path allowlist (cloud-data/settings.ts).
   "cloud_settings_request",

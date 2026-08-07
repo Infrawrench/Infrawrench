@@ -16,14 +16,12 @@ import { DashboardPanel } from "@/routes/dashboard.$dashboardId";
 import { AccountPanel } from "@/routes/accounts.$accountId";
 import { ResourcePanel } from "@/routes/resource.$accountId.$resourceId";
 import { getWorkspaceNavigateArgs, syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
-import { AgentsPanel, type AgentClient } from "@infrawrench/ui/agents";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
 import { type OrphansClient, type RightsizingClient, type SchedulesClient } from "@infrawrench/ui";
 import { createDesktopCostsClient } from "@/lib/costs-client";
 import { createDesktopSchedulesClient } from "@/lib/schedules-client";
 import { createDesktopOrphansClient } from "@/lib/orphans-client";
 import { createDesktopRightsizingClient } from "@/lib/rightsizing-client";
-import { createDesktopAgentClient } from "@/lib/agent-client";
 import { createDesktopDeploymentClient } from "@/lib/cloud-deployments";
 import { createDesktopLogWorkspaceClient } from "@/lib/log-workspace-client";
 import { LogWorkspacePanel, type LogWorkspaceClient } from "@infrawrench/ui";
@@ -38,12 +36,7 @@ import { DesktopMetricAlertsPanel } from "@/components/DesktopMetricAlertsPanel"
 import { DesktopProbesPanel } from "@/components/DesktopProbesPanel";
 import { DesktopSshFanoutPanel } from "@/components/DesktopSshFanoutPanel";
 import { DesktopSettingsPanel } from "@/components/DesktopSettingsPanel";
-
-let agentClient: AgentClient | null = null;
-function getAgentClient(): AgentClient {
-  if (!agentClient) agentClient = createDesktopAgentClient();
-  return agentClient;
-}
+import { DesktopAgentsPanel } from "@/components/DesktopAgentsPanel";
 
 // One client for every org: it resolves the active org per call, so switching
 // org under a mounted Deploy tab reaches the new org's repos and history.
@@ -155,12 +148,7 @@ function renderPanel(
     case "account":
       return <AccountPanel accountId={t.accountId} />;
     case "agents":
-      return (
-        <AgentsPanel
-          client={getAgentClient()}
-          openWorkspaceTarget={(target) => void navigate(getWorkspaceNavigateArgs(target))}
-        />
-      );
+      return <DesktopAgentsPanel navigate={(args) => void navigate(args)} />;
     case "workflows":
       return <DesktopWorkflowsPanel />;
     case "costs":

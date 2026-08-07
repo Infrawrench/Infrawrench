@@ -32,6 +32,7 @@ import {
   AGENT_CLI_INSTALL_SNIPPET,
   AGENT_MISE_SNIPPET,
   AGENT_NPM_PREFIX_SNIPPET,
+  AGENT_SETUP_LOCK_SNIPPET,
   AGENT_SETUP_STEP_PREFIX,
   AGENT_SYSTEM_PACKAGES_SNIPPET,
   agentToolAuthStatusCommand,
@@ -163,6 +164,7 @@ log_step() {
 }
 
 mkdir -p "$MARKER_DIR" "$PROJECTS_DIR"
+${AGENT_SETUP_LOCK_SNIPPET}
 if command -v t3 >/dev/null 2>&1 && command -v ${shellQuote(toolCommand)} >/dev/null 2>&1 && command -v ${shellQuote(companionCommand)} >/dev/null 2>&1 && [ -f "$MARKER" ]; then
   log_step "Bootstrap already complete."
   exit 0
@@ -214,7 +216,13 @@ ${AGENT_CLI_INSTALL_SNIPPET}
 # git (for the source-control features) comes from the same install.
 wait_for_system_packages
 
-install_cli_command t3 t3 'T3 Code'
+# node-pty publishes prebuilds for darwin-{arm64,x64} and win32-{x64,arm64}
+# only — there is NO Linux prebuild — so \`node scripts/prebuild.js\` always
+# falls through to \`node-gyp rebuild\` here and the addon is compiled on every
+# agent VM. Both it and msgpackr-extract must therefore be allow-listed:
+# without their install scripts t3 installs "successfully" and then dies the
+# first time it opens a terminal.
+install_cli_command t3 t3 'T3 Code' node-pty,msgpackr-extract
 # T3 Code drives provider CLIs rather than shipping them, so BOTH supported
 # CLIs are installed — not just the session's tool.
 #

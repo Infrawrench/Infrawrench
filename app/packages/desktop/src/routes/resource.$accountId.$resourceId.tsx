@@ -338,6 +338,29 @@ export function ResourcePanel({
     setAgentLaunchError(null);
 
     async function resolveAgentLaunchDefaults() {
+      // Cloud sessions live in the org, not this machine's SQLite, and the
+      // server owns the launch command and the managed org key — the same
+      // `POST /agents/sessions/:id/open` web rehydrates from. Reading the
+      // local table here would report "session no longer exists" for every
+      // agent tab opened against an org.
+      if (activeCloudOrgId) {
+        const result = await invoke<{
+          command: string;
+          cwd: string;
+          sshKeyId?: string;
+          sshKeyName?: string;
+        }>("cloud_agents_open_session", { orgId: activeCloudOrgId, sessionId: agentSessionId });
+        if (cancelled) return;
+        const cloudNext: AgentLaunchDefaults = {};
+        if (!sshKeyId && result.sshKeyId) cloudNext.sshKeyId = result.sshKeyId;
+        if (!sshKeyName && result.sshKeyName) cloudNext.sshKeyName = result.sshKeyName;
+        if (!initialCommand) cloudNext.initialCommand = result.command;
+        if (!initialCwd) cloudNext.initialCwd = result.cwd;
+        setAgentLaunchDefaults(cloudNext);
+        setResolvedAgentLaunchLookupKey(agentLaunchLookupKey);
+        return;
+      }
+
       const db = await getDb();
       // Look up the exact session this tab was opened for — never "the
       // latest session on this VM", which could belong to another tab.
@@ -395,6 +418,7 @@ export function ResourcePanel({
     };
   }, [
     accountId,
+    activeCloudOrgId,
     agentSessionId,
     agentLaunchLookupKey,
     decodedResourceId,
@@ -1160,6 +1184,9 @@ export function ResourcePanel({
             initialCommand={effectiveInitialCommand}
             initialCwd={effectiveInitialCwd}
             autoConnectReady={agentAutoConnectReady}
+            // An agent tab opened while an org is active is one of the org's
+            // sessions, so its key is the org's — see SshViewPane.
+            agentKeyScope={activeCloudOrgId ? "cloud" : "app"}
             agentLaunchError={agentLaunchError ?? undefined}
           />
         )}

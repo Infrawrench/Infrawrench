@@ -224,6 +224,24 @@ describe("buildAgentBootstrapCommand", () => {
     expect(bootstrap).toContain('touch "$MARKER"');
   });
 
+  // Regression: a dropped SSH channel makes the client retry the whole
+  // command while the previous run is still going on the VM. Overlapping
+  // `npm install -g` runs corrupt the shared prefix and strand a launcher
+  // symlink on a rolled-back package. Same guard as the T3 Code bootstrap.
+  it("serializes concurrent bootstrap runs before checking the marker", () => {
+    const bootstrap = unwrap(
+      buildAgentBootstrapCommand({
+        tool: "claude-code",
+        workspaceName: "my-app",
+        branchName: "infrawrench/agent-6f9619ff",
+        repo: "https://example.com/org/my-app.git",
+        setupPlan: plan(),
+      }),
+    );
+    expect(bootstrap).toContain('exec 9>"$MARKER_DIR/setup.lock"');
+    expect(bootstrap.indexOf("flock")).toBeLessThan(bootstrap.indexOf('[ -f "$MARKER" ]'));
+  });
+
   it("waits for the dpkg lock instead of failing on fresh VMs", () => {
     const bootstrap = unwrap(
       buildAgentBootstrapCommand({
@@ -266,10 +284,11 @@ describe("buildAgentBootstrapCommand", () => {
       }),
     );
     // Without allow-scripts, npm skips the CLI's postinstall and the `claude`
-    // launcher never lands in PATH.
-    expect(bootstrap).toContain(
-      'npm install -g --allow-scripts="$TOOL_PACKAGE" "$TOOL_PACKAGE@latest"',
-    );
+    // launcher never lands in PATH. The list starts at the tool package and
+    // grows by the caller's transitive script-deps (npm has no wildcard).
+    expect(bootstrap).toContain('allow_scripts="$TOOL_PACKAGE"');
+    expect(bootstrap).toContain('allow_scripts="$TOOL_PACKAGE,$TOOL_SCRIPT_DEPS"');
+    expect(bootstrap).toContain('npm install -g --allow-scripts="$allow_scripts"');
   });
 
   it("falls back to the Claude Code native installer when npm produces no CLI", () => {

@@ -6,17 +6,26 @@ sidebar_order: 24
 
 Agents create coding VM records from accounts whose provider plugins declare VM support. Open **Agents** from the sidebar, use the configuration menu in the header to choose a VM-capable account and save defaults for the VM shape and tool, then create a named session from a repository — picked from your connected GitHub repos on the cloud, or given as a Git URL or local path.
 
+## Local and organization sessions
+
+On the desktop app, Agents follows the org switcher, the same way [Workflows](./workflows.md) and [Deploy](./infrafile.md) do:
+
+- **Local-only mode** — sessions are stored on this machine, VMs are provisioned and bootstrapped from here, and the account list is the accounts you added to the desktop app. This is the mode that can use a **local folder** as the session's repository.
+- **With an organization selected** — you get the organization's sessions, the same ones the web app shows. They are provisioned from the **organization's** accounts, and the cloud runs the provisioning and VM bootstrap, so a session keeps setting itself up whether or not your laptop is awake. The GitHub repository picker is available here; local folders are not, because the cloud pipeline has no way to reach a folder on your machine.
+
+The two sets are separate and nothing is copied between them. If an account only exists in the organization — a GCP project added on the web, say — select that organization to use it as an agent target; it will not appear in local-only mode.
+
 <insert [Agents panel showing the header configuration menu, repo input, and a setting-up agent session with its VM id] here>
 
 ## Defaults
 
 Infrawrench lists accounts that can create VMs through provider plugin capabilities. The header configuration menu stores VM settings such as size, image, region, and selected coding tool. Those controls come from the provider plugin's create form metadata, so the Agents defaults match the normal create flow for the provider.
 
-Agents can target either Codex or Claude Code. The selected tool is stored on the session so setup installs and launches the right coding environment on the VM. A second control, **Interface**, chooses how you talk to that tool: **Terminal (SSH)** attaches its CLI in a terminal tab, and **T3 Code** installs the [T3 Code](./t3-code.md) server to drive it instead — there the session's button becomes **Authorize server**, and you use the machine from T3 Code's own app afterwards. The two are independent — T3 Code is a control surface, not an agent, so it still installs and signs in to the tool you picked. Desktop sessions copy the selected tool's local credential and settings files into the VM. Codex sessions copy selected files from `~/.codex`, such as `auth.json`, `config.toml`, and skills. Claude Code sessions copy selected settings and plugins from `~/.claude` plus `~/.claude.json` when those paths exist. Local sessions, logs, caches, temp files, downloads, and package stores are skipped.
+Agents can target either Codex or Claude Code. The selected tool is stored on the session so setup installs and launches the right coding environment on the VM. A second control, **Interface**, chooses how you talk to that tool: **Terminal (SSH)** attaches its CLI in a terminal tab, and **T3 Code** installs the [T3 Code](./t3-code.md) server to drive it instead — there the session's button becomes **Authorize server**, and you use the machine from T3 Code's own app afterwards. The two are independent — T3 Code is a control surface, not an agent, so it still installs and signs in to the tool you picked. Local-only desktop sessions copy the selected tool's local credential and settings files into the VM (organization sessions are bootstrapped by the cloud, which has no access to your machine's config). Codex sessions copy selected files from `~/.codex`, such as `auth.json`, `config.toml`, and skills. Claude Code sessions copy selected settings and plugins from `~/.claude` plus `~/.claude.json` when those paths exist. Local sessions, logs, caches, temp files, downloads, and package stores are skipped.
 
-Desktop sessions also copy your `~/.gitconfig` so commits from the VM carry your identity. Settings that only work on your own machine are stripped on the way: GPG signing (the keys aren't there, and `commit.gpgsign=true` would fail every commit), credential helpers like `osxkeychain`, and **`url.*.insteadOf` rewrites that point at SSH**. That last one matters if you rewrite `https://github.com/` to SSH locally — the VM has no key registered with GitHub, so the rewrite would turn every HTTPS clone into a failing SSH one, including clones of public repositories. Rewrites to a non-SSH target (an internal HTTPS mirror) are kept.
+Local-only desktop sessions also copy your `~/.gitconfig` so commits from the VM carry your identity. Settings that only work on your own machine are stripped on the way: GPG signing (the keys aren't there, and `commit.gpgsign=true` would fail every commit), credential helpers like `osxkeychain`, and **`url.*.insteadOf` rewrites that point at SSH**. That last one matters if you rewrite `https://github.com/` to SSH locally — the VM has no key registered with GitHub, so the rewrite would turn every HTTPS clone into a failing SSH one, including clones of public repositories. Rewrites to a non-SSH target (an internal HTTPS mirror) are kept.
 
-Agent VMs use a dedicated Infrawrench-managed SSH key named `infrawrench-agent`. Cloud sessions create or reuse that key inside the organization. Desktop-only sessions create or reuse it in the local app key store. The key is injected into the provider's VM create field declared by the plugin, so providers such as DigitalOcean attach it during VM creation instead of falling back to password access.
+Agent VMs use a dedicated Infrawrench-managed SSH key named `infrawrench-agent`. Organization sessions create or reuse that key inside the organization, whichever surface you drive them from — so a desktop terminal opened against an org session connects with the org's key, whose private half stays server-side, rather than anything in your local key store. Local-only desktop sessions create or reuse the key in the local app key store. The key is injected into the provider's VM create field declared by the plugin, so providers such as DigitalOcean attach it during VM creation instead of falling back to password access.
 
 ## Choosing a repository
 
@@ -26,7 +35,7 @@ On the cloud, the session form shows a repository picker fed by the same [GitHub
 
 Private GitHub repositories picked this way clone cleanly on the VM: setup mints a short-lived GitHub App installation token for the clone and resets the workspace's `origin` remote to the plain repository URL afterwards, so no credential persists on the VM. To push the agent branch from the VM you still authenticate as usual (the setup token is not left behind).
 
-The desktop app has no GitHub App integration; it keeps the free-text **Git URL** input and the **Local folder** picker.
+The desktop app shows the same picker when an organization is selected — it reads that organization's GitHub App installations. In local-only mode there is no organization to read them from, so the form keeps the free-text **Git URL** input and the **Local folder** picker.
 
 ## Sessions
 
@@ -43,6 +52,8 @@ The setup policy is conservative: sessions stay in a setup state until the VM bo
 ## Reconciliation
 
 Use **Reconcile** to bring the agent branch back to the local repository as an `infrawrench/agent-*` branch. Infrawrench does not apply the diff to the current working tree automatically; review, merge, cherry-pick, or discard it with normal Git tools.
+
+This applies to local-only desktop sessions, which have a checkout on your machine to fetch into. An organization session clones from a Git URL on the VM and there is no local checkout on the server, so **Reconcile** there tells you to push the branch from the VM to your Git remote instead — open the agent terminal and push from inside the workspace.
 
 ## Deleting an agent
 

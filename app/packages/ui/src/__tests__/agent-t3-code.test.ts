@@ -119,6 +119,33 @@ describe("buildT3CodeBootstrapCommand", () => {
     expect(joined).toBeLessThan(firstInstall);
   });
 
+  // Regression: the setup client retries the whole command when the SSH
+  // channel drops, but the previous run keeps going on the VM. Two concurrent
+  // `npm install -g` into the same prefix corrupt each other and leave a
+  // launcher symlink pointing at a rolled-back package — the "launcher exists
+  // but is unusable" / "t3 did not install into PATH" failure. The lock must
+  // come before the marker check so the loser exits via "already complete"
+  // rather than redoing the install.
+  it("serializes concurrent bootstrap runs before checking the marker", () => {
+    const script = scriptBody(buildT3CodeBootstrapCommand({ tool: "codex" }));
+    const lock = script.indexOf("flock");
+    const markerCheck = script.indexOf('[ -f "$MARKER" ]');
+    const firstInstall = script.indexOf("\ninstall_cli_command t3");
+    expect(lock).toBeGreaterThan(-1);
+    expect(script).toContain('exec 9>"$MARKER_DIR/setup.lock"');
+    expect(lock).toBeLessThan(markerCheck);
+    expect(markerCheck).toBeLessThan(firstInstall);
+  });
+
+  // node-pty ships no Linux prebuild, so every agent VM compiles it. npm's
+  // allow-list is per package name with no wildcard and no transitive cover,
+  // so the addon must be named or npm 12 blocks the build and t3 installs
+  // "fine" then dies the first time it opens a terminal.
+  it("allow-lists t3's native transitive dependencies", () => {
+    const script = scriptBody(buildT3CodeBootstrapCommand({ tool: "codex" }));
+    expect(script).toContain("install_cli_command t3 t3 'T3 Code' node-pty,msgpackr-extract");
+  });
+
   it("installs a Node satisfying T3 Code's engines range and verifies it", () => {
     const script = scriptBody(buildT3CodeBootstrapCommand({ tool: "codex" }));
     expect(script).toContain(`install_runtime node '${T3_CODE_NODE_VERSION}'`);

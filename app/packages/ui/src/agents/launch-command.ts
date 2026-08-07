@@ -149,6 +149,45 @@ export function agentToolAuthStatusCommand(tool: AgentTool): string {
  * ------------------------------------------------------------------------ */
 
 /**
+ * Serializes bootstrap runs on the VM.
+ *
+ * `runAgentSetupCommandWithRetry` re-runs this whole command whenever the SSH
+ * channel drops (handshake timeout, auth race on a freshly-booted VM), but
+ * nothing kills the previous run — the remote `timeout 600s bash -lc …` keeps
+ * going with its stdout going nowhere. Two bootstraps then race, and
+ * concurrent `npm install -g` into the same prefix corrupts the tree: both
+ * installs die (ENOENT/ENOTEMPTY) and npm leaves a launcher symlink pointing
+ * at a package that was rolled back. That surfaces as "launcher exists but is
+ * unusable" → "removing unusable launcher" → "did not install into PATH",
+ * which reads like a packaging bug rather than the race it is.
+ *
+ * The wait is bounded well inside the caller's `timeout`, and the marker check
+ * must come *after* this lock so the loser exits fast via "already complete"
+ * instead of redoing the work.
+ *
+ * Must be placed after `log_step` and after `mkdir -p "$MARKER_DIR"`.
+ *
+ * Requires: `log_step`, `$MARKER_DIR`.
+ */
+export const AGENT_SETUP_LOCK_SNIPPET = `
+# fd 9 stays open for the life of the script; the lock releases on exit.
+exec 9>"$MARKER_DIR/setup.lock"
+if command -v flock >/dev/null 2>&1; then
+  if ! flock -n 9; then
+    log_step "Another setup run is already in progress on this VM; waiting for it."
+    if ! flock -w 480 9; then
+      echo "another VM setup run holds the setup lock and did not finish in time" >&2
+      exit 1
+    fi
+  fi
+else
+  # Every mainstream Linux image ships flock (util-linux/busybox). Without it
+  # we cannot serialize, so say so rather than corrupting the install silently.
+  echo "warning: flock is unavailable; concurrent setup runs cannot be serialized" >&2
+fi
+`;
+
+/**
  * Defines `$SUDO`, starts the system package install in the BACKGROUND, and
  * defines `wait_for_system_packages` to join it. Everything until that wait
  * only needs curl/tar/gzip, which every cloud image ships; build-dependent
@@ -299,11 +338,17 @@ link_tool_command() {
 `;
 
 /**
- * Defines `install_cli_command <command> <npm package> <label>`: installs a
- * global npm CLI and then fights through every way npm can leave a CLI
- * unusable (skipped postinstall, missing execute bit, dangling symlink, a
+ * Defines `install_cli_command <command> <npm package> <label> [script-deps]`:
+ * installs a global npm CLI and then fights through every way npm can leave a
+ * CLI unusable (skipped postinstall, missing execute bit, dangling symlink, a
  * binary parked outside this non-interactive shell's PATH). Exits non-zero
  * with diagnostics when the command still isn't runnable.
+ *
+ * `script-deps` is a comma-separated list of *transitive* packages whose
+ * install scripts must also be allow-listed. npm's allow-list names packages
+ * individually — it does not cover dependencies and has no wildcard — so a CLI
+ * with a native addon needs its addon named here or npm 12 will block the
+ * build and ship a CLI that fails at runtime instead of at install time.
  *
  * The three functions it defines read `$TOOL_COMMAND`/`$TOOL_PACKAGE`, which
  * `install_cli_command` assigns from its arguments — so the surrounding
@@ -389,6 +434,10 @@ install_cli_command() {
   TOOL_COMMAND="$1"
   TOOL_PACKAGE="$2"
   TOOL_LABEL="$3"
+  # Optional comma-separated transitive packages whose install scripts must
+  # also run — npm's allow-list is per package name and covers neither
+  # dependencies nor a wildcard (verified: --allow-scripts="*" is ignored).
+  TOOL_SCRIPT_DEPS="\${4:-}"
 
   if ! command -v "$TOOL_COMMAND" >/dev/null 2>&1; then
     log_step "Installing $TOOL_LABEL CLI."
@@ -398,7 +447,11 @@ install_cli_command() {
       # CLIs rely on a postinstall to set up their launcher, so without this the
       # package "installs" but the command never lands in PATH. Don't abort on
       # npm failure — a native-installer fallback may still succeed below.
-      npm install -g --allow-scripts="$TOOL_PACKAGE" "$TOOL_PACKAGE@latest" || echo "npm install of $TOOL_PACKAGE failed; trying fallback installer" >&2
+      allow_scripts="$TOOL_PACKAGE"
+      if [ -n "$TOOL_SCRIPT_DEPS" ]; then
+        allow_scripts="$TOOL_PACKAGE,$TOOL_SCRIPT_DEPS"
+      fi
+      npm install -g --allow-scripts="$allow_scripts" "$TOOL_PACKAGE@latest" || echo "npm install of $TOOL_PACKAGE failed; trying fallback installer" >&2
     else
       echo "npm is not available; trying fallback installer for $TOOL_COMMAND" >&2
     fi
@@ -591,6 +644,7 @@ log_step() {
 }
 
 mkdir -p "$MARKER_DIR"
+${AGENT_SETUP_LOCK_SNIPPET}
 if command -v "$TOOL_COMMAND" >/dev/null 2>&1 && command -v detachproc >/dev/null 2>&1 && [ -f "$MARKER" ]; then
   log_step "Bootstrap already complete."
   exit 0
