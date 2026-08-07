@@ -14,6 +14,7 @@ import {
   t3CodeConnectNextStep,
   T3_CODE_NODE_VERSION,
   T3_CODE_PROJECTS_DIR,
+  T3_CODE_SERVICE_NICE,
   T3_CODE_SYSTEMD_UNIT,
 } from "../agents/t3-code.js";
 
@@ -205,6 +206,29 @@ describe("buildT3CodeBootstrapCommand", () => {
     expect(bare).not.toContain("t3 service install");
   });
 
+  // The server holds the relay connection and streams the session, and every
+  // expensive process on the VM (the provider CLI, its builds, its tests) is
+  // one of its children. Nice values are inherited, so a bare `Nice=` would
+  // hand the children the same priority and change nothing; SCHED_RESET_ON_FORK
+  // is what keeps the boost on the server alone.
+  it("gives the service itself top CPU priority without passing it to children", () => {
+    const script = scriptBody(buildT3CodeBootstrapCommand({ tool: "codex" }));
+    expect(script).toContain(`Nice=${T3_CODE_SERVICE_NICE}`);
+    expect(T3_CODE_SERVICE_NICE).toBe(-20);
+    expect(script).toContain("CPUSchedulingResetOnFork=yes");
+    // systemd only issues the sched_setscheduler call carrying the flag when a
+    // policy is configured, so the boost silently fails to stop at the server
+    // without this line.
+    expect(script).toContain("CPUSchedulingPolicy=other");
+    // Its own drop-in file, ordered after the PATH one.
+    expect(script).toContain("20-infrawrench-priority.conf");
+    // A negative nice needs CAP_SYS_NICE, so on a non-root VM the drop-in
+    // could not raise the server above its children anyway — and older systemd
+    // fails the unit rather than clamping. Leave no priority drop-in there.
+    expect(script).toMatch(/if \[ "\$\(id -u\)" = "0" \]; then/);
+    expect(script).toContain('rm -f "$dropin_dir/20-infrawrench-priority.conf"');
+  });
+
   it("escapes a projects directory that would otherwise break out of the string", () => {
     const script = scriptBody(
       buildT3CodeBootstrapCommand({ tool: "codex", projectsDir: 'a"; rm -rf /; #' }),
@@ -241,7 +265,7 @@ describe("buildT3CodeConnectCommand", () => {
   // is fixed by re-running Authorize server.
   it("puts the installed CLIs on the service's PATH before restarting it", () => {
     const script = scriptBody(buildT3CodeConnectCommand({ tool: "codex" }));
-    const dropin = script.indexOf("install_t3_service_path_dropin\n");
+    const dropin = script.indexOf("install_t3_service_dropins\n");
     const restart = script.indexOf(`systemctl --user restart ${T3_CODE_SYSTEMD_UNIT}`);
     expect(dropin).toBeGreaterThan(-1);
     expect(dropin).toBeLessThan(restart);
