@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "0.44.0",
+    "version": "0.45.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -58,15 +58,15 @@
     },
     {
       "name": "Workflows",
-      "description": "Workflow (runbook) surface exposed over HTTP \u2014 the approval requests raised by infra.waitForApproval(...) inside runs, and the cron-schedule sub-resource. Full workflow CRUD is managed in the app."
+      "description": "Workflow (runbook) surface exposed over HTTP — the approval requests raised by infra.waitForApproval(...) inside runs, and the cron-schedule sub-resource. Full workflow CRUD is managed in the app."
     },
     {
       "name": "Resources",
-      "description": "CRUD, manifest, logs, secrets, metrics \u2014 all dispatched to plugins."
+      "description": "CRUD, manifest, logs, secrets, metrics — all dispatched to plugins."
     },
     {
       "name": "Changes",
-      "description": "Change timeline / drift feed \u2014 resources that appeared, changed, or disappeared between polls."
+      "description": "Change timeline / drift feed — resources that appeared, changed, or disappeared between polls."
     },
     {
       "name": "Connections",
@@ -86,7 +86,7 @@
     },
     {
       "name": "DNS",
-      "description": "Cross-provider DNS inventory \u2014 every synced zone and record, with dangling targets flagged as subdomain-takeover candidates."
+      "description": "Cross-provider DNS inventory — every synced zone and record, with dangling targets flagged as subdomain-takeover candidates."
     },
     {
       "name": "Sleep schedules",
@@ -102,11 +102,11 @@
     },
     {
       "name": "Credential hygiene",
-      "description": "Unused API keys, unreferenced SSH keys, and members holding write permissions they never exercise \u2014 derived from the audit log and the credential tables, with no provider call. Only writes are audit-logged, so the report deliberately draws no conclusion about read permissions."
+      "description": "Unused API keys, unreferenced SSH keys, and members holding write permissions they never exercise — derived from the audit log and the credential tables, with no provider call. Only writes are audit-logged, so the report deliberately draws no conclusion about read permissions."
     },
     {
       "name": "Break-glass access",
-      "description": "Time-boxed permission elevation: ask for specific permissions for a specific number of minutes with a reason, someone else approves, the elevation lapses on its own. Grants are unioned into the requester's permissions at resolution time, so they reach every surface at once \u2014 and are deliberately excluded from API keys, which are not people."
+      "description": "Time-boxed permission elevation: ask for specific permissions for a specific number of minutes with a reason, someone else approves, the elevation lapses on its own. Grants are unioned into the requester's permissions at resolution time, so they reach every surface at once — and are deliberately excluded from API keys, which are not people."
     },
     {
       "name": "Session recordings",
@@ -154,7 +154,7 @@
     },
     {
       "name": "Bastions",
-      "description": "Per-account egress agents \u2014 register a bastion, run the agent container on your infra, and bind accounts to it so cloud control-plane traffic exits from your IP."
+      "description": "Per-account egress agents — register a bastion, run the agent container on your infra, and bind accounts to it so cloud control-plane traffic exits from your IP."
     },
     {
       "name": "Agents",
@@ -468,7 +468,7 @@
             "items": {
               "$ref": "#/components/schemas/OrganizationRef"
             },
-            "description": "Deleted with the account \u2014 the caller is their only member."
+            "description": "Deleted with the account — the caller is their only member."
           },
           "organizationsToLeave": {
             "type": "array",
@@ -1196,7 +1196,7 @@
               "string",
               "null"
             ],
-            "description": "Provider-side identity the credential resolved to (ARN, service account\u2026)."
+            "description": "Provider-side identity the credential resolved to (ARN, service account…)."
           },
           "checks": {
             "type": "array",
@@ -1261,7 +1261,7 @@
               "null"
             ],
             "format": "uuid",
-            "description": "Bastion this account's cloud-API egress is routed through. `null` \u21d2 direct egress.",
+            "description": "Bastion this account's cloud-API egress is routed through. `null` ⇒ direct egress.",
             "example": "00000000-0000-0000-0000-000000000000"
           },
           "createdAt": {
@@ -2008,7 +2008,7 @@
           "workspace",
           "zone"
         ],
-        "description": "Resource type id. Note: not every plugin exposes every type \u2014 see the plugin's `resourceTypes` for the valid (pluginId, typeId) pairs.",
+        "description": "Resource type id. Note: not every plugin exposes every type — see the plugin's `resourceTypes` for the valid (pluginId, typeId) pairs.",
         "example": "access-application"
       },
       "Dashboard": {
@@ -3174,7 +3174,7 @@
               "spike",
               "new_source"
             ],
-            "description": "Which detection produced the row. `spike` is spend far above the key's own trailing baseline; `new_source` is a provider or service with no spend at all across the trailing window that suddenly has material spend \u2014 it can never be a `spike`, since a zero baseline has no mean or deviation to exceed. Rows written before new-source detection existed read as `spike`."
+            "description": "Which detection produced the row. `spike` is spend far above the key's own trailing baseline; `new_source` is a provider or service with no spend at all across the trailing window that suddenly has material spend — it can never be a `spike`, since a zero baseline has no mean or deviation to exceed. Rows written before new-source detection existed read as `spike`."
           },
           "dimension": {
             "type": "string",
@@ -3185,7 +3185,7 @@
           },
           "dimensionKey": {
             "type": "string",
-            "description": "The dimension's value \u2014 a plugin id or a service name."
+            "description": "The dimension's value — a plugin id or a service name."
           },
           "currency": {
             "type": "string"
@@ -3195,11 +3195,11 @@
           },
           "baselineCents": {
             "type": "integer",
-            "description": "Mean daily spend over the trailing 28-day baseline, in cents. Zero, or near it, for a `new_source` \u2014 clients must not compute a percentage change from it."
+            "description": "Mean daily spend over the trailing 28-day baseline, in cents. Zero, or near it, for a `new_source` — clients must not compute a percentage change from it."
           },
           "thresholdCents": {
             "type": "integer",
-            "description": "The detection bar the day cleared, in cents: baseline mean + N\u00b7stddev for a `spike`, the new-source floor for a `new_source`."
+            "description": "The detection bar the day cleared, in cents: baseline mean + N·stddev for a `spike`, the new-source floor for a `new_source`."
           },
           "detectedAt": {
             "type": "string",
@@ -3244,7 +3244,7 @@
             "type": "number",
             "minimum": 1,
             "maximum": 10,
-            "description": "Standard deviations above a key's own trailing mean that count as a spike. Lower is more sensitive. Bounded at 1 \u2014 below that roughly a third of ordinary days clear the bar \u2014 and at 10, above which nothing short of a 10x jump fires. Defaults to 3."
+            "description": "Standard deviations above a key's own trailing mean that count as a spike. Lower is more sensitive. Bounded at 1 — below that roughly a third of ordinary days clear the bar — and at 10, above which nothing short of a 10x jump fires. Defaults to 3."
           },
           "minDeltaCents": {
             "type": "integer",
@@ -3265,7 +3265,7 @@
               "new_source",
               "all"
             ],
-            "description": "Which anomalies also text the organization's Twilio recipients. Defaults to `off` \u2014 an organization with Twilio configured for budgets does not start receiving anomaly texts until it asks to. `new_source` texts only about spend appearing from nothing, which is what a leaked key looks like on a bill; `all` adds spikes on existing lines. Delivery is batched \u2014 one SMS per detection pass summarizing what it alerted on, at most one every six hours per organization \u2014 and never places a voice call. Push, Slack and Teams delivery is unaffected by this setting."
+            "description": "Which anomalies also text the organization's Twilio recipients. Defaults to `off` — an organization with Twilio configured for budgets does not start receiving anomaly texts until it asks to. `new_source` texts only about spend appearing from nothing, which is what a leaked key looks like on a bill; `all` adds spikes on existing lines. Delivery is batched — one SMS per detection pass summarizing what it alerted on, at most one every six hours per organization — and never places a voice call. Push, Slack and Teams delivery is unaffected by this setting."
           }
         },
         "required": [
@@ -3286,7 +3286,7 @@
             "properties": {
               "smsConfigured": {
                 "type": "boolean",
-                "description": "Whether an SMS raised right now could be delivered: paging enabled for the organization, Twilio credentials and a from-number stored, and at least one recipient opted into SMS. Read-only and derived \u2014 it is not accepted on PUT."
+                "description": "Whether an SMS raised right now could be delivered: paging enabled for the organization, Twilio credentials and a from-number stored, and at least one recipient opted into SMS. Read-only and derived — it is not accepted on PUT."
               }
             },
             "required": [
@@ -4899,7 +4899,7 @@
             "additionalProperties": {
               "type": "number"
             },
-            "description": "Currency code \u2192 amount in the currency's major unit."
+            "description": "Currency code → amount in the currency's major unit."
           },
           "untaggedTotals": {
             "type": "object",
@@ -4921,7 +4921,7 @@
                   "additionalProperties": {
                     "type": "number"
                   },
-                  "description": "Currency code \u2192 amount in the currency's major unit."
+                  "description": "Currency code → amount in the currency's major unit."
                 }
               },
               "required": [
@@ -5183,7 +5183,7 @@
                   "additionalProperties": {
                     "type": "number"
                   },
-                  "description": "Currency code \u2192 amount in the currency's major unit."
+                  "description": "Currency code → amount in the currency's major unit."
                 }
               },
               "required": [
@@ -5616,7 +5616,7 @@
           },
           "enabled": {
             "type": "boolean",
-            "description": "Mirrors the workflow's enabled flag \u2014 a disabled workflow's schedule never fires."
+            "description": "Mirrors the workflow's enabled flag — a disabled workflow's schedule never fires."
           },
           "lastRunAt": {
             "type": [
@@ -6407,7 +6407,7 @@
           "source": {
             "type": "string",
             "maxLength": 64,
-            "description": "Stable name for the system raising the page: letters, digits, `.`, `_` and `-`. It is the notification's sender, and it scopes the cooldown \u2014 two services paging under the same key never throttle each other.",
+            "description": "Stable name for the system raising the page: letters, digits, `.`, `_` and `-`. It is the notification's sender, and it scopes the cooldown — two services paging under the same key never throttle each other.",
             "example": "checkout-api"
           },
           "message": {
@@ -6437,7 +6437,7 @@
           },
           "voice": {
             "type": "boolean",
-            "description": "Also place a voice call to recipients who opted into voice. Off by default \u2014 reserve it for things worth waking someone up for."
+            "description": "Also place a voice call to recipients who opted into voice. Off by default — reserve it for things worth waking someone up for."
           }
         },
         "required": [
@@ -6968,7 +6968,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Container names available for this resource \u2014 drives the container picker."
+            "description": "Container names available for this resource — drives the container picker."
           },
           "activeContainer": {
             "type": "string",
@@ -8005,7 +8005,7 @@
           },
           "displayName": {
             "type": "string",
-            "description": "Resource display name at the time of the change \u2014 survives deletion."
+            "description": "Resource display name at the time of the change — survives deletion."
           },
           "changeKind": {
             "$ref": "#/components/schemas/ResourceChangeKind"
@@ -8096,7 +8096,7 @@
           },
           "notifyUpdated": {
             "type": "boolean",
-            "description": "Alert on field-level updates. Defaults to false \u2014 updates are the bulk of the volume and are usually a provider restating a value."
+            "description": "Alert on field-level updates. Defaults to false — updates are the bulk of the volume and are usually a provider restating a value."
           },
           "notifyDeleted": {
             "type": "boolean",
@@ -8335,7 +8335,7 @@
           "overlappingChangeCount": {
             "type": "integer",
             "minimum": 0,
-            "description": "Change-timeline events recorded on this provider during the incident window \u2014 \"these N changes happened during an incident\"."
+            "description": "Change-timeline events recorded on this provider during the incident window — \"these N changes happened during an incident\"."
           }
         },
         "required": [
@@ -8443,7 +8443,7 @@
               "expiry",
               "age"
             ],
-            "description": "`expiry` \u2014 the field held the deadline itself; `age` \u2014 the deadline was derived from a creation/rotation date plus an age budget."
+            "description": "`expiry` — the field held the deadline itself; `age` — the deadline was derived from a creation/rotation date plus an age budget."
           },
           "dueAt": {
             "type": "string",
@@ -8993,7 +8993,7 @@
               "integer",
               "null"
             ],
-            "description": "The provider's own record count, when reported. May exceed `recordCount` \u2014 several plugins list zones without listing their records."
+            "description": "The provider's own record count, when reported. May exceed `recordCount` — several plugins list zones without listing their records."
           },
           "danglingCount": {
             "type": "integer"
@@ -9125,7 +9125,7 @@
               "external",
               "not-analysed"
             ],
-            "description": "What can be said about a record target from synced state alone. `owned` \u2014 the value is an identity of a synced resource. `dangling` \u2014 the value falls inside a provider namespace this workspace manages (an S3 endpoint, a `*.vercel.app` alias) and no synced resource claims it, which is the subdomain-takeover signature. `external` \u2014 the value points somewhere there is no declaration for; not a finding. `not-analysed` \u2014 the record type carries no host target that is reasoned about (TXT, MX, SOA, CAA, SRV)."
+            "description": "What can be said about a record target from synced state alone. `owned` — the value is an identity of a synced resource. `dangling` — the value falls inside a provider namespace this workspace manages (an S3 endpoint, a `*.vercel.app` alias) and no synced resource claims it, which is the subdomain-takeover signature. `external` — the value points somewhere there is no declaration for; not a finding. `not-analysed` — the record type carries no host target that is reasoned about (TXT, MX, SOA, CAA, SRV)."
           },
           "resource": {
             "$ref": "#/components/schemas/DnsTargetResource"
@@ -9325,7 +9325,7 @@
             "items": {
               "$ref": "#/components/schemas/DnsSkippedNamespace"
             },
-            "description": "Provider namespaces that were declared but not evaluated, and why \u2014 either no account for the plugin is connected, or no claimant resource has synced. Both are missing data rather than a clean bill of health, so they are reported rather than hidden."
+            "description": "Provider namespaces that were declared but not evaluated, and why — either no account for the plugin is connected, or no claimant resource has synced. Both are missing data rather than a clean bill of health, so they are reported rather than hidden."
           },
           "generatedAt": {
             "type": "string",
@@ -9423,7 +9423,7 @@
               "string",
               "null"
             ],
-            "description": "Target id where the kind needs one (resource id, run id, freeze id\u2026)."
+            "description": "Target id where the kind needs one (resource id, run id, freeze id…)."
           },
           "parentId": {
             "type": [
@@ -9437,7 +9437,7 @@
               "string",
               "null"
             ],
-            "description": "Absolute external URL \u2014 a provider's incident page. Wins when present."
+            "description": "Absolute external URL — a provider's incident page. Wins when present."
           }
         },
         "required": [
@@ -9457,7 +9457,7 @@
           },
           "kind": {
             "type": "string",
-            "description": "Fine-grained `<noun>.<verb>` kind, e.g. `change.created`, `incident.started`, `workflow-run.failed`, `deployment.finished`, `freeze.started`, `drift-alert.sent`. Open set \u2014 render unknown kinds generically."
+            "description": "Fine-grained `<noun>.<verb>` kind, e.g. `change.created`, `incident.started`, `workflow-run.failed`, `deployment.finished`, `freeze.started`, `drift-alert.sent`. Open set — render unknown kinds generically."
           },
           "timestamp": {
             "type": "string",
@@ -9472,7 +9472,7 @@
               "string",
               "null"
             ],
-            "description": "Optional second line \u2014 diff summary, actor, error text."
+            "description": "Optional second line — diff summary, actor, error text."
           },
           "severity": {
             "$ref": "#/components/schemas/MomentSeverity"
@@ -9578,7 +9578,7 @@
           "startedAt"
         ],
         "additionalProperties": false,
-        "description": "A provider incident whose span overlaps the window \u2014 returned alongside the events so clients can badge events that fall inside it (\"during DigitalOcean incident\")."
+        "description": "A provider incident whose span overlaps the window — returned alongside the events so clients can badge events that fall inside it (\"during DigitalOcean incident\")."
       },
       "MomentResponse": {
         "type": "object",
@@ -9599,7 +9599,7 @@
           "windowMinutes": {
             "type": "integer",
             "exclusiveMinimum": 0,
-            "description": "The half-window actually applied, after clamping to 1\u20134320 minutes."
+            "description": "The half-window actually applied, after clamping to 1–4320 minutes."
           },
           "generatedAt": {
             "type": "string",
@@ -9610,7 +9610,7 @@
             "items": {
               "$ref": "#/components/schemas/MomentFeedStatus"
             },
-            "description": "One entry per feed, in canonical order \u2014 including omitted and errored feeds."
+            "description": "One entry per feed, in canonical order — including omitted and errored feeds."
           },
           "events": {
             "type": "array",
@@ -9677,7 +9677,7 @@
             },
             "minItems": 1,
             "maxItems": 7,
-            "description": "ISO weekdays the resource is worked on: 1 = Monday \u2026 7 = Sunday.",
+            "description": "ISO weekdays the resource is worked on: 1 = Monday … 7 = Sunday.",
             "example": [
               1,
               2,
@@ -9768,7 +9768,7 @@
               "number",
               "null"
             ],
-            "description": "Projected monthly saving from trailing per-resource spend \u00d7 the weekly off-hours fraction; null when billing holds no rows for the resource."
+            "description": "Projected monthly saving from trailing per-resource spend × the weekly off-hours fraction; null when billing holds no rows for the resource."
           },
           "currency": {
             "type": [
@@ -9859,7 +9859,7 @@
             },
             "minItems": 1,
             "maxItems": 7,
-            "description": "ISO weekdays the resource is worked on: 1 = Monday \u2026 7 = Sunday.",
+            "description": "ISO weekdays the resource is worked on: 1 = Monday … 7 = Sunday.",
             "example": [
               1,
               2,
@@ -9923,7 +9923,7 @@
         "properties": {
           "offFraction": {
             "type": "number",
-            "description": "Fraction of the week (0\u20131) the schedule keeps the resource stopped."
+            "description": "Fraction of the week (0–1) the schedule keeps the resource stopped."
           },
           "monthlyCost": {
             "type": [
@@ -9953,7 +9953,7 @@
             "items": {
               "$ref": "#/components/schemas/ScheduleTransition"
             },
-            "description": "The next few transitions, soonest first \u2014 a timezone sanity check."
+            "description": "The next few transitions, soonest first — a timezone sanity check."
           }
         },
         "required": [
@@ -9986,7 +9986,7 @@
             },
             "minItems": 1,
             "maxItems": 7,
-            "description": "ISO weekdays the resource is worked on: 1 = Monday \u2026 7 = Sunday.",
+            "description": "ISO weekdays the resource is worked on: 1 = Monday … 7 = Sunday.",
             "example": [
               1,
               2,
@@ -10035,7 +10035,7 @@
             },
             "minItems": 1,
             "maxItems": 7,
-            "description": "ISO weekdays the resource is worked on: 1 = Monday \u2026 7 = Sunday.",
+            "description": "ISO weekdays the resource is worked on: 1 = Monday … 7 = Sunday.",
             "example": [
               1,
               2,
@@ -10121,7 +10121,7 @@
               "failed",
               "canceled"
             ],
-            "description": "Lease lifecycle: `active` (counting down), `deleted` (auto-delete completed), `failed` (auto-delete was retried and given up on \u2014 see `lastError`), or `canceled` (called off; the resource stays)."
+            "description": "Lease lifecycle: `active` (counting down), `deleted` (auto-delete completed), `failed` (auto-delete was retried and given up on — see `lastError`), or `canceled` (called off; the resource stays)."
           },
           "firstWarningAt": {
             "type": [
@@ -10359,7 +10359,7 @@
               "truncated",
               "abandoned"
             ],
-            "description": "`recording` (live), `complete` (closed cleanly), `truncated` (hit the per-session capture ceiling \u2014 the tape is a genuine partial and says so), or `abandoned` (the server handling the session went away before it could close the row)."
+            "description": "`recording` (live), `complete` (closed cleanly), `truncated` (hit the per-session capture ceiling — the tape is a genuine partial and says so), or `abandoned` (the server handling the session went away before it could close the row)."
           },
           "outputBytes": {
             "type": "integer",
@@ -10445,7 +10445,7 @@
           },
           "captureInput": {
             "type": "boolean",
-            "description": "Also record keystrokes. Separate from `enabled` because it captures input at prompts the remote host chose not to echo \u2014 a sudo password, a pasted token \u2014 which is a materially different promise to the people being recorded."
+            "description": "Also record keystrokes. Separate from `enabled` because it captures input at prompts the remote host chose not to echo — a sudo password, a pasted token — which is a materially different promise to the people being recorded."
           },
           "retentionDays": {
             "type": "integer",
@@ -10582,7 +10582,7 @@
           },
           "active": {
             "type": "boolean",
-            "description": "True when this row is granting permissions right now. Evaluated, never swept \u2014 a grant stops applying the instant it lapses."
+            "description": "True when this row is granting permissions right now. Evaluated, never swept — a grant stops applying the instant it lapses."
           },
           "createdAt": {
             "type": "string",
@@ -10912,7 +10912,7 @@
           },
           "capabilityLabel": {
             "type": "string",
-            "description": "The provider's own word for this pot \u2014 \"Credits\", \"Balance\"."
+            "description": "The provider's own word for this pot — \"Credits\", \"Balance\"."
           },
           "topUpUrl": {
             "type": [
@@ -10922,7 +10922,7 @@
           },
           "potKey": {
             "type": "string",
-            "description": "Stable identity for this pot within the account \u2014 a currency code, a project id \u2014 so successive readings line up into a series."
+            "description": "Stable identity for this pot within the account — a currency code, a project id — so successive readings line up into a series."
           },
           "label": {
             "type": "string"
@@ -10957,7 +10957,7 @@
               "number",
               "null"
             ],
-            "description": "Spend per day over the observed span. **Null means there is not enough history to say** \u2014 never 0, which would read as 'nothing is being spent'."
+            "description": "Spend per day over the observed span. **Null means there is not enough history to say** — never 0, which would read as 'nothing is being spent'."
           },
           "burnSpanDays": {
             "type": "number"
@@ -10967,7 +10967,7 @@
           },
           "topUps": {
             "type": "integer",
-            "description": "Increases seen between consecutive readings. A top-up is recorded, never netted off the burn \u2014 subtracting the endpoints of a window containing one reports a negative burn and an infinite runway."
+            "description": "Increases seen between consecutive readings. A top-up is recorded, never netted off the burn — subtracting the endpoints of a window containing one reports a negative burn and an infinite runway."
           },
           "runwayDays": {
             "type": [
@@ -11092,7 +11092,7 @@
               "format": "uuid",
               "example": "00000000-0000-0000-0000-000000000000"
             },
-            "description": "Credit-capable accounts never yet collected \u2014 named rather than omitted."
+            "description": "Credit-capable accounts never yet collected — named rather than omitted."
           },
           "burnWindowDays": {
             "type": "integer"
@@ -11123,22 +11123,22 @@
           },
           "method": {
             "type": "string",
-            "description": "HTTP method the probe uses \u2014 GET, HEAD or OPTIONS. Unknown values become GET.",
+            "description": "HTTP method the probe uses — GET, HEAD or OPTIONS. Unknown values become GET.",
             "example": "GET"
           },
           "intervalSeconds": {
             "type": "integer",
-            "description": "Seconds between checks. Clamped server-side to 60\u201386400.",
+            "description": "Seconds between checks. Clamped server-side to 60–86400.",
             "example": 60
           },
           "timeoutMs": {
             "type": "integer",
-            "description": "Per-check timeout in milliseconds. Clamped server-side to 1000\u201360000.",
+            "description": "Per-check timeout in milliseconds. Clamped server-side to 1000–60000.",
             "example": 10000
           },
           "failureThreshold": {
             "type": "integer",
-            "description": "Consecutive failures before the probe flips to `down` and notifies. Clamped 1\u201320.",
+            "description": "Consecutive failures before the probe flips to `down` and notifies. Clamped 1–20.",
             "example": 3
           },
           "enabled": {
@@ -11237,7 +11237,7 @@
               "number",
               "null"
             ],
-            "description": "Fraction (0\u20131) of the trailing 24h the endpoint was up, from the recorded series; null before the first result lands in the metric store."
+            "description": "Fraction (0–1) of the trailing 24h the endpoint was up, from the recorded series; null before the first result lands in the metric store."
           },
           "createdAt": {
             "type": "string",
@@ -11295,7 +11295,7 @@
         "properties": {
           "url": {
             "type": "string",
-            "description": "Normalized to an absolute URL \u2014 bare hosts get https://."
+            "description": "Normalized to an absolute URL — bare hosts get https://."
           },
           "resourceId": {
             "type": "string"
@@ -11356,22 +11356,22 @@
           },
           "method": {
             "type": "string",
-            "description": "HTTP method the probe uses \u2014 GET, HEAD or OPTIONS. Unknown values become GET.",
+            "description": "HTTP method the probe uses — GET, HEAD or OPTIONS. Unknown values become GET.",
             "example": "GET"
           },
           "intervalSeconds": {
             "type": "integer",
-            "description": "Seconds between checks. Clamped server-side to 60\u201386400.",
+            "description": "Seconds between checks. Clamped server-side to 60–86400.",
             "example": 60
           },
           "timeoutMs": {
             "type": "integer",
-            "description": "Per-check timeout in milliseconds. Clamped server-side to 1000\u201360000.",
+            "description": "Per-check timeout in milliseconds. Clamped server-side to 1000–60000.",
             "example": 10000
           },
           "failureThreshold": {
             "type": "integer",
-            "description": "Consecutive failures before the probe flips to `down` and notifies. Clamped 1\u201320.",
+            "description": "Consecutive failures before the probe flips to `down` and notifies. Clamped 1–20.",
             "example": 3
           },
           "enabled": {
@@ -11402,22 +11402,22 @@
           },
           "method": {
             "type": "string",
-            "description": "HTTP method the probe uses \u2014 GET, HEAD or OPTIONS. Unknown values become GET.",
+            "description": "HTTP method the probe uses — GET, HEAD or OPTIONS. Unknown values become GET.",
             "example": "GET"
           },
           "intervalSeconds": {
             "type": "integer",
-            "description": "Seconds between checks. Clamped server-side to 60\u201386400.",
+            "description": "Seconds between checks. Clamped server-side to 60–86400.",
             "example": 60
           },
           "timeoutMs": {
             "type": "integer",
-            "description": "Per-check timeout in milliseconds. Clamped server-side to 1000\u201360000.",
+            "description": "Per-check timeout in milliseconds. Clamped server-side to 1000–60000.",
             "example": 10000
           },
           "failureThreshold": {
             "type": "integer",
-            "description": "Consecutive failures before the probe flips to `down` and notifies. Clamped 1\u201320.",
+            "description": "Consecutive failures before the probe flips to `down` and notifies. Clamped 1–20.",
             "example": 3
           },
           "enabled": {
@@ -12081,7 +12081,7 @@
         "properties": {
           "resourceId": {
             "type": "string",
-            "description": "Infrawrench resource id of the stream to tail \u2014 or, for a sidecar stream, the peer plugin's own resource id (not a stored row)."
+            "description": "Infrawrench resource id of the stream to tail — or, for a sidecar stream, the peer plugin's own resource id (not a stored row)."
           },
           "accountId": {
             "type": "string",
@@ -12160,7 +12160,7 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Last dispatched notification \u2014 the cooldown anchor."
+            "description": "Last dispatched notification — the cooldown anchor."
           },
           "lastEvalError": {
             "type": [
@@ -12554,7 +12554,7 @@
           },
           "name": {
             "type": "string",
-            "description": "Last path segment \u2014 what the browser renders."
+            "description": "Last path segment — what the browser renders."
           },
           "size": {
             "type": "number",
@@ -12875,7 +12875,7 @@
                 "$ref": "#/components/schemas/ResourceId"
               },
               {
-                "description": "The resource holding the reference \u2014 it depends on the provider."
+                "description": "The resource holding the reference — it depends on the provider."
               }
             ]
           },
@@ -12895,7 +12895,7 @@
           },
           "providerOutputKey": {
             "type": "string",
-            "description": "The provider output or identity the reference reads \u2014 an output key for output references, the matched identity (\"externalId\", \"name\", \"endpoint\"\u2026) for inferred edges."
+            "description": "The provider output or identity the reference reads — an output key for output references, the matched identity (\"externalId\", \"name\", \"endpoint\"…) for inferred edges."
           },
           "kind": {
             "type": "string",
@@ -12935,7 +12935,7 @@
             "items": {
               "$ref": "#/components/schemas/DependencyGraphEdge"
             },
-            "description": "Directed depends-on edges (consumer \u2192 provider), deduped per consumer field and provider."
+            "description": "Directed depends-on edges (consumer → provider), deduped per consumer field and provider."
           },
           "truncated": {
             "type": "boolean",
@@ -13976,7 +13976,7 @@
           },
           "token": {
             "type": "string",
-            "description": "Enrollment token in the form `iwb_<random>`. Pass to the agent container as `BASTION_TOKEN`. Returned once \u2014 not recoverable later."
+            "description": "Enrollment token in the form `iwb_<random>`. Pass to the agent container as `BASTION_TOKEN`. Returned once — not recoverable later."
           }
         },
         "required": [
@@ -14618,7 +14618,7 @@
           },
           "addSeat": {
             "type": "boolean",
-            "description": "When the paid plan is full (409 seat_limit_reached), retry with this set to buy one more monthly seat and send the invitation. Requires billing:write. Only works when the 409 reported `canAddSeat: true` \u2014 an org whose capacity is entirely prepaid capacity slots has no monthly seat to add."
+            "description": "When the paid plan is full (409 seat_limit_reached), retry with this set to buy one more monthly seat and send the invitation. Requires billing:write. Only works when the 409 reported `canAddSeat: true` — an org whose capacity is entirely prepaid capacity slots has no monthly seat to add."
           }
         },
         "required": [
@@ -14748,7 +14748,7 @@
           "seats": {
             "type": "integer",
             "minimum": 0,
-            "description": "Seats from slots still inside their term, excluding lapsed and refunded. ADDITIONAL to `subscription.seatCount` \u2014 an org's capacity is the two summed, and an org can hold slots with no subscription at all."
+            "description": "Seats from slots still inside their term, excluding lapsed and refunded. ADDITIONAL to `subscription.seatCount` — an org's capacity is the two summed, and an org can hold slots with no subscription at all."
           },
           "slots": {
             "type": "array",
@@ -15049,7 +15049,7 @@
           },
           "hasCredentials": {
             "type": "boolean",
-            "description": "Whether the account has stored credentials. The credentials themselves are never returned here \u2014 this endpoint only requires `resources:read`. Fetch one with `GET /api/org/{orgId}/accounts/{id}/credentials`, which requires `secrets:read` and is audit-logged."
+            "description": "Whether the account has stored credentials. The credentials themselves are never returned here — this endpoint only requires `resources:read`. Fetch one with `GET /api/org/{orgId}/accounts/{id}/credentials`, which requires `secrets:read` and is audit-logged."
           },
           "syncVersion": {
             "type": "integer"
@@ -15542,53 +15542,9 @@
         ],
         "additionalProperties": false
       },
-      "PushPreferences": {
-        "type": "object",
-        "properties": {
-          "syncIncidents": {
-            "type": "boolean"
-          },
-          "budgetAlerts": {
-            "type": "boolean"
-          },
-          "anomalyAlerts": {
-            "type": "boolean",
-            "description": "Statistical spend-spike (cost anomaly) alerts"
-          },
-          "metricAlerts": {
-            "type": "boolean",
-            "description": "Metric threshold rule firings and recoveries"
-          },
-          "resourceDrift": {
-            "type": "boolean",
-            "description": "Batched resource-drift digests from the change timeline. Defaults to false \u2014 drift is continuous where the other triggers are exceptional."
-          },
-          "workflowPages": {
-            "type": "boolean",
-            "description": "Pages and approval requests raised by a workflow (infra.page / infra.waitForApproval) or by POST /pages"
-          },
-          "providerIncidents": {
-            "type": "boolean",
-            "description": "A provider status-page incident overlaps resources you hold."
-          },
-          "expiryAlerts": {
-            "type": "boolean",
-            "description": "Daily digests of approaching resource deadlines \u2014 expiring certificates, domains, tokens and keys past their rotation budget."
-          },
-          "logMatchAlerts": {
-            "type": "boolean",
-            "description": "A saved log-workspace query with alerting enabled found matching log lines."
-          },
-          "postureAlerts": {
-            "type": "boolean",
-            "description": "Daily digests of critical/high security posture findings on synced resources \u2014 public buckets, world-open ingress, unencrypted disks."
-          },
-          "probeAlerts": {
-            "type": "boolean",
-            "description": "A synthetic probe crossed its consecutive-failure threshold (down) or answered again (recovered)."
-          }
-        },
-        "required": [
+      "AlertTrigger": {
+        "type": "string",
+        "enum": [
           "syncIncidents",
           "budgetAlerts",
           "anomalyAlerts",
@@ -15599,47 +15555,40 @@
           "expiryAlerts",
           "logMatchAlerts",
           "postureAlerts",
-          "probeAlerts"
+          "probeAlerts",
+          "weeklyDigest"
+        ],
+        "description": "A kind of alert that can be routed."
+      },
+      "PushPreferences": {
+        "type": "object",
+        "properties": {
+          "mutedTriggers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertTrigger"
+            },
+            "description": "Triggers this member has turned off for this organization. Anything not listed is delivered, so a trigger added by a later release arrives without the client changing. A member who has never saved preferences gets ['resourceDrift']."
+          }
+        },
+        "required": [
+          "mutedTriggers"
         ],
         "additionalProperties": false
       },
       "PushPreferencesUpdate": {
         "type": "object",
         "properties": {
-          "syncIncidents": {
-            "type": "boolean"
-          },
-          "budgetAlerts": {
-            "type": "boolean"
-          },
-          "anomalyAlerts": {
-            "type": "boolean"
-          },
-          "metricAlerts": {
-            "type": "boolean"
-          },
-          "resourceDrift": {
-            "type": "boolean"
-          },
-          "workflowPages": {
-            "type": "boolean"
-          },
-          "providerIncidents": {
-            "type": "boolean"
-          },
-          "expiryAlerts": {
-            "type": "boolean"
-          },
-          "logMatchAlerts": {
-            "type": "boolean"
-          },
-          "postureAlerts": {
-            "type": "boolean"
-          },
-          "probeAlerts": {
-            "type": "boolean"
+          "mutedTriggers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertTrigger"
+            }
           }
         },
+        "required": [
+          "mutedTriggers"
+        ],
         "additionalProperties": false
       },
       "PushRecipient": {
@@ -15657,38 +15606,11 @@
               "null"
             ]
           },
-          "syncIncidents": {
-            "type": "boolean"
-          },
-          "budgetAlerts": {
-            "type": "boolean"
-          },
-          "anomalyAlerts": {
-            "type": "boolean"
-          },
-          "metricAlerts": {
-            "type": "boolean"
-          },
-          "resourceDrift": {
-            "type": "boolean"
-          },
-          "workflowPages": {
-            "type": "boolean"
-          },
-          "providerIncidents": {
-            "type": "boolean"
-          },
-          "expiryAlerts": {
-            "type": "boolean"
-          },
-          "logMatchAlerts": {
-            "type": "boolean"
-          },
-          "postureAlerts": {
-            "type": "boolean"
-          },
-          "probeAlerts": {
-            "type": "boolean"
+          "mutedTriggers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertTrigger"
+            }
           },
           "devices": {
             "type": "array",
@@ -15725,18 +15647,656 @@
           "userId",
           "email",
           "displayName",
-          "syncIncidents",
-          "budgetAlerts",
-          "anomalyAlerts",
-          "metricAlerts",
-          "resourceDrift",
-          "workflowPages",
-          "providerIncidents",
-          "expiryAlerts",
-          "logMatchAlerts",
-          "postureAlerts",
-          "probeAlerts",
+          "mutedTriggers",
           "devices"
+        ],
+        "additionalProperties": false
+      },
+      "AlertSeverity": {
+        "type": "string",
+        "enum": [
+          "info",
+          "warning",
+          "critical"
+        ],
+        "description": "Alert severity, ordered info < warning < critical."
+      },
+      "AlertCondition": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "enum": [
+                  "trigger"
+                ]
+              },
+              "op": {
+                "type": "string",
+                "enum": [
+                  "in",
+                  "notIn"
+                ]
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AlertTrigger"
+                }
+              }
+            },
+            "required": [
+              "field",
+              "op",
+              "values"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "enum": [
+                  "severity"
+                ]
+              },
+              "op": {
+                "type": "string",
+                "enum": [
+                  "gte",
+                  "eq"
+                ]
+              },
+              "severity": {
+                "$ref": "#/components/schemas/AlertSeverity"
+              }
+            },
+            "required": [
+              "field",
+              "op",
+              "severity"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "enum": [
+                  "accountId"
+                ]
+              },
+              "op": {
+                "type": "string",
+                "enum": [
+                  "in",
+                  "notIn"
+                ]
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "field",
+              "op",
+              "values"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "enum": [
+                  "pluginId"
+                ]
+              },
+              "op": {
+                "type": "string",
+                "enum": [
+                  "in",
+                  "notIn"
+                ]
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "field",
+              "op",
+              "values"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "enum": [
+                  "resourceTypeId"
+                ]
+              },
+              "op": {
+                "type": "string",
+                "enum": [
+                  "in",
+                  "notIn"
+                ]
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "field",
+              "op",
+              "values"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "enum": [
+                  "amountCents"
+                ]
+              },
+              "op": {
+                "type": "string",
+                "enum": [
+                  "gte",
+                  "lt"
+                ]
+              },
+              "cents": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "field",
+              "op",
+              "cents"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "enum": [
+                  "key"
+                ]
+              },
+              "op": {
+                "type": "string",
+                "enum": [
+                  "contains",
+                  "notContains",
+                  "eq"
+                ]
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "field",
+              "op",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "enum": [
+                  "text"
+                ]
+              },
+              "op": {
+                "type": "string",
+                "enum": [
+                  "contains",
+                  "notContains"
+                ]
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "field",
+              "op",
+              "value"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "One clause of a rule. A rule matches when every condition matches; 'or' is expressed by writing a second rule. A condition on a fact the alert does not carry never matches — in either direction, so `accountId notIn [x]` does not match an alert with no account."
+      },
+      "AlertDestination": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "push"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "slack"
+                ]
+              },
+              "channelId": {
+                "type": "string",
+                "description": "A slack_channels row id from /slack/status"
+              }
+            },
+            "required": [
+              "kind",
+              "channelId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "msteams"
+                ]
+              },
+              "webhookId": {
+                "type": "string",
+                "description": "An msteams webhook id from /msteams/status"
+              }
+            },
+            "required": [
+              "kind",
+              "webhookId"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "One place a matched alert goes. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings."
+      },
+      "QuietHours": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "timezone": {
+            "type": "string",
+            "description": "IANA zone, e.g. Europe/Berlin"
+          },
+          "startMinute": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1439
+          },
+          "endMinute": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1439,
+            "description": "May be less than startMinute for an overnight window. Equal means empty."
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 7
+            },
+            "description": "ISO weekdays the window applies on, matched against the day the window opened. Empty means every day."
+          },
+          "urgentOverride": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AlertSeverity"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Severity at or above which quiet hours do not apply. Null holds everything."
+              }
+            ]
+          }
+        },
+        "required": [
+          "timezone",
+          "startMinute",
+          "endMinute",
+          "days",
+          "urgentOverride"
+        ],
+        "additionalProperties": false,
+        "description": "A recurring local-time window during which the rule holds its alerts. Held, not dropped — a held alert is queued and delivered when the window closes."
+      },
+      "EscalationPolicy": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "afterMinutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10080
+          },
+          "destinations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertDestination"
+            }
+          }
+        },
+        "required": [
+          "afterMinutes",
+          "destinations"
+        ],
+        "additionalProperties": false,
+        "description": "Notify these destinations too if nobody acknowledges within afterMinutes. Acknowledgement comes from the button on the Slack message, so an alert routed only to Teams or push will always escalate."
+      },
+      "AlertRule": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "position": {
+            "type": "integer",
+            "description": "Ascending evaluation order"
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertCondition"
+            }
+          },
+          "destinations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertDestination"
+            },
+            "description": "Empty is legal and meaningful: an enabled rule with no destinations swallows matching alerts and shadows the rules below it."
+          },
+          "continueOnMatch": {
+            "type": "boolean",
+            "description": "False (the default) makes the list first-match-wins, which is what lets a narrow rule sit above a broad one. True makes the rule a tee that copies without shadowing."
+          },
+          "quietHours": {
+            "$ref": "#/components/schemas/QuietHours"
+          },
+          "escalation": {
+            "$ref": "#/components/schemas/EscalationPolicy"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "enabled",
+          "position",
+          "conditions",
+          "destinations",
+          "continueOnMatch",
+          "quietHours",
+          "escalation"
+        ],
+        "additionalProperties": false
+      },
+      "AlertRulesResponse": {
+        "type": "object",
+        "properties": {
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertRule"
+            }
+          },
+          "usingDefaults": {
+            "type": "boolean",
+            "description": "True when the organization has saved no rules and `rules` is the synthesized default — everything except drift, to every connected channel and to mobile push."
+          },
+          "slackChannels": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "isPrivate": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "isPrivate"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "msTeamsWebhooks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "label"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "pluginId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "displayName",
+                "pluginId"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "rules",
+          "usingDefaults",
+          "slackChannels",
+          "msTeamsWebhooks",
+          "accounts"
+        ],
+        "additionalProperties": false
+      },
+      "AlertRuleInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Send the existing id to preserve it, which keeps in-flight held and escalating deliveries pointing at their rule."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertCondition"
+            }
+          },
+          "destinations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertDestination"
+            }
+          },
+          "continueOnMatch": {
+            "type": "boolean"
+          },
+          "quietHours": {
+            "$ref": "#/components/schemas/QuietHours"
+          },
+          "escalation": {
+            "$ref": "#/components/schemas/EscalationPolicy"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "AlertDelivery": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/AlertTrigger"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/AlertSeverity"
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "ruleName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "held",
+              "awaiting_ack",
+              "sent",
+              "acknowledged",
+              "escalated",
+              "expired"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "deliverAfter": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When a quiet-hours hold is released."
+          },
+          "escalateAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When an unacknowledged alert escalates."
+          },
+          "acknowledgedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "acknowledgedByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "trigger",
+          "severity",
+          "title",
+          "body",
+          "ruleName",
+          "state",
+          "createdAt",
+          "deliverAfter",
+          "escalateAt",
+          "acknowledgedAt",
+          "acknowledgedByUserId"
         ],
         "additionalProperties": false
       },
@@ -15749,7 +16309,7 @@
           },
           "teamId": {
             "type": "string",
-            "description": "Slack workspace id (T\u2026)"
+            "description": "Slack workspace id (T…)"
           },
           "teamName": {
             "type": [
@@ -15776,7 +16336,7 @@
           },
           "channelId": {
             "type": "string",
-            "description": "Slack channel id (C\u2026/G\u2026)"
+            "description": "Slack channel id (C…/G…)"
           },
           "channelName": {
             "type": "string",
@@ -15784,52 +16344,6 @@
           },
           "isPrivate": {
             "type": "boolean"
-          },
-          "syncIncidents": {
-            "type": "boolean"
-          },
-          "budgetAlerts": {
-            "type": "boolean"
-          },
-          "anomalyAlerts": {
-            "type": "boolean",
-            "description": "Statistical spend-spike (cost anomaly) alerts"
-          },
-          "metricAlerts": {
-            "type": "boolean",
-            "description": "Metric threshold rule firings and recoveries"
-          },
-          "resourceDrift": {
-            "type": "boolean",
-            "description": "Batched resource-drift digests from the change timeline. Defaults to false when a channel is added \u2014 drift is continuous where the other triggers are exceptional."
-          },
-          "workflowPages": {
-            "type": "boolean",
-            "description": "Pages and approval requests raised by a workflow (infra.page / infra.waitForApproval) or by POST /pages"
-          },
-          "providerIncidents": {
-            "type": "boolean",
-            "description": "A provider status-page incident overlaps resources you hold."
-          },
-          "expiryAlerts": {
-            "type": "boolean",
-            "description": "Daily digests of approaching resource deadlines \u2014 expiring certificates, domains, tokens and keys past their rotation budget."
-          },
-          "logMatchAlerts": {
-            "type": "boolean",
-            "description": "A saved log-workspace query with alerting enabled found matching log lines."
-          },
-          "postureAlerts": {
-            "type": "boolean",
-            "description": "Daily digests of critical/high security posture findings on synced resources \u2014 public buckets, world-open ingress, unencrypted disks."
-          },
-          "probeAlerts": {
-            "type": "boolean",
-            "description": "A synthetic probe crossed its consecutive-failure threshold (down) or answered again (recovered)."
-          },
-          "weeklyDigest": {
-            "type": "boolean",
-            "description": "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest)."
           }
         },
         "required": [
@@ -15837,19 +16351,7 @@
           "installationId",
           "channelId",
           "channelName",
-          "isPrivate",
-          "syncIncidents",
-          "budgetAlerts",
-          "anomalyAlerts",
-          "metricAlerts",
-          "resourceDrift",
-          "workflowPages",
-          "providerIncidents",
-          "expiryAlerts",
-          "logMatchAlerts",
-          "postureAlerts",
-          "probeAlerts",
-          "weeklyDigest"
+          "isPrivate"
         ],
         "additionalProperties": false
       },
@@ -15914,42 +16416,6 @@
           },
           "isPrivate": {
             "type": "boolean"
-          },
-          "syncIncidents": {
-            "type": "boolean"
-          },
-          "budgetAlerts": {
-            "type": "boolean"
-          },
-          "anomalyAlerts": {
-            "type": "boolean"
-          },
-          "metricAlerts": {
-            "type": "boolean"
-          },
-          "resourceDrift": {
-            "type": "boolean"
-          },
-          "workflowPages": {
-            "type": "boolean"
-          },
-          "providerIncidents": {
-            "type": "boolean"
-          },
-          "expiryAlerts": {
-            "type": "boolean"
-          },
-          "logMatchAlerts": {
-            "type": "boolean"
-          },
-          "postureAlerts": {
-            "type": "boolean"
-          },
-          "probeAlerts": {
-            "type": "boolean"
-          },
-          "weeklyDigest": {
-            "type": "boolean"
           }
         },
         "required": [
@@ -15962,43 +16428,13 @@
       "SlackChannelUpdate": {
         "type": "object",
         "properties": {
-          "syncIncidents": {
-            "type": "boolean"
-          },
-          "budgetAlerts": {
-            "type": "boolean"
-          },
-          "anomalyAlerts": {
-            "type": "boolean"
-          },
-          "metricAlerts": {
-            "type": "boolean"
-          },
-          "resourceDrift": {
-            "type": "boolean"
-          },
-          "workflowPages": {
-            "type": "boolean"
-          },
-          "providerIncidents": {
-            "type": "boolean"
-          },
-          "expiryAlerts": {
-            "type": "boolean"
-          },
-          "logMatchAlerts": {
-            "type": "boolean"
-          },
-          "postureAlerts": {
-            "type": "boolean"
-          },
-          "probeAlerts": {
-            "type": "boolean"
-          },
-          "weeklyDigest": {
-            "type": "boolean"
+          "channelName": {
+            "type": "string"
           }
         },
+        "required": [
+          "channelName"
+        ],
         "additionalProperties": false
       },
       "MsTeamsWebhook": {
@@ -16014,70 +16450,12 @@
           "urlHint": {
             "type": "string",
             "description": "Non-secret hint at the stored webhook URL (host and last four characters). The URL itself is never returned."
-          },
-          "syncIncidents": {
-            "type": "boolean"
-          },
-          "budgetAlerts": {
-            "type": "boolean"
-          },
-          "anomalyAlerts": {
-            "type": "boolean",
-            "description": "Statistical spend-spike (cost anomaly) alerts"
-          },
-          "metricAlerts": {
-            "type": "boolean",
-            "description": "Metric threshold rule firings and recoveries"
-          },
-          "resourceDrift": {
-            "type": "boolean",
-            "description": "Batched resource-drift digests from the change timeline. Defaults to false when a channel is added \u2014 drift is continuous where the other triggers are exceptional."
-          },
-          "workflowPages": {
-            "type": "boolean",
-            "description": "Pages and approval requests raised by a workflow (infra.page / infra.waitForApproval) or by POST /pages"
-          },
-          "providerIncidents": {
-            "type": "boolean",
-            "description": "A provider status-page incident overlaps resources you hold."
-          },
-          "expiryAlerts": {
-            "type": "boolean",
-            "description": "Daily digests of approaching resource deadlines \u2014 expiring certificates, domains, tokens and keys past their rotation budget."
-          },
-          "logMatchAlerts": {
-            "type": "boolean",
-            "description": "A saved log-workspace query with alerting enabled found matching log lines."
-          },
-          "postureAlerts": {
-            "type": "boolean",
-            "description": "Daily digests of critical/high security posture findings on synced resources \u2014 public buckets, world-open ingress, unencrypted disks."
-          },
-          "probeAlerts": {
-            "type": "boolean",
-            "description": "A synthetic probe crossed its consecutive-failure threshold (down) or answered again (recovered)."
-          },
-          "weeklyDigest": {
-            "type": "boolean",
-            "description": "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest)."
           }
         },
         "required": [
           "id",
           "label",
-          "urlHint",
-          "syncIncidents",
-          "budgetAlerts",
-          "anomalyAlerts",
-          "metricAlerts",
-          "resourceDrift",
-          "workflowPages",
-          "providerIncidents",
-          "expiryAlerts",
-          "logMatchAlerts",
-          "postureAlerts",
-          "probeAlerts",
-          "weeklyDigest"
+          "urlHint"
         ],
         "additionalProperties": false
       },
@@ -16106,42 +16484,6 @@
             "type": "string",
             "format": "uri",
             "description": "The webhook URL from a Teams 'Workflows' automation. Must be https and on a Microsoft-operated host (*.api.powerautomate.com, *.api.powerplatform.com, *.logic.azure.com, *.flow.microsoft.com, or a legacy *.webhook.office.com connector)."
-          },
-          "syncIncidents": {
-            "type": "boolean"
-          },
-          "budgetAlerts": {
-            "type": "boolean"
-          },
-          "anomalyAlerts": {
-            "type": "boolean"
-          },
-          "metricAlerts": {
-            "type": "boolean"
-          },
-          "resourceDrift": {
-            "type": "boolean"
-          },
-          "workflowPages": {
-            "type": "boolean"
-          },
-          "providerIncidents": {
-            "type": "boolean"
-          },
-          "expiryAlerts": {
-            "type": "boolean"
-          },
-          "logMatchAlerts": {
-            "type": "boolean"
-          },
-          "postureAlerts": {
-            "type": "boolean"
-          },
-          "probeAlerts": {
-            "type": "boolean"
-          },
-          "weeklyDigest": {
-            "type": "boolean"
           }
         },
         "required": [
@@ -16155,44 +16497,11 @@
         "properties": {
           "label": {
             "type": "string"
-          },
-          "syncIncidents": {
-            "type": "boolean"
-          },
-          "budgetAlerts": {
-            "type": "boolean"
-          },
-          "anomalyAlerts": {
-            "type": "boolean"
-          },
-          "metricAlerts": {
-            "type": "boolean"
-          },
-          "resourceDrift": {
-            "type": "boolean"
-          },
-          "workflowPages": {
-            "type": "boolean"
-          },
-          "providerIncidents": {
-            "type": "boolean"
-          },
-          "expiryAlerts": {
-            "type": "boolean"
-          },
-          "logMatchAlerts": {
-            "type": "boolean"
-          },
-          "postureAlerts": {
-            "type": "boolean"
-          },
-          "probeAlerts": {
-            "type": "boolean"
-          },
-          "weeklyDigest": {
-            "type": "boolean"
           }
         },
+        "required": [
+          "label"
+        ],
         "additionalProperties": false
       },
       "DigestSettings": {
@@ -16226,13 +16535,13 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 7,
-            "description": "ISO day of week the digest is sent on: 1 = Monday \u2026 7 = Sunday."
+            "description": "ISO day of week the digest is sent on: 1 = Monday … 7 = Sunday."
           },
           "sendHour": {
             "type": "integer",
             "minimum": 0,
             "maximum": 23,
-            "description": "Local hour (0\u201323) in `timezone` the digest is sent at."
+            "description": "Local hour (0–23) in `timezone` the digest is sent at."
           },
           "narrativeEnabled": {
             "type": "boolean",
@@ -16269,7 +16578,7 @@
               "failed",
               "no_targets"
             ],
-            "description": "Outcome of the most recent delivery attempt. `partial` (some destinations took it, some failed) is deliberately never retried automatically \u2014 a retry would post the digest twice where it already landed. `failed` (nothing landed) is retried a bounded number of times with backoff, then parked until the next week."
+            "description": "Outcome of the most recent delivery attempt. `partial` (some destinations took it, some failed) is deliberately never retried automatically — a retry would post the digest twice where it already landed. `failed` (nothing landed) is retried a bounded number of times with backoff, then parked until the next week."
           },
           "lastError": {
             "type": [
@@ -16452,7 +16761,7 @@
           "Auth"
         ],
         "summary": "WorkOS OAuth callback",
-        "description": "Exchanges an authorization code for a session and sets the `wos-session` cookie. If the `state` nonce does not match the cookie set at sign-in \u2014 most often because the cookie expired while the user was still on AuthKit \u2014 the flow is restarted once with a fresh nonce rather than failing. Public.",
+        "description": "Exchanges an authorization code for a session and sets the `wos-session` cookie. If the `state` nonce does not match the cookie set at sign-in — most often because the cookie expired while the user was still on AuthKit — the flow is restarted once with a fresh nonce rather than failing. Public.",
         "security": [],
         "parameters": [
           {
@@ -16814,7 +17123,7 @@
           "Profile"
         ],
         "summary": "Mint a password reset link for the signed-in user",
-        "description": "Returns a one-time AuthKit-hosted reset URL rather than emailing it \u2014 the caller already holds a valid session for the account. Also the way to set a first password on an SSO or OAuth-only account.",
+        "description": "Returns a one-time AuthKit-hosted reset URL rather than emailing it — the caller already holds a valid session for the account. Also the way to set a first password on an SSO or OAuth-only account.",
         "responses": {
           "200": {
             "description": "Reset link",
@@ -17075,7 +17384,7 @@
           "Profile"
         ],
         "summary": "List enrolled authentication factors",
-        "description": "Includes factors whose enrolment was never confirmed \u2014 WorkOS does not expose a verified flag.",
+        "description": "Includes factors whose enrolment was never confirmed — WorkOS does not expose a verified flag.",
         "responses": {
           "200": {
             "description": "Factors",
@@ -17400,7 +17709,7 @@
           "Profile"
         ],
         "summary": "Revoke one session",
-        "description": "Refuses the session making the request \u2014 use sign-out for that.",
+        "description": "Refuses the session making the request — use sign-out for that.",
         "parameters": [
           {
             "schema": {
@@ -17695,7 +18004,7 @@
           "Accounts"
         ],
         "summary": "Generate a least-privilege credential template for a plugin",
-        "description": "Returns the paste-ready credential document (IAM policy JSON, custom role YAML, token template\u2026) scoped to the requested capability ids. Omitting `capabilities` (or sending it empty) selects every declared capability; any unknown capability id is rejected with 400. 400 also for plugins that don't provide a template.\n\n_Requires permission: `accounts:read`._",
+        "description": "Returns the paste-ready credential document (IAM policy JSON, custom role YAML, token template…) scoped to the requested capability ids. Omitting `capabilities` (or sending it empty) selects every declared capability; any unknown capability id is rejected with 400. 400 also for plugins that don't provide a template.\n\n_Requires permission: `accounts:read`._",
         "parameters": [
           {
             "schema": {
@@ -17769,7 +18078,7 @@
           "Accounts"
         ],
         "summary": "Probe credentials before creating an account",
-        "description": "Runs the plugin's per-capability permission checks against the submitted credentials. Nothing is stored \u2014 use it from the add-account flow before committing.\n\n_Requires permission: `accounts:write`._",
+        "description": "Runs the plugin's per-capability permission checks against the submitted credentials. Nothing is stored — use it from the add-account flow before committing.\n\n_Requires permission: `accounts:write`._",
         "parameters": [
           {
             "schema": {
@@ -17997,7 +18306,7 @@
             }
           },
           "402": {
-            "description": "Payment required \u2014 the organization's plan does not include this",
+            "description": "Payment required — the organization's plan does not include this",
             "content": {
               "application/json": {
                 "schema": {
@@ -18137,7 +18446,7 @@
           "Accounts"
         ],
         "summary": "Fetch the decrypted credentials for an account",
-        "description": "Returns the credentials map as it was originally submitted. Sensitive \u2014 gate access carefully.\n\n_Requires permission: `secrets:read`._",
+        "description": "Returns the credentials map as it was originally submitted. Sensitive — gate access carefully.\n\n_Requires permission: `secrets:read`._",
         "parameters": [
           {
             "schema": {
@@ -19429,7 +19738,7 @@
           "Dashboards"
         ],
         "summary": "Historical metric series for a pinned resource",
-        "description": "Returns per-series metric points between fromMs and toMs. The backend auto-routes between raw, 1-minute, and 1-hour rollups based on span: \u22642h raw, \u22647d 1m, >7d 1h.",
+        "description": "Returns per-series metric points between fromMs and toMs. The backend auto-routes between raw, 1-minute, and 1-hour rollups based on span: ≤2h raw, ≤7d 1m, >7d 1h.",
         "parameters": [
           {
             "schema": {
@@ -19565,7 +19874,7 @@
           "Costs"
         ],
         "summary": "Push cost rows from your own systems",
-        "description": "Reports spend Infrawrench has no provider plugin for \u2014 a parsed SaaS invoice, an internal chargeback, a colo bill \u2014 into the same store the provider collectors write to, so it appears in cost graphs, dimension filters, and budgets alongside everything else.\n\nRows are grouped under a caller-chosen `source`. Writes are idempotent per `(source, day, service, region, resourceId, tags, currency)`: pushing the same day again restates that day rather than adding to it, so a nightly job can safely re-push a trailing window. Rows pushed under a source can never overwrite rows a provider collector wrote.\n\nThe whole batch is validated before anything is stored, so a 400 means nothing was written.\n\n_Requires permission: `costs:write`._",
+        "description": "Reports spend Infrawrench has no provider plugin for — a parsed SaaS invoice, an internal chargeback, a colo bill — into the same store the provider collectors write to, so it appears in cost graphs, dimension filters, and budgets alongside everything else.\n\nRows are grouped under a caller-chosen `source`. Writes are idempotent per `(source, day, service, region, resourceId, tags, currency)`: pushing the same day again restates that day rather than adding to it, so a nightly job can safely re-push a trailing window. Rows pushed under a source can never overwrite rows a provider collector wrote.\n\nThe whole batch is validated before anything is stored, so a 400 means nothing was written.\n\n_Requires permission: `costs:write`._",
         "parameters": [
           {
             "schema": {
@@ -19748,7 +20057,7 @@
           "Costs"
         ],
         "summary": "List recently detected cost anomalies",
-        "description": "Spend anomalies detected by the daily background pass. Two kinds share the list: a `spike`, where a provider's or service's spend exceeded its trailing 28-day baseline by a statistical threshold (mean + N\u00b7stddev, with an absolute floor to ignore penny-scale noise), and a `new_source`, where a provider or service with no spend at all across that window suddenly billed a material amount. Thresholds are per organization \u2014 see GET /costs/anomaly-settings. Newest day first, capped at 200 rows.\n\n_Requires permission: `costs:read`._",
+        "description": "Spend anomalies detected by the daily background pass. Two kinds share the list: a `spike`, where a provider's or service's spend exceeded its trailing 28-day baseline by a statistical threshold (mean + N·stddev, with an absolute floor to ignore penny-scale noise), and a `new_source`, where a provider or service with no spend at all across that window suddenly billed a material amount. Thresholds are per organization — see GET /costs/anomaly-settings. Newest day first, capped at 200 rows.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -19817,7 +20126,7 @@
           "Costs"
         ],
         "summary": "Get the organization's anomaly detection thresholds",
-        "description": "The tunable part of cost anomaly detection. Everything else about the model \u2014 the 28-day baseline, the 7-day notification cooldown, the minimum history a baseline needs \u2014 is fixed. An organization that has never changed a threshold reads back the defaults. The response also carries the derived, read-only `smsConfigured`.\n\n_Requires permission: `costs:read`._",
+        "description": "The tunable part of cost anomaly detection. Everything else about the model — the 28-day baseline, the 7-day notification cooldown, the minimum history a baseline needs — is fixed. An organization that has never changed a threshold reads back the defaults. The response also carries the derived, read-only `smsConfigured`.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -19851,7 +20160,7 @@
           "Costs"
         ],
         "summary": "Update the organization's anomaly detection thresholds",
-        "description": "Takes effect on the next detection pass (which runs after each cost collection). Anomalies already stored are not re-judged. All four fields are required \u2014 this is a PUT of the whole settings object, not a patch \u2014 and `smsAlerts` deliberately has no server-side default, so a client that omits it is rejected rather than silently switching an organization's SMS paging back off. `smsConfigured` is derived and is not accepted here.\n\n_Requires permission: `costs:write`._",
+        "description": "Takes effect on the next detection pass (which runs after each cost collection). Anomalies already stored are not re-judged. All four fields are required — this is a PUT of the whole settings object, not a patch — and `smsAlerts` deliberately has no server-side default, so a client that omits it is rejected rather than silently switching an organization's SMS paging back off. `smsConfigured` is derived and is not accepted here.\n\n_Requires permission: `costs:write`._",
         "parameters": [
           {
             "schema": {
@@ -19955,7 +20264,7 @@
           "Orphans"
         ],
         "summary": "List likely-orphaned and idle resources",
-        "description": "Scans the organization's already-synced resources against each plugin's declarative orphan heuristics \u2014 unattached volumes, unassigned floating/elastic IPs, reserved-but-unused static IPs \u2014 and returns the matches grouped by account, each with the plugin's reason. Purely a read over stored state: no provider API calls are made, so results reflect the last sync. Where the org's collected cost data has per-resource rows, matches are annotated with trailing spend.\n\n_Requires permission: `resources:read`._",
+        "description": "Scans the organization's already-synced resources against each plugin's declarative orphan heuristics — unattached volumes, unassigned floating/elastic IPs, reserved-but-unused static IPs — and returns the matches grouped by account, each with the plugin's reason. Purely a read over stored state: no provider API calls are made, so results reflect the last sync. Where the org's collected cost data has per-resource rows, matches are annotated with trailing spend.\n\n_Requires permission: `resources:read`._",
         "parameters": [
           {
             "schema": {
@@ -19991,7 +20300,7 @@
           "Orphans"
         ],
         "summary": "List oversized resources with resize recommendations",
-        "description": "Computes p95 CPU/memory utilisation over the last 14 days of stored metrics for every resource whose plugin declares right-sizing support, and matches under-utilised ones against the plugin's real size catalog (the create form's size options, live-priced). Each recommendation names the cheapest smaller size that still clears a headroom margin and quotes the monthly saving. Apply one by submitting `sizeFieldKey` with the recommended size id through the resource-update endpoint \u2014 which enforces change freezes and writes the audit trail. Results are cached for a few minutes; pass `refresh=true` to recompute.\n\n_Requires permission: `resources:read`._",
+        "description": "Computes p95 CPU/memory utilisation over the last 14 days of stored metrics for every resource whose plugin declares right-sizing support, and matches under-utilised ones against the plugin's real size catalog (the create form's size options, live-priced). Each recommendation names the cheapest smaller size that still clears a headroom margin and quotes the monthly saving. Apply one by submitting `sizeFieldKey` with the recommended size id through the resource-update endpoint — which enforces change freezes and writes the audit trail. Results are cached for a few minutes; pass `refresh=true` to recompute.\n\n_Requires permission: `resources:read`._",
         "parameters": [
           {
             "schema": {
@@ -20455,7 +20764,7 @@
           "Metric alerts"
         ],
         "summary": "List metric series that actually exist",
-        "description": "The series labels resources reported in the last 7 days, optionally narrowed to one plugin and resource type \u2014 what the rule builder's metric picker is fed from.",
+        "description": "The series labels resources reported in the last 7 days, optionally narrowed to one plugin and resource type — what the rule builder's metric picker is fed from.",
         "parameters": [
           {
             "schema": {
@@ -21296,7 +21605,7 @@
           "Costs"
         ],
         "summary": "Untagged spend over the required tag keys",
-        "description": "Spend on cost rows missing at least one of the org's required tag keys, overall and per key, plus the largest untagged (account, service) buckets. Empty when no tag policy is configured \u2014 untagged is only meaningful against a policy.\n\n_Requires permission: `costs:read`._",
+        "description": "Spend on cost rows missing at least one of the org's required tag keys, overall and per key, plus the largest untagged (account, service) buckets. Empty when no tag policy is configured — untagged is only meaningful against a policy.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -22039,7 +22348,7 @@
             }
           },
           "402": {
-            "description": "Payment required \u2014 the organization's plan does not include this",
+            "description": "Payment required — the organization's plan does not include this",
             "content": {
               "application/json": {
                 "schema": {
@@ -22261,7 +22570,7 @@
             }
           },
           "402": {
-            "description": "Payment required \u2014 the organization's plan does not include this",
+            "description": "Payment required — the organization's plan does not include this",
             "content": {
               "application/json": {
                 "schema": {
@@ -22401,7 +22710,7 @@
             }
           },
           "402": {
-            "description": "Payment required \u2014 the organization's plan does not include this",
+            "description": "Payment required — the organization's plan does not include this",
             "content": {
               "application/json": {
                 "schema": {
@@ -22696,7 +23005,7 @@
           "Workflows"
         ],
         "summary": "Create or replace a workflow's cron schedule",
-        "description": "Sets the workflow's trigger to cron with the given expression and timezone, validating both, and computes the next fire time. The workflow fires at the schedule's next occurrence \u2014 never immediately on save.\n\n_Requires permission: `dashboards:write`._",
+        "description": "Sets the workflow's trigger to cron with the given expression and timezone, validating both, and computes the next fire time. The workflow fires at the schedule's next occurrence — never immediately on save.\n\n_Requires permission: `dashboards:write`._",
         "parameters": [
           {
             "schema": {
@@ -23294,7 +23603,7 @@
           "Deployments"
         ],
         "summary": "Roll back to a previous deployment",
-        "description": "Re-runs that run's `deploy()` with the image and plan it recorded, building nothing \u2014 the exact artifact that was known good ships again. The Infrafile is read at the commit that run deployed, not at the branch head. Only a successful run that produced an image can be rolled back to. With `deleteCreated`, resources that runs after the target created through `infra.accounts` are deleted once the rollback has succeeded \u2014 undoing the provisioning, not just the shipping. Deletions are best-effort and reported in the result's notes.\n\n_Requires permission: `deployments:write`._",
+        "description": "Re-runs that run's `deploy()` with the image and plan it recorded, building nothing — the exact artifact that was known good ships again. The Infrafile is read at the commit that run deployed, not at the branch head. Only a successful run that produced an image can be rolled back to. With `deleteCreated`, resources that runs after the target created through `infra.accounts` are deleted once the rollback has succeeded — undoing the provisioning, not just the shipping. Deletions are best-effort and reported in the result's notes.\n\n_Requires permission: `deployments:write`._",
         "parameters": [
           {
             "schema": {
@@ -23360,7 +23669,7 @@
             }
           },
           "402": {
-            "description": "Payment required \u2014 the organization's plan does not include this",
+            "description": "Payment required — the organization's plan does not include this",
             "content": {
               "application/json": {
                 "schema": {
@@ -23477,7 +23786,7 @@
           "Deployments"
         ],
         "summary": "Deploy an environment whenever a branch moves",
-        "description": "Arming a trigger records the branch's current commit WITHOUT deploying it \u2014 the trigger fires on the next push, not on the state at the moment it was created. The environment is validated against the Infrafile at that branch head, so a typo fails here rather than silently never firing.\n\n_Requires permission: `deployments:write`._",
+        "description": "Arming a trigger records the branch's current commit WITHOUT deploying it — the trigger fires on the next push, not on the state at the moment it was created. The environment is validated against the Infrafile at that branch head, so a typo fails here rather than silently never firing.\n\n_Requires permission: `deployments:write`._",
         "parameters": [
           {
             "schema": {
@@ -23720,7 +24029,7 @@
           "Pages"
         ],
         "summary": "Raise an alert to the organization's on-call transports",
-        "description": "Fans an alert out over whatever the org has configured \u2014 Twilio SMS (and voice on request), mobile push, Slack channels, and Microsoft Teams webhooks \u2014 honouring each recipient's opt-ins. This is the same alert a workflow raises with `infra.page(...)`, for code that runs somewhere Infrawrench does not: a health check, a deploy script, a cron on a box.\n\nRepeat pages under the same `(source, key)` are **suppressed, not rejected**: a monitor that fires every minute pages once and then gets `200` with `suppressed: true` and the `retryAt` at which the key can page again. A page that reached nobody does not start a cooldown, so the next call tries again.\n\nRecipients opt in per channel under the same setting that covers workflow pages.\n\n_Requires permission: `pages:write`._",
+        "description": "Fans an alert out over whatever the org has configured — Twilio SMS (and voice on request), mobile push, Slack channels, and Microsoft Teams webhooks — honouring each recipient's opt-ins. This is the same alert a workflow raises with `infra.page(...)`, for code that runs somewhere Infrawrench does not: a health check, a deploy script, a cron on a box.\n\nRepeat pages under the same `(source, key)` are **suppressed, not rejected**: a monitor that fires every minute pages once and then gets `200` with `suppressed: true` and the `retryAt` at which the key can page again. A page that reached nobody does not start a cooldown, so the next call tries again.\n\nRecipients opt in per channel under the same setting that covers workflow pages.\n\n_Requires permission: `pages:write`._",
         "parameters": [
           {
             "schema": {
@@ -23746,7 +24055,7 @@
         },
         "responses": {
           "200": {
-            "description": "Delivery outcome \u2014 check `suppressed` and `delivered`.",
+            "description": "Delivery outcome — check `suppressed` and `delivered`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -23774,7 +24083,7 @@
           "Pages"
         ],
         "summary": "Clear a page key's cooldown",
-        "description": "Drops the cooldown for one `(source, key)` so the next page under it delivers immediately. Call it when the condition you alerted on recovers \u2014 the workflow equivalent is `infra.page.clear(key)`. Clearing a key that was never paged is not an error.\n\n_Requires permission: `pages:write`._",
+        "description": "Drops the cooldown for one `(source, key)` so the next page under it delivers immediately. Call it when the condition you alerted on recovers — the workflow equivalent is `infra.page.clear(key)`. Clearing a key that was never paged is not an error.\n\n_Requires permission: `pages:write`._",
         "parameters": [
           {
             "schema": {
@@ -23791,7 +24100,7 @@
             "schema": {
               "type": "string",
               "maxLength": 64,
-              "description": "Stable name for the system raising the page: letters, digits, `.`, `_` and `-`. It is the notification's sender, and it scopes the cooldown \u2014 two services paging under the same key never throttle each other.",
+              "description": "Stable name for the system raising the page: letters, digits, `.`, `_` and `-`. It is the notification's sender, and it scopes the cooldown — two services paging under the same key never throttle each other.",
               "example": "checkout-api"
             },
             "required": true,
@@ -24981,7 +25290,7 @@
         "tags": [
           "Resources"
         ],
-        "summary": "Attach a resource onto another (e.g. disk \u2192 VM)",
+        "summary": "Attach a resource onto another (e.g. disk → VM)",
         "parameters": [
           {
             "schema": {
@@ -25281,7 +25590,7 @@
           "Resources"
         ],
         "summary": "Get the dynamic create form for a resource type",
-        "description": "Calls the plugin's `getCreateConfig`. The returned `CreateResourceConfig` is plugin-shaped \u2014 see `JsonObject`.\n\n_Requires permission: `resources:write`._",
+        "description": "Calls the plugin's `getCreateConfig`. The returned `CreateResourceConfig` is plugin-shaped — see `JsonObject`.\n\n_Requires permission: `resources:write`._",
         "parameters": [
           {
             "schema": {
@@ -25421,7 +25730,7 @@
         },
         "responses": {
           "200": {
-            "description": "Map of `sizeId \u2192 pricing`. Empty object when the plugin doesn't support pricing.",
+            "description": "Map of `sizeId → pricing`. Empty object when the plugin doesn't support pricing.",
             "content": {
               "application/json": {
                 "schema": {
@@ -25510,7 +25819,7 @@
           "Resources"
         ],
         "summary": "Estimated monthly cost of a configuration",
-        "description": "Calls the plugin's `estimateCost` and returns a monthly total with the line items behind it. Price a proposed resource by passing `fields`, an existing one by passing `resourceId`, or a proposed change to an existing one by passing both \u2014 `fields` is merged over the resource's stored fields, so the caller only sends what changed. `estimate` is null when the plugin cannot price the configuration; that is not the same as an estimate of zero, and it should not be rendered as one.\n\n_Requires permission: `resources:read`._",
+        "description": "Calls the plugin's `estimateCost` and returns a monthly total with the line items behind it. Price a proposed resource by passing `fields`, an existing one by passing `resourceId`, or a proposed change to an existing one by passing both — `fields` is merged over the resource's stored fields, so the caller only sends what changed. `estimate` is null when the plugin cannot price the configuration; that is not the same as an estimate of zero, and it should not be rendered as one.\n\n_Requires permission: `resources:read`._",
         "parameters": [
           {
             "schema": {
@@ -25732,7 +26041,7 @@
           "Changes"
         ],
         "summary": "Org-wide change timeline (paginated, filterable)",
-        "description": "Change events recorded by the resource poller: each poll cycle diffs the freshly fetched state against the stored snapshot and records resources that appeared, changed a stored field, or disappeared upstream. Cross-provider by construction \u2014 the diff runs on the generic stored record, so every plugin's resources show up here.\n\n_Requires permission: `resources:read`._",
+        "description": "Change events recorded by the resource poller: each poll cycle diffs the freshly fetched state against the stored snapshot and records resources that appeared, changed a stored field, or disappeared upstream. Cross-provider by construction — the diff runs on the generic stored record, so every plugin's resources show up here.\n\n_Requires permission: `resources:read`._",
         "parameters": [
           {
             "schema": {
@@ -25841,7 +26150,7 @@
           "Changes"
         ],
         "summary": "Get the organization's resource-drift alert filter",
-        "description": "Drift notifications are batched: at most one message per organization per `cooldownMinutes`, covering every change since the previous one. These settings decide which changes count and how often a message may go out. Who receives it is the `resourceDrift` opt-in on push preferences, Slack channels and Teams webhooks \u2014 off by default on all three.",
+        "description": "Drift notifications are batched: at most one message per organization per `cooldownMinutes`, covering every change since the previous one. These settings decide which changes count and how often a message may go out. Who receives it is the `resourceDrift` opt-in on push preferences, Slack channels and Teams webhooks — off by default on all three.",
         "parameters": [
           {
             "schema": {
@@ -25993,7 +26302,7 @@
           "Status incidents"
         ],
         "summary": "Provider incidents overlapping your resources",
-        "description": "The \"is it me or is it them?\" feed. The poller watches each provider plugin's public status feed (declared on its manifest \u2014 zero credentials, zero rate-limit risk), caches active incidents, and this endpoint correlates them against the resources the organization holds: an incident matches a resource when it is provider-wide, names the resource's region, or names its resource type. Includes incidents resolved within the last 24 hours so recent drift can still be correlated. Active incidents first, most severe first.\n\n_Requires permission: `resources:read`._",
+        "description": "The \"is it me or is it them?\" feed. The poller watches each provider plugin's public status feed (declared on its manifest — zero credentials, zero rate-limit risk), caches active incidents, and this endpoint correlates them against the resources the organization holds: an incident matches a resource when it is provider-wide, names the resource's region, or names its resource type. Includes incidents resolved within the last 24 hours so recent drift can still be correlated. Active incidents first, most severe first.\n\n_Requires permission: `resources:read`._",
         "parameters": [
           {
             "schema": {
@@ -26200,7 +26509,7 @@
           "Posture checks"
         ],
         "summary": "Dismiss a posture finding",
-        "description": "Accept a finding \u2014 the bucket really is meant to be public, the key really is rotated out of band. The finding leaves `findings` and stops feeding the daily posture alerts, but the rule keeps being evaluated and the finding is reported back under `dismissed` for as long as it still matches. Idempotent: dismissing an already-dismissed finding rewrites the note and the author.\n\n_Requires permission: `resources:write`._",
+        "description": "Accept a finding — the bucket really is meant to be public, the key really is rotated out of band. The finding leaves `findings` and stops feeding the daily posture alerts, but the rule keeps being evaluated and the finding is reported back under `dismissed` for as long as it still matches. Idempotent: dismissing an already-dismissed finding rewrites the note and the author.\n\n_Requires permission: `resources:write`._",
         "parameters": [
           {
             "schema": {
@@ -26411,7 +26720,7 @@
           "DNS"
         ],
         "summary": "List every DNS zone and record, with dangling targets flagged",
-        "description": "One view over every zone and record across the connected DNS providers (Cloudflare, Route 53, Cloud DNS, DigitalOcean, Netlify, Azure DNS, Vercel), with each record target classified against the rest of the workspace. No provider API calls are made and no DNS is resolved \u2014 results reflect the last sync.\n\nA `dangling` target is a subdomain-takeover candidate: the record points into a provider namespace this workspace manages and nothing synced claims it. The same records surface as `dns-dangling-target` findings on `GET /posture` and alert through the posture channel, so there is no separate DNS alert setting.\n\n_Requires permission: `resources:read`._",
+        "description": "One view over every zone and record across the connected DNS providers (Cloudflare, Route 53, Cloud DNS, DigitalOcean, Netlify, Azure DNS, Vercel), with each record target classified against the rest of the workspace. No provider API calls are made and no DNS is resolved — results reflect the last sync.\n\nA `dangling` target is a subdomain-takeover candidate: the record points into a provider namespace this workspace manages and nothing synced claims it. The same records surface as `dns-dangling-target` findings on `GET /posture` and alert through the posture channel, so there is no separate DNS alert setting.\n\n_Requires permission: `resources:read`._",
         "parameters": [
           {
             "schema": {
@@ -26447,7 +26756,7 @@
           "Moment"
         ],
         "summary": "Everything that happened around a timestamp",
-        "description": "\"What changed around 03:14?\" \u2014 one merged, chronological narrative of everything the platform knows happened in a window: resource changes (including sleep/wake schedule attribution), provider status incidents that started/resolved in or overlap the window, cost anomalies, workflow runs, deployments, audit-log entries, change freezes, and the drift/expiry alert deliveries. Each feed is gated on the same permission its own endpoint requires; feeds the caller cannot read are reported as `omitted`, and a feed whose query fails is reported as `error` without blanking the rest of the response.\n\n_Requires permission: `resources:read`._",
+        "description": "\"What changed around 03:14?\" — one merged, chronological narrative of everything the platform knows happened in a window: resource changes (including sleep/wake schedule attribution), provider status incidents that started/resolved in or overlap the window, cost anomalies, workflow runs, deployments, audit-log entries, change freezes, and the drift/expiry alert deliveries. Each feed is gated on the same permission its own endpoint requires; feeds the caller cannot read are reported as `omitted`, and a feed whose query fails is reported as `error` without blanking the rest of the response.\n\n_Requires permission: `resources:read`._",
         "parameters": [
           {
             "schema": {
@@ -26475,7 +26784,7 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 4320,
-              "description": "Half-window in minutes (the \u00b1 around `at`). Default 60, max 4320 (\u00b13 days)."
+              "description": "Half-window in minutes (the ± around `at`). Default 60, max 4320 (±3 days)."
             },
             "required": false,
             "name": "window",
@@ -26844,7 +27153,7 @@
           "Resource leases"
         ],
         "summary": "Create a resource lease",
-        "description": "Attach an expiry to a resource \u2014 'give me a test cluster for 3 days'. One lease per resource (an active lease conflicts; a terminal one is replaced). `autoDelete: true` opts into deletion at expiry \u2014 the poller announces it twice first, defers during change freezes, and requires the caller to hold `resources:delete`. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "description": "Attach an expiry to a resource — 'give me a test cluster for 3 days'. One lease per resource (an active lease conflicts; a terminal one is replaced). `autoDelete: true` opts into deletion at expiry — the poller announces it twice first, defers during change freezes, and requires the caller to hold `resources:delete`. Audit-logged.\n\n_Requires permission: `resources:write`._",
         "parameters": [
           {
             "schema": {
@@ -27095,7 +27404,7 @@
           "Resource leases"
         ],
         "summary": "Cancel a lease",
-        "description": "Stop the countdown \u2014 the resource stays, the lease goes `canceled` and leaves the expiry radar. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "description": "Stop the countdown — the resource stays, the lease goes `canceled` and leaves the expiry radar. Audit-logged.\n\n_Requires permission: `resources:write`._",
         "parameters": [
           {
             "schema": {
@@ -27161,7 +27470,7 @@
           "Session recordings"
         ],
         "summary": "List recorded SSH sessions",
-        "description": "Recorded sessions, newest first. Only SSH opened through the cloud is recorded \u2014 those sessions are already proxied by the server, so recording tees a stream it holds rather than requiring an agent on the host. A desktop session that dials a host directly never reaches the server and cannot appear here.\n\n_Requires permission: `session-recordings:read`._",
+        "description": "Recorded sessions, newest first. Only SSH opened through the cloud is recorded — those sessions are already proxied by the server, so recording tees a stream it holds rather than requiring an agent on the host. A desktop session that dials a host directly never reaches the server and cannot appear here.\n\n_Requires permission: `session-recordings:read`._",
         "parameters": [
           {
             "schema": {
@@ -27183,7 +27492,7 @@
                 "truncated",
                 "abandoned"
               ],
-              "description": "`recording` (live), `complete` (closed cleanly), `truncated` (hit the per-session capture ceiling \u2014 the tape is a genuine partial and says so), or `abandoned` (the server handling the session went away before it could close the row)."
+              "description": "`recording` (live), `complete` (closed cleanly), `truncated` (hit the per-session capture ceiling — the tape is a genuine partial and says so), or `abandoned` (the server handling the session went away before it could close the row)."
             },
             "required": false,
             "name": "status",
@@ -27317,7 +27626,7 @@
           "Session recordings"
         ],
         "summary": "Update the recording policy",
-        "description": "Partial update \u2014 omitted fields keep their current value. Recording is opt-in and off by default. Audit-logged with the before/after policy.\n\n_Requires permission: `session-recordings:write`._",
+        "description": "Partial update — omitted fields keep their current value. Recording is opt-in and off by default. Audit-logged with the before/after policy.\n\n_Requires permission: `session-recordings:write`._",
         "parameters": [
           {
             "schema": {
@@ -27482,7 +27791,7 @@
           "Session recordings"
         ],
         "summary": "Download a recording as an asciicast",
-        "description": "The session as an [asciicast v2](https://docs.asciinema.org/manual/asciicast/v2/) document: a JSON header line followed by one `[time, code, data]` event per line. Deliberately somebody else's format \u2014 the same bytes play in `asciinema play` and in the reference web player, so a recording is useful to an auditor who has never seen this product. `?download=1` returns it as an attachment. **Every fetch is audit-logged**, including this one: an investigator has to be able to answer who has watched a given tape.\n\n_Requires permission: `session-recordings:read`._",
+        "description": "The session as an [asciicast v2](https://docs.asciinema.org/manual/asciicast/v2/) document: a JSON header line followed by one `[time, code, data]` event per line. Deliberately somebody else's format — the same bytes play in `asciinema play` and in the reference web player, so a recording is useful to an auditor who has never seen this product. `?download=1` returns it as an attachment. **Every fetch is audit-logged**, including this one: an investigator has to be able to answer who has watched a given tape.\n\n_Requires permission: `session-recordings:read`._",
         "parameters": [
           {
             "schema": {
@@ -27639,7 +27948,7 @@
           "Break-glass access"
         ],
         "summary": "Request elevated access",
-        "description": "Ask for specific permissions, for a specific number of minutes, with a reason. Rejected with 400 when the caller's role already grants every permission asked for \u2014 that is almost always a wrong permission string rather than a real request. Fans out to push, Slack (with Approve/Deny buttons) and Microsoft Teams under the Pages opt-in. Audit-logged.\n\n_Requires permission: `access:request`._",
+        "description": "Ask for specific permissions, for a specific number of minutes, with a reason. Rejected with 400 when the caller's role already grants every permission asked for — that is almost always a wrong permission string rather than a real request. Fans out to push, Slack (with Approve/Deny buttons) and Microsoft Teams under the Pages opt-in. Audit-logged.\n\n_Requires permission: `access:request`._",
         "parameters": [
           {
             "schema": {
@@ -27730,7 +28039,7 @@
           "Break-glass access"
         ],
         "summary": "Approve an access request",
-        "description": "Opens the elevation window: the requester holds the requested permissions from now until `grantExpiresAt`, on every surface at once (HTTP, the WebSocket gateway, chat, MCP tools). Two rules are enforced here and cannot be bypassed: you cannot decide your own request (403 `self_approval`), and you cannot grant a permission you do not hold yourself (403 `exceeds_approver`) \u2014 denying something aimed higher than you is allowed. Deciding a request that has already been decided or has timed out is a 409. Audit-logged.\n\n_Requires permission: `access:approve`._",
+        "description": "Opens the elevation window: the requester holds the requested permissions from now until `grantExpiresAt`, on every surface at once (HTTP, the WebSocket gateway, chat, MCP tools). Two rules are enforced here and cannot be bypassed: you cannot decide your own request (403 `self_approval`), and you cannot grant a permission you do not hold yourself (403 `exceeds_approver`) — denying something aimed higher than you is allowed. Deciding a request that has already been decided or has timed out is a 409. Audit-logged.\n\n_Requires permission: `access:approve`._",
         "parameters": [
           {
             "schema": {
@@ -27825,7 +28134,7 @@
           "Break-glass access"
         ],
         "summary": "Deny an access request",
-        "description": "Records the refusal. Two rules are enforced here and cannot be bypassed: you cannot decide your own request (403 `self_approval`), and you cannot grant a permission you do not hold yourself (403 `exceeds_approver`) \u2014 denying something aimed higher than you is allowed. Deciding a request that has already been decided or has timed out is a 409. Audit-logged.\n\n_Requires permission: `access:approve`._",
+        "description": "Records the refusal. Two rules are enforced here and cannot be bypassed: you cannot decide your own request (403 `self_approval`), and you cannot grant a permission you do not hold yourself (403 `exceeds_approver`) — denying something aimed higher than you is allowed. Deciding a request that has already been decided or has timed out is a 409. Audit-logged.\n\n_Requires permission: `access:approve`._",
         "parameters": [
           {
             "schema": {
@@ -27920,7 +28229,7 @@
           "Break-glass access"
         ],
         "summary": "End a live elevation early",
-        "description": "Allowed for anyone with `access:approve` and for the holder \u2014 giving back an elevation you no longer need must never require finding an approver. Applies from the next permission resolution; nothing is cached. Audit-logged.",
+        "description": "Allowed for anyone with `access:approve` and for the holder — giving back an elevation you no longer need must never require finding an approver. Applies from the next permission resolution; nothing is cached. Audit-logged.",
         "parameters": [
           {
             "schema": {
@@ -28051,7 +28360,7 @@
           "Credential hygiene"
         ],
         "summary": "Credential hygiene report",
-        "description": "API keys nobody uses, SSH keys nothing references, and members holding write permissions they have never exercised \u2014 derived entirely from data the server already holds. No provider call and nothing to enable.\n\n**The audit log only witnesses writes.** Reading a resource list or a cost graph leaves no audit row by design, so this report draws no conclusion about read permissions: an absence of evidence about them proves nothing. `permissionFindingsWithheld` is set when the organization does not yet have enough audit history for the unused-permission finding to be meaningful. Both are load-bearing \u2014 a governance report that overclaims is worse than none.\n\nGated on `audit:read` rather than a permission of its own: every fact here is already reachable by anyone who can read the audit log, so this is a lens rather than a new disclosure.\n\n_Requires permission: `audit:read`._",
+        "description": "API keys nobody uses, SSH keys nothing references, and members holding write permissions they have never exercised — derived entirely from data the server already holds. No provider call and nothing to enable.\n\n**The audit log only witnesses writes.** Reading a resource list or a cost graph leaves no audit row by design, so this report draws no conclusion about read permissions: an absence of evidence about them proves nothing. `permissionFindingsWithheld` is set when the organization does not yet have enough audit history for the unused-permission finding to be meaningful. Both are load-bearing — a governance report that overclaims is worse than none.\n\nGated on `audit:read` rather than a permission of its own: every fact here is already reachable by anyone who can read the audit log, so this is a lens rather than a new disclosure.\n\n_Requires permission: `audit:read`._",
         "parameters": [
           {
             "schema": {
@@ -28109,7 +28418,7 @@
           "Credit burndown"
         ],
         "summary": "Prepaid credit balances, burn rate and runway",
-        "description": "Every prepaid pot the organization holds, most urgent first. A provider that bills in arrears sends an invoice you can argue with; a prepaid pot that empties simply stops answering \u2014 so this is an availability number as much as a finance one.\n\nThe burn rate is measured from the server's own series of readings rather than reported by the provider, and it is the sum of the **decreases** between consecutive readings: a top-up inside the window is recorded separately, never netted off. The runway is bounded by both the burn and the credit's own expiry, whichever comes first.\n\nOnly providers that expose a balance appear here; most bill in arrears and have no pot.\n\n_Requires permission: `costs:read`._",
+        "description": "Every prepaid pot the organization holds, most urgent first. A provider that bills in arrears sends an invoice you can argue with; a prepaid pot that empties simply stops answering — so this is an availability number as much as a finance one.\n\nThe burn rate is measured from the server's own series of readings rather than reported by the provider, and it is the sum of the **decreases** between consecutive readings: a top-up inside the window is recorded separately, never netted off. The runway is bounded by both the burn and the credit's own expiry, whichever comes first.\n\nOnly providers that expose a balance appear here; most bill in arrears and have no pot.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -28244,7 +28553,7 @@
           "Synthetic probes"
         ],
         "summary": "Suggest endpoints from synced resources",
-        "description": "Endpoint candidates mined from the organization's synced resource outputs and fields (keys like url, endpoint, host, domain, publicIp). A cheap read over stored state \u2014 no provider API calls. Deduplicated by URL.\n\n_Requires permission: `resources:read`._",
+        "description": "Endpoint candidates mined from the organization's synced resource outputs and fields (keys like url, endpoint, host, domain, publicIp). A cheap read over stored state — no provider API calls. Deduplicated by URL.\n\n_Requires permission: `resources:read`._",
         "parameters": [
           {
             "schema": {
@@ -28280,7 +28589,7 @@
           "Synthetic probes"
         ],
         "summary": "Update or disable a probe",
-        "description": "Edit settings and/or toggle `enabled`. Changing the URL or method resets the probe's state to `unknown` \u2014 the history belongs to the old endpoint. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "description": "Edit settings and/or toggle `enabled`. Changing the URL or method resets the probe's state to `unknown` — the history belongs to the old endpoint. Audit-logged.\n\n_Requires permission: `resources:write`._",
         "parameters": [
           {
             "schema": {
@@ -29182,7 +29491,7 @@
           "Log workspaces"
         ],
         "summary": "List log-capable resources",
-        "description": "Synced resources whose rendered detail declares the logs capability \u2014 the candidates a log workspace can tail \u2014 plus sidecar streams reached through a peer integration (pods and workloads inside a managed cluster, listed live from the provider and marked with `parentResourceId`). Discovered from the plugin contract (never a hardcoded provider list), capped at 500 results.\n\n_Requires permission: `resources:read`._",
+        "description": "Synced resources whose rendered detail declares the logs capability — the candidates a log workspace can tail — plus sidecar streams reached through a peer integration (pods and workloads inside a managed cluster, listed live from the provider and marked with `parentResourceId`). Discovered from the plugin contract (never a hardcoded provider list), capped at 500 results.\n\n_Requires permission: `resources:read`._",
         "parameters": [
           {
             "schema": {
@@ -30298,7 +30607,7 @@
                   "$ref": "#/components/schemas/ResourceId"
                 },
                 {
-                  "description": "Narrow the graph to this resource's direct neighbourhood \u2014 only edges with it at one end, and only the nodes those edges touch. Omit for the whole org."
+                  "description": "Narrow the graph to this resource's direct neighbourhood — only edges with it at one end, and only the nodes those edges touch. Omit for the whole org."
                 }
               ]
             },
@@ -31334,7 +31643,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Map of tunnelId \u2192 info",
+            "description": "Map of tunnelId → info",
             "content": {
               "application/json": {
                 "schema": {
@@ -31424,7 +31733,7 @@
           "SSH fan-out"
         ],
         "summary": "List SSH-capable fan-out targets",
-        "description": "Every SSH-capable target in the org: `ssh` plugin accounts (native credentials) plus resources whose type declares an sshEndpoint with a resolvable host (EC2 instances, droplets, Hetzner servers, \u2026).\n\n_Requires permission: `resources:read`._",
+        "description": "Every SSH-capable target in the org: `ssh` plugin accounts (native credentials) plus resources whose type declares an sshEndpoint with a resolvable host (EC2 instances, droplets, Hetzner servers, …).\n\n_Requires permission: `resources:read`._",
         "parameters": [
           {
             "schema": {
@@ -31871,7 +32180,7 @@
         "tags": [
           "Bastions"
         ],
-        "summary": "Revoke a bastion \u2014 accounts referencing it have their bastion binding cleared",
+        "summary": "Revoke a bastion — accounts referencing it have their bastion binding cleared",
         "parameters": [
           {
             "schema": {
@@ -32790,7 +33099,7 @@
             }
           },
           "402": {
-            "description": "Payment required \u2014 the organization's plan does not include this",
+            "description": "Payment required — the organization's plan does not include this",
             "content": {
               "application/json": {
                 "schema": {
@@ -33035,7 +33344,7 @@
           "Billing"
         ],
         "summary": "Start a Stripe Checkout session",
-        "description": "Rejected with 400 for complimentary organizations \u2014 they are never billed.\n\n_Requires permission: `billing:write`._",
+        "description": "Rejected with 400 for complimentary organizations — they are never billed.\n\n_Requires permission: `billing:write`._",
         "parameters": [
           {
             "schema": {
@@ -33091,7 +33400,7 @@
           "Billing"
         ],
         "summary": "Start a Stripe Checkout session for prepaid capacity slots",
-        "description": "A capacity slot is one seat bought outright for a fixed term instead of rented monthly, and it grants paid-plan access on its own. This is a one-time payment, so the seats are granted by the `checkout.session.completed` webhook once Stripe confirms the payment \u2014 a 200 here only means the buyer was sent to a payment page. Rejected with 400 for complimentary organizations, and 503 when the deployment has no one-time capacity price configured.",
+        "description": "A capacity slot is one seat bought outright for a fixed term instead of rented monthly, and it grants paid-plan access on its own. This is a one-time payment, so the seats are granted by the `checkout.session.completed` webhook once Stripe confirms the payment — a 200 here only means the buyer was sent to a payment page. Rejected with 400 for complimentary organizations, and 503 when the deployment has no one-time capacity price configured.",
         "parameters": [
           {
             "schema": {
@@ -34000,7 +34309,7 @@
           "Push"
         ],
         "summary": "Get the caller's push preferences for this organization",
-        "description": "Absent preferences default to every trigger enabled except resourceDrift, which defaults to false.",
+        "description": "Absent preferences default to every trigger enabled except resourceDrift, which ships muted.",
         "parameters": [
           {
             "schema": {
@@ -34191,6 +34500,439 @@
         },
         "operationId": "postOrgOrgIdPushTest",
         "x-internal": true
+      }
+    },
+    "/api/org/{orgId}/alert-rules": {
+      "get": {
+        "tags": [
+          "Alerts"
+        ],
+        "summary": "Get the organization's alert routing rules",
+        "description": "Returns the rules in evaluation order, plus the channels and accounts a rule can name so a client can render destinations by name. An organization that has saved no rules gets the synthesized default with `usingDefaults: true`.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rules and the destinations they can reference",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertRulesResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAlertRules"
+      },
+      "put": {
+        "tags": [
+          "Alerts"
+        ],
+        "summary": "Replace the organization's alert routing rules",
+        "description": "Whole-list replacement in one transaction. Order is part of the meaning — a rule is only correct relative to the ones above it — so a reorder applied as several requests would leave a window in which alerts route somewhere nobody asked for. Positions are re-derived from array order.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rules": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/AlertRuleInput"
+                    }
+                  }
+                },
+                "required": [
+                  "rules"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The saved rules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rules": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AlertRule"
+                      }
+                    }
+                  },
+                  "required": [
+                    "rules"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdAlertRules"
+      }
+    },
+    "/api/org/{orgId}/alert-rules/adopt-defaults": {
+      "post": {
+        "tags": [
+          "Alerts"
+        ],
+        "summary": "Persist the default rule so it can be edited",
+        "description": "A no-op when the organization already has rules.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The saved rules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rules": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AlertRule"
+                      }
+                    },
+                    "adopted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "rules",
+                    "adopted"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdAlertRulesAdoptDefaults"
+      }
+    },
+    "/api/org/{orgId}/alert-rules/deliveries": {
+      "get": {
+        "tags": [
+          "Alerts"
+        ],
+        "summary": "List recent held and escalating alerts",
+        "description": "Only alerts a rule created follow-up work for appear here: one held by quiet hours, or one waiting on an acknowledgement. An alert that went straight out leaves no row.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deliveries, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AlertDelivery"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAlertRulesDeliveries"
+      }
+    },
+    "/api/org/{orgId}/alert-rules/deliveries/{id}/ack": {
+      "post": {
+        "tags": [
+          "Alerts"
+        ],
+        "summary": "Acknowledge an alert, cancelling its escalation",
+        "description": "A conditional update: only a delivery still in `awaiting_ack` can move, so two people pressing at once produce one acknowledgement and an alert that already escalated cannot be retroactively silenced.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "acknowledged": {
+                      "type": "boolean"
+                    },
+                    "alreadyAcknowledgedBy": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string",
+                      "enum": [
+                        "not_found",
+                        "already_escalated",
+                        "already_acknowledged"
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "acknowledged"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdAlertRulesDeliveriesIdAck"
+      }
+    },
+    "/api/org/{orgId}/alert-rules/deliveries/cancel": {
+      "post": {
+        "tags": [
+          "Alerts"
+        ],
+        "summary": "Drop held or awaiting-acknowledgement deliveries",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "ids"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "How many rows were cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "cancelled": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "cancelled"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdAlertRulesDeliveriesCancel"
       }
     },
     "/api/org/{orgId}/slack/status": {
@@ -34406,8 +35148,8 @@
         "tags": [
           "Slack"
         ],
-        "summary": "Route alerts to a Slack channel",
-        "description": "Adds a channel, or updates the trigger opt-ins of one already added. Each trigger defaults to enabled.",
+        "summary": "Connect a Slack channel as an alert destination",
+        "description": "Adds a channel as a possible destination, or refreshes the cached name of one already added. Which alerts reach it is decided by /alert-rules; an organization with no rules falls back to the default (everything except drift, everywhere), so a freshly added channel starts receiving alerts without a second step.",
         "parameters": [
           {
             "schema": {
@@ -34470,7 +35212,7 @@
         "tags": [
           "Slack"
         ],
-        "summary": "Change which alerts a channel receives",
+        "summary": "Refresh a channel's cached name",
         "parameters": [
           {
             "schema": {
@@ -34529,7 +35271,7 @@
         "tags": [
           "Slack"
         ],
-        "summary": "Stop routing alerts to a channel",
+        "summary": "Disconnect a channel",
         "parameters": [
           {
             "schema": {
@@ -34639,7 +35381,7 @@
           "Slack"
         ],
         "summary": "Slack interactivity endpoint (Approve/Deny buttons)",
-        "description": "Public; verified against the app's signing secret. Receives `block_actions` payloads from the Approve/Deny buttons on approval messages and the status disambiguation picker. Button decisions resolve through the same code path as the web UI \u2014 the linked member needs `workflows:approve` (workflow approvals) or must own the conversation and hold `chat:write` (chat agent tool approvals).",
+        "description": "Public; verified against the app's signing secret. Receives `block_actions` payloads from the Approve/Deny buttons on approval messages and the status disambiguation picker. Button decisions resolve through the same code path as the web UI — the linked member needs `workflows:approve` (workflow approvals) or must own the conversation and hold `chat:write` (chat agent tool approvals).",
         "security": [],
         "parameters": [
           {
@@ -34741,8 +35483,8 @@
         "tags": [
           "Slack"
         ],
-        "summary": "Store the Slack-user \u2194 member link (confirmation form target)",
-        "description": "Submitted by the confirmation page above. Requires the browser session, the signed link token, and the double-submit CSRF pair (cookie + form field) minted by the GET; on success stores the Slack-user \u2194 member mapping and redirects to the notification settings page.",
+        "summary": "Store the Slack-user ↔ member link (confirmation form target)",
+        "description": "Submitted by the confirmation page above. Requires the browser session, the signed link token, and the double-submit CSRF pair (cookie + form field) minted by the GET; on success stores the Slack-user ↔ member mapping and redirects to the notification settings page.",
         "security": [],
         "requestBody": {
           "required": true,
@@ -34794,7 +35536,7 @@
           "Slack"
         ],
         "summary": "Post a test message to every configured channel",
-        "description": "Ignores trigger opt-ins \u2014 every channel gets the test. Fails with the Slack error when nothing could be delivered (`not_in_channel` means the bot needs inviting to a private channel).",
+        "description": "Ignores routing rules — every channel gets the test. Fails with the Slack error when nothing could be delivered (`not_in_channel` means the bot needs inviting to a private channel).",
         "parameters": [
           {
             "schema": {
@@ -34860,7 +35602,7 @@
           "Microsoft Teams"
         ],
         "summary": "List the organization's Teams channels",
-        "description": "Returns the Teams channels alerts are routed to and which triggers each takes. Webhook URLs are never included.",
+        "description": "Returns the Teams channels alerts can be routed to. Which alerts reach each one is decided by /alert-rules. Webhook URLs are never included.",
         "parameters": [
           {
             "schema": {
@@ -34894,7 +35636,7 @@
         "tags": [
           "Microsoft Teams"
         ],
-        "summary": "Route alerts to a Teams channel",
+        "summary": "Connect a Teams channel as an alert destination",
         "description": "Adds a channel by webhook URL, or updates the one already holding that URL. Each trigger defaults to enabled. Responds 400 when the URL is not https or its host is not Microsoft-operated.",
         "parameters": [
           {
@@ -34948,8 +35690,8 @@
         "tags": [
           "Microsoft Teams"
         ],
-        "summary": "Rename a Teams channel or change which alerts it receives",
-        "description": "The webhook URL is immutable \u2014 remove the channel and re-add it to change it.",
+        "summary": "Rename a Teams channel",
+        "description": "The webhook URL is immutable — remove the channel and re-add it to change it.",
         "parameters": [
           {
             "schema": {
@@ -35018,7 +35760,7 @@
         "tags": [
           "Microsoft Teams"
         ],
-        "summary": "Stop routing alerts to a Teams channel",
+        "summary": "Disconnect a Teams channel",
         "parameters": [
           {
             "schema": {
@@ -35071,7 +35813,7 @@
           "Microsoft Teams"
         ],
         "summary": "Post a test card to every configured Teams channel",
-        "description": "Ignores trigger opt-ins \u2014 every channel gets the test. Fails with the error Microsoft returned when nothing could be delivered (HTTP 404 usually means the Workflow was deleted or turned off).",
+        "description": "Ignores routing rules — every channel gets the test. Fails with the error Microsoft returned when nothing could be delivered (HTTP 404 usually means the Workflow was deleted or turned off).",
         "parameters": [
           {
             "schema": {
@@ -35170,7 +35912,7 @@
           "Weekly digest"
         ],
         "summary": "Update the weekly digest settings",
-        "description": "Every field is optional. Enabling schedules the first digest for the next configured send time rather than sending immediately \u2014 use POST /digest/send for an immediate one. The week boundary follows `timezone`, so the reported window is always the organization's own local Monday-to-Sunday week. Changing the schedule clears any parked failure state but never replays a week that already went out.",
+        "description": "Every field is optional. Enabling schedules the first digest for the next configured send time rather than sending immediately — use POST /digest/send for an immediate one. The week boundary follows `timezone`, so the reported window is always the organization's own local Monday-to-Sunday week. Changing the schedule clears any parked failure state but never replays a week that already went out.",
         "parameters": [
           {
             "schema": {
@@ -35224,7 +35966,7 @@
           "Weekly digest"
         ],
         "summary": "Compose and send last week's digest now",
-        "description": "Ignores the schedule and the enabled flag \u2014 composes the digest for the last complete week and sends it to every opted-in channel and email recipient. This is also the manual recovery for a partial delivery, which is never retried automatically. Fails when nothing is routed to receive the digest, or when every destination rejected it.",
+        "description": "Ignores the schedule and the enabled flag — composes the digest for the last complete week and sends it to every opted-in channel and email recipient. This is also the manual recovery for a partial delivery, which is never retried automatically. Fails when nothing is routed to receive the digest, or when every destination rejected it.",
         "parameters": [
           {
             "schema": {
@@ -35269,7 +36011,7 @@
           "Weekly digest"
         ],
         "summary": "List the organization's digest email recipients",
-        "description": "Email is a digest-only transport, so its destinations are an organization-level address list rather than a per-channel trigger. Addresses need not belong to Infrawrench users \u2014 a finance alias is a valid recipient.",
+        "description": "Email is a digest-only transport, so its destinations are an organization-level address list rather than a per-channel trigger. Addresses need not belong to Infrawrench users — a finance alias is a valid recipient.",
         "parameters": [
           {
             "schema": {

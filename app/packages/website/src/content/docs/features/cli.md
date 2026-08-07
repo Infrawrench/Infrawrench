@@ -247,6 +247,15 @@ parse-invoice --json | infrawrench costs push --source colo
 
 `--source` names the system doing the pushing and is required by both. `page` also takes `--title`, `--key`, `--cooldown <minutes>`, and `--voice`; a suppressed page still exits zero and prints when the key can fire again. Both need a session (or role) carrying `pages:write` / `costs:write` — see [push from your own servers](./server-push.md) for the endpoints and their limits.
 
+When a page did not reach you, the next question is where it went. `infrawrench routing` prints the org's [alert routing rules](./alert-routing.md) as sentences, in the order the server evaluates them, and `infrawrench routing queue` lists the alerts currently held for quiet hours or waiting on an acknowledgement:
+
+```bash
+infrawrench routing            # rules, top to bottom, first match wins
+infrawrench routing queue      # held and escalating alerts   [--limit 50]
+```
+
+Both are read-only and need the **Organization settings** permission; editing rules lives on the web and desktop Notifications page.
+
 ## Deploying
 
 `infrawrench deploy` builds and ships the project in the current directory, driven by the [Infrafile](./infrafile.md) at its repository root:

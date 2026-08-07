@@ -15,9 +15,7 @@ import { budgetAlertEvents, budgets } from "../db/schema";
 import { queryCosts, type CostFilter } from "../clickhouse/cost-readers";
 import { forecastMonthTotal, type DailyPoint } from "./forecast";
 import { sendBudgetAlertPage } from "../twilio-pager";
-import { sendPushToOrg } from "../push/dispatch";
-import { sendSlackToOrg } from "../slack";
-import { sendMsTeamsToOrg } from "../msteams";
+import { alertReached, routeAlert } from "../alerts/route";
 import {
   fireBudgetTriggerWorkflows,
   listBudgetTriggerWorkflows,
@@ -163,34 +161,35 @@ export async function evaluateBudgetsForOrg(
         const kind = threshold.type === "actual" ? "spend" : "forecasted spend";
         const alertBody = `infrawrench budget "${budget.name}": ${kind} ${formatCents(observedCents, budget.currency)} has reached ${threshold.percent}% of ${formatCents(budget.amountCents, budget.currency)} for ${status.month}`;
         const paged = await sendBudgetAlertPage(organizationId, alertBody);
-        // Push is independent of the org's Twilio settings — dedupe already
+        // Routing is independent of the org's Twilio settings — dedupe already
         // happened via the budget_alert_events insert above.
-        const pushed = await sendPushToOrg(organizationId, "budgetAlerts", {
+        const url = budgetUrl(organizationId, budget.id);
+        const routed = await routeAlert({
+          organizationId,
+          trigger: "budgetAlerts",
+          // A budget at or past 100% is a different kind of news from one at
+          // 80%, and severity is what a quiet-hours `urgentOverride` keys on —
+          // so "sleep through warnings, wake me if we actually blew the budget"
+          // is expressible without a second rule.
+          severity: threshold.percent >= 100 ? "critical" : "warning",
           title: `Budget "${budget.name}" at ${threshold.percent}%`,
           body: alertBody,
-          data: {
+          context: `${status.month} · ${kind}`,
+          url,
+          pushData: {
             type: "budget_breach",
             orgId: organizationId,
             budgetId: budget.id,
             month: status.month,
             thresholdPercent: threshold.percent,
           },
+          facts: {
+            amountCents: observedCents,
+            currency: budget.currency,
+            key: budget.name,
+          },
         });
-        // Slack and Teams, like push, are independent of the org's Twilio settings.
-        const url = budgetUrl(organizationId, budget.id);
-        const slacked = await sendSlackToOrg(organizationId, "budgetAlerts", {
-          title: `Budget "${budget.name}" at ${threshold.percent}%`,
-          body: alertBody,
-          context: `${status.month} · ${kind}`,
-          ...(url ? { url } : {}),
-        });
-        const teamed = await sendMsTeamsToOrg(organizationId, "budgetAlerts", {
-          title: `Budget "${budget.name}" at ${threshold.percent}%`,
-          body: alertBody,
-          context: `${status.month} · ${kind}`,
-          ...(url ? { url } : {}),
-        });
-        if (paged || pushed.succeeded > 0 || slacked.succeeded > 0 || teamed.succeeded > 0) {
+        if (paged || alertReached(routed)) {
           await db
             .update(budgetAlertEvents)
             .set({ notifiedAt: new Date() })

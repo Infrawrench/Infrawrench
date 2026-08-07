@@ -1,0 +1,137 @@
+/**
+ * Acknowledging an alert — the thing that stops it escalating.
+ *
+ * The only surface today is the Slack button `routeAlert` attaches when a rule
+ * has an escalation policy; the inbound handler in
+ * `web/src/api/routes/slack-inbound.ts` resolves the clicking Slack user to an
+ * org member first, so this module can take "who" on trust and worry only about
+ * "which row".
+ */
+import { and, desc, eq, inArray } from "drizzle-orm";
+
+import { db } from "../db/client";
+import { alertDeliveries } from "../db/schema";
+
+export interface AckResult {
+  /** True when this call is what moved the row. */
+  acknowledged: boolean;
+  /** Set when somebody got there first, so the UI can name them. */
+  alreadyAcknowledgedBy?: string | null;
+  /** Set when the row is past acknowledging (escalated, expired, gone). */
+  reason?: "not_found" | "already_escalated" | "already_acknowledged";
+  /** Alert title, for the message the caller writes back into Slack. */
+  title?: string;
+}
+
+/**
+ * Acknowledge one delivery.
+ *
+ * The write is a **conditional UPDATE**, not a read-then-write, for the same
+ * reason every other claim in this codebase is: two people can press the button
+ * in the same second, and the loser has to find out it lost rather than
+ * overwrite the winner's name. `state = 'awaiting_ack'` in the WHERE clause is
+ * the whole race protection — only one statement can move a row out of that
+ * state, and it also means an escalation that fired a moment earlier (which
+ * moved the row to `escalated`) cannot be retroactively acknowledged into
+ * silence.
+ *
+ * Clearing `escalateAt` in the same statement is what actually stops the
+ * escalation: the pass claims on `state = 'awaiting_ack' AND escalate_at <=
+ * now()`, so a row that fails either half is invisible to it.
+ */
+export async function acknowledgeAlert(args: {
+  deliveryId: string;
+  organizationId: string;
+  userId: string;
+  via: string;
+}): Promise<AckResult> {
+  const now = new Date();
+  const [won] = await db
+    .update(alertDeliveries)
+    .set({
+      state: "acknowledged",
+      acknowledgedAt: now,
+      acknowledgedByUserId: args.userId,
+      acknowledgedVia: args.via,
+      escalateAt: null,
+      deliverAfter: null,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(alertDeliveries.id, args.deliveryId),
+        eq(alertDeliveries.organizationId, args.organizationId),
+        eq(alertDeliveries.state, "awaiting_ack"),
+      ),
+    )
+    .returning();
+
+  if (won) {
+    const payload = won.payload as { title?: string } | null;
+    return { acknowledged: true, ...(payload?.title ? { title: payload.title } : {}) };
+  }
+
+  // Nothing moved. Read the row to say *why* — "already acknowledged by Sam" is
+  // a useful answer and "that alert doesn't exist" is a different bug.
+  const [row] = await db
+    .select()
+    .from(alertDeliveries)
+    .where(
+      and(
+        eq(alertDeliveries.id, args.deliveryId),
+        eq(alertDeliveries.organizationId, args.organizationId),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return { acknowledged: false, reason: "not_found" };
+  const payload = row.payload as { title?: string } | null;
+  const title = payload?.title ? { title: payload.title } : {};
+  if (row.state === "escalated") {
+    return { acknowledged: false, reason: "already_escalated", ...title };
+  }
+  return {
+    acknowledged: false,
+    reason: "already_acknowledged",
+    alreadyAcknowledgedBy: row.acknowledgedByUserId,
+    ...title,
+  };
+}
+
+/**
+ * The org's recent delivery rows, newest first — what the settings page shows
+ * under "Recent alerts" so an admin can see what is held, what is waiting on an
+ * acknowledgement, and what escalated.
+ */
+export async function listAlertDeliveries(
+  organizationId: string,
+  limit = 50,
+): Promise<Array<typeof alertDeliveries.$inferSelect>> {
+  return db
+    .select()
+    .from(alertDeliveries)
+    .where(eq(alertDeliveries.organizationId, organizationId))
+    .orderBy(desc(alertDeliveries.createdAt))
+    .limit(Math.min(Math.max(limit, 1), 200));
+}
+
+/** Cancel held or awaiting-ack rows — used when an admin clears the queue. */
+export async function cancelAlertDeliveries(
+  organizationId: string,
+  ids: string[],
+): Promise<number> {
+  if (ids.length === 0) return 0;
+  const now = new Date();
+  const rows = await db
+    .update(alertDeliveries)
+    .set({ state: "expired", deliverAfter: null, escalateAt: null, updatedAt: now })
+    .where(
+      and(
+        eq(alertDeliveries.organizationId, organizationId),
+        inArray(alertDeliveries.id, ids),
+        inArray(alertDeliveries.state, ["held", "awaiting_ack"]),
+      ),
+    )
+    .returning({ id: alertDeliveries.id });
+  return rows.length;
+}

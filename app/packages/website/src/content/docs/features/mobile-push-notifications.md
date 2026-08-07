@@ -24,11 +24,15 @@ On **Android** the same alerts land on a high-importance **Incidents & alerts** 
 
 **Time Sensitive is the ceiling on iOS today**, including for pages. iOS has one level above it — **Critical Alerts**, which also overrides the ringer switch and cannot be turned off per app — but Apple grants that entitlement to an app case by case, and Infrawrench does not carry it. In practice: a page will break through Focus and Do Not Disturb, but a phone set to silent stays silent. If you are on call, rely on the SMS and voice channels for the ringer, not on push alone.
 
-If you want some alerts to be loud and others not, use the per-organization trigger toggles below rather than the system switch — they are per user, per org, so you can leave sync incidents on for production and turn budget alerts off everywhere.
+If you want some alerts to be loud and others not, use the per-organization trigger toggles below rather than the system switch — they are per user, per org, so you can leave sync incidents on and turn budget alerts off. For "quiet after 10pm unless it is a page", set [quiet hours on a routing rule](./alert-routing.md#quiet-hours) instead: those hold the alert and deliver it in the morning rather than dropping it.
 
 ## Per-organization preferences
 
-Notification triggers are toggled per user, per organization, in **Settings → Notifications** — on the web app or in the mobile app's settings. Everything defaults to **on** except resource drift, which defaults to off; each member manages their own toggles. The triggers:
+Notification triggers are toggled per user, per organization, in **Settings → Notifications** — on the web app or in the mobile app's settings. Everything defaults to **on** except resource drift, which defaults to off; each member manages their own toggles.
+
+These are **mutes**, and they sit on top of the organization's [alert routing rules](./alert-routing.md). A rule decides whether the organization is told and which channels hear about it; your toggles decide whether your phone rings. An admin cannot un-mute your notifications, and turning one off here does not stop the alert reaching Slack.
+
+The triggers:
 
 | Trigger            | When it fires                                                                                                                                                                            |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -77,8 +81,9 @@ Tapping an approval notification opens the app's [approvals inbox](./workflows.m
 
 The org settings page formerly titled **Paging** is now **Notifications** (the nav label changed too). It gathers every delivery channel in one place:
 
-- **Slack** — the workspace connection and the channels each kind of alert is routed to.
-- **Microsoft Teams** — the channels each kind of alert is routed to, added by webhook URL.
+- **Alert routing** — the ordered rules that decide where each alert goes, with quiet hours and escalation. See [Alert routing rules](./alert-routing.md).
+- **Slack** — the workspace connection and the channels a rule can route to.
+- **Microsoft Teams** — the channels a rule can route to, added by webhook URL.
 - **Your mobile push setup** — your per-org trigger toggles, your registered devices (with a remove button), and a **Send test push** button that delivers a test notification to your own devices.
 - **Members receiving push** — an admin-only roster (requires the `org:settings:write` permission) of org members who have at least one active device, so you can see at a glance who would actually hear an incident.
 - **SMS & voice** — last on the page, since it is opt-in: one card holding the whole Twilio setup — account SID, auth token, from-number, the threshold/window/cooldown knobs, the on-call recipient roster, and a **Send test page** button.

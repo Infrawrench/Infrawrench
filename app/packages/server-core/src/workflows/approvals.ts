@@ -25,8 +25,13 @@ import {
 
 import { db } from "../db/client";
 import { workflowApprovals, workflows } from "../db/schema";
-import { appPath, fanOutApprovalRequest, formatApprovalExpiry } from "../approvals/notify";
-import { updateSlackApprovalMessages } from "../slack-approvals";
+import { appPath, formatApprovalExpiry } from "../approvals/notify";
+import { routeAlert } from "../alerts/route";
+import {
+  recordSlackApprovalMessages,
+  slackApprovalButtons,
+  updateSlackApprovalMessages,
+} from "../slack-approvals";
 import { sendOneShotPage } from "../twilio-pager";
 import { workflowPageCooldownStore } from "./paging";
 
@@ -111,20 +116,17 @@ function approvalsUrl(organizationId: string): string | null {
 /**
  * Fan an approval request out over every transport the org has configured.
  *
- * Push, Slack and Teams go through the shared `approvals/notify.ts` fan-out,
- * which break-glass access requests use too; only the wording and the deep
- * link differ. It reuses the `workflowPages` trigger rather than adding a sixth
- * column to three tables, for the reason API pages do: an approval *is*
- * something asking for a human, the opt-in a member or channel already made is
- * the same one, and the user-facing label ("Pages") already covers it. The
- * `workflow_pages` columns on `slack_channels` and `msteams_webhooks` predate
- * that change — only the push transport was wired, which is what the follow-up
- * was about.
+ * Reuses the `workflowPages` trigger rather than inventing one, for the reason
+ * API pages do: an approval *is* a workflow asking for a human, the routing an
+ * org already wrote for pages is the routing it wants for this, and the
+ * user-facing label ("Pages") already covers it. Adding a trigger is cheap now
+ * — one registry entry — but a trigger nobody would route differently is still
+ * a trigger nobody wants to configure.
  *
- * The SMS leg stays here rather than in the shared module: it is throttled on a
- * key only this caller knows (the workflow), and the two callers' cooldown
- * stories differ enough that folding them in would take more parameters than it
- * saved.
+ * The SMS leg stays here rather than in the shared approvals module: it is
+ * throttled on a key only this caller knows (the workflow), and the two
+ * callers' cooldown stories differ enough that folding them in would take more
+ * parameters than it saved.
  *
  * SMS rides `sendOneShotPage` (the same one-shot path budget alerts and
  * `infra.page` use), SMS-only: an approval blocks a run until a human answers,
@@ -161,29 +163,70 @@ async function notifyApprovalRequest(args: {
   const requester = requesterText(ctx.triggerSource);
   const expiry = formatApprovalExpiry(expiresAt, timeoutMinutes);
 
-  await fanOutApprovalRequest({
-    organizationId: ctx.organizationId,
-    kind: "workflow",
-    approvalId,
-    title,
-    message,
-    detailLines: [
-      `Workflow: ${ctx.workflowName} · run ${runId}`,
-      `Requested by: the run, ${requester}`,
-      `Timeout: ${expiry} — no decision counts as a denial.`,
-    ],
-    context: `${ctx.workflowName} · run ${runId} · ${expiry}`,
-    url: approvalsUrl(ctx.organizationId),
-    push: {
-      type: "workflow_approval",
-      orgId: ctx.organizationId,
-      workflowId: ctx.workflowId,
-      runId,
-      approvalId,
+  const detail =
+    `${message}\n\n` +
+    `Workflow: ${ctx.workflowName} · run ${runId}\n` +
+    `Requested by: the run, ${requester}\n` +
+    `Timeout: ${expiry} — no decision counts as a denial.`;
+  const context = `${ctx.workflowName} · run ${runId} · ${expiry}`;
+  const url = approvalsUrl(ctx.organizationId);
+
+  // Slack renders `*bold*`; the Teams Adaptive Card escaper turns `*` into a
+  // literal asterisk, so it gets the same text with the markup left out — the
+  // split the weekly digest and drift alerts already use. Slack's copy carries
+  // Approve/Deny buttons and is tracked so a decision can retire every copy in
+  // place — the buttons resolve through `decideWorkflowApproval`, the same
+  // conditional UPDATE the web UI uses.
+  //
+  // `bypassQuietHours`: an approval request has a timeout and no decision
+  // counts as a denial, so holding it until morning would silently deny the
+  // run. Quiet hours are for alerts you can read later; this is not one.
+  const routed = await routeAlert(
+    {
+      organizationId: ctx.organizationId,
+      trigger: "workflowPages",
+      title: `Approval needed: ${title}`,
+      body:
+        `*${ctx.workflowName}* needs a decision before run \`${runId}\` can continue.\n\n` + detail,
+      teamsBody:
+        `${ctx.workflowName} needs a decision before run ${runId} can continue.\n\n` + detail,
+      pushBody: message,
+      context,
+      ...(url ? { url } : {}),
+      pushData: {
+        type: "workflow_approval",
+        orgId: ctx.organizationId,
+        workflowId: ctx.workflowId,
+        runId,
+        approvalId,
+      },
+      facts: { key: ctx.workflowName },
     },
-    slackLead: `*${ctx.workflowName}* needs a decision before run \`${runId}\` can continue.`,
-    teamsLead: `${ctx.workflowName} needs a decision before run ${runId} can continue.`,
-  });
+    {
+      track: true,
+      bypassQuietHours: true,
+      slackButtons: slackApprovalButtons({
+        kind: "workflow",
+        approvalId,
+        organizationId: ctx.organizationId,
+      }),
+    },
+  );
+  try {
+    await recordSlackApprovalMessages(
+      ctx.organizationId,
+      "workflow",
+      approvalId,
+      routed.slackMessages,
+      // The decided/expired rendering, should the recorder find the request
+      // already settled: the same title/body every later update uses.
+      { title: `Approval needed: ${title}`, body: message },
+    );
+  } catch (err) {
+    // Losing the refs only costs the in-place update later; the buttons still
+    // work, so this must not fail the fan-out.
+    console.error(`[approvals] recording Slack messages for ${approvalId} failed:`, err);
+  }
 
   await pageAboutApproval(
     ctx,

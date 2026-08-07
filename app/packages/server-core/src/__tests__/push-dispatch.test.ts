@@ -22,10 +22,7 @@ const tables = {
     id: "id",
     userId: "u",
     organizationId: "o",
-    syncIncidents: "s",
-    budgetAlerts: "b",
-    workflowPages: "w",
-    probeAlerts: "p",
+    mutedTriggers: "muted",
   },
 };
 vi.mock("../db/schema", () => tables);

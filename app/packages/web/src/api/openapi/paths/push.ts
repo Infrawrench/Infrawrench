@@ -1,5 +1,5 @@
 import { z } from "../zod";
-import { strict, ErrorResponses, OrgIdParam } from "../common";
+import { AlertTriggerEnum, strict, ErrorResponses, OrgIdParam } from "../common";
 import type { BuildContext } from "../context";
 
 const Platform = z.enum(["ios", "android"]);
@@ -13,39 +13,9 @@ const PushDevice = strict({
 }).openapi("PushDevice");
 
 const PushPreferences = strict({
-  syncIncidents: z.boolean(),
-  budgetAlerts: z.boolean(),
-  anomalyAlerts: z
-    .boolean()
-    .openapi({ description: "Statistical spend-spike (cost anomaly) alerts" }),
-  metricAlerts: z
-    .boolean()
-    .openapi({ description: "Metric threshold rule firings and recoveries" }),
-  resourceDrift: z.boolean().openapi({
+  mutedTriggers: z.array(AlertTriggerEnum).openapi({
     description:
-      "Batched resource-drift digests from the change timeline. Defaults to false — drift is continuous where the other triggers are exceptional.",
-  }),
-  workflowPages: z.boolean().openapi({
-    description:
-      "Pages and approval requests raised by a workflow (infra.page / infra.waitForApproval) or by POST /pages",
-  }),
-  providerIncidents: z.boolean().openapi({
-    description: "A provider status-page incident overlaps resources you hold.",
-  }),
-  expiryAlerts: z.boolean().openapi({
-    description:
-      "Daily digests of approaching resource deadlines — expiring certificates, domains, tokens and keys past their rotation budget.",
-  }),
-  logMatchAlerts: z.boolean().openapi({
-    description: "A saved log-workspace query with alerting enabled found matching log lines.",
-  }),
-  postureAlerts: z.boolean().openapi({
-    description:
-      "Daily digests of critical/high security posture findings on synced resources — public buckets, world-open ingress, unencrypted disks.",
-  }),
-  probeAlerts: z.boolean().openapi({
-    description:
-      "A synthetic probe crossed its consecutive-failure threshold (down) or answered again (recovered).",
+      "Triggers this member has turned off for this organization. Anything not listed is delivered, so a trigger added by a later release arrives without the client changing. A member who has never saved preferences gets ['resourceDrift'].",
   }),
 }).openapi("PushPreferences");
 
@@ -53,34 +23,14 @@ const PushPreferences = strict({
 // otherwise collapse back into the full $ref (both fields required) in the
 // generated document.
 const PushPreferencesUpdate = strict({
-  syncIncidents: z.boolean().optional(),
-  budgetAlerts: z.boolean().optional(),
-  anomalyAlerts: z.boolean().optional(),
-  metricAlerts: z.boolean().optional(),
-  resourceDrift: z.boolean().optional(),
-  workflowPages: z.boolean().optional(),
-  providerIncidents: z.boolean().optional(),
-  expiryAlerts: z.boolean().optional(),
-  logMatchAlerts: z.boolean().optional(),
-  postureAlerts: z.boolean().optional(),
-  probeAlerts: z.boolean().optional(),
+  mutedTriggers: z.array(AlertTriggerEnum),
 }).openapi("PushPreferencesUpdate");
 
 const PushRecipient = strict({
   userId: z.string(),
   email: z.string(),
   displayName: z.string().nullable(),
-  syncIncidents: z.boolean(),
-  budgetAlerts: z.boolean(),
-  anomalyAlerts: z.boolean(),
-  metricAlerts: z.boolean(),
-  resourceDrift: z.boolean(),
-  workflowPages: z.boolean(),
-  providerIncidents: z.boolean(),
-  expiryAlerts: z.boolean(),
-  logMatchAlerts: z.boolean(),
-  postureAlerts: z.boolean(),
-  probeAlerts: z.boolean(),
+  mutedTriggers: z.array(AlertTriggerEnum),
   devices: z.array(
     strict({
       id: z.string(),
@@ -158,7 +108,7 @@ export function registerPushPaths(ctx: BuildContext) {
     tags: ["Push"],
     summary: "Get the caller's push preferences for this organization",
     description:
-      "Absent preferences default to every trigger enabled except resourceDrift, which defaults to false.",
+      "Absent preferences default to every trigger enabled except resourceDrift, which ships muted.",
     request: { params: OrgIdParam },
     responses: {
       200: {

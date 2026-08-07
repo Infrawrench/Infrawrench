@@ -91,18 +91,6 @@ app.get("/status", async (c) => {
               channelId: ch.channelId,
               channelName: ch.channelName,
               isPrivate: ch.isPrivate,
-              syncIncidents: ch.syncIncidents,
-              budgetAlerts: ch.budgetAlerts,
-              anomalyAlerts: ch.anomalyAlerts,
-              metricAlerts: ch.metricAlerts,
-              resourceDrift: ch.resourceDrift,
-              workflowPages: ch.workflowPages,
-              providerIncidents: ch.providerIncidents,
-              expiryAlerts: ch.expiryAlerts,
-              logMatchAlerts: ch.logMatchAlerts,
-              postureAlerts: ch.postureAlerts,
-              probeAlerts: ch.probeAlerts,
-              weeklyDigest: ch.weeklyDigest,
             },
           ]
         : [],
@@ -160,23 +148,16 @@ interface ChannelBody {
   channelId: string;
   channelName: string;
   isPrivate?: boolean;
-  syncIncidents?: boolean;
-  budgetAlerts?: boolean;
-  anomalyAlerts?: boolean;
-  metricAlerts?: boolean;
-  resourceDrift?: boolean;
-  workflowPages?: boolean;
-  providerIncidents?: boolean;
-  expiryAlerts?: boolean;
-  logMatchAlerts?: boolean;
-  postureAlerts?: boolean;
-  probeAlerts?: boolean;
-  weeklyDigest?: boolean;
 }
 
 /**
- * Route a channel's alerts. Re-adding an existing channel updates only the
- * opt-ins the request explicitly sets — omitted fields keep their stored value.
+ * Connect a channel as a possible destination. Re-adding an existing channel
+ * refreshes its cached name.
+ *
+ * Adding a channel no longer decides what it receives: that is an
+ * `alert_rules` row (`PUT /alert-rules`). An org with no rules yet falls back
+ * to the synthesized default — everything except drift, everywhere — so a
+ * freshly added channel still starts receiving alerts without a second step.
  */
 app.post("/channels", async (c) => {
   requirePermission(c, "org:settings:write");
@@ -196,24 +177,6 @@ app.post("/channels", async (c) => {
     return c.json({ error: "Slack workspace not found" }, 404);
   }
 
-  // Per-trigger opt-ins the request explicitly set. Defaults apply only when
-  // INSERTING a new channel; re-adding an existing channel with a field
-  // omitted must leave the stored value unchanged rather than reset it.
-  const explicitTriggers: Partial<typeof slackChannels.$inferInsert> = {
-    ...(body.isPrivate != null ? { isPrivate: body.isPrivate } : {}),
-    ...(body.syncIncidents != null ? { syncIncidents: body.syncIncidents } : {}),
-    ...(body.budgetAlerts != null ? { budgetAlerts: body.budgetAlerts } : {}),
-    ...(body.anomalyAlerts != null ? { anomalyAlerts: body.anomalyAlerts } : {}),
-    ...(body.metricAlerts != null ? { metricAlerts: body.metricAlerts } : {}),
-    ...(body.resourceDrift != null ? { resourceDrift: body.resourceDrift } : {}),
-    ...(body.workflowPages != null ? { workflowPages: body.workflowPages } : {}),
-    ...(body.providerIncidents != null ? { providerIncidents: body.providerIncidents } : {}),
-    ...(body.expiryAlerts != null ? { expiryAlerts: body.expiryAlerts } : {}),
-    ...(body.logMatchAlerts != null ? { logMatchAlerts: body.logMatchAlerts } : {}),
-    ...(body.postureAlerts != null ? { postureAlerts: body.postureAlerts } : {}),
-    ...(body.probeAlerts != null ? { probeAlerts: body.probeAlerts } : {}),
-    ...(body.weeklyDigest != null ? { weeklyDigest: body.weeklyDigest } : {}),
-  };
   const now = new Date();
   const [row] = await db
     .insert(slackChannels)
@@ -224,26 +187,12 @@ app.post("/channels", async (c) => {
       channelId,
       channelName,
       isPrivate: body.isPrivate ?? false,
-      syncIncidents: body.syncIncidents ?? true,
-      budgetAlerts: body.budgetAlerts ?? true,
-      anomalyAlerts: body.anomalyAlerts ?? true,
-      metricAlerts: body.metricAlerts ?? true,
-      // Drift is the one trigger that defaults off — it is continuous and
-      // high-volume where the others are exceptional. See server-core db/schema.ts.
-      resourceDrift: body.resourceDrift ?? false,
-      workflowPages: body.workflowPages ?? true,
-      providerIncidents: body.providerIncidents ?? true,
-      expiryAlerts: body.expiryAlerts ?? true,
-      logMatchAlerts: body.logMatchAlerts ?? true,
-      postureAlerts: body.postureAlerts ?? true,
-      probeAlerts: body.probeAlerts ?? true,
-      weeklyDigest: body.weeklyDigest ?? true,
     })
     .onConflictDoUpdate({
       target: [slackChannels.installationId, slackChannels.channelId],
       set: {
         channelName,
-        ...explicitTriggers,
+        ...(body.isPrivate != null ? { isPrivate: body.isPrivate } : {}),
         updatedAt: now,
       },
     })
@@ -251,44 +200,19 @@ app.post("/channels", async (c) => {
   return c.json(row);
 });
 
-interface ChannelPatchBody {
-  syncIncidents?: boolean;
-  budgetAlerts?: boolean;
-  anomalyAlerts?: boolean;
-  metricAlerts?: boolean;
-  resourceDrift?: boolean;
-  workflowPages?: boolean;
-  providerIncidents?: boolean;
-  expiryAlerts?: boolean;
-  logMatchAlerts?: boolean;
-  postureAlerts?: boolean;
-  probeAlerts?: boolean;
-  weeklyDigest?: boolean;
-}
-
+/** Refresh a channel's cached name after a Slack-side rename. */
 app.patch("/channels/:id", async (c) => {
   requirePermission(c, "org:settings:write");
   const organizationId = c.get("organizationId");
   const id = c.req.param("id");
-  const body = await c.req.json<ChannelPatchBody>();
+  const body = await c.req.json<{ channelName?: string }>();
 
-  const patch: Partial<typeof slackChannels.$inferInsert> = { updatedAt: new Date() };
-  if (body.syncIncidents != null) patch.syncIncidents = body.syncIncidents;
-  if (body.budgetAlerts != null) patch.budgetAlerts = body.budgetAlerts;
-  if (body.anomalyAlerts != null) patch.anomalyAlerts = body.anomalyAlerts;
-  if (body.metricAlerts != null) patch.metricAlerts = body.metricAlerts;
-  if (body.resourceDrift != null) patch.resourceDrift = body.resourceDrift;
-  if (body.workflowPages != null) patch.workflowPages = body.workflowPages;
-  if (body.providerIncidents != null) patch.providerIncidents = body.providerIncidents;
-  if (body.expiryAlerts != null) patch.expiryAlerts = body.expiryAlerts;
-  if (body.logMatchAlerts != null) patch.logMatchAlerts = body.logMatchAlerts;
-  if (body.postureAlerts != null) patch.postureAlerts = body.postureAlerts;
-  if (body.probeAlerts != null) patch.probeAlerts = body.probeAlerts;
-  if (body.weeklyDigest != null) patch.weeklyDigest = body.weeklyDigest;
+  const channelName = body.channelName?.trim().replace(/^#/, "");
+  if (!channelName) return c.json({ error: "channelName is required" }, 400);
 
   const result = await db
     .update(slackChannels)
-    .set(patch)
+    .set({ channelName, updatedAt: new Date() })
     .where(and(eq(slackChannels.id, id), eq(slackChannels.organizationId, organizationId)))
     .returning();
   if (result.length === 0) return c.json({ error: "Channel not found" }, 404);

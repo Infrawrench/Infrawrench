@@ -21,14 +21,12 @@
  * request is if anything more page-worthy than a workflow gate: someone is
  * asking for authority they do not have, right now.
  */
-import { sendPushToOrg } from "../push/dispatch";
-import { sendSlackToOrgTracked } from "../slack";
+import { routeAlert } from "../alerts/route";
 import {
   recordSlackApprovalMessages,
   slackApprovalButtons,
   type SlackApprovalKind,
 } from "../slack-approvals";
-import { sendMsTeamsToOrg } from "../msteams";
 import type { PushData } from "../push/types";
 
 export interface ApprovalFanOut {
@@ -82,45 +80,42 @@ export async function fanOutApprovalRequest(args: ApprovalFanOut): Promise<void>
       : args.message;
   const heading = `Approval needed: ${args.title}`;
 
-  await sendPushToOrg(args.organizationId, "workflowPages", {
-    title: heading,
-    body: args.message,
-    data: args.push,
-  });
-
-  const slackSent = await sendSlackToOrgTracked(args.organizationId, "workflowPages", {
-    title: heading,
-    body: `${args.slackLead}\n\n${detail}`,
-    context: args.context,
-    ...(args.url ? { url: args.url } : {}),
-    buttons: slackApprovalButtons({
-      kind: args.kind,
-      approvalId: args.approvalId,
+  // Quiet hours must not hold an approval: a timeout with no decision is a
+  // denial, so parking the request until morning would silently deny it.
+  const routed = await routeAlert(
+    {
       organizationId: args.organizationId,
-    }),
-  });
+      trigger: "workflowPages",
+      title: heading,
+      body: `${args.slackLead}\n\n${detail}`,
+      teamsBody: `${args.teamsLead}\n\n${detail}`,
+      pushBody: args.message,
+      context: args.context,
+      ...(args.url ? { url: args.url } : {}),
+      pushData: args.push,
+      facts: { key: args.kind },
+    },
+    {
+      track: true,
+      bypassQuietHours: true,
+      slackButtons: slackApprovalButtons({
+        kind: args.kind,
+        approvalId: args.approvalId,
+        organizationId: args.organizationId,
+      }),
+    },
+  );
   try {
     await recordSlackApprovalMessages(
       args.organizationId,
       args.kind,
       args.approvalId,
-      slackSent.messages,
-      // The decided/expired rendering, should the recorder find the request
-      // already settled: the same title/body every later update uses.
+      routed.slackMessages,
       { title: heading, body: args.message },
     );
   } catch (err) {
-    // Losing the refs only costs the in-place update later; the buttons still
-    // work, so this must not fail the fan-out.
     console.error(`[approvals] recording Slack messages for ${args.approvalId} failed:`, err);
   }
-
-  await sendMsTeamsToOrg(args.organizationId, "workflowPages", {
-    title: heading,
-    body: `${args.teamsLead}\n\n${detail}`,
-    context: args.context,
-    ...(args.url ? { url: args.url } : {}),
-  });
 }
 
 /** `APP_URL`-rooted deep link, or null when the server has no `APP_URL`. */

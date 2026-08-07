@@ -14,24 +14,25 @@ import {
   sendSlackTestMessage,
   unregisterPushDevice,
   updatePushPreferences,
-  updateSlackChannel,
   addMsTeamsWebhook,
   getMsTeamsStatus,
   removeMsTeamsWebhook,
   sendMsTeamsTestMessage,
-  updateMsTeamsWebhook,
   getDigestSettings,
   listDigestRecipients,
   sendDigestNow,
   updateDigestSettings,
+  DEFAULT_MUTED_TRIGGERS,
+  PUSHABLE_TRIGGERS,
+  alertTriggerDef,
+  pushTriggerEnabled,
+  withPushTrigger,
   type PushDeviceSummary,
   type PushPreferences,
   type SlackChannel,
-  type SlackChannelTriggers,
   type SlackStatus,
   type MsTeamsStatus,
   type MsTeamsWebhook,
-  type MsTeamsWebhookTriggers,
   type DigestSettings,
   type DigestSettingsPatch,
 } from "@infrawrench/client-core";
@@ -118,19 +119,9 @@ export default function NotificationsScreen() {
   }
 
   const current: PushPreferences = prefs.data ?? {
-    syncIncidents: true,
-    budgetAlerts: true,
-    anomalyAlerts: true,
-    metricAlerts: true,
-    // Drift is the one trigger that defaults off — it is a continuous feed
-    // where the others are exceptional events.
-    resourceDrift: false,
-    workflowPages: true,
-    providerIncidents: true,
-    expiryAlerts: true,
-    logMatchAlerts: true,
-    postureAlerts: true,
-    probeAlerts: true,
+    // "No row means the shipped defaults", which is not the same as "nothing
+    // muted" — drift is a continuous feed where the others are exceptional.
+    mutedTriggers: [...DEFAULT_MUTED_TRIGGERS],
   };
   const deviceList = devices.data ?? [];
 
@@ -155,165 +146,35 @@ export default function NotificationsScreen() {
     >
       <SectionTitle>Push notifications for this org</SectionTitle>
       <Card>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
-              Sync incidents
-            </Text>
-            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              A provider account sync starts failing.
-            </Text>
-          </View>
-          <Switch
-            value={current.syncIncidents}
-            onValueChange={(v) => updatePrefs.mutate({ syncIncidents: v })}
-            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
-          />
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
-              Budget alerts
-            </Text>
-            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              A budget crosses an alert threshold.
-            </Text>
-          </View>
-          <Switch
-            value={current.budgetAlerts}
-            onValueChange={(v) => updatePrefs.mutate({ budgetAlerts: v })}
-            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
-          />
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
-              Cost anomalies
-            </Text>
-            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              A provider or service spends far above its usual baseline.
-            </Text>
-          </View>
-          <Switch
-            value={current.anomalyAlerts}
-            onValueChange={(v) => updatePrefs.mutate({ anomalyAlerts: v })}
-            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
-          />
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
-              Metric alerts
-            </Text>
-            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              A metric threshold rule fires or recovers on a resource.
-            </Text>
-          </View>
-          <Switch
-            value={current.metricAlerts}
-            onValueChange={(v) => updatePrefs.mutate({ metricAlerts: v })}
-            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
-          />
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
-              Resource drift
-            </Text>
-            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              One batched digest of the change timeline per cooldown window — never one message per
-              change. Off by default; what counts as drift is set per org on the web app.
-            </Text>
-          </View>
-          <Switch
-            value={current.resourceDrift}
-            onValueChange={(v) => updatePrefs.mutate({ resourceDrift: v })}
-            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
-          />
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>Pages</Text>
-            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              Your code raises an alert — infra.page(), POST /pages, or a run suspended on
-              infra.waitForApproval() asking for a decision.
-            </Text>
-          </View>
-          <Switch
-            value={current.workflowPages}
-            onValueChange={(v) => updatePrefs.mutate({ workflowPages: v })}
-            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
-          />
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
-              Provider incidents
-            </Text>
-            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              A provider status-page incident overlaps resources you hold.
-            </Text>
-          </View>
-          <Switch
-            value={current.providerIncidents}
-            onValueChange={(v) => updatePrefs.mutate({ providerIncidents: v })}
-            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
-          />
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
-              Expiry alerts
-            </Text>
-            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              Certs, domains, tokens and keys approaching expiry.
-            </Text>
-          </View>
-          <Switch
-            value={current.expiryAlerts}
-            onValueChange={(v) => updatePrefs.mutate({ expiryAlerts: v })}
-            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
-          />
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>Log matches</Text>
-            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              A saved log query with alerting enabled found matching lines.
-            </Text>
-          </View>
-          <Switch
-            value={current.logMatchAlerts}
-            onValueChange={(v) => updatePrefs.mutate({ logMatchAlerts: v })}
-            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
-          />
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>Posture</Text>
-            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              Critical and high security findings on synced resources.
-            </Text>
-          </View>
-          <Switch
-            value={current.postureAlerts}
-            onValueChange={(v) => updatePrefs.mutate({ postureAlerts: v })}
-            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
-          />
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>Probes</Text>
-            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              A synthetic probe goes down after consecutive failures, or recovers.
-            </Text>
-          </View>
-          <Switch
-            value={current.probeAlerts}
-            onValueChange={(v) => updatePrefs.mutate({ probeAlerts: v })}
-            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
-          />
-        </View>
+        {/*
+          Driven by the shared trigger registry rather than eleven hand-written
+          rows. A release that adds a trigger gets a row here for free — which
+          is the point of the routing refactor: the trigger list lives in one
+          place instead of being spelled out in every surface that shows it.
+        */}
+        {PUSHABLE_TRIGGERS.map((trigger) => {
+          const def = alertTriggerDef(trigger);
+          return (
+            <View
+              key={trigger}
+              style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}
+            >
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
+                  {def.label}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{def.description}</Text>
+              </View>
+              <Switch
+                value={pushTriggerEnabled(current, trigger)}
+                onValueChange={(v) =>
+                  updatePrefs.mutate({ mutedTriggers: withPushTrigger(current, trigger, v) })
+                }
+                trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
+              />
+            </View>
+          );
+        })}
       </Card>
 
       <SectionTitle>Your devices</SectionTitle>
@@ -579,26 +440,6 @@ function WeeklyDigestSection({ api, orgId }: { api: CloudFetch; orgId: string })
 }
 
 /**
- * Same order as web's `ALERT_TRIGGERS`. Drift sits between anomalies and pages
- * and arrives off — adding a channel opts it into everything else, but drift is
- * a continuous feed and turning it on has to be a decision.
- */
-const SLACK_TRIGGERS = [
-  { key: "syncIncidents", label: "Sync failures" },
-  { key: "budgetAlerts", label: "Budgets" },
-  { key: "anomalyAlerts", label: "Anomalies" },
-  { key: "metricAlerts", label: "Metric alerts" },
-  { key: "resourceDrift", label: "Drift" },
-  { key: "workflowPages", label: "Pages" },
-  { key: "providerIncidents", label: "Provider incidents" },
-  { key: "expiryAlerts", label: "Expiry" },
-  { key: "logMatchAlerts", label: "Log matches" },
-  { key: "postureAlerts", label: "Posture" },
-  { key: "probeAlerts", label: "Probes" },
-  { key: "weeklyDigest", label: "Weekly digest" },
-] as const satisfies ReadonlyArray<{ key: keyof SlackChannelTriggers; label: string }>;
-
-/**
  * Slack routing for the whole org — unlike the push toggles above, which are
  * per-user. The install itself is an OAuth round-trip in the system browser;
  * when it closes we refetch, because the callback lands on the web app rather
@@ -640,27 +481,6 @@ function SlackSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
     mutationFn: (installationId: string) => disconnectSlackWorkspace(api, orgId, installationId),
     onSuccess: () => void refetchStatus(),
     onError: alertError("Disconnect failed"),
-  });
-
-  const toggle = useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Partial<SlackChannelTriggers> }) =>
-      updateSlackChannel(api, orgId, id, patch),
-    onMutate: async ({ id, patch }) => {
-      await queryClient.cancelQueries({ queryKey: statusKey });
-      const previous = queryClient.getQueryData<SlackStatus>(statusKey);
-      if (previous) {
-        queryClient.setQueryData<SlackStatus>(statusKey, {
-          ...previous,
-          channels: previous.channels.map((c) => (c.id === id ? { ...c, ...patch } : c)),
-        });
-      }
-      return { previous };
-    },
-    onError: (e, _vars, ctx) => {
-      if (ctx?.previous) queryClient.setQueryData(statusKey, ctx.previous);
-      alertError("Update failed")(e);
-    },
-    onSettled: () => void refetchStatus(),
   });
 
   const addChannel = useMutation({
@@ -774,7 +594,6 @@ function SlackSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
             <SlackChannelRow
               key={ch.id}
               channel={ch}
-              onToggle={(patch) => toggle.mutate({ id: ch.id, patch })}
               onRemove={() => removeChannel.mutate(ch.id)}
             />
           ))
@@ -835,58 +654,24 @@ function SlackSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
   );
 }
 
-function SlackChannelRow({
-  channel,
-  onToggle,
-  onRemove,
-}: {
-  channel: SlackChannel;
-  onToggle: (patch: Partial<SlackChannelTriggers>) => void;
-  onRemove: () => void;
-}) {
+/**
+ * A connected channel, with no per-trigger switches.
+ *
+ * Which alerts reach a channel is an org-wide routing rule now
+ * (`org:settings:write`), and the rules editor is a web/desktop surface — the
+ * same demotion drift-alert settings and the digest schedule already carry
+ * here. What the phone keeps is the part that is genuinely per-device: your own
+ * push mutes, above.
+ */
+function SlackChannelRow({ channel, onRemove }: { channel: SlackChannel; onRemove: () => void }) {
   return (
-    <View style={{ gap: spacing.sm }}>
-      <Row
-        title={`#${channel.channelName}`}
-        subtitle={channel.isPrivate ? "private" : undefined}
-        right={<Button label="Remove" variant="secondary" onPress={onRemove} />}
-      />
-      {SLACK_TRIGGERS.map((t) => (
-        <View
-          key={t.key}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: spacing.md,
-            paddingLeft: spacing.md,
-          }}
-        >
-          <Text style={{ color: colors.textMuted, fontSize: 13, flex: 1 }}>{t.label}</Text>
-          <Switch
-            value={channel[t.key]}
-            onValueChange={(v) => onToggle({ [t.key]: v })}
-            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
-          />
-        </View>
-      ))}
-    </View>
+    <Row
+      title={`#${channel.channelName}`}
+      subtitle={channel.isPrivate ? "private" : undefined}
+      right={<Button label="Remove" variant="secondary" onPress={onRemove} />}
+    />
   );
 }
-
-const MSTEAMS_TRIGGERS = [
-  { key: "syncIncidents", label: "Sync failures" },
-  { key: "budgetAlerts", label: "Budgets" },
-  { key: "anomalyAlerts", label: "Anomalies" },
-  { key: "metricAlerts", label: "Metric alerts" },
-  { key: "resourceDrift", label: "Drift" },
-  { key: "workflowPages", label: "Pages" },
-  { key: "providerIncidents", label: "Provider incidents" },
-  { key: "expiryAlerts", label: "Expiry" },
-  { key: "logMatchAlerts", label: "Log matches" },
-  { key: "postureAlerts", label: "Posture" },
-  { key: "probeAlerts", label: "Probes" },
-  { key: "weeklyDigest", label: "Weekly digest" },
-] as const satisfies ReadonlyArray<{ key: keyof MsTeamsWebhookTriggers; label: string }>;
 
 /**
  * Microsoft Teams routing for the whole org. There is no "Add to Teams" button
@@ -910,27 +695,6 @@ function MsTeamsSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
   const refetchStatus = () => queryClient.invalidateQueries({ queryKey: statusKey });
   const alertError = (title: string) => (e: unknown) =>
     Alert.alert(title, e instanceof Error ? e.message : "Unknown error");
-
-  const toggle = useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Partial<MsTeamsWebhookTriggers> }) =>
-      updateMsTeamsWebhook(api, orgId, id, patch),
-    onMutate: async ({ id, patch }) => {
-      await queryClient.cancelQueries({ queryKey: statusKey });
-      const previous = queryClient.getQueryData<MsTeamsStatus>(statusKey);
-      if (previous) {
-        queryClient.setQueryData<MsTeamsStatus>(statusKey, {
-          ...previous,
-          webhooks: previous.webhooks.map((w) => (w.id === id ? { ...w, ...patch } : w)),
-        });
-      }
-      return { previous };
-    },
-    onError: (e, _vars, ctx) => {
-      if (ctx?.previous) queryClient.setQueryData(statusKey, ctx.previous);
-      alertError("Update failed")(e);
-    },
-    onSettled: () => void refetchStatus(),
-  });
 
   const add = useMutation({
     mutationFn: () => addMsTeamsWebhook(api, orgId, { label, url }),
@@ -975,12 +739,7 @@ function MsTeamsSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
           </Text>
         ) : (
           webhooks.map((w) => (
-            <MsTeamsWebhookRow
-              key={w.id}
-              webhook={w}
-              onToggle={(patch) => toggle.mutate({ id: w.id, patch })}
-              onRemove={() => removeWebhook.mutate(w.id)}
-            />
+            <MsTeamsWebhookRow key={w.id} webhook={w} onRemove={() => removeWebhook.mutate(w.id)} />
           ))
         )}
       </Card>
@@ -1035,41 +794,20 @@ function MsTeamsSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
   );
 }
 
+/** A connected Teams channel. Routing is a web/desktop surface — see `SlackChannelRow`. */
 function MsTeamsWebhookRow({
   webhook,
-  onToggle,
   onRemove,
 }: {
   webhook: MsTeamsWebhook;
-  onToggle: (patch: Partial<MsTeamsWebhookTriggers>) => void;
   onRemove: () => void;
 }) {
   return (
-    <View style={{ gap: spacing.sm }}>
-      <Row
-        title={webhook.label}
-        subtitle={webhook.urlHint}
-        right={<Button label="Remove" variant="secondary" onPress={onRemove} />}
-      />
-      {MSTEAMS_TRIGGERS.map((t) => (
-        <View
-          key={t.key}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: spacing.md,
-            paddingLeft: spacing.md,
-          }}
-        >
-          <Text style={{ color: colors.textMuted, fontSize: 13, flex: 1 }}>{t.label}</Text>
-          <Switch
-            value={webhook[t.key]}
-            onValueChange={(v) => onToggle({ [t.key]: v })}
-            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
-          />
-        </View>
-      ))}
-    </View>
+    <Row
+      title={webhook.label}
+      subtitle={webhook.urlHint}
+      right={<Button label="Remove" variant="secondary" onPress={onRemove} />}
+    />
   );
 }
 

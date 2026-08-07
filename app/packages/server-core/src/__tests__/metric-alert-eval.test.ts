@@ -8,15 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * mocked at the reader boundary and the selector at its module boundary.
  */
 
-const sendPushToOrg = vi.fn(async () => ({ attempted: 0, succeeded: 0 }));
-vi.mock("../push/dispatch", () => ({ sendPushToOrg }));
-
-const sendSlackToOrg = vi.fn(async () => ({ attempted: 0, succeeded: 0, failed: 0 }));
-vi.mock("../slack", () => ({ sendSlackToOrg }));
-
-const sendMsTeamsToOrg = vi.fn(async () => ({ attempted: 0, succeeded: 0, failed: 0 }));
-vi.mock("../msteams", () => ({ sendMsTeamsToOrg }));
-
 const getMetricMinuteSeriesBatch = vi.fn();
 vi.mock("../clickhouse/readers", () => ({ getMetricMinuteSeriesBatch }));
 
@@ -87,6 +78,54 @@ const db = {
   }),
 };
 vi.mock("../db/client", () => ({ db }));
+
+/**
+ * All three transports sit behind `routeAlert` now, so that is the single seam
+ * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * it decides whether a cooldown or claim is kept, and faking it would hide
+ * exactly the bug it exists to prevent.
+ */
+// Defaults to a successful delivery: `routeAlert` never throws and always
+// returns a result, so a mock that resolves `undefined` would fail tests in a
+// way the real function cannot.
+const routeAlert = vi.fn(async (..._args: unknown[]) => routed());
+vi.mock("../alerts/route", () => ({
+  routeAlert: (...a: unknown[]) => routeAlert(...a),
+  alertReached: (r: { succeeded?: number; held?: number } | null | undefined) =>
+    (r?.succeeded ?? 0) > 0 || (r?.held ?? 0) > 0,
+}));
+
+/** A delivery that reached one Slack channel and one phone. */
+function routed(over: Record<string, unknown> = {}) {
+  return {
+    attempted: 2,
+    succeeded: 2,
+    byTransport: { push: 1, slack: 1, msTeams: 0 },
+    attemptedByTransport: { push: 1, slack: 1, msTeams: 0 },
+    held: 0,
+    unrouted: false,
+    matchedRuleIds: ["rule1"],
+    // The tracked-Slack half of the result. Present by default because
+    // `byTransport.slack` is 1 — a result claiming a Slack delivery with no
+    // message to show for it is a shape the real function never returns.
+    slackMessages: [{ installationId: "inst1", channelId: "C1", ts: "1722700000.000100" }],
+    deliveryIds: [],
+    ...over,
+  };
+}
+
+/** A delivery that reached nobody — no rule matched, or every channel failed. */
+function unroutedResult() {
+  return routed({
+    attempted: 0,
+    succeeded: 0,
+    byTransport: { push: 0, slack: 0, msTeams: 0 },
+    attemptedByTransport: { push: 0, slack: 0, msTeams: 0 },
+    matchedRuleIds: [],
+    slackMessages: [],
+    unrouted: true,
+  });
+}
 
 let metricEval: typeof import("../metric-alerts/eval");
 
@@ -162,26 +201,18 @@ describe("evaluateMetricAlertRule — opening firings", () => {
       status: "firing",
       observedValue: 97,
     });
-    expect(sendPushToOrg).toHaveBeenCalledWith(
-      "org1",
-      "metricAlerts",
+    expect(routeAlert).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: {
-          type: "metric_alert",
-          orgId: "org1",
-          ruleId: "rule1",
-          resourceId: "res1",
-          status: "firing",
-        },
+        organizationId: "org1",
+        trigger: "metricAlerts",
+        pushData: expect.objectContaining({ type: "metric_alert", status: "firing" }),
       }),
     );
-    expect(sendSlackToOrg).toHaveBeenCalledWith("org1", "metricAlerts", expect.anything());
-    expect(sendMsTeamsToOrg).toHaveBeenCalledWith("org1", "metricAlerts", expect.anything());
   });
 
   it("stamps notifiedAt when any transport delivers", async () => {
     insertReturning = [{ id: "evt1" }];
-    sendSlackToOrg.mockResolvedValueOnce({ attempted: 1, succeeded: 1, failed: 0 });
+    routeAlert.mockResolvedValueOnce(routed());
     await metricEval.evaluateMetricAlertRule(rule(), NOW);
     expect(updates.some((u) => u.table === "metricAlertEvents" && "notifiedAt" in u.set)).toBe(
       true,
@@ -190,6 +221,7 @@ describe("evaluateMetricAlertRule — opening firings", () => {
 
   it("leaves notifiedAt unset when every transport fails", async () => {
     insertReturning = [{ id: "evt1" }];
+    routeAlert.mockResolvedValue(unroutedResult());
     await metricEval.evaluateMetricAlertRule(rule(), NOW);
     expect(updates.filter((u) => "notifiedAt" in u.set)).toHaveLength(0);
   });
@@ -197,8 +229,7 @@ describe("evaluateMetricAlertRule — opening firings", () => {
   it("does not notify when the open claim is lost (row already open elsewhere)", async () => {
     insertReturning = []; // onConflictDoNothing hit the partial unique index
     await metricEval.evaluateMetricAlertRule(rule(), NOW);
-    expect(sendPushToOrg).not.toHaveBeenCalled();
-    expect(sendSlackToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
   });
 
   it("records but does not notify a firing inside the cooldown window", async () => {
@@ -206,15 +237,14 @@ describe("evaluateMetricAlertRule — opening firings", () => {
     cooldownNotifiedCount = 1; // a notified firing for this pair within cooldownMinutes
     await metricEval.evaluateMetricAlertRule(rule(), NOW);
     expect(inserted).toHaveLength(1); // stored — the list UI still shows it
-    expect(sendPushToOrg).not.toHaveBeenCalled();
-    expect(sendSlackToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
   });
 
   it("ignores the cooldown check entirely when cooldownMinutes is 0", async () => {
     insertReturning = [{ id: "evt1" }];
     cooldownNotifiedCount = 5;
     await metricEval.evaluateMetricAlertRule(rule({ cooldownMinutes: 0 }), NOW);
-    expect(sendPushToOrg).toHaveBeenCalledTimes(1);
+    expect(routeAlert).toHaveBeenCalledTimes(1);
   });
 
   it("does not open a firing on an insufficient window (sparse samples)", async () => {
@@ -232,7 +262,7 @@ describe("evaluateMetricAlertRule — opening firings", () => {
     samplesFor({ res1: breachingSamples(50) });
     await metricEval.evaluateMetricAlertRule(rule(), NOW);
     expect(inserted).toHaveLength(0);
-    expect(sendPushToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
   });
 });
 
@@ -252,11 +282,13 @@ describe("evaluateMetricAlertRule — resolving firings", () => {
     await metricEval.evaluateMetricAlertRule(rule(), NOW);
 
     expect(updates.some((u) => u.set["status"] === "resolved")).toBe(true);
-    expect(sendPushToOrg).toHaveBeenCalledWith(
-      "org1",
-      "metricAlerts",
+    expect(routeAlert).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ type: "metric_alert", status: "resolved" }),
+        trigger: "metricAlerts",
+        // A recovery is good news, so it drops to `info` — which is what lets a
+        // rule wake someone for the firing and hold the all-clear till morning.
+        severity: "info",
+        pushData: expect.objectContaining({ status: "resolved" }),
       }),
     );
   });
@@ -265,7 +297,7 @@ describe("evaluateMetricAlertRule — resolving firings", () => {
     openEventRows = [openEvent()];
     samplesFor({ res1: breachingSamples(50) });
     updateReturning = [[{ id: "evt1" }]];
-    sendSlackToOrg.mockResolvedValueOnce({ attempted: 1, succeeded: 1, failed: 0 });
+    routeAlert.mockResolvedValueOnce(routed());
     await metricEval.evaluateMetricAlertRule(rule(), NOW);
     expect(updates.some((u) => "resolvedNotifiedAt" in u.set)).toBe(true);
   });
@@ -276,7 +308,7 @@ describe("evaluateMetricAlertRule — resolving firings", () => {
     updateReturning = [[{ id: "evt1" }]];
     await metricEval.evaluateMetricAlertRule(rule(), NOW);
     expect(updates.some((u) => u.set["status"] === "resolved")).toBe(true);
-    expect(sendPushToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
   });
 
   it("does not send a recovery when the resolve claim is lost to another replica", async () => {
@@ -284,14 +316,14 @@ describe("evaluateMetricAlertRule — resolving firings", () => {
     samplesFor({ res1: breachingSamples(50) });
     updateReturning = [[]]; // WHERE status='firing' matched nothing
     await metricEval.evaluateMetricAlertRule(rule(), NOW);
-    expect(sendPushToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
   });
 
   it("keeps a still-breaching firing open without re-notifying", async () => {
     openEventRows = [openEvent()];
     await metricEval.evaluateMetricAlertRule(rule(), NOW);
     expect(updates.some((u) => u.set["status"] === "resolved")).toBe(false);
-    expect(sendPushToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
     expect(inserted).toHaveLength(0); // no second row for the same pair
   });
 

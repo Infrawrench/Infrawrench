@@ -29,9 +29,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "../db/client";
 import { metricAlertEvents, metricAlertRules } from "../db/schema";
 import { getMetricMinuteSeriesBatch } from "../clickhouse/readers";
-import { sendPushToOrg } from "../push/dispatch";
-import { sendSlackToOrg } from "../slack";
-import { sendMsTeamsToOrg } from "../msteams";
+import { alertReached, routeAlert } from "../alerts/route";
 import { resolveSelectorResources, type SelectedResource } from "./selector";
 import { judgeWindow, type MetricComparator, type WindowSample } from "./window";
 
@@ -96,31 +94,23 @@ async function notifyFiring(
     `for ${rule.forMinutes} minutes)`;
   const context = `${rule.metricKey} ${rule.comparator} ${formatValue(rule.threshold)} · firing`;
 
-  const pushed = await sendPushToOrg(rule.organizationId, "metricAlerts", {
+  const routed = await routeAlert({
+    organizationId: rule.organizationId,
+    trigger: "metricAlerts",
     title,
     body,
-    data: {
+    context,
+    url: metricAlertsUrl(rule.organizationId),
+    pushData: {
       type: "metric_alert",
       orgId: rule.organizationId,
       ruleId: rule.id,
       resourceId: resource.id,
       status: "firing",
     },
+    facts: { resourceId: resource.id, key: rule.name },
   });
-  const url = metricAlertsUrl(rule.organizationId);
-  const slacked = await sendSlackToOrg(rule.organizationId, "metricAlerts", {
-    title,
-    body,
-    context,
-    ...(url ? { url } : {}),
-  });
-  const teamed = await sendMsTeamsToOrg(rule.organizationId, "metricAlerts", {
-    title,
-    body,
-    context,
-    ...(url ? { url } : {}),
-  });
-  if (pushed.succeeded > 0 || slacked.succeeded > 0 || teamed.succeeded > 0) {
+  if (alertReached(routed)) {
     await db
       .update(metricAlertEvents)
       .set({ notifiedAt: new Date() })
@@ -135,31 +125,27 @@ async function notifyResolved(rule: MetricAlertRuleRow, event: OpenEventRow): Pr
     `"${event.resourceName}" is back within threshold (was ${rule.comparator} ${formatValue(rule.threshold)})`;
   const context = `${rule.metricKey} ${rule.comparator} ${formatValue(rule.threshold)} · resolved`;
 
-  const pushed = await sendPushToOrg(rule.organizationId, "metricAlerts", {
+  const routed = await routeAlert({
+    organizationId: rule.organizationId,
+    trigger: "metricAlerts",
+    // A recovery is good news, so it drops to `info` regardless of how loud the
+    // firing was. That is what lets a rule wake someone for the alert and hold
+    // the all-clear until morning.
+    severity: "info",
     title,
     body,
-    data: {
+    context,
+    url: metricAlertsUrl(rule.organizationId),
+    pushData: {
       type: "metric_alert",
       orgId: rule.organizationId,
       ruleId: rule.id,
       resourceId: event.resourceId,
       status: "resolved",
     },
+    facts: { resourceId: event.resourceId, key: rule.name },
   });
-  const url = metricAlertsUrl(rule.organizationId);
-  const slacked = await sendSlackToOrg(rule.organizationId, "metricAlerts", {
-    title,
-    body,
-    context,
-    ...(url ? { url } : {}),
-  });
-  const teamed = await sendMsTeamsToOrg(rule.organizationId, "metricAlerts", {
-    title,
-    body,
-    context,
-    ...(url ? { url } : {}),
-  });
-  if (pushed.succeeded > 0 || slacked.succeeded > 0 || teamed.succeeded > 0) {
+  if (alertReached(routed)) {
     await db
       .update(metricAlertEvents)
       .set({ resolvedNotifiedAt: new Date() })

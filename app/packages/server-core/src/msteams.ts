@@ -2,9 +2,9 @@
  * Microsoft Teams as an alert transport.
  *
  * An org adds one or more Teams *webhook URLs*; we POST an Adaptive Card to
- * each one whose trigger opt-ins match. A webhook opts into each trigger
- * independently — the same set Slack channels have — so a channel can take
- * budget crossings without also taking every sync failure.
+ * each one an `alert_rules` destination names. Like `slack.ts`, this module has
+ * no notion of a trigger — routing is decided once in `alerts/route.ts` and the
+ * webhook is addressed here by its stored row id.
  *
  * Why webhooks and not an "Add to Teams" OAuth flow like Slack
  * -----------------------------------------------------------
@@ -40,14 +40,13 @@
  * {@link ALLOWED_HOST_SUFFIXES} — without that this endpoint would be an
  * org-member-triggerable SSRF into the cluster's network.
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { AddMsTeamsWebhookArgs, MsTeamsWebhook } from "@infrawrench/client-core";
 
 import { db } from "./db/client";
 import { msteamsWebhooks } from "./db/schema";
 import { buildAad, decrypt, encrypt, keyedHash } from "./encryption";
-import type { ChannelTrigger } from "./push/types";
 
 /** Abort Teams requests after 10s so a hung connection can't stall paging. */
 const MSTEAMS_REQUEST_TIMEOUT_MS = 10_000;
@@ -158,23 +157,6 @@ export async function addMsTeamsWebhook(
   const enc = await encrypt(url, buildAad("msteams", organizationId, "webhookUrl"));
   const digest = await webhookDigest(url);
 
-  // Per-trigger opt-ins the caller explicitly set. Defaults apply only when
-  // INSERTING a new webhook; re-pasting an existing URL with a field omitted
-  // must leave the stored value unchanged rather than reset it.
-  const explicitTriggers: Partial<typeof msteamsWebhooks.$inferInsert> = {
-    ...(args.syncIncidents !== undefined ? { syncIncidents: args.syncIncidents } : {}),
-    ...(args.budgetAlerts !== undefined ? { budgetAlerts: args.budgetAlerts } : {}),
-    ...(args.anomalyAlerts !== undefined ? { anomalyAlerts: args.anomalyAlerts } : {}),
-    ...(args.metricAlerts !== undefined ? { metricAlerts: args.metricAlerts } : {}),
-    ...(args.resourceDrift !== undefined ? { resourceDrift: args.resourceDrift } : {}),
-    ...(args.workflowPages !== undefined ? { workflowPages: args.workflowPages } : {}),
-    ...(args.providerIncidents !== undefined ? { providerIncidents: args.providerIncidents } : {}),
-    ...(args.expiryAlerts !== undefined ? { expiryAlerts: args.expiryAlerts } : {}),
-    ...(args.logMatchAlerts !== undefined ? { logMatchAlerts: args.logMatchAlerts } : {}),
-    ...(args.postureAlerts !== undefined ? { postureAlerts: args.postureAlerts } : {}),
-    ...(args.probeAlerts !== undefined ? { probeAlerts: args.probeAlerts } : {}),
-    ...(args.weeklyDigest !== undefined ? { weeklyDigest: args.weeklyDigest } : {}),
-  };
   const now = new Date();
 
   const [row] = await db
@@ -188,20 +170,6 @@ export async function addMsTeamsWebhook(
       urlDigest: digest,
       urlHost: host,
       urlHint: hint,
-      syncIncidents: args.syncIncidents ?? true,
-      budgetAlerts: args.budgetAlerts ?? true,
-      anomalyAlerts: args.anomalyAlerts ?? true,
-      metricAlerts: args.metricAlerts ?? true,
-      // Drift is the one trigger that defaults off — it is continuous and
-      // high-volume where the others are exceptional. See db/schema.ts.
-      resourceDrift: args.resourceDrift ?? false,
-      workflowPages: args.workflowPages ?? true,
-      providerIncidents: args.providerIncidents ?? true,
-      expiryAlerts: args.expiryAlerts ?? true,
-      logMatchAlerts: args.logMatchAlerts ?? true,
-      postureAlerts: args.postureAlerts ?? true,
-      probeAlerts: args.probeAlerts ?? true,
-      weeklyDigest: args.weeklyDigest ?? true,
       createdByUserId: userId,
     })
     .onConflictDoUpdate({
@@ -214,7 +182,6 @@ export async function addMsTeamsWebhook(
         urlIv: enc.iv,
         urlHost: host,
         urlHint: hint,
-        ...explicitTriggers,
         updatedAt: now,
       },
     })
@@ -225,23 +192,7 @@ export async function addMsTeamsWebhook(
 }
 
 function toRecord(row: typeof msteamsWebhooks.$inferSelect): MsTeamsWebhookRecord {
-  return {
-    id: row.id,
-    label: row.label,
-    urlHint: row.urlHint,
-    syncIncidents: row.syncIncidents,
-    budgetAlerts: row.budgetAlerts,
-    anomalyAlerts: row.anomalyAlerts,
-    metricAlerts: row.metricAlerts,
-    resourceDrift: row.resourceDrift,
-    workflowPages: row.workflowPages,
-    providerIncidents: row.providerIncidents,
-    expiryAlerts: row.expiryAlerts,
-    logMatchAlerts: row.logMatchAlerts,
-    postureAlerts: row.postureAlerts,
-    probeAlerts: row.probeAlerts,
-    weeklyDigest: row.weeklyDigest,
-  };
+  return { id: row.id, label: row.label, urlHint: row.urlHint };
 }
 
 /** Every webhook the org has added, for the settings list. URLs stay encrypted. */
@@ -400,38 +351,41 @@ async function postToWebhook(url: string, payload: unknown, label: string): Prom
   throw new Error(`${label}: rate limited by Microsoft (HTTP 429)`);
 }
 
-const TRIGGER_COLUMN = {
-  syncIncidents: msteamsWebhooks.syncIncidents,
-  budgetAlerts: msteamsWebhooks.budgetAlerts,
-  anomalyAlerts: msteamsWebhooks.anomalyAlerts,
-  metricAlerts: msteamsWebhooks.metricAlerts,
-  resourceDrift: msteamsWebhooks.resourceDrift,
-  workflowPages: msteamsWebhooks.workflowPages,
-  providerIncidents: msteamsWebhooks.providerIncidents,
-  expiryAlerts: msteamsWebhooks.expiryAlerts,
-  logMatchAlerts: msteamsWebhooks.logMatchAlerts,
-  postureAlerts: msteamsWebhooks.postureAlerts,
-  probeAlerts: msteamsWebhooks.probeAlerts,
-  weeklyDigest: msteamsWebhooks.weeklyDigest,
-} as const;
+/** Every webhook the org has added — what the default rule expands to. */
+export async function listMsTeamsWebhookIds(organizationId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: msteamsWebhooks.id })
+    .from(msteamsWebhooks)
+    .where(eq(msteamsWebhooks.organizationId, organizationId));
+  return rows.map((r) => r.id);
+}
 
 /**
- * Post one alert to every webhook opted into `trigger`. Never throws — a Teams
- * or Power Automate outage must not fail the poller, the budget evaluator, or
- * the workflow that raised the alert. Per-webhook errors are logged and counted
- * as failures so the caller can still tell whether anything landed.
+ * Post one alert to a specific set of stored webhook rows. Never throws — a
+ * Teams or Power Automate outage must not fail the poller, the budget
+ * evaluator, or the workflow that raised the alert. Per-webhook errors are
+ * logged and counted as failures so the caller can still tell whether anything
+ * landed.
+ *
+ * Addressed by row id rather than by trigger for the reason `slack.ts`
+ * explains: which alerts reach a webhook is `alert_rules`' business now, so
+ * this module has no per-trigger column map left to extend.
  */
-export async function sendMsTeamsToOrg(
+export async function sendMsTeamsToWebhooks(
   organizationId: string,
-  trigger: ChannelTrigger,
+  rowIds: string[],
   alert: MsTeamsAlert,
 ): Promise<MsTeamsFanOutResult> {
   try {
+    if (rowIds.length === 0) return NO_DELIVERY;
     const rows = await db
       .select()
       .from(msteamsWebhooks)
       .where(
-        and(eq(msteamsWebhooks.organizationId, organizationId), eq(TRIGGER_COLUMN[trigger], true)),
+        and(
+          eq(msteamsWebhooks.organizationId, organizationId),
+          inArray(msteamsWebhooks.id, rowIds),
+        ),
       );
     if (rows.length === 0) return NO_DELIVERY;
 
@@ -456,7 +410,7 @@ export async function sendMsTeamsToOrg(
 
 /**
  * Send a one-off test card to every webhook the org has added, regardless of
- * trigger opt-ins. Throws (unlike {@link sendMsTeamsToOrg}) so the settings UI
+ * routing rules. Throws (unlike {@link sendMsTeamsToWebhooks}) so the settings UI
  * can show the actual failure — a deleted or turned-off Workflow answers 404,
  * and the user needs to see that rather than a silent success.
  */

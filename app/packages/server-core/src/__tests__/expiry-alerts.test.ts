@@ -97,12 +97,53 @@ vi.mock("../expiry/feed", () => ({
   listExpiring: (...a: unknown[]) => listExpiring(...a),
 }));
 
-const sendPushToOrg = vi.fn();
-const sendSlackToOrg = vi.fn();
-const sendMsTeamsToOrg = vi.fn();
-vi.mock("../push/dispatch", () => ({ sendPushToOrg: (...a: unknown[]) => sendPushToOrg(...a) }));
-vi.mock("../slack", () => ({ sendSlackToOrg: (...a: unknown[]) => sendSlackToOrg(...a) }));
-vi.mock("../msteams", () => ({ sendMsTeamsToOrg: (...a: unknown[]) => sendMsTeamsToOrg(...a) }));
+/**
+ * All three transports sit behind `routeAlert` now, so that is the single seam
+ * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * it decides whether a cooldown or claim is kept, and faking it would hide
+ * exactly the bug it exists to prevent.
+ */
+// Defaults to a successful delivery: `routeAlert` never throws and always
+// returns a result, so a mock that resolves `undefined` would fail tests in a
+// way the real function cannot.
+const routeAlert = vi.fn(async (..._args: unknown[]) => routed());
+vi.mock("../alerts/route", () => ({
+  routeAlert: (...a: unknown[]) => routeAlert(...a),
+  alertReached: (r: { succeeded?: number; held?: number } | null | undefined) =>
+    (r?.succeeded ?? 0) > 0 || (r?.held ?? 0) > 0,
+}));
+
+/** A delivery that reached one Slack channel and one phone. */
+function routed(over: Record<string, unknown> = {}) {
+  return {
+    attempted: 2,
+    succeeded: 2,
+    byTransport: { push: 1, slack: 1, msTeams: 0 },
+    attemptedByTransport: { push: 1, slack: 1, msTeams: 0 },
+    held: 0,
+    unrouted: false,
+    matchedRuleIds: ["rule1"],
+    // The tracked-Slack half of the result. Present by default because
+    // `byTransport.slack` is 1 — a result claiming a Slack delivery with no
+    // message to show for it is a shape the real function never returns.
+    slackMessages: [{ installationId: "inst1", channelId: "C1", ts: "1722700000.000100" }],
+    deliveryIds: [],
+    ...over,
+  };
+}
+
+/** A delivery that reached nobody — no rule matched, or every channel failed. */
+function unroutedResult() {
+  return routed({
+    attempted: 0,
+    succeeded: 0,
+    byTransport: { push: 0, slack: 0, msTeams: 0 },
+    attemptedByTransport: { push: 0, slack: 0, msTeams: 0 },
+    matchedRuleIds: [],
+    slackMessages: [],
+    unrouted: true,
+  });
+}
 
 import { EXPIRY_NOTIFY_COOLDOWN_MS, runExpiryAlerts } from "../expiry/alerts";
 
@@ -167,9 +208,7 @@ beforeEach(() => {
   releaseWheres = [];
   getExpirySettings.mockResolvedValue(settings());
   listExpiring.mockResolvedValue(feed([feedItem()]));
-  sendPushToOrg.mockResolvedValue({ attempted: 1, succeeded: 1 });
-  sendSlackToOrg.mockResolvedValue({ attempted: 1, succeeded: 1, failed: 0 });
-  sendMsTeamsToOrg.mockResolvedValue({ attempted: 0, succeeded: 0, failed: 0 });
+  routeAlert.mockResolvedValue(routed());
   process.env["APP_URL"] = "https://app.example.com";
 });
 
@@ -202,9 +241,10 @@ describe("cooldown claim", () => {
       slack: 1,
       msTeams: 0,
     });
-    expect(sendPushToOrg).toHaveBeenCalledWith(ORG, "expiryAlerts", expect.anything());
-    expect(sendSlackToOrg).toHaveBeenCalledWith(ORG, "expiryAlerts", expect.anything());
-    expect(sendMsTeamsToOrg).toHaveBeenCalledWith(ORG, "expiryAlerts", expect.anything());
+    expect(routeAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ trigger: "expiryAlerts" }),
+      ...[],
+    );
   });
 
   it("stays silent when another replica already holds the window", async () => {
@@ -220,7 +260,7 @@ describe("cooldown claim", () => {
     const result = await runExpiryAlerts({ limit: 4 }, NOW);
     expect(result.outcomes[ORG]).toEqual({ status: "disabled" });
     expect(result.scanned).toBe(0);
-    expect(sendSlackToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
   });
 
   it("is a daily cadence", () => {
@@ -237,7 +277,7 @@ describe("the quiet-scan rule", () => {
     expect(result.outcomes[ORG]).toEqual({ status: "quiet" });
     expect(result.scanned).toBe(1);
     expect(result.sent).toBe(0);
-    expect(sendPushToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
     expect(releases).toEqual([]);
   });
 
@@ -245,15 +285,14 @@ describe("the quiet-scan rule", () => {
     listExpiring.mockResolvedValue(feed([feedItem({ severity: "ok", daysRemaining: 200 })]));
     const result = await runExpiryAlerts({ limit: 4 }, NOW);
     expect(result.outcomes[ORG]).toEqual({ status: "quiet" });
-    expect(sendSlackToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
   });
 });
 
 describe("release semantics", () => {
   it("rolls the claim back when every transport reached nobody", async () => {
     getExpirySettings.mockResolvedValue(settings({ lastNotifiedAt: PRIOR }));
-    sendPushToOrg.mockResolvedValue({ attempted: 0, succeeded: 0 });
-    sendSlackToOrg.mockResolvedValue({ attempted: 0, succeeded: 0, failed: 0 });
+    routeAlert.mockResolvedValue(unroutedResult());
     const result = await runExpiryAlerts({ limit: 4 }, NOW);
     expect(result.outcomes[ORG]).toEqual({ status: "undelivered", deadlines: 1 });
     expect(releases).toEqual([{ lastNotifiedAt: PRIOR }]);
@@ -286,16 +325,18 @@ describe("release semantics", () => {
     spy.mockRestore();
   });
 
-  it("keeps the claim when a transport throws after another already delivered", async () => {
+  it("keeps the claim for a day quiet hours held rather than delivered", async () => {
+    // A held leg has `succeeded: 0` but the digest *will* arrive. Rolling the
+    // claim back would rebuild the same day tomorrow and deliver it twice —
+    // once from the queue, once fresh. The rule is "spend the day iff somebody
+    // heard, or is guaranteed to".
     getExpirySettings.mockResolvedValue(settings({ lastNotifiedAt: PRIOR }));
-    sendSlackToOrg.mockRejectedValue(new Error("slack exploded"));
+    routeAlert.mockResolvedValue(
+      routed({ succeeded: 0, byTransport: { push: 0, slack: 0, msTeams: 0 }, held: 1 }),
+    );
     const spy = hushErrors();
     const result = await runExpiryAlerts({ limit: 4 }, NOW);
-    expect(result.outcomes[ORG]).toMatchObject({
-      status: "failed",
-      claimed: true,
-      released: false,
-    });
+    expect(result.outcomes[ORG]).toMatchObject({ status: "sent" });
     expect(releases).toEqual([]);
     spy.mockRestore();
   });
@@ -328,17 +369,19 @@ describe("release semantics", () => {
 describe("payload", () => {
   it("deep-links the push payload to the expiry radar", async () => {
     await runExpiryAlerts({ limit: 4 }, NOW);
-    const push = sendPushToOrg.mock.calls[0]![2] as { data: Record<string, unknown> };
-    expect(push.data).toEqual({ type: "expiry_alert", orgId: ORG });
-    const slack = sendSlackToOrg.mock.calls[0]![2] as { url?: string };
+    const push = routeAlert.mock.calls[0]![0] as { pushData: Record<string, unknown> };
+    expect(push.pushData).toEqual({ type: "expiry_alert", orgId: ORG });
+    const slack = routeAlert.mock.calls[0]![0] as { url?: string };
     expect(slack.url).toBe(`https://app.example.com/org/${ORG}/expiring`);
   });
 
   it("omits the button when the server has no APP_URL", async () => {
     delete process.env["APP_URL"];
     await runExpiryAlerts({ limit: 4 }, NOW);
-    const slack = sendSlackToOrg.mock.calls[0]![2] as { url?: string };
-    expect(slack.url).toBeUndefined();
+    // `routeAlert` takes `url: string | null` and drops the button on a falsy
+    // value, so the notifier passes the null straight through.
+    const slack = routeAlert.mock.calls[0]![0] as { url?: string | null };
+    expect(slack.url).toBeFalsy();
   });
 
   it("computes the feed at the claim's own instant and lead time", async () => {

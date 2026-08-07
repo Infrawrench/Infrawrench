@@ -12,7 +12,8 @@
  * `rejectPendingAction`); only the conversation's owner may decide, exactly as
  * on the web. See api/routes/slack-inbound.ts for the enforcement.
  */
-import { isSlackConfigured, sendSlackToOrgTracked } from "@infrawrench/server-core/slack";
+import { isSlackConfigured } from "@infrawrench/server-core/slack";
+import { routeAlert } from "@infrawrench/server-core/alerts/route";
 import {
   recordSlackApprovalMessages,
   slackApprovalButtons,
@@ -82,22 +83,37 @@ export async function notifyChatToolApproval(args: {
       ? `${base.replace(/\/$/, "")}/org/${args.organizationId}/chat/${args.conversationId}`
       : null;
     const owner = args.ownerEmail ?? "the conversation owner";
-    const sent = await sendSlackToOrgTracked(args.organizationId, "workflowPages", {
-      title,
-      body,
-      context: `chat agent · requested in ${owner}'s conversation · only they can decide`,
-      ...(url ? { url } : {}),
-      buttons: slackApprovalButtons({
-        kind: "chat",
-        approvalId: args.pendingActionId,
+    // Routed like every other alert, but never held: the conversation is
+    // blocked on the decision, so quiet hours would strand the person who asked.
+    const sent = await routeAlert(
+      {
         organizationId: args.organizationId,
-      }),
-    });
+        trigger: "workflowPages",
+        title,
+        body,
+        context: `chat agent · requested in ${owner}'s conversation · only they can decide`,
+        ...(url ? { url } : {}),
+        // No `pushData`, so a `push` destination on the matching rule is
+        // skipped. A chat tool approval lives inside one person's conversation
+        // and only they can decide it; the mobile app has no screen to deep-link
+        // to, and buzzing the whole org about a request nobody else can action
+        // would be worse than the Slack-only reach this had before.
+      },
+      {
+        track: true,
+        bypassQuietHours: true,
+        slackButtons: slackApprovalButtons({
+          kind: "chat",
+          approvalId: args.pendingActionId,
+          organizationId: args.organizationId,
+        }),
+      },
+    );
     await recordSlackApprovalMessages(
       args.organizationId,
       "chat",
       args.pendingActionId,
-      sent.messages,
+      sent.slackMessages,
       { title, body },
     );
   } catch (err) {

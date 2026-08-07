@@ -14,15 +14,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * `budget-eval.test.ts`.
  */
 
-const sendPushToOrg = vi.fn(async () => ({ attempted: 0, succeeded: 0 }));
-vi.mock("../push/dispatch", () => ({ sendPushToOrg }));
-
-const sendSlackToOrg = vi.fn(async () => ({ attempted: 0, succeeded: 0, failed: 0 }));
-vi.mock("../slack", () => ({ sendSlackToOrg }));
-
-const sendMsTeamsToOrg = vi.fn(async () => ({ attempted: 0, succeeded: 0, failed: 0 }));
-vi.mock("../msteams", () => ({ sendMsTeamsToOrg }));
-
 const queryCosts = vi.fn();
 const getCostCoverage = vi.fn();
 vi.mock("../clickhouse/cost-readers", () => ({ queryCosts, getCostCoverage }));
@@ -124,6 +115,54 @@ const db = {
 };
 vi.mock("../db/client", () => ({ db }));
 
+/**
+ * All three transports sit behind `routeAlert` now, so that is the single seam
+ * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * it decides whether a cooldown or claim is kept, and faking it would hide
+ * exactly the bug it exists to prevent.
+ */
+// Defaults to a successful delivery: `routeAlert` never throws and always
+// returns a result, so a mock that resolves `undefined` would fail tests in a
+// way the real function cannot.
+const routeAlert = vi.fn(async (..._args: unknown[]) => routed());
+vi.mock("../alerts/route", () => ({
+  routeAlert: (...a: unknown[]) => routeAlert(...a),
+  alertReached: (r: { succeeded?: number; held?: number } | null | undefined) =>
+    (r?.succeeded ?? 0) > 0 || (r?.held ?? 0) > 0,
+}));
+
+/** A delivery that reached one Slack channel and one phone. */
+function routed(over: Record<string, unknown> = {}) {
+  return {
+    attempted: 2,
+    succeeded: 2,
+    byTransport: { push: 1, slack: 1, msTeams: 0 },
+    attemptedByTransport: { push: 1, slack: 1, msTeams: 0 },
+    held: 0,
+    unrouted: false,
+    matchedRuleIds: ["rule1"],
+    // The tracked-Slack half of the result. Present by default because
+    // `byTransport.slack` is 1 — a result claiming a Slack delivery with no
+    // message to show for it is a shape the real function never returns.
+    slackMessages: [{ installationId: "inst1", channelId: "C1", ts: "1722700000.000100" }],
+    deliveryIds: [],
+    ...over,
+  };
+}
+
+/** A delivery that reached nobody — no rule matched, or every channel failed. */
+function unroutedResult() {
+  return routed({
+    attempted: 0,
+    succeeded: 0,
+    byTransport: { push: 0, slack: 0, msTeams: 0 },
+    attemptedByTransport: { push: 0, slack: 0, msTeams: 0 },
+    matchedRuleIds: [],
+    slackMessages: [],
+    unrouted: true,
+  });
+}
+
 let anomalyEval: typeof import("../cost/anomaly-eval");
 let addDays: typeof import("../cost/dates").addDays;
 
@@ -193,9 +232,7 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
     await anomalyEval.detectCostAnomaliesForOrg("org-young", NOW, OPTS, true);
 
     expect(inserted).toEqual([]);
-    expect(sendPushToOrg).not.toHaveBeenCalled();
-    expect(sendSlackToOrg).not.toHaveBeenCalled();
-    expect(sendMsTeamsToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
   });
 
   it("stays silent on the very first day of collection", async () => {
@@ -207,7 +244,7 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
     await anomalyEval.detectCostAnomaliesForOrg("org-day-one", NOW, OPTS, true);
 
     expect(inserted).toEqual([]);
-    expect(sendPushToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
   });
 
   it("still flags a key that first appears inside an established org", async () => {
@@ -227,13 +264,9 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
       dimensionKey: "gcp",
       actualAmountCents: 500_000,
     });
-    expect(sendPushToOrg).toHaveBeenCalledWith(
-      "org-established",
-      "anomalyAlerts",
-      expect.objectContaining({
-        title: "New spend source: gcp",
-        data: expect.objectContaining({ kind: "new_source", dimensionKey: "gcp" }),
-      }),
+    expect(routeAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ trigger: "anomalyAlerts" }),
+      ...[],
     );
   });
 
@@ -494,7 +527,7 @@ describe("detectCostAnomaliesForOrg — batched SMS paging", () => {
 
   it("does not double-stamp what push already delivered", async () => {
     settings("all");
-    sendPushToOrg.mockResolvedValue({ attempted: 1, succeeded: 1 });
+    routeAlert.mockResolvedValue(routed());
     sendOneShotPage.mockResolvedValue({ attempted: 1, succeeded: 1, failed: 0 });
     manyNewSources(3);
 
@@ -517,7 +550,7 @@ describe("detectCostAnomaliesForOrg — batched SMS paging", () => {
 
   it("cannot break the pass, or the stamping, when Twilio throws", async () => {
     settings("all");
-    sendPushToOrg.mockResolvedValue({ attempted: 1, succeeded: 1 });
+    routeAlert.mockResolvedValue(routed());
     sendOneShotPage.mockRejectedValue(new Error("twilio down"));
     manyNewSources(3);
 
@@ -565,11 +598,12 @@ describe("detectCostAnomaliesForOrg — root-cause hints", () => {
 
     await anomalyEval.detectCostAnomaliesForOrg("org-hints-body", NOW, OPTS, true);
 
-    for (const send of [sendSlackToOrg, sendMsTeamsToOrg]) {
-      const [, , alert] = send.mock.calls[0]! as unknown as [string, string, { body: string }];
-      expect(alert.body).toContain("Around then:");
-      expect(alert.body).toContain(HINTS[0]);
-      expect(alert.body).toContain(HINTS[1]);
+    // Slack and Teams share `body`; only push gets the shortened `pushBody`.
+    const [event] = routeAlert.mock.calls[0]! as unknown as [{ body: string; teamsBody?: string }];
+    for (const body of [event.body, event.teamsBody ?? event.body]) {
+      expect(body).toContain("Around then:");
+      expect(body).toContain(HINTS[0]);
+      expect(body).toContain(HINTS[1]);
     }
   });
 
@@ -579,9 +613,9 @@ describe("detectCostAnomaliesForOrg — root-cause hints", () => {
 
     await anomalyEval.detectCostAnomaliesForOrg("org-hints-push", NOW, OPTS, true);
 
-    const [, , msg] = sendPushToOrg.mock.calls[0]! as unknown as [string, string, { body: string }];
-    expect(msg.body).toContain(HINTS[0]);
-    expect(msg.body).not.toContain(HINTS[1]);
+    const [event] = routeAlert.mock.calls[0]! as unknown as [{ pushBody: string }];
+    expect(event.pushBody).toContain(HINTS[0]);
+    expect(event.pushBody).not.toContain(HINTS[1]);
   });
 
   it("leaves the bodies un-annotated when nothing notable happened", async () => {
@@ -591,26 +625,22 @@ describe("detectCostAnomaliesForOrg — root-cause hints", () => {
     await anomalyEval.detectCostAnomaliesForOrg("org-hints-none", NOW, OPTS, true);
 
     expect(hintWrites).toEqual([]);
-    const [, , alert] = sendSlackToOrg.mock.calls[0]! as unknown as [
-      string,
-      string,
-      { body: string },
-    ];
-    expect(alert.body).not.toContain("Around then:");
+    const [event] = routeAlert.mock.calls[0]! as unknown as [{ body: string }];
+    expect(event.body).not.toContain("Around then:");
   });
 
   it("still delivers the alert when the hint build rejects", async () => {
     // The module contract is "never throws", but the evaluator guards anyway:
     // hints must never cost a delivery.
     buildAnomalyHints.mockRejectedValue(new Error("hint query exploded"));
-    sendPushToOrg.mockResolvedValue({ attempted: 1, succeeded: 1 });
+    routeAlert.mockResolvedValue(routed());
     oneNewSource();
 
     await expect(
       anomalyEval.detectCostAnomaliesForOrg("org-hints-fail", NOW, OPTS, true),
     ).resolves.toBeUndefined();
 
-    expect(sendPushToOrg).toHaveBeenCalledTimes(1);
+    expect(routeAlert).toHaveBeenCalledTimes(1);
     expect(stampedCount).toBe(1);
   });
 });

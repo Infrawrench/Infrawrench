@@ -37,6 +37,12 @@ import { and, desc, eq, ilike, inArray, isNull, or } from "drizzle-orm";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 
 import {
+  ALERT_ACK_ACTION_ID,
+  parseAlertAckButtonValue,
+} from "@infrawrench/server-core/alerts/route";
+import { acknowledgeAlert } from "@infrawrench/server-core/alerts/ack";
+
+import {
   escapeMrkdwn,
   isSlackInboundConfigured,
   postToSlackResponseUrl,
@@ -622,6 +628,51 @@ export async function handleBlockAction(payload: SlackInteractionPayload): Promi
       return;
     }
     await respond({ response_type: "ephemeral", replace_original: true, ...message });
+    return;
+  }
+
+  /* ---- alert acknowledgement ---- */
+  if (action.action_id === ALERT_ACK_ACTION_ID) {
+    const value = parseAlertAckButtonValue(action.value);
+    if (!value) return;
+
+    // Same trust boundary as the approval buttons: a click carries only a
+    // Slack user id, and nothing is honoured until that resolves through
+    // `slack_user_links` to a member of the org named in the button.
+    const member = await linkedMemberForOrg(value.organizationId, teamId, slackUserId);
+    if (!member) {
+      const installs = await liveInstallOrgs(teamId);
+      await respond(linkPrompt(installs, teamId, slackUserId));
+      return;
+    }
+
+    const result = await acknowledgeAlert({
+      deliveryId: value.deliveryId,
+      organizationId: value.organizationId,
+      userId: member.userId,
+      via: "slack",
+    });
+
+    if (result.acknowledged) {
+      // Threaded rather than a message rewrite: the alert text is still the
+      // useful thing in the channel, and a reply leaves an audit trail of who
+      // took it that a `chat.update` would overwrite.
+      await respond(
+        ephemeral(`Acknowledged — escalation for "${result.title ?? "this alert"}" is cancelled.`),
+      );
+      return;
+    }
+    if (result.reason === "already_escalated") {
+      await respond(
+        ephemeral("That alert already escalated — the escalation channel has been notified."),
+      );
+      return;
+    }
+    if (result.reason === "not_found") {
+      await respond(ephemeral("That alert is no longer tracked."));
+      return;
+    }
+    await respond(ephemeral("Someone already acknowledged that alert."));
     return;
   }
 

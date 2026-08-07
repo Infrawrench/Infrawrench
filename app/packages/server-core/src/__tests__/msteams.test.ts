@@ -31,9 +31,6 @@ const tables = {
     id: "id",
     organizationId: "organizationId",
     label: "label",
-    syncIncidents: "syncIncidents",
-    budgetAlerts: "budgetAlerts",
-    workflowPages: "workflowPages",
   },
 };
 vi.mock("../db/schema", () => tables);
@@ -60,6 +57,7 @@ vi.mock("../db/client", () => {
 vi.mock("drizzle-orm", () => ({
   and: (...parts: unknown[]) => ({ and: parts }),
   eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
+  inArray: (col: unknown, values: unknown) => ({ inArray: [col, values] }),
 }));
 
 const ORG = "org1";
@@ -151,24 +149,29 @@ describe("parseWebhookUrl", () => {
 
 describe("fan-out", () => {
   it("posts nothing when the org has no webhooks", async () => {
-    const { sendMsTeamsToOrg } = await import("../msteams");
-    const res = await sendMsTeamsToOrg(ORG, "budgetAlerts", { title: "t", body: "b" });
+    const { sendMsTeamsToWebhooks } = await import("../msteams");
+    const res = await sendMsTeamsToWebhooks(ORG, ["row1"], { title: "t", body: "b" });
     expect(res).toEqual({ attempted: 0, succeeded: 0, failed: 0 });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("filters on the requested trigger's column", async () => {
-    const { sendMsTeamsToOrg } = await import("../msteams");
+  it("scopes the read to the requested row ids and the caller's org", async () => {
+    // The trigger columns this used to filter on are gone; a webhook is
+    // addressed by stored row id and the org scoping is what stops one org
+    // routing an alert into another's channel.
+    const { sendMsTeamsToWebhooks } = await import("../msteams");
     webhookRows = [webhook()];
-    await sendMsTeamsToOrg(ORG, "workflowPages", { title: "t", body: "b" });
-    expect(JSON.stringify(lastWhere)).toContain("workflowPages");
-    expect(JSON.stringify(lastWhere)).not.toContain("budgetAlerts");
+    await sendMsTeamsToWebhooks(ORG, ["row1", "row2"], { title: "t", body: "b" });
+    const where = JSON.stringify(lastWhere);
+    expect(where).toContain("row1");
+    expect(where).toContain("row2");
+    expect(where).toContain(ORG);
   });
 
   it("posts an Adaptive Card in a message envelope", async () => {
-    const { sendMsTeamsToOrg } = await import("../msteams");
+    const { sendMsTeamsToWebhooks } = await import("../msteams");
     webhookRows = [webhook()];
-    const res = await sendMsTeamsToOrg(ORG, "budgetAlerts", {
+    const res = await sendMsTeamsToWebhooks(ORG, ["row1"], {
       title: "Budget at 90%",
       body: "prod is over",
       url: "https://app.example/org/1/budgets/2",
@@ -195,9 +198,9 @@ describe("fan-out", () => {
   });
 
   it("omits the action when there is no deep link", async () => {
-    const { sendMsTeamsToOrg } = await import("../msteams");
+    const { sendMsTeamsToWebhooks } = await import("../msteams");
     webhookRows = [webhook()];
-    await sendMsTeamsToOrg(ORG, "budgetAlerts", { title: "t", body: "b" });
+    await sendMsTeamsToWebhooks(ORG, ["row1"], { title: "t", body: "b" });
     const payload = JSON.parse((fetchSpy.mock.calls[0] as [string, RequestInit])[1].body as string);
     expect(payload.attachments[0].content.actions).toBeUndefined();
   });
@@ -207,9 +210,9 @@ describe("fan-out", () => {
    * card renderer eat the rest of the line as a malformed link.
    */
   it("escapes markdown in alert text", async () => {
-    const { sendMsTeamsToOrg } = await import("../msteams");
+    const { sendMsTeamsToWebhooks } = await import("../msteams");
     webhookRows = [webhook()];
-    await sendMsTeamsToOrg(ORG, "budgetAlerts", {
+    await sendMsTeamsToWebhooks(ORG, ["row1"], {
       title: "t",
       body: "unexpected [token] in *config*_v2",
     });
@@ -220,38 +223,40 @@ describe("fan-out", () => {
   });
 
   it("counts a failed webhook without throwing", async () => {
-    const { sendMsTeamsToOrg } = await import("../msteams");
+    const { sendMsTeamsToWebhooks } = await import("../msteams");
     webhookRows = [webhook()];
     fetchSpy.mockResolvedValue(new Response("Flow not found", { status: 404 }));
-    const res = await sendMsTeamsToOrg(ORG, "budgetAlerts", { title: "t", body: "b" });
+    const res = await sendMsTeamsToWebhooks(ORG, ["row1"], { title: "t", body: "b" });
     expect(res).toEqual({ attempted: 1, succeeded: 0, failed: 1 });
   });
 
   it("keeps delivering when one webhook of several fails", async () => {
-    const { sendMsTeamsToOrg } = await import("../msteams");
+    const { sendMsTeamsToWebhooks } = await import("../msteams");
     webhookRows = [webhook({ id: "a" }), webhook({ id: "b" })];
     fetchSpy
       .mockResolvedValueOnce(new Response("nope", { status: 500 }))
       .mockResolvedValueOnce(new Response("", { status: 200 }));
-    const res = await sendMsTeamsToOrg(ORG, "budgetAlerts", { title: "t", body: "b" });
+    const res = await sendMsTeamsToWebhooks(ORG, ["row1"], { title: "t", body: "b" });
     expect(res).toEqual({ attempted: 2, succeeded: 1, failed: 1 });
   });
 
   it("skips a row whose URL cannot be decrypted", async () => {
-    const { sendMsTeamsToOrg } = await import("../msteams");
+    const { sendMsTeamsToWebhooks } = await import("../msteams");
     webhookRows = [webhook({ encryptedUrl: "THROW" })];
-    const res = await sendMsTeamsToOrg(ORG, "budgetAlerts", { title: "t", body: "b" });
+    const res = await sendMsTeamsToWebhooks(ORG, ["row1"], { title: "t", body: "b" });
     expect(res).toEqual({ attempted: 0, succeeded: 0, failed: 0 });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("never throws, even when the query itself blows up", async () => {
-    const { sendMsTeamsToOrg } = await import("../msteams");
+    const { sendMsTeamsToWebhooks } = await import("../msteams");
     webhookRows = [webhook()];
     fetchSpy.mockRejectedValue(new Error("network down"));
-    await expect(sendMsTeamsToOrg(ORG, "budgetAlerts", { title: "t", body: "b" })).resolves.toEqual(
-      { attempted: 1, succeeded: 0, failed: 1 },
-    );
+    await expect(sendMsTeamsToWebhooks(ORG, ["row1"], { title: "t", body: "b" })).resolves.toEqual({
+      attempted: 1,
+      succeeded: 0,
+      failed: 1,
+    });
   });
 });
 
@@ -259,13 +264,13 @@ describe("throttling", () => {
   it("retries once after a 429 and succeeds", async () => {
     vi.useFakeTimers();
     try {
-      const { sendMsTeamsToOrg } = await import("../msteams");
+      const { sendMsTeamsToWebhooks } = await import("../msteams");
       webhookRows = [webhook()];
       fetchSpy
         .mockResolvedValueOnce(new Response("", { status: 429, headers: { "retry-after": "1" } }))
         .mockResolvedValueOnce(new Response("", { status: 200 }));
 
-      const pending = sendMsTeamsToOrg(ORG, "budgetAlerts", { title: "t", body: "b" });
+      const pending = sendMsTeamsToWebhooks(ORG, ["row1"], { title: "t", body: "b" });
       await vi.runAllTimersAsync();
       expect(await pending).toEqual({ attempted: 1, succeeded: 1, failed: 0 });
       expect(fetchSpy).toHaveBeenCalledTimes(2);
@@ -277,13 +282,13 @@ describe("throttling", () => {
   it("gives up after a second 429 rather than looping", async () => {
     vi.useFakeTimers();
     try {
-      const { sendMsTeamsToOrg } = await import("../msteams");
+      const { sendMsTeamsToWebhooks } = await import("../msteams");
       webhookRows = [webhook()];
       fetchSpy.mockResolvedValue(
         new Response("", { status: 429, headers: { "retry-after": "1" } }),
       );
 
-      const pending = sendMsTeamsToOrg(ORG, "budgetAlerts", { title: "t", body: "b" });
+      const pending = sendMsTeamsToWebhooks(ORG, ["row1"], { title: "t", body: "b" });
       await vi.runAllTimersAsync();
       expect(await pending).toEqual({ attempted: 1, succeeded: 0, failed: 1 });
       expect(fetchSpy).toHaveBeenCalledTimes(2);

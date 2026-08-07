@@ -35,10 +35,8 @@ import { db } from "../db/client";
 import { auditLogs, resourceLeases, resources } from "../db/schema";
 import { findActiveChangeFreeze } from "../change-freezes";
 import { getOrgAccountClient } from "../org-accounts";
-import { sendPushToOrg } from "../push/dispatch";
+import { routeAlert } from "../alerts/route";
 import { notifyResourceOwner } from "../ownership/notify";
-import { sendSlackToOrg } from "../slack";
-import { sendMsTeamsToOrg } from "../msteams";
 import type { LeaseRecord } from "./store";
 import {
   leaseOutcomeMessage,
@@ -145,58 +143,39 @@ async function guardedUpdate(
 }
 
 /**
- * Fan a lease message out on the `expiryAlerts` trigger — the same trio of
- * transports the expiry radar's daily digest uses. Returns how many
- * destinations were reached; a zero is logged, never thrown, and never blocks
- * the schedule (an org with no transports still gets its lease honored).
+ * Fan a lease message out on the `expiryAlerts` trigger — routed by the org's
+ * rules like every other alert. Returns how many destinations were reached; a
+ * zero is logged, never thrown, and never blocks the schedule (an org with no
+ * transports still gets its lease honored).
  *
  * When `resourceId` names a resource with a recorded owner, that person gets
  * the announcement on their own devices as well. A lease countdown is the
  * clearest case for owner routing in the product — "your test cluster is
  * deleted in 24 hours" is addressed to somebody in particular — but the org
  * fan-out still happens, so a colleague can act when the owner is away.
+ *
+ * The three per-transport try/catch blocks this replaced are now `routeAlert`'s
+ * job: it never throws, and a failing channel is counted rather than propagated.
  */
 async function notifyOrg(
   organizationId: string,
   message: LeaseMessage,
   resourceId?: string,
 ): Promise<number> {
-  let succeeded = 0;
   const body = message.lines.join("\n");
+  const routed = await routeAlert({
+    organizationId,
+    trigger: "expiryAlerts",
+    title: message.title,
+    body,
+    pushData: { type: "expiry_alert", orgId: organizationId },
+  });
   const ownerResult = await notifyResourceOwner(organizationId, resourceId, "expiryAlerts", () => ({
     title: message.title,
     body: `${body}\nYou are recorded as the owner.`,
     data: { type: "expiry_alert", orgId: organizationId },
   }));
-  succeeded += ownerResult.succeeded;
-  try {
-    const push = await sendPushToOrg(organizationId, "expiryAlerts", {
-      title: message.title,
-      body,
-      data: { type: "expiry_alert", orgId: organizationId },
-    });
-    succeeded += push.succeeded;
-  } catch (e) {
-    console.error(`[leases] push fan-out failed for org ${organizationId}:`, e);
-  }
-  try {
-    const slack = await sendSlackToOrg(organizationId, "expiryAlerts", {
-      title: message.title,
-      body,
-    });
-    succeeded += slack.succeeded;
-  } catch (e) {
-    console.error(`[leases] Slack fan-out failed for org ${organizationId}:`, e);
-  }
-  try {
-    const msTeams = await sendMsTeamsToOrg(organizationId, "expiryAlerts", {
-      title: message.title,
-      body,
-    });
-    succeeded += msTeams.succeeded;
-  } catch (e) {
-    console.error(`[leases] Teams fan-out failed for org ${organizationId}:`, e);
-  }
+  const succeeded = routed.succeeded + routed.held + ownerResult.succeeded;
   if (succeeded === 0) {
     console.warn(
       `[leases] lease announcement for org ${organizationId} reached no transports: ${message.title}`,

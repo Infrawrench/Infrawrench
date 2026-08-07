@@ -14,44 +14,6 @@ const SlackChannel = strict({
   channelId: z.string().openapi({ description: "Slack channel id (C…/G…)" }),
   channelName: z.string().openapi({ description: "Channel name without the leading #" }),
   isPrivate: z.boolean(),
-  syncIncidents: z.boolean(),
-  budgetAlerts: z.boolean(),
-  anomalyAlerts: z
-    .boolean()
-    .openapi({ description: "Statistical spend-spike (cost anomaly) alerts" }),
-  metricAlerts: z
-    .boolean()
-    .openapi({ description: "Metric threshold rule firings and recoveries" }),
-  resourceDrift: z.boolean().openapi({
-    description:
-      "Batched resource-drift digests from the change timeline. Defaults to false when a channel is added — drift is continuous where the other triggers are exceptional.",
-  }),
-  workflowPages: z.boolean().openapi({
-    description:
-      "Pages and approval requests raised by a workflow (infra.page / infra.waitForApproval) or by POST /pages",
-  }),
-  providerIncidents: z.boolean().openapi({
-    description: "A provider status-page incident overlaps resources you hold.",
-  }),
-  expiryAlerts: z.boolean().openapi({
-    description:
-      "Daily digests of approaching resource deadlines — expiring certificates, domains, tokens and keys past their rotation budget.",
-  }),
-  logMatchAlerts: z.boolean().openapi({
-    description: "A saved log-workspace query with alerting enabled found matching log lines.",
-  }),
-  postureAlerts: z.boolean().openapi({
-    description:
-      "Daily digests of critical/high security posture findings on synced resources — public buckets, world-open ingress, unencrypted disks.",
-  }),
-  probeAlerts: z.boolean().openapi({
-    description:
-      "A synthetic probe crossed its consecutive-failure threshold (down) or answered again (recovered).",
-  }),
-  weeklyDigest: z.boolean().openapi({
-    description:
-      "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest).",
-  }),
 }).openapi("SlackChannel");
 
 const SlackStatus = strict({
@@ -73,35 +35,12 @@ const SlackChannelCreate = strict({
   channelId: z.string(),
   channelName: z.string(),
   isPrivate: z.boolean().optional(),
-  syncIncidents: z.boolean().optional(),
-  budgetAlerts: z.boolean().optional(),
-  anomalyAlerts: z.boolean().optional(),
-  metricAlerts: z.boolean().optional(),
-  resourceDrift: z.boolean().optional(),
-  workflowPages: z.boolean().optional(),
-  providerIncidents: z.boolean().optional(),
-  expiryAlerts: z.boolean().optional(),
-  logMatchAlerts: z.boolean().optional(),
-  postureAlerts: z.boolean().optional(),
-  probeAlerts: z.boolean().optional(),
-  weeklyDigest: z.boolean().optional(),
 }).openapi("SlackChannelCreate");
 
 // Registered under its own name — `.partial()` on a registered schema would
 // otherwise collapse back into the full $ref in the generated document.
 const SlackChannelUpdate = strict({
-  syncIncidents: z.boolean().optional(),
-  budgetAlerts: z.boolean().optional(),
-  anomalyAlerts: z.boolean().optional(),
-  metricAlerts: z.boolean().optional(),
-  resourceDrift: z.boolean().optional(),
-  workflowPages: z.boolean().optional(),
-  providerIncidents: z.boolean().optional(),
-  expiryAlerts: z.boolean().optional(),
-  logMatchAlerts: z.boolean().optional(),
-  postureAlerts: z.boolean().optional(),
-  probeAlerts: z.boolean().optional(),
-  weeklyDigest: z.boolean().optional(),
+  channelName: z.string(),
 }).openapi("SlackChannelUpdate");
 
 export function registerSlackPaths(ctx: BuildContext) {
@@ -187,9 +126,9 @@ export function registerSlackPaths(ctx: BuildContext) {
     method: "post",
     path: "/api/org/{orgId}/slack/channels",
     tags: ["Slack"],
-    summary: "Route alerts to a Slack channel",
+    summary: "Connect a Slack channel as an alert destination",
     description:
-      "Adds a channel, or updates the trigger opt-ins of one already added. Each trigger defaults to enabled.",
+      "Adds a channel as a possible destination, or refreshes the cached name of one already added. Which alerts reach it is decided by /alert-rules; an organization with no rules falls back to the default (everything except drift, everywhere), so a freshly added channel starts receiving alerts without a second step.",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: SlackChannelCreate } } },
@@ -208,7 +147,7 @@ export function registerSlackPaths(ctx: BuildContext) {
     method: "patch",
     path: "/api/org/{orgId}/slack/channels/{id}",
     tags: ["Slack"],
-    summary: "Change which alerts a channel receives",
+    summary: "Refresh a channel's cached name",
     request: {
       params: OrgIdParam.extend({
         id: z.string().openapi({ param: { name: "id", in: "path" } }),
@@ -228,7 +167,7 @@ export function registerSlackPaths(ctx: BuildContext) {
     method: "delete",
     path: "/api/org/{orgId}/slack/channels/{id}",
     tags: ["Slack"],
-    summary: "Stop routing alerts to a channel",
+    summary: "Disconnect a channel",
     request: {
       params: OrgIdParam.extend({
         id: z.string().openapi({ param: { name: "id", in: "path" } }),
@@ -364,7 +303,7 @@ export function registerSlackPaths(ctx: BuildContext) {
     tags: ["Slack"],
     summary: "Post a test message to every configured channel",
     description:
-      "Ignores trigger opt-ins — every channel gets the test. Fails with the Slack error when nothing could be delivered (`not_in_channel` means the bot needs inviting to a private channel).",
+      "Ignores routing rules — every channel gets the test. Fails with the Slack error when nothing could be delivered (`not_in_channel` means the bot needs inviting to a private channel).",
     request: { params: OrgIdParam },
     responses: {
       200: {
