@@ -45,6 +45,7 @@ import { Route as OrgOrgIdSettingsBillingRouteImport } from './routes/org.$orgId
 import { Route as OrgOrgIdSettingsFreezesRouteImport } from './routes/org.$orgId.settings.freezes'
 import { Route as OrgOrgIdSettingsPagingRouteImport } from './routes/org.$orgId.settings.paging'
 import { Route as OrgOrgIdSettingsRolesRouteImport } from './routes/org.$orgId.settings.roles'
+import { Route as OrgOrgIdSettingsSessionRecordingsRouteImport } from './routes/org.$orgId.settings.session-recordings'
 import { Route as OrgOrgIdSettingsSshHostKeysRouteImport } from './routes/org.$orgId.settings.ssh-host-keys'
 import { Route as OrgOrgIdSettingsSshKeysRouteImport } from './routes/org.$orgId.settings.ssh-keys'
 import { Route as OrgOrgIdSettingsTagPolicyRouteImport } from './routes/org.$orgId.settings.tag-policy'
@@ -237,6 +238,12 @@ const OrgOrgIdSettingsRolesRoute = OrgOrgIdSettingsRolesRouteImport.update({
   path: '/roles',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsSessionRecordingsRoute =
+  OrgOrgIdSettingsSessionRecordingsRouteImport.update({
+    id: '/session-recordings',
+    path: '/session-recordings',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsSshHostKeysRoute =
   OrgOrgIdSettingsSshHostKeysRouteImport.update({
     id: '/ssh-host-keys',
@@ -301,6 +308,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
+  '/org/$orgId/settings/session-recordings': typeof OrgOrgIdSettingsSessionRecordingsRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
@@ -341,6 +349,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
+  '/org/$orgId/settings/session-recordings': typeof OrgOrgIdSettingsSessionRecordingsRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
@@ -385,6 +394,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
+  '/org/$orgId/settings/session-recordings': typeof OrgOrgIdSettingsSessionRecordingsRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
@@ -430,6 +440,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
+    | '/org/$orgId/settings/session-recordings'
     | '/org/$orgId/settings/ssh-host-keys'
     | '/org/$orgId/settings/ssh-keys'
     | '/org/$orgId/settings/tag-policy'
@@ -470,6 +481,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
+    | '/org/$orgId/settings/session-recordings'
     | '/org/$orgId/settings/ssh-host-keys'
     | '/org/$orgId/settings/ssh-keys'
     | '/org/$orgId/settings/tag-policy'
@@ -513,6 +525,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
+    | '/org/$orgId/settings/session-recordings'
     | '/org/$orgId/settings/ssh-host-keys'
     | '/org/$orgId/settings/ssh-keys'
     | '/org/$orgId/settings/tag-policy'
@@ -784,6 +797,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsRolesRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/session-recordings': {
+      id: '/org/$orgId/settings/session-recordings'
+      path: '/session-recordings'
+      fullPath: '/org/$orgId/settings/session-recordings'
+      preLoaderRoute: typeof OrgOrgIdSettingsSessionRecordingsRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/ssh-host-keys': {
       id: '/org/$orgId/settings/ssh-host-keys'
       path: '/ssh-host-keys'
@@ -845,6 +865,7 @@ interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsFreezesRoute: typeof OrgOrgIdSettingsFreezesRoute
   OrgOrgIdSettingsPagingRoute: typeof OrgOrgIdSettingsPagingRoute
   OrgOrgIdSettingsRolesRoute: typeof OrgOrgIdSettingsRolesRoute
+  OrgOrgIdSettingsSessionRecordingsRoute: typeof OrgOrgIdSettingsSessionRecordingsRoute
   OrgOrgIdSettingsSshHostKeysRoute: typeof OrgOrgIdSettingsSshHostKeysRoute
   OrgOrgIdSettingsSshKeysRoute: typeof OrgOrgIdSettingsSshKeysRoute
   OrgOrgIdSettingsTagPolicyRoute: typeof OrgOrgIdSettingsTagPolicyRoute
@@ -861,6 +882,7 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsFreezesRoute: OrgOrgIdSettingsFreezesRoute,
   OrgOrgIdSettingsPagingRoute: OrgOrgIdSettingsPagingRoute,
   OrgOrgIdSettingsRolesRoute: OrgOrgIdSettingsRolesRoute,
+  OrgOrgIdSettingsSessionRecordingsRoute: OrgOrgIdSettingsSessionRecordingsRoute,
   OrgOrgIdSettingsSshHostKeysRoute: OrgOrgIdSettingsSshHostKeysRoute,
   OrgOrgIdSettingsSshKeysRoute: OrgOrgIdSettingsSshKeysRoute,
   OrgOrgIdSettingsTagPolicyRoute: OrgOrgIdSettingsTagPolicyRoute,

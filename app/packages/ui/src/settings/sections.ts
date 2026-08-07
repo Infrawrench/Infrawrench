@@ -16,6 +16,11 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { key: "roles", label: "Roles" },
   { key: "ssh-keys", label: "SSH Keys" },
   { key: "ssh-host-keys", label: "Trusted SSH Hosts" },
+  {
+    key: "session-recordings",
+    label: "Session Recordings",
+    requiresPermission: "session-recordings:read",
+  },
   { key: "bastions", label: "Bastions" },
   { key: "api-keys", label: "API Keys" },
   { key: "freezes", label: "Change Freezes" },

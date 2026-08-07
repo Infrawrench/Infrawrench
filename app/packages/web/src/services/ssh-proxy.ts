@@ -19,6 +19,10 @@ import { logAudit } from "@/services/audit";
 import { HostKeyTrustRequiredError, makeHostKeyVerifier } from "@/services/ssh-host-keys";
 import { assertHostNotInternal } from "@/services/host-validation";
 import { makeWsBackpressure, type WsBackpressure } from "@/services/ws-backpressure";
+import {
+  startSessionRecording,
+  type SessionRecorder,
+} from "@infrawrench/server-core/ssh-recording/recorder";
 import { forwardOutHop, resolveSshChain, type SshHop } from "@infrawrench/plugin-ssh";
 
 interface DirectSshParams {
@@ -182,11 +186,24 @@ export async function handleSshSession(
     let shellStream: import("ssh2").ClientChannel | null = null;
     let backpressure: WsBackpressure | null = null;
     let torndown = false;
+    /**
+     * The session-recording tee, when the org has recording enabled. Null in
+     * every other case — opted out, settings unreadable, opening write failed —
+     * so there is exactly one branch here and no way for a broken recorder to
+     * be mistaken for a working one. Nothing on this object throws, and nothing
+     * on the terminal's path awaits it.
+     */
+    let recorder: SessionRecorder | null = null;
 
     /** Idempotent teardown of everything opened so far (shell, hops, final conn). */
     cleanup = () => {
       if (torndown) return;
       torndown = true;
+      // Fire-and-forget: `finish` flushes the tail and settles the row, and the
+      // terminal's teardown must not wait on a database write. A recording
+      // whose closing write is lost is settled by the retention pass instead.
+      void recorder?.finish();
+      recorder = null;
       backpressure?.dispose();
       const endConnections = () => {
         for (const c of intermediates) {
@@ -260,16 +277,7 @@ export async function handleSshSession(
       sendJson({ type: "ssh:error", error: err instanceof Error ? err.message : String(err) });
     };
 
-    conn.on("ready", () => {
-      if (torndown) {
-        // ws closed while the handshake was completing — drop the connection.
-        try {
-          conn.end();
-        } catch {
-          /* ignore */
-        }
-        return;
-      }
+    const openShell = () => {
       conn.shell({ term: "xterm-256color", cols: cols ?? 80, rows: rows ?? 24 }, (err, stream) => {
         if (err) {
           sendError(err);
@@ -301,13 +309,17 @@ export async function handleSshSession(
 
         sendJson({ type: "ssh:connected" });
 
+        // The tee is second in each handler on purpose: the operator's byte
+        // reaches the browser before we spend anything recording it.
         stream.on("data", (data: Buffer) => {
           sendJson({ type: "ssh:data", data: data.toString("base64") });
+          recorder?.onOutput(data);
           backpressure?.check();
         });
 
         stream.stderr.on("data", (data: Buffer) => {
           sendJson({ type: "ssh:data", data: data.toString("base64") });
+          recorder?.onOutput(data);
           backpressure?.check();
         });
 
@@ -326,15 +338,64 @@ export async function handleSshSession(
             };
 
             if (msg.type === "ssh:data" && msg.data) {
-              stream.write(Buffer.from(msg.data, "base64"));
+              const input = Buffer.from(msg.data, "base64");
+              stream.write(input);
+              // No-op unless the org opted into input capture specifically —
+              // see the note on `capture_input` in the schema.
+              recorder?.onInput(input);
             } else if (msg.type === "ssh:resize" && msg.cols && msg.rows) {
               stream.setWindow(msg.rows, msg.cols, 0, 0);
+              recorder?.onResize(msg.cols, msg.rows);
             }
           } catch {
             /* ignore malformed messages */
           }
         });
       });
+    };
+
+    conn.on("ready", () => {
+      if (torndown) {
+        // ws closed while the handshake was completing — drop the connection.
+        try {
+          conn.end();
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      // The recorder opens *before* the shell rather than alongside it, so the
+      // cast starts at the first byte the host emits — a prompt or a MOTD that
+      // arrived while an insert was still in flight would otherwise be missing
+      // from the top of the tape. It costs one round-trip, and only when the
+      // org has recording on (the settings read short-circuits otherwise).
+      void (async () => {
+        recorder = await startSessionRecording({
+          organizationId,
+          userId,
+          accountId,
+          resourceId,
+          host: finalConfig.host,
+          port: finalConfig.port ?? 22,
+          username: finalConfig.username,
+          hopCount: hops.length,
+          cols,
+          rows,
+        });
+        if (torndown) {
+          // ws closed while the recording was opening — settle the empty row.
+          const opened = recorder;
+          recorder = null;
+          await opened?.finish();
+          try {
+            conn.end();
+          } catch {
+            /* ignore */
+          }
+          return;
+        }
+        openShell();
+      })();
     });
 
     const hostKeyErrorRef = { value: null as HostKeyTrustRequiredError | null };

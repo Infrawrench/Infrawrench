@@ -1,10 +1,11 @@
 import { useMemo, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { SettingsHostProvider, type SettingsHostValue } from "@infrawrench/ui";
-import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from "@/lib/api";
+import { apiGet, apiGetText, apiPost, apiPut, apiPatch, apiDelete } from "@/lib/api";
 import { usePermissions } from "@/auth/permissions-context";
 import { createWebApprovalsClient } from "@/lib/approvals-client";
 import { dispatchChangeFreezeChanged } from "@/lib/change-freeze-events";
+import { mountPlaybackTerminal } from "@/lib/playback-terminal";
 
 /**
  * Web implementation of the settings host contract: cookie-auth fetch, the
@@ -25,6 +26,7 @@ export function WebSettingsHost({ orgId, children }: { orgId: string; children: 
         patch: apiPatch,
         delete: apiDelete,
       },
+      fetchText: apiGetText,
       has,
       hasAny,
       permissionsLoading: loading,
@@ -49,6 +51,7 @@ export function WebSettingsHost({ orgId, children }: { orgId: string; children: 
         void navigate({ to: `/org/${orgId}/settings${section ? `/${section}` : ""}` });
       },
       onChangeFreezesChanged: dispatchChangeFreezeChanged,
+      mountPlaybackTerminal,
     }),
     [orgId, has, hasAny, loading, refresh, navigate],
   );

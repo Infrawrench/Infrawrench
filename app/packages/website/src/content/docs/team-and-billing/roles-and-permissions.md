@@ -97,6 +97,12 @@ The same permission set gates every surface, not just the web UI:
 
   Workflows used to be gated on `dashboards:read` / `dashboards:write`. Custom roles and API keys that granted those had the matching workflow permissions added to them once, during the upgrade that introduced them, so nobody lost access — the added permissions show up in the role editor, ticked, and you can untick them. Every grant since means exactly what it says: a custom role granting `workflows:write` while withholding `workflows:approve` withholds it. Custom graphs, which really are dashboard content, stayed on the dashboard permissions.
 
+- **[Session recordings](../features/session-recording.md)** have their own pair, separate from SSH keys and from the audit log:
+  - `session-recordings:read` — list, watch and download recorded SSH sessions.
+  - `session-recordings:write` — change the organization's recording policy and delete recordings.
+
+  Neither is in the Member role. Recording exists to watch operators, so granting every operator the ability to watch defeats it. A custom role can grant read without write, which is the usual shape for a compliance reviewer who should be able to watch a tape but not change the policy or destroy evidence. Watching a recording is itself audit-logged.
+
 ## Audit trail
 
 Every permission-sensitive action is recorded in the [audit log](./audit-log.md), including role creates/edits/deletes and member-role changes.

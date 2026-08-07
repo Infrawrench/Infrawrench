@@ -115,6 +115,15 @@ infrawrench probes api-health     # one probe: state, facts, latency sparkline
 infrawrench probes --json
 ```
 
+`recordings` lists the org's [recorded SSH sessions](./session-recording.md) — who connected, to what, how long for, and each session's status. `recordings get <id>` prints the asciicast itself, which is the point of the subcommand: the format is asciinema's, so a session replays on a machine that has never seen the UI. Needs `session-recordings:read`:
+
+```
+infrawrench recordings
+infrawrench recordings get 3f9c21e8 | asciinema play -
+infrawrench recordings get 3f9c21e8 --file incident-4417.cast
+infrawrench recordings --json         # list plus the org's policy and storage usage
+```
+
 `oversized` lists [right-sizing recommendations](./right-sizing.md) — machines whose 14-day p95 CPU/memory sits well under their size, with the recommended smaller size and the live-priced monthly saving. Cloud-only (the percentiles live in the cloud metrics store), and read-only: applying a resize is done from the web or desktop Costs panel:
 
 ```

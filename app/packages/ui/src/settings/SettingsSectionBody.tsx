@@ -4,6 +4,7 @@ import { TeamSection } from "./TeamSection.js";
 import { RolesSection } from "./RolesSection.js";
 import { SshKeysSection } from "./SshKeysSection.js";
 import { SshHostKeysSection } from "./SshHostKeysSection.js";
+import { SessionRecordingsSection } from "./SessionRecordingsSection.js";
 import { BastionsSection } from "./BastionsSection.js";
 import { ApiKeysSection } from "./ApiKeysSection.js";
 import { FreezesSection } from "./FreezesSection.js";
@@ -31,6 +32,8 @@ export function SettingsSectionBody({ section }: { section: string }): ReactNode
       return <SshKeysSection />;
     case "ssh-host-keys":
       return <SshHostKeysSection />;
+    case "session-recordings":
+      return <SessionRecordingsSection />;
     case "bastions":
       return <BastionsSection />;
     case "api-keys":

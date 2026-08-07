@@ -27,6 +27,7 @@ import { cmdMoment } from "./commands/moment";
 import { cmdIncidents } from "./commands/incidents";
 import { cmdSchedules } from "./commands/schedules";
 import { cmdLeases } from "./commands/leases";
+import { cmdRecordings } from "./commands/recordings";
 import { cmdProbes } from "./commands/probes";
 import { cmdGraph } from "./commands/graph";
 import { cmdPage, cmdCostsPush } from "./commands/push";
@@ -79,6 +80,9 @@ COMMANDS
                       [-w/--window 15m|1h|6h]  (omit the timestamp for "around now")
   schedules           sleep/wake schedules: windows, next transitions & projected savings
   leases              resource leases (TTLs): deadlines, auto-delete flags & status
+  recordings          recorded SSH sessions: who connected, to what, for how long
+  recordings get <id> print the session's asciicast   [-f/--file <path>]
+                      (pipe it: infrawrench recordings get <id> | asciinema play -)
   probes [id|name]    synthetic uptime/latency checks probed from outside your infra, with
                       live status, 24h uptime & last latency (give an id/name for its chart)
   graph               resource dependency tree   [--resource <id>: what it needs + its blast radius]
@@ -324,6 +328,9 @@ export async function runCli(): Promise<void> {
         break;
       case "leases":
         await cmdLeases(ctx);
+        break;
+      case "recordings":
+        await cmdRecordings(ctx, rest, { file: parsed.push.file });
         break;
       case "probes":
         // `infrawrench probes <id|name>` charts one probe's latency history.

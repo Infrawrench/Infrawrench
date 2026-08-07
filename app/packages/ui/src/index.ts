@@ -703,6 +703,11 @@ export * from "./cost/index.js";
 // Org/user settings — shared sections rendered by the web settings routes and
 // the desktop cloud-mode settings tab (see settings/host.tsx for the contract).
 export * from "./settings/index.js";
+// Session-recording playback. The player is here rather than in a host app
+// because both web and desktop render it; the terminal it writes into is
+// injected, which is what keeps this package free of an xterm dependency.
+export { RecordingPlayer } from "./session-recordings/RecordingPlayer.js";
+export type { PlaybackTerminal, MountPlaybackTerminal } from "./session-recordings/terminal.js";
 export * from "./metric-alerts/index.js";
 export * from "./probes/index.js";
 export * from "./savings/index.js";

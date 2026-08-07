@@ -56,6 +56,20 @@ export const ALL_PERMISSIONS = [
   "billing:write",
   "ssh-keys:read",
   "ssh-keys:write",
+  // Recorded SSH sessions. Its own family rather than `ssh-keys:*` or
+  // `audit:read`, because watching a colleague's terminal back is a distinct
+  // and much sharper capability than either holding a key or reading the audit
+  // log — and the people who should hold it (compliance, security) are often
+  // not the people who administer keys. `write` covers the org's recording
+  // policy and deleting tapes; both are the kind of thing an investigation
+  // would want to know had happened, so both are audit-logged.
+  //
+  // Deliberately absent from the `member` system role: recording exists to
+  // watch operators, so handing every operator the ability to watch is
+  // self-defeating. Admins and owners get it for free (their sets are
+  // catalog-derived).
+  "session-recordings:read",
+  "session-recordings:write",
   "bastions:read",
   "bastions:write",
   "chat:read",

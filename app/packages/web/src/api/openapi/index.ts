@@ -35,6 +35,7 @@ import { registerDnsPaths } from "./paths/dns";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
 import { registerLeasePaths } from "./paths/leases";
+import { registerSessionRecordingPaths } from "./paths/session-recordings";
 import { registerProbePaths } from "./paths/probes";
 import { registerLogWorkspacePaths } from "./paths/log-workspaces";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
@@ -129,6 +130,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerMomentPaths(ctx);
   registerSchedulePaths(ctx);
   registerLeasePaths(ctx);
+  registerSessionRecordingPaths(ctx);
   registerProbePaths(ctx);
   registerLogWorkspacePaths(ctx);
   registerConnectionFeaturePaths(ctx);
@@ -225,6 +227,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Resource leases",
         description:
           "Optional TTLs on resources ('a test cluster for 3 days'). Active leases ride the expiry radar; auto-delete leases are announced twice and then deleted at expiry by the poller, deferring during change freezes.",
+      },
+      {
+        name: "Session recordings",
+        description:
+          "Replayable asciicasts of SSH sessions opened through the cloud. Cloud SSH is already proxied server-side, so recording tees a stream the server holds rather than needing an agent on the host; casts download in asciinema's own format. Opt-in per organization, retained on a per-organization window.",
       },
       {
         name: "Synthetic probes",
@@ -425,6 +432,18 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /leases/{leaseId}": "resources:write",
   "POST /leases/{leaseId}/cancel": "resources:write",
   "DELETE /leases/{leaseId}": "resources:write",
+  // session recordings — their own permission family rather than `audit:read`
+  // or `ssh-keys:*`: watching a colleague's terminal back is a sharper
+  // capability than either, and the people who should hold it (compliance,
+  // security) are often not the people who administer keys. Deliberately
+  // absent from the `member` system role — recording exists to watch
+  // operators, so handing every operator the ability to watch defeats it.
+  "GET /session-recordings": "session-recordings:read",
+  "GET /session-recordings/settings": "session-recordings:read",
+  "PUT /session-recordings/settings": "session-recordings:write",
+  "GET /session-recordings/{recordingId}": "session-recordings:read",
+  "GET /session-recordings/{recordingId}/cast": "session-recordings:read",
+  "DELETE /session-recordings/{recordingId}": "session-recordings:write",
   // synthetic probes — the schedules stance: reads (list, suggestions mined
   // from resource outputs, recorded series) ride the resource read scope;
   // mutations are resources:write

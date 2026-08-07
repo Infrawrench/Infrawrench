@@ -519,6 +519,13 @@
       "when": 1786136882776,
       "tag": "0073_oval_jimmy_woo",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1786136505724,
+      "tag": "0074_smart_slipstream",
+      "breakpoints": true
     }
   ]
 }

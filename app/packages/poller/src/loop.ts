@@ -17,6 +17,10 @@ import {
   pruneResourceChanges,
   CHANGE_RETENTION_INTERVAL_MS,
 } from "@infrawrench/server-core/resource-changes";
+import {
+  pruneSessionRecordings,
+  settleAbandonedRecordings,
+} from "@infrawrench/server-core/ssh-recording/retention";
 import { TickLoop } from "@infrawrench/server-core/tick-loop";
 import { pollAccount, type PollAccountRow } from "./poll-account";
 import { pollAccountCosts } from "./cost-poll";
@@ -301,6 +305,21 @@ export class PollerLoop extends TickLoop {
       await pruneResourceChanges();
     } catch (e) {
       console.error("[poller] retention tick failed:", e);
+    }
+    // Session recordings ride the same hourly slot rather than a clock of their
+    // own: both are idempotent whole-table prunes with nothing to coordinate,
+    // and a second timer would only make "when does old data actually go" two
+    // answers instead of one. Their windows differ (recordings are per-org
+    // policy, changes are a fixed 90 days) but their cadence has no reason to.
+    try {
+      await pruneSessionRecordings();
+      // Rows the recorder never got to close — a web replica killed mid-session
+      // leaves one saying "recording" forever. The list view derives the same
+      // thing for display; this makes it true in the table so a SQL-level
+      // reader (the CLI's `--json`, an export) agrees with the UI.
+      await settleAbandonedRecordings();
+    } catch (e) {
+      console.error("[poller] session-recording retention tick failed:", e);
     }
   }
 
