@@ -9,6 +9,76 @@ import type {
 import { GCP_REGIONS, REGION_INFO, PUBLIC_IMAGES } from "./regions.js";
 import type { GcpCreateContext } from "./create-context.js";
 
+/**
+ * A Compute Engine zonal Operation. `instances.insert` returns one of these,
+ * not the instance: the API accepts the request and does the work
+ * asynchronously, so a 200 here means "queued", not "created".
+ */
+interface GcpZoneOperation {
+  name?: string;
+  status?: string;
+  error?: { errors?: Array<{ code?: string; location?: string; message?: string }> };
+  httpErrorStatusCode?: number;
+  httpErrorMessage?: string;
+}
+
+/** Longest we block a create call waiting for the instance to materialize. */
+const ZONE_OPERATION_TIMEOUT_MS = 90_000;
+const ZONE_OPERATION_POLL_MS = 2_000;
+
+function formatZoneOperationError(op: GcpZoneOperation): string {
+  const errors = (op.error?.errors ?? [])
+    .map((e) => [e.code, e.message].filter(Boolean).join(": "))
+    .filter(Boolean);
+  if (errors.length > 0) return errors.join("; ");
+  if (op.httpErrorMessage) {
+    return [op.httpErrorStatusCode, op.httpErrorMessage].filter(Boolean).join(" ");
+  }
+  return "the operation failed without reporting a reason";
+}
+
+/**
+ * Block until a zonal operation finishes, and throw its real error if it
+ * failed.
+ *
+ * Without this, an `instances.insert` that GCP accepts and then fails
+ * asynchronously — `ZONE_RESOURCE_POOL_EXHAUSTED`, a quota denial, an
+ * unreadable image — was reported to the user as a successfully created VM.
+ * The session then failed much later with "resource … not found" against a
+ * machine that never existed, blaming the wrong layer entirely.
+ *
+ * Deliberately does NOT fail on timeout: a slow-but-fine create should keep
+ * the old optimistic behaviour rather than start reporting phantom failures.
+ * Only an operation that actually reports an error aborts the create.
+ */
+async function waitForZoneOperation(
+  ctx: GcpCreateContext,
+  project: string,
+  zone: string,
+  operationName: string,
+): Promise<void> {
+  const deadline = Date.now() + ZONE_OPERATION_TIMEOUT_MS;
+  const url = `https://compute.googleapis.com/compute/v1/projects/${project}/zones/${zone}/operations/${encodeURIComponent(operationName)}`;
+  while (Date.now() < deadline) {
+    let op: GcpZoneOperation;
+    try {
+      op = await ctx.get<GcpZoneOperation>(url);
+    } catch {
+      // A transient read failure must not invent a create failure; the next
+      // poll (or the timeout) decides.
+      await new Promise((resolve) => setTimeout(resolve, ZONE_OPERATION_POLL_MS));
+      continue;
+    }
+    if (op.error || op.httpErrorMessage) {
+      throw new Error(
+        `GCP Compute: creating the instance failed — ${formatZoneOperationError(op)}`,
+      );
+    }
+    if (op.status === "DONE") return;
+    await new Promise((resolve) => setTimeout(resolve, ZONE_OPERATION_POLL_MS));
+  }
+}
+
 export const computeEngineCreateConfigHandlers: Record<
   string,
   (ctx: GcpCreateContext, parentResourceId?: string) => Promise<CreateResourceConfig>
@@ -630,7 +700,14 @@ export const computeEngineCreateResourceHandlers: Record<
     if (!res.ok) {
       throw new Error(`GCP Compute API ${res.status}: ${await res.text()}`);
     }
-    // The API returns an Operation, not the instance directly — return a stub and let the user refresh
+    // The POST returns an Operation, not the instance: a 200 means GCP queued
+    // the work, not that a VM exists. Wait for it, so a zone stockout or quota
+    // denial surfaces here instead of as a "resource not found" much later,
+    // against a machine that was never created.
+    const operation = (await res.json().catch(() => ({}))) as GcpZoneOperation;
+    if (operation.name) {
+      await waitForZoneOperation(ctx, p, zone, operation.name);
+    }
     const now = new Date().toISOString();
     return {
       id: ctx.id(accountId, "gce-instance", `${p}/${zone}/${name}`),
