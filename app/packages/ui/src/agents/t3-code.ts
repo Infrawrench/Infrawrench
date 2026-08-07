@@ -332,6 +332,14 @@ install_xdg_open_noop
 `;
 
 /**
+ * Nice value the T3 Code *server* process runs at: -20, the highest priority
+ * Linux offers. Paired with `CPUSchedulingResetOnFork=` (see
+ * `T3_SERVICE_DROPIN_SNIPPET`) so it is the server that gets it and not the
+ * provider CLIs it spawns.
+ */
+export const T3_CODE_SERVICE_NICE = -20;
+
+/**
  * Gives the T3 Code *service* the environment it needs: PATH, and IS_SANDBOX.
  *
  * The unit T3 Code generates sets no \`Environment=PATH=\` (see
@@ -361,9 +369,38 @@ install_xdg_open_noop
  * install/update\` rewrites \`t3code.service\` wholesale, which would discard
  * an inline edit, but leaves \`t3code.service.d/\` alone. systemd expands
  * \`%h\` in \`Environment=\`, so the file needs no absolute home path.
+ *
+ * A second drop-in gives the **server process** the highest CPU priority the
+ * scheduler has (\`Nice=-20\`) while leaving its children at the default. That
+ * split is the whole point: everything expensive on a T3 Code VM — the
+ * provider CLI, its builds, its test runs — is a child of this service, and a
+ * plain \`Nice=\` would be inherited by all of them, which is the same as
+ * giving nobody priority. Under that load the server itself is what starves,
+ * and the server is the part that has to stay responsive: it holds the relay
+ * connection and streams the session, so when it loses the CPU the hosted app
+ * goes quiet and the environment looks disconnected while the box is merely
+ * busy. \`CPUSchedulingResetOnFork=yes\` sets \`SCHED_RESET_ON_FORK\`, which the
+ * kernel honours by resetting a negative nice value to 0 in anything the
+ * process forks — the priority stops at the server. \`CPUSchedulingPolicy=\`
+ * is set alongside it because systemd only issues the \`sched_setscheduler\`
+ * call that carries the flag when a policy is configured.
+ *
+ * A negative nice value needs \`CAP_SYS_NICE\` (the default \`RLIMIT_NICE\`
+ * gives an unprivileged user no headroom below 0), so the drop-in is written
+ * only when the unit's own user is root — which it is on Infrawrench agent
+ * VMs, and which is also why \`IS_SANDBOX=1\` above is needed. Elsewhere it is
+ * removed rather than left in place: current systemd clamps an unappliable
+ * \`Nice=\` to the closest allowed value, but older versions fail the unit
+ * outright, and either way an unprivileged manager cannot hand the server a
+ * priority its children do not already have.
+ *
+ * Verified against systemd 255: with these three lines the main process
+ * reports \`SCHED_OTHER|SCHED_RESET_ON_FORK\` and a process it forks reports
+ * plain \`SCHED_OTHER\` (\`chrt -p\`), which is the flag being cleared — the
+ * same clearing that resets a negative nice to 0.
  */
-const T3_SERVICE_PATH_DROPIN_SNIPPET = `
-install_t3_service_path_dropin() {
+const T3_SERVICE_DROPIN_SNIPPET = `
+install_t3_service_dropins() {
   if ! command -v systemctl >/dev/null 2>&1; then
     return 0
   fi
@@ -382,6 +419,29 @@ Environment=PATH=%h/.local/bin:%h/.local/share/mise/shims:/usr/local/sbin:/usr/l
 # unless it believes it is sandboxed. This is a dedicated throwaway VM.
 Environment=IS_SANDBOX=1
 INFRAWRENCH_UNIT_PATH
+  # A negative nice needs CAP_SYS_NICE, which a user manager only has when the
+  # user is root. Elsewhere the boost is unappliable (and fails the unit on
+  # older systemd), so the VM keeps the default priority instead.
+  if [ "$(id -u)" = "0" ]; then
+    cat > "$dropin_dir/20-infrawrench-priority.conf" <<'INFRAWRENCH_UNIT_PRIORITY'
+# Installed by Infrawrench.
+#
+# The T3 Code server holds the relay connection and streams the session, so it
+# has to stay responsive while the provider CLI it drives (and that CLI's
+# builds and test runs) saturates the VM. Those are all CHILDREN of this
+# service, and nice values are inherited, so Nice= on its own would hand them
+# the same priority and change nothing. SCHED_RESET_ON_FORK makes the kernel
+# reset a negative nice back to 0 in every forked child, so the boost applies
+# to the server alone. CPUSchedulingPolicy= is what makes systemd issue the
+# sched_setscheduler call that carries the flag.
+[Service]
+Nice=${T3_CODE_SERVICE_NICE}
+CPUSchedulingPolicy=other
+CPUSchedulingResetOnFork=yes
+INFRAWRENCH_UNIT_PRIORITY
+  else
+    rm -f "$dropin_dir/20-infrawrench-priority.conf"
+  fi
   systemctl --user daemon-reload 2>/dev/null || true
 }
 `;
@@ -392,7 +452,7 @@ INFRAWRENCH_UNIT_PATH
  * design, and independent of T3 Connect's lifecycle — signing out of Connect
  * leaves the service running.
  */
-const T3_SERVICE_SNIPPET = `${T3_SERVICE_PATH_DROPIN_SNIPPET}
+const T3_SERVICE_SNIPPET = `${T3_SERVICE_DROPIN_SNIPPET}
 install_t3_service() {
   if ! command -v systemctl >/dev/null 2>&1; then
     echo "warning: this VM has no systemd, so T3 Code will not start automatically; run 't3 serve' over SSH instead" >&2
@@ -400,8 +460,8 @@ install_t3_service() {
   fi
   log_step "Installing the T3 Code background service."
   t3 service install >&2 || echo "warning: 't3 service install' failed; run it manually over SSH" >&2
-  # After the unit exists, so the drop-in lands beside a real unit file.
-  install_t3_service_path_dropin
+  # After the unit exists, so the drop-ins land beside a real unit file.
+  install_t3_service_dropins
 }
 install_t3_service
 `;
@@ -534,7 +594,7 @@ ${heading("Start T3 Code")}
 # on "already installed and current" and return without touching the unit, so
 # neither can do this. The unit is a systemd *user* unit (the installer also
 # sets \`loginctl enable-linger\`), hence --user and XDG_RUNTIME_DIR.
-${T3_SERVICE_PATH_DROPIN_SNIPPET}
+${T3_SERVICE_DROPIN_SNIPPET}
 restart_t3_service() {
   if ! command -v systemctl >/dev/null 2>&1; then
     printf 'No systemd on this VM. Start the server yourself with: t3 serve\\n'
@@ -542,9 +602,11 @@ restart_t3_service() {
   fi
   # Covers a VM whose bootstrap skipped the service install.
   t3 service install >/dev/null 2>&1 || true
-  # Also repairs VMs bootstrapped before the PATH drop-in existed — without it
-  # the server cannot see gh/claude/codex and source control silently fails.
-  install_t3_service_path_dropin
+  # Also repairs VMs bootstrapped before the drop-ins existed — without them
+  # the server cannot see gh/claude/codex (source control silently fails) and
+  # runs at the same CPU priority as the agent processes it hosts. The restart
+  # below is what puts either into effect.
+  install_t3_service_dropins
   : "\${XDG_RUNTIME_DIR:=/run/user/$(id -u)}"
   export XDG_RUNTIME_DIR
   if systemctl --user restart ${T3_CODE_SYSTEMD_UNIT} 2>/dev/null; then
