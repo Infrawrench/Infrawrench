@@ -32,6 +32,8 @@ import { cmdAccess } from "./commands/access";
 import { cmdHygiene } from "./commands/hygiene";
 import { cmdCredits } from "./commands/credits";
 import { cmdProbes } from "./commands/probes";
+import { cmdStatusPages } from "./commands/status-pages";
+import { cmdOwnership } from "./commands/ownership";
 import { cmdGraph } from "./commands/graph";
 import { cmdPage, cmdCostsPush } from "./commands/push";
 import { cmdCli } from "./commands/cli-install";
@@ -93,6 +95,10 @@ COMMANDS
                       (pipe it: infrawrench recordings get <id> | asciinema play -)
   probes [id|name]    synthetic uptime/latency checks probed from outside your infra, with
                       live status, 24h uptime & last latency (give an id/name for its chart)
+  status-pages [name] public status pages built from your probes: what each publishes and the
+                      URL it is live at (give a name/id for its components)
+  ownership [query]   who owns each resource, what it's for & its ticket (a resource absent
+                      from this list is unowned; see orphans for the wasted ones)
   graph               resource dependency tree   [--resource <id>: what it needs + its blast radius]
   ssh-fanout <cmd>    run one command across many SSH hosts; identical output is collapsed and
                       outliers are diffed against the majority   [--list] [--hosts <q>] [--plugin <id>]
@@ -352,6 +358,14 @@ export async function runCli(): Promise<void> {
       case "probes":
         // `infrawrench probes <id|name>` charts one probe's latency history.
         await cmdProbes(ctx, rest[0]);
+        break;
+      case "status-pages":
+        // `infrawrench status-pages <name|id>` details one page's components.
+        await cmdStatusPages(ctx, rest[0]);
+        break;
+      case "ownership":
+        // `infrawrench ownership <query>` filters to matching resources.
+        await cmdOwnership(ctx, rest[0]);
         break;
       case "graph":
         // `infrawrench graph <resource-id>` is the same as --resource; a

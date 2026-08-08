@@ -36,6 +36,7 @@ import { auditLogs, resourceLeases, resources } from "../db/schema";
 import { findActiveChangeFreeze } from "../change-freezes";
 import { getOrgAccountClient } from "../org-accounts";
 import { sendPushToOrg } from "../push/dispatch";
+import { notifyResourceOwner } from "../ownership/notify";
 import { sendSlackToOrg } from "../slack";
 import { sendMsTeamsToOrg } from "../msteams";
 import type { LeaseRecord } from "./store";
@@ -148,10 +149,26 @@ async function guardedUpdate(
  * transports the expiry radar's daily digest uses. Returns how many
  * destinations were reached; a zero is logged, never thrown, and never blocks
  * the schedule (an org with no transports still gets its lease honored).
+ *
+ * When `resourceId` names a resource with a recorded owner, that person gets
+ * the announcement on their own devices as well. A lease countdown is the
+ * clearest case for owner routing in the product — "your test cluster is
+ * deleted in 24 hours" is addressed to somebody in particular — but the org
+ * fan-out still happens, so a colleague can act when the owner is away.
  */
-async function notifyOrg(organizationId: string, message: LeaseMessage): Promise<number> {
+async function notifyOrg(
+  organizationId: string,
+  message: LeaseMessage,
+  resourceId?: string,
+): Promise<number> {
   let succeeded = 0;
   const body = message.lines.join("\n");
+  const ownerResult = await notifyResourceOwner(organizationId, resourceId, "expiryAlerts", () => ({
+    title: message.title,
+    body: `${body}\nYou are recorded as the owner.`,
+    data: { type: "expiry_alert", orgId: organizationId },
+  }));
+  succeeded += ownerResult.succeeded;
   try {
     const push = await sendPushToOrg(organizationId, "expiryAlerts", {
       title: message.title,
@@ -265,7 +282,11 @@ async function executeLease(
       now,
     );
     if (!recorded) return "noop"; // superseded by an edit — its schedule wins
-    await notifyOrg(row.organizationId, leaseWarningMessage(step.kind, messageInput(row), now));
+    await notifyOrg(
+      row.organizationId,
+      leaseWarningMessage(step.kind, messageInput(row), now),
+      row.resourceId,
+    );
     console.log(
       `[leases] ${step.kind === "warn1" ? "first" : "final"} auto-delete warning sent for ` +
         `resource ${row.resourceId} (lease ${row.id})`,
@@ -335,6 +356,7 @@ async function executeLease(
       await notifyOrg(
         row.organizationId,
         leaseOutcomeMessage("failed", messageInput(row), message),
+        row.resourceId,
       );
     } else {
       await guardedUpdate(
@@ -387,7 +409,11 @@ async function executeLease(
     now,
   );
   await auditAutoDelete(row, "deleted", now);
-  await notifyOrg(row.organizationId, leaseOutcomeMessage("deleted", messageInput(row)));
+  await notifyOrg(
+    row.organizationId,
+    leaseOutcomeMessage("deleted", messageInput(row)),
+    row.resourceId,
+  );
   return "deleted";
 }
 

@@ -28,6 +28,7 @@ import {
   type PeerPaneData,
   ResourceSchedulePanel,
   ResourceLeasePanel,
+  ResourceOwnershipPanel,
 } from "@infrawrench/ui";
 import type {
   ArtifactEntry,
@@ -75,6 +76,7 @@ import { StorageBrowser } from "@/components/StorageBrowser";
 import { ResourceChangesPanel } from "@/components/ResourceChangesPanel";
 import { createWebSchedulesClient } from "@/lib/schedules-client";
 import { createWebLeasesClient } from "@/lib/leases-client";
+import { createWebOwnershipClient } from "@/lib/ownership-client";
 import { SftpBrowser } from "@/components/SftpBrowser";
 import { WebTerminal } from "@/components/WebTerminal";
 import { SshQuickConnectPanel } from "@/components/SshQuickConnectPanel";
@@ -216,6 +218,7 @@ export function ResourceDetailClient({
   const orgId = useOrgId();
   const schedulesClient = useMemo(() => createWebSchedulesClient(orgId), [orgId]);
   const leasesClient = useMemo(() => createWebLeasesClient(orgId), [orgId]);
+  const ownershipClient = useMemo(() => createWebOwnershipClient(orgId), [orgId]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
 
@@ -1386,6 +1389,13 @@ export function ResourceDetailClient({
                 <ResourceLeasePanel
                   client={leasesClient}
                   target={{ resourceId, accountId, resourceName: resourceDisplayName }}
+                />
+              )}
+              renderOwnershipTab={() => (
+                <ResourceOwnershipPanel
+                  client={ownershipClient}
+                  resourceId={resourceId}
+                  resourceName={resourceDisplayName}
                 />
               )}
             />

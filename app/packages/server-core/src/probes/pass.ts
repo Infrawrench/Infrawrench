@@ -31,21 +31,15 @@ import { flattenMetricSeries, insertMetricPoints } from "../clickhouse/writers";
 import { sendPushToOrg } from "../push/dispatch";
 import { sendSlackToOrg } from "../slack";
 import { sendMsTeamsToOrg } from "../msteams";
+import { notifyResourceOwner, ownerContextLine } from "../ownership/notify";
+import { lookupResourceOwner } from "../ownership/store";
 import type { ProbeRecord } from "./store";
 
-/**
- * The synthetic identity probe results are written to ClickHouse under. Not a
- * real plugin: the constant ids exist so probe series live beside plugin
- * metric series in the same tables and the existing readers/charts work
- * unchanged, while staying unmistakably distinct from any synced resource.
- */
-export const PROBE_PLUGIN_ID = "synthetic-probe";
-export const PROBE_RESOURCE_TYPE_ID = "probe";
-
-/** The ClickHouse `resource_id` for one probe's series. */
-export function probeMetricResourceId(probeId: string): string {
-  return `probe:${probeId}`;
-}
+// The metric identity lives in the db-free `./metric-ids` leaf so a reader can
+// name a probe's series without importing this module's delivery stack.
+// Re-exported here for the existing import sites.
+export { PROBE_PLUGIN_ID, PROBE_RESOURCE_TYPE_ID, probeMetricResourceId } from "./metric-ids";
+import { PROBE_PLUGIN_ID, PROBE_RESOURCE_TYPE_ID, probeMetricResourceId } from "./metric-ids";
 
 /** How long we wait on the proxy itself, beyond the probe's own timeout. */
 const PROXY_OVERHEAD_MS = 10_000;
@@ -173,12 +167,35 @@ function describeFailure(result: ProbeProxyResult): string {
   return result.error ?? "request failed";
 }
 
+/**
+ * The owner of the resource this probe watches, or null.
+ *
+ * Swallows failures on purpose: attribution decorates an alert, so losing it
+ * must never cost the alert. Errors still log, via the store's own path.
+ */
+async function lookupOwnerQuietly(probe: ProbeRecord) {
+  if (!probe.resourceId) return null;
+  try {
+    return await lookupResourceOwner(probe.organizationId, probe.resourceId);
+  } catch (err) {
+    console.error("[probes] owner lookup failed:", err);
+    return null;
+  }
+}
+
 async function notifyDown(probe: ProbeRecord, result: ProbeProxyResult): Promise<void> {
   const detail = describeFailure(result);
   const title = `Probe down: ${probe.name}`;
+  // A probe links to the resource whose output suggested its URL, so a down
+  // endpoint usually has an owner. Name them in the team-wide copy — "the API
+  // is down" is more actionable with "and it's Sam's" attached — and send the
+  // owner their own copy in the second person.
+  const owner = await lookupOwnerQuietly(probe);
+  const ownerLine = ownerContextLine(owner);
   const body =
     `infrawrench probe "${probe.name}" is down: ${probe.url} failed ` +
-    `${probe.failureThreshold} consecutive check${probe.failureThreshold === 1 ? "" : "s"} (${detail})`;
+    `${probe.failureThreshold} consecutive check${probe.failureThreshold === 1 ? "" : "s"} (${detail})` +
+    (ownerLine ? `\n${ownerLine}` : "");
   const context = `${probe.method} ${probe.url} · down`;
 
   await sendPushToOrg(probe.organizationId, "probeAlerts", {
@@ -191,6 +208,19 @@ async function notifyDown(probe: ProbeRecord, result: ProbeProxyResult): Promise
       status: "down",
     },
   });
+  await notifyResourceOwner(probe.organizationId, probe.resourceId, "probeAlerts", (o) => ({
+    title: `Your endpoint is down: ${probe.name}`,
+    body:
+      `${probe.url} failed ${probe.failureThreshold} consecutive check` +
+      `${probe.failureThreshold === 1 ? "" : "s"} (${detail}). You are recorded as its owner` +
+      `${o.purpose ? ` — ${o.purpose}` : ""}.`,
+    data: {
+      type: "probe_alert",
+      orgId: probe.organizationId,
+      probeId: probe.id,
+      status: "down",
+    },
+  }));
   const url = probesUrl(probe.organizationId);
   await sendSlackToOrg(probe.organizationId, "probeAlerts", {
     title,

@@ -58,6 +58,8 @@ import { momentRoutes } from "./routes/moment";
 import { scheduleRoutes } from "./routes/schedules";
 import { leaseRoutes } from "./routes/leases";
 import { probeRoutes } from "./routes/probes";
+import { statusPageRoutes, publicStatusRoutes } from "./routes/status-pages";
+import { ownershipRoutes } from "./routes/ownership";
 import { logWorkspaceRoutes } from "./routes/log-workspaces";
 import { associationRoutes } from "./routes/associations";
 import { dependencyGraphRoutes } from "./routes/dependency-graph";
@@ -218,6 +220,13 @@ api.route("/api/org/:orgId/chat", chatRoutes);
 api.route("/api/org/:orgId/costs", costIngestRoutes);
 api.route("/api/org/:orgId/pages", pageRoutes);
 
+// Public status pages. Registered outside every auth layer *and* outside the
+// org tree, because the whole point is to answer callers with no account and
+// the URL deliberately contains no org id — only the page's slug, which is its
+// sole credential. The handler can reach nothing but the public payload
+// assembler (see routes/status-pages.ts).
+api.route("/api/status", publicStatusRoutes);
+
 const authed = new Hono();
 authed.use("*", sessionMiddleware);
 
@@ -269,6 +278,8 @@ orgScoped.route("/moment", momentRoutes);
 orgScoped.route("/schedules", scheduleRoutes);
 orgScoped.route("/leases", leaseRoutes);
 orgScoped.route("/probes", probeRoutes);
+orgScoped.route("/status-pages", statusPageRoutes);
+orgScoped.route("/ownership", ownershipRoutes);
 orgScoped.route("/log-workspaces", logWorkspaceRoutes);
 orgScoped.route("/associations", associationRoutes);
 orgScoped.route("/dependency-graph", dependencyGraphRoutes);

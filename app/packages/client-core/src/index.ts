@@ -383,6 +383,8 @@ export * from "./posture";
 export * from "./dns";
 export * from "./schedules";
 export * from "./probes";
+export * from "./status-pages";
+export * from "./ownership";
 export * from "./log-workspaces";
 export * from "./log-discovery";
 export * from "./metric-alerts";

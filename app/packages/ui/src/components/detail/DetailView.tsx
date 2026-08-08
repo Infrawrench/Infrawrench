@@ -162,6 +162,13 @@ interface DetailViewProps {
    */
   renderLeaseTab?: (() => React.ReactNode) | undefined;
   /**
+   * When set, an "Ownership" tab renders who owns the resource, what it is
+   * for, and its authorizing ticket. Host-driven like `renderLeaseTab`, and
+   * ungated for the same reason: any resource can have an owner, so hosts
+   * wire it whenever an ownership store exists (cloud mode).
+   */
+  renderOwnershipTab?: (() => React.ReactNode) | undefined;
+  /**
    * When `schema.noSqlBrowser` is set, the host provides the actual browser
    * UI via this render prop. The detail view renders it inside a dedicated
    * "Documents" tab. Keeping the UI in the host lets it hold driver-specific
@@ -224,6 +231,7 @@ type Tab =
   | "changes"
   | "schedule"
   | "lease"
+  | "ownership"
   | "artifacts"
   | "kv-browser"
   | "secret-versions"
@@ -276,6 +284,7 @@ export function DetailView({
   renderChangesTab,
   renderScheduleTab,
   renderLeaseTab,
+  renderOwnershipTab,
   renderNoSqlBrowser,
   renderStorageBrowser,
   onChatStream,
@@ -302,6 +311,7 @@ export function DetailView({
   const hasChangesTab = !!renderChangesTab;
   const hasScheduleTab = !!renderScheduleTab;
   const hasLeaseTab = !!renderLeaseTab;
+  const hasOwnershipTab = !!renderOwnershipTab;
   const hasArtifacts = !!schema.artifactRegistry && !!onListArtifacts;
   const hasKvBrowser =
     !!schema.kvBrowser && !!onListKvKeys && !!onGetKvValue && !!onPutKvValue && !!onDeleteKvKey;
@@ -370,6 +380,7 @@ export function DetailView({
   if (hasChangesTab) tabKeys.push("changes");
   if (hasScheduleTab) tabKeys.push("schedule");
   if (hasLeaseTab) tabKeys.push("lease");
+  if (hasOwnershipTab) tabKeys.push("ownership");
   if (hasArtifacts) tabKeys.push("artifacts");
   if (hasKvBrowser) tabKeys.push("kv-browser");
   if (hasSecretVersions) tabKeys.push("secret-versions");
@@ -599,6 +610,13 @@ export function DetailView({
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("lease")}>
                     Lease
+                  </TabButton>
+                );
+              }
+              if (key === "ownership") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("ownership")}>
+                    Ownership
                   </TabButton>
                 );
               }
@@ -897,6 +915,18 @@ export function DetailView({
           className="flex-1 overflow-auto"
         >
           {renderLeaseTab!()}
+        </div>
+      )}
+
+      {hasOwnershipTab && activeTab === "ownership" && (
+        <div
+          role="tabpanel"
+          id={panelIdFor("ownership")}
+          aria-labelledby={tabIdFor("ownership")}
+          tabIndex={0}
+          className="flex-1 overflow-auto"
+        >
+          {renderOwnershipTab!()}
         </div>
       )}
 

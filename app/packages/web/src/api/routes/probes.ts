@@ -18,7 +18,7 @@ import {
   type ProbeRecord,
   type ProbeUpdateInput,
 } from "@infrawrench/server-core/probes/store";
-import { probeMetricResourceId } from "@infrawrench/server-core/probes/pass";
+import { probeMetricResourceId } from "@infrawrench/server-core/probes/metric-ids";
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";

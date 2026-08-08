@@ -24,6 +24,33 @@ export interface OrphanCostAnnotation {
   currency: string;
 }
 
+/**
+ * Who owns a resource, in the compact form other features embed — a flagged
+ * orphan row, an expiry item, an alert body.
+ *
+ * It lives here rather than in client-core (where the rest of the ownership
+ * feature lives) for the same reason `OrphanCostAnnotation` does: this file
+ * defines the shape hosts annotate, and client-core's plugin-base import is
+ * type-only, so the dependency can only point this way. `client-core/ownership`
+ * re-exports the name — there is one definition, not two.
+ *
+ * Note what an annotation means: it is only present when somebody can be
+ * *named*. A resource with a recorded purpose but no owner annotates as null,
+ * because the question the orphan finder asks is "who do I tell?".
+ */
+export interface ResourceOwnerAnnotation {
+  /** Set when a routable org member owns it; null for a free-text owner. */
+  userId: string | null;
+  /** The name to print: the member's name, else the free-text owner. */
+  displayName: string;
+  /** True when `displayName` is free text — i.e. nobody to route an alert to. */
+  isLabel: boolean;
+  /** Link to the ticket that authorized the resource, when recorded. */
+  ticketUrl: string | null;
+  /** What the resource is for, when recorded. */
+  purpose: string | null;
+}
+
 export interface OrphanedResource {
   /** Infrawrench resource id. */
   id: string;
@@ -43,6 +70,15 @@ export interface OrphanedResource {
    * cost data.
    */
   cost: OrphanCostAnnotation | null;
+  /**
+   * Who to talk to about this row, or null when nobody has claimed it.
+   *
+   * Layered on afterwards by hosts that store ownership, exactly like `cost`:
+   * `collectOrphanGroups` is pure over plugin rules and always emits null here.
+   * A null owner is the finder's most actionable output — it is the set of
+   * waste that has no one to send a list to.
+   */
+  owner: ResourceOwnerAnnotation | null;
   /** Last time this resource's state was synced from the provider, if ever. */
   lastSyncedAt: string | null;
 }
@@ -77,6 +113,14 @@ export interface OrphanListResponse {
   accounts: OrphanAccountGroup[];
   /** Total flagged resources across all groups. */
   totalCount: number;
+  /**
+   * Flagged resources with no owner annotation — the "nobody to ask" count.
+   *
+   * Always equal to `totalCount` on a host that stores no ownership (local
+   * mode), which is honest: it has no ownership data, so it knows of no owner.
+   * Surfaces should read it as "unattributed", not as "unowned in the cloud".
+   */
+  unownedCount: number;
   /** Days of trailing spend the cost annotations cover; 0 when there are none. */
   costWindowDays: number;
   /** See {@link OrphanCostBasis}. */
@@ -190,6 +234,9 @@ export function collectOrphanGroups({
       externalId: r.externalId,
       reason,
       cost: null,
+      // Both annotations are the host's job; the scan itself knows neither
+      // billing nor ownership.
+      owner: null,
       lastSyncedAt: r.lastSyncedAt,
     });
   }
@@ -208,6 +255,16 @@ export function collectOrphanGroups({
 /** Total flagged resources across every group. */
 export function countOrphans(groups: readonly OrphanAccountGroup[]): number {
   return groups.reduce((n, g) => n + g.resources.length, 0);
+}
+
+/**
+ * Flagged resources with no owner annotation, across every group.
+ *
+ * Call this *after* a host has annotated ownership — on unannotated groups it
+ * correctly returns `countOrphans`, since nothing is known to be owned.
+ */
+export function countUnownedOrphans(groups: readonly OrphanAccountGroup[]): number {
+  return groups.reduce((n, g) => n + g.resources.filter((r) => r.owner === null).length, 0);
 }
 
 /**
