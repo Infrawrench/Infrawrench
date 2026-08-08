@@ -90,8 +90,7 @@ interface DetailViewContainerProps {
    * context. Omitted when there is no resource loaded yet.
    */
   loadCostEstimate?:
-    | ((changedFields: Record<string, string>) => Promise<CostEstimate | null>)
-    | null;
+    ((changedFields: Record<string, string>) => Promise<CostEstimate | null>) | null;
   onNoSqlCommand: (command: string, args: (string | number)[]) => Promise<unknown>;
   onChatStream: (
     messages: ChatMessage[],
