@@ -1,17 +1,20 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useRouterState } from "@tanstack/react-router";
+import { hasPermission } from "@infrawrench/client-core";
 import {
   WorkspaceTabsViewport as BaseViewport,
   dashboardTabTarget,
   environmentDiffTabTarget,
   resourceTabTarget,
   DeploymentsPanel,
+  JiraFilingProvider,
   useUIStore,
   workspaceTabTargetsEqual,
   type DeploymentClient,
   type WorkspaceTab,
 } from "@infrawrench/ui";
+import { createDesktopSettingsApi } from "@/lib/settings-client";
 import { invoke } from "@/lib/invoke";
 import { DashboardPanel } from "@/routes/dashboard.$dashboardId";
 import { AccountPanel } from "@/routes/accounts.$accountId";
@@ -120,10 +123,64 @@ export function DesktopWorkspaceTabsViewport() {
   }, [tabsHydrated, pathname, hash, searchStr]);
 
   return (
-    <BaseViewport
-      showActive={showActive}
-      renderTabPanel={(tab) => renderPanel(tab, navigate, activeCloudOrgId)}
-    />
+    <JiraFiling orgId={activeCloudOrgId}>
+      <BaseViewport
+        showActive={showActive}
+        renderTabPanel={(tab) => renderPanel(tab, navigate, activeCloudOrgId)}
+      />
+    </JiraFiling>
+  );
+}
+
+/**
+ * Bind the shared Jira filing provider to the desktop's cloud transport, so
+ * the Costs, Savings, and Posture tabs offer "File a Jira issue" exactly as
+ * web does.
+ *
+ * Local (non-cloud) mode has no org and no cloud credentials, so it renders
+ * the children bare — the filing context is then absent and every button
+ * resolves to nothing, which is the correct answer rather than a control that
+ * could only fail.
+ *
+ * Requests go over the same allowlisted `cloud_settings_request` IPC channel
+ * the settings sections use; `/jira` is in that allowlist
+ * (electron/cloud-data/settings.ts).
+ */
+function JiraFiling({ orgId, children }: { orgId: string | null; children: ReactNode }) {
+  const api = useMemo(() => createDesktopSettingsApi(), []);
+  const [permissions, setPermissions] = useState<readonly string[]>([]);
+
+  useEffect(() => {
+    if (!orgId) {
+      setPermissions([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const me = await api.get<{ permissions: string[] }>(`/api/org/${orgId}/team/me`);
+        if (!cancelled) setPermissions(me.permissions);
+      } catch {
+        if (!cancelled) setPermissions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [api, orgId]);
+
+  if (!orgId) return <>{children}</>;
+
+  return (
+    <JiraFilingProvider
+      orgId={orgId}
+      api={api}
+      canRead={hasPermission(permissions, "jira:read")}
+      canFile={hasPermission(permissions, "jira:write")}
+      openExternal={(url) => void invoke("open_external_url", { url })}
+    >
+      {children}
+    </JiraFilingProvider>
   );
 }
 

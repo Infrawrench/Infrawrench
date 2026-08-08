@@ -14,6 +14,7 @@ import { TagPolicySection } from "./TagPolicySection.js";
 import { ConfigAsCodeSection } from "./ConfigAsCodeSection.js";
 import { ApprovalsSection } from "./ApprovalsSection.js";
 import { NotificationsSection } from "./NotificationsSection.js";
+import { JiraSection } from "./JiraSection.js";
 import { BillingSection } from "./BillingSection.js";
 import { AuditLogSection } from "./AuditLogSection.js";
 
@@ -55,6 +56,8 @@ export function SettingsSectionBody({ section }: { section: string }): ReactNode
       return <ApprovalsSection />;
     case "paging":
       return <NotificationsSection />;
+    case "jira":
+      return <JiraSection />;
     case "billing":
       return <BillingSection />;
     case "audit-log":

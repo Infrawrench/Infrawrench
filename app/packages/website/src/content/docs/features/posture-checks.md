@@ -100,3 +100,10 @@ The `list_posture_findings` tool exposes the findings to AI agents, filterable b
 - The dangling-DNS check deliberately stays quiet where it can't be sure — it only evaluates a provider namespace when you have that provider connected and at least one claimant resource has synced. [Domains](./domains.md) explains the guard and lists what was skipped.
 - Rules are plugin-declared, not user-editable: each plugin ships the checks its synced fields can honestly answer, with a stable rule id and a written reason. What is up to you is which findings you accept — see [Dismissing a finding](#dismissing-a-finding).
 - A dismissal has no expiry. It holds until someone restores it, so it is worth reading the **Dismissed** list occasionally — it is the list of things you decided to live with.
+
+## Filing a finding as an issue
+
+Posture findings are work for somebody. With [Jira connected](./jira.md), each finding row has
+a **File in Jira** link that opens an issue prefilled with the resource, the account, the rule
+id, the severity and category, and the plugin's written explanation. Once filed, the row shows
+its issue key, which keeps two people from opening the same ticket off the same list.

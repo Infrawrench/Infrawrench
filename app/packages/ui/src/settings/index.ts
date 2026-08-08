@@ -21,6 +21,7 @@ export { TagPolicySection } from "./TagPolicySection.js";
 export { ConfigAsCodeSection } from "./ConfigAsCodeSection.js";
 export { ApprovalsSection } from "./ApprovalsSection.js";
 export { NotificationsSection } from "./NotificationsSection.js";
+export { JiraSection } from "./JiraSection.js";
 export { ExpiryAlertsSection } from "./ExpiryAlertsSection.js";
 export { WeeklyDigestSection } from "./WeeklyDigestSection.js";
 export { BillingSection } from "./BillingSection.js";

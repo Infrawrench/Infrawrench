@@ -85,6 +85,15 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       // chat instead of being silently ignored.
       "chat:read",
       "chat:write",
+      // Read only, matching the other `:read`-for-members entries above and the
+      // way `pages:write` is withheld. Members need this so a findings list can
+      // show them "already filed as OPS-412" — without it the marker would be
+      // invisible to exactly the people most likely to file a duplicate. Filing
+      // itself stays with admins/owners because it writes into a third-party
+      // tracker under the org's single shared Atlassian credential and cannot be
+      // undone from Infrawrench; an org that wants members filing grants
+      // `jira:write` through a custom role.
+      "jira:read",
     ],
   },
 };

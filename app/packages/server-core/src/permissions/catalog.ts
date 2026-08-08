@@ -95,6 +95,14 @@ export const ALL_PERMISSIONS = [
   "bastions:write",
   "chat:read",
   "chat:write",
+  // Jira issue tracking. `read` covers the integration's redacted config and the
+  // finding→issue links a list view needs to render "already filed"; `write`
+  // covers configuring the site credential and filing an issue. Split because
+  // the "already filed" marker is useless if only admins can see it, while
+  // filing writes into a third-party system under the org's shared credential
+  // and cannot be retracted from here.
+  "jira:read",
+  "jira:write",
   "pages:write",
   "org:settings:write",
 ] as const;

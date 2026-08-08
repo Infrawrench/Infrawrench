@@ -57,3 +57,11 @@ Applying goes through the same update path as the resource's Edit form, so it pl
 - **It's stopped.** A stopped machine's utilisation describes nothing; the right tool for one that stays stopped is a [sleep schedule](./sleep-schedules.md) or deletion.
 - **No cheaper size fits.** The catalog has no smaller same-family size in that region that clears the headroom rule — the good outcome.
 - **It's already the smallest size of its family.**
+
+## Filing a recommendation as an issue
+
+A resize is often somebody else's change to make, or one that needs scheduling. With
+[Jira connected](./jira.md), each row in the Oversized section has a **File in Jira** link
+that opens an issue prefilled with the resource, its current and recommended size, the p95
+CPU and memory behind the recommendation, and the estimated monthly saving. Filed rows show
+their issue key from then on.

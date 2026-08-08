@@ -30,6 +30,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { key: "config", label: "Config as Code", requiresPermission: "config:read" },
   { key: "approvals", label: "Approvals", requiresPermission: "workflows:read" },
   { key: "paging", label: "Notifications" },
+  { key: "jira", label: "Jira", requiresPermission: "jira:read" },
   { key: "billing", label: "Billing" },
   { key: "audit-log", label: "Audit Log" },
 ];

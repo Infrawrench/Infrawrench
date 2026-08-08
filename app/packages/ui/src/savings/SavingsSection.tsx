@@ -4,6 +4,7 @@ import {
   formatTicketRef,
   type ResourceOwnerAnnotation,
 } from "@infrawrench/client-core";
+import { FileJiraIssueButton } from "../jira/FileJiraIssueButton.js";
 import type { OrphanedResource, OrphanListResponse, OrphansClient } from "./types.js";
 
 /**
@@ -212,6 +213,36 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
                         )}
                       </td>
                     )}
+                    {/* Stop propagation: the row itself opens the resource, and
+                        filing an issue is a different intent entirely. */}
+                    <td
+                      className="px-3 py-2.5 whitespace-nowrap text-right"
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      <FileJiraIssueButton
+                        sourceKind="orphan"
+                        sourceId={r.id}
+                        draft={{
+                          title: `${r.displayName} (${r.resourceTypeName}) looks orphaned`,
+                          details: [
+                            { label: "Resource", value: r.displayName },
+                            { label: "Type", value: r.resourceTypeName },
+                            { label: "Provider", value: group.pluginName },
+                            { label: "Account", value: group.accountName },
+                            { label: "Provider id", value: r.externalId },
+                            {
+                              label: `Spend / ${data.costWindowDays}d`,
+                              value: r.cost
+                                ? formatMoney(r.cost.amount, r.cost.currency)
+                                : undefined,
+                            },
+                            { label: "Last synced", value: r.lastSyncedAt },
+                          ],
+                          note: r.reason,
+                        }}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>

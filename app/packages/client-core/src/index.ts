@@ -412,6 +412,7 @@ export * from "./session-recordings";
 export * from "./access-requests";
 export * from "./credential-hygiene";
 export * from "./credits";
+export * from "./jira";
 export * from "./chat/types";
 export { createBearerChatClient } from "./chat/bearer-client";
 export * from "./ws-protocol";

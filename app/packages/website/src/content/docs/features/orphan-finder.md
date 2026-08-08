@@ -102,3 +102,10 @@ orphan". It also reports which mode produced the output: local scans carry `"cos
 ## Beyond orphans: oversized machines
 
 Waste is not always a resource doing nothing — sometimes it is a machine doing real work on twice the hardware it needs. The **Oversized** section directly below Potential savings covers that half: [right-sizing recommendations](./right-sizing.md) computed from two weeks of stored p95 CPU/memory utilisation, each with the provider's cheapest smaller size that still leaves headroom and a one-click resize.
+
+## Filing a flagged resource as an issue
+
+Deleting something is a decision, and often not yours alone to make. With
+[Jira connected](./jira.md), each flagged row carries a **File in Jira** link that opens an
+issue prefilled with the resource, its type, account and provider id, the trailing spend, and
+the plugin's reason for flagging it. Filed rows show their issue key instead of the link.

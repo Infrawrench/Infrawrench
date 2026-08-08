@@ -54,6 +54,7 @@ import { Route as OrgOrgIdSettingsSessionRecordingsRouteImport } from './routes/
 import { Route as OrgOrgIdSettingsSshHostKeysRouteImport } from './routes/org.$orgId.settings.ssh-host-keys'
 import { Route as OrgOrgIdSettingsSshKeysRouteImport } from './routes/org.$orgId.settings.ssh-keys'
 import { Route as OrgOrgIdSettingsTagPolicyRouteImport } from './routes/org.$orgId.settings.tag-policy'
+import { Route as OrgOrgIdSettingsJiraRouteImport } from './routes/org.$orgId.settings.jira'
 import { Route as OrgOrgIdSettingsTeamRouteImport } from './routes/org.$orgId.settings.team'
 import { Route as OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRouteImport } from './routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId'
 
@@ -293,6 +294,13 @@ const OrgOrgIdSettingsTagPolicyRoute =
     path: '/tag-policy',
     getParentRoute: () => OrgOrgIdSettingsRoute,
   } as any)
+
+const OrgOrgIdSettingsJiraRoute =
+  OrgOrgIdSettingsJiraRouteImport.update({
+    id: '/jira',
+    path: '/jira',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsTeamRoute = OrgOrgIdSettingsTeamRouteImport.update({
   id: '/team',
   path: '/team',
@@ -349,6 +357,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
+  '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/chat/': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
@@ -395,6 +404,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
+  '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsIndexRoute
@@ -445,6 +455,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
+  '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/chat/': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
@@ -825,6 +836,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsAccessRequestsRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/jira': {
+      id: '/org/$orgId/settings/jira'
+      path: '/jira'
+      fullPath: '/org/$orgId/settings/jira'
+      preLoaderRoute: typeof OrgOrgIdSettingsJiraRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/api-keys': {
       id: '/org/$orgId/settings/api-keys'
       path: '/api-keys'
@@ -970,6 +988,7 @@ interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsSshHostKeysRoute: typeof OrgOrgIdSettingsSshHostKeysRoute
   OrgOrgIdSettingsSshKeysRoute: typeof OrgOrgIdSettingsSshKeysRoute
   OrgOrgIdSettingsTagPolicyRoute: typeof OrgOrgIdSettingsTagPolicyRoute
+  OrgOrgIdSettingsJiraRoute: typeof OrgOrgIdSettingsJiraRoute
   OrgOrgIdSettingsTeamRoute: typeof OrgOrgIdSettingsTeamRoute
   OrgOrgIdSettingsIndexRoute: typeof OrgOrgIdSettingsIndexRoute
 }
@@ -992,6 +1011,7 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsSshHostKeysRoute: OrgOrgIdSettingsSshHostKeysRoute,
   OrgOrgIdSettingsSshKeysRoute: OrgOrgIdSettingsSshKeysRoute,
   OrgOrgIdSettingsTagPolicyRoute: OrgOrgIdSettingsTagPolicyRoute,
+  OrgOrgIdSettingsJiraRoute: OrgOrgIdSettingsJiraRoute,
   OrgOrgIdSettingsTeamRoute: OrgOrgIdSettingsTeamRoute,
   OrgOrgIdSettingsIndexRoute: OrgOrgIdSettingsIndexRoute,
 }

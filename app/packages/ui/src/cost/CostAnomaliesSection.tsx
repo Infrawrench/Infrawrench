@@ -8,6 +8,7 @@ import {
 } from "@infrawrench/client-core";
 import { useEffect, useId, useState } from "react";
 
+import { FileJiraIssueButton } from "../jira/FileJiraIssueButton.js";
 import { formatMoney } from "./transform.js";
 import type { CostAnomalySettings, CostAnomalySettingsView, CostAnomalySmsMode } from "./config.js";
 import type { CostAnomaly, CostsClient } from "./types.js";
@@ -113,6 +114,7 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                 <th className="px-3 py-2 font-medium text-right">Spend</th>
                 <th className="px-3 py-2 font-medium text-right">Baseline / day</th>
                 <th className="px-3 py-2 font-medium text-right">Change</th>
+                <th className="px-3 py-2 font-medium text-right">Issue</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
@@ -157,6 +159,37 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                       }`}
                     >
                       {delta ?? "new"}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right">
+                      <FileJiraIssueButton
+                        sourceKind="cost_anomaly"
+                        sourceId={a.id}
+                        draft={{
+                          title: `${a.dimensionKey} spend ${isNew ? "started" : `up ${delta ?? ""}`} on ${a.day}`,
+                          details: [
+                            { label: "Day", value: a.day },
+                            {
+                              label: COST_ANOMALY_DIMENSION_LABELS[a.dimension],
+                              value: a.dimensionKey,
+                            },
+                            {
+                              label: "Spend",
+                              value: formatMoney(a.actualCents / 100, a.currency),
+                            },
+                            {
+                              label: "Baseline / day",
+                              value: isNew
+                                ? "none (new source)"
+                                : formatMoney(a.baselineCents / 100, a.currency),
+                            },
+                            { label: "Change", value: delta },
+                            { label: "Detected", value: a.detectedAt },
+                          ],
+                          ...(hints.length > 0
+                            ? { note: `What changed around this window:\n${hints.join("\n")}` }
+                            : {}),
+                        }}
+                      />
                     </td>
                   </tr>
                 );

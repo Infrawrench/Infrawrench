@@ -69,6 +69,7 @@ import { registerPushPaths } from "./paths/push";
 import { registerAlertRulePaths } from "./paths/alert-rules";
 import { registerSlackPaths } from "./paths/slack";
 import { registerMsTeamsPaths } from "./paths/msteams";
+import { registerJiraPaths } from "./paths/jira";
 import { registerDigestPaths } from "./paths/digest";
 
 interface BuildOptions {
@@ -172,6 +173,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerAlertRulePaths(ctx);
   registerSlackPaths(ctx);
   registerMsTeamsPaths(ctx);
+  registerJiraPaths(ctx);
   registerDigestPaths(ctx);
 
   const generator = new OpenApiGeneratorV31(registry.definitions);
@@ -336,6 +338,13 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Microsoft Teams",
         description:
           "Microsoft Teams webhook connections and the channels alert rules can name as destinations.",
+      },
+      {
+        name: "Jira",
+        description:
+          "Jira Cloud connection, project and issue-type pickers, and filing a finding " +
+          "(cost anomaly, orphan, oversized resource, posture finding, expiring credential, " +
+          "failed probe) as a tracked issue.",
       },
     ],
   });
@@ -569,6 +578,17 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /cost-centres/rules/swap": "costs:write",
   "PUT /cost-centres/rules/{id}": "costs:write",
   "DELETE /cost-centres/rules/{id}": "costs:write",
+  // jira — read covers the redacted connection, the pickers, and the
+  // finding→issue links a list view needs; write covers configuring the
+  // credential and filing.
+  "GET /jira": "jira:read",
+  "PUT /jira": "jira:write",
+  "DELETE /jira": "jira:write",
+  "POST /jira/verify": "jira:write",
+  "GET /jira/projects": "jira:read",
+  "GET /jira/projects/{key}/issue-types": "jira:read",
+  "POST /jira/issues": "jira:write",
+  "GET /jira/links": "jira:read",
   // resources
   "GET /resources/{pluginId}/{typeId}/detail": "resources:read",
   "GET /resources/{pluginId}/{typeId}/manifest": "resources:read",

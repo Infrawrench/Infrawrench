@@ -10,6 +10,8 @@ import {
   type PostureSeverity,
 } from "@infrawrench/client-core";
 
+import { FileJiraIssueButton } from "../jira/FileJiraIssueButton.js";
+
 export interface PostureSectionProps {
   /**
    * The computed findings, or null while the first load is in flight. Hosts
@@ -253,6 +255,36 @@ function ActiveFindingRow({
           </button>
         </td>
       )}
+      {/* Stop propagation: the row opens the resource, and filing is a different intent. */}
+      <td
+        className="px-3 py-2.5 whitespace-nowrap align-top text-right"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
+        <FileJiraIssueButton
+          sourceKind="posture_finding"
+          // A posture finding has no id of its own — it is the pairing of a
+          // rule with a resource, which is also what the row is keyed on.
+          sourceId={`${finding.resourceId}:${finding.ruleId}`}
+          draft={{
+            title: `${finding.title} — ${finding.displayName}`,
+            details: [
+              { label: "Resource", value: finding.displayName },
+              { label: "Type", value: finding.resourceTypeName },
+              { label: "Provider", value: finding.pluginName },
+              { label: "Account", value: finding.accountName },
+              { label: "Provider id", value: finding.externalId },
+              { label: "Rule", value: finding.ruleId },
+              {
+                label: "Severity",
+                value: POSTURE_SEVERITY_LABELS[finding.severity],
+              },
+              { label: "Category", value: finding.category },
+            ],
+            note: finding.reason,
+          }}
+        />
+      </td>
     </tr>
   );
 }

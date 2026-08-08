@@ -2508,6 +2508,103 @@ export const providerStatusNotifications = pgTable(
   }),
 );
 
+/**
+ * An org's connection to one Jira Cloud site, used to turn findings (cost
+ * anomalies, orphans, oversized resources, posture findings, expiring
+ * credentials, failed probes) into tracked issues.
+ *
+ * One row per org — an org files into a single site. Keyed by `organizationId`
+ * rather than carrying its own `id` for the same reason `twilio_settings` is:
+ * "configured or not" is a property of the org, and a primary key makes the
+ * upsert in `setJiraIntegration` a plain `onConflictDoUpdate` on the org.
+ *
+ * Auth is Jira Cloud basic auth: `Authorization: Basic base64(email:apiToken)`.
+ * The API token is a bearer credential for the whole Atlassian account, so it
+ * is encrypted at rest exactly like the Twilio auth token and the Teams webhook
+ * URL, and never leaves the server — the API returns {@link tokenHint} instead.
+ */
+export const jiraIntegrations = pgTable("jira_integrations", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  /**
+   * Site base URL with no trailing slash, e.g. `https://acme.atlassian.net`.
+   * Kept in the clear: it is not a secret, it is shown in the settings UI, and
+   * issue links are built from it.
+   */
+  siteUrl: text("site_url").notNull(),
+  /** Atlassian account email — the username half of the basic-auth pair. */
+  accountEmail: text("account_email").notNull(),
+  /** AES-256-GCM encrypted Jira API token. AAD: `jira:<orgId>:apiToken`. */
+  encryptedApiToken: text("encrypted_api_token").notNull(),
+  apiTokenIv: text("api_token_iv").notNull(),
+  /**
+   * Non-secret display marker, e.g. `…a7f2`. Lets the settings UI show that a
+   * token is stored, and which one, without ever returning the token itself.
+   */
+  tokenHint: text("token_hint").notNull(),
+  /** Project the "File a Jira issue" modal preselects, e.g. `OPS`. */
+  defaultProjectKey: text("default_project_key"),
+  /** Issue type id the modal preselects within {@link defaultProjectKey}. */
+  defaultIssueTypeId: text("default_issue_type_id"),
+  createdByUserId: text("created_by_user_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * The Jira issue a finding was filed as. This is what lets a list view render
+ * "PROJ-412" on a row instead of offering the file button a second time.
+ *
+ * The unique constraint spans (org, kind, source, issue key) so re-filing the
+ * same finding as the same issue is idempotent rather than an error, while
+ * still permitting a deliberate second issue for the same finding (a different
+ * key) — the UI never offers that, but a caller with `jira:write` may.
+ */
+export const jiraIssueLinks = pgTable(
+  "jira_issue_links",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /**
+     * Which detector produced the finding. Constrained in the database as well
+     * as in the route's zod schema — these rows outlive any one code path, and
+     * an unknown kind would strand the link where no UI looks for it.
+     */
+    sourceKind: text("source_kind").notNull(),
+    /**
+     * The finding's own id, opaque here. Not a foreign key: the six sources
+     * live in six different tables, and some (cost anomalies) are recomputed
+     * rather than stored, so referential integrity is not available.
+     */
+    sourceId: text("source_id").notNull(),
+    /** Jira issue key, e.g. `OPS-412`. */
+    issueKey: text("issue_key").notNull(),
+    /** Browse URL, e.g. `https://acme.atlassian.net/browse/OPS-412`. Stored
+     * rather than derived so the link still resolves after the org points the
+     * integration at a different site. */
+    issueUrl: text("issue_url").notNull(),
+    createdByUserId: text("created_by_user_id"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgSourceIssueUnique: uniqueIndex("jira_issue_links_org_source_issue_unique").on(
+      t.organizationId,
+      t.sourceKind,
+      t.sourceId,
+      t.issueKey,
+    ),
+    /** Backs the batch `GET /links?sourceKind=&sourceId=` a list view calls once. */
+    orgKindIdx: index("jira_issue_links_org_kind_idx").on(t.organizationId, t.sourceKind),
+    sourceKindValid: check(
+      "jira_issue_links_source_kind_valid",
+      sql`${t.sourceKind} IN ('cost_anomaly', 'orphan', 'oversized', 'posture_finding', 'expiring', 'probe')`,
+    ),
+  }),
+);
+
 export * from "./core-schema.js";
 export * from "./workflow-schema.js";
 export * from "./ssh-recording-schema.js";

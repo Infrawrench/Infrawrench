@@ -35,6 +35,7 @@
     "./alerts/rules": "./src/alerts/rules.ts",
     "./alerts/pass": "./src/alerts/pass.ts",
     "./alerts/ack": "./src/alerts/ack.ts",
+    "./jira": "./src/jira.ts",
     "./plugin-loader": "./src/plugin-loader.ts",
     "./workflows/runner": "./src/workflows/runner.ts",
     "./workflows/approvals": "./src/workflows/approvals.ts",

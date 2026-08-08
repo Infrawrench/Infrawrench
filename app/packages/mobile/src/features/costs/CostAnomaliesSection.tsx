@@ -1,4 +1,6 @@
-import { StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import * as Linking from "expo-linking";
 import {
   COST_ANOMALY_DIMENSION_LABELS,
   costAnomalyDeltaPercent,
@@ -6,6 +8,8 @@ import {
   type CostAnomaly,
 } from "@infrawrench/client-core";
 import { Card, SectionTitle } from "@/components/ui";
+import { FileJiraIssueSheet } from "@/features/jira/FileJiraIssueSheet";
+import { useCanFileJira, useJiraLinks } from "@/features/jira/useJira";
 import { colors, radii, spacing } from "@/lib/theme";
 import { ANOMALY_WINDOW_DAYS, useCostAnomalies } from "./useCostAnomalies";
 
@@ -82,6 +86,11 @@ function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
   // Optional on the wire — an app a release ahead of its server still renders.
   const hints = anomaly.hints ?? [];
 
+  const { linkFor } = useJiraLinks();
+  const canFile = useCanFileJira();
+  const [filing, setFiling] = useState(false);
+  const link = linkFor("cost_anomaly", anomaly.id);
+
   return (
     <View style={styles.row}>
       <View style={styles.rowMain}>
@@ -108,6 +117,21 @@ function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
             · {hint}
           </Text>
         ))}
+        {/* Filed → the issue key, which opens Jira. Not filed but filable →
+            the offer. Neither → nothing, rather than a control that can only
+            fail. Same three states as the web button. */}
+        {link ? (
+          <Pressable
+            accessibilityRole="link"
+            onPress={() => void Linking.openURL(link.issueUrl)}
+          >
+            <Text style={styles.jiraLink}>{link.issueKey}</Text>
+          </Pressable>
+        ) : canFile ? (
+          <Pressable accessibilityRole="button" onPress={() => setFiling(true)}>
+            <Text style={styles.jiraAction}>File in Jira</Text>
+          </Pressable>
+        ) : null}
       </View>
       <View style={styles.rowAmount}>
         <Text style={styles.amount}>
@@ -117,6 +141,39 @@ function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
           {delta ?? "new"}
         </Text>
       </View>
+      {filing && (
+        <FileJiraIssueSheet
+          visible={filing}
+          sourceKind="cost_anomaly"
+          sourceId={anomaly.id}
+          draft={{
+            title: `${anomaly.dimensionKey} spend ${isNew ? "started" : `up ${delta ?? ""}`} on ${anomaly.day}`,
+            details: [
+              { label: "Day", value: anomaly.day },
+              {
+                label: COST_ANOMALY_DIMENSION_LABELS[anomaly.dimension],
+                value: anomaly.dimensionKey,
+              },
+              {
+                label: "Spend",
+                value: formatMoney(anomaly.actualCents / 100, anomaly.currency),
+              },
+              {
+                label: "Baseline / day",
+                value: isNew
+                  ? "none (new source)"
+                  : formatMoney(anomaly.baselineCents / 100, anomaly.currency),
+              },
+              { label: "Change", value: delta },
+              { label: "Detected", value: anomaly.detectedAt },
+            ],
+            ...(hints.length > 0
+              ? { note: `What changed around this window:\n${hints.join("\n")}` }
+              : {}),
+          }}
+          onClose={() => setFiling(false)}
+        />
+      )}
     </View>
   );
 }
@@ -130,6 +187,8 @@ const styles = StyleSheet.create({
   subtitle: { color: colors.textMuted, fontSize: 12 },
   baseline: { color: colors.textFaint, fontSize: 11 },
   hint: { color: colors.textFaint, fontSize: 11 },
+  jiraLink: { color: colors.accent, fontSize: 11, fontWeight: "600", marginTop: 2 },
+  jiraAction: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
   amount: { color: colors.text, fontSize: 15, fontWeight: "600" },
   delta: { fontSize: 12, fontWeight: "500" },
   badge: {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatMoney } from "@infrawrench/client-core";
+import { FileJiraIssueButton } from "../jira/FileJiraIssueButton.js";
 import type { OversizedResource, RightsizingClient, RightsizingListResponse } from "./types.js";
 
 export interface OversizedSectionProps {
@@ -219,6 +220,39 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
                           {applying.has(r.id) ? "Applying…" : "Apply resize"}
                         </button>
                       )}
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-right">
+                      <FileJiraIssueButton
+                        sourceKind="oversized"
+                        sourceId={r.id}
+                        draft={{
+                          title: `Right-size ${r.displayName} from ${r.currentSize.label} to ${r.recommendedSize.label}`,
+                          details: [
+                            { label: "Resource", value: r.displayName },
+                            { label: "Type", value: r.resourceTypeName },
+                            { label: "Provider", value: group.pluginName },
+                            { label: "Account", value: group.accountName },
+                            { label: "Current size", value: r.currentSize.label },
+                            { label: "Recommended size", value: r.recommendedSize.label },
+                            { label: "p95 CPU", value: `${r.cpuP95}%` },
+                            {
+                              label: "p95 memory",
+                              value:
+                                r.memoryMeasured && r.memoryP95 !== null
+                                  ? `${r.memoryP95}%`
+                                  : "not measured",
+                            },
+                            {
+                              label: "Estimated saving",
+                              value:
+                                r.monthlySaving !== null
+                                  ? `${formatMoney(r.monthlySaving, r.currency)}/mo`
+                                  : undefined,
+                            },
+                          ],
+                          note: "Infrawrench can apply this resize from the Savings view once the change is approved.",
+                        }}
+                      />
                     </td>
                   </tr>
                 ))}

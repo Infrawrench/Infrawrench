@@ -112,6 +112,8 @@ export function TextField({
   maxLength,
   autoFocus = false,
   onSubmitEditing,
+  multiline = false,
+  numberOfLines = 5,
 }: {
   label: string;
   hint?: string | undefined;
@@ -123,11 +125,18 @@ export function TextField({
   maxLength?: number | undefined;
   autoFocus?: boolean;
   onSubmitEditing?: (() => void) | undefined;
+  /** Grow into a paragraph box — issue descriptions, notes. */
+  multiline?: boolean;
+  /** Visible rows when `multiline`. Ignored otherwise. */
+  numberOfLines?: number;
 }) {
   return (
     <Field label={label} hint={hint}>
       <TextInput
-        style={styles.input}
+        style={[
+          styles.input,
+          multiline && { height: 22 * numberOfLines, textAlignVertical: "top", paddingTop: 8 },
+        ]}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder ?? ""}
@@ -138,6 +147,8 @@ export function TextField({
         maxLength={maxLength}
         autoFocus={autoFocus}
         onSubmitEditing={onSubmitEditing}
+        multiline={multiline}
+        numberOfLines={multiline ? numberOfLines : undefined}
         accessibilityLabel={label}
       />
     </Field>
