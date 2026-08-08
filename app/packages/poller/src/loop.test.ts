@@ -58,6 +58,20 @@ vi.mock("@infrawrench/server-core/resource-changes", () => ({
   CHANGE_RETENTION_INTERVAL_MS: 60 * 60 * 1000,
 }));
 
+// Same isolation as resource-changes: the real retention pass pulls the SSH
+// recording store (and a drizzle `sql` template) that this suite does not set up.
+const pruneSessionRecordings = vi.fn();
+const settleAbandonedRecordings = vi.fn();
+vi.mock("@infrawrench/server-core/ssh-recording/retention", () => ({
+  pruneSessionRecordings: (...a: unknown[]) => pruneSessionRecordings(...a),
+  settleAbandonedRecordings: (...a: unknown[]) => settleAbandonedRecordings(...a),
+}));
+
+const pruneCreditSnapshots = vi.fn();
+vi.mock("@infrawrench/server-core/credits/feed", () => ({
+  pruneCreditSnapshots: (...a: unknown[]) => pruneCreditSnapshots(...a),
+}));
+
 // Mocked like the workflow runner: the real pass pulls in the ClickHouse
 // reader chain, which this suite has no business importing.
 const runMetricAlertPass = vi.fn();
@@ -96,6 +110,14 @@ beforeEach(() => {
     failed: 0,
     truncated: false,
   });
+  pruneSessionRecordings.mockResolvedValue({
+    organizationsScanned: 0,
+    deleted: 0,
+    failed: 0,
+    truncated: false,
+  });
+  settleAbandonedRecordings.mockResolvedValue(0);
+  pruneCreditSnapshots.mockResolvedValue(0);
   runMetricAlertPass.mockResolvedValue({ claimed: 0 });
 });
 
@@ -262,6 +284,9 @@ describe("PollerLoop change-timeline retention", () => {
     loop.start();
     await vi.advanceTimersByTimeAsync(0);
     expect(pruneResourceChanges).toHaveBeenCalledTimes(1);
+    expect(pruneSessionRecordings).toHaveBeenCalledTimes(1);
+    expect(settleAbandonedRecordings).toHaveBeenCalledTimes(1);
+    expect(pruneCreditSnapshots).toHaveBeenCalledTimes(1);
     await loop.stop();
   });
 
@@ -271,6 +296,8 @@ describe("PollerLoop change-timeline retention", () => {
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(10_000); // ten more ticks
     expect(pruneResourceChanges).toHaveBeenCalledTimes(1);
+    expect(pruneSessionRecordings).toHaveBeenCalledTimes(1);
+    expect(settleAbandonedRecordings).toHaveBeenCalledTimes(1);
     await loop.stop();
   });
 
@@ -279,8 +306,11 @@ describe("PollerLoop change-timeline retention", () => {
     loop.start();
     await vi.advanceTimersByTimeAsync(0);
     expect(pruneResourceChanges).toHaveBeenCalledTimes(1);
+    expect(pruneSessionRecordings).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
     expect(pruneResourceChanges).toHaveBeenCalledTimes(2);
+    expect(pruneSessionRecordings).toHaveBeenCalledTimes(2);
+    expect(settleAbandonedRecordings).toHaveBeenCalledTimes(2);
     await loop.stop();
   });
 

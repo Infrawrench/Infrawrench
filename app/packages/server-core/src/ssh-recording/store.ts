@@ -23,12 +23,20 @@ import { sshSessionRecordingChunks, sshSessionRecordings } from "../db/schema";
  */
 const ABANDONED_AFTER_MS = 2 * 60 * 1000;
 
-/** Latest chunk write for a parent row — the true last-activity signal. */
-const lastChunkAtSql = sql<Date | null>`(
-  select max(${sshSessionRecordingChunks.createdAt})
-  from ${sshSessionRecordingChunks}
-  where ${sshSessionRecordingChunks.recordingId} = ${sshSessionRecordings.id}
-)`;
+/**
+ * Latest chunk write for a parent row — the true last-activity signal.
+ *
+ * Built on demand rather than at module load so suites that partial-mock
+ * `drizzle-orm` (and never call list/get) do not trip over a missing `sql`
+ * export during import.
+ */
+function lastChunkAtSql() {
+  return sql<Date | null>`(
+    select max(${sshSessionRecordingChunks.createdAt})
+    from ${sshSessionRecordingChunks}
+    where ${sshSessionRecordingChunks.recordingId} = ${sshSessionRecordings.id}
+  )`;
+}
 
 export type SessionRecordingStatus = "recording" | "complete" | "truncated" | "abandoned";
 
@@ -126,7 +134,7 @@ export async function listSessionRecordings(
   const rows = await db
     .select({
       row: sshSessionRecordings,
-      lastChunkAt: lastChunkAtSql,
+      lastChunkAt: lastChunkAtSql(),
     })
     .from(sshSessionRecordings)
     .where(and(...conditions))
@@ -148,7 +156,7 @@ export async function getSessionRecording(
   const [hit] = await db
     .select({
       row: sshSessionRecordings,
-      lastChunkAt: lastChunkAtSql,
+      lastChunkAt: lastChunkAtSql(),
     })
     .from(sshSessionRecordings)
     .where(
