@@ -40,6 +40,8 @@ import {
 } from "../db/schema";
 import { itemsWithinLead } from "@infrawrench/client-core";
 import { queryCosts } from "../clickhouse/cost-readers";
+import { convertGroups, mergeConvertedGroups } from "../cost/currency-convert";
+import { getOrgCurrencySettings, listOrgExchangeRates } from "../cost/currency-settings";
 import { listExpiring } from "../expiry/feed";
 import { MAX_RESOURCES_PER_PROJECTION, projectMonthlySpend } from "../cost/estimate";
 import { listPosture } from "../posture/feed";
@@ -131,7 +133,7 @@ export async function buildWeeklyDigest(
   window: DigestWindow,
 ): Promise<WeeklyDigest> {
   const span = { from: window.prevWeekStart, to: window.weekEnd };
-  const [byProvider, byService] = await Promise.all([
+  const [rawByProvider, rawByService, currencySettings] = await Promise.all([
     queryCosts(organizationId, {
       ...span,
       binning: "daily",
@@ -144,7 +146,24 @@ export async function buildWeeklyDigest(
       groupBy: "service",
       filters: [],
     }),
+    // The digest is the org's own weekly report, so it follows the org's own
+    // display-currency setting — there is no per-request opt-in to consult.
+    // Unset (every org that has not configured one) still emits the one line
+    // per currency it always did.
+    getOrgCurrencySettings(organizationId).catch(() => ({
+      displayCurrency: null as string | null,
+    })),
   ]);
+
+  const displayCurrency = currencySettings.displayCurrency;
+  const rates = displayCurrency ? await listOrgExchangeRates(organizationId) : [];
+  const providerConverted = convertGroups(rawByProvider, displayCurrency, rates);
+  const serviceConverted = convertGroups(rawByService, displayCurrency, rates);
+  // Merge after converting: two providers' EUR and USD series collapse into one
+  // per provider, which is what makes the movers list rank across the whole org
+  // rather than within whichever currency happened to be largest.
+  const byProvider = mergeConvertedGroups(providerConverted.groups);
+  const byService = mergeConvertedGroups(serviceConverted.groups);
 
   const { fromDate, toDatePlusOne } = dayRange(window.weekStart, window.weekEnd);
   const count = sql<number>`count(*)::int`;
@@ -224,6 +243,7 @@ export async function buildWeeklyDigest(
     window,
     byProvider,
     byService,
+    ...(providerConverted.conversion ? { conversion: providerConverted.conversion } : {}),
     syncIncidentsOpened: incidents?.count ?? 0,
     resourcesAdded: added?.count ?? 0,
     resourcesRemoved: removed?.count ?? 0,

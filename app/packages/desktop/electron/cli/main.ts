@@ -16,6 +16,8 @@ import { cmdMetrics } from "./commands/metrics";
 import { cmdExport } from "./commands/export";
 import { cmdEstimate } from "./commands/estimate";
 import { cmdCosts, cmdCostAnomalies } from "./commands/costs";
+import { cmdReports, cmdRunReport } from "./commands/reports";
+import { cmdExports, cmdRunExport } from "./commands/exports";
 import { cmdTags, cmdShowback } from "./commands/tags";
 import { cmdOrphans } from "./commands/orphans";
 import { cmdOversized } from "./commands/oversized";
@@ -65,8 +67,15 @@ COMMANDS
                       full id, or a name/external-id with --account)
   costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource|charge_type|commitment]
                       [--basis cash|amortized] [--charge-type usage|credit|tax|… (repeatable)]
+                      [--currency USD  convert to your org's display currency at its stated rates]
+                      [--where "provider = 'aws' AND tag['env'] != 'dev'"  filter, as text]
   costs --anomalies   days a provider or service spiked past its own baseline   [--days 30]
   costs push          push your own cost rows   --source <name> [--file rows.json | stdin]
+  reports             the org's saved cost reports (named cost graphs)
+  reports <name|id>   run one saved report and chart it
+  exports             scheduled cost exports (raw rows → warehouse/object store), with the
+                      last run's status and error
+  exports run <n|id>  run one export now and list the objects it wrote
   tags                org tag policy, per-account compliance & untagged spend   [--last 30d]
   showback            spend by cost centre via the org's allocation rules   [--last 30d]
   orphans             likely-wasted resources (unattached volumes, idle IPs) with reasons + cost
@@ -150,6 +159,11 @@ FLAGS
   --type <typeId>     filter resources by resource type
   --format <fmt>      export format (default: terraform)
   --reason <text>     posture dismiss: why the finding is an accepted risk
+  --where <query>     costs: filter in the cost query language — terms joined by AND, each
+                      dimension = 'v' | != 'v' | IN ('a','b') | NOT IN ('a','b'), plus
+                      tag['key'] = 'v'. Dimensions: provider, account, service, region,
+                      resource, tag, charge_type, commitment. OR is not supported (the filter
+                      is a conjunction) — use IN ('a','b') for several values of one dimension
   --source <name>     who is pushing (required by page and costs push)
   --key <k>           page throttle key   --title <t>   --cooldown <min>   --voice
   -f, --file <path>   JSON rows for costs push / config document (stdin when omitted)
@@ -321,6 +335,25 @@ export async function runCli(): Promise<void> {
           break;
         }
         await cmdCosts(ctx, parsed.range);
+        break;
+      case "reports":
+        // `infrawrench reports <name|id>` runs one; bare `reports` lists them.
+        // A name is the point of the object, so the positional accepts either.
+        if (rest.length > 0) {
+          await cmdRunReport(ctx, rest.join(" "));
+          break;
+        }
+        await cmdReports(ctx);
+        break;
+      case "exports":
+        // `exports run <name|id>` forces one; bare `exports` lists them with
+        // the last run's status. Unlike `reports`, running is behind an
+        // explicit verb: this one writes to somebody's bucket.
+        if (rest[0] === "run") {
+          await cmdRunExport(ctx, rest.slice(1).join(" "));
+          break;
+        }
+        await cmdExports(ctx);
         break;
       case "tags":
         await cmdTags(ctx, parsed.range);

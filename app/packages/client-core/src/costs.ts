@@ -673,6 +673,18 @@ export interface CostQueryRequest {
    * credits and refunds that make a total net rather than gross.
    */
   chargeTypes?: CostChargeType[] | undefined;
+  /**
+   * Convert every currency the org holds a rate for into this one, so a
+   * mixed-currency org gets a single number.
+   *
+   * **Absent is the default and means no conversion at all** — the response is
+   * byte-identical to what a server that never heard of this field returns.
+   * Present, it is opt-in twice over: the org must also have stated the rates,
+   * because Infrawrench never fetches live FX. A currency the org has no rate
+   * for is *not* dropped; it survives as its own series and its own `totals`
+   * entry and is named in `CostQueryResponse.conversion.unconverted`.
+   */
+  displayCurrency?: string | undefined;
 }
 
 export interface CostSeriesPoint {
@@ -690,6 +702,57 @@ export interface CostQuerySeries {
   points: CostSeriesPoint[];
 }
 
+/**
+ * One rate that was actually applied, and the day it started applying.
+ *
+ * `rate` is the decimal the org stated, as a number: multiply an amount in
+ * `from` by it to get the amount in the display currency. `effectiveFrom` is
+ * the stored rate row's date, so a reader can see *which* of the org's rates
+ * produced a number rather than having to trust that some rate did.
+ */
+export interface CostConversionRate {
+  /** Inclusive `YYYY-MM-DD` the rate started applying from. */
+  effectiveFrom: string;
+  rate: number;
+}
+
+/** A currency that was folded into the display currency, and how. */
+export interface CostConvertedCurrency {
+  currency: string;
+  /**
+   * Every rate applied across the queried range, newest `effectiveFrom` first.
+   * More than one entry means the range spans a rate change — the amounts are
+   * a sum of days converted at different rates, which is the point of storing
+   * an effective date at all, and which a caveat line should say out loud.
+   */
+  rates: CostConversionRate[];
+}
+
+/**
+ * What a converted response did, so every surface can label the number.
+ *
+ * Present only when the request asked for a `displayCurrency` **and** the org
+ * has a display currency configured. Its absence means nothing was converted
+ * and the per-currency shape is the literal stored one.
+ */
+export interface CostConversion {
+  /** The currency converted amounts are expressed in. */
+  displayCurrency: string;
+  /**
+   * Currencies folded into `displayCurrency`. Never includes the display
+   * currency itself — spend already in it is passed through untouched, not
+   * multiplied by a rate of 1.
+   */
+  converted: CostConvertedCurrency[];
+  /**
+   * Currencies present in the data that the org has no rate for. These are
+   * **left in their own currency**, not dropped: they keep their own series
+   * and their own `totals` entry. Silently omitting them would understate the
+   * total, which is a worse failure than showing two numbers.
+   */
+  unconverted: string[];
+}
+
 export interface CostQueryResponse {
   series: CostQuerySeries[];
   /** Same query shifted back one full period, when requested. */
@@ -701,6 +764,12 @@ export interface CostQueryResponse {
   /** Period total per currency. */
   totals: Record<string, number>;
   previousTotals?: Record<string, number>;
+  /**
+   * Set when amounts above were converted. Absent means they are exactly as
+   * collected — the two states must stay distinguishable, because a converted
+   * total that does not say so is worse than two unconverted totals.
+   */
+  conversion?: CostConversion;
 }
 
 /** Sentinel group key for the folded "Other" series. */

@@ -332,6 +332,14 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         description:
           "Org-level change freeze windows. While one is in effect, destructive actions are blocked (423) unless explicitly overridden by an admin.",
       },
+      {
+        name: "Currency",
+        description:
+          "Opt-in conversion of mixed-currency spend into one display currency, at exchange " +
+          "rates the organization states itself with an effective date. Nothing is converted " +
+          "until a display currency is set, no live FX is ever fetched, and a currency with no " +
+          "configured rate is reported unconverted rather than dropped from the total.",
+      },
       { name: "API keys", description: "Programmatic access tokens." },
       { name: "WebSocket", description: "Auth tokens for the WebSocket gateway." },
       { name: "Sync", description: "Bi-directional resource sync (used by the desktop app)." },
@@ -591,6 +599,14 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /tag-policy/compliance": "resources:read",
   "GET /costs/untagged": "costs:read",
   "GET /costs/showback": "costs:read",
+  // currency — reads ride costs:read because a converted total is unauditable
+  // without the rate that produced it; writes are org:settings:write because
+  // stating a rate restates every total the org reports, in digests and in the
+  // budget alerts that page people. Finance governance, not a user preference.
+  "GET /currency": "costs:read",
+  "PUT /currency": "org:settings:write",
+  "PUT /currency/rates": "org:settings:write",
+  "DELETE /currency/rates/{rateId}": "org:settings:write",
   // cost centres & allocation rules
   "GET /cost-centres": "costs:read",
   "POST /cost-centres": "costs:write",

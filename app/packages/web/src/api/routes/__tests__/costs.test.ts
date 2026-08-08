@@ -28,6 +28,18 @@ vi.mock("@infrawrench/server-core/cost/forecast", () => ({
   forecastDaily: vi.fn().mockReturnValue([]),
 }));
 
+const mockLoadConversionContext = vi.fn();
+
+// Same reason as the modules below: the currency-settings module reaches
+// server-core's db client, which throws at import time without DATABASE_URL.
+// The conversion *arithmetic* is deliberately not mocked — it is pure, and the
+// point of these tests is that the route wires it up, not that it multiplies.
+vi.mock("@infrawrench/server-core/cost/currency-settings", () => ({
+  loadConversionContext: (...args: unknown[]) => mockLoadConversionContext(...args),
+  getOrgCurrencySettings: vi.fn().mockResolvedValue({ displayCurrency: null }),
+  listOrgExchangeRates: vi.fn().mockResolvedValue([]),
+}));
+
 const mockGetAnomalySettings = vi.fn();
 const mockSetAnomalySettings = vi.fn();
 
@@ -106,8 +118,29 @@ const defaultSettings = {
   smsAlerts: "off",
 };
 
+/** An org that has not opted into conversion — the default in every test. */
+const noConversion = { displayCurrency: null, rates: [] };
+
+/** One stated EUR→USD rate, as `loadConversionContext` returns it. */
+const eurToUsd = {
+  displayCurrency: "USD",
+  rates: [
+    {
+      id: "rate-1",
+      fromCurrency: "EUR",
+      toCurrency: "USD",
+      rate: "2",
+      effectiveFrom: "2026-01-01",
+      createdBy: "user-1",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+  ],
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
+  mockLoadConversionContext.mockResolvedValue(noConversion);
   mockQueryCosts.mockResolvedValue([]);
   mockGetAnomalySettings.mockResolvedValue(defaultSettings);
   mockIsSmsPagingConfigured.mockResolvedValue(false);
@@ -215,6 +248,126 @@ describe("POST /query", () => {
     });
     expect(res.status).toBe(400);
     expect(mockQueryCosts).not.toHaveBeenCalled();
+  });
+
+  it("does not convert, and reports no conversion, without a displayCurrency", async () => {
+    // The default path for every org: byte-identical to before the feature.
+    mockQueryCosts.mockResolvedValue([
+      { key: "aws", currency: "USD", points: [{ bucket: "2026-07-01", amount: 100 }] },
+      { key: "gcp", currency: "EUR", points: [{ bucket: "2026-07-01", amount: 50 }] },
+    ]);
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify(validQuery),
+      headers: { "Content-Type": "application/json" },
+    });
+    const body = (await res.json()) as {
+      totals: Record<string, number>;
+      currencies: string[];
+      conversion?: unknown;
+    };
+    expect(body.totals).toEqual({ USD: 100, EUR: 50 });
+    expect(body.currencies).toEqual(["EUR", "USD"]);
+    expect(body.conversion).toBeUndefined();
+  });
+
+  it("passes the requested displayCurrency to the conversion context", async () => {
+    await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({ ...validQuery, displayCurrency: "USD" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(mockLoadConversionContext).toHaveBeenCalledWith("org-1", "USD");
+  });
+
+  it("rejects a displayCurrency that is not a three-letter code", async () => {
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({ ...validQuery, displayCurrency: "dollars" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(400);
+    expect(mockQueryCosts).not.toHaveBeenCalled();
+  });
+
+  it("converts into the display currency and reports the rate used", async () => {
+    mockLoadConversionContext.mockResolvedValue(eurToUsd);
+    mockQueryCosts.mockResolvedValue([
+      { key: "aws", currency: "USD", points: [{ bucket: "2026-07-01", amount: 100 }] },
+      { key: "gcp", currency: "EUR", points: [{ bucket: "2026-07-01", amount: 50 }] },
+    ]);
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({ ...validQuery, displayCurrency: "USD" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const body = (await res.json()) as {
+      totals: Record<string, number>;
+      currencies: string[];
+      conversion: { displayCurrency: string; converted: Array<{ currency: string }> };
+    };
+    // 100 USD passed through, plus 50 EUR at a rate of 2 = 100 USD.
+    expect(body.totals).toEqual({ USD: 200 });
+    expect(body.currencies).toEqual(["USD"]);
+    expect(body.conversion.displayCurrency).toBe("USD");
+    expect(body.conversion.converted.map((c) => c.currency)).toEqual(["EUR"]);
+  });
+
+  it("merges same-key series that became the same currency", async () => {
+    mockLoadConversionContext.mockResolvedValue(eurToUsd);
+    mockQueryCosts.mockResolvedValue([
+      { key: "aws", currency: "USD", points: [{ bucket: "2026-07-01", amount: 100 }] },
+      { key: "aws", currency: "EUR", points: [{ bucket: "2026-07-01", amount: 50 }] },
+    ]);
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({ ...validQuery, displayCurrency: "USD" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const body = (await res.json()) as { series: Array<{ key: string; points: unknown[] }> };
+    // One AWS line, not two — that is the whole point of the feature.
+    expect(body.series).toHaveLength(1);
+    expect(body.series[0]!.key).toBe("aws");
+  });
+
+  it("keeps a currency with no rate as its own series and total", async () => {
+    // The failure that matters: silently dropping SEK would understate spend.
+    mockLoadConversionContext.mockResolvedValue(eurToUsd);
+    mockQueryCosts.mockResolvedValue([
+      { key: "gcp", currency: "EUR", points: [{ bucket: "2026-07-01", amount: 50 }] },
+      { key: "hetzner", currency: "SEK", points: [{ bucket: "2026-07-01", amount: 500 }] },
+    ]);
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({ ...validQuery, displayCurrency: "USD" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const body = (await res.json()) as {
+      totals: Record<string, number>;
+      currencies: string[];
+      conversion: { unconverted: string[] };
+    };
+    expect(body.totals).toEqual({ USD: 100, SEK: 500 });
+    expect(body.currencies).toEqual(["SEK", "USD"]);
+    expect(body.conversion.unconverted).toEqual(["SEK"]);
+  });
+
+  it("ranks topN across the converted total, not within each currency", async () => {
+    mockLoadConversionContext.mockResolvedValue(eurToUsd);
+    mockQueryCosts.mockResolvedValue([
+      { key: "aws", currency: "USD", points: [{ bucket: "2026-07-01", amount: 100 }] },
+      { key: "gcp", currency: "EUR", points: [{ bucket: "2026-07-01", amount: 90 }] },
+      { key: "fly", currency: "USD", points: [{ bucket: "2026-07-01", amount: 10 }] },
+    ]);
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({ ...validQuery, displayCurrency: "USD", topN: 2 }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const body = (await res.json()) as { series: Array<{ key: string }> };
+    // gcp is 180 USD once converted, so it outranks aws; fly folds into Other.
+    // Folding before converting would have produced an "Other" per currency.
+    expect(body.series.map((s) => s.key)).toEqual(["gcp", "aws", "__other__"]);
   });
 
   it("rejects an unknown charge type", async () => {
@@ -418,5 +571,167 @@ describe("anomaly settings", () => {
       "org-1",
       expect.objectContaining({ sigmas: 2.5 }),
     );
+  });
+});
+
+/**
+ * The text form of the filter. The language itself is exhaustively tested in
+ * `@infrawrench/client-core`; these cover the wiring — that a query compiles to
+ * exactly the structured filter, that a parse failure comes back as a usable
+ * 400, and that the two spellings can never be sent together.
+ */
+describe("POST /query — cost query language", () => {
+  /** The filter as ClickHouse was asked for it. */
+  const filtersPassedDown = () =>
+    (mockQueryCosts.mock.calls[0]![1] as { filters: unknown }).filters;
+
+  it("compiles a query into exactly the structured filter", async () => {
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({
+        ...validQuery,
+        filters: [],
+        query: "provider = 'aws' AND service IN ('AmazonEC2','AmazonS3')",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+    expect(filtersPassedDown()).toEqual([
+      { dimension: "provider", op: "in", values: ["aws"] },
+      { dimension: "service", op: "in", values: ["AmazonEC2", "AmazonS3"] },
+    ]);
+  });
+
+  it("carries a tag key through", async () => {
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({ ...validQuery, query: "tag['env'] != 'dev'" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+    expect(filtersPassedDown()).toEqual([
+      { dimension: "tag", op: "not_in", values: ["dev"], tagKey: "env" },
+    ]);
+  });
+
+  it("runs the identical query however the filter was spelled", async () => {
+    const structured = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({
+        ...validQuery,
+        filters: [{ dimension: "region", op: "not_in", values: ["eu-west-1", "eu-west-2"] }],
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const viaStructured = filtersPassedDown();
+    expect(structured.status).toBe(200);
+
+    vi.clearAllMocks();
+    mockLoadConversionContext.mockResolvedValue(noConversion);
+    mockQueryCosts.mockResolvedValue([]);
+
+    const text = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({
+        ...validQuery,
+        query: "region NOT IN ('eu-west-1', 'eu-west-2')",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(text.status).toBe(200);
+    expect(filtersPassedDown()).toEqual(viaStructured);
+  });
+
+  it("treats an empty query as no filter rather than an error", async () => {
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({ ...validQuery, query: "   " }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+    expect(filtersPassedDown()).toEqual([]);
+  });
+
+  it("400s a parse failure with the offset and the expected alternatives", async () => {
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({ ...validQuery, query: "provider = 'aws' AND regionn = 'x'" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as {
+      error: string;
+      queryError: { offset: number; length: number; expected: string[] };
+    };
+    expect(body.error).toContain('Unknown dimension "regionn"');
+    expect(body.error).toContain('Did you mean "region"');
+    expect(body.queryError.offset).toBe("provider = 'aws' AND ".length);
+    expect(body.queryError.length).toBe("regionn".length);
+    expect(body.queryError.expected).toContain("region");
+    expect(mockQueryCosts).not.toHaveBeenCalled();
+  });
+
+  it("400s OR rather than silently running an AND", async () => {
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({ ...validQuery, query: "provider = 'aws' OR provider = 'gcp'" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toContain("OR is not supported");
+    expect(mockQueryCosts).not.toHaveBeenCalled();
+  });
+
+  it("400s both spellings at once rather than picking a winner", async () => {
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({
+        ...validQuery,
+        filters: [{ dimension: "provider", op: "in", values: ["gcp"] }],
+        query: "provider = 'aws'",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toContain("not both");
+    expect(mockQueryCosts).not.toHaveBeenCalled();
+  });
+
+  it("accepts a query alongside an empty filters array — [] is the absence of a filter", async () => {
+    // Every client built on CostQueryRequest sends `filters` because the field
+    // is required; rejecting that would make the text form unusable from them.
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({ ...validQuery, filters: [], query: "provider = 'aws'" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("rejects a query longer than the schema allows before it is tokenized", async () => {
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({ ...validQuery, query: `provider = '${"a".repeat(5000)}'` }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(400);
+    expect(mockQueryCosts).not.toHaveBeenCalled();
+  });
+
+  it("keeps values that look like SQL as opaque filter values", async () => {
+    // The compiled values are bound as ClickHouse parameters exactly like a
+    // structured filter's, so nothing here can be anything but a string.
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({
+        ...validQuery,
+        query: "service = 'x'') OR 1=1 --'",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+    expect(filtersPassedDown()).toEqual([
+      { dimension: "service", op: "in", values: ["x') OR 1=1 --"] },
+    ]);
   });
 });

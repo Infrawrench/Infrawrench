@@ -9,6 +9,8 @@ import {
   uniqueIndex,
   jsonb,
   check,
+  numeric,
+  date,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type {
@@ -2651,6 +2653,262 @@ export const jiraIssueLinks = pgTable(
     sourceKindValid: check(
       "jira_issue_links_source_kind_valid",
       sql`${t.sourceKind} IN ('cost_anomaly', 'orphan', 'oversized', 'posture_finding', 'expiring', 'probe')`,
+    ),
+  }),
+);
+
+/**
+ * The org's display currency for cost reporting — one row per org, the same
+ * missing-row-means-defaults protocol as `org_tag_policies` and
+ * `org_cost_anomaly_settings`.
+ *
+ * Cost data is stored per currency and never merged, and that stays the
+ * default: an org with no row here, or with a null `display_currency`, sees
+ * exactly the per-currency numbers it saw before this table existed. Setting a
+ * currency is an explicit, org-level opt-in to seeing one number instead — and
+ * only takes effect for currencies the org has also stated a rate for in
+ * `org_exchange_rates`, because Infrawrench never fetches live FX.
+ */
+export const orgCurrencySettings = pgTable("org_currency_settings", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  /**
+   * ISO 4217 code every converted amount is expressed in, or NULL for "do not
+   * convert".
+   *
+   * Nullable rather than defaulted, deliberately: there is no sensible default
+   * display currency (USD would silently start converting a EUR-billing org's
+   * spend), and NULL lets an org clear the setting and get its honest
+   * per-currency view back without deleting the row.
+   */
+  displayCurrency: text("display_currency"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * The exchange rates an org states for itself, with the date each starts
+ * applying.
+ *
+ * These are the org's rates, not ours. A finance team reconciles a converted
+ * total against the rate their accounting system booked the period at — not
+ * today's mid-market quote — so nothing in the product fetches live FX. A rate
+ * is a row somebody with `org:settings:write` created, `created_by` records
+ * who, and a historical day converts at whichever rate was in force then.
+ *
+ * Lookup for a given day is "the row with the greatest `effective_from` that is
+ * `<= day`". A day earlier than every stated rate has no rate, and the amount
+ * is reported unconverted rather than dropped.
+ *
+ * Rates are stated **to** the display currency in one hop. The code never
+ * inverts a rate (EUR→USD implying USD→EUR) or chains two, because both
+ * produce a number the org never stated and cannot reconcile.
+ */
+export const orgExchangeRates = pgTable(
+  "org_exchange_rates",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** ISO 4217 code the rate converts *from*, e.g. `EUR`. Upper-cased at the API. */
+    fromCurrency: text("from_currency").notNull(),
+    /**
+     * ISO 4217 code the rate converts *to*. Stored per row rather than read
+     * from `org_currency_settings.display_currency` so that changing the
+     * display currency cannot silently re-interpret every historical rate as
+     * pointing somewhere it never pointed.
+     */
+    toCurrency: text("to_currency").notNull(),
+    /**
+     * Multiply an amount in `from_currency` by this to get `to_currency`.
+     *
+     * **`numeric(20, 10)` — an exact decimal, not a float.** Three reasons, in
+     * order of how much they matter:
+     *
+     *  1. The number the org typed must be the number stored and echoed back.
+     *     `double precision` cannot hold 0.92; it holds 0.9199999999999999,
+     *     and a finance user who types the rate their accounting system used
+     *     and reads back a different one has no reason to trust any other
+     *     figure on the page. Reconciliation is the entire purpose of this
+     *     table.
+     *  2. Drizzle returns `numeric` as a **string**, so the exact decimal
+     *     survives the round trip to the API and the form. It becomes a float
+     *     exactly once, in `cost/currency-convert.ts`, at the multiply.
+     *  3. 10 decimal places covers the low-value currencies with room to
+     *     spare — a VND→USD rate of ~0.0000395 still keeps six significant
+     *     figures — while 20 total digits leaves the integer side unbounded in
+     *     practice.
+     *
+     * An integer scaled fixed-point column (rate × 10^10 in a `bigint`) would
+     * store the same values just as exactly, and was rejected: it puts the
+     * scale in application code rather than in the column type, so every
+     * reader — the API, the CLI, a psql session, a future migration — has to
+     * know the magic constant to interpret the number, and getting it wrong is
+     * silent and off by a factor of ten billion. `numeric` says what it means.
+     */
+    rate: numeric("rate", { precision: 20, scale: 10 }).notNull(),
+    /**
+     * Inclusive `YYYY-MM-DD` from which this rate applies, as a `date`.
+     *
+     * A date, not a timestamp: a rate applies to a *day* of spend, and
+     * `cost_daily` is keyed by day. A timestamp would invite a timezone
+     * question that has no answer here.
+     */
+    effectiveFrom: date("effective_from").notNull(),
+    /**
+     * User who stated the rate. Nullable because the user row can be deleted
+     * and the rate must outlive them — the converted history stays valid, and
+     * a null author is more honest than reassigning one.
+     */
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    /**
+     * One rate per (org, from, to, day). Two rates effective the same day for
+     * the same pair would make "the rate that applied then" ambiguous, and the
+     * total would depend on row order.
+     */
+    orgPairDayUnique: uniqueIndex("org_exchange_rates_org_pair_day_unique").on(
+      t.organizationId,
+      t.fromCurrency,
+      t.toCurrency,
+      t.effectiveFrom,
+    ),
+    /** Backs the one query that matters: load an org's whole rate table. */
+    orgIdx: index("org_exchange_rates_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
+ * A recurring dump of the org's cost rows into a warehouse or object store.
+ *
+ * Cost data is readable through the API and the UI, but neither is a way to
+ * feed a finance system: that wants raw rows, on a schedule, landing somewhere
+ * it already reads from. This table is the definition of one such feed. The
+ * poller claims due rows (`cost_exports/pass.ts`), streams `cost_daily` out of
+ * ClickHouse, and writes **one object per period** to the destination.
+ *
+ * Two things about the design are load-bearing:
+ *
+ *   * `nextRunAt` is both the due-time column and the claim lease, exactly like
+ *     `metric_alert_rules.next_eval_at` — one conditional
+ *     `UPDATE … FOR UPDATE SKIP LOCKED` claims a row, and an instance that dies
+ *     mid-run simply lets the lease expire. No extra schema, replica-safe.
+ *   * `restatementDays` exists because provider spend is **restated for days
+ *     after the fact**. An export whose objects were written once and never
+ *     revisited would drift away from the provider's own invoice within a
+ *     week. Every run re-writes the periods overlapping the trailing window at
+ *     their existing keys, and because the key is deterministic
+ *     (`COST_EXPORT_KEY_TEMPLATE` in client-core) that overwrites rather than
+ *     duplicates. Rows additionally carry the collection watermark so a
+ *     consumer can tell a settled period from a still-moving one.
+ *
+ * Destination credentials are AES-256-GCM encrypted with the same mechanism as
+ * `twilio_settings`, `msteams_webhooks` and `jira_integrations`, and are never
+ * returned by any route — {@link credentialHint} is what the API answers with.
+ */
+export const costExports = pgTable(
+  "cost_exports",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** User-facing name, e.g. `Finance warehouse (daily)`. */
+    name: text("name").notNull(),
+    /** `csv` | `ndjson` — how the row stream is serialised. */
+    format: text("format").notNull().default("csv"),
+    /**
+     * The query scope, as a `CostExportQuery`: the same `CostFilter[]` and cost
+     * dimension vocabulary dashboards, budgets and reports store, plus which
+     * identity columns survive into the output. Reusing that shape rather than
+     * inventing an export-only filter language is what keeps "filtered to
+     * account X" meaning one thing across the product.
+     */
+    query: jsonb("query").$type<Record<string, unknown>>().notNull(),
+    /**
+     * `daily` | `weekly` | `monthly`. Doubles as the *period* definition — a
+     * run writes one object per calendar day, ISO week, or calendar month.
+     */
+    cadence: text("cadence").notNull().default("daily"),
+    /** Local hour (0–23) in {@link timezone} a run fires at. */
+    hour: integer("hour").notNull().default(4),
+    /**
+     * IANA zone the schedule and the period boundaries are expressed in, e.g.
+     * `Europe/Berlin`. Modelled on `org_digest_settings.timezone`: `UTC` is the
+     * default and is validated server-side against `Intl`.
+     */
+    timezone: text("timezone").notNull().default("UTC"),
+    /**
+     * Trailing days of already-written periods each run re-exports. 0 means
+     * "write the newest complete period and never look back", which is only
+     * correct for an org whose providers never restate — see the table comment.
+     */
+    restatementDays: integer("restatement_days").notNull().default(7),
+    enabled: boolean("enabled").notNull().default(true),
+    /** `s3` | `http`. Kept as its own column so the due query can filter on it. */
+    destinationKind: text("destination_kind").notNull(),
+    /**
+     * Non-secret destination config (bucket, prefix, region, endpoint, method,
+     * URL hint). Everything here is shown back to the user; anything secret
+     * lives in {@link encryptedCredentials}.
+     */
+    destination: jsonb("destination").$type<Record<string, unknown>>().notNull(),
+    /**
+     * AES-256-GCM encrypted JSON credential bundle — `{accessKeyId, secretAccessKey}`
+     * for S3, `{url}` for HTTP (a pre-signed URL carries its own signature, so
+     * it is a bearer credential). AAD: `costExport:<exportId>:credentials`.
+     */
+    encryptedCredentials: text("encrypted_credentials"),
+    credentialsIv: text("credentials_iv"),
+    /**
+     * Non-secret display marker, e.g. `AKIA…7F2Q` or `warehouse.acme.com/…a7f2`.
+     * Lets the settings UI show that a credential is stored, and which one,
+     * without any route ever returning the credential itself.
+     */
+    credentialHint: text("credential_hint"),
+    /** When the last run finished (successfully or not). */
+    lastRunAt: timestamp("last_run_at"),
+    /** `pending` before the first run, then `succeeded` | `failed`. */
+    lastStatus: text("last_status").notNull().default("pending"),
+    /** Human-readable reason for the last failure, for the settings UI. */
+    lastError: text("last_error"),
+    /** Objects written and rows streamed by the last successful run. */
+    lastObjectCount: integer("last_object_count"),
+    lastRowCount: integer("last_row_count"),
+    /**
+     * Due time AND claim lease. Null while disabled (the claim never sees it);
+     * the claim pushes it a lease ahead, and the run replaces it with the true
+     * next fire time.
+     */
+    nextRunAt: timestamp("next_run_at"),
+    createdByUserId: text("created_by_user_id"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    /**
+     * Soft delete. A deleted export stops running immediately (the claim
+     * filters on it) but its row survives, so an audit entry naming it still
+     * resolves to something.
+     */
+    deletedAt: timestamp("deleted_at"),
+  },
+  (t) => ({
+    orgIdx: index("cost_exports_org_idx").on(t.organizationId),
+    dueIdx: index("cost_exports_due_idx").on(t.nextRunAt),
+    hourRange: check("cost_exports_hour_range", sql`${t.hour} >= 0 AND ${t.hour} <= 23`),
+    /**
+     * 90 days is an upper bound on how far back any provider we collect from
+     * restates, and it bounds the work one run can queue up: a run re-exports
+     * every period overlapping this window, so an unbounded value would be an
+     * unbounded run.
+     */
+    restatementRange: check(
+      "cost_exports_restatement_days_range",
+      sql`${t.restatementDays} >= 0 AND ${t.restatementDays} <= 90`,
     ),
   }),
 );

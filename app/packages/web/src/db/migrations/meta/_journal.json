@@ -589,6 +589,13 @@
       "when": 1786201000000,
       "tag": "0082_cooing_captain_flint",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1786202000000,
+      "tag": "0083_good_daimon_hellstrom",
+      "breakpoints": true
     }
   ]
 }

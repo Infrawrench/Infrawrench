@@ -16,7 +16,13 @@ import {
   COST_CHARGE_TYPES,
   COST_CHART_TYPES,
   COST_DIMENSIONS,
+  COST_QUERY_MAX_LENGTH,
   COST_RANGE_PRESETS,
+  COST_REPORT_LIMITS,
+  CURRENCY_CODE_PATTERN,
+  EXCHANGE_RATE_LIMITS,
+  type ExchangeRateInput,
+  type OrgCurrencySettings,
   type BudgetInput,
   type CostAnomalySettings,
   type BudgetThreshold,
@@ -314,6 +320,56 @@ export const costQueryRequestSchema = z.object({
   costBasis: z.enum(COST_BASES).optional(),
   /** Restrict to these charge types; absent is all of them. */
   chargeTypes: z.array(z.enum(COST_CHARGE_TYPES)).optional(),
+  /**
+   * Fold currencies the org holds a rate for into this one. Optional rather
+   * than defaulted, like `costBasis` above: absent must keep meaning "no
+   * conversion", so an older client — and a stored widget config written before
+   * this field existed — gets the unconverted per-currency answer it expects.
+   */
+  displayCurrency: z.string().regex(CURRENCY_CODE_PATTERN).optional(),
+});
+
+/* ------------------------------------------------------------------ *
+ * Org currency settings — PUT /currency and PUT /currency/rates.
+ * ------------------------------------------------------------------ */
+
+const currencyCode = z
+  .string()
+  .transform((v) => v.trim().toUpperCase())
+  .pipe(z.string().regex(CURRENCY_CODE_PATTERN, "expected a three-letter code, e.g. USD"));
+
+/**
+ * The display currency, or `null` for "do not convert".
+ *
+ * Nullable and *required*, not optional: a PUT that omits the field is rejected
+ * rather than quietly clearing a setting the org deliberately turned on. Same
+ * reasoning as `smsAlerts` above — a field with org-wide consequences should
+ * never be settable by accident.
+ */
+export const currencySettingsSchema = z.object({
+  displayCurrency: currencyCode.nullable(),
+});
+
+/**
+ * One stated rate.
+ *
+ * `rate` is validated as a *decimal string*, never coerced to a number here:
+ * the value is stored in a `numeric` column precisely so the org's own digits
+ * survive, and parsing it to a float at the API edge would throw that away
+ * before it ever reached the database.
+ */
+export const exchangeRateInputSchema = z.object({
+  fromCurrency: currencyCode,
+  toCurrency: currencyCode,
+  rate: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d+)?$/, "expected a positive decimal, e.g. 1.0850")
+    .refine((v) => {
+      const n = Number(v);
+      return n >= EXCHANGE_RATE_LIMITS.rateMin && n <= EXCHANGE_RATE_LIMITS.rateMax;
+    }, "rate must be greater than 0"),
+  effectiveFrom: isoDate,
 });
 
 /**
@@ -337,4 +393,6 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof tagPolicySchema>, TagPolicy>,
   Exact<z.infer<typeof allocationRuleMatchSchema>, AllocationRuleMatch>,
   Exact<z.infer<typeof allocationRuleInputSchema>, AllocationRuleInput>,
+  Exact<z.infer<typeof currencySettingsSchema>, OrgCurrencySettings>,
+  Exact<z.infer<typeof exchangeRateInputSchema>, ExchangeRateInput>,
 ];

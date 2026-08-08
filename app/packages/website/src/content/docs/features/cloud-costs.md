@@ -38,7 +38,7 @@ Cost and budget cards drag around the grid like pinned resources, and share the 
 | Binning    | Daily, weekly, monthly, cumulative                                                                        |
 | Date range | Last 7/30/90 days, month/quarter/year to date, last month, last 12 months, or custom dates                |
 | Group by   | Provider, account, service, region, resource, tag, charge type, or commitment                             |
-| Filters    | Any of the same dimensions, `is` / `is not`, multiple rules                                               |
+| Filters    | Any of the same dimensions, `is` / `is not`, multiple rules — as rows or as [text](#filters-as-text)      |
 | Cost basis | **Cash** (what you were charged) or **Amortized** (commitments spread over the term they buy) — see below |
 | Top groups | Show the top N groups (default 5); the rest fold into **Other**                                           |
 | Compare    | Overlay the previous period as a dashed line, with a % change badge                                       |
@@ -47,6 +47,81 @@ Cost and budget cards drag around the grid like pinned resources, and share the 
 <insert [A stacked-bar cost graph grouped by service with a forecast dashed line and previous-period comparison] here>
 
 Currencies are never merged: if your accounts bill in more than one currency the graph shows one series per currency and says so under the title.
+
+## Filters as text
+
+Filter rows are the discoverable way to narrow a graph: every dimension is in the dropdown and every value comes from your own spend data. They are awkward everywhere else — in a script, in an API call, in a message to a colleague. So the same filter can also be written as one line of text, in the **cost query language**.
+
+The **Query** toggle above the filter rows switches between the two. They are two views of the same filter, not two filters: switching either way keeps exactly what you had, and whatever you save is the same structure a graph built from rows would have saved.
+
+<insert [Cost graph config modal with the filter editor in Query mode, showing the text box containing provider = 'aws' AND tag['env'] != 'dev' and the Rows/Query toggle above it] here>
+
+### The grammar
+
+```
+query     := (nothing) | term (AND term)*
+term      := dimension operator value
+dimension := provider | account | service | region | resource | tag['key'] | charge_type | commitment
+operator  := = | != | IN | NOT IN
+value     := 'text'            for = and !=
+           | ('a', 'b', …)     for IN and NOT IN
+```
+
+- Keywords (`AND`, `IN`, `NOT`) and dimension names are case-insensitive.
+- Values are quoted, with single or double quotes. A quote inside a value is escaped by doubling it (`'it''s'`) or with a backslash (`'it\'s'`); `\\`, `\n` and `\t` also work, and an escape that isn't one of those is an error rather than a silently dropped backslash.
+- The `tag` dimension takes its key in brackets, because a tag filter needs a key as well as a value: `tag['owner'] = 'platform'`.
+- An empty query means no filter, the same as no rows.
+
+### Worked examples
+
+| Query                                                | Reads as                                     |
+| ---------------------------------------------------- | -------------------------------------------- |
+| `provider = 'aws'`                                   | AWS only                                     |
+| `region != 'us-east-1'`                              | everything except us-east-1                  |
+| `service IN ('AmazonEC2', 'AmazonS3')`               | EC2 and S3                                   |
+| `charge_type NOT IN ('credit', 'refund')`            | gross spend — drop the things that offset it |
+| `tag['env'] = 'prod'`                                | resources tagged `env=prod`                  |
+| `provider = 'aws' AND tag['team'] IN ('core', 'ml')` | AWS spend owned by either of two teams       |
+| `commitment != '' AND charge_type = 'usage'`         | usage covered by a commitment                |
+
+### There is no OR
+
+Terms are joined by `AND`, and that is the whole story: a cost filter is a conjunction, and there is nowhere in a saved graph to record anything else. Writing `OR` is an error rather than something that quietly runs as an `AND` and hands you a number that is not the one you asked for.
+
+Most uses of `OR` are really a list of values for one dimension, which `IN` covers:
+
+```
+provider = 'aws' OR provider = 'gcp'      ✗ rejected
+provider IN ('aws', 'gcp')                ✓ the same question
+```
+
+Genuinely unrelated alternatives — "AWS in Europe, or GCP anywhere" — need two graphs. The same is true of anything else the filter cannot express: `LIKE`, `>`, and grouped parentheses are all parse errors, because a query language that quietly means something other than what it says is worse than one that refuses.
+
+### When a query doesn't parse
+
+Errors say where. The character offset, what was expected there, and — for a misspelled dimension — the nearest real name and the full list:
+
+```
+$ infrawrench costs --where "provider = 'aws' AND regionn = 'us-east-1'"
+--where: Unknown dimension "regionn". Did you mean "region"? Valid dimensions are
+provider, account, service, region, resource, tag, charge_type, commitment.
+  provider = 'aws' AND regionn = 'us-east-1'
+                       ^^^^^^^
+```
+
+In the graph editor the same message appears under the text box as you type, and **Save** stays disabled until the query parses — the rows can only show the last query that worked, so a half-typed one is never silently saved or discarded.
+
+### From the CLI
+
+```
+infrawrench costs --where "provider = 'aws' AND tag['env'] != 'dev'" --last 30d --group-by service
+```
+
+The filter is compiled before the request goes out, so a typo fails immediately, and `--json` echoes both the text you wrote and the structure it compiled to.
+
+### From the API and the model
+
+`POST /costs/query` accepts the same text as an optional `query` field, as an alternative to the structured `filters` array — see the [HTTP API](../team-and-billing/openapi.md). Sending both is an error rather than a precedence rule, and a query that doesn't parse comes back as a 400 carrying the offset. The `query_costs` [MCP tool](./mcp.md) takes it too, which is usually how the model writes a filter.
 
 ## Charge types, and cash vs amortized
 
@@ -104,6 +179,64 @@ Check the plugin's page under [Plugins](../plugins/aws.md) to see whether its co
 `infrawrench costs` prints the same note above the chart and lists these accounts as `estimatedAccounts` under `--json`. Over `GET /costs/status` it is the `estimated` flag on each account, alongside `chargeTypes` and `amortization`.
 
 <insert [Dashboard showing the neutral "Spend for Hetzner is estimated" banner above a cost widget, with the explanation about list rates and deleted resources] here>
+
+## Currency
+
+Spend is stored in the currency each provider bills in, and **currencies are never merged by default**. A graph whose scope covers a EUR-billing account and a USD-billing one draws one series per currency and says so under the title, and the total reads `€4,100 + $9,300`. That is the honest answer, and it stays the default — but it means an org billing in two currencies cannot answer "what do we spend", which is a real gap.
+
+**Settings → Currency** closes it, as an explicit opt-in. Set a display currency, state the exchange rates yourself, and every cost surface folds the currencies you have priced into that one.
+
+<insert [Settings → Currency page with a display currency of USD set and three exchange rate rows (EUR, GBP, SEK) with different effective dates] here>
+
+### It is off until you turn it on
+
+An org with no display currency configured behaves exactly as it did before this feature existed — same series, same per-currency totals, same digest lines. Nothing starts merging currencies on its own, and clearing the display currency turns conversion off everywhere without deleting the rates you have stated, so you can switch it back on later without re-typing anything.
+
+### The rates are yours
+
+Infrawrench does not fetch live exchange rates, and this is deliberate rather than a gap. A finance team reconciles a converted total against the rate their accounting system booked the period at — a decision somebody made and recorded — not against today's mid-market quote. A monitoring tool that silently applied its own rate would produce a number that disagrees with the ledger every single month, and the disagreement would be invisible.
+
+So you state the rates. Each one is a from-currency, a to-currency, a rate, and an **effective date**:
+
+- A day's spend converts at the rate whose effective date is the latest one on or before that day. Restating a rate for this month therefore does not rewrite periods you have already closed.
+- A range spanning a rate change is converted per day and reported as a blend — the caveat under the figure names every rate that was applied.
+- Rates are used in **one hop**. Infrawrench never inverts a rate (a USD→EUR rate is not treated as evidence about EUR→USD) and never chains two through a third currency, because both would produce a number you never stated and cannot defend.
+- One rate per currency pair per effective date. Re-adding the same pair and date replaces the stored rate, which is what correcting a typo should mean — two rates on one day would make "the rate that applied" ambiguous.
+- Rates are stored as exact decimals, so the digits you type are the digits stored and echoed back.
+
+Stating or removing a rate needs the **org settings** permission and is recorded in the [audit log](../team-and-billing/audit-log.md). Reading the table only needs `costs:read`: anyone who can see a converted total needs to be able to see what produced it.
+
+### Converted numbers always say they are converted
+
+A total that quietly mixes currencies is worse than two totals, so every surface that shows a converted figure labels it — the graph card's footnote, a notice above the Costs panel, the weekly digest, the mobile cost cards, and `infrawrench costs` in both text and `--json` output. The label names the currencies that were folded in and the rate used for each.
+
+Spend already in the display currency is never converted. It is passed through untouched rather than multiplied by a rate of 1.
+
+### A currency with no rate is shown, not dropped
+
+This is the important one. If your data contains a currency you have not stated a rate for, Infrawrench does **not** quietly leave it out of the total — that would understate your spend, which is the worst thing this feature could do. Instead:
+
+- It keeps its own series and its own entry in the totals, in its own currency.
+- A notice names it explicitly: "Spend in SEK is not included in the USD figure — no exchange rate is configured."
+
+The same applies to a currency you have priced but not far enough back: if any day in the range falls before the earliest rate you stated for it, that currency is left unconverted as a whole rather than half-converted, because a partly converted series reconciles against nothing. Add an earlier effective date to include it.
+
+<insert [Costs panel showing a converted USD total with the neutral "Amounts are converted to USD" notice listing EUR at 1.0850, and below it the amber "Spend in SEK is not included in the USD figure" notice] here>
+
+### Budgets
+
+A budget keeps its own currency — the display currency does not re-denominate a budget somebody set, and every threshold and alert stays in the budget's own currency.
+
+What changes is which spend counts. A budget has always counted only spend already in its own currency, silently ignoring the rest. When a budget's currency **is** your org's display currency, it now converts your other currencies' spend into it first, using your stated rates, so a USD budget in a mixed-currency org tracks the org's actual spend. A budget in any other currency, or an org with no display currency, behaves exactly as before.
+
+The gate is that equality because rates point _to_ the display currency in one hop — there are simply no rates pointing at a GBP budget in a USD-display org, so "convert into the budget's currency" would have nothing to use. A budget is a single number and cannot carry a second currency alongside it, so a currency with no rate really is excluded here — and the alert message says so, naming it.
+
+### Elsewhere
+
+- **Showback** converts per cost centre, on the rate in force on the last day of the period rather than per day: a chargeback is a statement about a closed period, and "August, at the August rate" is a sentence a finance team can reproduce.
+- **The weekly digest** follows the org's display currency and adds the same caveat line under the spend figure, instead of one line per currency.
+- **The CLI** takes `--currency USD` on `infrawrench costs`. The conversion caveat prints above the chart in text mode and rides along under `--json`, including the currencies that could not be converted.
+- **Mobile** shows converted totals with their caveat. The rate editor is web and desktop only — stating a rate is a finance-governance act done once a period against a system that is not on a phone.
 
 ## Budgets & alerts
 

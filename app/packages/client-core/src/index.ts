@@ -183,6 +183,9 @@ export {
   type CostSeriesPoint,
   type CostQuerySeries,
   type CostQueryResponse,
+  type CostConversion,
+  type CostConvertedCurrency,
+  type CostConversionRate,
 } from "./costs";
 export {
   describeMonthlyDelta,
@@ -191,6 +194,18 @@ export {
   formatMonthlyEstimate,
   partialEstimatePrefix,
 } from "./cost-estimate";
+export {
+  CURRENCY_CODE_PATTERN,
+  EXCHANGE_RATE_LIMITS,
+  normalizeCurrencyCode,
+  buildExchangeRateTable,
+  describeCostConversion,
+  type OrgCurrencySettings,
+  type OrgCurrencyConfig,
+  type ExchangeRate,
+  type ExchangeRateInput,
+  type ExchangeRateTable,
+} from "./currency";
 export {
   buildPreflightChecklist,
   summarizePreflight,

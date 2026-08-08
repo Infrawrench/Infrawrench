@@ -43,6 +43,12 @@ export interface CostGraphCardProps {
   /** Shown when some contributing account only has monthly-native data. */
   periodNativeNote?: boolean | undefined;
   onEdit?: (() => void) | undefined;
+  /**
+   * What the pencil does, for the tooltip and the accessible name. A saved
+   * report's card doesn't edit anything in place — it opens the report — and a
+   * button that says "Edit widget" while navigating elsewhere is a lie.
+   */
+  editLabel?: string | undefined;
   onRemove?: (() => void) | undefined;
 }
 
@@ -57,6 +63,7 @@ export function CostGraphCard({
   api,
   periodNativeNote,
   onEdit,
+  editLabel = "Edit widget",
   onRemove,
 }: CostGraphCardProps) {
   const chart = useChartTheme();
@@ -96,6 +103,7 @@ export function CostGraphCard({
 
   const currency = state?.response.currencies[0] ?? "USD";
   const mixedCurrency = (state?.response.currencies.length ?? 0) > 1;
+  const conversionNote = describeCostConversion(state?.response.conversion);
   const total = state
     ? Object.entries(state.response.totals)
         .map(([cur, amt]) => formatMoney(amt, cur))
@@ -327,8 +335,8 @@ export function CostGraphCard({
           <button
             type="button"
             onClick={onEdit}
-            title="Edit widget"
-            aria-label="Edit widget"
+            title={editLabel}
+            aria-label={editLabel}
             className="size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-xs flex items-center justify-center"
           >
             ✎
@@ -364,9 +372,16 @@ export function CostGraphCard({
             </span>
           )}
         </div>
-        {(mixedCurrency || periodNativeNote) && (
+        {(mixedCurrency || periodNativeNote || conversionNote) && (
           <p className="text-[11px] text-on-surface-faint mt-0.5">
             {mixedCurrency && "Mixed currencies — series are shown per currency. "}
+            {/*
+              Sits with the other caveats, under the title, for the same reason
+              they do: a total that folded three currencies together at rates
+              somebody set months ago has to say so next to the number, not in
+              a tooltip nobody opens.
+            */}
+            {conversionNote && `${conversionNote} `}
             {periodNativeNote && "Some providers report monthly totals, shown on period dates."}
           </p>
         )}

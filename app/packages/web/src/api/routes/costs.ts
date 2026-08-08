@@ -30,7 +30,18 @@ declare module "hono" {
 
 const app = new Hono();
 
-/** POST /api/org/:orgId/costs/query — aggregate cost series for a graph. */
+/**
+ * POST /api/org/:orgId/costs/query — aggregate cost series for a graph.
+ *
+ * The filter can be sent either structurally (`filters`) or as text in the cost
+ * query language (`query`, e.g. `provider = 'aws' AND tag['env'] != 'dev'`).
+ * Both at once is a 400: they are two spellings of one filter, and picking a
+ * winner would silently answer a different question than the caller asked.
+ *
+ * A parse failure comes back as a 400 whose body carries `queryError` — the
+ * offset, the span length, and the valid alternatives at that point — so a
+ * client can underline the mistake rather than restate the message.
+ */
 app.post("/query", async (c) => {
   requirePermission(c, "costs:read");
   const organizationId = c.get("organizationId");
@@ -43,7 +54,12 @@ app.post("/query", async (c) => {
   try {
     return c.json(await runCostQuery(organizationId, parsed.data));
   } catch (e) {
-    if (e instanceof CostQueryError) return c.json({ error: e.message }, 400);
+    if (e instanceof CostQueryError) {
+      return c.json(
+        { error: e.message, ...(e.queryError ? { queryError: e.queryError } : {}) },
+        400,
+      );
+    }
     throw e;
   }
 });
@@ -171,15 +187,22 @@ app.get("/untagged", async (c) => {
 });
 
 /**
- * GET /api/org/:orgId/costs/showback?from&to — spend grouped by cost centre
- * through the org's allocation rules; unclaimed spend lands in "Unallocated".
+ * GET /api/org/:orgId/costs/showback?from&to&currency= — spend grouped by cost
+ * centre through the org's allocation rules; unclaimed spend lands in
+ * "Unallocated".
+ *
+ * `?currency=` is the opt-in conversion. Omitted (and for any org that has not
+ * configured that display currency) the report is per-currency exactly as
+ * before; present, the response carries a `conversion` block naming the rates
+ * used and any currency that had none.
  */
 app.get("/showback", async (c) => {
   requirePermission(c, "costs:read");
   const range = parseRange(c);
   if (!range) return c.json({ error: "from/to must be YYYY-MM-DD with from <= to" }, 400);
+  const currency = c.req.query("currency");
   return c.json(
-    await getShowbackReport(c.get("organizationId"), range.from, range.to, parseBasis(c)),
+    await getShowbackReport(c.get("organizationId"), range.from, range.to, parseBasis(c), currency),
   );
 });
 

@@ -28,6 +28,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { key: "freezes", label: "Change Freezes" },
   { key: "tag-policy", label: "Tag Policy" },
   { key: "config", label: "Config as Code", requiresPermission: "config:read" },
+  { key: "currency", label: "Currency" },
   { key: "approvals", label: "Approvals", requiresPermission: "workflows:read" },
   { key: "paging", label: "Notifications" },
   { key: "jira", label: "Jira", requiresPermission: "jira:read" },

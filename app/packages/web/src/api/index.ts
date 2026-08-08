@@ -43,6 +43,7 @@ import { budgetRoutes } from "./routes/budgets";
 import { metricAlertRoutes } from "./routes/metric-alerts";
 import { changeFreezeRoutes } from "./routes/change-freezes";
 import { tagPolicyRoutes } from "./routes/tag-policy";
+import { currencyRoutes } from "./routes/currency";
 import { costCentreRoutes } from "./routes/cost-centres";
 import { customGraphRoutes } from "./routes/custom-graphs";
 import { orgConfigRoutes } from "./routes/org-config";

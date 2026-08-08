@@ -1,3 +1,4 @@
+import type { CostConversion } from "@infrawrench/client-core";
 /**
  * Weekly digest composition — pure functions only. Everything here takes data
  * in and returns data out, so the whole module is unit-testable without a
@@ -86,6 +87,12 @@ export interface DigestInput {
   postureCritical: number;
   /** High-severity posture findings currently open. */
   postureHigh: number;
+  /**
+   * Set when the spend figures above were converted into the org's display
+   * currency. Every renderer turns this into a caveat line — a converted total
+   * that does not say so is worse than the several totals it replaced.
+   */
+  conversion?: CostConversion;
   /**
    * Projected monthly change from the week's churn. Null when no resource
    * changed hands, or when nothing that did could be priced.
@@ -385,6 +392,7 @@ export function composeWeeklyDigest(input: DigestInput): WeeklyDigest {
     postureCritical: input.postureCritical,
     postureHigh: input.postureHigh,
     projection: normalizeProjection(input.projection),
+    ...(input.conversion ? { conversion: input.conversion } : {}),
   };
 }
 
@@ -400,6 +408,31 @@ function normalizeProjection(
   if (!projection) return null;
   if (projection.addedMonthly === 0 && projection.removedMonthly === 0) return null;
   return projection;
+}
+
+/**
+ * The one-line caveat under a converted spend figure, or null when nothing was
+ * converted.
+ *
+ * Two facts, in the order they matter: that the number is a conversion at rates
+ * the org itself stated (not a market rate we fetched), and which currencies
+ * are still sitting outside it because no rate covers them.
+ */
+export function conversionCaveat(conversion: CostConversion | undefined): string | null {
+  if (!conversion) return null;
+  const parts: string[] = [];
+  if (conversion.converted.length > 0) {
+    const codes = conversion.converted.map((c) => c.currency).join(", ");
+    parts.push(
+      `${codes} converted to ${conversion.displayCurrency} at your organization's stated rates`,
+    );
+  }
+  if (conversion.unconverted.length > 0) {
+    parts.push(
+      `${conversion.unconverted.join(", ")} shown unconverted — no exchange rate is configured`,
+    );
+  }
+  return parts.length > 0 ? `${parts.join("; ")}.` : null;
 }
 
 // --- Formatting ---

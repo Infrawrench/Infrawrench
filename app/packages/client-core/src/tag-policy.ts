@@ -12,6 +12,7 @@
  * map, a `k=v` list). Plugins that surface tags under those keys get policy
  * support for free; nothing provider-specific lives in the host.
  */
+import type { CostConversion } from "./costs";
 
 export interface RequiredTag {
   /** The tag key every resource must carry, e.g. "owner" or "env". */
@@ -314,6 +315,13 @@ export interface ShowbackReport {
   to: string;
   currencies: string[];
   centres: ShowbackReportCentre[];
+  /**
+   * Set when the amounts above were converted into the org's display currency.
+   * Absent means they are exactly as collected. See `CostConversion` in
+   * `./costs` — a chargeback number that silently mixed currencies would be
+   * billed to a team that could not reconcile it.
+   */
+  conversion?: CostConversion;
 }
 
 /** Share of spend that carries every required key; null when nothing spent. */

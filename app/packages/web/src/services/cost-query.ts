@@ -25,6 +25,11 @@ import {
 } from "@infrawrench/server-core/clickhouse/cost-readers";
 import { forecastDaily } from "@infrawrench/server-core/cost/forecast";
 import { addDays, isoDay } from "@infrawrench/server-core/cost/dates";
+import {
+  convertGroups,
+  mergeConvertedGroups,
+} from "@infrawrench/server-core/cost/currency-convert";
+import { loadConversionContext } from "@infrawrench/server-core/cost/currency-settings";
 // The db-free id module, not the writer — importing the writer here would drag
 // its db/ClickHouse imports into every cost read path (and its tests).
 import {
@@ -169,12 +174,17 @@ export async function runCostQuery(
   if (q.from > q.to) throw new CostQueryError("from must not be after to");
   if (daySpan(q.from, q.to) > 1100) throw new CostQueryError("Date range too large");
 
+  // Text queries are compiled to the structured filter here and nowhere else.
+  // Everything below — and everything in `cost-readers.ts` — sees only
+  // `CostFilter[]`, whose values are bound as ClickHouse parameters.
+  const filters = resolveQueryFilters(q);
+
   const baseQuery = {
     from: q.from,
     to: q.to,
     binning: q.binning,
     groupBy: q.groupBy,
-    filters: q.filters,
+    filters,
     ...(q.groupByTagKey ? { groupByTagKey: q.groupByTagKey } : {}),
     // Carried on the base query so the comparison period is measured on the
     // same basis and the same charge types — a cash previous period against an
@@ -183,7 +193,26 @@ export async function runCostQuery(
     ...(q.chargeTypes && q.chargeTypes.length > 0 ? { chargeTypes: q.chargeTypes } : {}),
   };
 
-  const grouped = foldTopN(await queryCosts(organizationId, baseQuery), q.topN);
+  // Conversion is opt-in twice over: the caller has to ask for a display
+  // currency AND the org has to have configured one. Absent either, this
+  // resolves to `{ displayCurrency: null }` and every step below is a no-op —
+  // the response is byte-identical to what it has always been.
+  const { displayCurrency, rates } = await loadConversionContext(organizationId, q.displayCurrency);
+
+  /**
+   * Convert, then merge, then fold — in that order, deliberately.
+   *
+   * Folding first would rank the top N *within each currency* and then merge,
+   * giving up to N series per currency and an "Other" per currency, which is
+   * exactly the mixed-currency mess this feature exists to remove. Converting
+   * first makes "the top 5 services" a question about one number again.
+   */
+  const convert = (raw: CostSeriesGroup[]) => {
+    const { groups, conversion } = convertGroups(raw, displayCurrency, rates);
+    return { grouped: foldTopN(mergeConvertedGroups(groups), q.topN), conversion };
+  };
+
+  const { grouped, conversion } = convert(await queryCosts(organizationId, baseQuery));
   const series = await labelSeries(organizationId, q.groupBy, grouped);
 
   const response: CostQueryResponse = {
@@ -191,16 +220,23 @@ export async function runCostQuery(
     currencies: [...new Set(grouped.map((g) => g.currency))].sort(),
     totals: totalsOf(grouped, q.binning),
   };
+  // Only set when something was actually converted. Its absence is how a client
+  // knows the per-currency numbers are the literal collected ones.
+  if (conversion) response.conversion = conversion;
 
   if (q.comparePreviousPeriod) {
     const span = daySpan(q.from, q.to);
-    const prevGrouped = foldTopN(
+    // Converted at the rates in force during the *previous* period, not the
+    // current one: a period-over-period comparison whose two halves used the
+    // same rate would hide a real currency movement inside an apparent spend
+    // change, and one that re-converted history at today's rate would restate
+    // a number the org already reconciled.
+    const { grouped: prevGrouped } = convert(
       await queryCosts(organizationId, {
         ...baseQuery,
         from: addDays(q.from, -span),
         to: addDays(q.to, -span),
       }),
-      q.topN,
     );
     response.comparison = await labelSeries(organizationId, q.groupBy, prevGrouped);
     response.previousTotals = totalsOf(prevGrouped, q.binning);
@@ -222,8 +258,12 @@ export async function runCostQuery(
       ...(q.costBasis ? { costBasis: q.costBasis } : {}),
       ...(q.chargeTypes && q.chargeTypes.length > 0 ? { chargeTypes: q.chargeTypes } : {}),
     });
+    // The fit sums across currencies, so converting first is what makes the
+    // projection mean anything at all in a mixed-currency org — otherwise it
+    // adds euros to dollars and trends the result.
+    const { groups: fitConverted } = convertGroups(fitGroups, displayCurrency, rates);
     const dailyTotals = new Map<string, number>();
-    for (const g of fitGroups) {
+    for (const g of fitConverted) {
       for (const p of g.points)
         dailyTotals.set(p.bucket, (dailyTotals.get(p.bucket) ?? 0) + p.amount);
     }
