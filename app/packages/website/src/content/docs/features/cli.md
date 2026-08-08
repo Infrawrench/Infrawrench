@@ -122,10 +122,11 @@ infrawrench oversized
 infrawrench oversized --json
 ```
 
-`estimate` prints one resource's [monthly cost estimate](./cost-estimates.md) at the provider's list price, itemized — the same figure the create form and the resource page quote. Cloud-only, and a projection rather than a bill: `costs` is what you were actually charged, this is the run-rate the resource's current shape implies:
+`estimate` prints one resource's [monthly cost estimate](./cost-estimates.md) at the provider's list price, itemized — the same figure the create form and the resource page quote. Cloud-only, and a projection rather than a bill: `costs` is what you were actually charged, this is the run-rate the resource's current shape implies. Pass the compound resource id, or a display name / external id scoped with `--account`:
 
 ```
 infrawrench estimate acc-123:ec2-instance:i-0abc
+infrawrench estimate my-api-box --account production
 infrawrench estimate acc-123:ec2-instance:i-0abc --json
 ```
 

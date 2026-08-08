@@ -11,10 +11,11 @@
  * `buildCostEstimate`, which drops unpriced components and returns `null`
  * when nothing at all could be priced.
  *
- * Field keys are the create form's. The listers happen to store the same
- * spellings (`region`, `instanceType`, `sizeGb`, `volumeType`,
- * `instanceClass`, `allocatedStorage`, `engine`, `multiAZ`), so the same call
- * prices an existing resource from its stored fields.
+ * Field keys are the create form's. Most listers store the same spellings
+ * (`region`, `instanceType`, `sizeGb`, `volumeType`, `instanceClass`,
+ * `allocatedStorage`, `engine`, `multiAZ`); EKS is the exception — the form
+ * writes `instanceType` while the lister stores `instanceTypes` (comma-joined
+ * when a cluster has mixed node groups). Both are accepted below.
  */
 import {
   buildCostEstimate,
@@ -167,7 +168,12 @@ export async function estimateAwsCost(
     // List API publishes under AmazonEKS; the nodes are ordinary EC2. Node
     // count is the replica dimension here, so the estimate has to move when
     // the count does — that is the whole point of quoting it live.
-    const instanceType = fields["instanceType"] ?? "";
+    //
+    // Form field is `instanceType`; the lister stores `instanceTypes` as a
+    // comma-joined set when node groups differ. Price the first type — mixed
+    // clusters still get a partial estimate rather than none.
+    const instanceTypeRaw = fields["instanceType"] || fields["instanceTypes"] || "";
+    const instanceType = instanceTypeRaw.split(",")[0]?.trim() ?? "";
     const nodeCount = Math.max(1, Math.floor(positiveNumber(fields["nodeCount"], 2)));
     const diskGb = positiveNumber(fields["diskSizeGb"], 20);
     const [nodeMonthly, diskRate] = await Promise.all([

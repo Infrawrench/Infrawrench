@@ -51,9 +51,9 @@ export function ResourceCostEstimateCard({
         <Text style={{ color: colors.textMuted, fontSize: 14, fontWeight: "400" }}>/mo</Text>
       </Text>
       <RowGroup>
-        {data.lineItems.map((item, i) => (
+        {data.lineItems.map((item) => (
           <Row
-            key={`${item.label}-${i}`}
+            key={`${item.label}|${item.detail ?? ""}|${item.monthlyAmount}`}
             title={item.label}
             {...(item.detail ? { subtitle: item.detail } : {})}
             right={

@@ -165,6 +165,19 @@ describe("estimateAwsCost — eks-cluster", () => {
     // The control-plane hourly charge is real and deliberately unpriced.
     expect(est?.partial).toBe(true);
   });
+
+  it("accepts the lister's instanceTypes field (plural, comma-joined)", async () => {
+    fetchEc2MonthlyPrice.mockResolvedValue(30);
+    fetchEbsGbMonthPrice.mockResolvedValue(0.08);
+    const est = await estimateAwsCost(creds, "eks-cluster", {
+      instanceTypes: "t3.large, t3.medium",
+      nodeCount: "2",
+      diskSizeGb: "20",
+    });
+    expect(fetchEc2MonthlyPrice).toHaveBeenCalledWith(creds, "us-east-1", "t3.large");
+    expect(est?.monthlyAmount).toBeCloseTo(2 * 30 + 2 * 20 * 0.08, 2);
+    expect(est?.lineItems[0]?.label).toContain("t3.large");
+  });
 });
 
 it("returns null for a type it cannot price", async () => {

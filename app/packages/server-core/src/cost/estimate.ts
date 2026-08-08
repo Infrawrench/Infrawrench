@@ -60,10 +60,21 @@ export async function estimateResourceCost(
 ): Promise<CostEstimate | null> {
   let storedFields: Record<string, string> = {};
   if (input.resourceId) {
+    // Bind identity: the resource must belong to this org *and* match the
+    // account/type the caller is pricing through. Without that, a same-org
+    // resourceId can leak another resource's fields into a different
+    // account's estimator and return a plausible but wrong number.
     const [row] = await db
       .select({ fieldsJson: resources.fieldsJson })
       .from(resources)
-      .where(and(eq(resources.id, input.resourceId), eq(resources.organizationId, organizationId)))
+      .where(
+        and(
+          eq(resources.id, input.resourceId),
+          eq(resources.organizationId, organizationId),
+          eq(resources.accountId, input.accountId),
+          eq(resources.resourceTypeId, input.resourceTypeId),
+        ),
+      )
       .limit(1);
     if (!row) return null;
     storedFields = stringifyFields(row.fieldsJson);

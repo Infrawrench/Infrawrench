@@ -50,7 +50,8 @@ COMMANDS
   resources           list an account's resources   --account <id|name>
   resource <id>       show one resource's fields & outputs
   metrics <id>        metric charts for a resource   [--last 6h] [--series cpu] [--local]
-  estimate <id>       what a resource costs per month at list price, itemized (cloud only)
+  estimate <id|name>  what a resource costs per month at list price, itemized (cloud only;
+                      full id, or a name/external-id with --account)
   costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource]
   costs --anomalies   days a provider or service spiked past its own baseline   [--days 30]
   costs push          push your own cost rows   --source <name> [--file rows.json | stdin]

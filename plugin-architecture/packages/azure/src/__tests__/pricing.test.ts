@@ -269,14 +269,24 @@ describe("pricing-estimates", () => {
     it("redis / app-service / function-app / sql look up by sku", () => {
       const rates = {
         ...emptyRates,
-        redisMonthlyUsd: { C1: 50 },
+        redisMonthlyUsd: { C0: 25, C1: 50, P1: 200 },
         appServiceMonthlyUsd: { B1: 55 },
         functionAppMonthlyUsd: { Y1: 0 },
         sqlDbMonthlyUsd: { Basic: 5 },
       };
+      // Already-coded capacity (hand-built payloads / tests).
       expect(estimateAzureCost("azure-redis-cache", { capacity: "C1" }, rates)?.monthlyAmount).toBe(
         50,
       );
+      // Create form + lister shape: numeric capacity + tier name → C0/P1 keys.
+      expect(
+        estimateAzureCost("azure-redis-cache", { capacity: "0", sku: "Basic" }, rates)
+          ?.monthlyAmount,
+      ).toBe(25);
+      expect(
+        estimateAzureCost("azure-redis-cache", { capacity: "1", sku: "Premium" }, rates)
+          ?.monthlyAmount,
+      ).toBe(200);
       expect(estimateAzureCost("azure-app-service", { sku: "B1" }, rates)?.monthlyAmount).toBe(55);
       expect(estimateAzureCost("azure-sql-database", { sku: "Basic" }, rates)?.monthlyAmount).toBe(
         5,

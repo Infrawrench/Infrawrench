@@ -23,8 +23,11 @@ export function CostEstimateBreakdown({ estimate }: CostEstimateBreakdownProps) 
   return (
     <div className="space-y-2">
       <ul className="space-y-1">
-        {estimate.lineItems.map((item, i) => (
-          <li key={`${item.label}-${i}`} className="flex items-baseline justify-between gap-4">
+        {estimate.lineItems.map((item) => (
+          <li
+            key={`${item.label}|${item.detail ?? ""}|${item.monthlyAmount}`}
+            className="flex items-baseline justify-between gap-4"
+          >
             <span className="min-w-0">
               <span className="block text-on-surface-secondary truncate">{item.label}</span>
               {item.detail && <span className="block text-on-surface-faint">{item.detail}</span>}

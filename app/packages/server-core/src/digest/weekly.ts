@@ -279,18 +279,21 @@ async function buildProjection(
     if (!addedSpend && !removedSpend) return null;
 
     // Mixed currencies across the two sides would make the net meaningless,
-    // so the smaller side is dropped to `unpriced` rather than subtracted.
+    // so the mismatched side is dropped to `unpriced` rather than subtracted.
+    // Count *every* resource on the discarded side (priced + unpriced) so the
+    // digest does not understate how many estimates were omitted.
     const currency = addedSpend?.currency ?? removedSpend?.currency ?? "USD";
     const usable = (spend: typeof addedSpend) => (spend?.currency === currency ? spend : null);
     const add = usable(addedSpend);
     const remove = usable(removedSpend);
+    const discardedAsUnpriced = (spend: typeof addedSpend, kept: typeof add) =>
+      kept?.unpricedCount ?? (spend ? spend.pricedCount + spend.unpricedCount : 0);
     return {
       currency,
       addedMonthly: add?.monthlyAmount ?? 0,
       removedMonthly: remove?.monthlyAmount ?? 0,
       unpricedCount:
-        (add?.unpricedCount ?? addedSpend?.pricedCount ?? 0) +
-        (remove?.unpricedCount ?? removedSpend?.pricedCount ?? 0),
+        discardedAsUnpriced(addedSpend, add) + discardedAsUnpriced(removedSpend, remove),
       truncated: (add?.truncated ?? false) || (remove?.truncated ?? false),
     };
   } catch (err) {

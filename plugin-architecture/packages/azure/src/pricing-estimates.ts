@@ -45,6 +45,27 @@ function pick(fields: Record<string, string>, ...keys: string[]): string {
   return "";
 }
 
+/**
+ * Map Redis form/lister fields onto a pricing rate key like `C0` / `P1`.
+ *
+ * The create form stores `capacity` as `"0"`..`"6"` and `sku` as
+ * Basic/Standard/Premium; the lister stores the same pair (capacity as a
+ * number that `stringifyFields` turns into `"0"`). Rate tables are keyed by
+ * the family+capacity code Azure publishes (`C0`, `P1`, …). Already-coded
+ * values (`"C1"`) are accepted as-is so tests and any hand-built payloads keep
+ * working.
+ */
+function redisRateKey(fields: Record<string, string>): string {
+  const raw = pick(fields, "capacity");
+  if (/^[CP]\d+$/i.test(raw)) return raw.toUpperCase();
+  const sku = pick(fields, "sku") || "Basic";
+  const family = sku.toLowerCase() === "premium" ? "P" : "C";
+  // Form default is capacity "0" (C0 / P0) — not C1.
+  const n = raw === "" ? 0 : Number(raw);
+  if (!Number.isFinite(n) || n < 0) return `${family}0`;
+  return `${family}${Math.floor(n)}`;
+}
+
 function positiveNumber(raw: string, fallback: number): number {
   const n = Number(raw === "" ? fallback : raw);
   return Number.isFinite(n) && n > 0 ? n : 0;
@@ -174,8 +195,11 @@ export function estimateAzureCost(
   }
 
   if (typeId === "azure-redis-cache") {
-    const capacity = pick(fields, "capacity") || "C1";
-    return buildCostEstimate([flatLine(`Cache (${capacity})`, rates.redisMonthlyUsd[capacity])]);
+    // Rate cache is keyed by SKU codes ("C0", "P1"); the create form and the
+    // lister store a numeric capacity ("0") plus a tier name (Basic/Premium).
+    // Accept either shape so create-time and existing-resource estimates match.
+    const code = redisRateKey(fields);
+    return buildCostEstimate([flatLine(`Cache (${code})`, rates.redisMonthlyUsd[code])]);
   }
 
   if (typeId === "azure-app-service") {
