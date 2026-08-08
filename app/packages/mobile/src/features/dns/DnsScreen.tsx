@@ -14,7 +14,7 @@ const FILTER_OPTIONS: Array<{ key: StatusFilter; label: string }> = [
   { key: "dangling", label: "Dangling" },
   { key: "owned", label: "Internal" },
   { key: "external", label: "External" },
-  { key: "not-analysed", label: "—" },
+  { key: "not-analysed", label: "Not analysed" },
 ];
 
 /**
