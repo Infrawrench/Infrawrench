@@ -43,6 +43,18 @@ import {
 
 export {
   COST_DIMENSIONS,
+  // The cost query language — the text front-end for `costFilterSchema`. Kept
+  // in client-core so mobile, the CLI and the server share one parser;
+  // re-exported here so cost code that already imports from "./config.js" does
+  // not need a second import path.
+  parseCostQuery,
+  formatCostQuery,
+  isValidCostQuery,
+  CostQueryParseError,
+  CostQueryFormatError,
+  COST_QUERY_GRAMMAR,
+  COST_QUERY_LANGUAGE_SUMMARY,
+  COST_QUERY_MAX_LENGTH,
   COST_CHARGE_TYPES,
   COST_CHARGE_TYPE_LABELS,
   COST_BASES,
@@ -313,6 +325,17 @@ export const costQueryRequestSchema = z.object({
   groupBy: z.enum(["none", ...COST_DIMENSIONS]),
   groupByTagKey: z.string().optional(),
   filters: z.array(costFilterSchema).default([]),
+  /**
+   * The same filter in the cost query language — `provider = 'aws' AND
+   * tag['env'] != 'dev'`. Compiled server-side to exactly `filters`; a parse
+   * failure is a 400 carrying the offset. Sending both this and a non-empty
+   * `filters` is rejected rather than resolved by a precedence rule.
+   *
+   * Bounded so a runaway string cannot be handed to the tokenizer; the limit is
+   * far above any hand-written filter and well below anything worth worrying
+   * about.
+   */
+  query: z.string().max(COST_QUERY_MAX_LENGTH).optional(),
   topN: z.number().int().min(1).max(15).default(5),
   comparePreviousPeriod: z.boolean().default(false),
   forecast: z.boolean().default(false),

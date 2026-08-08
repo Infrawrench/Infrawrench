@@ -663,6 +663,17 @@ export interface CostQueryRequest {
   groupBy: "none" | CostDimensionId;
   groupByTagKey?: string | undefined;
   filters: CostFilter[];
+  /**
+   * The same filter written in the cost query language
+   * (`cost-query-language.ts`) — `provider = 'aws' AND tag['env'] != 'dev'`.
+   *
+   * An *alternative* spelling of `filters`, never an addition to it: the server
+   * compiles this to `CostFilter[]` and runs exactly the query the structured
+   * form would have run. Sending both a query and a non-empty `filters` is an
+   * error rather than a precedence rule — a caller that sets two filters and
+   * silently gets one of them is the failure this is designed to avoid.
+   */
+  query?: string | undefined;
   topN: number;
   comparePreviousPeriod: boolean;
   forecast: boolean;

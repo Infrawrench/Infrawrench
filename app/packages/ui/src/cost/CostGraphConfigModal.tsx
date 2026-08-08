@@ -8,9 +8,14 @@ import {
   COST_CHART_TYPES,
   COST_DIMENSION_LABELS,
   COST_DIMENSIONS,
+  COST_QUERY_MAX_LENGTH,
   COST_RANGE_PRESET_LABELS as PRESET_LABELS,
   COST_RANGE_PRESETS,
+  CostQueryFormatError,
+  CostQueryParseError,
   costGraphConfigSchema,
+  formatCostQuery,
+  parseCostQuery,
   type CostBasis,
   type CostFilter,
   type CostGraphConfig,
@@ -274,6 +279,155 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
   );
 }
 
+/* ------------------------------------------------------------------ *
+ * Text mode — the same filter, written in the cost query language.
+ * ------------------------------------------------------------------ */
+
+export interface CostFilterEditorProps extends FilterRowEditorProps {
+  /**
+   * Called whenever the text box's validity changes, so the host can refuse to
+   * save a half-typed query. Null means "nothing wrong right now".
+   *
+   * The editor never propagates an unparseable query through `onChange` — the
+   * last *valid* filter stays in the config — which is what makes this callback
+   * necessary: without it, Save would quietly store the previous filter while
+   * the user was looking at their new one.
+   */
+  onErrorChange?: (error: string | null) => void;
+}
+
+/**
+ * The filter editor with a rows/text toggle.
+ *
+ * Both modes are views onto the same `CostFilter[]`, so switching is lossless
+ * in both directions: entering text mode renders the current rows through
+ * `formatCostQuery`, and every accepted keystroke in text mode compiles back
+ * through `parseCostQuery`. The rows stay the default and are never removed —
+ * they are the discoverable path, with the dimension list and the value pickers
+ * that tell a new user what is even filterable. Text mode is for the people who
+ * already know, and for pasting a filter out of a ticket.
+ *
+ * Two switches are deliberately blocked rather than made lossy:
+ *
+ * - to text, when a row is a tag with no key — there is nowhere in the language
+ *   to put the missing key, and inventing one would round-trip to a different
+ *   filter;
+ * - to rows, while the query does not parse — the rows can only show the last
+ *   valid filter, so switching would silently discard what was typed.
+ */
+export function CostFilterEditor({ filters, onChange, api, onErrorChange }: CostFilterEditorProps) {
+  const uid = useId();
+  const [mode, setMode] = useState<"rows" | "text">("rows");
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const report = useCallback(
+    (next: string | null) => {
+      setError(next);
+      onErrorChange?.(next);
+    },
+    [onErrorChange],
+  );
+
+  // A mode the host never sees an error from: leaving text mode clears it.
+  useEffect(() => {
+    if (mode === "rows") report(null);
+  }, [mode, report]);
+
+  const toText = () => {
+    try {
+      setText(formatCostQuery(filters));
+      report(null);
+      setMode("text");
+    } catch (e) {
+      report(
+        e instanceof CostQueryFormatError
+          ? `${e.message} (filter ${e.index + 1})`
+          : "This filter can’t be written as text.",
+      );
+    }
+  };
+
+  const onTextChange = (next: string) => {
+    setText(next);
+    try {
+      onChange(parseCostQuery(next));
+      report(null);
+    } catch (e) {
+      report(e instanceof CostQueryParseError ? e.annotated() : "Invalid query.");
+    }
+  };
+
+  const tabClass = (active: boolean) =>
+    `rounded-md px-2 py-0.5 text-xs transition-colors ${
+      active
+        ? "bg-surface-sunken text-on-surface"
+        : "text-on-surface-faint hover:text-on-surface-secondary"
+    }`;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          aria-pressed={mode === "rows"}
+          // Blocked, not lossy: the rows can only show the last query that
+          // parsed, so switching now would throw away what is in the box.
+          disabled={mode === "text" && error !== null}
+          className={`${tabClass(mode === "rows")} disabled:opacity-40`}
+          onClick={() => setMode("rows")}
+          title={
+            mode === "text" && error !== null
+              ? "Fix the query first — switching now would discard it"
+              : undefined
+          }
+        >
+          Rows
+        </button>
+        <button
+          type="button"
+          aria-pressed={mode === "text"}
+          className={tabClass(mode === "text")}
+          onClick={toText}
+        >
+          Query
+        </button>
+      </div>
+
+      {mode === "rows" ? (
+        <CostFilterRows filters={filters} onChange={onChange} api={api} />
+      ) : (
+        <div className="space-y-1">
+          <textarea
+            id={`${uid}-query`}
+            aria-label="Cost filter query"
+            aria-invalid={error !== null}
+            spellCheck={false}
+            rows={2}
+            maxLength={COST_QUERY_MAX_LENGTH}
+            className={`${selectClass} font-mono`}
+            placeholder="provider = 'aws' AND tag['env'] != 'dev'"
+            value={text}
+            onChange={(e) => onTextChange(e.target.value)}
+          />
+          <p className="text-xs text-on-surface-faint">
+            Terms joined by AND: <code>= &apos;value&apos;</code>, <code>!= &apos;value&apos;</code>
+            , <code>IN (&apos;a&apos;, &apos;b&apos;)</code>,{" "}
+            <code>NOT IN (&apos;a&apos;, &apos;b&apos;)</code>,{" "}
+            <code>tag[&apos;owner&apos;] = &apos;platform&apos;</code>.
+          </p>
+        </div>
+      )}
+
+      {error && (
+        <pre className="whitespace-pre-wrap break-words text-xs text-red-400 font-mono">
+          {error}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 export interface CostGraphConfigModalProps {
   /** Initial values; pass DEFAULT_COST_GRAPH_CONFIG for a new widget. */
   initialConfig: CostGraphConfig;
@@ -296,6 +450,12 @@ export function CostGraphConfigModal({
   const [tagKeys, setTagKeys] = useState<CostDimensionOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * A filter the text editor could not compile. Saving is blocked while it is
+   * set: the config still holds the last query that parsed, so saving now would
+   * silently store a different filter from the one on screen.
+   */
+  const [filterError, setFilterError] = useState<string | null>(null);
   const basis = useCostBasisChoice(api, initialConfig.costBasis === "amortized");
 
   useEffect(() => {
@@ -311,6 +471,10 @@ export function CostGraphConfigModal({
     setConfig((prev) => ({ ...prev, ...patch }) as CostGraphConfig);
 
   const save = async () => {
+    if (filterError) {
+      setError("Fix the filter query before saving.");
+      return;
+    }
     const cleaned = {
       ...config,
       filters: config.filters.filter((f) => f.values.length > 0),
@@ -530,10 +694,11 @@ export function CostGraphConfigModal({
             <span id={`${uid}-filters-label`} className={labelClass}>
               Filters
             </span>
-            <CostFilterRows
+            <CostFilterEditor
               filters={config.filters}
               onChange={(filters) => set({ filters })}
               api={api}
+              onErrorChange={setFilterError}
             />
           </div>
 
@@ -585,7 +750,7 @@ export function CostGraphConfigModal({
             <button
               type="button"
               onClick={() => void save()}
-              disabled={saving}
+              disabled={saving || filterError !== null}
               className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors"
             >
               {saving ? "Saving…" : "Save"}

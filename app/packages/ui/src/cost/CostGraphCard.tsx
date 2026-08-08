@@ -16,7 +16,12 @@ import {
 } from "recharts";
 import { useChartTheme } from "../chart-theme.js";
 import { niceAxis, rowsExtent } from "../components/charts/nice-axis.js";
-import { costQueryForConfig, type CostGraphConfig, type CostQueryResponse } from "./config.js";
+import {
+  costQueryForConfig,
+  describeCostConversion,
+  type CostGraphConfig,
+  type CostQueryResponse,
+} from "./config.js";
 import {
   alignComparison,
   COMPARISON_KEY,

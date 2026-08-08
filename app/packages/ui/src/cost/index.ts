@@ -3,11 +3,14 @@ export * from "./transform.js";
 export * from "./types.js";
 export { CostGraphCard, type CostGraphCardProps } from "./CostGraphCard.js";
 export { CostCollectionNotice, type CostCollectionNoticeProps } from "./CostCollectionNotice.js";
+export { CostConversionNotice, type CostConversionNoticeProps } from "./CostConversionNotice.js";
 export {
   CostGraphConfigModal,
   CostFilterRows,
+  CostFilterEditor,
   DEFAULT_COST_GRAPH_CONFIG,
   type CostGraphConfigModalProps,
+  type CostFilterEditorProps,
 } from "./CostGraphConfigModal.js";
 export {
   BudgetCard,

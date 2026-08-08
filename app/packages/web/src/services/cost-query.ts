@@ -8,7 +8,9 @@ import {
   COST_CHARGE_TYPES,
   COST_CHARGE_TYPE_LABELS,
   COST_DIMENSIONS,
+  CostQueryParseError,
   OTHER_GROUP_KEY,
+  parseCostQuery,
   type CostAccountStatus,
   type CostDimensionId,
   type CostQueryRequest,
@@ -49,8 +51,71 @@ import { db } from "../db/client";
 import { accounts, workflows } from "../db/schema";
 import { getPlugin, loadPlugins } from "../plugins/loader";
 
+/**
+ * Where a text cost query went wrong, in a shape a client can render.
+ *
+ * Offsets are into the query string the caller sent, so a UI can underline the
+ * span and a terminal can put a caret under it without re-deriving anything.
+ */
+export interface CostQueryTextError {
+  /** Zero-based character offset into the submitted `query`. */
+  offset: number;
+  length: number;
+  /** Valid alternatives at that offset — the dimension names, the operators. */
+  expected: string[];
+}
+
 /** Invalid caller input — routes map this to a 400, tools to an error result. */
-export class CostQueryError extends Error {}
+export class CostQueryError extends Error {
+  /**
+   * Set only for a cost-query-language parse failure. Optional so every
+   * existing `new CostQueryError(message)` keeps meaning what it meant, and so
+   * a caller that does not understand the field still gets a usable message.
+   */
+  readonly queryError?: CostQueryTextError;
+
+  constructor(message: string, queryError?: CostQueryTextError) {
+    super(message);
+    if (queryError) this.queryError = queryError;
+  }
+}
+
+/**
+ * The filters a request actually runs: its structured `filters`, or its `query`
+ * compiled into exactly that shape.
+ *
+ * The two are alternatives, never a merge and never a precedence rule. A caller
+ * that sends both has expressed two different intentions and there is no
+ * reading of "which one wins" that is not a silent wrong answer — so it is an
+ * error. An empty `filters` alongside a query is fine: it is what every client
+ * built on `CostQueryRequest` sends, because the field is required and `[]` is
+ * the absence of a filter rather than a filter.
+ *
+ * Compiling here rather than in the HTTP route is what keeps the MCP tool and
+ * the API behaviourally identical — both go through `runCostQuery`.
+ */
+function resolveQueryFilters(q: CostQueryRequest): CostQueryRequest["filters"] {
+  const text = q.query?.trim();
+  if (!text) return q.filters;
+  if (q.filters.length > 0) {
+    throw new CostQueryError(
+      "Send either `filters` or `query`, not both — they are two spellings of the same filter, " +
+        "and running one while ignoring the other would silently answer a different question.",
+    );
+  }
+  try {
+    return parseCostQuery(text);
+  } catch (e) {
+    if (e instanceof CostQueryParseError) {
+      throw new CostQueryError(`Invalid query at offset ${e.offset}: ${e.message}`, {
+        offset: e.offset,
+        length: e.length,
+        expected: [...e.expected],
+      });
+    }
+    throw e;
+  }
+}
 
 function daySpan(from: string, to: string): number {
   return (

@@ -12,6 +12,7 @@ import type {
   CostBasis,
   CostChargeType,
   CostConversion,
+  CostFilter,
   CostQueryRequest,
   CostQueryResponse,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
@@ -130,6 +131,34 @@ function parseChargeTypes(raw: string[] | undefined): CostChargeType[] {
 }
 
 /**
+ * `--where "provider = 'aws' AND tag['env'] != 'dev'"` → the structured filter.
+ *
+ * Compiled here rather than posted as the API's `query` field for two reasons.
+ * A mistake is reported before the round trip, with the offset and a caret
+ * under it — the shared parser knows exactly where it gave up, and that
+ * information does not survive being turned into an HTTP status. And the
+ * compiled `filters` are understood by every server version, whereas a `query`
+ * sent to a server that predates it would be ignored and quietly return
+ * *unfiltered* spend, which is the one failure mode worth engineering against.
+ *
+ * The parser is imported dynamically, like the other client-core helpers the
+ * CLI uses, so the CLI still takes no new runtime dependency.
+ */
+async function parseWhere(where: string | undefined): Promise<CostFilter[]> {
+  const text = where?.trim();
+  if (!text) return [];
+  const { parseCostQuery, CostQueryParseError } = await import("@infrawrench/client-core");
+  try {
+    return parseCostQuery(text);
+  } catch (e) {
+    if (e instanceof CostQueryParseError) {
+      throw new CliError(`--where: ${e.annotated()}`, 2);
+    }
+    throw e;
+  }
+}
+
+/**
  * Collection runs daily in the background and backs off on failure, so a
  * misconfigured provider reads as missing spend rather than an error. Fetch
  * the per-account state so the numbers below can be trusted (or explained).
@@ -204,6 +233,7 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
   const basis = parseBasis(range.basis);
   const chargeTypes = parseChargeTypes(range.chargeTypes);
   const displayCurrency = parseCurrency(range.currency);
+  const filters = await parseWhere(range.where);
 
   const days = range.last ? Math.max(1, Math.round(parseLastDays(range.last))) : 30;
   const to = range.to ?? isoDay(Date.now());
@@ -214,7 +244,7 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     to,
     binning: "daily",
     groupBy: groupBy as CostQueryRequest["groupBy"],
-    filters: [],
+    filters,
     topN: 8,
     comparePreviousPeriod: false,
     forecast: false,
@@ -241,6 +271,10 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
       from,
       to,
       groupBy,
+      // Echoed as both the text the user typed and the structure it compiled
+      // to, so a script can see which filter actually ran without re-parsing.
+      where: range.where?.trim() || null,
+      filters,
       costBasis: basis ?? "cash",
       chargeTypes,
       // Echoed so a script can tell an unconverted run from a converted one
@@ -275,6 +309,10 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
   // gets quoted as if it were.
   const scope = [
     `${from} → ${to}`,
+    // The filter belongs on the header line for the same reason the basis
+    // does: a narrowed total that does not say what it excludes gets quoted as
+    // if it were the whole bill.
+    ...(filters.length > 0 ? [range.where!.trim()] : []),
     ...(basis === "amortized" ? ["amortized"] : []),
     ...(chargeTypes.length > 0 ? [chargeTypes.join(", ")] : []),
     // On the same line as the number, like the basis: a converted total that

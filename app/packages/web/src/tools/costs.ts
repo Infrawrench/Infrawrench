@@ -7,6 +7,7 @@
 import { z } from "zod";
 import {
   COST_DIMENSIONS,
+  COST_QUERY_LANGUAGE_SUMMARY,
   budgetInputSchema,
   costQueryRequestSchema,
 } from "@infrawrench/ui/cost/config";
@@ -63,7 +64,14 @@ export function costTools(): ToolDefinition[] {
         "out. chargeTypes narrows to particular kinds of charge (usage, commitment_fee, " +
         "commitment_discount, credit, tax, refund, adjustment, support, other); omitting it " +
         "includes all of them, which is what makes a total net rather than gross — filter to " +
-        "['usage'] to see whether consumption is growing underneath a credit that is masking it.",
+        "['usage'] to see whether consumption is growing underneath a credit that is masking it." +
+        "\n\nThe filter can also be written as text in the cost query language via `query`, " +
+        "which is usually easier than assembling `filters` by hand: " +
+        "`provider = 'aws' AND service IN ('AmazonEC2','AmazonS3') AND tag['env'] != 'dev'`. " +
+        COST_QUERY_LANGUAGE_SUMMARY +
+        " Send `query` or `filters`, never both — both is an error, not a precedence rule. A " +
+        "query that does not parse comes back with the character offset of the mistake and the " +
+        "valid alternatives there; use list_cost_dimension_values to discover real values first.",
       inputSchema: costQueryRequestSchema.shape,
       risk: "read",
       permission: "costs:read",
