@@ -426,6 +426,9 @@ export async function decideAccessRequest(
         eq(accessRequests.id, requestId),
         eq(accessRequests.organizationId, organizationId),
         eq(accessRequests.status, "pending"),
+        // Atomic with the pre-write expiry check: a decision that started
+        // before expiresAt but lands after must not open a grant window.
+        gt(accessRequests.expiresAt, now),
       ),
     )
     .returning();

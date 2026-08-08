@@ -109,9 +109,12 @@ export async function pruneSessionRecordings(now = new Date()): Promise<Recordin
  * Settle rows the recorder never closed, so an operator does not see a
  * week-old session claiming to be live.
  *
- * The list view derives "abandoned" for presentation; this makes it durable so
- * a status filter in SQL (and anything reading the table directly — the CLI's
- * `--json`, an export) agrees with the UI. Bounded and idempotent.
+ * Last activity is the latest chunk write (or `started_at` when nothing has
+ * flushed yet) — not `started_at` alone. A session open for hours with recent
+ * I/O is still live; only a proxy that died mid-stream stops writing chunks.
+ * The list view derives the same distinction for presentation; this pass makes
+ * it durable so a SQL-level reader (CLI `--json`, an export) agrees. Bounded
+ * and idempotent.
  */
 export async function settleAbandonedRecordings(olderThanMs = 10 * 60 * 1000): Promise<number> {
   const cutoff = new Date(Date.now() - olderThanMs)
@@ -122,11 +125,26 @@ export async function settleAbandonedRecordings(olderThanMs = 10 * 60 * 1000): P
     const result = await db.execute(sql`
       UPDATE ssh_session_recordings
       SET status = 'abandoned',
-          ended_at = coalesce(ended_at, started_at)
+          ended_at = coalesce(
+            ended_at,
+            (
+              SELECT max(c.created_at)
+              FROM ssh_session_recording_chunks c
+              WHERE c.recording_id = ssh_session_recordings.id
+            ),
+            started_at
+          )
       WHERE id IN (
-        SELECT id FROM ssh_session_recordings
-        WHERE status = 'recording'
-          AND coalesce(ended_at, started_at) < ${cutoff}::timestamp
+        SELECT r.id FROM ssh_session_recordings r
+        WHERE r.status = 'recording'
+          AND coalesce(
+            (
+              SELECT max(c.created_at)
+              FROM ssh_session_recording_chunks c
+              WHERE c.recording_id = r.id
+            ),
+            r.started_at
+          ) < ${cutoff}::timestamp
         LIMIT 500
         FOR UPDATE SKIP LOCKED
       )

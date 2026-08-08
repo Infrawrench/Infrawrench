@@ -67,8 +67,8 @@ export const orgSessionRecordingSettings = pgTable("org_session_recording_settin
  *
  * `status` is `"recording"` for a live session. A session whose proxy process
  * dies mid-stream never gets its closing write, so a row that is still
- * `"recording"` well after `startedAt` is an abandoned one; the list route
- * settles those on read rather than leaving them to look live forever.
+ * `"recording"` well after its last chunk write is an abandoned one; the list
+ * route settles those on read rather than leaving them to look live forever.
  *
  * `accountId` / `resourceId` are deliberately not foreign keys. A recording
  * outlives what it was taken against — the whole point of an audit artifact is

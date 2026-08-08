@@ -4,7 +4,7 @@
  * The write side lives in `recorder.ts` and is subordinate to the terminal;
  * this side is ordinary request-time work and is allowed to throw.
  */
-import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import { gunzipSync } from "node:zlib";
 
 import { db } from "../db/client";
@@ -17,9 +17,18 @@ import { sshSessionRecordingChunks, sshSessionRecordings } from "../db/schema";
  * A session whose web replica was killed never gets its closing write, and a
  * row left saying "recording" forever is worse than useless — it is a live
  * session that is not live. Two minutes is well clear of the recorder's 5s
- * flush interval, so an idle-but-genuinely-live session is never mislabelled.
+ * flush interval, so a session that is still flushing chunks is never
+ * mislabelled. Purely idle shells (no I/O, so no new chunks) can look
+ * abandoned until the next keystroke or until `finish` settles them.
  */
 const ABANDONED_AFTER_MS = 2 * 60 * 1000;
+
+/** Latest chunk write for a parent row — the true last-activity signal. */
+const lastChunkAtSql = sql<Date | null>`(
+  select max(${sshSessionRecordingChunks.createdAt})
+  from ${sshSessionRecordingChunks}
+  where ${sshSessionRecordingChunks.recordingId} = ${sshSessionRecordings.id}
+)`;
 
 export type SessionRecordingStatus = "recording" | "complete" | "truncated" | "abandoned";
 
@@ -60,17 +69,19 @@ export interface ListSessionRecordingsOptions {
 /**
  * Present a row, settling a stale `"recording"` into `"abandoned"`.
  *
- * Derived rather than written back: a sweep that rewrote the column would race
- * the recorder's own closing update on a session that was merely idle, and the
- * only consumer of the distinction is this presentation.
+ * Derived rather than written back on the list path: a sweep that rewrote the
+ * column would race the recorder's own closing update on a session that was
+ * merely idle. Last activity is the latest chunk write when known — never the
+ * session start alone, or a multi-hour live session would look abandoned.
  */
 function toSummary(
   row: typeof sshSessionRecordings.$inferSelect,
   now: number,
+  lastChunkAt?: Date | null,
 ): SessionRecordingSummary {
   let status = row.status as SessionRecordingStatus;
   if (status === "recording") {
-    const lastActivity = (row.endedAt ?? row.startedAt).getTime();
+    const lastActivity = (lastChunkAt ?? row.endedAt ?? row.startedAt).getTime();
     if (now - lastActivity > ABANDONED_AFTER_MS) status = "abandoned";
   }
   return {
@@ -113,7 +124,10 @@ export async function listSessionRecordings(
 
   const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
   const rows = await db
-    .select()
+    .select({
+      row: sshSessionRecordings,
+      lastChunkAt: lastChunkAtSql,
+    })
     .from(sshSessionRecordings)
     .where(and(...conditions))
     .orderBy(desc(sshSessionRecordings.startedAt))
@@ -122,7 +136,7 @@ export async function listSessionRecordings(
     .limit(opts.status === "abandoned" || opts.status === "recording" ? limit * 4 : limit);
 
   const now = Date.now();
-  const summaries = rows.map((r) => toSummary(r, now));
+  const summaries = rows.map((r) => toSummary(r.row, now, coerceDate(r.lastChunkAt)));
   const filtered = opts.status ? summaries.filter((s) => s.status === opts.status) : summaries;
   return filtered.slice(0, limit);
 }
@@ -131,8 +145,11 @@ export async function getSessionRecording(
   organizationId: string,
   recordingId: string,
 ): Promise<SessionRecordingSummary | null> {
-  const [row] = await db
-    .select()
+  const [hit] = await db
+    .select({
+      row: sshSessionRecordings,
+      lastChunkAt: lastChunkAtSql,
+    })
     .from(sshSessionRecordings)
     .where(
       and(
@@ -141,7 +158,14 @@ export async function getSessionRecording(
       ),
     )
     .limit(1);
-  return row ? toSummary(row, Date.now()) : null;
+  return hit ? toSummary(hit.row, Date.now(), coerceDate(hit.lastChunkAt)) : null;
+}
+
+function coerceDate(value: Date | string | null | undefined): Date | null {
+  if (value == null) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 /**
@@ -267,6 +291,11 @@ export async function getSessionRecordingUsage(
  * Delete one org's recordings that started before `cutoff`. Used by the
  * retention pass; batched so a first prune of a long-neglected org cannot hold
  * locks for minutes. Returns how many index rows went.
+ *
+ * Never deletes `status = 'recording'`: an open shell can outlive the retention
+ * window, and removing its row mid-stream strands the writer and loses the
+ * tape. Abandoned/complete/truncated rows are the only ones due; the settle
+ * pass closes dead `"recording"` rows first.
  */
 export async function pruneOrgSessionRecordings(
   organizationId: string,
@@ -280,9 +309,7 @@ export async function pruneOrgSessionRecordings(
       and(
         eq(sshSessionRecordings.organizationId, organizationId),
         lt(sshSessionRecordings.startedAt, cutoff),
-        // Never prune a session that is still streaming: its chunks are being
-        // appended right now, and the parent delete would strand the writer.
-        lte(sshSessionRecordings.startedAt, new Date(Date.now() - ABANDONED_AFTER_MS)),
+        ne(sshSessionRecordings.status, "recording"),
       ),
     )
     .orderBy(asc(sshSessionRecordings.startedAt))
