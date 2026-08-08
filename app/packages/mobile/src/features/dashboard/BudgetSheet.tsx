@@ -12,6 +12,7 @@ import {
   TextField,
 } from "@/components/form";
 import { Button } from "@/components/ui";
+import { CostBasisChips } from "./CostBasisChips";
 import { CostFilterEditor } from "./CostFilterEditor";
 
 /**
@@ -118,6 +119,7 @@ export function BudgetSheet({
           />
         </ChipRow>
       </Field>
+      <CostBasisChips value={input.costBasis} onChange={(costBasis) => set({ costBasis })} />
       <CostFilterEditor
         label="Scope"
         hint="All spend when empty."

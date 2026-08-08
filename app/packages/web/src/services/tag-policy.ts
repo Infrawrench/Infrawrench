@@ -13,7 +13,7 @@ import {
   type TagPolicy,
   type TagPolicyViolation,
 } from "@infrawrench/client-core";
-import type { UntaggedSpendReport } from "@infrawrench/client-core";
+import type { CostBasis, UntaggedSpendReport } from "@infrawrench/client-core";
 import { getOrgTagPolicy } from "@infrawrench/server-core/cost/tag-policy";
 import { getUntaggedSpend } from "@infrawrench/server-core/clickhouse/cost-readers";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
@@ -157,6 +157,7 @@ export async function getUntaggedSpendReport(
   organizationId: string,
   from: string,
   to: string,
+  costBasis?: CostBasis,
 ): Promise<UntaggedSpendReport> {
   const policy = await getOrgTagPolicy(organizationId);
   const requiredKeys = policy.requiredTags.map((t) => t.key);
@@ -172,7 +173,9 @@ export async function getUntaggedSpendReport(
       topUntagged: [],
     };
   }
-  const rows = await getUntaggedSpend(organizationId, requiredKeys, from, to);
+  // Follows the caller's basis: this report's number is a share of total spend,
+  // and it has to be a share of the same total the graphs above it draw.
+  const rows = await getUntaggedSpend(organizationId, requiredKeys, from, to, costBasis);
 
   const accountRows = await db
     .select({ id: accounts.id, displayName: accounts.displayName })

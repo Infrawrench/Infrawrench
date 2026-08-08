@@ -1,6 +1,7 @@
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import {
   emptyCostAccounts,
+  estimatedCostAccounts,
   failingCostAccounts,
   type CostAccountStatus,
 } from "@infrawrench/client-core";
@@ -11,12 +12,16 @@ import { colors, radii, spacing } from "@/lib/theme";
  * budgets and cost graphs are empty, for both states that produce a blank
  * chart: collection that is failing (with the provider's fix deep-linked when
  * the plugin reported one), and collection that succeeds but has no spend to
- * report yet. Renders nothing when every account is collecting data.
+ * report yet — plus the state that produces a chart which is *not* blank and
+ * still isn't the invoice: a provider with no billing API, whose spend is this
+ * account's inventory priced against a rate card. Renders nothing when every
+ * account is collecting real data.
  */
 export function CostCollectionNotice({ statuses }: { statuses: CostAccountStatus[] }) {
   const failing = failingCostAccounts(statuses);
   const empty = emptyCostAccounts(statuses);
-  if (failing.length === 0 && empty.length === 0) return null;
+  const estimated = estimatedCostAccounts(statuses);
+  if (failing.length === 0 && empty.length === 0 && estimated.length === 0) return null;
 
   return (
     <>
@@ -65,6 +70,29 @@ export function CostCollectionNotice({ statuses }: { statuses: CostAccountStatus
           <Text style={styles.footnote}>
             Collection ran without error — the provider just hasn&apos;t reported any spend. A
             billing export enabled in the last day or two often has no rows to return yet.
+          </Text>
+        </View>
+      )}
+
+      {estimated.length > 0 && (
+        <View style={styles.neutralBox}>
+          <Text style={styles.neutralHeading}>
+            {estimated.length === 1
+              ? `Spend for ${estimated[0]!.displayName} is estimated`
+              : `Spend for ${estimated.length} accounts is estimated`}
+          </Text>
+          {estimated.length > 1 &&
+            estimated.map((s) => (
+              <Text key={s.accountId} style={styles.message}>
+                {s.displayName}
+              </Text>
+            ))}
+          <Text style={styles.footnote}>
+            {estimated.length === 1 ? "This provider publishes" : "These providers publish"} no
+            billing API, so the amounts are what your current resources list for rather than what
+            you were billed. Expect it to run low: anything deleted part-way through the period is
+            no longer there to price, every rate is list rather than negotiated, and credits, tax
+            and refunds never appear.
           </Text>
         </View>
       )}

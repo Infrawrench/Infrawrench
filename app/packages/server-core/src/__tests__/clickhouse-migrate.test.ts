@@ -31,8 +31,38 @@ describe("migrateMetrics", () => {
     expect(queries.some((q) => q.includes("metric_points_raw"))).toBe(true);
     expect(queries.some((q) => q.includes("mv_metric_points_1m"))).toBe(true);
     expect(queries.some((q) => q.includes("poll_outcomes"))).toBe(true);
-    // every statement is a CREATE
-    for (const q of queries) expect(q.trimStart().startsWith("CREATE")).toBe(true);
+    // Every statement creates or adds, and every one is idempotent: this runs
+    // on every boot, so a statement that is neither would fail the second time
+    // (or, worse, succeed and destroy something).
+    for (const q of queries) {
+      expect(q.trimStart()).toMatch(
+        /^(CREATE (TABLE|MATERIALIZED VIEW) IF NOT EXISTS|ALTER TABLE \w+ ADD COLUMN IF NOT EXISTS)\b/,
+      );
+    }
+  });
+
+  it("only ever ADDs columns — the cost_daily sort key is frozen", async () => {
+    await migrate.migrateMetrics();
+    const queries = command.mock.calls.map((c) => (c[0] as unknown as { query: string }).query);
+    const alters = queries.filter((q) => q.trimStart().startsWith("ALTER"));
+    expect(alters.length).toBeGreaterThan(0);
+    for (const q of alters) {
+      // Re-keying cost_daily would silently merge away three years of history
+      // under ReplacingMergeTree; dropping or retyping a column loses it.
+      expect(q).not.toMatch(/\b(MODIFY|DROP|RENAME|ORDER BY|PRIMARY KEY)\b/);
+    }
+  });
+
+  it("gives every added cost_daily column a default so old rows still read", async () => {
+    await migrate.migrateMetrics();
+    const queries = command.mock.calls.map((c) => (c[0] as unknown as { query: string }).query);
+    const added = queries.filter((q) => q.includes("ADD COLUMN IF NOT EXISTS"));
+    // charge_type in particular: without DEFAULT 'usage' the whole back
+    // catalogue reads as an empty string that matches no charge-type filter.
+    expect(added.some((q) => /charge_type .*DEFAULT 'usage'/.test(q))).toBe(true);
+    expect(added.some((q) => /amortized_amount .*DEFAULT 0/.test(q))).toBe(true);
+    expect(added.some((q) => /commitment_id .*DEFAULT ''/.test(q))).toBe(true);
+    for (const q of added) expect(q).toMatch(/DEFAULT/);
   });
 
   it("propagates a command error", async () => {

@@ -26,24 +26,82 @@ Cost and budget cards drag around the grid like pinned resources, and share the 
 
 ### What you can configure
 
-| Option     | Choices                                                                                    |
-| ---------- | ------------------------------------------------------------------------------------------ |
-| Chart type | Stacked bar, multi bar, line, area, pie                                                    |
-| Binning    | Daily, weekly, monthly, cumulative                                                         |
-| Date range | Last 7/30/90 days, month/quarter/year to date, last month, last 12 months, or custom dates |
-| Group by   | Provider, account, service, region, resource, or tag                                       |
-| Filters    | Any of the same dimensions, `is` / `is not`, multiple rules                                |
-| Top groups | Show the top N groups (default 5); the rest fold into **Other**                            |
-| Compare    | Overlay the previous period as a dashed line, with a % change badge                        |
-| Forecast   | Project the recent trend forward as a dashed continuation                                  |
+| Option     | Choices                                                                                                   |
+| ---------- | --------------------------------------------------------------------------------------------------------- |
+| Chart type | Stacked bar, multi bar, line, area, pie                                                                   |
+| Binning    | Daily, weekly, monthly, cumulative                                                                        |
+| Date range | Last 7/30/90 days, month/quarter/year to date, last month, last 12 months, or custom dates                |
+| Group by   | Provider, account, service, region, resource, tag, charge type, or commitment                             |
+| Filters    | Any of the same dimensions, `is` / `is not`, multiple rules                                               |
+| Cost basis | **Cash** (what you were charged) or **Amortized** (commitments spread over the term they buy) — see below |
+| Top groups | Show the top N groups (default 5); the rest fold into **Other**                                           |
+| Compare    | Overlay the previous period as a dashed line, with a % change badge                                       |
+| Forecast   | Project the recent trend forward as a dashed continuation                                                 |
 
 <insert [A stacked-bar cost graph grouped by service with a forecast dashed line and previous-period comparison] here>
 
 Currencies are never merged: if your accounts bill in more than one currency the graph shows one series per currency and says so under the title.
 
+## Charge types, and cash vs amortized
+
+A bill is not all one thing. Alongside the usage you consumed, providers charge you for commitments you bought, refund you, credit you, and tax you — and if all of that lands in one number, a month where usage doubled can look flat because a credit absorbed it.
+
+Every cost row therefore carries a **charge type**:
+
+| Charge type             | What it is                                                                                       |
+| ----------------------- | ------------------------------------------------------------------------------------------------ |
+| **Usage**               | Consumption, billed at whatever rate applied. The default, and most of any bill.                 |
+| **Commitment fee**      | Buying a commitment: a reservation's up-front payment, a savings plan, a committed-use contract. |
+| **Commitment discount** | The negative line where a commitment covered usage that would otherwise be on-demand.            |
+| **Credit**              | Promotional or negotiated credit applied against the bill.                                       |
+| **Tax**                 | VAT, sales tax and the like, billed separately from the service.                                 |
+| **Refund**              | Money returned for a past charge.                                                                |
+| **Adjustment**          | A billing correction that is none of the above.                                                  |
+| **Support**             | A support plan, usually priced off the rest of the bill rather than off any one service.         |
+| **Other**               | A category the provider distinguishes that doesn't map onto the ones above.                      |
+
+Group by **Charge type** to see the split, or filter on it to answer a specific question — "usage only, ignore the credits" is the one worth knowing, because it is the number that tells you whether spend is actually growing.
+
+Not every provider distinguishes these. Where a provider doesn't, or where the data predates this, its rows are **Usage** — which is what they were always assumed to be.
+
+### Cash and amortized
+
+**Cost basis** decides which number the graph sums.
+
+- **Cash** is what the provider charged, on the day it charged it. This is your bank statement, and it is what every graph showed before this existed.
+- **Amortized** spreads a commitment's up-front fee across the term it actually buys. A one-year reservation paid up front is one enormous charge on the purchase day and 1/365th of it on each of the 365 days it covers.
+
+If you hold reservations, savings plans, or committed-use discounts, amortized is the honest number. On a cash basis the month you sign a three-year commitment looks like a catastrophe, and every month after it looks suspiciously cheap — neither reflects what your infrastructure cost to run in that month, and a budget on a cash basis will breach on the purchase and then sit quiet for three years. Amortized answers "what did July cost us"; cash answers "what left the bank in July". Both are real questions; they just aren't the same one.
+
+Providers that don't report an amortized amount fall back to their cash amount rather than dropping out — so an amortized graph over a mixed estate is still the whole estate, with the commitments spread and everything else unchanged. The option only appears when at least one connected account's provider reports amortized cost; otherwise the two views would draw the identical graph.
+
+Budgets take the same setting, and it's the same reasoning: a budget tracking amortized spend keeps alerting sensibly through the term of a commitment.
+
+From the terminal the same two questions are `infrawrench costs --basis amortized` and `infrawrench costs --charge-type usage` (repeat the flag for more than one kind); `--group-by charge_type` prints the split. The text output names the basis next to the total, so a number copied out of it says what it is.
+
+<insert [Cost graph config modal showing the Cost basis select set to Amortized, next to the Group by select set to Charge type] here>
+
+<insert [Two cost graphs side by side for the same month: one on a cash basis with a single tall commitment-fee bar, one amortized with that fee spread evenly across the days] here>
+
+### When the number is an estimate
+
+Some providers publish no billing API at all. For those, Infrawrench prices your inventory against the provider's published rate card instead — so you still get a spend graph, but it is a calculation rather than an invoice, and any graph whose scope includes such an account says so above the chart.
+
+Expect an estimate to read low, in three specific ways:
+
+- **Anything deleted mid-period is missing.** Inventory is what exists now. A machine that ran for three weeks and was destroyed on the 22nd isn't there to price, and neither are the three weeks it cost you.
+- **Every rate is list.** Negotiated pricing, volume tiers, committed-use and sustained-use discounts are all invisible to a rate card.
+- **Non-resource lines never appear.** Credits, tax, refunds and one-off charges have no resource to hang off.
+
+Check the plugin's page under [Plugins](../plugins/aws.md) to see whether its costs are collected or estimated before you reconcile a number against a bill.
+
+`infrawrench costs` prints the same note above the chart and lists these accounts as `estimatedAccounts` under `--json`. Over `GET /costs/status` it is the `estimated` flag on each account, alongside `chargeTypes` and `amortization`.
+
+<insert [Dashboard showing the neutral "Spend for Hetzner is estimated" banner above a cost widget, with the explanation about list rates and deleted resources] here>
+
 ## Budgets & alerts
 
-A budget is a monthly amount tracked against a scope — all spend, or a filtered slice (one provider, one account, a tag). Create one from the **Costs** panel, or from a dashboard's **+** tile → **New budget**.
+A budget is a monthly amount tracked against a scope — all spend, or a filtered slice (one provider, one account, a tag). Create one from the **Costs** panel, or from a dashboard's **+** tile → **New budget**. A budget also picks a [cost basis](#cash-and-amortized): leave it on cash to track what you are charged, or switch it to amortized so a commitment purchase doesn't blow the budget in the month you sign it.
 
 Each budget has one or more thresholds:
 
@@ -151,9 +209,13 @@ It clears itself the moment the first row lands. If it persists for more than a 
 
 See each plugin's page under [Plugins](../plugins/aws.md) for what its cost integration needs (extra IAM permissions, token scopes) and any caveats such as list-price-only dollars.
 
+Kubernetes clusters have no billing API of their own, so their per-namespace and per-workload numbers are derived from node prices rather than collected — see [Kubernetes cost allocation](./kubernetes-costs.md).
+
 ## Forecasts are trend estimates
 
 Forecasts are a least-squares fit over the trailing 30 days of daily totals, projected forward. They are a trend estimate, not a billing prediction — one-off purchases, reserved-instance charges, and tier changes will not be anticipated.
+
+The fit follows the graph's [cost basis](#cash-and-amortized), which matters more than it sounds: fitting a trend through a cash series containing one enormous commitment purchase projects a month-end total that cannot happen. On an amortized basis that purchase is already spread, and the forecast is fit on the shape of your actual consumption.
 
 ## Prepaid credit
 

@@ -5,8 +5,12 @@
  */
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import {
+  COST_CHARGE_TYPES,
+  COST_CHARGE_TYPE_LABELS,
+  COST_DIMENSIONS,
   OTHER_GROUP_KEY,
   type CostAccountStatus,
+  type CostDimensionId,
   type CostQueryRequest,
   type CostQueryResponse,
   type CostQuerySeries,
@@ -172,6 +176,11 @@ export async function runCostQuery(
     groupBy: q.groupBy,
     filters: q.filters,
     ...(q.groupByTagKey ? { groupByTagKey: q.groupByTagKey } : {}),
+    // Carried on the base query so the comparison period is measured on the
+    // same basis and the same charge types — a cash previous period against an
+    // amortized current one is a comparison of two different questions.
+    ...(q.costBasis ? { costBasis: q.costBasis } : {}),
+    ...(q.chargeTypes && q.chargeTypes.length > 0 ? { chargeTypes: q.chargeTypes } : {}),
   };
 
   const grouped = foldTopN(await queryCosts(organizationId, baseQuery), q.topN);
@@ -207,6 +216,11 @@ export async function runCostQuery(
       binning: "daily",
       groupBy: "none",
       filters: q.filters,
+      // Fit on the basis being drawn: projecting a cash series that contains a
+      // one-off commitment purchase forecasts a month-end total that cannot
+      // happen, which is the whole reason the amortized basis exists.
+      ...(q.costBasis ? { costBasis: q.costBasis } : {}),
+      ...(q.chargeTypes && q.chargeTypes.length > 0 ? { chargeTypes: q.chargeTypes } : {}),
     });
     const dailyTotals = new Map<string, number>();
     for (const g of fitGroups) {
@@ -251,21 +265,23 @@ export async function listCostDimensionValues(
   dimension: string,
   tagKey?: string,
 ): Promise<CostDimensionValue[]> {
-  if (
-    dimension !== "provider" &&
-    dimension !== "account" &&
-    dimension !== "service" &&
-    dimension !== "region" &&
-    dimension !== "resource" &&
-    dimension !== "tag"
-  ) {
+  if (!(COST_DIMENSIONS as readonly string[]).includes(dimension)) {
     throw new CostQueryError("Invalid dimension");
   }
-  if (dimension === "tag" && !tagKey) {
+  const dim = dimension as CostDimensionId;
+  if (dim === "tag" && !tagKey) {
     throw new CostQueryError("tagKey is required for the tag dimension");
   }
 
-  const values = await getCostDimensionValues(organizationId, dimension, {
+  // Charge types are a closed set, not a discovery: answering from a DISTINCT
+  // query would leave the picker empty until a provider happened to bill a
+  // credit, so an operator could never filter *out* the credits they already
+  // suspect are hiding growth. The labelled union is always offered.
+  if (dim === "charge_type") {
+    return COST_CHARGE_TYPES.map((value) => ({ value, label: COST_CHARGE_TYPE_LABELS[value] }));
+  }
+
+  const values = await getCostDimensionValues(organizationId, dim, {
     ...(tagKey ? { tagKey } : {}),
   });
 
@@ -380,6 +396,15 @@ export async function getOrgCostStatus(organizationId: string): Promise<CostAcco
         supportsCosts: !!capability,
         periodNative: capability?.periodNative ?? false,
         dimensions: capability?.dimensions ?? [],
+        // Both default false, which is also what an account with no cost
+        // capability at all reports: a plugin that never says it distinguishes
+        // charge types writes every row as usage, and one that never says it
+        // amortizes has no second number to show.
+        chargeTypes: capability?.chargeTypes ?? false,
+        amortization: capability?.amortization ?? false,
+        // False means the provider reported the money. True means we priced it
+        // ourselves, which the surfaces have to say out loud.
+        estimated: capability?.estimated ?? false,
         costLastPolledAt: row.costLastPolledAt?.toISOString() ?? null,
         costBackfilledAt: row.costBackfilledAt?.toISOString() ?? null,
         costPollFailureCount: row.costPollFailureCount,

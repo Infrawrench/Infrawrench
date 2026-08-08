@@ -206,6 +206,14 @@ export async function ingestCostRows(opts: {
       amount: row.amount,
       usage_amount: row.usageAmount ?? 0,
       usage_unit: shortString(row.usageUnit, fail, "usageUnit"),
+      // Pushed rows are cash usage. A caller reporting a parsed invoice has no
+      // provider-side notion of a commitment term to amortize over, and letting
+      // them declare one would make "amortized" mean something different per
+      // source. `hashTags` above is called without extras for the same reason:
+      // these defaults must hash exactly as they did before the columns existed.
+      charge_type: "usage",
+      amortized_amount: 0,
+      commitment_id: "",
     };
   });
 

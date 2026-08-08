@@ -4,11 +4,18 @@ import {
   costAnomalyDeltaPercent,
   costQueryForConfig,
   emptyCostAccounts,
+  estimatedCostAccounts,
   failingCostAccounts,
   formatBucketLabel,
   formatBudgetMonth,
   resolveCostDateRange,
   totalPerBucket,
+  COST_BASES,
+  COST_BASIS_LABELS,
+  COST_CHARGE_TYPES,
+  COST_CHARGE_TYPE_LABELS,
+  COST_DIMENSIONS,
+  COST_DIMENSION_LABELS,
   type CostAccountStatus,
   type CostAnomaly,
   type CostGraphConfig,
@@ -131,6 +138,44 @@ describe("costQueryForConfig", () => {
     expect(withTag.groupByTagKey).toBe("env");
     expect("groupByTagKey" in costQueryForConfig(config)).toBe(false);
   });
+
+  it("omits costBasis when the config has none, and carries whichever it has", () => {
+    // A widget authored before the basis existed must keep sending the exact
+    // request it always sent, so an unset basis is absent rather than "cash".
+    expect("costBasis" in costQueryForConfig(config)).toBe(false);
+    // A basis the author actually chose is sent, cash included.
+    expect(costQueryForConfig({ ...config, costBasis: "cash" }).costBasis).toBe("cash");
+    expect(costQueryForConfig({ ...config, costBasis: "amortized" }).costBasis).toBe("amortized");
+  });
+});
+
+describe("charge types and cost bases", () => {
+  it("labels every charge type and every basis", () => {
+    for (const t of COST_CHARGE_TYPES) {
+      expect(COST_CHARGE_TYPE_LABELS[t]).toBeTruthy();
+    }
+    for (const b of COST_BASES) {
+      expect(COST_BASIS_LABELS[b]).toBeTruthy();
+    }
+    expect(Object.keys(COST_CHARGE_TYPE_LABELS).sort()).toEqual([...COST_CHARGE_TYPES].sort());
+    expect(Object.keys(COST_BASIS_LABELS).sort()).toEqual([...COST_BASES].sort());
+  });
+
+  it("keeps usage first — it is the default every untyped row reads as", () => {
+    expect(COST_CHARGE_TYPES[0]).toBe("usage");
+    expect(COST_BASES[0]).toBe("cash");
+  });
+
+  it("exposes charge type and commitment as groupable dimensions, with labels", () => {
+    expect(COST_DIMENSIONS).toContain("charge_type");
+    expect(COST_DIMENSIONS).toContain("commitment");
+    // Every dimension is labelled: the pickers render straight off this map, so
+    // a missing entry is a blank option rather than a type error at the call.
+    for (const d of COST_DIMENSIONS) {
+      expect(COST_DIMENSION_LABELS[d]).toBeTruthy();
+    }
+    expect(COST_DIMENSION_LABELS.charge_type).toBe("Charge type");
+  });
 });
 
 describe("label formatting", () => {
@@ -157,6 +202,9 @@ describe("failingCostAccounts", () => {
     supportsCosts: true,
     periodNative: false,
     dimensions: [],
+    chargeTypes: false,
+    amortization: false,
+    estimated: false,
     costLastPolledAt: null,
     costBackfilledAt: null,
     costPollFailureCount: 0,
@@ -203,6 +251,37 @@ describe("failingCostAccounts", () => {
           account({ ...polled, supportsCosts: false }),
         ]),
       ).toEqual([]);
+    });
+  });
+
+  describe("estimatedCostAccounts", () => {
+    it("keeps cost-capable accounts whose spend was computed, not billed", () => {
+      const priced = account({ estimated: true });
+      expect(
+        estimatedCostAccounts([
+          account({}),
+          priced,
+          // No cost capability contributes no spend at all, estimated or not.
+          account({ supportsCosts: false, estimated: true }),
+        ]),
+      ).toEqual([priced]);
+    });
+
+    it("says nothing about an account whose provider reports real spend", () => {
+      expect(estimatedCostAccounts([account({}), account({ amortization: true })])).toEqual([]);
+    });
+
+    it("flags an estimating account that is otherwise perfectly healthy", () => {
+      // The point of the notice: this account has coverage, no error, and a
+      // recent poll, so nothing else on any surface would mention it.
+      const healthy = account({
+        estimated: true,
+        costLastPolledAt: "2026-07-28T00:00:00.000Z",
+        coverage: { firstDay: "2026-07-01", lastDay: "2026-07-28" },
+      });
+      expect(estimatedCostAccounts([healthy])).toEqual([healthy]);
+      expect(failingCostAccounts([healthy])).toEqual([]);
+      expect(emptyCostAccounts([healthy])).toEqual([]);
     });
   });
 });

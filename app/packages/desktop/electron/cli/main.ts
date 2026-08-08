@@ -63,7 +63,8 @@ COMMANDS
   export              eject an account's inventory as Terraform HCL   --account <id|name> [--format terraform]
   estimate <id|name>  what a resource costs per month at list price, itemized (cloud only;
                       full id, or a name/external-id with --account)
-  costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource]
+  costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource|charge_type|commitment]
+                      [--basis cash|amortized] [--charge-type usage|credit|tax|… (repeatable)]
   costs --anomalies   days a provider or service spiked past its own baseline   [--days 30]
   costs push          push your own cost rows   --source <name> [--file rows.json | stdin]
   tags                org tag policy, per-account compliance & untagged spend   [--last 30d]

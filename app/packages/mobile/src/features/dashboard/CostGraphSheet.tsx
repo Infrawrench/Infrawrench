@@ -22,6 +22,7 @@ import {
   TextField,
   ToggleChip,
 } from "@/components/form";
+import { CostBasisChips } from "./CostBasisChips";
 import { CostFilterEditor, useDimensionValues } from "./CostFilterEditor";
 
 /**
@@ -151,6 +152,7 @@ export function CostGraphSheet({
           set({ groupBy, ...(groupBy === "tag" ? {} : { groupByTagKey: undefined }) })
         }
       />
+      <CostBasisChips value={config.costBasis} onChange={(costBasis) => set({ costBasis })} />
       {config.groupBy === "tag" ? (
         <ChipSelect
           label="Tag key"

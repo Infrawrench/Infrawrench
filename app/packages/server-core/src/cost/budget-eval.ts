@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto";
 import type { BudgetThreshold } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { budgetAlertEvents, budgets } from "../db/schema";
-import { queryCosts, type CostFilter } from "../clickhouse/cost-readers";
+import { queryCosts, type CostBasis, type CostFilter } from "../clickhouse/cost-readers";
 import { forecastMonthTotal, type DailyPoint } from "./forecast";
 import { sendBudgetAlertPage } from "../twilio-pager";
 import { alertReached, routeAlert } from "../alerts/route";
@@ -45,12 +45,19 @@ function formatCents(cents: number, currency: string): string {
  * Current-month actual + forecast for a budget's scope, in its currency.
  * Fit data spans the trailing 60 days so early-month forecasts still have a
  * full window. Shared with the budgets API routes.
+ *
+ * `costBasis` is the budget's own, defaulting to cash. It has to be threaded
+ * all the way down here rather than applied afterwards: the forecast is fit on
+ * these same daily points, and fitting a trend through a cash series that
+ * contains one enormous commitment purchase projects a month-end total that
+ * will never happen.
  */
 export async function budgetMonthStatus(
   organizationId: string,
   filters: CostFilter[],
   currency: string,
   now = new Date(),
+  costBasis?: CostBasis,
 ): Promise<{ month: string; actualCents: number; forecastCents: number | null }> {
   const today = isoDay(now);
   const month = today.slice(0, 7);
@@ -60,6 +67,7 @@ export async function budgetMonthStatus(
     binning: "daily",
     groupBy: "none",
     filters,
+    ...(costBasis ? { costBasis } : {}),
   });
 
   const daily = new Map<string, number>();
@@ -120,6 +128,7 @@ export async function evaluateBudgetsForOrg(
         (budget.filters ?? []) as CostFilter[],
         budget.currency,
         now,
+        (budget.costBasis ?? undefined) as CostBasis | undefined,
       );
 
       if (watchers.length > 0) {

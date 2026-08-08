@@ -11,7 +11,9 @@ import { z } from "zod";
 import {
   COST_ANOMALY_LIMITS,
   COST_ANOMALY_SMS_MODES,
+  COST_BASES,
   COST_BINNINGS,
+  COST_CHARGE_TYPES,
   COST_CHART_TYPES,
   COST_DIMENSIONS,
   COST_RANGE_PRESETS,
@@ -33,6 +35,10 @@ import {
 
 export {
   COST_DIMENSIONS,
+  COST_CHARGE_TYPES,
+  COST_CHARGE_TYPE_LABELS,
+  COST_BASES,
+  COST_BASIS_LABELS,
   COST_RANGE_PRESETS,
   COST_CHART_TYPES,
   COST_BINNINGS,
@@ -58,6 +64,8 @@ export {
   type CostAccountStatus,
   type CostPollError,
   type CostDimensionId,
+  type CostChargeType,
+  type CostBasis,
   type CostFilter,
   type CostRangePreset,
   type CostDateRange,
@@ -119,6 +127,12 @@ export const costGraphConfigSchema = z.object({
   topN: z.number().int().min(1).max(15).default(5),
   comparePreviousPeriod: z.boolean().default(false),
   showForecast: z.boolean().default(false),
+  /**
+   * Optional rather than defaulted: an absent basis is "cash", and defaulting
+   * it here would rewrite every stored widget config the first time it is
+   * re-saved, for no change in what it draws.
+   */
+  costBasis: z.enum(COST_BASES).optional(),
 });
 
 /** A budget widget is a dashboard view onto a budgets row — alerts outlive it. */
@@ -139,6 +153,8 @@ export const budgetInputSchema = z.object({
   currency: z.string().length(3).default("USD"),
   filters: z.array(costFilterSchema).default([]),
   thresholds: z.array(budgetThresholdSchema).min(1).max(10),
+  /** Which number the budget tracks; absent is cash. */
+  costBasis: z.enum(COST_BASES).optional(),
 });
 
 /**
@@ -246,6 +262,10 @@ export const costQueryRequestSchema = z.object({
   topN: z.number().int().min(1).max(15).default(5),
   comparePreviousPeriod: z.boolean().default(false),
   forecast: z.boolean().default(false),
+  /** Which number to sum; absent is cash, the basis every older client sends. */
+  costBasis: z.enum(COST_BASES).optional(),
+  /** Restrict to these charge types; absent is all of them. */
+  chargeTypes: z.array(z.enum(COST_CHARGE_TYPES)).optional(),
 });
 
 /**

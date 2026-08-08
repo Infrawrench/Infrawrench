@@ -13,11 +13,30 @@ const BudgetThreshold = strict({
 }).openapi("BudgetThreshold");
 
 const CostFilterRef = strict({
-  dimension: z.enum(["provider", "account", "service", "region", "resource", "tag"]),
+  dimension: z.enum([
+    "provider",
+    "account",
+    "service",
+    "region",
+    "resource",
+    "tag",
+    "charge_type",
+    "commitment",
+  ]),
   op: z.enum(["in", "not_in"]),
   values: z.array(z.string()).min(1),
   tagKey: z.string().optional(),
 }).openapi("BudgetCostFilter");
+
+const BudgetCostBasis = z
+  .enum(["cash", "amortized"])
+  .describe(
+    "Which number the budget tracks. Defaults to `cash` — what the provider charged, when it " +
+      "charged it. An organization holding reservations or savings plans usually wants " +
+      "`amortized`: a cash budget is blown the month a commitment is bought and then reads as " +
+      "under-spent for the rest of the term it paid for.",
+  )
+  .openapi("BudgetCostBasis");
 
 const BudgetInput = strict({
   name: z.string().min(1).max(120),
@@ -25,6 +44,7 @@ const BudgetInput = strict({
   currency: z.string().length(3).optional(),
   filters: z.array(CostFilterRef).optional(),
   thresholds: z.array(BudgetThreshold).min(1).max(10),
+  costBasis: BudgetCostBasis.optional(),
 }).openapi("BudgetInput");
 
 const BudgetFull = strict({
@@ -35,6 +55,7 @@ const BudgetFull = strict({
   currency: z.string(),
   filters: z.array(CostFilterRef),
   thresholds: z.array(BudgetThreshold),
+  costBasis: BudgetCostBasis,
   createdByUserId: z.string().nullable(),
   deletedAt: IsoDateTime.nullable(),
   createdAt: IsoDateTime,
@@ -58,6 +79,9 @@ const BudgetWithStatus = strict({
   currency: z.string(),
   filters: z.array(CostFilterRef),
   thresholds: z.array(BudgetThreshold),
+  costBasis: BudgetCostBasis.describe(
+    "The basis `actualCents` and `forecastCents` were measured on.",
+  ),
   month: Month,
   actualCents: z.number().int(),
   forecastCents: z.number().int().nullable(),

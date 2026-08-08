@@ -1,5 +1,9 @@
 import { Hono } from "hono";
-import { costAnomalySettingsSchema, costQueryRequestSchema } from "@infrawrench/ui/cost/config";
+import {
+  costAnomalySettingsSchema,
+  costQueryRequestSchema,
+  type CostBasis,
+} from "@infrawrench/ui/cost/config";
 import {
   getOrgAnomalySettings,
   setOrgAnomalySettings,
@@ -128,6 +132,18 @@ app.put("/anomaly-settings", async (c) => {
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * `?basis=cash|amortized` for the reports that follow one. Anything else — an
+ * absent param, or a typo — reads as cash, the basis these reports have always
+ * been computed on. A typo silently changing which money is reported would be
+ * worse than ignoring it.
+ */
+function parseBasis(c: {
+  req: { query(name: string): string | undefined };
+}): CostBasis | undefined {
+  return c.req.query("basis") === "amortized" ? "amortized" : undefined;
+}
+
 /** Parse `?from&to` (both YYYY-MM-DD); defaults to the trailing 30 days. */
 function parseRange(c: {
   req: { query(name: string): string | undefined };
@@ -149,7 +165,9 @@ app.get("/untagged", async (c) => {
   requirePermission(c, "costs:read");
   const range = parseRange(c);
   if (!range) return c.json({ error: "from/to must be YYYY-MM-DD with from <= to" }, 400);
-  return c.json(await getUntaggedSpendReport(c.get("organizationId"), range.from, range.to));
+  return c.json(
+    await getUntaggedSpendReport(c.get("organizationId"), range.from, range.to, parseBasis(c)),
+  );
 });
 
 /**
@@ -160,7 +178,9 @@ app.get("/showback", async (c) => {
   requirePermission(c, "costs:read");
   const range = parseRange(c);
   if (!range) return c.json({ error: "from/to must be YYYY-MM-DD with from <= to" }, 400);
-  return c.json(await getShowbackReport(c.get("organizationId"), range.from, range.to));
+  return c.json(
+    await getShowbackReport(c.get("organizationId"), range.from, range.to, parseBasis(c)),
+  );
 });
 
 /**

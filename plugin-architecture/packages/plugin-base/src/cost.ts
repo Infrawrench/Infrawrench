@@ -36,7 +36,99 @@ export interface CostCapabilityDeclaration {
    * this so daily-binned charts can label the series as monthly-native.
    */
   periodNative?: boolean;
+  /**
+   * True when this provider's rows carry a meaningful {@link CostRow.chargeType}
+   * — that is, the plugin can tell usage apart from a credit, a tax line, a
+   * refund, or the purchase of a commitment.
+   *
+   * Declaring it false (the default) is not a claim that the provider only ever
+   * bills usage; it is a claim that *this plugin cannot tell*, so every row it
+   * writes is recorded as `usage`. The host uses the flag to decide whether
+   * "Charge type" is worth offering as a breakdown for an org, rather than
+   * showing a picker whose every value but one is permanently empty.
+   */
+  chargeTypes?: boolean;
+  /**
+   * True when this provider reports an amortized amount distinct from the cash
+   * amount — the up-front fee of a reservation, savings plan, or committed-use
+   * discount spread across the term it buys, rather than landed whole on the
+   * day it was charged.
+   *
+   * Defaults to false, and false means {@link CostRow.amortizedAmount} is never
+   * set, so amortized queries fall back to the cash amount for this provider.
+   * The host gates the amortized view on at least one connected account
+   * declaring this: without the flag the view would look like a second opinion
+   * on the same numbers, when it is in fact the same numbers.
+   */
+  amortization?: boolean;
+  /**
+   * True when this plugin *derives* its amounts rather than reading billed
+   * spend from the provider. Two shapes qualify: inventory × a rate card (the
+   * provider has no billing API at all, so the only available number is "what
+   * these resources list for"), and usage × published list prices (the provider
+   * meters consumption but never prices it).
+   *
+   * Defaults to false, which means the amounts came from the provider's own
+   * billing data and can be reconciled against an invoice line for line.
+   *
+   * Declaring it matters because an estimate is wrong in three specific,
+   * one-directional ways, and a user who compares it to an invoice will find
+   * the gap before they find the explanation:
+   *
+   * - It under-reports anything that existed for part of the period and was
+   *   then deleted. Inventory is a snapshot of what is there now; a machine
+   *   that ran for three weeks and was destroyed on the 22nd is simply not in
+   *   it, and the three weeks it cost are missing from the total.
+   * - It prices everything at list. Negotiated rates, volume tiers, committed
+   *   spend and sustained-use discounts all make the real bill lower, and
+   *   support plans, egress and add-ons make it higher.
+   * - It cannot represent anything that is not a resource: credits, refunds,
+   *   tax, and one-off charges have no inventory to hang off, so they never
+   *   appear at all.
+   *
+   * The host surfaces this next to the collection notices wherever an
+   * estimating account is in scope, so the number is labelled before it is
+   * trusted.
+   */
+  estimated?: boolean;
 }
+
+/**
+ * What a cost row *is*, as opposed to what it costs.
+ *
+ * Every provider bills more than consumption, and totalling those lines
+ * together is how a month reads as flat while the underlying usage doubled: a
+ * $60k reservation purchase and $60k of credits cancel out, a refund looks like
+ * negative usage, tax inflates every service breakdown. Splitting the rows by
+ * what kind of charge they are is what makes each of those visible.
+ *
+ * - `usage` — consumption billed at whatever rate applied. The default, and
+ *   what every row without a charge type is.
+ * - `commitment_fee` — buying a commitment: a reservation's up-front payment,
+ *   a savings plan's recurring fee, a committed-use contract. Cash out the door
+ *   on one day for capacity spanning months, which is exactly the row
+ *   {@link CostRow.amortizedAmount} exists to re-date.
+ * - `commitment_discount` — the (negative) line a provider writes when a
+ *   commitment covers usage that would otherwise have been billed on demand.
+ * - `credit` — promotional or negotiated credit applied against the bill.
+ * - `tax` — VAT, sales tax, and the like, billed separately from the service.
+ * - `refund` — money returned for a past charge.
+ * - `adjustment` — a billing correction that is none of the above.
+ * - `support` — a support plan or contract, usually priced off the rest of the
+ *   bill rather than off any one service.
+ * - `other` — the provider distinguishes a category this union does not. Better
+ *   than silently filing it under `usage`, which would overstate consumption.
+ */
+export type CostChargeType =
+  | "usage"
+  | "commitment_fee"
+  | "commitment_discount"
+  | "credit"
+  | "tax"
+  | "refund"
+  | "adjustment"
+  | "support"
+  | "other";
 
 /**
  * One normalized cost datum: the spend for a single day and dimension
@@ -66,6 +158,47 @@ export interface CostRow {
   usageAmount?: number;
   /** Unit for `usageAmount`, e.g. "GB-Hours". */
   usageUnit?: string;
+  /**
+   * What kind of charge this row is. Absent means `"usage"` — every plugin
+   * written before this field existed keeps reporting consumption, which is
+   * what it was reporting.
+   *
+   * Set it whenever the provider tells you, and declare `chargeTypes: true` on
+   * the manifest when you do. The failure it prevents is a reader who cannot
+   * tell a month of real growth from a month with one commitment purchase in
+   * it, and who therefore either panics at a spike that is prepayment or misses
+   * growth that a credit is masking.
+   */
+  chargeType?: CostChargeType;
+  /**
+   * The same money spread across the period it actually covers, in `currency`,
+   * when the provider distinguishes it. Absent means "same as `amount`".
+   *
+   * `amount` is cash: what the provider charged on `date`. For consumption the
+   * two agree, and most rows should leave this unset rather than duplicating
+   * the number. They diverge for commitments — a one-year reservation paid up
+   * front is a single enormous `amount` on the purchase day and 1/365th of it
+   * on each of the 365 days it buys. Only the second answers "what did this
+   * service cost us in July".
+   *
+   * Zero is a meaningful value here and is not the same as absent: a day
+   * covered by an already-paid commitment has a cash amount and an amortized
+   * amount that legitimately differ, and a row whose cash already landed
+   * elsewhere amortizes to nothing on this day. Readers that fall back to
+   * `amount` must therefore treat only *absent* as "no opinion".
+   */
+  amortizedAmount?: number;
+  /**
+   * Provider-native id of the reservation, savings plan, or committed-use
+   * discount this row is attributable to — the purchase itself, the discount it
+   * produced, and the usage it covered all carry the same id.
+   *
+   * It is what makes a commitment auditable after the fact: without it the
+   * up-front fee and the months of discount it bought are unrelated rows that
+   * happen to be near each other, and nobody can answer whether a specific
+   * reservation paid for itself.
+   */
+  commitmentId?: string;
 }
 
 /**

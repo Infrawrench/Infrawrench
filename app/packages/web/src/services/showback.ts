@@ -3,7 +3,7 @@
  * allocation rules. Shared by the HTTP route (`api/routes/cost-centres.ts`)
  * and the tool registry (`tools/costs.ts`), the same split as `cost-query.ts`.
  */
-import { UNALLOCATED_KEY, type ShowbackReport } from "@infrawrench/client-core";
+import { UNALLOCATED_KEY, type CostBasis, type ShowbackReport } from "@infrawrench/client-core";
 import { listAllocationRules, listCostCentres } from "@infrawrench/server-core/cost/allocation";
 import { getShowbackSpend } from "@infrawrench/server-core/clickhouse/cost-readers";
 
@@ -11,6 +11,7 @@ export async function getShowbackReport(
   organizationId: string,
   from: string,
   to: string,
+  costBasis?: CostBasis,
 ): Promise<ShowbackReport> {
   const [centres, rules] = await Promise.all([
     listCostCentres(organizationId),
@@ -24,7 +25,10 @@ export async function getShowbackReport(
     .filter((r) => centreNames.has(r.costCentreId))
     .map((r) => ({ costCentreId: r.costCentreId, match: r.match }));
 
-  const rows = await getShowbackSpend(organizationId, orderedRules, from, to);
+  // Follows the caller's basis. Charging a team the full cash value of a
+  // three-year commitment in the month it was signed is not a chargeback
+  // anyone can budget against.
+  const rows = await getShowbackSpend(organizationId, orderedRules, from, to, costBasis);
 
   const byCentre = new Map<string, Record<string, number>>();
   for (const row of rows) {

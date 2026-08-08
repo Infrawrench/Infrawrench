@@ -1,5 +1,6 @@
 import {
   emptyCostAccounts,
+  estimatedCostAccounts,
   failingCostAccounts,
   type CostAccountStatus,
 } from "@infrawrench/client-core";
@@ -15,10 +16,10 @@ export interface CostCollectionNoticeProps {
 }
 
 /**
- * Explains why cost data is missing for an account.
+ * Explains why cost data is missing — or where it came from.
  *
- * Two states get their own notice, because both otherwise render as an empty
- * graph with nothing to act on:
+ * Three states get their own notice, because each otherwise renders as a graph
+ * with nothing to act on, or worse, a graph that looks fine and isn't:
  *
  *  - Collection is failing. Runs daily and backs off, so a misconfigured
  *    provider (GCP without its BigQuery billing export, an expired billing
@@ -27,13 +28,19 @@ export interface CostCollectionNoticeProps {
  *  - Collection succeeds and returns nothing. A correctly configured export
  *    that hasn't produced its first rows yet is healthy in every stored
  *    field, so without saying so the blank graph reads as a bug.
+ *  - Spend is estimated rather than billed. Some providers publish no billing
+ *    API at all, so their amounts are inventory priced against a rate card.
+ *    That graph looks exactly like a collected one, which is the problem: the
+ *    number is systematically not the invoice, and the reader has to be told
+ *    before they reconcile it rather than after.
  *
- * Renders nothing when every cost-capable account is collecting data.
+ * Renders nothing when every cost-capable account is collecting real data.
  */
 export function CostCollectionNotice({ statuses, onOpenExternal }: CostCollectionNoticeProps) {
   const failing = failingCostAccounts(statuses);
   const empty = emptyCostAccounts(statuses);
-  if (failing.length === 0 && empty.length === 0) return null;
+  const estimated = estimatedCostAccounts(statuses);
+  if (failing.length === 0 && empty.length === 0 && estimated.length === 0) return null;
 
   return (
     <>
@@ -107,6 +114,35 @@ export function CostCollectionNotice({ statuses, onOpenExternal }: CostCollectio
           <p className="mt-1.5 text-xs text-on-surface-faint">
             Collection ran without error — the provider just hasn&apos;t reported any spend. A
             billing export enabled in the last day or two often has no rows to return yet.
+          </p>
+        </div>
+      )}
+
+      {estimated.length > 0 && (
+        <div
+          role="status"
+          className="mb-4 rounded-xl border border-border bg-surface-overlay px-4 py-3 text-sm"
+        >
+          <p className="font-medium text-on-surface">
+            {estimated.length === 1
+              ? `Spend for ${estimated[0]!.displayName} is estimated`
+              : `Spend for ${estimated.length} accounts is estimated`}
+          </p>
+          {estimated.length > 1 && (
+            <ul className="mt-1 space-y-1.5">
+              {estimated.map((s) => (
+                <li key={s.accountId} className="text-on-surface-secondary">
+                  {s.displayName}
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-1.5 text-xs text-on-surface-faint">
+            {estimated.length === 1 ? "This provider publishes" : "These providers publish"} no
+            billing API, so the amounts are what your current resources list for rather than what
+            you were billed. Expect it to run low: anything deleted part-way through the period is
+            no longer there to price, every rate is list rather than negotiated, and credits, tax
+            and refunds never appear.
           </p>
         </div>
       )}

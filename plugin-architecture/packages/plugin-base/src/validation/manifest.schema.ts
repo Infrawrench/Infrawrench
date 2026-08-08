@@ -72,6 +72,12 @@ export const pluginManifestSchema = z.object({
       maxHistoryDays: z.number().int().positive().optional(),
       restatementDays: z.number().int().positive().optional(),
       periodNative: z.boolean().optional(),
+      /** This provider distinguishes charge types (usage vs credit vs tax…). */
+      chargeTypes: z.boolean().optional(),
+      /** This provider reports amortized amounts distinct from cash amounts. */
+      amortization: z.boolean().optional(),
+      /** Amounts are derived (inventory × rate card, usage × list prices). */
+      estimated: z.boolean().optional(),
     })
     .optional(),
   credits: z

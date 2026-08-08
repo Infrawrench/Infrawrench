@@ -933,6 +933,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       currency: budget.currency,
       filters: budget.filters as BudgetInput["filters"],
       thresholds: budget.thresholds,
+      // Round-tripped, or editing a budget's name would quietly move it back to
+      // the cash basis it was deliberately taken off.
+      ...(budget.costBasis ? { costBasis: budget.costBasis } : {}),
     };
   }
 

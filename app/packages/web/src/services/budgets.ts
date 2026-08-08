@@ -5,7 +5,7 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import type { BudgetPlacement, BudgetWithStatus } from "@infrawrench/ui/cost";
-import type { BudgetInput, CostFilter } from "@infrawrench/ui/cost/config";
+import type { BudgetInput, CostBasis, CostFilter } from "@infrawrench/ui/cost/config";
 import { budgetMonthStatus } from "@infrawrench/server-core/cost/budget-eval";
 import { db } from "../db/client";
 import { budgetAlertEvents, budgets, dashboardWidgets, dashboards } from "../db/schema";
@@ -65,10 +65,13 @@ async function toBudgetWithStatus(
   b: BudgetRow,
   placements: BudgetPlacement[],
 ): Promise<BudgetWithStatus> {
+  const costBasis = (b.costBasis ?? "cash") as CostBasis;
   const status = await budgetMonthStatus(
     organizationId,
     (b.filters ?? []) as CostFilter[],
     b.currency,
+    undefined,
+    costBasis,
   );
   const events = await db
     .select()
@@ -83,6 +86,7 @@ async function toBudgetWithStatus(
     currency: b.currency,
     filters: (b.filters ?? []) as CostFilter[],
     thresholds: b.thresholds as BudgetWithStatus["thresholds"],
+    costBasis,
     month: status.month,
     actualCents: status.actualCents,
     forecastCents: status.forecastCents,
@@ -158,6 +162,9 @@ export async function createBudget(
       currency: input.currency,
       filters: input.filters,
       thresholds: input.thresholds,
+      // Absent means cash — the column's own default, restated here so the
+      // insert doesn't depend on which of the two defaults applies.
+      costBasis: input.costBasis ?? "cash",
       createdByUserId,
     })
     .returning();
@@ -178,6 +185,7 @@ export async function updateBudget(
       currency: input.currency,
       filters: input.filters,
       thresholds: input.thresholds,
+      costBasis: input.costBasis ?? "cash",
       updatedAt: new Date(),
     })
     .where(

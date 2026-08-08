@@ -9,6 +9,8 @@ import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
 import type {
   CostAccountStatus,
   CostAnomaly,
+  CostBasis,
+  CostChargeType,
   CostQueryRequest,
   CostQueryResponse,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
@@ -18,20 +20,78 @@ import { c, printJson, println, printTable, formatMoney, seriesColor } from "../
 import { anomalyDeltaPercent } from "../format";
 import { barChart, sparkline } from "../charts";
 
-const GROUP_DIMENSIONS = ["provider", "account", "service", "region", "resource"] as const;
+const GROUP_DIMENSIONS = [
+  "provider",
+  "account",
+  "service",
+  "region",
+  "resource",
+  "charge_type",
+  "commitment",
+] as const;
+
+/**
+ * The two money bases and the charge types, restated as plain arrays.
+ *
+ * The wire types above are imported type-only so the CLI keeps its zero runtime
+ * dependencies; a `const` from client-core would be a real import. Drift is
+ * caught at build time anyway — the values are assigned to the imported types
+ * below, so removing a charge type upstream fails this file's typecheck.
+ */
+const COST_BASES: readonly CostBasis[] = ["cash", "amortized"];
+const CHARGE_TYPES: readonly CostChargeType[] = [
+  "usage",
+  "commitment_fee",
+  "commitment_discount",
+  "credit",
+  "tax",
+  "refund",
+  "adjustment",
+  "support",
+  "other",
+];
+
+/** `--basis cash|amortized`, defaulting to cash. */
+function parseBasis(raw: string | undefined): CostBasis | undefined {
+  if (raw === undefined) return undefined;
+  const match = COST_BASES.find((b) => b === raw);
+  if (!match) {
+    throw new CliError(`--basis must be one of ${COST_BASES.join(", ")} — got "${raw}".`, 2);
+  }
+  return match;
+}
+
+/** Repeated `--charge-type`; empty means every kind, i.e. a net total. */
+function parseChargeTypes(raw: string[]): CostChargeType[] {
+  return raw.map((value) => {
+    const match = CHARGE_TYPES.find((t) => t === value);
+    if (!match) {
+      throw new CliError(
+        `--charge-type must be one of ${CHARGE_TYPES.join(", ")} — got "${value}".`,
+        2,
+      );
+    }
+    return match;
+  });
+}
 
 /**
  * Collection runs daily in the background and backs off on failure, so a
  * misconfigured provider reads as missing spend rather than an error. Fetch
  * the per-account state so the numbers below can be trusted (or explained).
  *
- * Two states are worth reporting: collection that failed, and collection that
+ * Three states are worth reporting: collection that failed, collection that
  * succeeded with nothing to show (a billing export that hasn't produced its
- * first rows yet) — both otherwise look like an account with no spend.
+ * first rows yet) — both otherwise look like an account with no spend — and
+ * spend that was computed here rather than billed by the provider, which looks
+ * like nothing at all until someone reconciles it against an invoice.
  */
 interface CollectionState {
   failing: CostAccountStatus[];
   empty: CostAccountStatus[];
+  estimated: CostAccountStatus[];
+  /** True when some account's plugin reports amortized cost at all. */
+  amortizing: boolean;
 }
 
 async function loadCollectionState(orgId: string): Promise<CollectionState> {
@@ -42,10 +102,14 @@ async function loadCollectionState(orgId: string): Promise<CollectionState> {
     empty: accounts.filter(
       (a) => a.supportsCosts && !a.costPollError && a.costLastPolledAt !== null && !a.coverage,
     ),
+    estimated: accounts.filter((a) => a.supportsCosts && a.estimated),
+    // `amortization` is optional on older servers' responses; absent reads as
+    // "doesn't report one", which is what such a server was doing.
+    amortizing: accounts.some((a) => a.supportsCosts && a.amortization),
   };
 }
 
-function printCollectionWarnings({ failing, empty }: CollectionState): void {
+function printCollectionWarnings({ failing, empty, estimated }: CollectionState): void {
   for (const account of failing) {
     println(`${c.yellow("!")} ${c.bold(account.displayName)} ${c.dim("cost collection failing")}`);
     println(`  ${account.costPollError!.message}`);
@@ -57,7 +121,13 @@ function printCollectionWarnings({ failing, empty }: CollectionState): void {
     println(`${c.dim("·")} ${c.bold(account.displayName)} ${c.dim("no spend data yet")}`);
     println(`  ${c.dim("collected without error — the provider reported no spend")}`);
   }
-  if (failing.length > 0 || empty.length > 0) println();
+  for (const account of estimated) {
+    println(`${c.dim("·")} ${c.bold(account.displayName)} ${c.dim("spend is estimated")}`);
+    println(
+      `  ${c.dim("priced from current inventory at list rates — no billing API; runs low for anything deleted mid-period, and excludes credits, tax and refunds")}`,
+    );
+  }
+  if (failing.length > 0 || empty.length > 0 || estimated.length > 0) println();
 }
 
 function isoDay(ms: number): string {
@@ -77,6 +147,9 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     );
   }
 
+  const basis = parseBasis(range.basis);
+  const chargeTypes = parseChargeTypes(range.chargeTypes);
+
   const days = range.last ? Math.max(1, Math.round(parseLastDays(range.last))) : 30;
   const to = range.to ?? isoDay(Date.now());
   const from = range.from ?? isoDay(Date.parse(to) - (days - 1) * 86_400_000);
@@ -90,6 +163,10 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     topN: 8,
     comparePreviousPeriod: false,
     forecast: false,
+    // Omitted when defaulted, so an older server that has never heard of either
+    // field still answers the same request it always did.
+    ...(basis ? { costBasis: basis } : {}),
+    ...(chargeTypes.length > 0 ? { chargeTypes } : {}),
   };
 
   const [response, collection] = await Promise.all([
@@ -106,9 +183,14 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
       from,
       to,
       groupBy,
+      costBasis: basis ?? "cash",
+      chargeTypes,
       ...response,
       collectionFailures: collection.failing,
       awaitingData: collection.empty,
+      // A script totalling this output has to be able to tell which accounts'
+      // money was computed rather than billed.
+      estimatedAccounts: collection.estimated,
     });
     return;
   }
@@ -124,7 +206,22 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
   const totalLine = Object.entries(totals)
     .map(([currency, amount]) => formatMoney(amount, currency))
     .join(" + ");
-  println(`${c.bold(org.displayName)} ${c.dim(`· ${from} → ${to}`)}  ${c.bold(totalLine)}`);
+  // The basis and any charge-type narrowing go in the header: a total that is
+  // not the whole net bill must say so on the same line as the number, or it
+  // gets quoted as if it were.
+  const scope = [
+    `${from} → ${to}`,
+    ...(basis === "amortized" ? ["amortized"] : []),
+    ...(chargeTypes.length > 0 ? [chargeTypes.join(", ")] : []),
+  ].join(" · ");
+  println(`${c.bold(org.displayName)} ${c.dim(`· ${scope}`)}  ${c.bold(totalLine)}`);
+  if (basis === "amortized" && !collection.amortizing) {
+    println(
+      c.dim(
+        "no connected provider reports amortized cost — these are the amounts you were charged",
+      ),
+    );
+  }
   println();
 
   // Daily total trend across all series (single-currency assumption per line).

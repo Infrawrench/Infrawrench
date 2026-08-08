@@ -176,6 +176,80 @@ describe("POST /query", () => {
     expect(body.totals["USD"]).toBe(160);
   });
 
+  it("accepts a cost basis and charge types, and passes them down", async () => {
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({
+        ...validQuery,
+        costBasis: "amortized",
+        chargeTypes: ["usage", "commitment_fee"],
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+    expect(mockQueryCosts.mock.calls[0]![1]).toMatchObject({
+      costBasis: "amortized",
+      chargeTypes: ["usage", "commitment_fee"],
+    });
+  });
+
+  it("defaults to cash and every charge type when neither is given", async () => {
+    // Absent, not "cash": an older client's request must reach ClickHouse as
+    // the query it always was.
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify(validQuery),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+    const passed = mockQueryCosts.mock.calls[0]![1] as Record<string, unknown>;
+    expect("costBasis" in passed).toBe(false);
+    expect("chargeTypes" in passed).toBe(false);
+  });
+
+  it("rejects an unknown cost basis", async () => {
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({ ...validQuery, costBasis: "accrual" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(400);
+    expect(mockQueryCosts).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown charge type", async () => {
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({ ...validQuery, chargeTypes: ["usage", "vibes"] }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(400);
+    expect(mockQueryCosts).not.toHaveBeenCalled();
+  });
+
+  it("groups by charge type", async () => {
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({ ...validQuery, groupBy: "charge_type" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+    expect(mockQueryCosts.mock.calls[0]![1]).toMatchObject({ groupBy: "charge_type" });
+  });
+
+  it("carries the basis into the comparison period", async () => {
+    // A cash previous period against an amortized current one compares two
+    // different questions and prints the difference as a change in spend.
+    const res = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({ ...validQuery, costBasis: "amortized", comparePreviousPeriod: true }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+    expect(mockQueryCosts).toHaveBeenCalledTimes(2);
+    expect(mockQueryCosts.mock.calls[1]![1]).toMatchObject({ costBasis: "amortized" });
+  });
+
   it("returns a shifted previous period when requested", async () => {
     mockQueryCosts.mockResolvedValue([]);
     const res = await buildApp().request("/query", {
@@ -207,6 +281,31 @@ describe("GET /dimensions", () => {
     const res = await buildApp().request("/dimensions?dimension=tag-keys");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ values: ["env", "team"] });
+  });
+
+  it("answers charge_type from the fixed union without querying stored data", async () => {
+    // A DISTINCT query would leave the picker empty until a provider happened
+    // to bill a credit — so you could never filter credits out until you had
+    // one, which is exactly when you stop being able to see the problem.
+    const res = await buildApp().request("/dimensions?dimension=charge_type");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { values: Array<{ value: string; label: string }> };
+    expect(body.values).toContainEqual({ value: "usage", label: "Usage" });
+    expect(body.values).toContainEqual({ value: "credit", label: "Credit" });
+    expect(body.values).toHaveLength(9);
+    expect(mockGetCostDimensionValues).not.toHaveBeenCalled();
+  });
+
+  it("lists commitments from stored data", async () => {
+    mockGetCostDimensionValues.mockResolvedValue(["ri-1", "sp-2"]);
+    const res = await buildApp().request("/dimensions?dimension=commitment");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      values: [
+        { value: "ri-1", label: "ri-1" },
+        { value: "sp-2", label: "sp-2" },
+      ],
+    });
   });
 });
 

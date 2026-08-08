@@ -8,8 +8,43 @@ const IsoDate = z
   .openapi({ example: "2026-07-01" });
 
 const CostDimension = z
-  .enum(["provider", "account", "service", "region", "resource", "tag"])
+  .enum([
+    "provider",
+    "account",
+    "service",
+    "region",
+    "resource",
+    "tag",
+    "charge_type",
+    "commitment",
+  ])
   .openapi("CostDimension");
+
+const CostChargeType = z
+  .enum([
+    "usage",
+    "commitment_fee",
+    "commitment_discount",
+    "credit",
+    "tax",
+    "refund",
+    "adjustment",
+    "support",
+    "other",
+  ])
+  .openapi("CostChargeType");
+
+const CostBasis = z
+  .enum(["cash", "amortized"])
+  .describe(
+    "Which number to sum. `cash` is what the provider charged on the day it charged it — the " +
+      "default, and what every query returned before this existed. `amortized` spreads a " +
+      "commitment's up-front fee across the term it buys, so a year of capacity bought on one " +
+      "day is counted on the days it covers. Providers that report no amortized amount fall " +
+      "back to their cash amount, so an amortized query over a mixed estate never drops their " +
+      "spend.",
+  )
+  .openapi("CostBasis");
 
 const CostFilter = strict({
   dimension: CostDimension,
@@ -22,12 +57,32 @@ const CostQueryRequest = strict({
   from: IsoDate,
   to: IsoDate,
   binning: z.enum(["daily", "weekly", "monthly", "cumulative"]),
-  groupBy: z.enum(["none", "provider", "account", "service", "region", "resource", "tag"]),
+  groupBy: z.enum([
+    "none",
+    "provider",
+    "account",
+    "service",
+    "region",
+    "resource",
+    "tag",
+    "charge_type",
+    "commitment",
+  ]),
   groupByTagKey: z.string().optional(),
   filters: z.array(CostFilter).optional(),
   topN: z.number().int().min(1).max(15).optional(),
   comparePreviousPeriod: z.boolean().optional(),
   forecast: z.boolean().optional(),
+  costBasis: CostBasis.optional(),
+  chargeTypes: z
+    .array(CostChargeType)
+    .optional()
+    .describe(
+      "Restrict to these kinds of charge. Omitted is all of them, which is what makes an " +
+        "unfiltered total net rather than gross — credits, refunds and commitment discounts are " +
+        "included. Rows collected before charge types existed, and rows from providers that " +
+        "cannot distinguish them, are `usage`.",
+    ),
 }).openapi("CostQueryRequest");
 
 const CostSeriesPoint = strict({
@@ -62,6 +117,28 @@ const CostAccountStatus = strict({
   supportsCosts: z.boolean(),
   periodNative: z.boolean(),
   dimensions: z.array(z.enum(["service", "region", "resource", "tag"])),
+  chargeTypes: z
+    .boolean()
+    .describe(
+      "Whether this account's plugin can tell one kind of charge from another. False means " +
+        "every row it writes is recorded as `usage` — not that the provider only bills usage.",
+    ),
+  amortization: z
+    .boolean()
+    .describe(
+      "Whether this account's plugin reports an amortized amount distinct from the cash " +
+        "amount. Clients offer the amortized cost basis only when at least one account says " +
+        "yes; elsewhere the amortized view is the cash numbers under another name.",
+    ),
+  estimated: z
+    .boolean()
+    .describe(
+      "Whether this account's amounts are derived by Infrawrench — inventory priced against a " +
+        "rate card, or metered usage priced at published list rates — rather than reported as " +
+        "billed spend. True means the series cannot be reconciled against an invoice: resources " +
+        "deleted part-way through a period are no longer in inventory to be priced, all rates " +
+        "are list rather than negotiated, and credits, tax and refunds never appear.",
+    ),
   costLastPolledAt: IsoDateTime.nullable(),
   costBackfilledAt: IsoDateTime.nullable(),
   costPollFailureCount: z.number().int(),
@@ -267,7 +344,10 @@ export function registerCostPaths(ctx: BuildContext) {
     description:
       "Aggregates collected provider spend into per-bucket, per-group series for cost graphs. " +
       "Currencies are never merged; mixed-currency orgs get one series per currency. " +
-      "Optionally returns a previous-period comparison and a trend forecast.",
+      "Optionally returns a previous-period comparison and a trend forecast.\n\n" +
+      "`costBasis` chooses between cash and amortized money, and `chargeTypes` narrows which " +
+      "kinds of charge count. Both the comparison period and the forecast are computed on the " +
+      "same basis and charge types as the series itself.",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: CostQueryRequest } }, required: true },
@@ -288,7 +368,9 @@ export function registerCostPaths(ctx: BuildContext) {
     summary: "List distinct values for a cost dimension",
     description:
       "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys; " +
-      "dimension=tag requires tagKey.",
+      "dimension=tag requires tagKey. `charge_type` answers from the fixed set of charge " +
+      "types rather than from the stored data, so the picker is populated before any " +
+      "provider has reported one.",
     request: {
       params: OrgIdParam,
       query: strict({
@@ -299,6 +381,8 @@ export function registerCostPaths(ctx: BuildContext) {
           "region",
           "resource",
           "tag",
+          "charge_type",
+          "commitment",
           "tag-keys",
         ]),
         tagKey: z.string().optional(),

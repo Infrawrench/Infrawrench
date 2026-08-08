@@ -50,11 +50,20 @@ export function costTools(): ToolDefinition[] {
       title: "Query costs",
       description:
         "Aggregate daily cloud spend across all connected accounts into time series. " +
-        "Dates are inclusive YYYY-MM-DD. Group by provider/account/service/region/resource/tag " +
+        "Dates are inclusive YYYY-MM-DD. Group by " +
+        "provider/account/service/region/resource/tag/charge_type/commitment " +
         "(groupByTagKey required for tag), filter on the same dimensions, choose " +
         "daily/weekly/monthly/cumulative binning, and optionally include the previous period " +
         "(comparePreviousPeriod) or a trend forecast (forecast). Amounts are in the returned " +
-        'currency\'s major unit; groups beyond topN fold into an "Other" series.',
+        'currency\'s major unit; groups beyond topN fold into an "Other" series.\n\n' +
+        "costBasis picks the money: 'cash' (default) is what the provider charged on the day it " +
+        "charged it; 'amortized' spreads a commitment's up-front fee across the term it buys, " +
+        "which is the right number for an org holding reservations or savings plans. Providers " +
+        "that report no amortized amount fall back to their cash amount rather than dropping " +
+        "out. chargeTypes narrows to particular kinds of charge (usage, commitment_fee, " +
+        "commitment_discount, credit, tax, refund, adjustment, support, other); omitting it " +
+        "includes all of them, which is what makes a total net rather than gross — filter to " +
+        "['usage'] to see whether consumption is growing underneath a credit that is masking it.",
       inputSchema: costQueryRequestSchema.shape,
       risk: "read",
       permission: "costs:read",
@@ -107,7 +116,15 @@ export function costTools(): ToolDefinition[] {
       description:
         "Per-account cost data coverage: whether the provider plugin supports cost collection, " +
         "when spend was last polled, backfill state, and the date range covered. Check this when " +
-        "query_costs returns empty or surprising data.",
+        "query_costs returns empty or surprising data.\n\n" +
+        "Three capability flags decide how the numbers should be read. `amortization` says the " +
+        "provider reports an amortized amount, so costBasis='amortized' is meaningful for it; " +
+        "`chargeTypes` says it distinguishes usage from credits, tax and commitments (when " +
+        "false, every one of its rows is 'usage'); and `estimated` says the amounts were " +
+        "computed by Infrawrench from inventory and a published rate card rather than billed by " +
+        "the provider — those cannot be reconciled against an invoice, run low for anything " +
+        "deleted mid-period, price everything at list, and never include credits, tax or refunds. " +
+        "Say so when reporting a total that includes an estimated account.",
       inputSchema: {},
       risk: "read",
       permission: "costs:read",

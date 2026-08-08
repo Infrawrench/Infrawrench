@@ -40,6 +40,30 @@ export interface CostAccountStatus {
    * dimension the provider has never heard of.
    */
   dimensions: CostCapabilityDeclaration["dimensions"];
+  /**
+   * Whether this account's plugin can tell one kind of charge from another. An
+   * org where nothing declares it has a charge-type breakdown that is a single
+   * "Usage" bar, which is worse than not offering it.
+   */
+  chargeTypes: boolean;
+  /**
+   * Whether this account's plugin reports amortized amounts. The amortized view
+   * is offered only when at least one connected account says yes — otherwise it
+   * is the cash numbers under a different name, and a user who switched to it
+   * would reasonably conclude the feature is broken.
+   */
+  amortization: boolean;
+  /**
+   * Whether this account's amounts are computed by the plugin (inventory × a
+   * rate card, or usage × published list prices) rather than reported as billed
+   * spend by the provider.
+   *
+   * Surfaced wherever the collection notices are, because an estimate differs
+   * from an invoice in ways that only ever run one way: resources deleted
+   * mid-period are missing, every rate is list, and credits, tax and refunds
+   * are absent entirely.
+   */
+  estimated: boolean;
   costLastPolledAt: string | null;
   costBackfilledAt: string | null;
   costPollFailureCount: number;
@@ -70,6 +94,24 @@ export function emptyCostAccounts(statuses: CostAccountStatus[]): CostAccountSta
   );
 }
 
+/**
+ * Accounts whose spend Infrawrench computed rather than collected.
+ *
+ * These are not a fault — a provider with no billing API can only be priced
+ * from its inventory and a rate card — but the resulting number is not the
+ * invoice, and the ways it differs are systematic: anything deleted mid-period
+ * is missing, every rate is list rather than negotiated, and credits, tax and
+ * refunds have nothing to attach to. A total that silently mixes computed and
+ * billed money is the thing worth preventing, so every surface that shows one
+ * says which accounts contributed the computed part.
+ *
+ * `supportsCosts` gates it: an account with no cost capability contributes no
+ * spend at all, estimated or otherwise.
+ */
+export function estimatedCostAccounts(statuses: CostAccountStatus[]): CostAccountStatus[] {
+  return statuses.filter((s) => s.supportsCosts && s.estimated);
+}
+
 /* ------------------------------------------------------------------ *
  * Widget configuration — what a dashboard stores for a cost card.
  * ------------------------------------------------------------------ */
@@ -81,8 +123,68 @@ export const COST_DIMENSIONS = [
   "region",
   "resource",
   "tag",
+  "charge_type",
+  "commitment",
 ] as const;
 export type CostDimensionId = (typeof COST_DIMENSIONS)[number];
+
+/**
+ * What a cost row is, as opposed to what it costs — the client-side mirror of
+ * the plugin contract's `CostChargeType`.
+ *
+ * Rows collected before charge types existed, and every plugin that cannot tell
+ * one kind of charge from another, read as `usage`. That is the honest default:
+ * it is what those rows were always assumed to be.
+ */
+export const COST_CHARGE_TYPES = [
+  "usage",
+  "commitment_fee",
+  "commitment_discount",
+  "credit",
+  "tax",
+  "refund",
+  "adjustment",
+  "support",
+  "other",
+] as const;
+export type CostChargeType = (typeof COST_CHARGE_TYPES)[number];
+
+export const COST_CHARGE_TYPE_LABELS: Record<CostChargeType, string> = {
+  usage: "Usage",
+  commitment_fee: "Commitment fee",
+  commitment_discount: "Commitment discount",
+  credit: "Credit",
+  tax: "Tax",
+  refund: "Refund",
+  adjustment: "Adjustment",
+  support: "Support",
+  other: "Other",
+};
+
+/**
+ * Which number a cost query sums.
+ *
+ * - `cash` — what the provider charged on the day it charged it. This is the
+ *   bank statement, and it is what every query did before amortization existed.
+ * - `amortized` — commitment fees spread across the term they buy, so a year of
+ *   capacity bought on one day is counted on the days it covers.
+ *
+ * Neither is wrong; they answer different questions. Cash answers "what left
+ * the account in July"; amortized answers "what did July cost us". For an org
+ * holding reservations or savings plans they can differ by the entire value of
+ * a purchase, and a cash-only view makes the purchase month look like a
+ * catastrophe and every month after it look free.
+ *
+ * Providers that report no amortized amount fall back to their cash amount, so
+ * an amortized query over a mixed estate is never missing their spend.
+ */
+export const COST_BASES = ["cash", "amortized"] as const;
+export type CostBasis = (typeof COST_BASES)[number];
+
+export const COST_BASIS_LABELS: Record<CostBasis, string> = {
+  cash: "Cash",
+  amortized: "Amortized",
+};
 
 export interface CostFilter {
   dimension: CostDimensionId;
@@ -126,6 +228,12 @@ export interface CostGraphConfig {
   topN: number;
   comparePreviousPeriod: boolean;
   showForecast: boolean;
+  /**
+   * Which number to sum. Absent is `cash` — the basis every graph authored
+   * before amortization existed was drawn on, so an old widget keeps showing
+   * exactly what it showed.
+   */
+  costBasis?: CostBasis | undefined;
 }
 
 /** A budget widget is a dashboard view onto a budgets row — alerts outlive it. */
@@ -150,6 +258,15 @@ export interface BudgetInput {
   currency: string;
   filters: CostFilter[];
   thresholds: BudgetThreshold[];
+  /**
+   * Which number the budget tracks. Absent is `cash`, so every budget written
+   * before this existed keeps measuring what it was measuring.
+   *
+   * An org holding commitments usually wants `amortized`: a cash budget is
+   * blown the month a reservation is bought and then reads as under-spent for
+   * the rest of the term, which is the opposite of an alert being useful.
+   */
+  costBasis?: CostBasis | undefined;
 }
 
 /** One selectable value in a dimension picker (GET /costs/dimensions). */
@@ -219,6 +336,8 @@ export const COST_DIMENSION_LABELS: Record<CostDimensionId, string> = {
   region: "Region",
   resource: "Resource",
   tag: "Tag",
+  charge_type: "Charge type",
+  commitment: "Commitment",
 };
 
 export const DASHBOARD_WIDGET_KINDS = ["cost_graph", "budget", "custom_graph"] as const;
@@ -245,6 +364,12 @@ export interface BudgetWithStatus {
   currency: string;
   filters: CostFilter[];
   thresholds: BudgetThreshold[];
+  /**
+   * The basis `actualCents` and `forecastCents` were measured on. Optional so a
+   * client a release ahead of its server still renders the row; absent reads as
+   * cash, which is what such a server was measuring.
+   */
+  costBasis?: CostBasis | undefined;
   /** Month the status covers, YYYY-MM. */
   month: string;
   actualCents: number;
@@ -529,6 +654,13 @@ export interface CostQueryRequest {
   topN: number;
   comparePreviousPeriod: boolean;
   forecast: boolean;
+  /** Which number to sum; absent is `cash`. */
+  costBasis?: CostBasis | undefined;
+  /**
+   * Restrict to these charge types. Absent is all of them — including the
+   * credits and refunds that make a total net rather than gross.
+   */
+  chargeTypes?: CostChargeType[] | undefined;
 }
 
 export interface CostSeriesPoint {
@@ -616,6 +748,10 @@ export function costQueryForConfig(config: CostGraphConfig, today = new Date()):
     topN: config.topN,
     comparePreviousPeriod: config.comparePreviousPeriod,
     forecast: config.showForecast,
+    // Omitted rather than defaulted to "cash": the server's default is the same
+    // value, and sending it would make every pre-existing widget's request
+    // differ from the one it used to send for no behavioural reason.
+    ...(config.costBasis ? { costBasis: config.costBasis } : {}),
   };
 }
 

@@ -328,6 +328,13 @@ export const budgets = pgTable(
     currency: text("currency").notNull().default("USD"),
     filters: jsonb("filters").notNull().default([]),
     thresholds: jsonb("thresholds").notNull().default([]),
+    /**
+     * Which number the budget tracks: "cash" (what the provider charged) or
+     * "amortized" (commitment fees spread over the term they buy). Defaulted
+     * rather than nullable so every existing budget keeps measuring cash, which
+     * is what it has been measuring.
+     */
+    costBasis: text("cost_basis").notNull().default("cash"),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),

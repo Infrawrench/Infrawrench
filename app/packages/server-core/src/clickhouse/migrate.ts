@@ -95,8 +95,8 @@ const STATEMENTS: string[] = [
   // rows — readers query with FINAL. tags_hash is a writer-computed stable
   // hash of the canonicalized tags map, included in the key because Map
   // columns can't be key columns and rows differing only by tags must not
-  // collapse. NOTE: the ORDER BY is frozen once shipped (this file has no
-  // ALTER path).
+  // collapse. NOTE: the ORDER BY is frozen once shipped — see the ALTER block
+  // below, which may only ever add columns.
   `CREATE TABLE IF NOT EXISTS cost_daily (
     organization_id String,
     account_id      String,
@@ -116,6 +116,49 @@ const STATEMENTS: string[] = [
   PARTITION BY toYYYYMM(day)
   ORDER BY (organization_id, account_id, day, service, region, resource_id, tags_hash, currency)
   TTL day + INTERVAL 3 YEAR`,
+
+  /* ------------------------------------------------------------------ *
+   * Additive column migrations.
+   *
+   * Everything above is `CREATE ... IF NOT EXISTS`, which does nothing to a
+   * table that already exists — so a column added to a CREATE body after the
+   * table shipped never appears on any deployment that already ran. That is
+   * what these ALTERs are for.
+   *
+   * The rules, all three load-bearing:
+   *
+   * 1. `ADD COLUMN IF NOT EXISTS` is idempotent, so these run on every boot
+   *    alongside the CREATEs and are a no-op after the first time. They must
+   *    stay idempotent: no bare `ADD COLUMN`, no `MODIFY`, no `DROP`.
+   * 2. They may only ADD. A sort key cannot be changed by ALTER, and for
+   *    `cost_daily` it must not be changed at all: the ORDER BY *is* the
+   *    ReplacingMergeTree identity of a row, and rewriting it would re-key
+   *    (and silently merge away) three years of history. A new dimension that
+   *    needs to keep rows distinct is folded into `tags_hash` instead — see
+   *    `cost-writers.ts`.
+   * 3. Every added column carries a DEFAULT, because rows written before it
+   *    existed have no value for it. `charge_type DEFAULT 'usage'` is what
+   *    makes the entire back catalogue read as usage — which is what it is —
+   *    rather than as an empty string that matches no filter.
+   *
+   * `withReplicatedEngines` does not apply here: it rewrites `ENGINE = ` in a
+   * CREATE, and an ALTER names no engine. On the replicated cluster these run
+   * against a `Replicated` database, which propagates the DDL itself.
+   * ------------------------------------------------------------------ */
+
+  // What kind of charge a row is (usage, a commitment purchase, a credit, tax…).
+  // Pre-existing rows are usage: that is what they were always assumed to be.
+  `ALTER TABLE cost_daily ADD COLUMN IF NOT EXISTS charge_type LowCardinality(String) DEFAULT 'usage'`,
+
+  // The same money spread over the period it covers, when the provider reports
+  // one. 0 means "not reported" and readers fall back to `amount` — see
+  // `cost-readers.ts`, where that fallback is the difference between an
+  // amortized query and a query that silently drops non-amortizing providers.
+  `ALTER TABLE cost_daily ADD COLUMN IF NOT EXISTS amortized_amount Float64 DEFAULT 0`,
+
+  // Provider-native id of the reservation / savings plan / committed-use
+  // discount a row is attributable to. Empty for everything else.
+  `ALTER TABLE cost_daily ADD COLUMN IF NOT EXISTS commitment_id String DEFAULT ''`,
 
   `CREATE TABLE IF NOT EXISTS poll_outcomes (
     organization_id      String,
@@ -151,7 +194,8 @@ export function withReplicatedEngines(stmt: string): string {
 }
 
 /**
- * Idempotently create the metrics schema. Safe to call on every boot.
+ * Idempotently create the metrics schema, then apply the additive column
+ * migrations. Safe to call on every boot: every statement is `IF NOT EXISTS`.
  * No-op when CLICKHOUSE_METRICS_* is not configured (local dev / tests).
  *
  * CLICKHOUSE_METRICS_REPLICATED=1 switches the DDL to Replicated* engines.

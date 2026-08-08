@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
+  COST_BASES,
+  COST_BASIS_LABELS,
   COST_BINNING_LABELS as BINNING_LABELS,
   COST_BINNINGS,
   COST_CHART_TYPE_LABELS as CHART_TYPE_LABELS,
@@ -9,6 +11,7 @@ import {
   COST_RANGE_PRESET_LABELS as PRESET_LABELS,
   COST_RANGE_PRESETS,
   costGraphConfigSchema,
+  type CostBasis,
   type CostFilter,
   type CostGraphConfig,
 } from "./config.js";
@@ -31,6 +34,86 @@ interface FilterRowEditorProps {
   onChange: (filters: CostFilter[]) => void;
   api: CostApi;
 }
+
+/**
+ * Whether the amortized cost basis is worth offering: true once any connected
+ * account's plugin declares `amortization`.
+ *
+ * Offering it unconditionally would be a lie by omission. Without a provider
+ * that reports an amortized number, every row falls back to its cash amount and
+ * the two options draw the identical graph — a user who switched and saw
+ * nothing change would reasonably conclude the feature is broken rather than
+ * that their providers don't report it.
+ *
+ * A failed status load reads as "unavailable" rather than blocking the editor.
+ * The one thing that always keeps the control visible is an already-selected
+ * amortized basis (`force`): a widget must never lose a setting because the
+ * status call happened to fail while it was being edited.
+ */
+export function useCostBasisChoice(
+  api: CostApi,
+  force = false,
+): { available: boolean; loading: boolean } {
+  const [available, setAvailable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .loadCostStatus()
+      .then((statuses) => {
+        if (!cancelled) setAvailable(statuses.some((s) => s.supportsCosts && s.amortization));
+      })
+      .catch(() => {
+        if (!cancelled) setAvailable(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+
+  return { available: force || available === true, loading: available === null };
+}
+
+/** The Cost basis select, shared by the graph and budget editors. */
+export function CostBasisField({
+  id,
+  value,
+  onChange,
+  available,
+  hint,
+}: {
+  id: string;
+  value: CostBasis | undefined;
+  onChange: (basis: CostBasis) => void;
+  available: boolean;
+  hint: string;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className={labelClass}>
+        Cost basis
+      </label>
+      <select
+        id={id}
+        className={selectClass}
+        value={value ?? "cash"}
+        disabled={!available}
+        onChange={(e) => onChange(e.target.value as CostBasis)}
+      >
+        {COST_BASES.map((b) => (
+          <option key={b} value={b}>
+            {COST_BASIS_LABELS[b]}
+          </option>
+        ))}
+      </select>
+      {!available && <p className="mt-1 text-xs text-on-surface-faint">{hint}</p>}
+    </div>
+  );
+}
+
+/** Why the basis select is disabled — one sentence, same words everywhere. */
+export const COST_BASIS_UNAVAILABLE_HINT =
+  "No connected provider reports amortized cost, so every amount here is what was charged.";
 
 /**
  * Options plus any selected value the load didn't return, so a filter saved
@@ -213,6 +296,7 @@ export function CostGraphConfigModal({
   const [tagKeys, setTagKeys] = useState<CostDimensionOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const basis = useCostBasisChoice(api, initialConfig.costBasis === "amortized");
 
   useEffect(() => {
     if (config.groupBy === "tag" && tagKeys.length === 0) {
@@ -361,6 +445,13 @@ export function CostGraphConfigModal({
                 ))}
               </select>
             </div>
+            <CostBasisField
+              id={`${uid}-cost-basis`}
+              value={config.costBasis}
+              onChange={(costBasis) => set({ costBasis })}
+              available={basis.available}
+              hint={COST_BASIS_UNAVAILABLE_HINT}
+            />
           </div>
 
           {config.dateRange.kind === "absolute" && (

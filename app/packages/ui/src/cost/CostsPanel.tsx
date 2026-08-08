@@ -48,6 +48,9 @@ function budgetToInput(budget: BudgetWithStatus): BudgetInput {
     currency: budget.currency,
     filters: budget.filters,
     thresholds: budget.thresholds,
+    // Round-tripped, or editing a budget's name would quietly move it back to
+    // the cash basis it was deliberately taken off.
+    ...(budget.costBasis ? { costBasis: budget.costBasis } : {}),
   };
 }
 

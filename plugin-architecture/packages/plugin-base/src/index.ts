@@ -26,6 +26,7 @@ export type {
   CostCapabilityDeclaration,
   CostEstimate,
   CostEstimateLineItem,
+  CostChargeType,
   CostFetchRange,
   CostHelpLink,
   CostRow,

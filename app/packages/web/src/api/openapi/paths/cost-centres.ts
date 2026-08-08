@@ -73,6 +73,15 @@ const ShowbackReport = strict({
 const RangeQuery = strict({
   from: IsoDate.optional().openapi({ description: "Defaults to 30 days ago." }),
   to: IsoDate.optional().openapi({ description: "Defaults to today." }),
+  basis: z
+    .enum(["cash", "amortized"])
+    .optional()
+    .openapi({
+      description:
+        "Which money to sum. `cash` (the default) is what the provider charged on the day it " +
+        "charged it; `amortized` spreads a commitment's up-front fee across the term it buys. " +
+        "Providers that report no amortized amount fall back to their cash amount.",
+    }),
 });
 
 export function registerCostCentrePaths(ctx: BuildContext) {

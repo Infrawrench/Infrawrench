@@ -334,6 +334,9 @@ function ConfigureBudget({
         currency: budget.currency,
         filters: budget.filters,
         thresholds: budget.thresholds,
+        // Round-tripped, or editing a budget's amount would quietly move it
+        // back to the cash basis it was deliberately taken off.
+        ...(budget.costBasis ? { costBasis: budget.costBasis } : {}),
       }}
       onClose={onClose}
       onSave={(input) => onSave(budgetId, input)}

@@ -11,6 +11,9 @@ function status(over: Partial<CostAccountStatus> = {}): CostAccountStatus {
     supportsCosts: true,
     periodNative: false,
     dimensions: ["service"],
+    chargeTypes: false,
+    amortization: false,
+    estimated: false,
     costLastPolledAt: "2026-07-25T21:44:13.000Z",
     costBackfilledAt: null,
     costPollFailureCount: 1,
@@ -136,6 +139,33 @@ describe("CostCollectionNotice", () => {
     );
     expect(screen.getByText("No spend data yet for 2 accounts")).toBeInTheDocument();
     expect(screen.getByText("Prod AWS")).toBeInTheDocument();
+  });
+
+  it("says so when an account's spend is estimated rather than billed", () => {
+    // The account is healthy in every other respect — coverage, no error, a
+    // recent poll — so this notice is the only thing that says the graph above
+    // it is a rate-card calculation rather than an invoice.
+    render(<CostCollectionNotice statuses={[status({ estimated: true })]} />);
+    expect(screen.getByText("Spend for Infrawrench GCP is estimated")).toBeInTheDocument();
+    expect(screen.getByText(/no billing API/i)).toBeInTheDocument();
+  });
+
+  it("stays quiet about estimation for an account that reports billed spend", () => {
+    const { container } = render(<CostCollectionNotice statuses={[status()]} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("names each account when several are estimated", () => {
+    render(
+      <CostCollectionNotice
+        statuses={[
+          status({ estimated: true }),
+          status({ accountId: "acc-2", displayName: "Hetzner", estimated: true }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("Spend for 2 accounts is estimated")).toBeInTheDocument();
+    expect(screen.getByText("Hetzner")).toBeInTheDocument();
   });
 
   it("reports a failing account and an empty one side by side", () => {

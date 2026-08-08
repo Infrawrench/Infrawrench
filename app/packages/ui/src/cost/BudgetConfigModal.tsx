@@ -1,6 +1,11 @@
 import { useId, useState } from "react";
 import { budgetInputSchema, type BudgetInput, type CostFilter } from "./config.js";
-import { CostFilterRows } from "./CostGraphConfigModal.js";
+import {
+  COST_BASIS_UNAVAILABLE_HINT,
+  CostBasisField,
+  CostFilterRows,
+  useCostBasisChoice,
+} from "./CostGraphConfigModal.js";
 import type { CostApi } from "./types.js";
 
 const inputClass =
@@ -23,6 +28,7 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
   const [amountText, setAmountText] = useState((initialInput.amountCents / 100).toString());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const basis = useCostBasisChoice(api, initialInput.costBasis === "amortized");
 
   const set = (patch: Partial<BudgetInput>) =>
     setInput((prev) => ({ ...prev, ...patch }) as BudgetInput);
@@ -111,6 +117,14 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
               />
             </div>
           </div>
+
+          <CostBasisField
+            id={`${uid}-cost-basis`}
+            value={input.costBasis}
+            onChange={(costBasis) => set({ costBasis })}
+            available={basis.available}
+            hint={COST_BASIS_UNAVAILABLE_HINT}
+          />
 
           <div role="group" aria-labelledby={`${uid}-scope-label`}>
             <span id={`${uid}-scope-label`} className={labelClass}>

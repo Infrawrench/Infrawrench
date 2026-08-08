@@ -31,6 +31,17 @@ export interface RangeFlags {
    * from `--last` because it is a ± around a centre, not a lookback.
    */
   window?: string | undefined;
+  /**
+   * `costs --basis cash|amortized` — which number to sum. Left as a raw string
+   * so the command validates it and can name the valid values in the error,
+   * the way `--group-by` does.
+   */
+  basis?: string | undefined;
+  /**
+   * `costs --charge-type <t>`, repeatable: keep only these kinds of charge.
+   * Empty means every kind, which is what makes the default total net.
+   */
+  chargeTypes: string[];
 }
 
 /** Flags for the push-up commands (`page`, `costs push`). */
@@ -124,6 +135,10 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         resource: { type: "string" },
         // `moment` half-window (± around the timestamp).
         window: { type: "string", short: "w" },
+        // `costs` money selectors: which number, and which kinds of charge.
+        basis: { type: "string" },
+        // Repeatable: one --charge-type per kind to keep.
+        "charge-type": { type: "string", multiple: true },
         // `costs --anomalies` — same command, different question.
         anomalies: { type: "boolean", default: false },
         // `posture dismiss` — why the finding is an accepted risk.
@@ -238,6 +253,8 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       kind: str("kind"),
       resource: str("resource"),
       window: str("window"),
+      basis: str("basis"),
+      chargeTypes: Array.isArray(multi["charge-type"]) ? multi["charge-type"] : [],
     },
     deploy: {
       env: str("env"),
