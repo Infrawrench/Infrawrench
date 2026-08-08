@@ -647,7 +647,7 @@ export function computeDnsInventory(
 
     if (zone) {
       zone.recordCount += 1;
-      zone.danglingCount += targets.filter((t) => t.classification === "dangling").length;
+      if (entry.status === "dangling") zone.danglingCount += 1;
     }
   }
 
