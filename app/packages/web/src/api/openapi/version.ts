@@ -17,4 +17,5 @@
  * Adding or removing a plugin changes the `pluginId` / `resourceTypeId` enums,
  * which is a real change to the published surface — that counts.
  */
-export const API_VERSION = "1.0.0";
+// 1.1.0: environment-diff endpoint (additive minor bump on top of 1.0.0).
+export const API_VERSION = "1.1.0";

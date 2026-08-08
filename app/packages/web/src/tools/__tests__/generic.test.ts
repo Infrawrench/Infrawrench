@@ -86,7 +86,6 @@ const mockListPosture = vi.fn();
 vi.mock("@infrawrench/server-core/posture/feed", () => ({
   listPosture: (...a: unknown[]) => mockListPosture(...a),
 }));
-
 const mockDismissPosture = vi.fn();
 const mockRestorePosture = vi.fn();
 vi.mock("@infrawrench/server-core/posture/dismissals", () => ({
@@ -96,6 +95,14 @@ vi.mock("@infrawrench/server-core/posture/dismissals", () => ({
 const mockListDns = vi.fn();
 vi.mock("@infrawrench/server-core/dns/feed", () => ({
   listDns: (...a: unknown[]) => mockListDns(...a),
+}));
+const mockLoadEnvironmentDiff = vi.fn();
+class MockEnvironmentDiffAccountNotFoundError extends Error {}
+class MockEnvironmentDiffPluginMismatchError extends Error {}
+vi.mock("@infrawrench/server-core/environment-diff", () => ({
+  loadEnvironmentDiff: (...a: unknown[]) => mockLoadEnvironmentDiff(...a),
+  EnvironmentDiffAccountNotFoundError: MockEnvironmentDiffAccountNotFoundError,
+  EnvironmentDiffPluginMismatchError: MockEnvironmentDiffPluginMismatchError,
 }));
 const mockResolveSshKey = vi.fn();
 vi.mock("../ssh-key-lookup", () => ({
@@ -159,6 +166,57 @@ describe("genericTools", () => {
     expect(out[0].supportsCreate).toBe(true);
     expect(out[0].supportsDelete).toBe(false);
     expect(out[0].supportsMetrics).toBe(true);
+  });
+
+  describe("diff_environments", () => {
+    const accountRows = [
+      { id: "acc-stg", displayName: "Staging" },
+      { id: "acc-prd", displayName: "Production" },
+    ];
+    const selectAccounts = () => {
+      mockSelect.mockReturnValue({ from: () => ({ where: () => accountRows }) });
+    };
+
+    it("resolves display names to ids before comparing", async () => {
+      selectAccounts();
+      mockLoadEnvironmentDiff.mockResolvedValue({ entries: [] });
+      const r = await tool("diff_environments").handler({ a: "staging", b: "Production" }, auth);
+      expect(r.isError).toBeFalsy();
+      expect(mockLoadEnvironmentDiff).toHaveBeenCalledWith("o1", "acc-stg", "acc-prd", {
+        resourceTypeId: undefined,
+        includeIdentityFields: false,
+      });
+    });
+
+    it("passes ids through untouched and forwards the options", async () => {
+      selectAccounts();
+      mockLoadEnvironmentDiff.mockResolvedValue({ entries: [] });
+      await tool("diff_environments").handler(
+        { a: "acc-stg", b: "acc-prd", resourceTypeId: "droplet", includeIdentityFields: true },
+        auth,
+      );
+      expect(mockLoadEnvironmentDiff).toHaveBeenCalledWith("o1", "acc-stg", "acc-prd", {
+        resourceTypeId: "droplet",
+        includeIdentityFields: true,
+      });
+    });
+
+    it("refuses to compare an account with itself, however it was named", async () => {
+      selectAccounts();
+      const r = await tool("diff_environments").handler({ a: "Staging", b: "acc-stg" }, auth);
+      expect(r.isError).toBe(true);
+      expect(mockLoadEnvironmentDiff).not.toHaveBeenCalled();
+    });
+
+    it("reports a provider mismatch as a tool error, not a throw", async () => {
+      selectAccounts();
+      mockLoadEnvironmentDiff.mockRejectedValue(
+        new MockEnvironmentDiffPluginMismatchError("different providers"),
+      );
+      const r = await tool("diff_environments").handler({ a: "acc-stg", b: "acc-prd" }, auth);
+      expect(r.isError).toBe(true);
+      expect(r.content[0]!.text).toContain("different providers");
+    });
   });
 
   it("list_posture_findings filters by severity but keeps whole-feed counts", async () => {

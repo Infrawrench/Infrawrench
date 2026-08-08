@@ -10,7 +10,11 @@ import {
 import { DashboardPanel } from "@/routes/org.$orgId.dashboard.$dashboardId";
 import { AccountPanel } from "@/routes/org.$orgId.accounts.$accountId";
 import { ResourcePanel } from "@/routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId";
-import { getWorkspaceNavigateArgs, syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
+import {
+  getWorkspaceNavigateArgs,
+  navigateToWorkspaceTarget,
+  syncWorkspaceRouteFromPath,
+} from "@/lib/workspace-tabs";
 import { type WorkflowClient } from "@infrawrench/ui/workflows";
 import { type DeploymentClient } from "@infrawrench/ui";
 import { createWebDeploymentClient } from "@/lib/deployment-client";
@@ -25,6 +29,7 @@ import { WebChatPanel } from "./WebChatPanel";
 import { WebGraphPanel } from "./WebGraphPanel";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
 import {
+  environmentDiffTabTarget,
   resourceTabTarget,
   type OrphansClient,
   type RightsizingClient,
@@ -39,6 +44,7 @@ import { WebChangesPanel } from "./WebChangesPanel";
 import { WebExpiryPanel } from "./WebExpiryPanel";
 import { WebPosturePanel } from "./WebPosturePanel";
 import { WebDnsPanel } from "./WebDnsPanel";
+import { WebEnvironmentDiffPanel } from "./WebEnvironmentDiffPanel";
 import { WebMetricAlertsPanel } from "./WebMetricAlertsPanel";
 import { WebProbesPanel } from "./WebProbesPanel";
 import { WebSshFanoutPanel } from "./WebSshFanoutPanel";
@@ -365,6 +371,39 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
                   zone.resourceId,
                   zone.pluginId,
                   zone.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "environment-diff":
+      return (
+        <WebEnvironmentDiffPanel
+          // Keyed by org so switching org remounts and refetches rather than
+          // comparing this org's accounts against the previous one's ids.
+          key={orgId}
+          orgId={orgId}
+          a={t.a}
+          b={t.b}
+          // Record the pair on the tab and in the URL, so the comparison
+          // survives a reload and can be shared as a link. `replace` keeps the
+          // back button from stepping through every dropdown change.
+          onSelectionChange={(selection) =>
+            void navigateToWorkspaceTarget(
+              navigate,
+              environmentDiffTabTarget(selection.a, selection.b),
+              { replace: true },
+            )
+          }
+          openResource={(target) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  target.accountId,
+                  target.resourceId,
+                  target.pluginId,
+                  target.resourceTypeId,
                 ),
               ),
             )

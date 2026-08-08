@@ -190,6 +190,7 @@ const TabTarget = strict({
     "expiring",
     "posture",
     "dns",
+    "environment-diff",
     "ssh-fanout",
     "metric-alerts",
     "probes",

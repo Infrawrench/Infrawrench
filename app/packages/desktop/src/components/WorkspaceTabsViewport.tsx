@@ -4,6 +4,7 @@ import { useRouterState } from "@tanstack/react-router";
 import {
   WorkspaceTabsViewport as BaseViewport,
   dashboardTabTarget,
+  environmentDiffTabTarget,
   resourceTabTarget,
   DeploymentsPanel,
   useUIStore,
@@ -15,7 +16,11 @@ import { invoke } from "@/lib/invoke";
 import { DashboardPanel } from "@/routes/dashboard.$dashboardId";
 import { AccountPanel } from "@/routes/accounts.$accountId";
 import { ResourcePanel } from "@/routes/resource.$accountId.$resourceId";
-import { getWorkspaceNavigateArgs, syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
+import {
+  getWorkspaceNavigateArgs,
+  navigateToWorkspaceTarget,
+  syncWorkspaceRouteFromPath,
+} from "@/lib/workspace-tabs";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
 import { type OrphansClient, type RightsizingClient, type SchedulesClient } from "@infrawrench/ui";
 import { createDesktopCostsClient } from "@/lib/costs-client";
@@ -33,6 +38,7 @@ import { DesktopChangesPanel } from "@/components/DesktopChangesPanel";
 import { DesktopExpiryPanel } from "@/components/DesktopExpiryPanel";
 import { DesktopPosturePanel } from "@/components/DesktopPosturePanel";
 import { DesktopDnsPanel } from "@/components/DesktopDnsPanel";
+import { DesktopEnvironmentDiffPanel } from "@/components/DesktopEnvironmentDiffPanel";
 import { DesktopMetricAlertsPanel } from "@/components/DesktopMetricAlertsPanel";
 import { DesktopProbesPanel } from "@/components/DesktopProbesPanel";
 import { DesktopSshFanoutPanel } from "@/components/DesktopSshFanoutPanel";
@@ -303,6 +309,38 @@ function renderPanel(
                   zone.resourceId,
                   zone.pluginId,
                   zone.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "environment-diff":
+      return (
+        <DesktopEnvironmentDiffPanel
+          // Keyed by mode so switching org (or dropping to local) remounts and
+          // recompares rather than showing the previous mode's accounts.
+          key={activeCloudOrgId ?? "local"}
+          a={t.a}
+          b={t.b}
+          // Record the pair on the tab and in the URL, so the comparison
+          // survives a restart. `replace` keeps the back button from stepping
+          // through every dropdown change.
+          onSelectionChange={(selection) =>
+            void navigateToWorkspaceTarget(
+              navigate,
+              environmentDiffTabTarget(selection.a, selection.b),
+              { replace: true },
+            )
+          }
+          openResource={(target) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  target.accountId,
+                  target.resourceId,
+                  target.pluginId,
+                  target.resourceTypeId,
                 ),
               ),
             )

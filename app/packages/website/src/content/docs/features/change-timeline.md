@@ -111,3 +111,5 @@ If you need a permanent record of a change, export it while it is still in the w
 - History is capped at the 90-day retention window described above.
 
 The feed is also available over the [HTTP API](../team-and-billing/openapi.md): `GET /api/org/{orgId}/changes` for the paginated org feed and `GET /api/org/{orgId}/changes/resource` for a single resource.
+
+The same comparison, pointed at a different pair of snapshots, is what [environment diff](./environment-diff.md) runs: instead of one account against its own past, two accounts against each other.

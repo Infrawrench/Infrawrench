@@ -12,6 +12,7 @@ import {
   ExpiryIcon,
   PostureIcon,
   DomainsIcon,
+  EnvironmentDiffIcon,
   FanoutIcon,
   GraphIcon,
   LogsIcon,
@@ -33,6 +34,7 @@ import {
   dashboardTabTarget,
   deploymentsTabTarget,
   dnsTabTarget,
+  environmentDiffTabTarget,
   workflowsTabTarget,
   navigateToWorkspaceTarget,
 } from "../lib/workspace-tabs";
@@ -275,6 +277,16 @@ export function SidebarDashboards() {
       label: "Domains",
       icon: <DomainsIcon />,
       onClick: () => void navigateToWorkspaceTarget(navigate, dnsTabTarget(), { label: "Domains" }),
+    },
+    // Env diff also has a local half — local mode enumerates both accounts
+    // through the plugin, since the local workspace has no synced store to
+    // read. Workspace-tab kind so a/b selection survives restart.
+    {
+      key: "environment-diff",
+      label: "Env diff",
+      icon: <EnvironmentDiffIcon />,
+      onClick: () =>
+        void navigateToWorkspaceTarget(navigate, environmentDiffTabTarget(), { label: "Env diff" }),
     },
     // Fan-out SSH has a local half — local SSH accounts exec through the
     // machine's own ssh machinery — so, like Graph, it shows in both modes.

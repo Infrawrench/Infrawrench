@@ -3,6 +3,7 @@
 import { parseArgs } from "node:util";
 import { CliError, type CliFlags } from "./context";
 import type { FanoutFlags } from "./commands/ssh-fanout";
+import type { DiffFlags } from "./commands/diff";
 
 export interface RangeFlags {
   last?: string | undefined;
@@ -77,6 +78,7 @@ export interface ParsedCli {
   push: PushFlags;
   deploy: DeployFlags;
   fanout: FanoutFlags;
+  diff: DiffFlags;
   positionals: string[];
   version: boolean;
   /** `costs --anomalies` — the spend-spike list instead of the spend chart. */
@@ -142,6 +144,10 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         snippet: { type: "string" },
         yes: { type: "boolean", short: "y", default: false },
         concurrency: { type: "string" },
+        // Environment diff (`diff`). `-a` is the existing account flag, so the
+        // second side needs one of its own.
+        against: { type: "string", short: "b" },
+        all: { type: "boolean", default: false },
       },
     });
   } catch (e) {
@@ -224,6 +230,10 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       toRun: str("to-run"),
       deleteCreated: values["delete-created"] === true,
       created: values.created === true,
+    },
+    diff: {
+      against: str("against"),
+      all: values.all === true,
     },
     fanout: {
       list: values.list === true,

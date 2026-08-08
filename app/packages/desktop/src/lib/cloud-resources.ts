@@ -2,6 +2,7 @@ import type { AssociationSource, CostEstimate } from "@infrawrench/plugin-base";
 import type {
   DependencyGraphData,
   DnsInventoryResponse,
+  EnvironmentDiffResponse,
   ExpiryListResponse,
   PostureListResponse,
   ResourcePickerOption,
@@ -62,6 +63,23 @@ export async function restoreCloudPostureFinding(
 
 export async function fetchCloudDns(orgId: string): Promise<DnsInventoryResponse> {
   return invoke("cloud_dns", { orgId });
+}
+
+/**
+ * Two of the org's accounts compared, computed server-side over synced rows.
+ * The local-mode counterpart is `loadLocalEnvironmentDiff` in
+ * lib/local-environment-diff.ts, which lists both accounts live instead.
+ */
+export async function fetchCloudEnvironmentDiff(
+  orgId: string,
+  query: { a: string; b: string; includeIdentityFields?: boolean },
+): Promise<EnvironmentDiffResponse> {
+  return invoke("cloud_environment_diff", {
+    orgId,
+    a: query.a,
+    b: query.b,
+    includeIdentityFields: query.includeIdentityFields === true,
+  });
 }
 
 export async function getCloudResourceDetail(

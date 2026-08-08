@@ -16,6 +16,7 @@ import { Route as ChatRouteImport } from './routes/chat'
 import { Route as CostsRouteImport } from './routes/costs'
 import { Route as DeploymentsRouteImport } from './routes/deployments'
 import { Route as DnsRouteImport } from './routes/dns'
+import { Route as EnvironmentDiffRouteImport } from './routes/environment-diff'
 import { Route as ExpiringRouteImport } from './routes/expiring'
 import { Route as GraphRouteImport } from './routes/graph'
 import { Route as LogsRouteImport } from './routes/logs'
@@ -64,6 +65,11 @@ const DeploymentsRoute = DeploymentsRouteImport.update({
 const DnsRoute = DnsRouteImport.update({
   id: '/dns',
   path: '/dns',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EnvironmentDiffRoute = EnvironmentDiffRouteImport.update({
+  id: '/environment-diff',
+  path: '/environment-diff',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ExpiringRoute = ExpiringRouteImport.update({
@@ -146,6 +152,7 @@ export interface FileRoutesByFullPath {
   '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
   '/dns': typeof DnsRoute
+  '/environment-diff': typeof EnvironmentDiffRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
   '/logs': typeof LogsRoute
@@ -169,6 +176,7 @@ export interface FileRoutesByTo {
   '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
   '/dns': typeof DnsRoute
+  '/environment-diff': typeof EnvironmentDiffRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
   '/logs': typeof LogsRoute
@@ -193,6 +201,7 @@ export interface FileRoutesById {
   '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
   '/dns': typeof DnsRoute
+  '/environment-diff': typeof EnvironmentDiffRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
   '/logs': typeof LogsRoute
@@ -218,6 +227,7 @@ export interface FileRouteTypes {
     | '/costs'
     | '/deployments'
     | '/dns'
+    | '/environment-diff'
     | '/expiring'
     | '/graph'
     | '/logs'
@@ -241,6 +251,7 @@ export interface FileRouteTypes {
     | '/costs'
     | '/deployments'
     | '/dns'
+    | '/environment-diff'
     | '/expiring'
     | '/graph'
     | '/logs'
@@ -264,6 +275,7 @@ export interface FileRouteTypes {
     | '/costs'
     | '/deployments'
     | '/dns'
+    | '/environment-diff'
     | '/expiring'
     | '/graph'
     | '/logs'
@@ -288,6 +300,7 @@ export interface RootRouteChildren {
   CostsRoute: typeof CostsRoute
   DeploymentsRoute: typeof DeploymentsRoute
   DnsRoute: typeof DnsRoute
+  EnvironmentDiffRoute: typeof EnvironmentDiffRoute
   ExpiringRoute: typeof ExpiringRoute
   GraphRoute: typeof GraphRoute
   LogsRoute: typeof LogsRoute
@@ -353,6 +366,13 @@ declare module '@tanstack/react-router' {
       path: '/dns'
       fullPath: '/dns'
       preLoaderRoute: typeof DnsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/environment-diff': {
+      id: '/environment-diff'
+      path: '/environment-diff'
+      fullPath: '/environment-diff'
+      preLoaderRoute: typeof EnvironmentDiffRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/expiring': {
@@ -464,6 +484,7 @@ const rootRouteChildren: RootRouteChildren = {
   CostsRoute: CostsRoute,
   DeploymentsRoute: DeploymentsRoute,
   DnsRoute: DnsRoute,
+  EnvironmentDiffRoute: EnvironmentDiffRoute,
   ExpiringRoute: ExpiringRoute,
   GraphRoute: GraphRoute,
   LogsRoute: LogsRoute,

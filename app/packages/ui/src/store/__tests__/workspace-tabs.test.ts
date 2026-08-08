@@ -85,6 +85,39 @@ describe("getWorkspaceTabId", () => {
   });
 });
 
+describe("environment diff tab kind", () => {
+  it("keys one tab regardless of which pair it is showing", () => {
+    expect(getWorkspaceTabId({ kind: "environment-diff" })).toBe("environment-diff");
+    expect(getWorkspaceTabId({ kind: "environment-diff", a: "acc-a", b: "acc-b" })).toBe(
+      "environment-diff",
+    );
+  });
+
+  it("falls back to the sidebar tile's title", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "environment-diff" })).toBe("Env diff");
+  });
+
+  // The id is deliberately pair-blind so a second comparison reuses the tab;
+  // this comparison is what makes the route sync notice the pair changed.
+  it("compares the two accounts so the route sync retargets the tab", () => {
+    expect(
+      workspaceTabTargetsEqual(
+        { kind: "environment-diff", a: "acc-a", b: "acc-b" },
+        { kind: "environment-diff", a: "acc-a", b: "acc-b" },
+      ),
+    ).toBe(true);
+    expect(
+      workspaceTabTargetsEqual(
+        { kind: "environment-diff", a: "acc-a", b: "acc-b" },
+        { kind: "environment-diff", a: "acc-a", b: "acc-c" },
+      ),
+    ).toBe(false);
+    expect(
+      workspaceTabTargetsEqual({ kind: "environment-diff" }, { kind: "environment-diff" }),
+    ).toBe(true);
+  });
+});
+
 describe("probes tab kind", () => {
   it("is a singleton tab id", () => {
     expect(getWorkspaceTabId({ kind: "probes" })).toBe("probes");
