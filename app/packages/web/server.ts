@@ -7,6 +7,7 @@ import { getRequestListener } from "@hono/node-server";
 import { parse } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
 import { api } from "./src/api/index";
+import { securityHeaders } from "./src/api/security-headers";
 import { handleSshSession } from "./src/services/ssh-proxy";
 import { handleSqlSession } from "./src/services/sql-proxy";
 import { handleK8sExecSession } from "./src/services/k8s-exec-proxy";
@@ -82,6 +83,11 @@ async function start() {
     const { serveStatic } = await import("@hono/node-server/serve-static");
     const { Hono } = await import("hono");
     const prodApp = new Hono();
+
+    // The SPA shell and every static asset are served by this app, not by
+    // `api`, so they need the headers mounted here too — the framing defence
+    // matters most on exactly the HTML document `api` never emits.
+    prodApp.use("*", securityHeaders());
 
     prodApp.route("/", api);
     prodApp.use("*", serveStatic({ root: "./dist/client" }));
