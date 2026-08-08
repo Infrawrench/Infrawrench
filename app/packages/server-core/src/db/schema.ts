@@ -1543,6 +1543,52 @@ export const orgPostureSettings = pgTable("org_posture_settings", {
 });
 
 /**
+ * Accepted posture findings — "yes, that bucket is public on purpose".
+ *
+ * Keyed by `(organization, resource, rule)` rather than by a finding row:
+ * findings have no identity, they are recomputed from stored fields on every
+ * read. Both halves of the key are stable — resource ids come from the
+ * plugin's lister and are the id upserted on every sync, rule ids are
+ * declared in the plugin manifest — so a dismissal survives syncs and stops
+ * applying by itself the moment the rule stops matching.
+ *
+ * `resourceId` is not a FK, the `resource_changes` stance: resource rows are
+ * churned by sync and soft-deleted, and a dismissal that outlives its
+ * resource is inert anyway (the feed only reports dismissals whose rule still
+ * matches). Cleanup rides the organization cascade.
+ *
+ * `dismissedBy` is nulled rather than cascaded when the user is deleted — the
+ * decision stays on the record even when the person who made it is gone.
+ */
+export const postureDismissals = pgTable(
+  "posture_dismissals",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Infrawrench resource id, as the plugin's lister reports it. */
+    resourceId: text("resource_id").notNull(),
+    /** The matched rule's id, unique within its plugin. */
+    ruleId: text("rule_id").notNull(),
+    /** The operator's note, when they left one. */
+    reason: text("reason"),
+    dismissedBy: text("dismissed_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("posture_dismissals_org_idx").on(t.organizationId),
+    /** One decision per (resource, rule) — dismissing twice is an update. */
+    findingUnique: uniqueIndex("posture_dismissals_finding_idx").on(
+      t.organizationId,
+      t.resourceId,
+      t.ruleId,
+    ),
+  }),
+);
+
+/**
  * Sleep/wake schedules — "off at 19:00, on at 08:00, Mon–Fri" windows on
  * resources whose plugin declares a `lifecycle` start/stop action pair.
  *

@@ -19,7 +19,7 @@ import { cmdOrphans } from "./commands/orphans";
 import { cmdOversized } from "./commands/oversized";
 import { cmdAlerts, cmdAlertEvents } from "./commands/alerts";
 import { cmdExpiring } from "./commands/expiring";
-import { cmdPosture } from "./commands/posture";
+import { cmdPosture, cmdPostureDismiss, cmdPostureRestore } from "./commands/posture";
 import { cmdChanges } from "./commands/changes";
 import { cmdMoment } from "./commands/moment";
 import { cmdIncidents } from "./commands/incidents";
@@ -63,6 +63,9 @@ COMMANDS
                       (--local scans this machine's workspace)
   posture             security posture findings (public buckets, world-open ingress, unencrypted
                       disks), ranked by severity   (--local scans this machine's workspace)
+  posture dismiss     accept a finding as a known risk — it leaves the list and the daily alerts
+                      <resourceId> <ruleId> [--reason <text>]   (ids from posture --json)
+  posture restore     put a dismissed finding back   <resourceId> <ruleId>
   changes             what appeared / changed / disappeared across your providers
                       [--last 7d] [--limit 50] [--kind created|updated|deleted] [-a <account>] [--resource <id>]
   incidents           provider status-page incidents overlapping your resources ("is it me or is it them?")
@@ -104,6 +107,7 @@ FLAGS
   --resource <id>     focus one resource (graph) / filter to it (changes)
   -w, --window <d>    moment half-window, e.g. 30m, 1h, 6h (± around the timestamp)
   --type <typeId>     filter resources by resource type
+  --reason <text>     posture dismiss: why the finding is an accepted risk
   --source <name>     who is pushing (required by page and costs push)
   --key <k>           page throttle key   --title <t>   --cooldown <min>   --voice
   -f, --file <path>   JSON rows for costs push (stdin when omitted)
@@ -290,7 +294,9 @@ export async function runCli(): Promise<void> {
         await cmdExpiring(ctx);
         break;
       case "posture":
-        await cmdPosture(ctx);
+        if (rest[0] === "dismiss") await cmdPostureDismiss(ctx, rest.slice(1));
+        else if (rest[0] === "restore") await cmdPostureRestore(ctx, rest.slice(1));
+        else await cmdPosture(ctx);
         break;
       case "changes":
         await cmdChanges(ctx, parsed.range);

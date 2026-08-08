@@ -12,6 +12,10 @@ import { setLiteralSecretState } from "@infrawrench/server-core/secret-states";
 import { getOrgStatusIncidents } from "@infrawrench/server-core/status/match";
 import { listExpiring } from "@infrawrench/server-core/expiry/feed";
 import { listPosture } from "@infrawrench/server-core/posture/feed";
+import {
+  dismissPostureFinding,
+  restorePostureFinding,
+} from "@infrawrench/server-core/posture/dismissals";
 import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
 import { resolveStoredSshPublicKey } from "./ssh-key-lookup";
 import { logAudit } from "../services/audit";
@@ -214,7 +218,9 @@ export function genericTools(): ToolDefinition[] {
         "disks and databases, publicly reachable database endpoints, stale credentials, " +
         "missing backup/deletion protection — ranked by severity (critical, high, medium, " +
         "low). Purely a read over already-synced state; no provider API calls. Check this " +
-        "when auditing an account's exposure or before opening something to the internet.",
+        "when auditing an account's exposure or before opening something to the internet. " +
+        "Findings the organization has dismissed as accepted risks are excluded unless you " +
+        "ask for them.",
       inputSchema: {
         severity: z
           .enum(["critical", "high", "medium", "low"])
@@ -224,6 +230,13 @@ export function genericTools(): ToolDefinition[] {
           .enum(["public-exposure", "encryption", "credential-age", "data-protection", "other"])
           .optional()
           .describe("Only return findings in this category."),
+        includeDismissed: z
+          .boolean()
+          .optional()
+          .describe(
+            "Also return the findings the organization has dismissed, each with who accepted " +
+              "it, when, and why. They stay out of `findings` either way.",
+          ),
       },
       risk: "read",
       // Mirrors `GET /posture` — the findings are computed over the org's resource set.
@@ -231,10 +244,11 @@ export function genericTools(): ToolDefinition[] {
       handler: async (input, auth) => {
         const severity = input["severity"] as string | undefined;
         const category = input["category"] as string | undefined;
+        const includeDismissed = input["includeDismissed"] === true;
         const feed = await listPosture(auth.organizationId);
-        const findings = feed.findings.filter(
-          (f) => (!severity || f.severity === severity) && (!category || f.category === category),
-        );
+        const matches = (f: { severity: string; category: string }) =>
+          (!severity || f.severity === severity) && (!category || f.category === category);
+        const findings = feed.findings.filter(matches);
         // Counts always describe the whole feed so a filtered view still shows
         // the overall picture. matchedCount is the filtered length.
         return ok({
@@ -242,8 +256,87 @@ export function genericTools(): ToolDefinition[] {
           matchedCount: findings.length,
           totalCount: feed.findings.length,
           counts: feed.counts,
+          // Always reported as a number so a reader can tell "clean" from
+          // "quiet because somebody silenced it"; the rows are opt-in.
+          dismissedCount: feed.dismissedCount,
+          ...(includeDismissed ? { dismissed: feed.dismissed.filter(matches) } : {}),
           generatedAt: feed.generatedAt,
         });
+      },
+    },
+
+    {
+      name: "dismiss_posture_finding",
+      title: "Dismiss a posture finding",
+      description:
+        "Accept a security finding as a known, intentional risk: it leaves the posture list " +
+        "and stops feeding the daily posture alerts. Use only when the user has said the " +
+        "exposure is deliberate — this silences a security warning. The rule keeps being " +
+        "evaluated and the dismissal is reversible with restore_posture_finding, so nothing " +
+        "is destroyed. Identify the finding by the resourceId and ruleId that " +
+        "list_posture_findings returns.",
+      inputSchema: {
+        // `.min(1)` so a blank id is a tool-input error rather than the plain
+        // `Error` `dismissPostureFinding` throws past the handler — the HTTP
+        // route guards this, and this second entry point has to as well.
+        resourceId: z.string().min(1).describe("Infrawrench resource id the finding is on."),
+        ruleId: z.string().min(1).describe("The matched rule's id, as returned on the finding."),
+        reason: z
+          .string()
+          .max(500)
+          .optional()
+          .describe("Why this exposure is acceptable — recorded with the dismissal."),
+      },
+      risk: "write",
+      // Mirrors `POST /posture/dismissals`: a statement about one resource,
+      // the same trust level as changing it.
+      permission: "resources:write",
+      handler: async (input, auth) => {
+        const dismissal = await dismissPostureFinding(auth.organizationId, {
+          resourceId: input["resourceId"] as string,
+          ruleId: input["ruleId"] as string,
+          reason: (input["reason"] as string | undefined) ?? null,
+          userId: auth.userId,
+        });
+        void logAudit({
+          organizationId: auth.organizationId,
+          userId: auth.userId,
+          action: "posture.finding.dismissed",
+          entityType: "resource",
+          entityId: dismissal.resourceId,
+          metadata: { ruleId: dismissal.ruleId, reason: dismissal.reason, source: auth.source },
+        });
+        return ok({ dismissed: dismissal });
+      },
+    },
+
+    {
+      name: "restore_posture_finding",
+      title: "Restore a dismissed posture finding",
+      description:
+        "Undo a dismissal — the finding returns to the posture list and to the daily alerts. " +
+        "Use when an accepted risk is no longer acceptable, or when a finding was dismissed " +
+        "by mistake.",
+      inputSchema: {
+        resourceId: z.string().min(1).describe("Infrawrench resource id the finding is on."),
+        ruleId: z.string().min(1).describe("The matched rule's id."),
+      },
+      risk: "write",
+      permission: "resources:write",
+      handler: async (input, auth) => {
+        const resourceId = input["resourceId"] as string;
+        const ruleId = input["ruleId"] as string;
+        const restored = await restorePostureFinding(auth.organizationId, resourceId, ruleId);
+        if (!restored) return err("That finding is not dismissed.");
+        void logAudit({
+          organizationId: auth.organizationId,
+          userId: auth.userId,
+          action: "posture.finding.restored",
+          entityType: "resource",
+          entityId: resourceId,
+          metadata: { ruleId, source: auth.source },
+        });
+        return ok({ restored: { resourceId, ruleId } });
       },
     },
 

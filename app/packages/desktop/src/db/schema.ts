@@ -341,3 +341,24 @@ ALTER TABLE agent_settings ADD COLUMN surface TEXT NOT NULL DEFAULT 'terminal';
 `;
 
 MIGRATIONS.push(AGENT_SURFACE_MIGRATION);
+
+// Accepted posture findings — "yes, that disk is unencrypted on purpose".
+// Keyed by (resource, rule) like the cloud's `posture_dismissals`, because a
+// finding is recomputed from stored fields on every read and has no row of
+// its own. No `dismissed_by` column: the local workspace is single-user, so
+// the author is always the person reading it. No sync_version either — this
+// is a local decision about a local workspace, and the cloud's own dismissals
+// live in its table.
+const POSTURE_DISMISSALS_MIGRATION = `
+CREATE TABLE IF NOT EXISTS posture_dismissals (
+  id TEXT PRIMARY KEY,
+  resource_id TEXT NOT NULL,
+  rule_id TEXT NOT NULL,
+  reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(resource_id, rule_id)
+);
+`;
+
+MIGRATIONS.push(POSTURE_DISMISSALS_MIGRATION);

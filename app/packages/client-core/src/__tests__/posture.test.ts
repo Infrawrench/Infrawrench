@@ -4,6 +4,7 @@ import {
   POSTURE_SEVERITIES,
   alertablePostureFindings,
   computePostureFindings,
+  postureFindingKey,
   type PostureCheckRule,
   type PostureScanInput,
 } from "../posture";
@@ -309,6 +310,106 @@ describe("computePostureFindings aggregation", () => {
     );
     expect(feed.findings).toEqual([]);
     expect(feed.counts).toEqual({ critical: 0, high: 0, medium: 0, low: 0 });
+  });
+
+  describe("dismissals", () => {
+    /** One accepted finding, keyed the way every surface keys them. */
+    const dismissal = {
+      resourceId: "r-1",
+      ruleId: "public",
+      dismissedAt: "2026-07-01T09:00:00.000Z",
+      dismissedBy: "Ada",
+      reason: "Static site bucket, public on purpose",
+    };
+
+    it("moves a dismissed finding out of findings and counts", () => {
+      const feed = computePostureFindings({ ...input, dismissals: [dismissal] }, { now: NOW });
+      expect(feed.findings.map((f) => [f.resourceId, f.ruleId])).toEqual([
+        ["r-2", "public"],
+        ["r-3", "no-firewall"],
+        ["r-1", "unencrypted"],
+      ]);
+      expect(feed.totalCount).toBe(3);
+      expect(feed.counts).toEqual({ critical: 1, high: 1, medium: 1, low: 0 });
+      expect(feed.dismissedCount).toBe(1);
+      expect(feed.dismissed.map((f) => [f.resourceId, f.ruleId])).toEqual([["r-1", "public"]]);
+      // The dismissal travels with the finding, note and author intact.
+      expect(feed.dismissed[0]?.dismissal).toEqual(dismissal);
+      // …and the finding itself is still fully computed.
+      expect(feed.dismissed[0]?.title).toBe("Bucket public");
+    });
+
+    it("keeps a dismissed finding out of the alert feed", () => {
+      const feed = computePostureFindings({ ...input, dismissals: [dismissal] }, { now: NOW });
+      expect(alertablePostureFindings(feed).map((f) => f.resourceId)).toEqual(["r-2", "r-3"]);
+    });
+
+    it("dismisses one rule on a resource without touching its other findings", () => {
+      const feed = computePostureFindings({ ...input, dismissals: [dismissal] }, { now: NOW });
+      // r-1 matches both bucket rules; only `public` was accepted.
+      expect(feed.findings.some((f) => f.resourceId === "r-1" && f.ruleId === "unencrypted")).toBe(
+        true,
+      );
+    });
+
+    it("ignores a dismissal whose finding no longer matches", () => {
+      const feed = computePostureFindings(
+        {
+          ...input,
+          dismissals: [
+            dismissal,
+            // Right resource, rule that isn't matching.
+            { ...dismissal, ruleId: "no-firewall" },
+            // Resource that no longer exists at all.
+            { ...dismissal, resourceId: "r-gone" },
+          ],
+        },
+        { now: NOW },
+      );
+      expect(feed.dismissedCount).toBe(1);
+      expect(feed.totalCount).toBe(3);
+    });
+
+    it("lists dismissed findings most recently accepted first", () => {
+      const feed = computePostureFindings(
+        {
+          ...input,
+          dismissals: [
+            dismissal,
+            {
+              resourceId: "r-3",
+              ruleId: "no-firewall",
+              dismissedAt: "2026-07-20T09:00:00.000Z",
+              dismissedBy: null,
+              reason: null,
+            },
+          ],
+        },
+        { now: NOW },
+      );
+      expect(feed.dismissed.map((f) => f.resourceId)).toEqual(["r-3", "r-1"]);
+    });
+
+    it("changes nothing when the dismissal list is empty or absent", () => {
+      const withEmpty = computePostureFindings({ ...input, dismissals: [] }, { now: NOW });
+      const without = computePostureFindings(input, { now: NOW });
+      expect(withEmpty).toEqual(without);
+      expect(without.dismissed).toEqual([]);
+      expect(without.dismissedCount).toBe(0);
+    });
+  });
+});
+
+describe("postureFindingKey", () => {
+  it("cannot be collided by punctuation in either half", () => {
+    // Both halves routinely contain slashes, colons and hyphens — GCP ids are
+    // slash-paths — so a printable delimiter would be forgeable.
+    expect(postureFindingKey({ resourceId: "a", ruleId: "b:c" })).not.toBe(
+      postureFindingKey({ resourceId: "a:b", ruleId: "c" }),
+    );
+    expect(postureFindingKey({ resourceId: "projects/p/zones/z", ruleId: "r" })).toBe(
+      postureFindingKey({ resourceId: "projects/p/zones/z", ruleId: "r" }),
+    );
   });
 });
 

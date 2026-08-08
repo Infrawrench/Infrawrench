@@ -86,6 +86,13 @@ const mockListPosture = vi.fn();
 vi.mock("@infrawrench/server-core/posture/feed", () => ({
   listPosture: (...a: unknown[]) => mockListPosture(...a),
 }));
+
+const mockDismissPosture = vi.fn();
+const mockRestorePosture = vi.fn();
+vi.mock("@infrawrench/server-core/posture/dismissals", () => ({
+  dismissPostureFinding: (...a: unknown[]) => mockDismissPosture(...a),
+  restorePostureFinding: (...a: unknown[]) => mockRestorePosture(...a),
+}));
 const mockResolveSshKey = vi.fn();
 vi.mock("../ssh-key-lookup", () => ({
   resolveStoredSshPublicKey: (...a: unknown[]) => mockResolveSshKey(...a),
@@ -210,6 +217,97 @@ describe("genericTools", () => {
     const r = await tool("list_posture_findings").handler({ category: "encryption" }, auth);
     const out = JSON.parse(r.content[0]!.text);
     expect(out.findings.map((f: { ruleId: string }) => f.ruleId)).toEqual(["a"]);
+  });
+
+  it("list_posture_findings reports the dismissed count and hides the rows by default", async () => {
+    const dismissed = {
+      resourceId: "r-public",
+      ruleId: "public",
+      severity: "critical",
+      category: "public-exposure",
+      dismissal: {
+        resourceId: "r-public",
+        ruleId: "public",
+        dismissedAt: "2026-07-01T00:00:00.000Z",
+        dismissedBy: "Ada",
+        reason: "static site",
+      },
+    };
+    const feed = {
+      findings: [{ resourceId: "r1", ruleId: "a", severity: "high", category: "encryption" }],
+      totalCount: 1,
+      counts: { critical: 0, high: 1, medium: 0, low: 0 },
+      dismissed: [dismissed],
+      dismissedCount: 1,
+      generatedAt: "2026-08-01T00:00:00.000Z",
+    };
+
+    mockListPosture.mockResolvedValue(feed);
+    const quiet = JSON.parse(
+      (await tool("list_posture_findings").handler({}, auth)).content[0]!.text,
+    );
+    // The count is always there — "clean" must be distinguishable from
+    // "quiet because somebody silenced it" — but the rows are opt-in.
+    expect(quiet.dismissedCount).toBe(1);
+    expect(quiet.dismissed).toBeUndefined();
+    expect(quiet.findings).toHaveLength(1);
+
+    mockListPosture.mockResolvedValue(feed);
+    const loud = JSON.parse(
+      (await tool("list_posture_findings").handler({ includeDismissed: true }, auth)).content[0]!
+        .text,
+    );
+    expect(loud.dismissed).toHaveLength(1);
+    expect(loud.dismissed[0].dismissal.reason).toBe("static site");
+    // A filter applies to the dismissed rows too.
+    mockListPosture.mockResolvedValue(feed);
+    const filtered = JSON.parse(
+      (
+        await tool("list_posture_findings").handler(
+          { includeDismissed: true, category: "encryption" },
+          auth,
+        )
+      ).content[0]!.text,
+    );
+    expect(filtered.dismissed).toEqual([]);
+  });
+
+  it("dismiss_posture_finding records the acceptance with its author", async () => {
+    mockDismissPosture.mockResolvedValue({
+      resourceId: "r1",
+      ruleId: "public",
+      reason: "static site",
+      dismissedBy: "Ada",
+      dismissedAt: "2026-08-01T00:00:00.000Z",
+    });
+    const r = await tool("dismiss_posture_finding").handler(
+      { resourceId: "r1", ruleId: "public", reason: "static site" },
+      auth,
+    );
+    expect(mockDismissPosture).toHaveBeenCalledWith("o1", {
+      resourceId: "r1",
+      ruleId: "public",
+      reason: "static site",
+      userId: "u1",
+    });
+    expect(JSON.parse(r.content[0]!.text).dismissed.ruleId).toBe("public");
+  });
+
+  it("restore_posture_finding says so when nothing was dismissed", async () => {
+    mockRestorePosture.mockResolvedValue(false);
+    const missing = await tool("restore_posture_finding").handler(
+      { resourceId: "r1", ruleId: "public" },
+      auth,
+    );
+    expect(missing.isError).toBe(true);
+
+    mockRestorePosture.mockResolvedValue(true);
+    const r = await tool("restore_posture_finding").handler(
+      { resourceId: "r1", ruleId: "public" },
+      auth,
+    );
+    expect(r.isError).toBeUndefined();
+    expect(JSON.parse(r.content[0]!.text).restored).toEqual({ resourceId: "r1", ruleId: "public" });
   });
 
   it("list_accounts queries the org's accounts", async () => {

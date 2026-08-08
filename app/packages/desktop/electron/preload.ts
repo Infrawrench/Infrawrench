@@ -161,6 +161,8 @@ const INVOKE_CHANNELS = [
   "local_orphans_list",
   "cloud_expiring",
   "cloud_posture",
+  "cloud_posture_dismiss",
+  "cloud_posture_restore",
   "cloud_changes_list",
   "cloud_status_incidents",
   // Agents mode against an org — the local pipeline has its own (non-cloud)

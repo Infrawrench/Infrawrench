@@ -8562,7 +8562,142 @@
           "low"
         ],
         "additionalProperties": false,
-        "description": "Finding count per severity; every bucket present, zeros included."
+        "description": "Live finding count per severity; every bucket present, zeros included."
+      },
+      "PostureDismissal": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "ruleId": {
+            "type": "string"
+          },
+          "dismissedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the finding was accepted."
+          },
+          "dismissedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name or email of whoever accepted it; null when unknown."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The operator's note, when they left one."
+          }
+        },
+        "required": [
+          "resourceId",
+          "ruleId",
+          "dismissedAt",
+          "dismissedBy",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "DismissedPostureFinding": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string",
+            "description": "Infrawrench resource id."
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string",
+            "example": "AWS"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string",
+            "example": "S3 Bucket"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider-native id, when known."
+          },
+          "ruleId": {
+            "type": "string",
+            "description": "The matched rule's stable id, unique within the plugin.",
+            "example": "hetzner-server-no-firewall"
+          },
+          "title": {
+            "type": "string",
+            "description": "Short rule title.",
+            "example": "No firewall attached"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ],
+            "description": "How bad the finding is. `critical` and `high` findings feed the posture alerts; `medium` and `low` are hygiene work surfaced on the posture screen only."
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "public-exposure",
+              "encryption",
+              "credential-age",
+              "data-protection",
+              "other"
+            ],
+            "description": "Grouping bucket for what kind of exposure the finding describes."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Plugin-authored explanation of why this is a finding."
+          },
+          "dismissal": {
+            "$ref": "#/components/schemas/PostureDismissal"
+          }
+        },
+        "required": [
+          "resourceId",
+          "pluginId",
+          "pluginName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "accountId",
+          "accountName",
+          "displayName",
+          "externalId",
+          "ruleId",
+          "title",
+          "severity",
+          "category",
+          "reason",
+          "dismissal"
+        ],
+        "additionalProperties": false
       },
       "PostureListResponse": {
         "type": "object",
@@ -8572,13 +8707,24 @@
             "items": {
               "$ref": "#/components/schemas/PostureFinding"
             },
-            "description": "All findings, worst severity first."
+            "description": "Live findings, worst severity first. Dismissed findings are not included."
           },
           "totalCount": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Live finding count; dismissals excluded."
           },
           "counts": {
             "$ref": "#/components/schemas/PostureSeverityCounts"
+          },
+          "dismissed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DismissedPostureFinding"
+            },
+            "description": "Findings a dismissal is currently suppressing, most recently dismissed first. Only dismissals whose rule still matches appear, so a finding that has since been fixed simply drops out."
+          },
+          "dismissedCount": {
+            "type": "integer"
           },
           "generatedAt": {
             "type": "string",
@@ -8589,7 +8735,35 @@
           "findings",
           "totalCount",
           "counts",
+          "dismissed",
+          "dismissedCount",
           "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "PostureDismissalCreate": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string",
+            "description": "Infrawrench resource id the finding is on."
+          },
+          "ruleId": {
+            "type": "string",
+            "description": "The matched rule's id."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500,
+            "description": "Why this finding is acceptable. Trimmed; an empty note is stored as none."
+          }
+        },
+        "required": [
+          "resourceId",
+          "ruleId"
         ],
         "additionalProperties": false
       },
@@ -24029,7 +24203,7 @@
           "Posture checks"
         ],
         "summary": "List security posture findings on synced resources",
-        "description": "Plugin-declared security checks evaluated over already-synced resource state: public buckets, 0.0.0.0/0 ingress rules, unencrypted disks, publicly reachable database endpoints, stale credentials, missing deletion/backup protection. No provider API calls are made and results reflect the last sync. Findings are sorted worst severity first, with per-severity counts.\n\n_Requires permission: `resources:read`._",
+        "description": "Plugin-declared security checks evaluated over already-synced resource state: public buckets, 0.0.0.0/0 ingress rules, unencrypted disks, publicly reachable database endpoints, stale credentials, missing deletion/backup protection. No provider API calls are made and results reflect the last sync. Findings are sorted worst severity first, with per-severity counts. Findings the organization has dismissed are reported separately under `dismissed` and are excluded from `findings`, `counts` and the posture alerts.\n\n_Requires permission: `resources:read`._",
         "parameters": [
           {
             "schema": {
@@ -24057,6 +24231,128 @@
         },
         "operationId": "getOrgOrgIdPosture",
         "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/posture/dismissals": {
+      "post": {
+        "tags": [
+          "Posture checks"
+        ],
+        "summary": "Dismiss a posture finding",
+        "description": "Accept a finding — the bucket really is meant to be public, the key really is rotated out of band. The finding leaves `findings` and stops feeding the daily posture alerts, but the rule keeps being evaluated and the finding is reported back under `dismissed` for as long as it still matches. Idempotent: dismissing an already-dismissed finding rewrites the note and the author.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostureDismissalCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The recorded dismissal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostureDismissal"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdPostureDismissals",
+        "x-required-permission": "resources:write"
+      },
+      "delete": {
+        "tags": [
+          "Posture checks"
+        ],
+        "summary": "Restore a dismissed posture finding",
+        "description": "Undo a dismissal, putting the finding back on the list and back into the alert feed. The finding is identified by query parameters rather than path segments because resource ids are provider-native and routinely contain slashes.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Infrawrench resource id the finding is on."
+            },
+            "required": true,
+            "description": "Infrawrench resource id the finding is on.",
+            "name": "resourceId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The matched rule's id."
+            },
+            "required": true,
+            "description": "The matched rule's id.",
+            "name": "ruleId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The dismissal was removed"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdPostureDismissals",
+        "x-required-permission": "resources:write"
       }
     },
     "/api/org/{orgId}/posture/settings": {

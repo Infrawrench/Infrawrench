@@ -15,7 +15,13 @@ const PostureCategory = z
 export function registerPosturePaths(ctx: BuildContext) {
   const { registry, enums } = ctx;
 
-  const PostureFinding = strict({
+  // Kept as a raw shape so `DismissedPostureFinding` can be emitted as one
+  // flat object rather than an `allOf` branch. A branch that declares only
+  // `dismissal` while inheriting the rest through a sibling `$ref` is
+  // uninhabited under `additionalProperties: false` — JSON Schema evaluates
+  // that keyword against the properties in the same object, so every inherited
+  // field reads as unexpected and strict validators reject real payloads.
+  const postureFindingShape = {
     resourceId: z.string().describe("Infrawrench resource id."),
     pluginId: enums.PluginId,
     pluginName: z.string().openapi({ example: "AWS" }),
@@ -33,7 +39,9 @@ export function registerPosturePaths(ctx: BuildContext) {
     severity: PostureSeverity,
     category: PostureCategory,
     reason: z.string().describe("Plugin-authored explanation of why this is a finding."),
-  }).openapi("PostureFinding");
+  } as const;
+
+  const PostureFinding = strict(postureFindingShape).openapi("PostureFinding");
 
   const PostureSeverityCounts = strict({
     critical: z.number().int(),
@@ -42,14 +50,51 @@ export function registerPosturePaths(ctx: BuildContext) {
     low: z.number().int(),
   }).openapi("PostureSeverityCounts");
 
+  const PostureDismissal = strict({
+    resourceId: z.string(),
+    ruleId: z.string(),
+    dismissedAt: IsoDateTime.describe("When the finding was accepted."),
+    dismissedBy: z
+      .string()
+      .nullable()
+      .describe("Display name or email of whoever accepted it; null when unknown."),
+    reason: z.string().nullable().describe("The operator's note, when they left one."),
+  }).openapi("PostureDismissal");
+
+  const DismissedPostureFinding = strict({
+    ...postureFindingShape,
+    dismissal: PostureDismissal,
+  }).openapi("DismissedPostureFinding");
+
   const PostureListResponse = strict({
-    findings: z.array(PostureFinding).describe("All findings, worst severity first."),
-    totalCount: z.number().int(),
+    findings: z
+      .array(PostureFinding)
+      .describe("Live findings, worst severity first. Dismissed findings are not included."),
+    totalCount: z.number().int().describe("Live finding count; dismissals excluded."),
     counts: PostureSeverityCounts.describe(
-      "Finding count per severity; every bucket present, zeros included.",
+      "Live finding count per severity; every bucket present, zeros included.",
     ),
+    dismissed: z
+      .array(DismissedPostureFinding)
+      .describe(
+        "Findings a dismissal is currently suppressing, most recently dismissed first. " +
+          "Only dismissals whose rule still matches appear, so a finding that has since " +
+          "been fixed simply drops out.",
+      ),
+    dismissedCount: z.number().int(),
     generatedAt: IsoDateTime,
   }).openapi("PostureListResponse");
+
+  const PostureDismissalCreate = strict({
+    resourceId: z.string().describe("Infrawrench resource id the finding is on."),
+    ruleId: z.string().describe("The matched rule's id."),
+    reason: z
+      .string()
+      .max(500)
+      .nullable()
+      .optional()
+      .describe("Why this finding is acceptable. Trimmed; an empty note is stored as none."),
+  }).openapi("PostureDismissalCreate");
 
   const PostureSettings = strict({
     enabled: z.boolean().openapi({
@@ -80,13 +125,62 @@ export function registerPosturePaths(ctx: BuildContext) {
       "buckets, 0.0.0.0/0 ingress rules, unencrypted disks, publicly reachable database " +
       "endpoints, stale credentials, missing deletion/backup protection. No provider API " +
       "calls are made and results reflect the last sync. Findings are sorted worst severity " +
-      "first, with per-severity counts.",
+      "first, with per-severity counts. Findings the organization has dismissed are reported " +
+      "separately under `dismissed` and are excluded from `findings`, `counts` and the " +
+      "posture alerts.",
     request: { params: OrgIdParam },
     responses: {
       200: {
         description: "Posture findings, worst first",
         content: { "application/json": { schema: PostureListResponse } },
       },
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/posture/dismissals",
+    tags: ["Posture checks"],
+    summary: "Dismiss a posture finding",
+    description:
+      "Accept a finding — the bucket really is meant to be public, the key really is rotated " +
+      "out of band. The finding leaves `findings` and stops feeding the daily posture alerts, " +
+      "but the rule keeps being evaluated and the finding is reported back under `dismissed` " +
+      "for as long as it still matches. Idempotent: dismissing an already-dismissed finding " +
+      "rewrites the note and the author.",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: PostureDismissalCreate } } },
+    },
+    responses: {
+      200: {
+        description: "The recorded dismissal",
+        content: { "application/json": { schema: PostureDismissal } },
+      },
+      400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "delete",
+    path: "/api/org/{orgId}/posture/dismissals",
+    tags: ["Posture checks"],
+    summary: "Restore a dismissed posture finding",
+    description:
+      "Undo a dismissal, putting the finding back on the list and back into the alert feed. " +
+      "The finding is identified by query parameters rather than path segments because " +
+      "resource ids are provider-native and routinely contain slashes.",
+    request: {
+      params: OrgIdParam,
+      query: strict({
+        resourceId: z.string().describe("Infrawrench resource id the finding is on."),
+        ruleId: z.string().describe("The matched rule's id."),
+      }),
+    },
+    responses: {
+      204: { description: "The dismissal was removed" },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
     },
   });
 
