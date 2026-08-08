@@ -17,7 +17,7 @@ Every resource's dashboard card leads with your subscription's **character quota
 
 One field. ElevenLabs dashboard → profile menu (bottom-left avatar) → **API Keys** → **Create API Key**, or [elevenlabs.io/app/settings/api-keys](https://elevenlabs.io/app/settings/api-keys). The key is sent as the `xi-api-key` header.
 
-Scope it with read access to **Voices**, **Models**, **History** and **User** (the last one drives the quota gauge), plus **Text to Speech** and **Speech to Text** if you want the Speech tab. Workspace keys and personal keys both work.
+Scope it with read access to **Voices**, **Models**, **History** and **User** (the last one drives the quota gauge and reports your billing currency), plus **Text to Speech** and **Speech to Text** if you want the Speech tab, and **Workspace / usage** read if you want cost graphs. Workspace keys and personal keys both work.
 
 <insert [ElevenLabs Add-account form with the API key field and its scope guidance] here>
 
@@ -31,6 +31,19 @@ Open a voice for a **Speech** tab with both halves. See [Speech testing](../feat
 One shared model picker drives both halves. Leave a Scribe model selected and press Synthesize and the plugin falls back to the TTS default rather than sending a transcription model to the synthesis endpoint.
 
 <insert [ElevenLabs Speech tab on a voice, showing the character quota in the subtitle and a synthesized clip in the player] here>
+
+## Cost graphs
+
+ElevenLabs accounts feed [cost graphs & budgets](../features/cloud-costs.md) with real money — not an estimate off the credit meter. Spend is collected daily from the workspace analytics API in daily buckets, broken down by **product type** (which becomes the service dimension — text to speech, speech to text, and so on) and by **region**. A year of history is available, and the trailing three days are re-fetched on each sync because usage-based charges settle a day or two late.
+
+The credits behind each charge ride along on the row, so a service's cost and the consumption that produced it sit side by side.
+
+<insert [Cost graph for an ElevenLabs account broken down by product type, with text to speech as the largest series] here>
+
+- **Your billing currency is read, never assumed.** ElevenLabs bills workspaces in USD, EUR, INR or PLN, and the plugin takes the currency from the usage response itself, falling back to the one on `GET /v1/user/subscription`. USD is only ever used when the account refuses to state a currency at all.
+- **The endpoint this uses is the replacement for a deprecated one.** ElevenLabs has deprecated the old character-stats usage endpoint in favour of the workspace analytics query, so the plugin asks the new one first and only drops back to the old one if the new one is unavailable to your key.
+- **On that fallback path there is no region breakdown.** The deprecated endpoint can only break usage down one way at a time, and the service and region views are each a complete decomposition of the same total — adding them together would report every charge twice. Service is kept and region is left empty, so the totals stay honest.
+- **A narrowly scoped personal key still works,** but reports only its own usage rather than the whole workspace's. Use a workspace key, or grant the key workspace usage access, for account-wide numbers.
 
 ## Tips & limits
 

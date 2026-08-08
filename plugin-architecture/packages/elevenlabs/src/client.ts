@@ -1,4 +1,6 @@
 import type {
+  CostFetchRange,
+  CostRow,
   DashboardStat,
   DetailViewSchema,
   HostServices,
@@ -16,6 +18,7 @@ import type {
   TranscriptWord,
 } from "@infrawrench/plugin-base";
 import { base64ToBytes, bytesToBase64, jsonRestFetch } from "@infrawrench/plugin-base";
+import { fetchElevenLabsCostData } from "./cost-data.js";
 
 const API_BASE = "https://api.elevenlabs.io";
 
@@ -385,6 +388,26 @@ export class ElevenLabsClient implements PluginClient {
    */
   private async fetchSubscription(): Promise<ElevenLabsSubscription> {
     return this.fetch<ElevenLabsSubscription>("/v1/user/subscription");
+  }
+
+  // -------------------------------------------------------------------------
+  // Costs
+  // -------------------------------------------------------------------------
+
+  /**
+   * Thin delegate — all of the billing logic lives in `cost-data.ts` so it can
+   * be exercised without constructing a client. See that module for the
+   * endpoint choice and the deprecation fallback.
+   */
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    return fetchElevenLabsCostData(
+      {
+        apiKey: this.apiKey,
+        caCert: this.caCert,
+        http: this.services?.http,
+      },
+      range,
+    );
   }
 
   // -------------------------------------------------------------------------

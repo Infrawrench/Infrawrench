@@ -27,12 +27,35 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "Your ElevenLabs API key, sent as the xi-api-key header. Create one in the ElevenLabs dashboard under your profile menu (bottom-left avatar) → API Keys → Create API Key, or at elevenlabs.io/app/settings/api-keys. Grant it read access to Voices, Models, History and User (for the quota gauge), plus Text to Speech and Speech to Text if you want to use the Speech tab. Workspace keys and personal keys both work.",
+        "Your ElevenLabs API key, sent as the xi-api-key header. Create one in the ElevenLabs dashboard under your profile menu (bottom-left avatar) → API Keys → Create API Key, or at elevenlabs.io/app/settings/api-keys. Grant it read access to Voices, Models, History and User (for the quota gauge and the billing currency), plus Text to Speech and Speech to Text if you want to use the Speech tab, and Workspace/usage read if you want cost graphs. Workspace keys and personal keys both work.",
       sensitive: true,
       placeholder: "sk_0123456789abcdef0123456789abcdef0123456789abcdef",
     },
     caCertCredentialField,
   ],
+  /**
+   * Spend comes from `POST /v1/workspace/analytics/query/usage-by-product-over-time`,
+   * asked for in 86,400-second (daily) buckets grouped by `product_type`,
+   * `region` and `fiat_currency`. That endpoint's `group_by` is an array, so
+   * both declared dimensions come back from a single request.
+   *
+   * The fallback is the deprecated `GET /v1/usage/character-stats` with
+   * `metric=fiat_units_spent`, used only when the successor is absent or
+   * refuses the key. Its `breakdown_type` is **single-valued**, so on that path
+   * rows carry `service` and leave `region` unset — the two breakdowns are
+   * independent decompositions of the same total and summing them would double
+   * count. `region` is still declared here because the path we actually build
+   * against supplies it.
+   *
+   * 365 days of history is the host default and well within the endpoint's
+   * floor of 2020-01-01. ElevenLabs settles usage-based charges over a couple
+   * of days, so the trailing 3 are re-fetched to absorb restatements.
+   */
+  costs: {
+    dimensions: ["service", "region"],
+    maxHistoryDays: 365,
+    restatementDays: 3,
+  },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
