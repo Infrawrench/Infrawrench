@@ -95,6 +95,9 @@ export function handleWorkflowSession(
         organizationId,
         workflowId,
         triggerSource: "manual",
+        // `requireRunPermission` above established this user may start a run;
+        // this bounds what the run may then do to that same user's role.
+        ...(userId ? { runAsUserId: userId } : {}),
         interactive: true,
         debug: true,
         signal: abort.signal,

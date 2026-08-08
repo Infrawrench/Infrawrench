@@ -175,10 +175,15 @@ app.post("/:id/run", async (c) => {
   requirePermission(c, "workflows:write");
   const wf = await load(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
+  const runAsUserId = (c.get("session") as { userId?: string } | undefined)?.userId;
   const { runId, result } = await runWorkflowById({
     organizationId: orgId(c),
     workflowId: wf.id,
     triggerSource: "manual",
+    // The sandbox acts with this user's permissions, so `workflows:write` buys
+    // the right to start a run and nothing more — the operations inside it are
+    // checked against the same role the API would check.
+    ...(runAsUserId ? { runAsUserId } : {}),
     // HTTP runs are non-interactive; interactive prompting uses the websocket.
     interactive: false,
   });

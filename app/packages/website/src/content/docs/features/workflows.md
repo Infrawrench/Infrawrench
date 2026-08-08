@@ -578,6 +578,25 @@ Workflow tools need the same `workflows:read` / `workflows:write` [permissions](
 
 A workflow's code runs with your account credentials. Read the source of anything you didn't write before you enable it or hand it to `run_workflow`.
 
+## What a run is allowed to do
+
+`workflows:write` lets you start a run. It does not decide what the run may do once it starts.
+
+Every operation the sandbox performs is checked against the permissions of the user the run acts for, using the same permission strings as the rest of the product — so a workflow is not a way around a role. `infra.…create()` needs `resources:write`, `.delete()` needs `resources:delete`, `.ssh()`, `.query()` and the KV helpers need `resources:execute`, SFTP and object writes need `storage:write`, and `infra.costs.write` needs `costs:write`. Reading resources, logging, `infra.output`, metrics, `infra.fetch`, paging and approvals are always available.
+
+Who a run acts for depends on how it started:
+
+| Trigger                             | Acts for              |
+| ----------------------------------- | --------------------- |
+| Run button, debugger, HTTP, AI chat | Whoever started it    |
+| Cron schedule                       | The workflow's author |
+| Git push                            | The workflow's author |
+| Budget threshold crossing           | The workflow's author |
+
+Scheduling a workflow therefore cannot give it authority its author lacks, and a workflow whose author has left the organization stops being able to do anything privileged — its next run fails on the first such call rather than continuing to act with a departed colleague's access. If you inherit a workflow like that, re-save it under your own account or ask an owner to.
+
+A refused operation throws inside the workflow and names the permission it needed, so you can catch it like any other error — or read it off the failed run and ask an admin for the right role.
+
 ## The isolate sandbox
 
 Workflow code never runs in the host process. It executes in a **QuickJS WebAssembly isolate** with a hard memory limit and a wall-clock timeout, and with no ambient access to the filesystem or to sockets — the only capabilities a workflow has are the ones `infra` grants it and the `fetch` described above, all of which are performed by the host (with your account credentials, never exposed to the script). The same isolate runs identically on desktop and on the server, so a workflow behaves the same wherever it runs — with the one documented exception that a cloud `fetch` leaves through a proxy and can only reach the public internet.

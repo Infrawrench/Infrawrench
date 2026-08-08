@@ -426,6 +426,10 @@ export function workflowTools(): ToolDefinition[] {
             organizationId: auth.organizationId,
             workflowId: id,
             triggerSource: auth.source === "chat" ? "manual" : "api",
+            // Closes the same gap on this surface: without it, `run_workflow`
+            // would let an agent do through a workflow what the tool registry
+            // refuses it directly.
+            runAsUserId: auth.userId,
             interactive: false,
           });
           void logAudit({
