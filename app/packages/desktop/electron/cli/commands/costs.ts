@@ -11,6 +11,7 @@ import type {
   CostAnomaly,
   CostBasis,
   CostChargeType,
+  CostConversion,
   CostQueryRequest,
   CostQueryResponse,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
@@ -51,6 +52,59 @@ const CHARGE_TYPES: readonly CostChargeType[] = [
   "other",
 ];
 
+/**
+ * `--currency USD` — the display currency to convert into.
+ *
+ * Validated for shape only. Whether the org has actually configured this
+ * currency and stated rates is a server-side question, and the answer comes
+ * back in the response's `conversion` block rather than as an error: an org
+ * that has not opted in gets its honest per-currency numbers, which is the
+ * right outcome, not a failure.
+ */
+function parseCurrency(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  const code = raw.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(code)) {
+    throw new CliError(`--currency must be a three-letter code like USD — got "${raw}".`, 2);
+  }
+  return code;
+}
+
+/**
+ * The conversion caveat, as lines for text mode.
+ *
+ * Two things, in the order they matter: what got folded in and at whose rates,
+ * then what is still outside the headline figure. The second is the one that
+ * must never be dropped — a currency with no rate is shown separately, so the
+ * big number is not the whole spend and the reader has to be told.
+ */
+function printConversionNotice(conversion: CostConversion | undefined): void {
+  if (!conversion) return;
+  const { displayCurrency, converted, unconverted } = conversion;
+  if (converted.length === 0 && unconverted.length === 0) return;
+
+  for (const entry of converted) {
+    const rates = entry.rates.map((r) => `${r.rate} from ${r.effectiveFrom}`).join(", ");
+    println(
+      `${c.dim("·")} ${c.bold(entry.currency)} ${c.dim(`converted to ${displayCurrency} at ${rates}`)}`,
+    );
+  }
+  if (converted.length > 0) {
+    println(
+      `  ${c.dim("your organization's own stated rates — Infrawrench never fetches live FX; spend already in " + displayCurrency + " is not converted")}`,
+    );
+  }
+  if (unconverted.length > 0) {
+    println(
+      `${c.yellow("!")} ${c.bold(unconverted.join(", "))} ${c.dim(`not included in the ${displayCurrency} figure`)}`,
+    );
+    println(
+      `  ${c.dim("no exchange rate is configured (or none covers every day in this range), so these amounts are listed separately in their own currency rather than folded in or dropped")}`,
+    );
+  }
+  println();
+}
+
 /** `--basis cash|amortized`, defaulting to cash. */
 function parseBasis(raw: string | undefined): CostBasis | undefined {
   if (raw === undefined) return undefined;
@@ -62,8 +116,8 @@ function parseBasis(raw: string | undefined): CostBasis | undefined {
 }
 
 /** Repeated `--charge-type`; empty means every kind, i.e. a net total. */
-function parseChargeTypes(raw: string[]): CostChargeType[] {
-  return raw.map((value) => {
+function parseChargeTypes(raw: string[] | undefined): CostChargeType[] {
+  return (raw ?? []).map((value) => {
     const match = CHARGE_TYPES.find((t) => t === value);
     if (!match) {
       throw new CliError(
@@ -149,6 +203,7 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
 
   const basis = parseBasis(range.basis);
   const chargeTypes = parseChargeTypes(range.chargeTypes);
+  const displayCurrency = parseCurrency(range.currency);
 
   const days = range.last ? Math.max(1, Math.round(parseLastDays(range.last))) : 30;
   const to = range.to ?? isoDay(Date.now());
@@ -167,6 +222,9 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     // field still answers the same request it always did.
     ...(basis ? { costBasis: basis } : {}),
     ...(chargeTypes.length > 0 ? { chargeTypes } : {}),
+    // Omitted unless asked for, so a server that has never heard of conversion
+    // — and an org that has not opted in — answers the request it always did.
+    ...(displayCurrency ? { displayCurrency } : {}),
   };
 
   const [response, collection] = await Promise.all([
@@ -185,6 +243,11 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
       groupBy,
       costBasis: basis ?? "cash",
       chargeTypes,
+      // Echoed so a script can tell an unconverted run from a converted one
+      // without inspecting `conversion`. `response.conversion` (spread below)
+      // carries the rates applied and, crucially, the currencies that could
+      // not be converted and are therefore outside the headline totals.
+      displayCurrency: displayCurrency ?? null,
       ...response,
       collectionFailures: collection.failing,
       awaitingData: collection.empty,
@@ -196,6 +259,7 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
   }
 
   printCollectionWarnings(collection);
+  printConversionNotice(response.conversion);
 
   const { series, totals } = response;
   if (series.length === 0) {
@@ -213,6 +277,11 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     `${from} → ${to}`,
     ...(basis === "amortized" ? ["amortized"] : []),
     ...(chargeTypes.length > 0 ? [chargeTypes.join(", ")] : []),
+    // On the same line as the number, like the basis: a converted total that
+    // does not say so gets quoted as if it were a collected one.
+    ...(response.conversion && response.conversion.converted.length > 0
+      ? [`converted to ${response.conversion.displayCurrency}`]
+      : []),
   ].join(" · ");
   println(`${c.bold(org.displayName)} ${c.dim(`· ${scope}`)}  ${c.bold(totalLine)}`);
   if (basis === "amortized" && !collection.amortizing) {

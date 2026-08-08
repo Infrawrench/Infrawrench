@@ -41,7 +41,18 @@ export interface RangeFlags {
    * `costs --charge-type <t>`, repeatable: keep only these kinds of charge.
    * Empty means every kind, which is what makes the default total net.
    */
-  chargeTypes: string[];
+  chargeTypes?: string[] | undefined;
+  /**
+   * `costs --currency <code>` — fold every currency the org holds a rate for
+   * into this one, so a mixed-currency org gets a single number.
+   *
+   * Opt-in and inert without it: absent, the field is not sent at all and the
+   * server answers exactly as it always did. Conversion also requires the org
+   * to have configured that display currency and stated the rates, because
+   * Infrawrench never fetches live FX. Left a raw string so the command
+   * validates the shape and can say what it expected.
+   */
+  currency?: string | undefined;
 }
 
 /** Flags for the push-up commands (`page`, `costs push`). */
@@ -137,6 +148,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         window: { type: "string", short: "w" },
         // `costs` money selectors: which number, and which kinds of charge.
         basis: { type: "string" },
+        currency: { type: "string" },
         // Repeatable: one --charge-type per kind to keep.
         "charge-type": { type: "string", multiple: true },
         // `costs --anomalies` — same command, different question.
@@ -254,6 +266,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       resource: str("resource"),
       window: str("window"),
       basis: str("basis"),
+      currency: str("currency"),
       chargeTypes: Array.isArray(multi["charge-type"]) ? multi["charge-type"] : [],
     },
     deploy: {
