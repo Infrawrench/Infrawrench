@@ -12,12 +12,16 @@ import type {
   DashboardStat,
   HostServices,
   MetricSeries,
+  CostFetchRange,
+  CostRow,
 } from "@infrawrench/plugin-base";
 import {
   jsonRestFetch,
   labeledFieldItems,
   resourceTypeDisplayName,
 } from "@infrawrench/plugin-base";
+import { fetchHetznerCostData } from "./cost-data.js";
+import { createRateCardCache, type RateCardCache } from "./pricing.js";
 
 /**
  * Hetzner Cloud plugin client.
@@ -39,6 +43,8 @@ export class HetznerClient implements PluginClient {
 
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
+  /** One rate card per client, i.e. per cost-collection pass. */
+  private readonly rateCardCache: RateCardCache = createRateCardCache();
 
   constructor(
     credentials: Record<string, string>,
@@ -1493,6 +1499,27 @@ export class HetznerClient implements PluginClient {
       createdAt: group.created ?? new Date().toISOString(),
       updatedAt: group.created ?? new Date().toISOString(),
     }));
+  }
+
+  /**
+   * Estimated spend, from inventory × the `/pricing` rate card.
+   *
+   * Hetzner Cloud has no billing endpoint, so there is nothing to read actual
+   * spend from — see the header of `cost-data.ts` for what that costs in
+   * accuracy and why this collector never backfills. The rate-card cache lives
+   * on the client, which the host builds once per collection pass, so the
+   * month chunks of one pass share a single `/pricing` request.
+   */
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    return fetchHetznerCostData(
+      {
+        fetch: (path) => this.fetch(path),
+        fetchAll: (path, rootKey) => this.fetchAll(path, rootKey),
+        now: new Date(),
+        rateCard: this.rateCardCache,
+      },
+      range,
+    );
   }
 }
 

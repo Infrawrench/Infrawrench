@@ -37,6 +37,35 @@ const manifest: PluginManifest = {
     },
     caCertCredentialField,
   ],
+  /**
+   * Estimated spend, not billed spend.
+   *
+   * Hetzner Cloud publishes no invoice or spend endpoint — the only money in
+   * the API is the `/pricing` rate card — so these amounts are this project's
+   * current inventory priced at list, net of VAT, in the project's own
+   * currency. They will not reconcile against a Hetzner invoice line for line.
+   *
+   * `maxHistoryDays: 1` is deliberate and is the important part of this
+   * declaration. A past day rebuilt from today's inventory omits everything
+   * created and destroyed since — silently, and always downward — and the
+   * traffic counters that would correct it hold the current billing period
+   * only, with no history at all. Rather than backfill a year of confidently
+   * wrong numbers, the collector prices the day it runs and the series builds
+   * forward from the day the account is connected. Days before that are a gap,
+   * not zero spend.
+   *
+   * `restatementDays: 31` exists for one row type: traffic overage is
+   * cumulative over the billing period, so it is dated to the period's first
+   * day and restated in place on each run. 31 days guarantees that day is
+   * inside the incremental window whatever the date. Chunks containing neither
+   * today nor the period start return nothing and issue no requests.
+   */
+  costs: {
+    dimensions: ["service", "region", "resource"],
+    maxHistoryDays: 1,
+    restatementDays: 31,
+    estimated: true,
+  },
   statusFeed,
 };
 
