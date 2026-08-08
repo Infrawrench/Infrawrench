@@ -7,7 +7,7 @@ import { getRequestListener } from "@hono/node-server";
 import { parse } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
 import { api } from "./src/api/index";
-import { securityHeaders } from "./src/api/security-headers";
+import { applySecurityHeaders, securityHeaders } from "./src/api/security-headers";
 import { handleSshSession } from "./src/services/ssh-proxy";
 import { handleSqlSession } from "./src/services/sql-proxy";
 import { handleK8sExecSession } from "./src/services/k8s-exec-proxy";
@@ -25,8 +25,15 @@ import { authenticateBastionAgent, handleBastionAgentUpgrade } from "./src/servi
 const dev = process.env["NODE_ENV"] !== "production";
 const port = parseInt(process.env["PORT"] ?? "3000", 10);
 
-/** Unauthenticated liveness/readiness endpoint for load balancers and k8s probes. */
+/**
+ * Unauthenticated liveness/readiness endpoint for load balancers and k8s probes.
+ *
+ * Like `/api/mcp`, this is answered ahead of the Hono listener and so has to
+ * set the security headers itself — both server modes route through here, so
+ * doing it in the one function covers both.
+ */
 function respondHealthz(res: import("node:http").ServerResponse): void {
+  applySecurityHeaders(res);
   res.statusCode = 200;
   res.setHeader("content-type", "text/plain");
   res.end("ok");

@@ -582,7 +582,22 @@ A workflow's code runs with your account credentials. Read the source of anythin
 
 `workflows:write` lets you start a run. It does not decide what the run may do once it starts.
 
-Every operation the sandbox performs is checked against the permissions of the user the run acts for, using the same permission strings as the rest of the product — so a workflow is not a way around a role. `infra.…create()` needs `resources:write`, `.delete()` needs `resources:delete`, `.ssh()`, `.query()` and the KV helpers need `resources:execute`, SFTP and object writes need `storage:write`, and `infra.costs.write` needs `costs:write`. Reading resources, logging, `infra.output`, metrics, `infra.fetch`, paging and approvals are always available.
+Every operation the sandbox performs is checked against the permissions of the user the run acts for, using the same permission strings as the rest of the product — so a workflow is not a way around a role:
+
+| Operation                                                   | Needs               |
+| ----------------------------------------------------------- | ------------------- |
+| Listing, reading, describing, logs, metrics, manifests      | `resources:read`    |
+| Reading a resource output (`resolveOutput`)                 | `secrets:read`      |
+| `create()`, `update()`, applying a manifest, importing YAML | `resources:write`   |
+| `delete()`                                                  | `resources:delete`  |
+| `.ssh()`, `.query()`, the KV helpers, NoSQL                 | `resources:execute` |
+| Object and SFTP **reads**                                   | `storage:read`      |
+| Object and SFTP **writes**                                  | `storage:write`     |
+| `infra.costs.write`                                         | `costs:write`       |
+
+Reading a resource output needs `secrets:read` rather than `resources:read` because an output can be a connection string or a generated password — the same rule the `get_resource_outputs` tool follows.
+
+Logging, `infra.output`, metrics, `infra.fetch`, paging and approvals need no permission: they touch nothing outside the run.
 
 Who a run acts for depends on how it started:
 

@@ -1,12 +1,24 @@
 /**
  * Baseline security response headers, applied to every response this server
- * emits — API JSON, the SPA shell, and static assets alike.
+ * emits — API JSON, the SPA shell, static assets, MCP, and `/healthz`.
  *
- * Applied in two places because two different Hono apps serve responses (see
- * `server.ts`): `api` handles the API surface in both dev and prod, and the
- * prod-only `prodApp` wraps it to also serve `dist/client`. Both mount this, so
- * a response cannot escape the headers by which app produced it. Setting them
- * twice on the same response is a no-op — identical values.
+ * The header set is defined once, in {@link securityHeaderEntries}, and applied
+ * through two thin adapters because responses leave this server by two
+ * different routes:
+ *
+ *   - {@link securityHeaders} — Hono middleware, mounted on `api` (the API
+ *     surface in dev and prod) and on the prod-only `prodApp` that also serves
+ *     `dist/client`. Both, because `prodApp` emits the SPA shell and static
+ *     assets that `api` never sees, and the framing defence matters most on
+ *     exactly that HTML document. Setting identical values twice is a no-op.
+ *   - {@link applySecurityHeaders} — for the two handlers that write to a raw
+ *     `node:http` `ServerResponse` and never touch Hono at all: `/api/mcp`
+ *     (`mcp/http-handler.ts`) and `/healthz`. `server.ts` intercepts both paths
+ *     at the Node HTTP level *before* the Hono listener, so middleware cannot
+ *     reach them; they call this directly instead.
+ *
+ * One record and two adapters rather than two lists: a header set that is
+ * maintained in two places is a header set that will disagree in one of them.
  *
  * What is deliberately NOT here
  * -----------------------------
@@ -30,48 +42,75 @@
  * the meantime would read as a CSP while permitting exactly the injection a CSP
  * exists to stop, so this module states the gap instead of pretending to close
  * it.
+ *
+ * COOP/CORP/COEP are also absent, and also deliberately. They would sever
+ * `window.opener` and cross-origin resource reads; the browser app needs
+ * neither, but the OAuth round trips (WorkOS sign-in, "Add to Slack", the
+ * GitHub App setup callback) are full-page redirects whose behaviour under COOP
+ * is worth verifying against a real WorkOS tenant first, and neither header
+ * closes a gap found here.
  */
-import { secureHeaders } from "hono/secure-headers";
+import { createMiddleware } from "hono/factory";
+import type { ServerResponse } from "node:http";
 
 /**
- * HSTS is set only in production. On `http://localhost:3000` the header is
- * ignored by browsers over plain HTTP anyway, but a developer who once hits a
- * local HTTPS proxy would pin `localhost` to HTTPS for two years across every
- * project on the machine.
+ * HSTS is production-only. On `http://localhost:3000` browsers ignore the
+ * header over plain HTTP anyway, but a developer who once reaches the dev
+ * server through a local HTTPS proxy would pin `localhost` to HTTPS for two
+ * years — across every project on that machine, not just this one.
  */
-const isProduction = () => process.env["NODE_ENV"] === "production";
+function buildHeaders(): ReadonlyArray<readonly [string, string]> {
+  const headers: Array<readonly [string, string]> = [
+    // The clickjacking fix. `frame-ancestors` is what modern browsers honour;
+    // `X-Frame-Options` covers anything that predates it. This app drives SSH
+    // terminals and resource deletion from a session cookie, so being framed at
+    // all is the risk.
+    ["content-security-policy", "frame-ancestors 'none'"],
+    ["x-frame-options", "DENY"],
+    ["x-content-type-options", "nosniff"],
+    // Origin cross-site, full path same-origin. Resource and org ids live in
+    // our paths and should not ride along to a third party in a `Referer`, but
+    // stripping the header entirely breaks flows that legitimately check it.
+    ["referrer-policy", "strict-origin-when-cross-origin"],
+    ["x-dns-prefetch-control", "off"],
+    ["x-permitted-cross-domain-policies", "none"],
+  ];
+  if (process.env["NODE_ENV"] === "production") {
+    headers.push(["strict-transport-security", "max-age=63072000; includeSubDomains; preload"]);
+  }
+  return headers;
+}
 
+/**
+ * Resolved once on first use rather than at import time: `NODE_ENV` is stable
+ * for the life of the process, but module import order versus env loading is
+ * not something this module should have to depend on.
+ */
+let cached: ReadonlyArray<readonly [string, string]> | null = null;
+
+/** The header set, as lowercase name/value pairs. */
+export function securityHeaderEntries(): ReadonlyArray<readonly [string, string]> {
+  cached ??= buildHeaders();
+  return cached;
+}
+
+/** Test seam: forget the memoized set so a test can vary `NODE_ENV`. */
+export function resetSecurityHeadersCache(): void {
+  cached = null;
+}
+
+/**
+ * Apply the headers to a raw `node:http` response. For handlers that bypass
+ * Hono entirely — see the module docstring. Safe to call more than once, and
+ * must be called before the first `write`/`end`, like any header write.
+ */
+export function applySecurityHeaders(res: ServerResponse): void {
+  for (const [name, value] of securityHeaderEntries()) res.setHeader(name, value);
+}
+
+/** Hono middleware form, for every response that does go through Hono. */
 export const securityHeaders = () =>
-  secureHeaders({
-    // The clickjacking fix. `frame-ancestors` is the directive modern browsers
-    // honour; `X-Frame-Options` below covers anything that predates it. This
-    // app drives SSH terminals and resource deletion from a session cookie, so
-    // being framed at all is the risk.
-    contentSecurityPolicy: { frameAncestors: ["'none'"] },
-    xFrameOptions: "DENY",
-
-    xContentTypeOptions: "nosniff",
-    // Send the origin cross-site, the full path same-origin. Resource ids and
-    // org ids live in our paths and should not ride along to a third party in
-    // a `Referer` — but stripping the header entirely breaks same-origin
-    // analytics and OAuth flows that check it.
-    referrerPolicy: "strict-origin-when-cross-origin",
-    strictTransportSecurity: isProduction()
-      ? "max-age=63072000; includeSubDomains; preload"
-      : false,
-    xDnsPrefetchControl: "off",
-    xPermittedCrossDomainPolicies: "none",
-    removePoweredBy: true,
-
-    // Left off deliberately, not overlooked.
-    //
-    // COOP/CORP would sever `window.opener` and cross-origin resource reads.
-    // The browser app never needs either, but the OAuth round trips (WorkOS
-    // sign-in, "Add to Slack", the GitHub App setup callback) are full-page
-    // redirects whose behaviour under COOP is worth verifying against a real
-    // WorkOS tenant before turning on, and neither header closes a gap this
-    // audit found. Enabling them is a follow-up with a test, not a default.
-    crossOriginOpenerPolicy: false,
-    crossOriginResourcePolicy: false,
-    crossOriginEmbedderPolicy: false,
+  createMiddleware(async (c, next) => {
+    await next();
+    for (const [name, value] of securityHeaderEntries()) c.header(name, value);
   });

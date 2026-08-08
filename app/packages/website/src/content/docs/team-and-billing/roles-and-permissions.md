@@ -57,7 +57,12 @@ Use **Settings → Team → (member) → Role picker** to change a member's role
 
 <insert [Team page member row with the new role picker dropdown open] here>
 
-You cannot hand out more authority than you hold. A role you assign must be a subset of your own effective permissions, so an admin (who has no `billing:write`) cannot move someone onto a custom role that grants it. The same two rules apply when you **invite** someone, not just when you change an existing member's role — otherwise the invite form would be a way around the picker.
+You cannot hand out more authority than you hold. Two rules enforce that:
+
+1. A role you assign must be a subset of your own effective permissions, so an admin (who has no `billing:write`) cannot move someone onto a custom role that grants it.
+2. Only an owner can grant the owner role, or change an owner's role.
+
+Both apply when you **invite** someone, not just when you change an existing member's role — otherwise the invite form would be a way around the picker.
 
 ## API key scopes
 

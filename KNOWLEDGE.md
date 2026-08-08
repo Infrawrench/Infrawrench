@@ -1142,7 +1142,12 @@ WorkOS AuthKit — middleware-enforced on all `(app)/*` routes. Auto-provisions 
 
 `src/auth/__tests__/api-auth.test.ts` asserts both options stay absent.
 
-**Security response headers** live in `src/api/security-headers.ts` and are mounted **twice** — on `api` (all API responses, dev and prod) and on `prodApp` in `server.ts` (the SPA shell and static assets, which `api` never emits). Two apps serve responses; a header mounted on one only is a header half the surface doesn't get. Setting them twice is a no-op.
+**Security response headers** live in `src/api/security-headers.ts`, which defines the set once (`securityHeaderEntries`) and exposes two adapters, because responses leave this server by two different routes:
+
+- `securityHeaders()` — Hono middleware, mounted **twice**: on `api` (all API responses, dev and prod) and on `prodApp` in `server.ts` (the SPA shell and static assets, which `api` never emits). Two apps serve responses; a header mounted on one only is a header half the surface doesn't get. Setting them twice is a no-op.
+- `applySecurityHeaders(res)` — for the handlers that write to a raw `node:http` `ServerResponse`. **`server.ts` intercepts `/api/mcp` and `/healthz` at the Node HTTP level, ahead of the Hono listener**, so no middleware can reach them; `mcp/http-handler.ts` and `respondHealthz` call this themselves. MCP is the one that matters — it's an authenticated tool-calling surface, and it was the gap when this landed. Anything else added to that pre-Hono `if` chain needs the same call.
+
+One set, two adapters, rather than two lists: a header set maintained in two places is one that will disagree in one of them. `src/api/__tests__/security-headers.test.ts` asserts the two adapters emit exactly the same pairs.
 
 The CSP is `frame-ancestors 'none'` and nothing else, deliberately. Three things load or generate script from outside the bundle — `@monaco-editor/react` pulls the Monaco loader from jsdelivr unless handed a bundled instance and spawns workers from `blob:`, `/docs` loads the Scalar bundle from jsdelivr, and Vite dev serves inline modules and uses `eval` for HMR — so a real `script-src` needs nonce plumbing through `index.html`, Monaco pinned to the bundle, and a route-specific relaxation for `/docs`. Shipping `'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net` in the meantime would look like a CSP while permitting exactly what a CSP exists to stop; the module says so rather than pretending. COOP/CORP are off for a similar reason — nothing needs them and the OAuth redirects want verifying against a real WorkOS tenant first. HSTS is production-only so a developer who once hits a local HTTPS proxy doesn't pin `localhost` for two years.
 
