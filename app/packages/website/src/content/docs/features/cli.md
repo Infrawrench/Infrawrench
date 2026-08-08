@@ -109,6 +109,30 @@ infrawrench costs --anomalies
 infrawrench costs --anomalies --days 7      # 1-90; --last 2w says the same thing
 ```
 
+`reports` lists the org's saved [cost reports](./cost-reports.md) — each one's shape and how many dashboards carry a card for it — and running one by name charts it without you restating a single filter:
+
+```
+infrawrench reports
+infrawrench reports "Monthly spend"
+infrawrench reports "Monthly spend" --json
+```
+
+The name is matched exactly first, then as a substring; an ambiguous query lists the candidates rather than picking one, since running the wrong cost report gives a wrong answer that looks right. An id works anywhere a name does.
+
+<insert [Terminal showing `infrawrench reports` listing three saved reports, then `infrawrench reports "Monthly spend"` with its sparkline and per-service bar chart] here>
+
+`exports` lists the org's [scheduled cost exports](./cost-exports.md) — each one's format, schedule, destination, and the outcome of its last run, with any failure printed in full below the table. A nightly export that stopped working is invisible until somebody asks the warehouse why last week is missing, which is exactly what this command is for:
+
+```
+infrawrench exports
+infrawrench exports run "Finance warehouse"
+infrawrench exports --json
+```
+
+`exports run` forces a run and lists the objects it wrote, then exits non-zero if the destination rejected it, so a CI step can depend on it. Running is behind an explicit verb rather than a bare positional like `reports`, because this one writes to somebody's bucket.
+
+<insert [Terminal showing `infrawrench exports` with a table of three exports, one row red with "failed", and its full error message printed below the table] here>
+
 `schedules` lists the org's [sleep/wake schedules](./sleep-schedules.md) — each window, its timezone, the next transition, the last run's outcome (including freeze skips and failures), and the projected monthly saving:
 
 ```

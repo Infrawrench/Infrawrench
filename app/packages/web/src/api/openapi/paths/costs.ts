@@ -70,6 +70,28 @@ const CostQueryRequest = strict({
   ]),
   groupByTagKey: z.string().optional(),
   filters: z.array(CostFilter).optional(),
+  query: z
+    .string()
+    .max(4000)
+    .optional()
+    .describe(
+      "The same filter written as text, in the cost query language — an alternative to " +
+        "`filters`, compiled server-side into exactly that structure.\n\n" +
+        "Grammar: a conjunction of equality terms joined by `AND`. A term is " +
+        "`dimension = 'value'`, `dimension != 'value'`, `dimension IN ('a','b')` or " +
+        "`dimension NOT IN ('a','b')`; the tag dimension takes its key in brackets, " +
+        "`tag['owner'] = 'platform'`. Keywords are case-insensitive, strings may be single- or " +
+        "double-quoted, and a quote inside a value is escaped by doubling it (`'it''s'`) or " +
+        "with a backslash (`'it\\'s'`).\n\n" +
+        "`OR` is deliberately not supported: the stored filter is a conjunction, so several " +
+        "values of one dimension go in an `IN` list and unrelated alternatives need separate " +
+        "queries. Anything the structured filter cannot express is a parse error rather than a " +
+        "second execution path.\n\n" +
+        "Sending both `query` and a non-empty `filters` is a 400, not a precedence rule. A " +
+        "parse failure is a 400 whose body carries `queryError` with the character `offset`, " +
+        "the `length` of the offending span, and the `expected` alternatives there.",
+    )
+    .openapi({ example: "provider = 'aws' AND tag['env'] != 'dev'" }),
   topN: z.number().int().min(1).max(15).optional(),
   comparePreviousPeriod: z.boolean().optional(),
   forecast: z.boolean().optional(),
@@ -97,7 +119,12 @@ const CostQuerySeries = strict({
   points: z.array(CostSeriesPoint),
 }).openapi("CostQuerySeries");
 
-const CostQueryResponse = strict({
+/**
+ * Exported so `paths/cost-reports.ts` can describe `POST /cost-reports/:id/run`
+ * with the same component rather than registering a second copy under a
+ * near-identical name — running a report returns exactly a cost query result.
+ */
+export const CostQueryResponse = strict({
   series: z.array(CostQuerySeries),
   comparison: z.array(CostQuerySeries).optional(),
   forecast: z.array(CostSeriesPoint).optional(),
@@ -347,7 +374,11 @@ export function registerCostPaths(ctx: BuildContext) {
       "Optionally returns a previous-period comparison and a trend forecast.\n\n" +
       "`costBasis` chooses between cash and amortized money, and `chargeTypes` narrows which " +
       "kinds of charge count. Both the comparison period and the forecast are computed on the " +
-      "same basis and charge types as the series itself.",
+      "same basis and charge types as the series itself.\n\n" +
+      "The filter can be sent structurally as `filters` or as text in the cost query language " +
+      "via `query` (`provider = 'aws' AND tag['env'] != 'dev'`). They are two spellings of one " +
+      "filter: sending both is a 400, and a query that does not parse is a 400 carrying the " +
+      "offset of the mistake.",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: CostQueryRequest } }, required: true },

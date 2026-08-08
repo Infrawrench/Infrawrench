@@ -54,7 +54,13 @@ const WorkflowPin = strict({
   ),
 }).openapi("DashboardWorkflowPin");
 
-const WidgetKind = z.enum(["cost_graph", "budget", "custom_graph"]).openapi("DashboardWidgetKind");
+const WidgetKind = z
+  .enum(["cost_graph", "cost_report", "budget", "custom_graph"])
+  .describe(
+    "`cost_graph` stores its whole config inline — a one-off card. `cost_report` points at a " +
+      "saved cost report by id, so editing the report updates every dashboard showing it.",
+  )
+  .openapi("DashboardWidgetKind");
 
 const Widget = strict({
   id: Uuid,
@@ -184,6 +190,7 @@ const TabTarget = strict({
     // accepted here: an older client still sends it, and a strict enum would
     // reject that client's whole tab list rather than the one dead tab.
     "savings",
+    "cost-reports",
     "graph",
     "logs",
     "changes",
@@ -204,6 +211,12 @@ const TabTarget = strict({
   resourceId: ResourceId.optional(),
   // Omitted for the conversation-list tab, which is always valid.
   conversationId: Uuid.optional(),
+  /**
+   * Which report the Cost reports tab was last on. Omitted for the list view.
+   * Never used to invalidate the tab — the tab is the page, and a deleted
+   * report just lands on the list.
+   */
+  reportId: Uuid.optional(),
 }).openapi("TabTarget");
 
 const ValidateTabsRequest = strict({

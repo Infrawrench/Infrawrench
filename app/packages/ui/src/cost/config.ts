@@ -24,6 +24,8 @@ import {
   type CostFilter,
   type CostGraphConfig,
   type CostQueryRequest,
+  type CostReportInput,
+  type CostReportWidgetConfig,
   type CustomGraphWidgetConfig,
   type DashboardWidgetKind,
   TAG_POLICY_LIMITS,
@@ -74,12 +76,32 @@ export {
   type CostGraphConfig,
   type BudgetWidgetConfig,
   type BudgetThreshold,
+  COST_REPORT_LIMITS,
+  normalizeCostReportName,
+  duplicateCostReportName,
+  type CostReport,
+  type CostReportInput,
+  type CostReportPlacement,
+  type CostReportRunResult,
+  type CostReportWidgetConfig,
   type DashboardWidgetKind,
   type DashboardWidget,
   type CostQueryRequest,
   type CostSeriesPoint,
   type CostQuerySeries,
   type CostQueryResponse,
+  type CostConversion,
+  type CostConvertedCurrency,
+  type CostConversionRate,
+  CURRENCY_CODE_PATTERN,
+  EXCHANGE_RATE_LIMITS,
+  normalizeCurrencyCode,
+  buildExchangeRateTable,
+  describeCostConversion,
+  type OrgCurrencySettings,
+  type OrgCurrencyConfig,
+  type ExchangeRate,
+  type ExchangeRateInput,
   type CustomGraphWidgetConfig,
   TAG_POLICY_LIMITS,
   ALLOCATION_RULE_LIMITS,
@@ -139,6 +161,31 @@ export const costGraphConfigSchema = z.object({
 export const budgetWidgetConfigSchema = z.object({
   version: z.literal(1),
   budgetId: z.string().min(1),
+});
+
+/**
+ * A cost_report widget is a dashboard view onto a cost_reports row. It holds no
+ * config of its own on purpose: the whole point of the report object is that
+ * editing it once updates every dashboard showing it.
+ */
+export const costReportWidgetConfigSchema = z.object({
+  version: z.literal(1),
+  reportId: z.string().min(1),
+});
+
+/**
+ * Create/update body for a report (POST/PUT /cost-reports).
+ *
+ * `folderId` is accepted and stored now so a client can round-trip it; the
+ * folders table it will reference does not exist yet, so nothing else reads it.
+ * Nullable rather than merely optional because "move this out of its folder"
+ * has to be expressible.
+ */
+export const costReportInputSchema = z.object({
+  name: z.string().min(1).max(COST_REPORT_LIMITS.maxNameLength),
+  description: z.string().max(COST_REPORT_LIMITS.maxDescriptionLength).optional(),
+  config: costGraphConfigSchema,
+  folderId: z.string().min(1).nullable().optional(),
 });
 
 export const budgetThresholdSchema = z.object({
@@ -203,6 +250,7 @@ export const customGraphWidgetConfigSchema = z.object({
 
 const widgetConfigSchemas = {
   cost_graph: costGraphConfigSchema,
+  cost_report: costReportWidgetConfigSchema,
   budget: budgetWidgetConfigSchema,
   custom_graph: customGraphWidgetConfigSchema,
 } as const satisfies Record<DashboardWidgetKind, z.ZodTypeAny>;
@@ -278,6 +326,8 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof costFilterSchema>, CostFilter>,
   Exact<z.infer<typeof costGraphConfigSchema>, CostGraphConfig>,
   Exact<z.infer<typeof budgetWidgetConfigSchema>, BudgetWidgetConfig>,
+  Exact<z.infer<typeof costReportWidgetConfigSchema>, CostReportWidgetConfig>,
+  Exact<z.infer<typeof costReportInputSchema>, CostReportInput>,
   Exact<z.infer<typeof budgetThresholdSchema>, BudgetThreshold>,
   Exact<z.infer<typeof budgetInputSchema>, BudgetInput>,
   Exact<z.infer<typeof costAnomalySettingsSchema>, CostAnomalySettings>,

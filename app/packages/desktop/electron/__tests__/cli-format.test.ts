@@ -5,6 +5,7 @@ import {
   formatChangeTime,
   formatMetricAlertCondition,
   formatMetricAlertSelector,
+  matchCostReport,
   renderTree,
   type TreeChild,
 } from "../cli/format";
@@ -150,5 +151,45 @@ describe("formatMetricAlertSelector", () => {
         tagValue: null,
       }),
     ).toBe("all resources");
+  });
+});
+
+describe("matchCostReport", () => {
+  const reports = [
+    { id: "id-1", name: "Monthly spend" },
+    { id: "id-2", name: "Monthly spend by team" },
+    { id: "id-3", name: "EC2 only" },
+  ];
+
+  it("matches an exact id", () => {
+    expect(matchCostReport(reports, "id-2")).toEqual({ match: reports[1] });
+  });
+
+  it("prefers an exact name over a substring of a longer one", () => {
+    // "Monthly spend" is also a substring of "Monthly spend by team"; without
+    // the exact-name pass this query would be ambiguous and refuse to run.
+    expect(matchCostReport(reports, "Monthly spend")).toEqual({ match: reports[0] });
+  });
+
+  it("is case- and whitespace-insensitive on names", () => {
+    expect(matchCostReport(reports, "  ec2 ONLY ")).toEqual({ match: reports[2] });
+  });
+
+  it("matches a unique substring", () => {
+    expect(matchCostReport(reports, "by team")).toEqual({ match: reports[1] });
+  });
+
+  it("refuses an ambiguous substring and names the candidates", () => {
+    // Running the wrong cost report is a quiet, plausible-looking wrong answer,
+    // so an ambiguous query must fail rather than pick the first row.
+    const result = matchCostReport(reports, "Monthly");
+    expect(result.match).toBeNull();
+    expect(result.match === null && result.candidates).toHaveLength(2);
+  });
+
+  it("reports no candidates for a miss", () => {
+    const result = matchCostReport(reports, "nothing like this");
+    expect(result.match).toBeNull();
+    expect(result.match === null && result.candidates).toHaveLength(0);
   });
 });

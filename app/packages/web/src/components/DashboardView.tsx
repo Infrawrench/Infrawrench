@@ -38,6 +38,12 @@ import {
   type DashboardWidget,
 } from "@infrawrench/ui/cost";
 import {
+  CostReportPickerModal,
+  CostReportWidgetCard,
+  type CostReport,
+  type CostReportWidgetConfig,
+} from "@infrawrench/ui/cost-reports";
+import {
   CustomGraphCard,
   CustomGraphEditorModal,
   CustomGraphPickerModal,
@@ -127,10 +133,12 @@ export function DashboardView({
   const [costModal, setCostModal] = useState<{ widget: DashboardWidget | null } | null>(null);
   const [budgetModal, setBudgetModal] = useState<{ widget: DashboardWidget | null } | null>(null);
   const [budgetPickerOpen, setBudgetPickerOpen] = useState(false);
+  const [reportPickerOpen, setReportPickerOpen] = useState(false);
   const [graphPickerOpen, setGraphPickerOpen] = useState(false);
   const [graphEditorId, setGraphEditorId] = useState<string | null>(null);
   const [graphReload, setGraphReload] = useState(0);
   const [budgets, setBudgets] = useState<Map<string, BudgetWithStatus>>(new Map());
+  const [reports, setReports] = useState<Map<string, CostReport>>(new Map());
   const [costStatus, setCostStatus] = useState<CostAccountStatus[]>([]);
   const [dashboardName, setDashboardName] = useState(initialName);
   const [editingName, setEditingName] = useState(false);
@@ -248,10 +256,36 @@ export function DashboardView({
     if (hasBudgetWidgets) void refetchBudgets();
   }, [hasBudgetWidgets, refetchBudgets]);
 
+  // Cost-report cards store only a reportId, so the dashboard resolves them the
+  // way it resolves budgets: one list fetch, not one fetch per card.
+  const loadAllReports = useCallback(
+    () => apiGet<CostReport[]>(`/api/org/${orgId}/cost-reports`),
+    [orgId],
+  );
+
+  const refetchReports = useCallback(async () => {
+    try {
+      setReports(new Map((await loadAllReports()).map((r) => [r.id, r])));
+    } catch (e) {
+      // A report card with no row renders as "unavailable", which is
+      // indistinguishable from the report actually being gone — so say so.
+      toast.error("Couldn't load cost reports", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }, [loadAllReports]);
+
+  const hasReportWidgets = widgets.some((w) => w.kind === "cost_report");
+  useEffect(() => {
+    if (hasReportWidgets) void refetchReports();
+  }, [hasReportWidgets, refetchReports]);
+
   // Any cost surface on the dashboard is only as good as the collection
   // behind it, so pull the per-account state once and let the notice decide
   // whether there is anything worth saying.
-  const hasCostWidgets = widgets.some((w) => w.kind === "cost_graph" || w.kind === "budget");
+  const hasCostWidgets = widgets.some(
+    (w) => w.kind === "cost_graph" || w.kind === "cost_report" || w.kind === "budget",
+  );
   useEffect(() => {
     if (!hasCostWidgets) return;
     let cancelled = false;
@@ -333,6 +367,18 @@ export function DashboardView({
     });
     setWidgets((prev) => [...prev, widget]);
     if (created) setGraphEditorId(graph.id);
+  }
+
+  /** Show a saved cost report on this dashboard. */
+  async function addReportWidget(report: CostReport) {
+    const created = await apiPost<DashboardWidget>(`/api/org/${orgId}/dashboards/widgets`, {
+      dashboardId,
+      kind: "cost_report",
+      title: report.name,
+      config: { version: 1, reportId: report.id },
+    });
+    setWidgets((prev) => [...prev, created]);
+    await refetchReports();
   }
 
   /** Show a budget that already exists on this dashboard. */
@@ -536,6 +582,10 @@ export function DashboardView({
                     setAddMenuOpen(false);
                     setBudgetPickerOpen(true);
                   }}
+                  onPickSavedReport={() => {
+                    setAddMenuOpen(false);
+                    setReportPickerOpen(true);
+                  }}
                   onPickCustomGraph={() => {
                     setAddMenuOpen(false);
                     setGraphPickerOpen(true);
@@ -561,7 +611,9 @@ export function DashboardView({
                     // belongs here rather than on the card.
                     className={
                       card.kind === "widget" &&
-                      (card.widget.kind === "cost_graph" || card.widget.kind === "custom_graph")
+                      (card.widget.kind === "cost_graph" ||
+                        card.widget.kind === "cost_report" ||
+                        card.widget.kind === "custom_graph")
                         ? "col-span-2"
                         : undefined
                     }
@@ -598,6 +650,24 @@ export function DashboardView({
                         config={card.widget.config as CostGraphConfig}
                         api={costApi}
                         onEdit={() => setCostModal({ widget: card.widget })}
+                        onRemove={() => void handleRemoveWidget(card.widget.id)}
+                      />
+                    ) : card.widget.kind === "cost_report" ? (
+                      <CostReportWidgetCard
+                        report={reports.get(
+                          (card.widget.config as CostReportWidgetConfig).reportId,
+                        )}
+                        config={card.widget.config as CostReportWidgetConfig}
+                        api={costApi}
+                        // Not editable in place: the report is shared, so the
+                        // edit belongs on its own page where the list of
+                        // everywhere else it appears is visible.
+                        onOpenReport={(reportId) =>
+                          void navigate({
+                            to: "/org/$orgId/cost-reports/$reportId",
+                            params: { orgId, reportId },
+                          })
+                        }
                         onRemove={() => void handleRemoveWidget(card.widget.id)}
                       />
                     ) : card.widget.kind === "custom_graph" ? (
@@ -647,6 +717,10 @@ export function DashboardView({
                       onPickExistingBudget={() => {
                         setAddMenuOpen(false);
                         setBudgetPickerOpen(true);
+                      }}
+                      onPickSavedReport={() => {
+                        setAddMenuOpen(false);
+                        setReportPickerOpen(true);
                       }}
                       onPickCustomGraph={() => {
                         setAddMenuOpen(false);
@@ -731,6 +805,17 @@ export function DashboardView({
           />
         )}
 
+        {reportPickerOpen && (
+          <CostReportPickerModal
+            loadReports={loadAllReports}
+            excludeIds={widgets
+              .filter((w) => w.kind === "cost_report")
+              .map((w) => (w.config as CostReportWidgetConfig).reportId)}
+            onPick={addReportWidget}
+            onClose={() => setReportPickerOpen(false)}
+          />
+        )}
+
         {budgetPickerOpen && (
           <BudgetPickerModal
             loadBudgets={loadAllBudgets}
@@ -763,6 +848,7 @@ function budgetToInput(budget: BudgetWithStatus | undefined): BudgetInput {
 function AddMenu({
   onPickResource,
   onPickCostGraph,
+  onPickSavedReport,
   onPickBudget,
   onPickExistingBudget,
   onPickCustomGraph,
@@ -770,6 +856,7 @@ function AddMenu({
 }: {
   onPickResource: () => void;
   onPickCostGraph: () => void;
+  onPickSavedReport: () => void;
   onPickBudget: () => void;
   onPickExistingBudget: () => void;
   onPickCustomGraph: () => void;
@@ -794,8 +881,16 @@ function AddMenu({
         <button type="button" onClick={onPickResource} className={itemClass}>
           <span className="text-on-surface-faint">▣</span> Pin a resource
         </button>
+        {/*
+          Two entries on purpose: "Cost graph" is a one-off card owned by this
+          dashboard, "Saved report" is a view onto a shared object. Collapsing
+          them would force anyone wanting one chart to name and file a report.
+        */}
         <button type="button" onClick={onPickCostGraph} className={itemClass}>
           <span className="text-on-surface-faint">▤</span> Cost graph
+        </button>
+        <button type="button" onClick={onPickSavedReport} className={itemClass}>
+          <span className="text-on-surface-faint">▥</span> Saved report
         </button>
         <button type="button" onClick={onPickBudget} className={itemClass}>
           <span className="text-on-surface-faint">◔</span> New budget

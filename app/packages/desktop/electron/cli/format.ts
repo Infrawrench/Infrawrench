@@ -89,6 +89,36 @@ export function anomalyDeltaPercent(
 }
 
 /* ------------------------------------------------------------------ *
+ * Cost reports
+ * ------------------------------------------------------------------ */
+
+/**
+ * Resolve `infrawrench reports <query>` to one row: an exact id, then an exact
+ * (case-insensitive) name, then a unique substring of a name.
+ *
+ * Reports are addressed by name in conversation ("run the monthly spend one"),
+ * so accepting a name is the point; the ordering exists so a report literally
+ * named like another's prefix still wins its own exact match. An ambiguous
+ * substring returns `null` with the candidates rather than silently picking
+ * the first — running the wrong cost report is a quiet, plausible-looking
+ * wrong answer.
+ */
+export function matchCostReport<T extends { id: string; name: string }>(
+  reports: readonly T[],
+  query: string,
+): { match: T } | { match: null; candidates: T[] } {
+  const q = query.trim().toLowerCase();
+  const byId = reports.find((r) => r.id === query.trim());
+  if (byId) return { match: byId };
+  const exactName = reports.filter((r) => r.name.trim().toLowerCase() === q);
+  if (exactName.length === 1) return { match: exactName[0]! };
+  if (exactName.length > 1) return { match: null, candidates: exactName };
+  const partial = reports.filter((r) => r.name.toLowerCase().includes(q));
+  if (partial.length === 1) return { match: partial[0]! };
+  return { match: null, candidates: partial };
+}
+
+/* ------------------------------------------------------------------ *
  * Change timeline
  * ------------------------------------------------------------------ */
 

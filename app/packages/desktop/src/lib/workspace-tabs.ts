@@ -5,6 +5,7 @@ import {
   accountTabTarget,
   agentsTabTarget,
   costsTabTarget,
+  costReportsTabTarget,
   graphTabTarget,
   logsTabTarget,
   changesTabTarget,
@@ -32,6 +33,7 @@ export {
   accountTabTarget,
   agentsTabTarget,
   costsTabTarget,
+  costReportsTabTarget,
   graphTabTarget,
   logsTabTarget,
   changesTabTarget,
@@ -86,6 +88,15 @@ export function getWorkspaceNavigateArgs(
       };
     case "costs":
       return { to: "/costs", ...(replace ? { replace: true } : {}) };
+    // Like chat and settings: the search object is always passed, so navigating
+    // from a report back to the list CLEARS ?report= instead of resolving
+    // straight back into the report.
+    case "cost-reports":
+      return {
+        to: "/cost-reports",
+        search: target.reportId ? { report: target.reportId } : {},
+        ...(replace ? { replace: true } : {}),
+      };
     case "graph":
       return { to: "/graph", ...(replace ? { replace: true } : {}) };
     case "logs":
@@ -206,6 +217,10 @@ export function syncWorkspaceRouteFromPath(
   // content.
   if (segments[0] === "costs" || segments[0] === "savings") {
     return costsTabTarget();
+  }
+  if (segments[0] === "cost-reports") {
+    const params = new URLSearchParams(search ?? "");
+    return costReportsTabTarget(params.get("report") ?? undefined);
   }
   if (segments[0] === "graph") {
     return graphTabTarget();

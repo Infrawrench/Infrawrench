@@ -10,6 +10,7 @@ import { genericTools } from "./generic";
 import { perPluginCreateTools } from "./per-plugin-create";
 import { connectionTools } from "./connections";
 import { costTools } from "./costs";
+import { costReportTools } from "./cost-reports";
 import { scheduleTools } from "./schedules";
 import { rightsizingTools } from "./rightsizing";
 import { momentTools } from "./moment";
@@ -28,6 +29,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...genericTools(),
     ...connectionTools(),
     ...costTools(),
+    ...costReportTools(),
     ...scheduleTools(),
     ...rightsizingTools(),
     ...momentTools(),

@@ -6,6 +6,7 @@ export type WorkspaceTabTarget =
   | { kind: "account"; accountId: string }
   | { kind: "agents" }
   | { kind: "costs" }
+  | { kind: "cost-reports"; reportId?: string }
   | { kind: "graph" }
   | { kind: "logs" }
   | { kind: "changes" }
@@ -61,6 +62,10 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "agents";
     case "costs":
       return "costs";
+    case "cost-reports":
+      // Not keyed by report: opening a second report should retarget the open
+      // Cost reports tab rather than pile up a tab per report.
+      return "cost-reports";
     case "graph":
       return "graph";
     case "logs":
@@ -115,6 +120,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Agents";
     case "costs":
       return "Costs";
+    case "cost-reports":
+      return "Reports";
     case "graph":
       return "Graph";
     case "logs":
@@ -172,6 +179,11 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "metric-alerts":
     case "probes":
       return true;
+    case "cost-reports":
+      // The deployments/settings trick: one tab by id, but comparing the report
+      // is what makes the route sync record which report the tab is on, so
+      // reactivating it restores that report rather than the bare list.
+      return a.reportId === (b as { reportId?: string }).reportId;
     case "deployments":
       // Compared even though the tab *id* ignores it: the id keeps a second
       // hotlink reusing one tab, while this comparison is what makes the route

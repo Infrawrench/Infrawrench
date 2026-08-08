@@ -24,6 +24,7 @@ import {
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
+  costReportsTabTarget,
   getWorkspaceNavigateArgs,
   navigateToWorkspaceTarget,
   syncWorkspaceRouteFromPath,
@@ -315,6 +316,16 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/moment")).toBeNull();
   });
 
+  it("parses cost-report paths into the single Cost reports tab", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/cost-reports")).toEqual({
+      kind: "cost-reports",
+    });
+    expect(syncWorkspaceRouteFromPath("/org/myorg/cost-reports/report-1")).toEqual({
+      kind: "cost-reports",
+      reportId: "report-1",
+    });
+  });
+
   it("parses settings paths into the single settings tab", () => {
     expect(syncWorkspaceRouteFromPath("/org/myorg/settings")).toEqual({ kind: "settings" });
     expect(syncWorkspaceRouteFromPath("/org/myorg/settings/team")).toEqual({
@@ -398,5 +409,35 @@ describe("navigateToWorkspaceTarget", () => {
         hash: "sftp",
       }),
     );
+  });
+});
+
+describe("cost reports tab", () => {
+  it("costReportsTabTarget omits reportId for the list view", () => {
+    expect(costReportsTabTarget()).toEqual({ kind: "cost-reports" });
+    expect(costReportsTabTarget("r1")).toEqual({ kind: "cost-reports", reportId: "r1" });
+  });
+
+  it("navigates to the list path without a report and the detail path with one", () => {
+    expect(getWorkspaceNavigateArgs(costReportsTabTarget())).toEqual({
+      to: "/org/$orgId/cost-reports",
+      params: { orgId: "test-org" },
+    });
+    expect(getWorkspaceNavigateArgs(costReportsTabTarget("r1"))).toEqual({
+      to: "/org/$orgId/cost-reports/$reportId",
+      params: { orgId: "test-org", reportId: "r1" },
+    });
+  });
+
+  it("round-trips through the route sync", () => {
+    // The URL is what records the open report on the tab, so a target that
+    // does not survive this round trip loses the report on reload.
+    for (const target of [costReportsTabTarget(), costReportsTabTarget("r1")]) {
+      const args = getWorkspaceNavigateArgs(target);
+      const path = args.to
+        .replace("$orgId", args.params!["orgId"]!)
+        .replace("$reportId", args.params!["reportId"] ?? "");
+      expect(syncWorkspaceRouteFromPath(path)).toEqual(target);
+    }
   });
 });

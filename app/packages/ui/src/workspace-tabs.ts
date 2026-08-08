@@ -86,6 +86,15 @@ export function costsTabTarget(): WorkspaceTabTarget {
   return { kind: "costs" };
 }
 
+/**
+ * The Cost reports page. With a `reportId` it opens that report's detail view;
+ * without one it opens the list. One tab either way — the id is remembered
+ * state, not a second tab (see `getWorkspaceTabId`).
+ */
+export function costReportsTabTarget(reportId?: string): WorkspaceTabTarget {
+  return { kind: "cost-reports", ...(reportId ? { reportId } : {}) };
+}
+
 export function graphTabTarget(): WorkspaceTabTarget {
   return { kind: "graph" };
 }

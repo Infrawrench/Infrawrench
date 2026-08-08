@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   dashboardTabTarget,
   accountTabTarget,
+  costReportsTabTarget,
   postureTabTarget,
   environmentDiffTabTarget,
   probesTabTarget,
@@ -10,7 +11,12 @@ import {
   resourceSftpTabTarget,
   navigateToWorkspaceTarget,
 } from "../workspace-tabs";
-import { useUIStore } from "../store/ui.store";
+import {
+  getWorkspaceTabFallbackTitle,
+  getWorkspaceTabId,
+  useUIStore,
+  workspaceTabTargetsEqual,
+} from "../store/ui.store";
 
 describe("tab target factories", () => {
   it("dashboardTabTarget", () => {
@@ -36,6 +42,11 @@ describe("tab target factories", () => {
 
   it("probesTabTarget", () => {
     expect(probesTabTarget()).toEqual({ kind: "probes" });
+  });
+
+  it("costReportsTabTarget omits reportId for the list view", () => {
+    expect(costReportsTabTarget()).toEqual({ kind: "cost-reports" });
+    expect(costReportsTabTarget("r1")).toEqual({ kind: "cost-reports", reportId: "r1" });
   });
 
   it("resourceTabTarget normalizes id and defaults to details view", () => {
@@ -150,5 +161,39 @@ describe("navigateToWorkspaceTarget", () => {
       mode: "pin",
     });
     expect(useUIStore.getState().workspaceTabs).toHaveLength(1);
+  });
+});
+
+/**
+ * The single-tab-with-remembered-state pattern, as used by Deploy and
+ * Settings: one tab id regardless of the state field, but the field IS
+ * compared, so the route sync records it and reactivating the tab restores it.
+ * Getting either half wrong is silent — a tab per report, or a report that
+ * vanishes on reload.
+ */
+describe("cost-reports tab identity", () => {
+  it("uses one tab id whatever report is open", () => {
+    expect(getWorkspaceTabId(costReportsTabTarget())).toBe("cost-reports");
+    expect(getWorkspaceTabId(costReportsTabTarget("r1"))).toBe("cost-reports");
+  });
+
+  it("has a fallback title", () => {
+    expect(getWorkspaceTabFallbackTitle(costReportsTabTarget())).toBe("Reports");
+  });
+
+  it("compares the report so the route sync retargets the open tab", () => {
+    expect(workspaceTabTargetsEqual(costReportsTabTarget("r1"), costReportsTabTarget("r1"))).toBe(
+      true,
+    );
+    expect(workspaceTabTargetsEqual(costReportsTabTarget("r1"), costReportsTabTarget("r2"))).toBe(
+      false,
+    );
+    expect(workspaceTabTargetsEqual(costReportsTabTarget(), costReportsTabTarget("r1"))).toBe(
+      false,
+    );
+  });
+
+  it("is never equal to another kind", () => {
+    expect(workspaceTabTargetsEqual(costReportsTabTarget(), { kind: "costs" })).toBe(false);
   });
 });

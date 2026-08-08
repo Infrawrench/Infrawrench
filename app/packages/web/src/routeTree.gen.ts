@@ -20,6 +20,8 @@ import { Route as OrgOrgIdAgentsRouteImport } from './routes/org.$orgId.agents'
 import { Route as OrgOrgIdChangesRouteImport } from './routes/org.$orgId.changes'
 import { Route as OrgOrgIdChatRouteImport } from './routes/org.$orgId.chat'
 import { Route as OrgOrgIdCostsRouteImport } from './routes/org.$orgId.costs'
+import { Route as OrgOrgIdCostReportsRouteImport } from './routes/org.$orgId.cost-reports'
+import { Route as OrgOrgIdCostReportsReportIdRouteImport } from './routes/org.$orgId.cost-reports.$reportId'
 import { Route as OrgOrgIdDeploymentsRouteImport } from './routes/org.$orgId.deployments'
 import { Route as OrgOrgIdDnsRouteImport } from './routes/org.$orgId.dns'
 import { Route as OrgOrgIdEnvironmentDiffRouteImport } from './routes/org.$orgId.environment-diff'
@@ -113,6 +115,17 @@ const OrgOrgIdCostsRoute = OrgOrgIdCostsRouteImport.update({
   path: '/costs',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
+const OrgOrgIdCostReportsRoute = OrgOrgIdCostReportsRouteImport.update({
+  id: '/cost-reports',
+  path: '/cost-reports',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdCostReportsReportIdRoute =
+  OrgOrgIdCostReportsReportIdRouteImport.update({
+    id: '/$reportId',
+    path: '/$reportId',
+    getParentRoute: () => OrgOrgIdCostReportsRoute,
+  } as any)
 const OrgOrgIdDeploymentsRoute = OrgOrgIdDeploymentsRouteImport.update({
   id: '/deployments',
   path: '/deployments',
@@ -324,6 +337,8 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
+  '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
+  '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
@@ -372,6 +387,8 @@ export interface FileRoutesByTo {
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
+  '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
+  '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
@@ -422,6 +439,8 @@ export interface FileRoutesById {
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
+  '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
+  '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
@@ -474,6 +493,8 @@ export interface FileRouteTypes {
     | '/org/$orgId/changes'
     | '/org/$orgId/chat'
     | '/org/$orgId/costs'
+    | '/org/$orgId/cost-reports'
+    | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/deployments'
     | '/org/$orgId/dns'
     | '/org/$orgId/environment-diff'
@@ -521,6 +542,8 @@ export interface FileRouteTypes {
     | '/org/$orgId/agents'
     | '/org/$orgId/changes'
     | '/org/$orgId/costs'
+    | '/org/$orgId/cost-reports'
+    | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/deployments'
     | '/org/$orgId/dns'
     | '/org/$orgId/environment-diff'
@@ -569,6 +592,8 @@ export interface FileRouteTypes {
     | '/org/$orgId/changes'
     | '/org/$orgId/chat'
     | '/org/$orgId/costs'
+    | '/org/$orgId/cost-reports'
+    | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/deployments'
     | '/org/$orgId/dns'
     | '/org/$orgId/environment-diff'
@@ -695,6 +720,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/org/$orgId/costs'
       preLoaderRoute: typeof OrgOrgIdCostsRouteImport
       parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/cost-reports': {
+      id: '/org/$orgId/cost-reports'
+      path: '/cost-reports'
+      fullPath: '/org/$orgId/cost-reports'
+      preLoaderRoute: typeof OrgOrgIdCostReportsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/cost-reports/$reportId': {
+      id: '/org/$orgId/cost-reports/$reportId'
+      path: '/$reportId'
+      fullPath: '/org/$orgId/cost-reports/$reportId'
+      preLoaderRoute: typeof OrgOrgIdCostReportsReportIdRouteImport
+      parentRoute: typeof OrgOrgIdCostReportsRoute
     }
     '/org/$orgId/deployments': {
       id: '/org/$orgId/deployments'
@@ -1019,11 +1058,26 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
 const OrgOrgIdSettingsRouteWithChildren =
   OrgOrgIdSettingsRoute._addFileChildren(OrgOrgIdSettingsRouteChildren)
 
+
+interface OrgOrgIdCostReportsRouteChildren {
+  OrgOrgIdCostReportsReportIdRoute: typeof OrgOrgIdCostReportsReportIdRoute
+}
+
+const OrgOrgIdCostReportsRouteChildren: OrgOrgIdCostReportsRouteChildren = {
+  OrgOrgIdCostReportsReportIdRoute: OrgOrgIdCostReportsReportIdRoute,
+}
+
+const OrgOrgIdCostReportsRouteWithChildren =
+  OrgOrgIdCostReportsRoute._addFileChildren(OrgOrgIdCostReportsRouteChildren)
+
+
 interface OrgOrgIdRouteChildren {
   OrgOrgIdAgentsRoute: typeof OrgOrgIdAgentsRoute
   OrgOrgIdChangesRoute: typeof OrgOrgIdChangesRoute
   OrgOrgIdChatRoute: typeof OrgOrgIdChatRouteWithChildren
   OrgOrgIdCostsRoute: typeof OrgOrgIdCostsRoute
+  OrgOrgIdCostReportsRoute: typeof OrgOrgIdCostReportsRouteWithChildren
+  OrgOrgIdCostReportsReportIdRoute: typeof OrgOrgIdCostReportsReportIdRoute
   OrgOrgIdDeploymentsRoute: typeof OrgOrgIdDeploymentsRoute
   OrgOrgIdDnsRoute: typeof OrgOrgIdDnsRoute
   OrgOrgIdEnvironmentDiffRoute: typeof OrgOrgIdEnvironmentDiffRoute
@@ -1049,6 +1103,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdChangesRoute: OrgOrgIdChangesRoute,
   OrgOrgIdChatRoute: OrgOrgIdChatRouteWithChildren,
   OrgOrgIdCostsRoute: OrgOrgIdCostsRoute,
+  OrgOrgIdCostReportsRoute: OrgOrgIdCostReportsRouteWithChildren,
   OrgOrgIdDeploymentsRoute: OrgOrgIdDeploymentsRoute,
   OrgOrgIdDnsRoute: OrgOrgIdDnsRoute,
   OrgOrgIdEnvironmentDiffRoute: OrgOrgIdEnvironmentDiffRoute,

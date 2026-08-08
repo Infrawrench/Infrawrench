@@ -253,6 +253,16 @@ export {
   type CustomGraphDetail,
   type CustomGraphWidgetConfig,
 } from "./custom-graphs";
+export {
+  COST_REPORT_LIMITS,
+  normalizeCostReportName,
+  duplicateCostReportName,
+  type CostReport,
+  type CostReportInput,
+  type CostReportPlacement,
+  type CostReportRunResult,
+  type CostReportWidgetConfig,
+} from "./cost-reports";
 export { niceAxis, type AxisScale } from "./chart-axis";
 export {
   dashboardCardId,

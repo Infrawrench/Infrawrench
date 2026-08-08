@@ -14,6 +14,7 @@ import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as ChangesRouteImport } from './routes/changes'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as CostsRouteImport } from './routes/costs'
+import { Route as CostReportsRouteImport } from './routes/cost-reports'
 import { Route as DeploymentsRouteImport } from './routes/deployments'
 import { Route as DnsRouteImport } from './routes/dns'
 import { Route as EnvironmentDiffRouteImport } from './routes/environment-diff'
@@ -55,6 +56,11 @@ const ChatRoute = ChatRouteImport.update({
 const CostsRoute = CostsRouteImport.update({
   id: '/costs',
   path: '/costs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CostReportsRoute = CostReportsRouteImport.update({
+  id: '/cost-reports',
+  path: '/cost-reports',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DeploymentsRoute = DeploymentsRouteImport.update({
@@ -150,6 +156,7 @@ export interface FileRoutesByFullPath {
   '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
   '/costs': typeof CostsRoute
+  '/cost-reports': typeof CostReportsRoute
   '/deployments': typeof DeploymentsRoute
   '/dns': typeof DnsRoute
   '/environment-diff': typeof EnvironmentDiffRoute
@@ -174,6 +181,7 @@ export interface FileRoutesByTo {
   '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
   '/costs': typeof CostsRoute
+  '/cost-reports': typeof CostReportsRoute
   '/deployments': typeof DeploymentsRoute
   '/dns': typeof DnsRoute
   '/environment-diff': typeof EnvironmentDiffRoute
@@ -199,6 +207,7 @@ export interface FileRoutesById {
   '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
   '/costs': typeof CostsRoute
+  '/cost-reports': typeof CostReportsRoute
   '/deployments': typeof DeploymentsRoute
   '/dns': typeof DnsRoute
   '/environment-diff': typeof EnvironmentDiffRoute
@@ -225,6 +234,7 @@ export interface FileRouteTypes {
     | '/changes'
     | '/chat'
     | '/costs'
+    | '/cost-reports'
     | '/deployments'
     | '/dns'
     | '/environment-diff'
@@ -249,6 +259,7 @@ export interface FileRouteTypes {
     | '/changes'
     | '/chat'
     | '/costs'
+    | '/cost-reports'
     | '/deployments'
     | '/dns'
     | '/environment-diff'
@@ -273,6 +284,7 @@ export interface FileRouteTypes {
     | '/changes'
     | '/chat'
     | '/costs'
+    | '/cost-reports'
     | '/deployments'
     | '/dns'
     | '/environment-diff'
@@ -298,6 +310,7 @@ export interface RootRouteChildren {
   ChangesRoute: typeof ChangesRoute
   ChatRoute: typeof ChatRoute
   CostsRoute: typeof CostsRoute
+  CostReportsRoute: typeof CostReportsRoute
   DeploymentsRoute: typeof DeploymentsRoute
   DnsRoute: typeof DnsRoute
   EnvironmentDiffRoute: typeof EnvironmentDiffRoute
@@ -352,6 +365,13 @@ declare module '@tanstack/react-router' {
       path: '/costs'
       fullPath: '/costs'
       preLoaderRoute: typeof CostsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cost-reports': {
+      id: '/cost-reports'
+      path: '/cost-reports'
+      fullPath: '/cost-reports'
+      preLoaderRoute: typeof CostReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/deployments': {
@@ -482,6 +502,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChangesRoute: ChangesRoute,
   ChatRoute: ChatRoute,
   CostsRoute: CostsRoute,
+  CostReportsRoute: CostReportsRoute,
   DeploymentsRoute: DeploymentsRoute,
   DnsRoute: DnsRoute,
   EnvironmentDiffRoute: EnvironmentDiffRoute,

@@ -677,6 +677,9 @@ app.post("/validate-tabs", async (c) => {
       // Retired in favour of a section on Costs, but still valid for older
       // clients that have the tab open and a panel to render it with.
       target.kind === "savings" ||
+      // The Cost reports tab is the list page; `reportId` only remembers which
+      // report was open, so a deleted report must not invalidate the tab.
+      target.kind === "cost-reports" ||
       target.kind === "graph" ||
       target.kind === "logs" ||
       target.kind === "changes" ||

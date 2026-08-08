@@ -6,6 +6,7 @@ import {
   orderDashboardCards,
   type BudgetWidgetConfig,
   type CostGraphConfig,
+  type CostReportWidgetConfig,
   type CustomGraphWidgetConfig,
   type DashboardCardRef,
   type DashboardWidget,
@@ -17,6 +18,7 @@ import { colors, spacing } from "@/lib/theme";
 import { BudgetCard } from "./BudgetCard";
 import { CostGraphCard } from "./CostGraphCard";
 import { CustomGraphCard } from "./CustomGraphCard";
+import { useCostReportsById } from "@/features/cost-reports/useCostReports";
 import { useBudgets } from "./useBudgets";
 import { useCostStatus } from "./useCostStatus";
 
@@ -82,6 +84,7 @@ export function invalidateDashboardQueries(client: QueryClient): void {
   for (const key of [
     "dashboard-pin-details",
     "budgets",
+    "cost-reports-by-id",
     "cost-status",
     "cost-query",
     "custom-graph-render",
@@ -148,6 +151,10 @@ export function DashboardBody({
 
   // Budget widgets reference a budgets row; the rows load once for all of them.
   const budgets = useBudgets(widgets.some((w) => w.kind === "budget"));
+
+  // Same rule for report cards: they hold only a reportId, so the org's
+  // reports load once for the whole dashboard rather than once per card.
+  const reports = useCostReportsById(widgets.some((w) => w.kind === "cost_report"));
 
   // Both widget kinds read collected spend, so any widget at all is reason
   // enough to pull the per-account state and let the notice decide.
@@ -220,7 +227,11 @@ export function DashboardBody({
           {/* Custom graphs have no phone-side config — their script is edited
               on web/desktop, and the card's controls live on the card. */}
           {ref.kind === "widget" &&
-          widgets.find((w) => w.id === ref.id)?.kind !== "custom_graph" ? (
+          widgets.find((w) => w.id === ref.id)?.kind !== "custom_graph" &&
+          // A cost_report card holds only a reportId — there is nothing on it
+          // to configure. Editing the report changes every dashboard showing
+          // it, so it happens on the report's own page, not on one card.
+          widgets.find((w) => w.id === ref.id)?.kind !== "cost_report" ? (
             <Button
               label="Configure"
               variant="secondary"
@@ -314,6 +325,26 @@ export function DashboardBody({
               title={widget.title}
               config={widget.config as CostGraphConfig}
             />,
+          );
+        }
+
+        if (widget.kind === "cost_report") {
+          const report = reports.data?.get((widget.config as CostReportWidgetConfig).reportId);
+          if (!report) {
+            return withControls(
+              index,
+              widgetRef,
+              <Card key={widget.id}>
+                <Text style={{ color: colors.textFaint, fontSize: 13 }}>
+                  {reports.isLoading ? "Loading report…" : `${widget.title} — report unavailable`}
+                </Text>
+              </Card>,
+            );
+          }
+          return withControls(
+            index,
+            widgetRef,
+            <CostGraphCard key={widget.id} title={report.name} config={report.config} />,
           );
         }
 

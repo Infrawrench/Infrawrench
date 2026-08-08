@@ -1,8 +1,18 @@
 import { useMemo } from "react";
+import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import type { CostGraphConfig } from "@infrawrench/client-core";
 import { CostCollectionNotice } from "@/components/CostCollectionNotice";
-import { EmptyView, ErrorView, LoadingView, Screen, SectionTitle } from "@/components/ui";
+import { useOrgApi } from "@/lib/auth/AuthProvider";
+import {
+  Card,
+  EmptyView,
+  ErrorView,
+  LoadingView,
+  Row,
+  Screen,
+  SectionTitle,
+} from "@/components/ui";
 import { CostAnomaliesSection } from "@/features/costs/CostAnomaliesSection";
 import { TagGovernanceSection } from "@/features/costs/TagGovernanceSection";
 import { BudgetCard } from "@/features/dashboard/BudgetCard";
@@ -43,7 +53,9 @@ const OVERVIEW_CONFIG: CostGraphConfig = {
 };
 
 export default function CostsScreen() {
+  const router = useRouter();
   const queryClient = useQueryClient();
+  const { orgId } = useOrgApi();
   const budgets = useBudgets();
   const costStatus = useCostStatus();
 
@@ -68,6 +80,18 @@ export default function CostsScreen() {
 
       <SectionTitle>This month</SectionTitle>
       <CostGraphCard title="Month to date" config={OVERVIEW_CONFIG} />
+
+      {/*
+        Reports are their own page, not a section: the list can be long, and a
+        report is an object you navigate to rather than a summary you scan.
+      */}
+      <Card list>
+        <Row
+          title="Cost reports"
+          subtitle="Saved cost graphs — named, and shared across dashboards"
+          onPress={() => router.push(`/org/${orgId}/cost-reports`)}
+        />
+      </Card>
 
       <SectionTitle>Budgets</SectionTitle>
       {budgets.isLoading ? (

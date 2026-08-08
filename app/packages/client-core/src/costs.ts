@@ -17,6 +17,7 @@
 
 import type { CostCapabilityDeclaration } from "@infrawrench/plugin-base";
 
+import type { CostReportWidgetConfig } from "./cost-reports";
 import type { CloudFetch } from "./fetch";
 import type { CustomGraphWidgetConfig } from "./custom-graphs";
 
@@ -340,7 +341,18 @@ export const COST_DIMENSION_LABELS: Record<CostDimensionId, string> = {
   commitment: "Commitment",
 };
 
-export const DASHBOARD_WIDGET_KINDS = ["cost_graph", "budget", "custom_graph"] as const;
+/**
+ * `cost_graph` stores its whole config inline (a one-off card); `cost_report`
+ * points at a saved `cost_reports` row by id, so editing the report updates
+ * every dashboard showing it. Both are kept: naming and filing a report should
+ * not be the price of putting one chart on one dashboard.
+ */
+export const DASHBOARD_WIDGET_KINDS = [
+  "cost_graph",
+  "cost_report",
+  "budget",
+  "custom_graph",
+] as const;
 export type DashboardWidgetKind = (typeof DASHBOARD_WIDGET_KINDS)[number];
 
 /** Widget row shape shared by API responses and the dashboard UIs. */
@@ -349,7 +361,7 @@ export interface DashboardWidget {
   dashboardId: string;
   kind: DashboardWidgetKind;
   title: string;
-  config: CostGraphConfig | BudgetWidgetConfig | CustomGraphWidgetConfig;
+  config: CostGraphConfig | CostReportWidgetConfig | BudgetWidgetConfig | CustomGraphWidgetConfig;
   gridX: number;
   gridY: number;
   gridW: number;

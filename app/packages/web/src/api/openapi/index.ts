@@ -14,6 +14,8 @@ import { registerInvitationPaths } from "./paths/invitations";
 import { registerAccountPaths } from "./paths/accounts";
 import { registerDashboardPaths } from "./paths/dashboards";
 import { registerCostPaths } from "./paths/costs";
+import { registerCostReportPaths } from "./paths/cost-reports";
+import { registerCostExportPaths } from "./paths/cost-exports";
 import { registerOrphanPaths } from "./paths/orphans";
 import { registerEnvironmentDiffPaths } from "./paths/environment-diff";
 import { registerRightsizingPaths } from "./paths/rightsizing";
@@ -21,6 +23,7 @@ import { registerBudgetPaths } from "./paths/budgets";
 import { registerMetricAlertPaths } from "./paths/metric-alerts";
 import { registerChangeFreezePaths } from "./paths/change-freezes";
 import { registerTagPolicyPaths } from "./paths/tag-policy";
+import { registerCurrencyPaths } from "./paths/currency";
 import { registerCostCentrePaths } from "./paths/cost-centres";
 import { registerCustomGraphPaths } from "./paths/custom-graphs";
 import { registerOrgConfigPaths } from "./paths/org-config";
@@ -118,12 +121,15 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerAccountPaths(ctx);
   registerDashboardPaths(ctx);
   registerCostPaths(ctx);
+  registerCostReportPaths(ctx);
+  registerCostExportPaths(ctx);
   registerOrphanPaths(ctx);
   registerRightsizingPaths(ctx);
   registerBudgetPaths(ctx);
   registerMetricAlertPaths(ctx);
   registerChangeFreezePaths(ctx);
   registerTagPolicyPaths(ctx);
+  registerCurrencyPaths(ctx);
   registerCostCentrePaths(ctx);
   registerCustomGraphPaths(ctx);
   registerOrgConfigPaths(ctx);
@@ -203,6 +209,23 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       {
         name: "Custom graphs",
         description: "Script-defined dashboard charts run in a server-side sandbox.",
+      },
+      {
+        name: "Cost reports",
+        description:
+          "Named, addressable saved cost graphs. A report owns its config as an org object, so " +
+          "dashboards can reference it by id (the `cost_report` widget kind) and it can be run " +
+          "by id without the caller reassembling the query.",
+      },
+      {
+        name: "Cost exports",
+        description:
+          "Recurring dumps of raw cost rows into a warehouse or object store. A run streams " +
+          "the org's cost rows out of storage and writes one object per period at a " +
+          "deterministic key, to S3-compatible storage or an HTTPS endpoint. Because provider " +
+          "spend is restated for days after the fact, every run also re-writes the periods " +
+          "inside a trailing restatement window and stamps each row with the collection " +
+          "watermark, so a consumer can tell a settled period from a still-moving one.",
       },
       {
         name: "Workflows",
@@ -623,6 +646,27 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   // rides the cost write scope rather than the budget one.
   "PUT /costs/anomaly-settings": "costs:write",
   "POST /costs/rows": "costs:write",
+  // cost reports — a report is cost data under a name, so it follows the cost
+  // permissions rather than the dashboard ones. Running one is a read.
+  "GET /cost-reports": "costs:read",
+  "POST /cost-reports": "costs:write",
+  "GET /cost-reports/{id}": "costs:read",
+  "PUT /cost-reports/{id}": "costs:write",
+  "DELETE /cost-reports/{id}": "costs:write",
+  "POST /cost-reports/{id}/run": "costs:read",
+  // cost exports — reads ride costs:read like every other cost surface, but
+  // writes are org:settings:write rather than costs:write. Creating an export
+  // is standing authorisation to ship the org's whole billing history to a
+  // destination the creator chose, on a schedule, forever; costs:write is the
+  // "name a report, define a cost centre" scope, not a data-egress one. Same
+  // reasoning as PUT /currency. "Run now" is a write for the same reason: it
+  // pushes spend out of the product.
+  "GET /cost-exports": "costs:read",
+  "POST /cost-exports": "org:settings:write",
+  "GET /cost-exports/{id}": "costs:read",
+  "PUT /cost-exports/{id}": "org:settings:write",
+  "DELETE /cost-exports/{id}": "org:settings:write",
+  "POST /cost-exports/{id}/run": "org:settings:write",
   // pages
   "POST /pages": "pages:write",
   "DELETE /pages": "pages:write",

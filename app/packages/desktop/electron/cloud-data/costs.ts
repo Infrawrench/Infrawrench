@@ -149,3 +149,54 @@ ipcMain.handle(
     });
   },
 );
+
+/* ------------------------------------------------------------------ *
+ * Cost reports — named, saved cost graphs. Cloud-mode only for the same
+ * reason as everything above: the spend they draw lives in the cloud.
+ * ------------------------------------------------------------------ */
+
+ipcMain.handle("cloud_list_cost_reports", async (_e, { orgId }: { orgId: string }) => {
+  return (await cloudFetch(orgId, "/cost-reports")) ?? [];
+});
+
+ipcMain.handle(
+  "cloud_get_cost_report",
+  async (_e, { orgId, reportId }: { orgId: string; reportId: string }) => {
+    return cloudFetch(orgId, `/cost-reports/${encodeURIComponent(reportId)}`);
+  },
+);
+
+ipcMain.handle(
+  "cloud_create_cost_report",
+  async (_e, { orgId, input }: { orgId: string; input: unknown }) => {
+    return cloudFetch(orgId, "/cost-reports", { method: "POST", body: JSON.stringify(input) });
+  },
+);
+
+ipcMain.handle(
+  "cloud_update_cost_report",
+  async (_e, { orgId, reportId, input }: { orgId: string; reportId: string; input: unknown }) => {
+    return cloudFetch(orgId, `/cost-reports/${encodeURIComponent(reportId)}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_delete_cost_report",
+  async (_e, { orgId, reportId }: { orgId: string; reportId: string }) => {
+    return cloudFetch(orgId, `/cost-reports/${encodeURIComponent(reportId)}`, {
+      method: "DELETE",
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_run_cost_report",
+  async (_e, { orgId, reportId }: { orgId: string; reportId: string }) => {
+    return cloudFetch(orgId, `/cost-reports/${encodeURIComponent(reportId)}/run`, {
+      method: "POST",
+    });
+  },
+);

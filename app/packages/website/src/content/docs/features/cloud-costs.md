@@ -8,6 +8,10 @@ Cost graphs turn the billing data from your connected provider accounts into das
 
 The **Costs** panel in the sidebar is where your budgets live. Dashboards show cards, but the panel is the list — see [The Costs panel](#the-costs-panel).
 
+A graph you want to keep, name, and reuse is a **cost report** — the same graph as an org object, with its own page and its own id, referenced by any number of dashboards. See [Cost reports](./cost-reports.md).
+
+If what you want is the rows rather than a graph — a recurring dump into a warehouse or a finance system — that is a **cost export**: CSV or NDJSON, on a schedule, to an S3-compatible bucket or an HTTPS endpoint, with the restatement handling that makes the numbers reconcile. See [Scheduled cost exports](./cost-exports.md).
+
 > **Cloud only.** Cost collection runs on Infrawrench Cloud's background pollers and time-series store. On the desktop app the widgets appear when you are signed into a cloud org; local-only mode does not collect cost data.
 
 > Costs are **billed history**. For what a resource you are about to create or resize _would_ cost, see [live cost estimates](./cost-estimates.md).
@@ -18,7 +22,9 @@ The **Costs** panel in the sidebar is where your budgets live. Dashboards show c
 2. Choose **Cost graph**.
 3. Pick a chart type, date range, and grouping, then **Save**.
 
-<insert [Dashboard "+" tile open with the add menu showing Pin a resource / Cost graph / New budget / Existing budget] here>
+This card belongs to this dashboard and nothing else. To save the same configuration under a name and put it on several dashboards at once, make a [cost report](./cost-reports.md) instead and choose **Saved report** from the same menu.
+
+<insert [Dashboard "+" tile open with the add menu showing Pin a resource / Cost graph / Saved report / New budget / Existing budget] here>
 
 <insert [Cost graph config modal with chart type, binning, date range, group-by, and a provider filter row] here>
 
@@ -144,7 +150,7 @@ A dashboard's **+** tile offers both halves:
 - **New budget** creates a budget and puts a card for it on this dashboard.
 - **Existing budget** picks one you already have. Budgets already on this dashboard are not listed.
 
-The same budget can appear on as many dashboards as you like — one budget, many views of it.
+The same budget can appear on as many dashboards as you like — one budget, many views of it. [Cost reports](./cost-reports.md) work the same way for graphs.
 
 <insert [Costs panel showing the month-to-date spend chart at the top and two budget cards below, one labelled "On no dashboard"] here>
 

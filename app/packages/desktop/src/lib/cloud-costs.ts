@@ -13,6 +13,8 @@ import type {
   CostDimensionOption,
   CostQueryRequest,
   CostQueryResponse,
+  CostReport,
+  CostReportInput,
   DashboardWidget,
   ShowbackReport,
   TagComplianceReport,
@@ -138,4 +140,35 @@ export async function updateCloudWidget(
 
 export async function deleteCloudWidget(orgId: string, widgetId: string): Promise<void> {
   await invoke("cloud_delete_widget", { orgId, widgetId });
+}
+
+/* ------------------------------------------------------------------ *
+ * Cost reports — the named, saved form of a cost graph.
+ * ------------------------------------------------------------------ */
+
+export async function listCloudCostReports(orgId: string): Promise<CostReport[]> {
+  return (await invoke<CostReport[]>("cloud_list_cost_reports", { orgId })) ?? [];
+}
+
+export async function getCloudCostReport(orgId: string, reportId: string): Promise<CostReport> {
+  return invoke("cloud_get_cost_report", { orgId, reportId });
+}
+
+export async function createCloudCostReport(
+  orgId: string,
+  input: CostReportInput,
+): Promise<CostReport> {
+  return invoke("cloud_create_cost_report", { orgId, input });
+}
+
+export async function updateCloudCostReport(
+  orgId: string,
+  reportId: string,
+  input: CostReportInput,
+): Promise<CostReport> {
+  return invoke("cloud_update_cost_report", { orgId, reportId, input });
+}
+
+export async function deleteCloudCostReport(orgId: string, reportId: string): Promise<void> {
+  await invoke("cloud_delete_cost_report", { orgId, reportId });
 }

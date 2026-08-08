@@ -21,13 +21,15 @@ import { createWebDeploymentClient } from "@/lib/deployment-client";
 import { WebDeploymentsPanel } from "./WebDeploymentsPanel";
 import { type AgentClient } from "@infrawrench/ui/agents";
 import { createWebWorkflowClient } from "@/lib/workflow-client";
-import { createWebCostsClient } from "@/lib/cost-client";
+import { createWebCostReportsClient, createWebCostsClient } from "@/lib/cost-client";
 import { createWebAgentClient } from "@/lib/agent-client";
 import { WebWorkflowsPanel } from "./WebWorkflowsPanel";
 import { WebAgentsPanel } from "./WebAgentsPanel";
 import { WebChatPanel } from "./WebChatPanel";
 import { WebGraphPanel } from "./WebGraphPanel";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
+import { CostReportsPanel, type CostReportsClient } from "@infrawrench/ui/cost-reports";
+import { costReportsTabTarget } from "@/lib/workspace-tabs";
 import {
   environmentDiffTabTarget,
   resourceTabTarget,
@@ -142,6 +144,16 @@ function getCostsClient(orgId: string): CostsClient {
   if (!client) {
     client = createWebCostsClient(orgId);
     costsClients.set(orgId, client);
+  }
+  return client;
+}
+
+const costReportsClients = new Map<string, CostReportsClient>();
+function getCostReportsClient(orgId: string): CostReportsClient {
+  let client = costReportsClients.get(orgId);
+  if (!client) {
+    client = createWebCostReportsClient(orgId);
+    costReportsClients.set(orgId, client);
   }
   return client;
 }
@@ -263,6 +275,24 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
                 resourceTypeId: s.resourceTypeId,
               }),
             )
+          }
+        />
+      );
+    case "cost-reports":
+      return (
+        <CostReportsPanel
+          // Keyed by org so switching org remounts and refetches rather than
+          // showing the previous org's reports.
+          key={orgId}
+          client={getCostReportsClient(orgId)}
+          reportId={t.reportId}
+          // The URL owns which report is open — navigating is what records it
+          // on the tab, so a reload or a tab switch comes back to it.
+          onSelectReport={(reportId) =>
+            void navigate(getWorkspaceNavigateArgs(costReportsTabTarget(reportId)))
+          }
+          onOpenDashboard={(dashboardId) =>
+            void navigate(getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId }))
           }
         />
       );

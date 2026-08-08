@@ -36,6 +36,7 @@ import { resolveTunneledHost } from "../lib/ssh-tunnel";
 import { setSqlSession } from "../lib/sql-session";
 import {
   accountTabTarget,
+  costReportsTabTarget,
   navigateToWorkspaceTarget,
   resourceTabTarget,
   workflowsTabTarget,
@@ -54,6 +55,7 @@ import {
   loadCloudCostDimensionValues,
   loadCloudCostStatus,
   listCloudBudgets,
+  listCloudCostReports,
   createCloudBudget,
   updateCloudBudget,
   createCloudWidget,
@@ -79,6 +81,12 @@ import {
   type CostGraphConfig,
   type DashboardWidget,
 } from "@infrawrench/ui/cost";
+import {
+  CostReportPickerModal,
+  CostReportWidgetCard,
+  type CostReport,
+  type CostReportWidgetConfig,
+} from "@infrawrench/ui/cost-reports";
 import { ResourceCard } from "./DashboardView/ResourceCard";
 import type { CardStatus, PinnedRow, PluginMeta } from "./DashboardView/types";
 
@@ -124,11 +132,13 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const [spotlightMode, setSpotlightMode] = useState<"pin" | "navigate" | null>(null);
   const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
   const [budgets, setBudgets] = useState<Map<string, BudgetWithStatus>>(new Map());
+  const [reports, setReports] = useState<Map<string, CostReport>>(new Map());
   const [costStatus, setCostStatus] = useState<CostAccountStatus[]>([]);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [costModal, setCostModal] = useState<{ widget: DashboardWidget | null } | null>(null);
   const [budgetModal, setBudgetModal] = useState<{ widget: DashboardWidget | null } | null>(null);
   const [budgetPickerOpen, setBudgetPickerOpen] = useState(false);
+  const [reportPickerOpen, setReportPickerOpen] = useState(false);
   const [graphPickerOpen, setGraphPickerOpen] = useState(false);
   const [graphEditorId, setGraphEditorId] = useState<string | null>(null);
   const [graphReload, setGraphReload] = useState(0);
@@ -273,9 +283,20 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
             .then((rows) => setBudgets(new Map(rows.map((b) => [b.id, b]))))
             .catch(() => {});
         }
+        // Report cards store only a reportId, so resolve them the same way:
+        // one list fetch for the dashboard, not one per card.
+        if ((full.widgets ?? []).some((w) => w.kind === "cost_report")) {
+          void listCloudCostReports(orgId)
+            .then((rows) => setReports(new Map(rows.map((r) => [r.id, r]))))
+            .catch(() => {});
+        }
         // Any cost surface is only as good as the collection behind it — pull
         // the per-account state so the notice can explain an empty graph.
-        if ((full.widgets ?? []).some((w) => w.kind === "cost_graph" || w.kind === "budget")) {
+        if (
+          (full.widgets ?? []).some(
+            (w) => w.kind === "cost_graph" || w.kind === "cost_report" || w.kind === "budget",
+          )
+        ) {
           void loadCloudCostStatus(orgId)
             .then(setCostStatus)
             .catch(() => {
@@ -925,6 +946,38 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     return orgId ? listCloudBudgets(orgId) : Promise.resolve([]);
   }, []);
 
+  const loadAllReports = useCallback(() => {
+    const orgId = useUIStore.getState().activeCloudOrgId;
+    return orgId ? listCloudCostReports(orgId) : Promise.resolve([]);
+  }, []);
+
+  const refetchReports = useCallback(async () => {
+    const orgId = useUIStore.getState().activeCloudOrgId;
+    if (!orgId) return;
+    try {
+      const rows = await listCloudCostReports(orgId);
+      setReports(new Map(rows.map((r) => [r.id, r])));
+    } catch (e) {
+      // Without its row a report card can only say "unavailable", which reads
+      // as the report having been deleted rather than as a failed fetch.
+      toast.error("Couldn't load cost reports", { description: formatErrorMessage(e) });
+    }
+  }, []);
+
+  /** Show a saved cost report on this dashboard. */
+  async function addReportWidget(report: CostReport) {
+    const orgId = useUIStore.getState().activeCloudOrgId;
+    if (!orgId) return;
+    const created = await createCloudWidget(orgId, {
+      dashboardId,
+      kind: "cost_report",
+      title: report.name,
+      config: { version: 1, reportId: report.id },
+    });
+    setWidgets((prev) => [...prev, created]);
+    await refetchReports();
+  }
+
   function budgetToInput(budget: BudgetWithStatus | undefined): BudgetInput {
     if (!budget) return DEFAULT_BUDGET_INPUT;
     return {
@@ -1035,6 +1088,10 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                   setAddMenuOpen(false);
                   setBudgetPickerOpen(true);
                 }}
+                onPickSavedReport={() => {
+                  setAddMenuOpen(false);
+                  setReportPickerOpen(true);
+                }}
                 onPickCustomGraph={() => {
                   setAddMenuOpen(false);
                   setGraphPickerOpen(true);
@@ -1060,7 +1117,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                   // belongs here rather than on the card.
                   className={
                     card.kind === "widget" &&
-                    (card.widget.kind === "cost_graph" || card.widget.kind === "custom_graph")
+                    (card.widget.kind === "cost_graph" ||
+                      card.widget.kind === "cost_report" ||
+                      card.widget.kind === "custom_graph")
                       ? "col-span-2"
                       : undefined
                   }
@@ -1096,6 +1155,21 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                       config={card.widget.config as CostGraphConfig}
                       api={costApi}
                       onEdit={() => setCostModal({ widget: card.widget })}
+                      onRemove={() => void removeWidget(card.widget.id)}
+                    />
+                  ) : card.widget.kind === "cost_report" ? (
+                    <CostReportWidgetCard
+                      report={reports.get((card.widget.config as CostReportWidgetConfig).reportId)}
+                      config={card.widget.config as CostReportWidgetConfig}
+                      api={costApi}
+                      // Not editable in place: the report is shared, so the
+                      // edit belongs on the Reports tab, where the list of
+                      // everywhere else it appears is visible.
+                      onOpenReport={(reportId) =>
+                        void navigateToWorkspaceTarget(navigate, costReportsTabTarget(reportId), {
+                          label: "Reports",
+                        })
+                      }
                       onRemove={() => void removeWidget(card.widget.id)}
                     />
                   ) : card.widget.kind === "custom_graph" ? (
@@ -1157,6 +1231,10 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                     onPickExistingBudget={() => {
                       setAddMenuOpen(false);
                       setBudgetPickerOpen(true);
+                    }}
+                    onPickSavedReport={() => {
+                      setAddMenuOpen(false);
+                      setReportPickerOpen(true);
                     }}
                     onPickCustomGraph={() => {
                       setAddMenuOpen(false);
@@ -1228,6 +1306,17 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           />
         )}
 
+        {reportPickerOpen && (
+          <CostReportPickerModal
+            loadReports={loadAllReports}
+            excludeIds={widgets
+              .filter((w) => w.kind === "cost_report")
+              .map((w) => (w.config as CostReportWidgetConfig).reportId)}
+            onPick={addReportWidget}
+            onClose={() => setReportPickerOpen(false)}
+          />
+        )}
+
         {budgetPickerOpen && (
           <BudgetPickerModal
             loadBudgets={loadAllBudgets}
@@ -1266,6 +1355,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
 function DashboardAddMenu({
   onPickResource,
   onPickCostGraph,
+  onPickSavedReport,
   onPickBudget,
   onPickExistingBudget,
   onPickCustomGraph,
@@ -1273,6 +1363,7 @@ function DashboardAddMenu({
 }: {
   onPickResource: () => void;
   onPickCostGraph: () => void;
+  onPickSavedReport: () => void;
   onPickBudget: () => void;
   onPickExistingBudget: () => void;
   onPickCustomGraph: () => void;
@@ -1297,8 +1388,16 @@ function DashboardAddMenu({
         <button type="button" onClick={onPickResource} className={itemClass}>
           <span className="text-on-surface-faint">▣</span> Pin a resource
         </button>
+        {/*
+          Two entries on purpose: "Cost graph" is a one-off card owned by this
+          dashboard, "Saved report" is a view onto a shared object. Collapsing
+          them would force anyone wanting one chart to name and file a report.
+        */}
         <button type="button" onClick={onPickCostGraph} className={itemClass}>
           <span className="text-on-surface-faint">▤</span> Cost graph
+        </button>
+        <button type="button" onClick={onPickSavedReport} className={itemClass}>
+          <span className="text-on-surface-faint">▥</span> Saved report
         </button>
         <button type="button" onClick={onPickBudget} className={itemClass}>
           <span className="text-on-surface-faint">◔</span> New budget

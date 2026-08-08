@@ -15,6 +15,15 @@ vi.mock("../costs", () => ({
     { name: "k1", title: "K1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
   ],
 }));
+// Every tool module is stubbed, not just for isolation: each one imports the
+// services it wraps, which import `db/client`, which throws at import time
+// without DATABASE_URL. A module added to the registry and missed here fails
+// the whole file at collection rather than at an assertion.
+vi.mock("../cost-reports", () => ({
+  costReportTools: () => [
+    { name: "cr1", title: "CR1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
 vi.mock("../schedules", () => ({
   scheduleTools: () => [
     { name: "sc1", title: "SC1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
@@ -82,6 +91,7 @@ describe("getToolRegistry", () => {
     expect(names).toContain("g1");
     expect(names).toContain("c1");
     expect(names).toContain("k1");
+    expect(names).toContain("cr1");
     expect(names).toContain("m1");
     expect(names).toContain("w1");
     expect(names).toContain("cg1");

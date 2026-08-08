@@ -16,6 +16,8 @@ import type {
   TagComplianceReport,
   UntaggedSpendReport,
 } from "@infrawrench/ui/cost";
+import type { CostReportsClient } from "@infrawrench/ui/cost-reports";
+import type { CostReport, CostReportInput } from "@infrawrench/client-core";
 import { apiDelete, apiGet, apiPost, apiPut } from "./api";
 
 /**
@@ -92,6 +94,43 @@ export function createWebCostsClient(orgId: string): CostsClient {
     getShowback: (from?: string, to?: string) =>
       apiGet<ShowbackReport>(`/api/org/${orgId}/costs/showback${rangeQuery(from, to)}`),
     getCreditBurndown: () => apiGet<CreditBurndown>(`/api/org/${orgId}/credits`),
+  };
+}
+
+/**
+ * The Cost reports client — the same read calls again, plus report CRUD and the
+ * dashboard-placement calls for `cost_report` cards.
+ *
+ * A separate client from {@link createWebCostsClient} because a report is its
+ * own page with its own permissions story, but it shares `createWebCostApi` so
+ * the chart on a report renders through exactly the query endpoint a dashboard
+ * cost card does.
+ */
+export function createWebCostReportsClient(orgId: string): CostReportsClient {
+  return {
+    ...createWebCostApi(orgId),
+    listReports: () => apiGet<CostReport[]>(`/api/org/${orgId}/cost-reports`),
+    getReport: (reportId: string) =>
+      apiGet<CostReport>(`/api/org/${orgId}/cost-reports/${reportId}`),
+    createReport: (input: CostReportInput) =>
+      apiPost<CostReport>(`/api/org/${orgId}/cost-reports`, input),
+    updateReport: (reportId: string, input: CostReportInput) =>
+      apiPut<CostReport>(`/api/org/${orgId}/cost-reports/${reportId}`, input),
+    deleteReport: async (reportId: string) => {
+      await apiDelete(`/api/org/${orgId}/cost-reports/${reportId}`);
+    },
+    listDashboards: () => apiGet<CostsPanelDashboard[]>(`/api/org/${orgId}/dashboards`),
+    addReportToDashboard: async (dashboardId: string, reportId: string, title: string) => {
+      await apiPost(`/api/org/${orgId}/dashboards/widgets`, {
+        dashboardId,
+        kind: "cost_report",
+        title,
+        config: { version: 1, reportId },
+      });
+    },
+    removeReportPlacement: async (widgetId: string) => {
+      await apiDelete(`/api/org/${orgId}/dashboards/widgets/${widgetId}`);
+    },
   };
 }
 

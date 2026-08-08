@@ -582,6 +582,13 @@
       "when": 1786228411812,
       "tag": "0082_cute_joystick",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1786201000000,
+      "tag": "0082_cooing_captain_flint",
+      "breakpoints": true
     }
   ]
 }

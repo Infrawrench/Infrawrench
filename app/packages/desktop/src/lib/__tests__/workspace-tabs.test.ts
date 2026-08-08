@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   dashboardTabTarget,
   accountTabTarget,
+  costReportsTabTarget,
   deploymentsTabTarget,
   probesTabTarget,
   resourceTabTarget,
@@ -155,6 +156,19 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns cost-reports route args, clearing the report param for the list", () => {
+    // Same reason as settings/chat: navigating back to the list must CLEAR
+    // ?report=, or the route resolves straight back into the open report.
+    expect(getWorkspaceNavigateArgs(costReportsTabTarget())).toEqual({
+      to: "/cost-reports",
+      search: {},
+    });
+    expect(getWorkspaceNavigateArgs(costReportsTabTarget("r1"))).toEqual({
+      to: "/cost-reports",
+      search: { report: "r1" },
+    });
+  });
+
   it("returns settings route args, clearing the section param for General", () => {
     expect(getWorkspaceNavigateArgs({ kind: "settings" })).toEqual({
       to: "/settings",
@@ -208,6 +222,14 @@ describe("syncWorkspaceRouteFromPath", () => {
       kind: "environment-diff",
       a: "acc-a",
       b: "acc-b",
+    });
+  });
+
+  it("parses the cost-reports path with its report param", () => {
+    expect(syncWorkspaceRouteFromPath("/cost-reports")).toEqual({ kind: "cost-reports" });
+    expect(syncWorkspaceRouteFromPath("/cost-reports", undefined, "report=r1")).toEqual({
+      kind: "cost-reports",
+      reportId: "r1",
     });
   });
 

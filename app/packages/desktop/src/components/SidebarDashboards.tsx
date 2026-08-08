@@ -25,9 +25,11 @@ import {
 } from "@infrawrench/ui";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
+import { CostReportsIcon } from "@infrawrench/ui/cost-reports";
 import {
   agentsTabTarget,
   costsTabTarget,
+  costReportsTabTarget,
   graphTabTarget,
   logsTabTarget,
   chatTabTarget,
@@ -214,6 +216,18 @@ export function SidebarDashboards() {
             icon: <CostsIcon />,
             onClick: () =>
               void navigateToWorkspaceTarget(navigate, costsTabTarget(), { label: "Costs" }),
+          },
+          // Cloud-only for the same reason as Costs: a report is an org row
+          // over server-collected spend, so local mode has nothing to save or
+          // draw. A workspace tab, like Costs.
+          {
+            key: "cost-reports",
+            label: "Reports",
+            icon: <CostReportsIcon />,
+            onClick: () =>
+              void navigateToWorkspaceTarget(navigate, costReportsTabTarget(), {
+                label: "Reports",
+              }),
           },
           // Cloud-only for the same reason as Costs: rules are evaluated by
           // the cloud poller against the cloud metric store. Not a workspace

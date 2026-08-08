@@ -6,6 +6,7 @@ import {
   WorkspaceTabsViewport as BaseViewport,
   dashboardTabTarget,
   environmentDiffTabTarget,
+  costReportsTabTarget,
   resourceTabTarget,
   DeploymentsPanel,
   JiraFilingProvider,
@@ -25,8 +26,10 @@ import {
   syncWorkspaceRouteFromPath,
 } from "@/lib/workspace-tabs";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
+import { CostReportsPanel, type CostReportsClient } from "@infrawrench/ui/cost-reports";
 import { type OrphansClient, type RightsizingClient, type SchedulesClient } from "@infrawrench/ui";
 import { createDesktopCostsClient } from "@/lib/costs-client";
+import { createDesktopCostReportsClient } from "@/lib/cost-reports-client";
 import { createDesktopSchedulesClient } from "@/lib/schedules-client";
 import { createDesktopOrphansClient } from "@/lib/orphans-client";
 import { createDesktopRightsizingClient } from "@/lib/rightsizing-client";
@@ -60,6 +63,12 @@ let costsClient: CostsClient | null = null;
 function getCostsClient(): CostsClient {
   if (!costsClient) costsClient = createDesktopCostsClient();
   return costsClient;
+}
+
+let costReportsClient: CostReportsClient | null = null;
+function getCostReportsClient(): CostReportsClient {
+  if (!costReportsClient) costReportsClient = createDesktopCostReportsClient();
+  return costReportsClient;
 }
 
 let orphansClient: OrphansClient | null = null;
@@ -264,6 +273,31 @@ function renderPanel(
             );
           }}
         />
+      );
+    case "cost-reports":
+      // Cloud-only, like Costs: reports are org rows over server-collected
+      // spend, so local mode has neither the store nor the data. The tile is
+      // hidden without an org; this guard covers a restored tab.
+      return activeCloudOrgId ? (
+        <CostReportsPanel
+          // Keyed by org so switching org remounts and refetches rather than
+          // showing the previous org's reports.
+          key={activeCloudOrgId}
+          client={getCostReportsClient()}
+          reportId={t.reportId}
+          // The URL owns which report is open, so navigating is what records it
+          // on the tab and brings it back on reactivation.
+          onSelectReport={(reportId) =>
+            void navigate(getWorkspaceNavigateArgs(costReportsTabTarget(reportId)))
+          }
+          onOpenDashboard={(dashboardId) =>
+            void navigate(getWorkspaceNavigateArgs(dashboardTabTarget(dashboardId)))
+          }
+        />
+      ) : (
+        <div className="h-full flex items-center justify-center px-8 text-center text-sm text-on-surface-faint">
+          Cost reports live in Infrawrench Cloud — sign in and pick an organization to see them.
+        </div>
       );
     case "graph":
       return (

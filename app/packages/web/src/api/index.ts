@@ -32,6 +32,8 @@ import { adminRoutes } from "./routes/admin";
 
 import { dashboardRoutes } from "./routes/dashboards";
 import { costRoutes } from "./routes/costs";
+import { costReportRoutes } from "./routes/cost-reports";
+import { costExportRoutes } from "./routes/cost-exports";
 import { orphanRoutes } from "./routes/orphans";
 import { environmentDiffRoutes } from "./routes/environment-diff";
 import { rightsizingRoutes } from "./routes/rightsizing";
@@ -253,12 +255,15 @@ orgScoped.use("*", permissionsMiddleware);
 
 orgScoped.route("/dashboards", dashboardRoutes);
 orgScoped.route("/costs", costRoutes);
+orgScoped.route("/cost-reports", costReportRoutes);
+orgScoped.route("/cost-exports", costExportRoutes);
 orgScoped.route("/orphans", orphanRoutes);
 orgScoped.route("/rightsizing", rightsizingRoutes);
 orgScoped.route("/budgets", budgetRoutes);
 orgScoped.route("/metric-alerts", metricAlertRoutes);
 orgScoped.route("/change-freezes", changeFreezeRoutes);
 orgScoped.route("/tag-policy", tagPolicyRoutes);
+orgScoped.route("/currency", currencyRoutes);
 orgScoped.route("/cost-centres", costCentreRoutes);
 orgScoped.route("/custom-graphs", customGraphRoutes);
 orgScoped.route("/config", orgConfigRoutes);

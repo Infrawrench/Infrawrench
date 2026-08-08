@@ -289,7 +289,7 @@ export const dashboardWidgets = pgTable(
     dashboardId: text("dashboard_id")
       .notNull()
       .references(() => dashboards.id, { onDelete: "cascade" }),
-    /** "cost_graph" | "budget" */
+    /** "cost_graph" | "cost_report" | "budget" | "custom_graph" */
     kind: text("kind").notNull(),
     title: text("title").notNull().default(""),
     config: jsonb("config").notNull(),
@@ -344,6 +344,56 @@ export const budgets = pgTable(
   },
   (t) => ({
     orgIdx: index("budgets_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
+ * Named, addressable saved cost graphs.
+ *
+ * A `cost_graph` dashboard widget stores its config inline and belongs to one
+ * card; a report owns the same config as an org object, so it can be linked to,
+ * run by id, and referenced from many dashboards at once through the
+ * `cost_report` widget kind. Deleting a report removes those cards with it
+ * (services/cost-reports.ts), the same rule budgets and custom graphs follow —
+ * a card whose target is gone renders as a permanent "unavailable" tile that no
+ * amount of dashboard editing explains.
+ */
+export const costReports = pgTable(
+  "cost_reports",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** Free text shown under the title in the list; null is no description. */
+    description: text("description"),
+    /**
+     * The saved graph — a `CostGraphConfig` from `@infrawrench/ui/cost/config`,
+     * the same blob a `cost_graph` widget stores inline, validated against
+     * `costGraphConfigSchema` at the API boundary.
+     */
+    config: jsonb("config").notNull(),
+    /**
+     * Reserved for report folders, which do not exist yet: there is no folders
+     * table and therefore no foreign key. It is added now so reports written
+     * before folders ship can be filed without a data migration — a later
+     * change adds the table and points this column at it. Until then nothing
+     * reads it and the API only ever round-trips what it was given.
+     */
+    folderId: text("folder_id"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /** Soft delete, matching `budgets` — set, never cleared. */
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("cost_reports_org_idx").on(t.organizationId),
+    /** Folder listings scan one folder within one org. */
+    folderIdx: index("cost_reports_folder_idx").on(t.organizationId, t.folderId),
   }),
 );
 

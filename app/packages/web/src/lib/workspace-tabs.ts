@@ -5,6 +5,7 @@ import {
   accountTabTarget,
   agentsTabTarget,
   costsTabTarget,
+  costReportsTabTarget,
   graphTabTarget,
   logsTabTarget,
   changesTabTarget,
@@ -31,6 +32,7 @@ export {
   dashboardTabTarget,
   accountTabTarget,
   chatTabTarget,
+  costReportsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -91,6 +93,20 @@ export function getWorkspaceNavigateArgs(
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
+    // Web addresses a report by path segment; desktop uses a ?report= query
+    // param. Both map to the same single Cost reports tab.
+    case "cost-reports":
+      return target.reportId
+        ? {
+            to: "/org/$orgId/cost-reports/$reportId",
+            params: { orgId, reportId: target.reportId },
+            ...(replace ? { replace: true } : {}),
+          }
+        : {
+            to: "/org/$orgId/cost-reports",
+            params: { orgId },
+            ...(replace ? { replace: true } : {}),
+          };
     case "graph":
       return {
         to: "/org/$orgId/graph",
@@ -269,6 +285,11 @@ export function syncWorkspaceRouteFromPath(
   // carries the content.
   if (s[0] === "costs" || s[0] === "savings") {
     return costsTabTarget();
+  }
+  if (s[0] === "cost-reports") {
+    // /cost-reports is the list; /cost-reports/{id} is one report. Both are the
+    // same tab — the id is remembered state, not a second tab.
+    return costReportsTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
   }
   if (s[0] === "graph") {
     return graphTabTarget();
