@@ -67,8 +67,10 @@ export const orgSessionRecordingSettings = pgTable("org_session_recording_settin
  *
  * `status` is `"recording"` for a live session. A session whose proxy process
  * dies mid-stream never gets its closing write, so a row that is still
- * `"recording"` well after its last chunk write is an abandoned one; the list
+ * `"recording"` well after `last_activity_at` is an abandoned one; the list
  * route settles those on read rather than leaving them to look live forever.
+ * Activity is both chunk flushes and an idle heartbeat — a quiet shell still
+ * open is not abandoned.
  *
  * `accountId` / `resourceId` are deliberately not foreign keys. A recording
  * outlives what it was taken against — the whole point of an audit artifact is
@@ -108,6 +110,13 @@ export const sshSessionRecordings = pgTable(
     eventCount: integer("event_count").notNull().default(0),
     chunkCount: integer("chunk_count").notNull().default(0),
     startedAt: timestamp("started_at").notNull().defaultNow(),
+    /**
+     * Last time the live recorder touched this row (chunk flush or idle
+     * heartbeat). Settle/list treat a stale value as abandoned; prune refuses
+     * to delete anything whose activity is still inside the retention window.
+     * Null only on pre-migration rows — readers fall back to started_at.
+     */
+    lastActivityAt: timestamp("last_activity_at").notNull().defaultNow(),
     endedAt: timestamp("ended_at"),
     durationMs: integer("duration_ms"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -119,6 +128,10 @@ export const sshSessionRecordings = pgTable(
     ),
     orgUserIdx: index("ssh_session_recordings_org_user_idx").on(t.organizationId, t.userId),
     orgStatusIdx: index("ssh_session_recordings_org_status_idx").on(t.organizationId, t.status),
+    orgLastActivityIdx: index("ssh_session_recordings_org_last_activity_idx").on(
+      t.organizationId,
+      t.lastActivityAt,
+    ),
   }),
 );
 

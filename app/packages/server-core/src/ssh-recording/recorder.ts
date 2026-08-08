@@ -52,6 +52,19 @@ const CHUNK_FLUSH_BYTES = 64 * 1024;
 const CHUNK_FLUSH_INTERVAL_MS = 5_000;
 
 /**
+ * How often a live recorder touches `last_activity_at` even when the shell is
+ * idle.
+ *
+ * The abandon settle (and the list view's derived abandon) treat a stale
+ * activity stamp as "proxy died mid-stream". Without this, a quiet but still-
+ * open shell would look abandoned after a few minutes, and once settled as
+ * abandoned the retention prune could delete it under a live writer. Well
+ * under both the 2-minute presentation threshold and the 10-minute durable
+ * settle window.
+ */
+const HEARTBEAT_INTERVAL_MS = 60_000;
+
+/**
  * Ceiling on captured terminal bytes per session, before compression.
  *
  * A session that `cat`s a multi-gigabyte log is not an audit artifact anybody
@@ -146,6 +159,7 @@ export async function startSessionRecording(
       hasInput: false,
       status: "recording",
       startedAt,
+      lastActivityAt: startedAt,
     });
   } catch (err) {
     console.error(`[ssh-recording] could not open recording for org ${ctx.organizationId}:`, err);
@@ -214,6 +228,7 @@ class ChunkedRecorder implements SessionRecorder {
   /** Serializes chunk writes so `seq` is assigned in the order data arrived. */
   private writeChain: Promise<void> = Promise.resolve();
   private flushTimer: NodeJS.Timeout | null = null;
+  private heartbeatTimer: NodeJS.Timeout | null = null;
 
   constructor(init: ChunkedRecorderInit) {
     this.recordingId = init.recordingId;
@@ -222,6 +237,10 @@ class ChunkedRecorder implements SessionRecorder {
     this.captureInput = init.captureInput;
     this.buffer = [init.header];
     this.bufferedBytes = Buffer.byteLength(init.header, "utf8") + 1;
+    this.heartbeatTimer = setInterval(() => {
+      this.writeChain = this.writeChain.then(() => this.touchActivity()).catch(() => {});
+    }, HEARTBEAT_INTERVAL_MS);
+    this.heartbeatTimer.unref();
   }
 
   onOutput(data: Buffer | string): void {
@@ -315,10 +334,39 @@ class ChunkedRecorder implements SessionRecorder {
         eventCount: lines.length,
         byteLength,
       });
+      // Chunk write is activity; keep the stamp in lockstep so a busy session
+      // does not depend on the heartbeat timer alone.
+      await this.touchActivity();
     } catch (err) {
       // The chunk is gone either way; putting the lines back would write them
       // under a seq that has already been consumed, so stop instead.
       this.fail(`writing chunk ${seq}`, err);
+    }
+  }
+
+  /**
+   * Bump `last_activity_at` while this row is still `"recording"`.
+   *
+   * Conditioned on status so a late heartbeat after `finish` (or after the
+   * settle pass closed a truly dead row) cannot revive it.
+   */
+  private async touchActivity(): Promise<void> {
+    if (this.disabled || this.finished) return;
+    try {
+      await db
+        .update(sshSessionRecordings)
+        .set({ lastActivityAt: new Date() })
+        .where(
+          and(
+            eq(sshSessionRecordings.id, this.recordingId),
+            eq(sshSessionRecordings.organizationId, this.organizationId),
+            eq(sshSessionRecordings.status, "recording"),
+          ),
+        );
+    } catch (err) {
+      // A missed heartbeat is not fatal: the next flush or tick retries. Only
+      // a cascade of failures should stop capture, and those go through `fail`.
+      console.error(`[ssh-recording] ${this.recordingId}: activity heartbeat failed:`, err);
     }
   }
 
@@ -330,6 +378,10 @@ class ChunkedRecorder implements SessionRecorder {
       clearTimeout(this.flushTimer);
       this.flushTimer = null;
     }
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
     console.error(`[ssh-recording] ${this.recordingId}: ${what} failed; capture stopped:`, err);
   }
 
@@ -339,6 +391,10 @@ class ChunkedRecorder implements SessionRecorder {
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
       this.flushTimer = null;
+    }
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
     }
     // Drain whatever is in flight, then the tail.
     this.writeChain = this.writeChain.then(() => this.flushNow()).catch(() => {});
@@ -355,6 +411,7 @@ class ChunkedRecorder implements SessionRecorder {
         .set({
           status: this.truncated ? "truncated" : "complete",
           endedAt,
+          lastActivityAt: endedAt,
           durationMs: Math.max(0, endedAt.getTime() - this.startedAtMs),
           outputBytes: this.totalOutputBytes,
           eventCount: this.totalEvents,

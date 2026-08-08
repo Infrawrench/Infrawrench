@@ -109,12 +109,11 @@ export async function pruneSessionRecordings(now = new Date()): Promise<Recordin
  * Settle rows the recorder never closed, so an operator does not see a
  * week-old session claiming to be live.
  *
- * Last activity is the latest chunk write (or `started_at` when nothing has
- * flushed yet) — not `started_at` alone. A session open for hours with recent
- * I/O is still live; only a proxy that died mid-stream stops writing chunks.
- * The list view derives the same distinction for presentation; this pass makes
- * it durable so a SQL-level reader (CLI `--json`, an export) agrees. Bounded
- * and idempotent.
+ * Last activity is `last_activity_at` — bumped on every chunk flush and by the
+ * recorder's idle heartbeat. A quiet but still-open shell keeps the stamp
+ * fresh; only a proxy that died mid-stream stops touching it. The list view
+ * derives the same distinction for presentation; this pass makes it durable so
+ * a SQL-level reader (CLI `--json`, an export) agrees. Bounded and idempotent.
  */
 export async function settleAbandonedRecordings(olderThanMs = 10 * 60 * 1000): Promise<number> {
   const cutoff = new Date(Date.now() - olderThanMs)
@@ -125,26 +124,11 @@ export async function settleAbandonedRecordings(olderThanMs = 10 * 60 * 1000): P
     const result = await db.execute(sql`
       UPDATE ssh_session_recordings
       SET status = 'abandoned',
-          ended_at = coalesce(
-            ended_at,
-            (
-              SELECT max(c.created_at)
-              FROM ssh_session_recording_chunks c
-              WHERE c.recording_id = ssh_session_recordings.id
-            ),
-            started_at
-          )
+          ended_at = coalesce(ended_at, last_activity_at, started_at)
       WHERE id IN (
-        SELECT r.id FROM ssh_session_recordings r
-        WHERE r.status = 'recording'
-          AND coalesce(
-            (
-              SELECT max(c.created_at)
-              FROM ssh_session_recording_chunks c
-              WHERE c.recording_id = r.id
-            ),
-            r.started_at
-          ) < ${cutoff}::timestamp
+        SELECT id FROM ssh_session_recordings
+        WHERE status = 'recording'
+          AND coalesce(last_activity_at, started_at) < ${cutoff}::timestamp
         LIMIT 500
         FOR UPDATE SKIP LOCKED
       )

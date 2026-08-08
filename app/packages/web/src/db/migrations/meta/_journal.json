@@ -540,6 +540,13 @@
       "when": 1786145785953,
       "tag": "0076_easy_professor_monster",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1786228411789,
+      "tag": "0077_bent_lorna_dane",
+      "breakpoints": true
     }
   ]
 }
