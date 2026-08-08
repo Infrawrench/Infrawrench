@@ -1,4 +1,6 @@
 import type {
+  CostFetchRange,
+  CostRow,
   CreateResourceConfig,
   CreditBalance,
   DashboardStat,
@@ -19,6 +21,7 @@ import type {
   TranscriptWord,
 } from "@infrawrench/plugin-base";
 import { base64ToBytes, bytesToBase64, jsonRestFetch } from "@infrawrench/plugin-base";
+import { fetchDeepgramCostData } from "./cost-data.js";
 
 const BASE_URL = "https://api.deepgram.com";
 
@@ -923,6 +926,27 @@ export class DeepgramClient implements PluginClient {
       series.push({ label: "TTS Characters", unit: "characters", points: characters });
     }
     return series;
+  }
+
+  // -------------------------------------------------------------------------
+  // Costs
+  // -------------------------------------------------------------------------
+
+  /**
+   * Billed USD from `GET /v1/projects/{id}/billing/breakdown`, one request per
+   * project the key can see. The collector lives in `cost-data.ts` and takes
+   * only the credential plus the host HTTP services, so it can be exercised
+   * without a client.
+   */
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    return fetchDeepgramCostData(
+      {
+        apiKey: this.apiKey,
+        ...(this.caCert ? { caCert: this.caCert } : {}),
+        ...(this.services?.http ? { http: this.services.http } : {}),
+      },
+      range,
+    );
   }
 
   // -------------------------------------------------------------------------

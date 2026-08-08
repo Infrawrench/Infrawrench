@@ -41,6 +41,15 @@ If the key cannot read the project's model catalogue, the tab explains that a me
 
 Projects get a **Metrics** tab over the last 30 days, charting requests, audio hours and TTS characters. Deepgram can return several rows per interval — one per grouping key — so the plugin sums them per bucket rather than assuming one row per point.
 
+## Cost graphs
+
+Deepgram accounts feed [cost graphs & budgets](../features/cloud-costs.md) from the billing breakdown (`GET /v1/projects/{project_id}/billing/breakdown`) — real billed USD at daily granularity, no estimating from a rate card. Spend is broken down by **line item**, Deepgram's billed product/model pair such as `streaming::nova-3`, and every account the key can see is collected: one request per project, with the project id attached to each row as a tag. Any tags you attach to your own requests come through as a tag too, joined into one value per bucket, because Deepgram bills the combination rather than each label separately.
+
+A year of history is requested on the first sync and the most recent three days are re-fetched afterwards, so late-arriving usage lands where it belongs.
+
+- **Billing needs an admin or owner key.** A member-scope key is refused, and the account says so rather than quietly graphing nothing.
+- **Enterprise contracts may not price usage through the API.** When the breakdown comes back with activity but no dollar amounts, nothing is recorded and the account explains why — a confident $0 for an account that is genuinely spending would be the worse answer. Check the balance and invoices in the Deepgram Console in that case.
+
 ## Tips & limits
 
 - **Synthesis is capped at 2,000 characters** per request. That is Deepgram's own limit on `/v1/speak`, and the counter enforces it before the call goes out.

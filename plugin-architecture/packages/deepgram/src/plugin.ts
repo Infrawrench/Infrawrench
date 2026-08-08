@@ -59,6 +59,18 @@ const manifest: PluginManifest = {
     // is a permission gap rather than an empty pot.
     requiresElevatedCredential: true,
   },
+  costs: {
+    // `GET /v1/projects/{project_id}/billing/breakdown` — real billed USD at
+    // daily resolution, grouped by `line_item` and `tags`. A line item is a
+    // billed product/model pair like "streaming::nova-3" and maps onto the
+    // generic service dimension; the project id rides along as a tag, since
+    // the cost contract has no project dimension of its own.
+    dimensions: ["service", "tag"],
+    // History depth is undocumented. A year is asked for and days before the
+    // project existed simply come back empty.
+    maxHistoryDays: 365,
+    restatementDays: 3,
+  },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
