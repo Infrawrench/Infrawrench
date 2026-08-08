@@ -87,3 +87,52 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
+
+  migrations:
+    name: Database migrations
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    services:
+      postgres:
+        # Match docker-compose.dev.yml (Postgres 16). Multi-arch image works on
+        # ubuntu-24.04-arm. pgcrypto (used by migration 0010) is built in.
+        image: postgres:16
+        env:
+          POSTGRES_USER: infrawrench
+          POSTGRES_PASSWORD: infrawrench
+          POSTGRES_DB: infrawrench
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U infrawrench -d infrawrench"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .turbo
+            node_modules
+          key: ${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+
+      - name: Apply drizzle migrations
+        run: pnpm --filter @infrawrench/web db:migrate
+        env:
+          DATABASE_URL: postgres://infrawrench:infrawrench@localhost:5432/infrawrench
+
+      - name: Re-apply migrations (idempotent no-op)
+        run: pnpm --filter @infrawrench/web db:migrate
+        env:
+          DATABASE_URL: postgres://infrawrench:infrawrench@localhost:5432/infrawrench
