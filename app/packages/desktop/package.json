@@ -11,7 +11,7 @@
   "homepage": "https://infrawrench.com",
   "main": "out/main/index.js",
   "scripts": {
-    "test": "vitest run",
+    "test": "node scripts/ensure-env.mjs && vitest run",
     "dev": "node scripts/ensure-env.mjs && electron-vite dev",
     "build": "node scripts/ensure-env.mjs && electron-vite build",
     "preview": "electron-vite preview",
