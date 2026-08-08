@@ -93,6 +93,45 @@ export async function orgFetch<T>(orgId: string, path: string, init: RequestInit
   }
 }
 
+/**
+ * Same as {@link orgFetch}, for an endpoint whose body is a document rather
+ * than a JSON payload — today that is the asciicast a recorded SSH session
+ * downloads as, which is newline-delimited JSON and would die on `JSON.parse`
+ * at its header line.
+ */
+export async function orgFetchText(
+  orgId: string,
+  path: string,
+  init: RequestInit = {},
+): Promise<string> {
+  let token = await getAccessToken();
+  if (!token) throw notSignedInError();
+  const url = `${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}${path}`;
+  const buildInit = (t: string): RequestInit => ({
+    ...init,
+    headers: { ...(init.headers ?? {}), Authorization: `Bearer ${t}` },
+  });
+  let res = await fetch(url, buildInit(token));
+  if (res.status === 401) {
+    const refreshed = await forceRefreshAccessToken();
+    if (!refreshed) throw notSignedInError();
+    token = refreshed;
+    res = await fetch(url, buildInit(token));
+  }
+  const body = await res.text().catch(() => "");
+  if (!res.ok) {
+    throw new CliError(`Cloud request failed: ${res.status} ${path}${describeBody(body)}`);
+  }
+  if (looksLikeHtml(body)) {
+    throw new CliError(
+      `${path} is not available on ${CLOUD_URL}.\n` +
+        `The server answered with a web page instead of data, which usually means it is ` +
+        `running a version without this endpoint.`,
+    );
+  }
+  return body;
+}
+
 /** True for a response body that is a web page rather than data. */
 function looksLikeHtml(body: string): boolean {
   const head = body.slice(0, 200).trimStart().toLowerCase();

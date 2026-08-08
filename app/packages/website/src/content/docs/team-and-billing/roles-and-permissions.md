@@ -43,6 +43,8 @@ Two permissions are deliberately not in any system role, because they let unatte
 
 Grant them with a scoped [API key](./api-keys.md), or add them to a custom role. Admin and Owner hold them through their wildcards.
 
+If someone needs a permission only occasionally, consider [break-glass access](./break-glass-access.md) rather than widening their role: they ask for exactly that permission, for as long as they need it, and it lapses on its own.
+
 ## Custom roles
 
 Owners and anyone with `team:role:write` can define their own roles in **Settings → Roles → New role**. Pick permissions from the categorised list, or paste wildcard patterns (e.g. `resources:postgres:*`) into the advanced field.
@@ -96,6 +98,19 @@ The same permission set gates every surface, not just the web UI:
   - `workflows:approve` — decide a request raised by `infra.waitForApproval(...)`. Deliberately separate: the point of an approval step is that a second person signs off, so a custom role can grant authorship without sign-off, or sign-off without authorship. All three are in the Member role, matching what members could already do — the split is there for custom roles to use.
 
   Workflows used to be gated on `dashboards:read` / `dashboards:write`. Custom roles and API keys that granted those had the matching workflow permissions added to them once, during the upgrade that introduced them, so nobody lost access — the added permissions show up in the role editor, ticked, and you can untick them. Every grant since means exactly what it says: a custom role granting `workflows:write` while withholding `workflows:approve` withholds it. Custom graphs, which really are dashboard content, stayed on the dashboard permissions.
+
+- **[Break-glass access](./break-glass-access.md)** splits three ways, because the three verbs are held by genuinely different people:
+  - `access:read` — see the queue, live elevations and history. Members hold it: an elevation regime nobody can see is not a control.
+  - `access:request` — raise and withdraw your own requests. Members hold it; they are exactly who this is for.
+  - `access:approve` — approve, deny, or revoke anyone's elevation. Deliberately **not** implied by `team:role:write`: granting a role is a considered change with a paper trail, approving an elevation happens mid-incident, and an organization should be able to say who may do the second without also saying who may do the first.
+
+  A live grant is unioned into the holder's permissions at resolution time, so it reaches every surface at once — and is excluded from API keys and custom graphs, which are not people.
+
+- **[Session recordings](../features/session-recording.md)** have their own pair, separate from SSH keys and from the audit log:
+  - `session-recordings:read` — list, watch and download recorded SSH sessions.
+  - `session-recordings:write` — change the organization's recording policy and delete recordings.
+
+  Neither is in the Member role. Recording exists to watch operators, so granting every operator the ability to watch defeats it. A custom role can grant read without write, which is the usual shape for a compliance reviewer who should be able to watch a tape but not change the policy or destroy evidence. Watching a recording is itself audit-logged.
 
 ## Audit trail
 

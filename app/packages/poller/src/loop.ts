@@ -17,12 +17,19 @@ import {
   pruneResourceChanges,
   CHANGE_RETENTION_INTERVAL_MS,
 } from "@infrawrench/server-core/resource-changes";
+import {
+  pruneSessionRecordings,
+  settleAbandonedRecordings,
+} from "@infrawrench/server-core/ssh-recording/retention";
+import { pruneCreditSnapshots } from "@infrawrench/server-core/credits/feed";
 import { TickLoop } from "@infrawrench/server-core/tick-loop";
 import { pollAccount, type PollAccountRow } from "./poll-account";
 import { pollAccountCosts } from "./cost-poll";
+import { pollAccountCredits } from "./credit-poll";
 import {
   claimDueAccounts,
   claimDueCostAccounts,
+  claimDueCreditAccounts,
   claimDueWorkflows,
   type DueWorkflowRow,
 } from "./claim";
@@ -73,6 +80,8 @@ export class PollerLoop extends TickLoop {
   private readonly concurrency: number;
   /** Plugin IDs whose manifest declares a `costs` capability; resolved lazily on first tick. */
   private costCapablePluginIds: string[] | null = null;
+  /** Plugin IDs whose manifest declares a `credits` capability; likewise lazy. */
+  private creditCapablePluginIds: string[] | null = null;
   /** Epoch ms of the last retention pass; 0 means "run on the first tick". */
   private lastRetentionAt = 0;
 
@@ -94,6 +103,13 @@ export class PollerLoop extends TickLoop {
     // Third pass: cost collection (daily cadence per account). Also
     // defensive — billing-API problems never affect resource polling.
     await this.tickCosts();
+
+    // Prepaid credit balances (twice-daily cadence per account). Separate from
+    // the cost pass rather than folded into it: the capabilities are
+    // independent — most prepaid providers bill nothing in arrears and expose
+    // no cost API at all — and a provider whose billing endpoint is down must
+    // not stop us reading a balance that is about to hit zero.
+    await this.tickCredits();
 
     // Fourth pass: weekly digests. A no-op outside the Monday-morning send
     // window; the conditional-UPDATE claim inside makes it replica- and
@@ -201,6 +217,23 @@ export class PollerLoop extends TickLoop {
     }
   }
 
+  /** Claim accounts due a credit-balance read and run them. */
+  private async tickCredits(): Promise<void> {
+    try {
+      if (!this.creditCapablePluginIds) {
+        const loaded = await loadPlugins();
+        this.creditCapablePluginIds = loaded
+          .filter((l) => l.plugin.manifest.credits)
+          .map((l) => l.plugin.manifest.id);
+      }
+      const claimed = await claimDueCreditAccounts(COST_LIMIT, this.creditCapablePluginIds);
+      if (claimed.length === 0) return;
+      await Promise.allSettled(claimed.map((row) => pollAccountCredits(row)));
+    } catch (e) {
+      console.error("[poller] credit tick failed:", e);
+    }
+  }
+
   /** Fetch any provider status feeds that have come due. */
   private async tickStatusFeeds(): Promise<void> {
     try {
@@ -301,6 +334,29 @@ export class PollerLoop extends TickLoop {
       await pruneResourceChanges();
     } catch (e) {
       console.error("[poller] retention tick failed:", e);
+    }
+    // Session recordings ride the same hourly slot rather than a clock of their
+    // own: both are idempotent whole-table prunes with nothing to coordinate,
+    // and a second timer would only make "when does old data actually go" two
+    // answers instead of one. Their windows differ (recordings are per-org
+    // policy, changes are a fixed 90 days) but their cadence has no reason to.
+    try {
+      await pruneSessionRecordings();
+      // Rows the recorder never got to close — a web replica killed mid-session
+      // leaves one saying "recording" forever. The list view derives the same
+      // thing for display; this makes it true in the table so a SQL-level
+      // reader (the CLI's `--json`, an export) agrees with the UI.
+      await settleAbandonedRecordings();
+    } catch (e) {
+      console.error("[poller] session-recording retention tick failed:", e);
+    }
+    // Credit snapshots keep a year rather than the 30-day burn window: the
+    // rows are tiny, and a longer series is the only way to answer "what did
+    // this cost us last quarter" if anyone ever asks.
+    try {
+      await pruneCreditSnapshots();
+    } catch (e) {
+      console.error("[poller] credit snapshot retention tick failed:", e);
     }
   }
 

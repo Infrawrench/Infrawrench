@@ -55,6 +55,14 @@ const manifest: PluginManifest = {
     maxHistoryDays: 30,
     restatementDays: 2,
   },
+  credits: {
+    label: "Credits",
+    topUpUrl: "https://openrouter.ai/credits",
+    // `GET /credits` is a provisioning-key endpoint; an inference key 403s.
+    // Saying so lets the host explain a missing balance as a permission gap
+    // rather than reporting it as a failure.
+    requiresElevatedCredential: true,
+  },
   rateLimit: { capacity: 20, refillPerSecond: 4 },
 };
 

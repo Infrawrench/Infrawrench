@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Modal } from "../components/Modal.js";
 import { SavingsSection } from "../savings/SavingsSection.js";
 import { OversizedSection } from "../savings/OversizedSection.js";
+import { CreditBurndownSection } from "./CreditBurndownSection.js";
 import type {
   OrphanedResource,
   OrphansClient,
@@ -85,6 +86,12 @@ export interface CostsPanelProps {
   schedules?: SchedulesClient | undefined;
   /** Open a scheduled resource's detail view from the schedules section. */
   onOpenScheduledResource?: ((schedule: SleepSchedule) => void) | undefined;
+  /**
+   * Open a URL outside the app shell — new tab on web, system browser on
+   * desktop. Used by the credit burndown section for the provider's top-up
+   * page and for the "your key can't see this balance" help link.
+   */
+  onOpenExternal?: ((url: string) => void) | undefined;
 }
 
 /**
@@ -107,6 +114,7 @@ export function CostsPanel({
   onOpenOversizedResource,
   schedules,
   onOpenScheduledResource,
+  onOpenExternal,
 }: CostsPanelProps) {
   const uid = useId();
   const [budgets, setBudgets] = useState<BudgetWithStatus[] | null>(null);
@@ -289,6 +297,9 @@ export function CostsPanel({
         <TagGovernanceSection client={client} />
 
         <CostAnomaliesSection client={client} />
+        {/* Above the savings sections on purpose: those are about spending
+            less, this is about not stopping. A pot running dry is an outage. */}
+        <CreditBurndownSection client={client} {...(onOpenExternal ? { onOpenExternal } : {})} />
 
         {orphans && <SavingsSection client={orphans} onOpenResource={onOpenResource} />}
         {rightsizing && (

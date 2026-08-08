@@ -213,6 +213,7 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           // resources.
           key={orgId}
           client={getCostsClient(orgId)}
+          onOpenExternal={(url) => window.open(url, "_blank", "noopener,noreferrer")}
           onOpenDashboard={(dashboardId) =>
             void navigate(getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId }))
           }

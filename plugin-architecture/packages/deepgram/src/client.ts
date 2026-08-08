@@ -1,5 +1,6 @@
 import type {
   CreateResourceConfig,
+  CreditBalance,
   DashboardStat,
   DetailViewSchema,
   HostServices,
@@ -385,6 +386,38 @@ export class DeepgramClient implements PluginClient {
   ): Promise<ResourceInstance[]> {
     const projects = await this.fetchProjects();
     const settled = await Promise.allSettled(projects.map((p) => load(p.project_id)));
+    return settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  }
+
+  /**
+   * Prepaid balances across every project the key can see.
+   *
+   * Deepgram scopes balances to a project and an account can hold several, so
+   * the pot key is `<projectId>:<balanceId>` — one project running dry while
+   * another has headroom is exactly the situation this feature exists to
+   * surface, and summing them would hide it.
+   *
+   * `units` is Deepgram's own word for what the amount is denominated in
+   * ("usd"); anything else is passed through uppercased rather than assumed to
+   * be dollars. Projects the key lacks scope for fail individually, the same
+   * stance `listForEachProject` takes — a member-scoped key sees no balances
+   * at all, which is a permission gap rather than a zero balance.
+   */
+  async fetchCreditBalance(): Promise<CreditBalance[]> {
+    const projects = await this.fetchProjects();
+    const settled = await Promise.allSettled(
+      projects.map(async (project) => {
+        const data = await this.fetch<DgBalanceList>(
+          `/v1/projects/${encodeURIComponent(project.project_id)}/balances`,
+        );
+        return (data.balances ?? []).map((b): CreditBalance => ({
+          key: `${project.project_id}:${b.balance_id}`,
+          label: `${project.name ?? project.project_id} balance`,
+          remaining: Number(b.amount ?? 0),
+          currency: (b.units ?? "usd").toUpperCase(),
+        }));
+      }),
+    );
     return settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
   }
 

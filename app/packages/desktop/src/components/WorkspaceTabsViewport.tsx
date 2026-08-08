@@ -159,6 +159,9 @@ function renderPanel(
           // previous org's budgets and flagged resources.
           key={activeCloudOrgId ?? "local"}
           client={getCostsClient()}
+          // Always the system browser: a provider's top-up page is a billing
+          // flow and has no business inside the app shell.
+          onOpenExternal={(url) => void invoke("open_external_url", { url })}
           onOpenDashboard={(dashboardId) =>
             void navigate(getWorkspaceNavigateArgs(dashboardTabTarget(dashboardId)))
           }

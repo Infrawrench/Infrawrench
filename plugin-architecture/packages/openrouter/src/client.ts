@@ -20,8 +20,14 @@ import type {
   TranscribeAudioPayload,
   TranscribeAudioResult,
   TranscriptWord,
+  CreditBalance,
 } from "@infrawrench/plugin-base";
-import { CostSetupError, bytesToBase64, jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  CostSetupError,
+  CreditAccessError,
+  bytesToBase64,
+  jsonRestFetch,
+} from "@infrawrench/plugin-base";
 
 const BASE_URL = "https://openrouter.ai/api/v1";
 
@@ -566,6 +572,49 @@ export class OpenRouterClient implements PluginClient {
     const direct = resource.fields[outputKey];
     if (direct !== undefined) return String(direct);
     throw new Error(`OpenRouter plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  }
+
+  // --------------------------------------------------------------- credits
+
+  /**
+   * `GET /credits` → `{ total_credits, total_usage }`, both lifetime totals in
+   * USD; what remains is the difference.
+   *
+   * Needs a provisioning key — an inference key 403s here, which the manifest
+   * declares so the host can call it a permission gap rather than a failure.
+   * `total_credits` is everything ever added, so it *is* an honest `granted`:
+   * "spent 38 of 50" is exactly what those two numbers mean.
+   */
+  async fetchCreditBalance(): Promise<CreditBalance[]> {
+    let body: { data?: { total_credits?: number; total_usage?: number } };
+    try {
+      body = await this.fetch<{ data?: { total_credits?: number; total_usage?: number } }>(
+        "/credits",
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/40[13]/.test(message)) {
+        throw new CreditAccessError(
+          "OpenRouter only exposes the account credit balance to a provisioning key. Add one to this account to track credits.",
+          {
+            label: "Create a provisioning key",
+            url: "https://openrouter.ai/settings/provisioning-keys",
+          },
+        );
+      }
+      throw err;
+    }
+    const granted = body.data?.total_credits ?? 0;
+    const used = body.data?.total_usage ?? 0;
+    return [
+      {
+        key: "default",
+        label: "Account credits",
+        remaining: granted - used,
+        currency: "USD",
+        granted,
+      },
+    ];
   }
 
   // ------------------------------------------------------------- dashboard

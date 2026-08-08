@@ -519,6 +519,34 @@
       "when": 1786136882776,
       "tag": "0073_oval_jimmy_woo",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1786136505724,
+      "tag": "0074_smart_slipstream",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1786141117184,
+      "tag": "0075_famous_arclight",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1786145785953,
+      "tag": "0076_easy_professor_monster",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1786228411789,
+      "tag": "0077_bent_lorna_dane",
+      "breakpoints": true
     }
   ]
 }

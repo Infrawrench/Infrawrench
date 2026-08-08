@@ -1,5 +1,6 @@
 import { createContext, useContext, type ReactNode } from "react";
 import type { ApprovalsClient } from "../workflows/types.js";
+import type { MountPlaybackTerminal } from "../session-recordings/terminal.js";
 
 /**
  * Transport the settings sections use for every API call. Paths are the same
@@ -22,6 +23,15 @@ export interface SettingsApi {
 export interface SettingsHostValue {
   orgId: string;
   api: SettingsApi;
+  /**
+   * Authenticated GET returning the raw body.
+   *
+   * `api.get` parses JSON, which is the wrong tool for the one endpoint whose
+   * body is a document rather than a payload: an asciicast is newline-delimited
+   * JSON and `JSON.parse` fails on its very first line. Same transport and
+   * same credentials as `api`, just without the parse.
+   */
+  fetchText(path: string): Promise<string>;
   has(permission: string): boolean;
   hasAny(...permissions: string[]): boolean;
   /** True while the caller's role/permissions are still being fetched. */
@@ -56,6 +66,15 @@ export interface SettingsHostValue {
    * Web leaves it unset and the sections derive from `window.location`.
    */
   cloudOrigin?: string | undefined;
+  /**
+   * Create the terminal the session-recording player writes into.
+   *
+   * Injected because this package stays xterm-free (see `xterm-options.ts`);
+   * the player owns *when* bytes are written and the host owns *what* writes
+   * them. Optional: a surface with no terminal (the phone) omits it and the
+   * section offers the `.cast` download instead of a dead player.
+   */
+  mountPlaybackTerminal?: MountPlaybackTerminal | undefined;
 }
 
 const SettingsHostContext = createContext<SettingsHostValue | null>(null);

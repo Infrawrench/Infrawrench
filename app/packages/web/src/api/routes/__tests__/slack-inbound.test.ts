@@ -115,7 +115,9 @@ vi.mock("@infrawrench/server-core/slack-approvals", () => ({
     if (typeof raw !== "string") return null;
     try {
       const p = JSON.parse(raw) as { k?: string; a?: string; o?: string };
-      if ((p.k !== "workflow" && p.k !== "chat") || !p.a || !p.o) return null;
+      if ((p.k !== "workflow" && p.k !== "chat" && p.k !== "access") || !p.a || !p.o) {
+        return null;
+      }
       return { kind: p.k, approvalId: p.a, organizationId: p.o };
     } catch {
       return null;
@@ -125,7 +127,11 @@ vi.mock("@infrawrench/server-core/slack-approvals", () => ({
 
 let memberPermissions: string[] = ["*"];
 vi.mock("@infrawrench/server-core/permissions", () => ({
-  resolveEffectivePermissions: vi.fn(async () => ({ permissions: memberPermissions, role: null })),
+  resolveEffectivePermissions: vi.fn(async () => ({
+    permissions: memberPermissions,
+    role: null,
+    elevations: [],
+  })),
 }));
 vi.mock("@infrawrench/server-core/permissions/catalog", () => ({
   hasPermission: (granted: string[], required: string) =>
@@ -135,6 +141,11 @@ vi.mock("@infrawrench/server-core/permissions/catalog", () => ({
 const decideWorkflowApproval = vi.fn();
 vi.mock("@infrawrench/server-core/workflows/approvals", () => ({
   decideWorkflowApproval: (...a: unknown[]) => decideWorkflowApproval(...a),
+}));
+
+const decideAccessRequest = vi.fn(async () => ({ outcome: "decided" }) as unknown);
+vi.mock("@infrawrench/server-core/access/break-glass", () => ({
+  decideAccessRequest: (...a: unknown[]) => decideAccessRequest(...(a as [])),
 }));
 
 vi.mock("@infrawrench/client-core", () => ({
@@ -515,6 +526,70 @@ describe("POST /api/slack/interactions — workflow approval buttons", () => {
     await flushAsync();
     expect(decideWorkflowApproval).not.toHaveBeenCalled();
     expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("workflows:approve");
+  });
+
+  it("routes an access-request button through the break-glass decision path", async () => {
+    linkedAstrid();
+    memberPermissions = ["access:approve"];
+    await interactionRequest("infrawrench_approval_approve", {
+      k: "access",
+      a: "req-1",
+      o: "org-1",
+    });
+    await flushAsync();
+    expect(decideAccessRequest).toHaveBeenCalledWith(
+      "org-1",
+      "req-1",
+      "approved",
+      // The Slack decider's *live* permissions ride along: the button is a
+      // second front door to the same decision, not a way around its rules.
+      { userId: "user-1", name: "Astrid", permissions: ["access:approve"] },
+      { decidedVia: "Slack" },
+    );
+  });
+
+  it("requires access:approve for an access-request button", async () => {
+    linkedAstrid();
+    memberPermissions = ["access:read", "access:request"];
+    await interactionRequest("infrawrench_approval_approve", {
+      k: "access",
+      a: "req-1",
+      o: "org-1",
+    });
+    await flushAsync();
+    expect(decideAccessRequest).not.toHaveBeenCalled();
+    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("access:approve");
+  });
+
+  it("explains a self-approval refused over Slack", async () => {
+    linkedAstrid();
+    memberPermissions = ["access:approve"];
+    decideAccessRequest.mockResolvedValue({ outcome: "self_approval" });
+    await interactionRequest("infrawrench_approval_approve", {
+      k: "access",
+      a: "req-1",
+      o: "org-1",
+    });
+    await flushAsync();
+    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain(
+      "your own access request",
+    );
+  });
+
+  it("names the permissions an approver could not grant", async () => {
+    linkedAstrid();
+    memberPermissions = ["access:approve"];
+    decideAccessRequest.mockResolvedValue({
+      outcome: "exceeds_approver",
+      missing: ["billing:write"],
+    });
+    await interactionRequest("infrawrench_approval_approve", {
+      k: "access",
+      a: "req-1",
+      o: "org-1",
+    });
+    await flushAsync();
+    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("billing:write");
   });
 
   it("refuses a button whose echoed value names an org the clicker isn't linked in", async () => {

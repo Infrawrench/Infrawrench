@@ -181,6 +181,10 @@ export function pushDataToPath(data: MobilePushData): string {
     // along so the inbox can surface this request first.
     case "workflow_approval":
       return `/org/${data.orgId}/settings/approvals?approvalId=${encodeURIComponent(data.approvalId)}`;
+    // Break-glass lands on the screen with the buttons on it — a colleague
+    // blocked mid-incident is exactly what you decide from a phone.
+    case "access_request":
+      return `/org/${data.orgId}/settings/access-requests?requestId=${encodeURIComponent(data.requestId)}`;
     // API pages name a source Infrawrench has no page for, so the org home is
     // the closest thing to "where this alert came from".
     case "api_page":
@@ -359,6 +363,19 @@ export function parsePushData(raw: unknown): MobilePushData | null {
         return null;
       }
       return { type: "workflow_approval", orgId, workflowId, runId, approvalId };
+    }
+    case "access_request": {
+      const requestId = data["requestId"];
+      const requestedByName = data["requestedByName"];
+      const durationMinutes = data["durationMinutes"];
+      if (typeof requestId !== "string") return null;
+      return {
+        type: "access_request",
+        orgId,
+        requestId,
+        requestedByName: typeof requestedByName === "string" ? requestedByName : "A member",
+        durationMinutes: typeof durationMinutes === "number" ? durationMinutes : 0,
+      };
     }
     case "api_page": {
       const source = data["source"];

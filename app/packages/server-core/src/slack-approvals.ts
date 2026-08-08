@@ -1,9 +1,9 @@
 /**
  * Interactive Slack approval messages.
  *
- * An approval request (a workflow suspended on `infra.waitForApproval`, or the
- * chat agent waiting on a destructive tool call) goes out to Slack with
- * Approve/Deny buttons. This module owns the shared halves of that flow:
+ * An approval request — a workflow suspended on `infra.waitForApproval`, the
+ * chat agent waiting on a destructive tool call, or a member asking for
+ * break-glass access — goes out to Slack with Approve/Deny buttons. This module owns the shared halves of that flow:
  *
  *  - the buttons themselves (`slackApprovalButtons`) and the opaque `value`
  *    payload a click echoes back;
@@ -24,7 +24,12 @@ import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 import { db } from "./db/client";
-import { chatPendingActions, slackApprovalMessages, workflowApprovals } from "./db/schema";
+import {
+  accessRequests,
+  chatPendingActions,
+  slackApprovalMessages,
+  workflowApprovals,
+} from "./db/schema";
 import {
   escapeMrkdwn,
   loadOrgSlackTokens,
@@ -35,7 +40,7 @@ import {
 } from "./slack";
 
 /** Which table the approval id points at. */
-export type SlackApprovalKind = "workflow" | "chat";
+export type SlackApprovalKind = "workflow" | "chat" | "access";
 
 export const SLACK_APPROVE_ACTION_ID = "infrawrench_approval_approve";
 export const SLACK_DENY_ACTION_ID = "infrawrench_approval_deny";
@@ -62,7 +67,13 @@ export function parseSlackApprovalButtonValue(raw: unknown): SlackApprovalButton
   if (typeof raw !== "string") return null;
   try {
     const parsed = JSON.parse(raw) as { k?: string; a?: string; o?: string };
-    if ((parsed.k !== "workflow" && parsed.k !== "chat") || !parsed.a || !parsed.o) return null;
+    if (
+      (parsed.k !== "workflow" && parsed.k !== "chat" && parsed.k !== "access") ||
+      !parsed.a ||
+      !parsed.o
+    ) {
+      return null;
+    }
     return { kind: parsed.k, approvalId: parsed.a, organizationId: parsed.o };
   } catch {
     return null;
@@ -85,6 +96,19 @@ async function decidedApprovalState(
       .select({ status: workflowApprovals.status, decidedByName: workflowApprovals.decidedByName })
       .from(workflowApprovals)
       .where(eq(workflowApprovals.id, approvalId))
+      .limit(1);
+    if (!row || row.status === "pending") return null;
+    return {
+      decision:
+        row.status === "approved" ? "approved" : row.status === "denied" ? "denied" : "expired",
+      decidedByName: row.decidedByName ?? null,
+    };
+  }
+  if (kind === "access") {
+    const [row] = await db
+      .select({ status: accessRequests.status, decidedByName: accessRequests.decidedByName })
+      .from(accessRequests)
+      .where(eq(accessRequests.id, approvalId))
       .limit(1);
     if (!row || row.status === "pending") return null;
     return {

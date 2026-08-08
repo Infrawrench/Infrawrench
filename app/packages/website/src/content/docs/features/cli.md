@@ -115,6 +115,38 @@ infrawrench probes api-health     # one probe: state, facts, latency sparkline
 infrawrench probes --json
 ```
 
+`credits` is the [credit burndown](./credit-burndown.md): prepaid balances with a measured burn rate and a runway, for the providers that expose one. Worth putting in a morning check — a prepaid pot that empties is an outage, not an invoice. Needs `costs:read`:
+
+```
+infrawrench credits
+infrawrench credits --json
+```
+
+`hygiene` is the [credential hygiene](../team-and-billing/credential-hygiene.md) report: unused API keys, unreferenced SSH keys, and members holding write permissions they never exercise. The `--json` form is the one worth scheduling — these accumulate slowly and nobody opens a settings page to check. Needs `audit:read`:
+
+```
+infrawrench hygiene
+infrawrench hygiene --days 180        # 7-365; default 90
+infrawrench hygiene --json
+```
+
+`access` lists [break-glass access](../team-and-billing/break-glass-access.md) requests and the elevations in force right now. Read-only: raising a request needs a reason someone will read and deciding one is a judgement call, but "who is elevated right now" is exactly the question you type at 3am. Needs `access:read`:
+
+```
+infrawrench access                # every request, live elevations first
+infrawrench access active         # only what is in force right now
+infrawrench access --json
+```
+
+`recordings` lists the org's [recorded SSH sessions](./session-recording.md) — who connected, to what, how long for, and each session's status. `recordings get <id>` prints the asciicast itself, which is the point of the subcommand: the format is asciinema's, so a session replays on a machine that has never seen the UI. Needs `session-recordings:read`:
+
+```
+infrawrench recordings
+infrawrench recordings get 3f9c21e8 | asciinema play -
+infrawrench recordings get 3f9c21e8 --file incident-4417.cast
+infrawrench recordings --json         # list plus the org's policy and storage usage
+```
+
 `oversized` lists [right-sizing recommendations](./right-sizing.md) — machines whose 14-day p95 CPU/memory sits well under their size, with the recommended smaller size and the live-priced monthly saving. Cloud-only (the percentiles live in the cloud metrics store), and read-only: applying a resize is done from the web or desktop Costs panel:
 
 ```

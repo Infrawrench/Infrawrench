@@ -37,14 +37,17 @@ import { Route as OrgOrgIdChatIndexRouteImport } from './routes/org.$orgId.chat.
 import { Route as OrgOrgIdChatConversationIdRouteImport } from './routes/org.$orgId.chat.$conversationId'
 import { Route as OrgOrgIdDashboardDashboardIdRouteImport } from './routes/org.$orgId.dashboard.$dashboardId'
 import { Route as OrgOrgIdSettingsIndexRouteImport } from './routes/org.$orgId.settings.index'
+import { Route as OrgOrgIdSettingsAccessRequestsRouteImport } from './routes/org.$orgId.settings.access-requests'
 import { Route as OrgOrgIdSettingsApiKeysRouteImport } from './routes/org.$orgId.settings.api-keys'
 import { Route as OrgOrgIdSettingsApprovalsRouteImport } from './routes/org.$orgId.settings.approvals'
 import { Route as OrgOrgIdSettingsAuditLogRouteImport } from './routes/org.$orgId.settings.audit-log'
 import { Route as OrgOrgIdSettingsBastionsRouteImport } from './routes/org.$orgId.settings.bastions'
 import { Route as OrgOrgIdSettingsBillingRouteImport } from './routes/org.$orgId.settings.billing'
+import { Route as OrgOrgIdSettingsCredentialHygieneRouteImport } from './routes/org.$orgId.settings.credential-hygiene'
 import { Route as OrgOrgIdSettingsFreezesRouteImport } from './routes/org.$orgId.settings.freezes'
 import { Route as OrgOrgIdSettingsPagingRouteImport } from './routes/org.$orgId.settings.paging'
 import { Route as OrgOrgIdSettingsRolesRouteImport } from './routes/org.$orgId.settings.roles'
+import { Route as OrgOrgIdSettingsSessionRecordingsRouteImport } from './routes/org.$orgId.settings.session-recordings'
 import { Route as OrgOrgIdSettingsSshHostKeysRouteImport } from './routes/org.$orgId.settings.ssh-host-keys'
 import { Route as OrgOrgIdSettingsSshKeysRouteImport } from './routes/org.$orgId.settings.ssh-keys'
 import { Route as OrgOrgIdSettingsTagPolicyRouteImport } from './routes/org.$orgId.settings.tag-policy'
@@ -194,6 +197,12 @@ const OrgOrgIdSettingsIndexRoute = OrgOrgIdSettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsAccessRequestsRoute =
+  OrgOrgIdSettingsAccessRequestsRouteImport.update({
+    id: '/access-requests',
+    path: '/access-requests',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsApiKeysRoute = OrgOrgIdSettingsApiKeysRouteImport.update({
   id: '/api-keys',
   path: '/api-keys',
@@ -222,6 +231,12 @@ const OrgOrgIdSettingsBillingRoute = OrgOrgIdSettingsBillingRouteImport.update({
   path: '/billing',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsCredentialHygieneRoute =
+  OrgOrgIdSettingsCredentialHygieneRouteImport.update({
+    id: '/credential-hygiene',
+    path: '/credential-hygiene',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsFreezesRoute = OrgOrgIdSettingsFreezesRouteImport.update({
   id: '/freezes',
   path: '/freezes',
@@ -237,6 +252,12 @@ const OrgOrgIdSettingsRolesRoute = OrgOrgIdSettingsRolesRouteImport.update({
   path: '/roles',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsSessionRecordingsRoute =
+  OrgOrgIdSettingsSessionRecordingsRouteImport.update({
+    id: '/session-recordings',
+    path: '/session-recordings',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsSshHostKeysRoute =
   OrgOrgIdSettingsSshHostKeysRouteImport.update({
     id: '/ssh-host-keys',
@@ -293,14 +314,17 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
+  '/org/$orgId/settings/credential-hygiene': typeof OrgOrgIdSettingsCredentialHygieneRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
+  '/org/$orgId/settings/session-recordings': typeof OrgOrgIdSettingsSessionRecordingsRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
@@ -333,14 +357,17 @@ export interface FileRoutesByTo {
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
+  '/org/$orgId/settings/credential-hygiene': typeof OrgOrgIdSettingsCredentialHygieneRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
+  '/org/$orgId/settings/session-recordings': typeof OrgOrgIdSettingsSessionRecordingsRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
@@ -377,14 +404,17 @@ export interface FileRoutesById {
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
+  '/org/$orgId/settings/credential-hygiene': typeof OrgOrgIdSettingsCredentialHygieneRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
+  '/org/$orgId/settings/session-recordings': typeof OrgOrgIdSettingsSessionRecordingsRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
@@ -422,14 +452,17 @@ export interface FileRouteTypes {
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
     | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
+    | '/org/$orgId/settings/credential-hygiene'
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
+    | '/org/$orgId/settings/session-recordings'
     | '/org/$orgId/settings/ssh-host-keys'
     | '/org/$orgId/settings/ssh-keys'
     | '/org/$orgId/settings/tag-policy'
@@ -462,14 +495,17 @@ export interface FileRouteTypes {
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
     | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
+    | '/org/$orgId/settings/credential-hygiene'
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
+    | '/org/$orgId/settings/session-recordings'
     | '/org/$orgId/settings/ssh-host-keys'
     | '/org/$orgId/settings/ssh-keys'
     | '/org/$orgId/settings/tag-policy'
@@ -505,14 +541,17 @@ export interface FileRouteTypes {
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
     | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
+    | '/org/$orgId/settings/credential-hygiene'
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
+    | '/org/$orgId/settings/session-recordings'
     | '/org/$orgId/settings/ssh-host-keys'
     | '/org/$orgId/settings/ssh-keys'
     | '/org/$orgId/settings/tag-policy'
@@ -728,6 +767,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsIndexRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/access-requests': {
+      id: '/org/$orgId/settings/access-requests'
+      path: '/access-requests'
+      fullPath: '/org/$orgId/settings/access-requests'
+      preLoaderRoute: typeof OrgOrgIdSettingsAccessRequestsRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/api-keys': {
       id: '/org/$orgId/settings/api-keys'
       path: '/api-keys'
@@ -763,6 +809,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsBillingRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/credential-hygiene': {
+      id: '/org/$orgId/settings/credential-hygiene'
+      path: '/credential-hygiene'
+      fullPath: '/org/$orgId/settings/credential-hygiene'
+      preLoaderRoute: typeof OrgOrgIdSettingsCredentialHygieneRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/freezes': {
       id: '/org/$orgId/settings/freezes'
       path: '/freezes'
@@ -782,6 +835,13 @@ declare module '@tanstack/react-router' {
       path: '/roles'
       fullPath: '/org/$orgId/settings/roles'
       preLoaderRoute: typeof OrgOrgIdSettingsRolesRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
+    '/org/$orgId/settings/session-recordings': {
+      id: '/org/$orgId/settings/session-recordings'
+      path: '/session-recordings'
+      fullPath: '/org/$orgId/settings/session-recordings'
+      preLoaderRoute: typeof OrgOrgIdSettingsSessionRecordingsRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
     '/org/$orgId/settings/ssh-host-keys': {
@@ -837,14 +897,17 @@ const OrgOrgIdChatRouteWithChildren = OrgOrgIdChatRoute._addFileChildren(
 )
 
 interface OrgOrgIdSettingsRouteChildren {
+  OrgOrgIdSettingsAccessRequestsRoute: typeof OrgOrgIdSettingsAccessRequestsRoute
   OrgOrgIdSettingsApiKeysRoute: typeof OrgOrgIdSettingsApiKeysRoute
   OrgOrgIdSettingsApprovalsRoute: typeof OrgOrgIdSettingsApprovalsRoute
   OrgOrgIdSettingsAuditLogRoute: typeof OrgOrgIdSettingsAuditLogRoute
   OrgOrgIdSettingsBastionsRoute: typeof OrgOrgIdSettingsBastionsRoute
   OrgOrgIdSettingsBillingRoute: typeof OrgOrgIdSettingsBillingRoute
+  OrgOrgIdSettingsCredentialHygieneRoute: typeof OrgOrgIdSettingsCredentialHygieneRoute
   OrgOrgIdSettingsFreezesRoute: typeof OrgOrgIdSettingsFreezesRoute
   OrgOrgIdSettingsPagingRoute: typeof OrgOrgIdSettingsPagingRoute
   OrgOrgIdSettingsRolesRoute: typeof OrgOrgIdSettingsRolesRoute
+  OrgOrgIdSettingsSessionRecordingsRoute: typeof OrgOrgIdSettingsSessionRecordingsRoute
   OrgOrgIdSettingsSshHostKeysRoute: typeof OrgOrgIdSettingsSshHostKeysRoute
   OrgOrgIdSettingsSshKeysRoute: typeof OrgOrgIdSettingsSshKeysRoute
   OrgOrgIdSettingsTagPolicyRoute: typeof OrgOrgIdSettingsTagPolicyRoute
@@ -853,14 +916,17 @@ interface OrgOrgIdSettingsRouteChildren {
 }
 
 const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
+  OrgOrgIdSettingsAccessRequestsRoute: OrgOrgIdSettingsAccessRequestsRoute,
   OrgOrgIdSettingsApiKeysRoute: OrgOrgIdSettingsApiKeysRoute,
   OrgOrgIdSettingsApprovalsRoute: OrgOrgIdSettingsApprovalsRoute,
   OrgOrgIdSettingsAuditLogRoute: OrgOrgIdSettingsAuditLogRoute,
   OrgOrgIdSettingsBastionsRoute: OrgOrgIdSettingsBastionsRoute,
   OrgOrgIdSettingsBillingRoute: OrgOrgIdSettingsBillingRoute,
+  OrgOrgIdSettingsCredentialHygieneRoute: OrgOrgIdSettingsCredentialHygieneRoute,
   OrgOrgIdSettingsFreezesRoute: OrgOrgIdSettingsFreezesRoute,
   OrgOrgIdSettingsPagingRoute: OrgOrgIdSettingsPagingRoute,
   OrgOrgIdSettingsRolesRoute: OrgOrgIdSettingsRolesRoute,
+  OrgOrgIdSettingsSessionRecordingsRoute: OrgOrgIdSettingsSessionRecordingsRoute,
   OrgOrgIdSettingsSshHostKeysRoute: OrgOrgIdSettingsSshHostKeysRoute,
   OrgOrgIdSettingsSshKeysRoute: OrgOrgIdSettingsSshKeysRoute,
   OrgOrgIdSettingsTagPolicyRoute: OrgOrgIdSettingsTagPolicyRoute,

@@ -27,6 +27,10 @@ import { cmdMoment } from "./commands/moment";
 import { cmdIncidents } from "./commands/incidents";
 import { cmdSchedules } from "./commands/schedules";
 import { cmdLeases } from "./commands/leases";
+import { cmdRecordings } from "./commands/recordings";
+import { cmdAccess } from "./commands/access";
+import { cmdHygiene } from "./commands/hygiene";
+import { cmdCredits } from "./commands/credits";
 import { cmdProbes } from "./commands/probes";
 import { cmdGraph } from "./commands/graph";
 import { cmdPage, cmdCostsPush } from "./commands/push";
@@ -79,6 +83,14 @@ COMMANDS
                       [-w/--window 15m|1h|6h]  (omit the timestamp for "around now")
   schedules           sleep/wake schedules: windows, next transitions & projected savings
   leases              resource leases (TTLs): deadlines, auto-delete flags & status
+  access              break-glass requests & live permission elevations
+  credits             prepaid balances with burn rate & runway ("6 days left")
+  hygiene             unused API keys, unreferenced SSH keys & unexercised
+                      write permissions   [--days 30|90|180|365]
+  access active       only the elevations in force right now
+  recordings          recorded SSH sessions: who connected, to what, for how long
+  recordings get <id> print the session's asciicast   [-f/--file <path>]
+                      (pipe it: infrawrench recordings get <id> | asciinema play -)
   probes [id|name]    synthetic uptime/latency checks probed from outside your infra, with
                       live status, 24h uptime & last latency (give an id/name for its chart)
   graph               resource dependency tree   [--resource <id>: what it needs + its blast radius]
@@ -324,6 +336,18 @@ export async function runCli(): Promise<void> {
         break;
       case "leases":
         await cmdLeases(ctx);
+        break;
+      case "recordings":
+        await cmdRecordings(ctx, rest, { file: parsed.push.file });
+        break;
+      case "access":
+        await cmdAccess(ctx, rest);
+        break;
+      case "hygiene":
+        await cmdHygiene(ctx, { days: parsed.range.days });
+        break;
+      case "credits":
+        await cmdCredits(ctx);
         break;
       case "probes":
         // `infrawrench probes <id|name>` charts one probe's latency history.

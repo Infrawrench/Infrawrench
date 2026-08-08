@@ -32,10 +32,16 @@ export interface PrincipalRef {
  * Deliberately un-memoized; see the note on `tools/permissions.ts`.
  */
 export async function effectivePermissions(principal: PrincipalRef): Promise<readonly string[]> {
-  const access = await resolveEffectivePermissions(principal.organizationId, {
-    kind: "user",
-    userId: principal.userId,
-  });
+  const access = await resolveEffectivePermissions(
+    principal.organizationId,
+    { kind: "user", userId: principal.userId },
+    // A break-glass grant is authority handed to a *person* for a bounded
+    // window on a stated reason. Letting it flow into an unattended key that
+    // person minted last quarter would turn a supervised, expiring elevation
+    // into an unsupervised one — the exact failure the feature exists to
+    // prevent. Keys see the owner's role and nothing else.
+    { includeElevation: principal.scopes === undefined },
+  );
   return principal.scopes
     ? intersectPermissions(access.permissions, principal.scopes)
     : access.permissions;

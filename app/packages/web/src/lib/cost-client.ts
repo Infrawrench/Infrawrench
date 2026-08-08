@@ -11,6 +11,7 @@ import type {
   CostQueryResponse,
   CostsClient,
   CostsPanelDashboard,
+  CreditBurndown,
   ShowbackReport,
   TagComplianceReport,
   UntaggedSpendReport,
@@ -90,6 +91,7 @@ export function createWebCostsClient(orgId: string): CostsClient {
       apiGet<UntaggedSpendReport>(`/api/org/${orgId}/costs/untagged${rangeQuery(from, to)}`),
     getShowback: (from?: string, to?: string) =>
       apiGet<ShowbackReport>(`/api/org/${orgId}/costs/showback${rangeQuery(from, to)}`),
+    getCreditBurndown: () => apiGet<CreditBurndown>(`/api/org/${orgId}/credits`),
   };
 }
 

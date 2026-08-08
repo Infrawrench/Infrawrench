@@ -1,5 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
+import { activeElevations, type ActiveElevation } from "../access/break-glass";
+
+export type { ActiveElevation };
 import { db } from "../db/client";
 import { organizationMembers, roles } from "../db/schema";
 import {
@@ -97,6 +100,29 @@ export type Principal =
 export interface EffectiveAccess {
   permissions: readonly string[];
   role: ResolvedRole | null;
+  /**
+   * Live break-glass grants folded into `permissions`, or `[]`.
+   *
+   * Surfaced separately so a caller can say *why* someone can do something —
+   * "you have this until 14:32 because you asked for it" is a materially
+   * different statement from "your role grants this", and an interface that
+   * cannot tell them apart quietly normalises elevation.
+   */
+  elevations: readonly ActiveElevation[];
+}
+
+export interface ResolveOptions {
+  /**
+   * Fold in live break-glass grants. Default true — for a person at a keyboard
+   * their elevation *is* part of what they can currently do.
+   *
+   * **API keys pass false.** A break-glass grant is authority handed to a human
+   * for a bounded window on a stated reason; letting it flow into unattended
+   * credentials the human minted earlier is exactly the failure this feature
+   * exists to prevent. `auth/effective-permissions.ts` is the caller that sets
+   * it, and it is the only one that should.
+   */
+  includeElevation?: boolean;
 }
 
 /**
@@ -110,10 +136,20 @@ export interface EffectiveAccess {
 export async function resolveEffectivePermissions(
   organizationId: string,
   principal: Principal,
+  opts: ResolveOptions = {},
 ): Promise<EffectiveAccess> {
   if (principal.kind === "apiKey") {
-    return { permissions: principal.scopes, role: null };
+    return { permissions: principal.scopes, role: null, elevations: [] };
   }
+
+  // Resolved alongside the role rather than after it: the two reads are
+  // independent, and a person's effective set is the union, so serializing
+  // them would add a round-trip to every authenticated request for nothing.
+  const elevationsPromise =
+    opts.includeElevation === false
+      ? Promise.resolve([] as ActiveElevation[])
+      : activeElevations(organizationId, principal.userId);
+
   const memberships = await db
     .select({
       roleId: organizationMembers.roleId,
@@ -128,7 +164,26 @@ export async function resolveEffectivePermissions(
     )
     .limit(1);
   const m = memberships[0];
-  if (!m) return { permissions: [], role: null };
+  const elevations = await elevationsPromise;
+  // A non-member gets nothing, elevation or not: a grant is scoped to a
+  // membership, and honouring one after the membership went would be a way for
+  // a removed member to keep access.
+  if (!m) return { permissions: [], role: null, elevations: [] };
+
+  /**
+   * Role permissions plus any live grants. Union, never intersection: the
+   * point of an elevation is to hold something the role does not.
+   */
+  const withElevation = (rolePerms: readonly string[]): readonly string[] => {
+    if (elevations.length === 0) return rolePerms;
+    const out = [...rolePerms];
+    for (const elevation of elevations) {
+      for (const permission of elevation.permissions) {
+        if (!out.includes(permission)) out.push(permission);
+      }
+    }
+    return out;
+  };
 
   if (m.roleId) {
     const rows = await db.select().from(roles).where(eq(roles.id, m.roleId)).limit(1);
@@ -138,15 +193,19 @@ export async function resolveEffectivePermissions(
       const systemKey = isSystemRoleKey(r.systemKey) ? r.systemKey : null;
       const permissions = rolePermissions(r);
       return {
-        permissions,
+        permissions: withElevation(permissions),
         role: {
           id: r.id,
           name: r.name,
           description: r.description,
           isSystem,
           systemKey,
+          // The role reports what the *role* grants. Folding the elevation in
+          // here too would make the role editor show a permission nobody
+          // assigned and that vanishes on its own an hour later.
           permissions,
         },
+        elevations,
       };
     }
   }
@@ -154,9 +213,9 @@ export async function resolveEffectivePermissions(
   // Fallback: legacy text role column. Treat as a system role.
   if (isSystemRoleKey(m.legacyRole)) {
     const role = await getSystemRole(organizationId, m.legacyRole);
-    return { permissions: role.permissions, role };
+    return { permissions: withElevation(role.permissions), role, elevations };
   }
-  return { permissions: [], role: null };
+  return { permissions: withElevation([]), role: null, elevations };
 }
 
 /**

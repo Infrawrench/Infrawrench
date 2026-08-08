@@ -50,6 +50,29 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   throw new Error(message || `Cloud request failed: ${status} ${path}`);
 }
 
+/**
+ * GET a settings endpoint whose body is a document, not a JSON payload.
+ *
+ * Same channel and same allowlist as {@link request}; it only skips the parse.
+ * The one caller is the session-recording player: an asciicast is
+ * newline-delimited JSON, so `JSON.parse` fails on its header line alone.
+ */
+export async function requestText(path: string): Promise<string> {
+  const { status, bodyText } = await invoke<SettingsRequestResult>("cloud_settings_request", {
+    method: "GET",
+    path,
+  });
+  if (status >= 200 && status < 300) return bodyText;
+  let message = bodyText;
+  try {
+    const parsed = JSON.parse(bodyText) as { error?: unknown };
+    if (typeof parsed.error === "string") message = parsed.error;
+  } catch {
+    /* not a JSON error envelope */
+  }
+  throw new Error(message || `Cloud request failed: ${status} ${path}`);
+}
+
 export function createDesktopSettingsApi(): SettingsApi {
   return {
     get: <T>(path: string) => request<T>("GET", path),

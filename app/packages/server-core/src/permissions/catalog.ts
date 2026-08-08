@@ -46,6 +46,18 @@ export const ALL_PERMISSIONS = [
   // stays expressible, mirroring `freezes:override`.
   "tag-policy:override",
   "audit:read",
+  // Break-glass access. Its own family because the three verbs are held by
+  // genuinely different people: everyone can ask, everyone can see the queue
+  // (an elevation nobody can see is not a control), and only a subset decides.
+  //
+  // `access:approve` is the one that matters and it is deliberately NOT
+  // implied by `team:role:write`: granting someone a role is a considered
+  // change with a paper trail, while approving an elevation happens in the
+  // middle of an incident, and an org should be able to say who may do the
+  // second without also saying who may do the first.
+  "access:read",
+  "access:request",
+  "access:approve",
   "team:read",
   "team:invite",
   "team:role:write",
@@ -56,6 +68,20 @@ export const ALL_PERMISSIONS = [
   "billing:write",
   "ssh-keys:read",
   "ssh-keys:write",
+  // Recorded SSH sessions. Its own family rather than `ssh-keys:*` or
+  // `audit:read`, because watching a colleague's terminal back is a distinct
+  // and much sharper capability than either holding a key or reading the audit
+  // log — and the people who should hold it (compliance, security) are often
+  // not the people who administer keys. `write` covers the org's recording
+  // policy and deleting tapes; both are the kind of thing an investigation
+  // would want to know had happened, so both are audit-logged.
+  //
+  // Deliberately absent from the `member` system role: recording exists to
+  // watch operators, so handing every operator the ability to watch is
+  // self-defeating. Admins and owners get it for free (their sets are
+  // catalog-derived).
+  "session-recordings:read",
+  "session-recordings:write",
   "bastions:read",
   "bastions:write",
   "chat:read",

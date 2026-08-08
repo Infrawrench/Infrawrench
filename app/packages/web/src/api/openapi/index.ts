@@ -35,6 +35,10 @@ import { registerDnsPaths } from "./paths/dns";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
 import { registerLeasePaths } from "./paths/leases";
+import { registerSessionRecordingPaths } from "./paths/session-recordings";
+import { registerAccessRequestPaths } from "./paths/access-requests";
+import { registerCredentialHygienePaths } from "./paths/credential-hygiene";
+import { registerCreditPaths } from "./paths/credits";
 import { registerProbePaths } from "./paths/probes";
 import { registerLogWorkspacePaths } from "./paths/log-workspaces";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
@@ -129,6 +133,10 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerMomentPaths(ctx);
   registerSchedulePaths(ctx);
   registerLeasePaths(ctx);
+  registerSessionRecordingPaths(ctx);
+  registerAccessRequestPaths(ctx);
+  registerCredentialHygienePaths(ctx);
+  registerCreditPaths(ctx);
   registerProbePaths(ctx);
   registerLogWorkspacePaths(ctx);
   registerConnectionFeaturePaths(ctx);
@@ -225,6 +233,26 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Resource leases",
         description:
           "Optional TTLs on resources ('a test cluster for 3 days'). Active leases ride the expiry radar; auto-delete leases are announced twice and then deleted at expiry by the poller, deferring during change freezes.",
+      },
+      {
+        name: "Credit burndown",
+        description:
+          "Prepaid credit balances with a burn rate measured from the server's own series of readings and a runway bounded by both the burn and the credit's own expiry. Only providers that expose a balance appear; most bill in arrears and have no pot to burn down.",
+      },
+      {
+        name: "Credential hygiene",
+        description:
+          "Unused API keys, unreferenced SSH keys, and members holding write permissions they never exercise — derived from the audit log and the credential tables, with no provider call. Only writes are audit-logged, so the report deliberately draws no conclusion about read permissions.",
+      },
+      {
+        name: "Break-glass access",
+        description:
+          "Time-boxed permission elevation: ask for specific permissions for a specific number of minutes with a reason, someone else approves, the elevation lapses on its own. Grants are unioned into the requester's permissions at resolution time, so they reach every surface at once — and are deliberately excluded from API keys, which are not people.",
+      },
+      {
+        name: "Session recordings",
+        description:
+          "Replayable asciicasts of SSH sessions opened through the cloud. Cloud SSH is already proxied server-side, so recording tees a stream the server holds rather than needing an agent on the host; casts download in asciinema's own format. Opt-in per organization, retained on a per-organization window.",
       },
       {
         name: "Synthetic probes",
@@ -425,6 +453,38 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /leases/{leaseId}": "resources:write",
   "POST /leases/{leaseId}/cancel": "resources:write",
   "DELETE /leases/{leaseId}": "resources:write",
+  // session recordings — their own permission family rather than `audit:read`
+  // or `ssh-keys:*`: watching a colleague's terminal back is a sharper
+  // capability than either, and the people who should hold it (compliance,
+  // security) are often not the people who administer keys. Deliberately
+  // absent from the `member` system role — recording exists to watch
+  // operators, so handing every operator the ability to watch defeats it.
+  // break-glass access — three verbs held by genuinely different people.
+  // `access:approve` is deliberately not implied by `team:role:write`: granting
+  // a role is a considered change, approving an elevation happens mid-incident.
+  // `revoke` has no entry because its permission depends on who is calling —
+  // the holder may always end their own grant — which this one-permission-per
+  // -route map cannot express; the handler owns it.
+  // credential hygiene — `audit:read`, not a family of its own. Every fact in
+  // the report is already reachable by anyone who can read the audit log, so a
+  // separate permission would only mean granting two things to get one view.
+  // credit burndown — `costs:read`. A prepaid balance is spend information,
+  // and the permission that already governs "what is this costing us" is the
+  // one that should govern "how much is left".
+  "GET /credits": "costs:read",
+  "GET /credential-hygiene": "audit:read",
+  "GET /access-requests": "access:read",
+  "GET /access-requests/catalog": "access:read",
+  "POST /access-requests": "access:request",
+  "POST /access-requests/{requestId}/approve": "access:approve",
+  "POST /access-requests/{requestId}/deny": "access:approve",
+  "POST /access-requests/{requestId}/withdraw": "access:request",
+  "GET /session-recordings": "session-recordings:read",
+  "GET /session-recordings/settings": "session-recordings:read",
+  "PUT /session-recordings/settings": "session-recordings:write",
+  "GET /session-recordings/{recordingId}": "session-recordings:read",
+  "GET /session-recordings/{recordingId}/cast": "session-recordings:read",
+  "DELETE /session-recordings/{recordingId}": "session-recordings:write",
   // synthetic probes — the schedules stance: reads (list, suggestions mined
   // from resource outputs, recorded series) ride the resource read scope;
   // mutations are resources:write

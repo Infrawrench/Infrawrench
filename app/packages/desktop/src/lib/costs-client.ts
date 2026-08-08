@@ -16,6 +16,7 @@ import {
   loadCloudCostDimensionValues,
   loadCloudCostStatus,
   loadCloudShowback,
+  loadCloudCreditBurndown,
   loadCloudTagCompliance,
   loadCloudUntaggedSpend,
   queryCloudCosts,
@@ -81,5 +82,6 @@ export function createDesktopCostsClient(): CostsClient {
     getUntaggedSpend: (from?: string, to?: string) =>
       loadCloudUntaggedSpend(requireOrgId(), from, to),
     getShowback: (from?: string, to?: string) => loadCloudShowback(requireOrgId(), from, to),
+    getCreditBurndown: () => loadCloudCreditBurndown(requireOrgId()),
   };
 }

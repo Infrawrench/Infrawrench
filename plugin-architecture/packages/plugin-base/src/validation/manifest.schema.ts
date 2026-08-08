@@ -74,6 +74,13 @@ export const pluginManifestSchema = z.object({
       periodNative: z.boolean().optional(),
     })
     .optional(),
+  credits: z
+    .object({
+      label: z.string().optional(),
+      topUpUrl: z.string().url().optional(),
+      requiresElevatedCredential: z.boolean().optional(),
+    })
+    .optional(),
   statusFeed: z
     .object({
       url: z.string().url(),

@@ -154,3 +154,7 @@ See each plugin's page under [Plugins](../plugins/aws.md) for what its cost inte
 ## Forecasts are trend estimates
 
 Forecasts are a least-squares fit over the trailing 30 days of daily totals, projected forward. They are a trend estimate, not a billing prediction — one-off purchases, reserved-instance charges, and tier changes will not be anticipated.
+
+## Prepaid credit
+
+Cost graphs answer "what did we spend". For providers that work off a prepaid pot rather than an invoice, the more urgent question is "how long until it runs out" — see [credit burndown](./credit-burndown.md), which sits on the same Costs panel.

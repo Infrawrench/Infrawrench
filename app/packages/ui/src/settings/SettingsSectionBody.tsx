@@ -2,10 +2,13 @@ import type { ReactNode } from "react";
 import { GeneralSection } from "./GeneralSection.js";
 import { TeamSection } from "./TeamSection.js";
 import { RolesSection } from "./RolesSection.js";
+import { AccessRequestsSection } from "./AccessRequestsSection.js";
 import { SshKeysSection } from "./SshKeysSection.js";
 import { SshHostKeysSection } from "./SshHostKeysSection.js";
+import { SessionRecordingsSection } from "./SessionRecordingsSection.js";
 import { BastionsSection } from "./BastionsSection.js";
 import { ApiKeysSection } from "./ApiKeysSection.js";
+import { CredentialHygieneSection } from "./CredentialHygieneSection.js";
 import { FreezesSection } from "./FreezesSection.js";
 import { TagPolicySection } from "./TagPolicySection.js";
 import { ApprovalsSection } from "./ApprovalsSection.js";
@@ -27,14 +30,20 @@ export function SettingsSectionBody({ section }: { section: string }): ReactNode
       return <TeamSection />;
     case "roles":
       return <RolesSection />;
+    case "access-requests":
+      return <AccessRequestsSection />;
     case "ssh-keys":
       return <SshKeysSection />;
     case "ssh-host-keys":
       return <SshHostKeysSection />;
+    case "session-recordings":
+      return <SessionRecordingsSection />;
     case "bastions":
       return <BastionsSection />;
     case "api-keys":
       return <ApiKeysSection />;
+    case "credential-hygiene":
+      return <CredentialHygieneSection />;
     case "freezes":
       return <FreezesSection />;
     case "tag-policy":

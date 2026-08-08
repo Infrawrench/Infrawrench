@@ -10,7 +10,8 @@ import {
 import { hasPermission } from "@infrawrench/client-core";
 import { CLOUD_URL } from "../../env";
 import { invoke } from "../lib/invoke";
-import { createDesktopSettingsApi } from "../lib/settings-client";
+import { createDesktopSettingsApi, requestText } from "../lib/settings-client";
+import { mountPlaybackTerminal } from "../lib/playback-terminal";
 import { createCloudApprovalsClient } from "../lib/cloud-workflows";
 import { navigateToWorkspaceTarget, settingsTabTarget } from "../lib/workspace-tabs";
 import { workflowsTabTarget } from "@infrawrench/ui";
@@ -70,6 +71,7 @@ function CloudSettings({ orgId, section }: { orgId: string; section: string }) {
     () => ({
       orgId,
       api,
+      fetchText: requestText,
       has: (permission) => hasPermission(permissions, permission),
       hasAny: (...perms) => perms.some((p) => hasPermission(permissions, p)),
       permissionsLoading,
@@ -100,6 +102,7 @@ function CloudSettings({ orgId, section }: { orgId: string; section: string }) {
         });
       },
       cloudOrigin: CLOUD_URL,
+      mountPlaybackTerminal,
     }),
     [orgId, api, permissions, permissionsLoading, refreshPermissions, navigate],
   );
