@@ -39,6 +39,42 @@ Language packs and models are read live from `GET /v1/discovery/features` on you
 
 The account and each job get a **Metrics** tab over the last 30 days charting **transcription hours** and **billable jobs**, read from `GET /v2/usage`. The endpoint is account-wide rather than per-job, so both tabs show the same series. The window is split into at most ten buckets, each fetched as its own `since`/`until` range, because the usage endpoint takes calendar dates rather than a granularity parameter.
 
+## Cost
+
+Speechmatics accounts feed [cost graphs & budgets](../features/cloud-costs.md), broken down by **service** — the model and mode pair that Speechmatics prices against: **Batch Standard**, **Batch Enhanced**, **Batch Melia 1**, **Real-time Standard** and **Real-time Enhanced**.
+
+**The figures are list-price estimates, not billed amounts.** Speechmatics has no billing API. The only number available is metered audio duration from `GET /v2/usage`, so infrawrench multiplies hours by the published per-hour rate for each model:
+
+| Service            | Rate       |
+| ------------------ | ---------- |
+| Batch Melia 1      | $0.24 / hr |
+| Batch Standard     | $0.45 / hr |
+| Batch Enhanced     | $0.75 / hr |
+| Real-time Standard | $0.45 / hr |
+| Real-time Enhanced | $0.80 / hr |
+
+Rates are the Pro-plan list prices from [speechmatics.com/pricing](https://www.speechmatics.com/pricing), verified August 2026.
+
+### What the estimate misses
+
+- **Volume discounts are not modelled, so large accounts read high.** Speechmatics automatically discounts any billable usage above **500 hours per month for each type of speech-to-text** — currently 20% off the hours beyond that threshold, with further discounts negotiated from 24,000 hours a year. infrawrench prices every hour at the base rate, so once a line item crosses 500 hours in a calendar month the chart over-states what you will actually be invoiced, and over-states it more the bigger the account. Tiering it correctly would need the running monthly total per line item and your negotiated terms, neither of which the daily usage window exposes — a half-modelled tier would be confidently wrong rather than predictably high.
+- **The opt-in model-training discount (33% off) and sign-up credit are invisible here** for the same reason, and push the real bill the other way.
+- **Consumption with no public rate is omitted rather than guessed** — alignment jobs, and any model released after these rates were recorded. That under-reports rather than inventing a number.
+- **Enterprise contracts are custom-priced**, so the list rates above are simply not your rates.
+
+Treat the graph as a shape-of-spend signal and the Speechmatics Portal as the invoice.
+
+### How collection works
+
+- **The API key does this, not the management token.** `GET /v2/usage` lives on the regional ASR endpoint and is authenticated with the same batch API key that submits jobs. The Management API has no usage endpoint at all, so adding a management token neither helps nor is required.
+- **One request per day.** The usage endpoint takes a `since`/`until` window and aggregates the whole of it — there are no daily buckets and no granularity parameter. A day of cost data is therefore one HTTP call. infrawrench issues them strictly one at a time with a short gap, and backs off (honouring `Retry-After`) when the endpoint rate-limits.
+- **History is capped at 90 days**, rather than the usual year, because history costs requests here: a year of daily rows would be 365 sequential calls on the same key you use to submit real work. Ninety days covers three closed billing cycles.
+- **Today is never collected.** Speechmatics excludes the current UTC day from usage results, so the last two days are re-fetched on every pass and today's spend appears tomorrow.
+- **Temporary keys don't work.** A temporary key created with a `client_ref` is scoped to that client's jobs and is refused by the usage endpoint with `403 Forbidden`. If cost collection reports that, swap the account's **API Key** for a long-lived one from the Portal — **Manage workspace › API keys**.
+- Region is not a cost dimension: an account is bound to one regional endpoint by its credential, so it would be the same value on every row. Usage is account-wide and is not attributed back to individual jobs, so there is no per-job breakdown either.
+
+<insert [Cost graph for a Speechmatics account broken down by service, showing Batch Enhanced and Real-time Standard as separate series, with the estimated-cost notice visible] here>
+
 ## Tips & limits
 
 - **Jobs are region-scoped and not portable.** A job created against `eu1` is invisible from `us1` and `au1`, and every request about a job has to go to the same region it was created on. The account's region credential therefore decides which jobs this plugin can see at all — if a job is missing, check the region before checking the key.

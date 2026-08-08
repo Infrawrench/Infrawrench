@@ -70,6 +70,44 @@ const manifest: PluginManifest = {
     },
     caCertCredentialField,
   ],
+  /**
+   * Estimated spend, priced from `GET /v2/usage` (see `cost-data.ts`).
+   *
+   * `dimensions: ["service"]` — the usage endpoint breaks consumption down by
+   * `mode` and `operating_point`, which together are exactly the line items on
+   * the pricing page ("Batch Enhanced", "Real-time Standard", …), so that pair
+   * is the service. Region is not a dimension: an account is bound to one
+   * regional endpoint by its credential, so it would be a constant column.
+   * There is no per-resource dimension either — usage is account-wide and is
+   * not attributed back to individual jobs, and jobs are purged after 7 days
+   * anyway, so per-resource rows would outlive the resources they name.
+   *
+   * `estimated: true` — Speechmatics has no billing API. These amounts are
+   * metered hours × published list rates, so they miss the automatic >500
+   * hr/month volume discount, the opt-in model-training discount, and sign-up
+   * credit. See the rate-card comment in `cost-data.ts`.
+   *
+   * `restatementDays: 2` — usage for the current UTC day is excluded from the
+   * endpoint's results, so every collection has at least one open day it
+   * cannot see yet. Two days of trailing re-fetch closes that gap with a day
+   * to spare, at a cost of two requests per pass.
+   *
+   * `maxHistoryDays: 90` — deliberately far below the 365 default, because
+   * history here is priced in requests, not in bytes. The endpoint aggregates
+   * over its whole `since..until` window with no daily buckets, so one day of
+   * cost data is one HTTP request: a 365-day backfill would be 365 sequential
+   * requests against a `429` ceiling the API documents but never quantifies,
+   * on a key that is simultaneously being used to submit real transcription
+   * work. 90 days is three closed billing cycles — enough for a
+   * month-over-month trend and a quarter-shaped chart — and keeps the first
+   * collection to ~90 requests, roughly half a minute of paced traffic.
+   */
+  costs: {
+    dimensions: ["service"],
+    maxHistoryDays: 90,
+    restatementDays: 2,
+    estimated: true,
+  },
 };
 
 // Account first: it is the only type guaranteed to exist. Jobs expire after 7

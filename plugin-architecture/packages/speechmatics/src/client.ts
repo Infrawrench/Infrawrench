@@ -1,4 +1,6 @@
 import type {
+  CostFetchRange,
+  CostRow,
   DashboardStat,
   DetailViewSchema,
   HostServices,
@@ -14,6 +16,7 @@ import type {
   TranscriptWord,
 } from "@infrawrench/plugin-base";
 import { base64ToBytes, jsonRestFetch } from "@infrawrench/plugin-base";
+import { fetchSpeechmaticsCostData } from "./cost-data.js";
 
 /* -------------------------------------------------------------------------- */
 /* Wire shapes                                                                 */
@@ -962,6 +965,33 @@ export class SpeechmaticsClient implements PluginClient {
     });
 
     return [hours, counts];
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Costs                                                                    */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * Daily estimated spend, priced from `GET /v2/usage`.
+   *
+   * Note which credential goes in: the *transcription* API key, not the
+   * management token. The Management API covers API keys and projects and has
+   * no usage endpoint at all, so there is nothing for the token to read.
+   *
+   * `fetchSpeechmaticsCostData` issues one request per day (the endpoint has no
+   * daily buckets) and surfaces the `client_ref` temporary-key 403 as a
+   * `CostSetupError` the host shows against the account.
+   */
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    return fetchSpeechmaticsCostData(
+      {
+        region: this.region,
+        apiKey: this.apiKey,
+        http: this.services?.http,
+        caCert: this.caCert || undefined,
+      },
+      range,
+    );
   }
 
   /* ---------------------------------------------------------------------- */
