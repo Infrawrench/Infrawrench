@@ -410,14 +410,12 @@ export class DeepgramClient implements PluginClient {
         const data = await this.fetch<DgBalanceList>(
           `/v1/projects/${encodeURIComponent(project.project_id)}/balances`,
         );
-        return (data.balances ?? []).map(
-          (b): CreditBalance => ({
-            key: `${project.project_id}:${b.balance_id}`,
-            label: `${project.name ?? project.project_id} balance`,
-            remaining: Number(b.amount ?? 0),
-            currency: (b.units ?? "usd").toUpperCase(),
-          }),
-        );
+        return (data.balances ?? []).map((b): CreditBalance => ({
+          key: `${project.project_id}:${b.balance_id}`,
+          label: `${project.name ?? project.project_id} balance`,
+          remaining: Number(b.amount ?? 0),
+          currency: (b.units ?? "usd").toUpperCase(),
+        }));
       }),
     );
     return settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));

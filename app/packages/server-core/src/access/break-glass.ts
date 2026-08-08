@@ -523,9 +523,7 @@ export async function revokeAccessGrant(
 }
 
 export type WithdrawAccessRequestResult =
-  | { outcome: "withdrawn" }
-  | { outcome: "not_found" }
-  | { outcome: "conflict" };
+  { outcome: "withdrawn" } | { outcome: "not_found" } | { outcome: "conflict" };
 
 /**
  * The requester calls off their own pending request.
