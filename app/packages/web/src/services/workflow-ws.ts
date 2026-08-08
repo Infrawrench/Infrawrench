@@ -95,6 +95,11 @@ export function handleWorkflowSession(
         organizationId,
         workflowId,
         triggerSource: "manual",
+        // `requireRunPermission` above rejects an absent `userId` outright, so
+        // this is always set by the time the run starts. Asserted rather than
+        // spread conditionally: omitting it would silently fall back to the
+        // workflow's author, which is the failure mode the gate exists to stop.
+        runAsUserId: userId!,
         interactive: true,
         debug: true,
         signal: abort.signal,

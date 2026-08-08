@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { TLSSocket } from "node:tls";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { applySecurityHeaders } from "../api/security-headers";
 import { authenticateMcpRequest, buildWwwAuthenticate } from "./auth";
 import { buildMcpServer } from "./server";
 import { buildResourceMetadataUrl } from "./well-known";
@@ -35,6 +36,12 @@ function reqUrlString(req: IncomingMessage): string {
 }
 
 export async function handleMcpHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  // `server.ts` routes /api/mcp at the Node HTTP level, ahead of the Hono
+  // listener, so the `securityHeaders()` middleware never sees these responses.
+  // Set them here — before the auth check, so the 401 and the malformed-body
+  // 400 carry them too, not just the transport's own writes.
+  applySecurityHeaders(res);
+
   const auth = await authenticateMcpRequest(req.headers["authorization"] ?? null);
 
   if (!auth) {

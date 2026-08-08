@@ -301,6 +301,7 @@ app.post("/invitations", async (c) => {
   // Prefer roleId; fall back to mapping the legacy text role to a system role.
   let resolvedRoleId: string | null = null;
   let legacyRole = "member";
+  let targetRolePerms: readonly string[] = [];
   if (body.roleId) {
     const [r] = await db
       .select()
@@ -310,12 +311,30 @@ app.post("/invitations", async (c) => {
     if (!r) return c.json({ error: "Role not found" }, 404);
     resolvedRoleId = r.id;
     legacyRole = isSystemRoleKey(r.systemKey) ? r.systemKey : "member";
+    targetRolePerms =
+      r.isSystem && isSystemRoleKey(r.systemKey)
+        ? (systemRolePermissions(r.systemKey) ?? [])
+        : ((r.permissions as string[]) ?? []);
   } else if (body.role) {
     legacyRole = body.role;
     if (isSystemRoleKey(body.role)) {
       const sys = await getSystemRole(organizationId, body.role);
       resolvedRoleId = sys.id;
+      targetRolePerms = sys.permissions;
     }
+  }
+
+  // Privilege-escalation guards, identical to PATCH /members/:id/role. Without
+  // them an invitation is a way around that route's checks: `team:invite` is
+  // held by every admin, so an admin could invite an address they control as
+  // an owner and accept their way to `*` — picking up billing:write and
+  // org:settings:write, the two permissions the admin role exists to withhold.
+  const callerPerms = c.get("permissions") ?? [];
+  if (!isSubsetOfCallerPerms(targetRolePerms, callerPerms)) {
+    return c.json({ error: "Cannot invite with a role granting permissions you do not hold" }, 403);
+  }
+  if (legacyRole === "owner" && c.get("role")?.systemKey !== "owner") {
+    return c.json({ error: "Only an owner can invite someone as an owner" }, 403);
   }
 
   // Seat gate: on a paid plan every member and pending invite occupies a

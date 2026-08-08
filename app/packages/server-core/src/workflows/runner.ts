@@ -43,6 +43,7 @@ import { enrichPlugin } from "./create-fields-cache";
 import { buildSshKeyFieldResolver } from "./ssh-key-fields";
 import { clearWorkflowPage, pageFromWorkflow } from "./paging";
 import { requestApprovalAndWait } from "./approvals";
+import { buildWorkflowAuthorizer } from "./authorize";
 import { staticResourceCapabilities } from "@infrawrench/workflow-runtime";
 
 // Re-exported so the cloud web host (which builds its own interactive host) can
@@ -85,6 +86,12 @@ export interface RunOrgWorkflowOptions extends OrgWorkflowHostExtras {
   organizationId: string;
   workflowId: string;
   triggerSource: RunTriggerSource;
+  /**
+   * The user this run acts on behalf of, bounding what the sandbox may do (see
+   * ./authorize.ts). Manual triggers pass whoever asked for the run; automated
+   * triggers omit it and the workflow's author is used instead.
+   */
+  runAsUserId?: string;
   /** Enables `infra.prompt()` / storage reads for websocket-driven manual runs. */
   interactive?: boolean;
   /** Live log streaming callback (interactive runs). */
@@ -441,9 +448,16 @@ export async function runOrgWorkflow(opts: RunOrgWorkflowOptions): Promise<RunOr
     ...(opts.signal ? { signal: opts.signal } : {}),
   });
 
+  // Resolved before the isolate starts, so the per-operation gate below is a
+  // synchronous map lookup rather than a query on every RPC.
+  const authorize = await buildWorkflowAuthorizer(opts.organizationId, wf.id, {
+    userId: opts.runAsUserId,
+  });
+
   const result = await runWorkflow({
     source: wf.source,
     host,
+    authorize,
     interactive: Boolean(opts.interactive),
     // `api` and `budget` are both "not a person at a keyboard"; the event still
     // reports the real source so a workflow can branch on it.

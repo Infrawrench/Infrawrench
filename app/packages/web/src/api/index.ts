@@ -8,6 +8,7 @@ import { setCookie } from "hono/cookie";
 import { randomBytes, randomUUID } from "node:crypto";
 import { apiReference } from "@scalar/hono-api-reference";
 import { sessionMiddleware, orgMiddleware, permissionsMiddleware } from "./auth-middleware";
+import { securityHeaders } from "./security-headers";
 import { workos, clientId } from "../auth/workos";
 import { getPublicOpenApiDocument } from "./openapi/index";
 import {
@@ -83,6 +84,11 @@ import { chatRoutes } from "./routes/chat";
 import { wellKnownRoutes } from "../mcp/well-known";
 
 const api = new Hono();
+
+// First middleware on the stack so every response below — including the ones
+// `onError` synthesizes — carries the baseline headers. `prodApp` in server.ts
+// mounts the same middleware for static and SPA responses.
+api.use("*", securityHeaders());
 
 api.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();

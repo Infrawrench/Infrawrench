@@ -175,10 +175,25 @@ app.post("/:id/run", async (c) => {
   requirePermission(c, "workflows:write");
   const wf = await load(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
+  // The sandbox acts with this user's permissions, so `workflows:write` buys
+  // the right to start a run and nothing more — the operations inside it are
+  // checked against the same role the API would check.
+  //
+  // Refuse rather than omit when there is no session. `sessionMiddleware` gates
+  // this whole tree and only admits a session cookie or a WorkOS bearer token,
+  // so this is unreachable today — but omitting `runAsUserId` silently falls
+  // back to the workflow's author, and "the principal was unresolvable, so run
+  // as someone else" is the exact shape of the bug this permission gate exists
+  // to close. Fail closed, and let a future auth path that reaches here fail
+  // loudly instead of quietly borrowing the author's role.
+  const runAsUserId = (c.get("session") as { userId?: string } | undefined)?.userId;
+  if (!runAsUserId) return c.json({ error: "Unauthorized" }, 401);
+
   const { runId, result } = await runWorkflowById({
     organizationId: orgId(c),
     workflowId: wf.id,
     triggerSource: "manual",
+    runAsUserId,
     // HTTP runs are non-interactive; interactive prompting uses the websocket.
     interactive: false,
   });

@@ -57,6 +57,13 @@ Use **Settings → Team → (member) → Role picker** to change a member's role
 
 <insert [Team page member row with the new role picker dropdown open] here>
 
+You cannot hand out more authority than you hold. Two rules enforce that:
+
+1. A role you assign must be a subset of your own effective permissions, so an admin (who has no `billing:write`) cannot move someone onto a custom role that grants it.
+2. Only an owner can grant the owner role, or change an owner's role.
+
+Both apply when you **invite** someone, not just when you change an existing member's role — otherwise the invite form would be a way around the picker.
+
 ## API key scopes
 
 API keys store the same permission strings as roles. When you create a key, pick the exact scopes it should carry; the server enforces them with the same matcher used for session permissions, including wildcards. Older keys created with the deprecated `sync:read`/`sync:write` scopes are renamed automatically the next time they authenticate. Keys that were still active when workflows got permissions of their own had the matching workflow scopes added once, during that upgrade, so a `dashboards:write` key kept the workflow access it had — you can see the added scopes on the key. Revoked keys were skipped. Nothing is added at authentication time: a key carries the scopes it is listed as carrying.
@@ -72,6 +79,10 @@ The same permission set gates every surface, not just the web UI:
 - **HTTP API** — checked per route (see `x-required-permission` in the [API reference](./openapi.md)).
 - **[AI chat](../features/ai-chat.md) and [MCP](../features/mcp.md)** — reaching chat at all needs `chat:read` / `chat:write`, and each tool then declares the permission it needs, checked before the tool runs. A member who cannot delete a resource over HTTP cannot delete one by asking the assistant either, and destructive tools are re-checked at approval time rather than only when queued.
 - **WebSocket sessions** (SSH terminals, SQL console, Kubernetes exec and port-forward) — require `resources:execute`, whether the connection authenticates with a browser session or an API key.
+- **[Workflows](../features/workflows.md)** — `workflows:write` starts a run; it does not decide what the run may do. Every operation the sandbox performs is checked against the permissions of the user the run acts for, using the same strings as the HTTP API: `infra.…create()` needs `resources:write`, `.delete()` needs `resources:delete`, `.ssh()` and `.query()` need `resources:execute`, SFTP writes need `storage:write`. A member who cannot delete a resource in the UI cannot delete one from a workflow either.
+
+  Manual runs act for whoever started them. Scheduled, git-triggered and budget-triggered runs act for the **workflow's author**, so putting a workflow on a schedule cannot give it authority its author lacks — and a workflow whose author has left the organization stops being able to do anything privileged. If a run fails with a permission error, the message names the exact permission to ask for. See [What a run is allowed to do](../features/workflows.md#what-a-run-is-allowed-to-do).
+
 - **[Deploys](../features/infrafile.md)** split across three permissions, because previewing and shipping are different risks:
   - `deployments:read` — deploy history and a repository's declared environments. Inert. Members hold it.
   - `deployments:plan` — runs the repository's `plan()`, which executes its code against your accounts but builds and ships nothing. Members hold it; a custom role can withhold it without also taking away the history.

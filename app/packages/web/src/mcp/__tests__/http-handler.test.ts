@@ -120,4 +120,53 @@ describe("handleMcpHttp", () => {
       id: 1,
     });
   });
+
+  /*
+   * `server.ts` answers /api/mcp at the Node HTTP level in both dev and prod,
+   * ahead of the Hono listener — so the `securityHeaders()` middleware never
+   * sees these responses and the handler has to set them itself. Both server
+   * modes call this one function, so covering it here covers both.
+   */
+  describe("security headers", () => {
+    it("sets them on the 401", async () => {
+      mockAuthenticate.mockResolvedValue(null);
+      const res = makeRes();
+      await handleMcpHttp(makeReq({ authorization: null }) as never, res as never);
+      expect(res.statusCode).toBe(401);
+      expect(res.headers["content-security-policy"]).toBe("frame-ancestors 'none'");
+      expect(res.headers["x-frame-options"]).toBe("DENY");
+      expect(res.headers["x-content-type-options"]).toBe("nosniff");
+      // The 401 still has to carry its own auth-discovery header.
+      expect(res.headers["www-authenticate"]).toContain("resource_metadata=");
+    });
+
+    it("sets them on the malformed-body 400", async () => {
+      mockAuthenticate.mockResolvedValue({ userId: "u1", organizationId: "org-1" });
+      const res = makeRes();
+      const req = makeReq({ method: "POST", authorization: "Bearer t", body: "{not json" });
+      await handleMcpHttp(req as never, res as never);
+      expect(res.statusCode).toBe(400);
+      expect(res.headers["x-frame-options"]).toBe("DENY");
+    });
+
+    it("sets them before the SDK transport takes the response over", async () => {
+      // The transport writes the body itself, so the headers have to be on the
+      // response before `handleRequest` is reached — not added afterwards.
+      mockAuthenticate.mockResolvedValue({ userId: "u1", organizationId: "org-1" });
+      let headersAtTransport: Record<string, string> = {};
+      const res = makeRes();
+      mockHandleRequest.mockImplementation(() => {
+        headersAtTransport = { ...res.headers };
+        return Promise.resolve(undefined);
+      });
+      const req = makeReq({
+        method: "POST",
+        authorization: "Bearer t",
+        body: JSON.stringify({ jsonrpc: "2.0", method: "ping", id: 1 }),
+      });
+      await handleMcpHttp(req as never, res as never);
+      expect(headersAtTransport["content-security-policy"]).toBe("frame-ancestors 'none'");
+      expect(headersAtTransport["x-frame-options"]).toBe("DENY");
+    });
+  });
 });

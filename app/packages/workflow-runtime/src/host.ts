@@ -170,6 +170,23 @@ export interface SftpEntryLite {
 export interface WorkflowRunContext {
   /** Whether `infra.prompt` is allowed (manual/interactive runs only). */
   interactive: boolean;
+  /**
+   * Per-operation authorization gate, called by {@link dispatch} before every
+   * RPC the sandbox makes. Throw to deny; the throw surfaces inside the
+   * workflow as an ordinary error the author can see and catch.
+   *
+   * Optional, and absent means "no gate" — that is what the desktop host does,
+   * where the workflow runs as the one local user and there is nothing to
+   * authorize against. The cloud host supplies one because there a workflow
+   * runs on behalf of a *person* with a role, and `infra.…delete()` must not
+   * be a way around the permission `delete_resource` requires.
+   *
+   * Synchronous on purpose. It is called on every RPC — including the
+   * per-statement `line` hook on debug runs — so it must not be a round trip.
+   * The cloud host resolves the principal's permissions once before the isolate
+   * starts and closes over the result.
+   */
+  authorize?: (method: string) => void;
   /** Append a structured log line (also surfaced live to the UI). */
   log(entry: RunLogEntry): void;
   /** Records the value the workflow declared via `infra.output(...)`. */
@@ -911,6 +928,12 @@ export async function dispatch(
   method: string,
   args: Record<string, unknown>,
 ): Promise<unknown> {
+  // Authorization first — before the args are even read, and before any
+  // branch can reach a host method. Every capability the sandbox has runs
+  // through this switch, so gating here gates all of them; a new `case` added
+  // below is covered without its author having to remember.
+  ctx.authorize?.(method);
+
   // Present only on operations against a sidecar resource (see SidecarRef);
   // every other RPC leaves it undefined and targets the account's own plugin.
   const sidecar = sidecarRef(args["sidecar"]);
