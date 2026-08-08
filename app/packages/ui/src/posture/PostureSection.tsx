@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type KeyboardEvent } from "react";
 import {
   POSTURE_CATEGORY_LABELS,
   POSTURE_SEVERITIES,
@@ -101,6 +101,223 @@ function formatDismissedAt(iso: string): string {
 }
 
 /**
+ * Enter/Space on a row opens its resource — but only when the row itself has
+ * focus. The Dismiss and Restore buttons live inside the row and bring their
+ * own activation; without the target guard the row would swallow their key
+ * presses (and `preventDefault` them), leaving both actions mouse-only.
+ */
+function rowKeyHandler(open: () => void) {
+  return (e: KeyboardEvent<HTMLTableRowElement>) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    open();
+  };
+}
+
+/** The severity tally, plus a dismissed count so "clean" reads differently from "silenced". */
+function SeverityChips({ data }: { data: PostureListResponse }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 mb-4">
+      {POSTURE_SEVERITIES.map((severity) => (
+        <span
+          key={severity}
+          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${SEVERITY_BADGE_CLASSES[severity]}`}
+        >
+          <span className="tabular-nums">{data.counts[severity]}</span>
+          {POSTURE_SEVERITY_LABELS[severity]}
+        </span>
+      ))}
+      {data.dismissedCount > 0 && (
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-on-surface-tertiary">
+          <span className="tabular-nums">{data.dismissedCount}</span>
+          Dismissed
+        </span>
+      )}
+    </div>
+  );
+}
+
+interface FindingRowProps {
+  finding: PostureFinding;
+  onOpenResource?: ((finding: PostureFinding) => void) | undefined;
+  /** A dismiss/restore call is in flight for this row. */
+  pending: boolean;
+}
+
+interface ActiveFindingRowProps extends FindingRowProps {
+  /** Present ⇒ this row offers Dismiss. Opens/closes the reason box. */
+  onToggleReason?: (() => void) | undefined;
+  /** The reason box is open on this row. */
+  editing: boolean;
+  reason: string;
+  onReasonChange: (reason: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+/** One live finding: what it is, where it is, why it is flagged, how bad. */
+function ActiveFindingRow({
+  finding,
+  onOpenResource,
+  pending,
+  onToggleReason,
+  editing,
+  reason,
+  onReasonChange,
+  onConfirm,
+  onCancel,
+}: ActiveFindingRowProps) {
+  const open = onOpenResource ? () => onOpenResource(finding) : undefined;
+  return (
+    <tr
+      className={`border-b border-border last:border-b-0 ${
+        open ? "cursor-pointer hover:bg-surface-raised" : ""
+      }`}
+      onClick={open}
+      onKeyDown={open ? rowKeyHandler(open) : undefined}
+      tabIndex={open ? 0 : undefined}
+    >
+      <td className="px-4 py-2.5 whitespace-nowrap align-top font-medium text-on-surface">
+        {finding.displayName}
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap align-top">
+        <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
+          {finding.resourceTypeName}
+        </span>
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap align-top text-xs text-on-surface-tertiary">
+        {finding.pluginName}
+        <span className="text-on-surface-faint"> · {finding.accountName}</span>
+      </td>
+      <td className="px-3 py-2.5 w-full align-top text-on-surface-secondary">
+        <span className="font-medium text-on-surface">{finding.title}</span>
+        <span className="block text-xs text-on-surface-tertiary">{finding.reason}</span>
+        {/* The reason box lives inside the row's own cell so opening it never
+            reflows the table. */}
+        {editing && (
+          <span
+            className="mt-2 flex flex-wrap items-center gap-2"
+            // The row is a click target; typing in the box must not open the
+            // resource.
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <input
+              type="text"
+              autoFocus
+              value={reason}
+              onChange={(e) => onReasonChange(e.target.value)}
+              maxLength={500}
+              placeholder="Why is this acceptable? (optional)"
+              aria-label={`Reason for dismissing ${finding.title} on ${finding.displayName}`}
+              className="min-w-56 flex-1 rounded-lg border border-border bg-surface-raised px-2 py-1 text-xs text-on-surface"
+            />
+            <button
+              type="button"
+              disabled={pending}
+              onClick={onConfirm}
+              className="rounded-lg border border-border px-2 py-1 text-xs text-on-surface hover:bg-surface-overlay disabled:opacity-50"
+            >
+              {pending ? "Dismissing…" : "Confirm"}
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary"
+            >
+              Cancel
+            </button>
+          </span>
+        )}
+      </td>
+      <td className="px-4 py-2.5 whitespace-nowrap align-top text-right">
+        <span
+          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${SEVERITY_BADGE_CLASSES[finding.severity]}`}
+        >
+          {POSTURE_SEVERITY_LABELS[finding.severity]}
+        </span>
+      </td>
+      {onToggleReason && (
+        <td className="px-3 py-2.5 whitespace-nowrap align-top text-right">
+          <button
+            type="button"
+            disabled={pending}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleReason();
+            }}
+            className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary disabled:opacity-50"
+          >
+            Dismiss
+          </button>
+        </td>
+      )}
+    </tr>
+  );
+}
+
+/** One accepted risk: who accepted it, when, why, and the way back. */
+function DismissedFindingRow({
+  finding,
+  onOpenResource,
+  pending,
+  onRestore,
+}: FindingRowProps & {
+  finding: DismissedPostureFinding;
+  /** Omitted, the row is listed but not undoable. */
+  onRestore?: (() => void) | undefined;
+}) {
+  const open = onOpenResource ? () => onOpenResource(finding) : undefined;
+  return (
+    <tr
+      className={`border-b border-border last:border-b-0 ${
+        open ? "cursor-pointer hover:bg-surface-raised" : ""
+      }`}
+      onClick={open}
+      onKeyDown={open ? rowKeyHandler(open) : undefined}
+      tabIndex={open ? 0 : undefined}
+    >
+      <td className="px-4 py-2.5 whitespace-nowrap align-top font-medium text-on-surface-secondary">
+        {finding.displayName}
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap align-top text-xs text-on-surface-tertiary">
+        {finding.pluginName}
+        <span className="text-on-surface-faint"> · {finding.accountName}</span>
+      </td>
+      <td className="px-3 py-2.5 w-full align-top text-on-surface-tertiary">
+        <span className="font-medium">{finding.title}</span>
+        <span className="block text-xs text-on-surface-faint">
+          Dismissed {formatDismissedAt(finding.dismissal.dismissedAt)}
+          {finding.dismissal.dismissedBy ? ` by ${finding.dismissal.dismissedBy}` : ""}
+          {finding.dismissal.reason ? ` — ${finding.dismissal.reason}` : ""}
+        </span>
+      </td>
+      <td className="px-4 py-2.5 whitespace-nowrap align-top text-right">
+        <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-on-surface-tertiary">
+          {POSTURE_SEVERITY_LABELS[finding.severity]}
+        </span>
+      </td>
+      {onRestore && (
+        <td className="px-3 py-2.5 whitespace-nowrap align-top text-right">
+          <button
+            type="button"
+            disabled={pending}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRestore();
+            }}
+            className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary disabled:opacity-50"
+          >
+            {pending ? "Restoring…" : "Restore"}
+          </button>
+        </td>
+      )}
+    </tr>
+  );
+}
+
+/**
  * Posture checks: plugin-declared security rules evaluated over
  * already-synced resource fields — public buckets, world-open ingress,
  * unencrypted disks, stale credentials — ranked by severity. Shared by the
@@ -181,23 +398,7 @@ export function PostureSection({
 
       {data !== null && (
         <>
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            {POSTURE_SEVERITIES.map((severity) => (
-              <span
-                key={severity}
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${SEVERITY_BADGE_CLASSES[severity]}`}
-              >
-                <span className="tabular-nums">{data.counts[severity]}</span>
-                {POSTURE_SEVERITY_LABELS[severity]}
-              </span>
-            ))}
-            {data.dismissedCount > 0 && (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-on-surface-tertiary">
-                <span className="tabular-nums">{data.dismissedCount}</span>
-                Dismissed
-              </span>
-            )}
-          </div>
+          <SeverityChips data={data} />
 
           {actionError != null && (
             <p role="alert" className="mb-4 text-xs text-red-400">
@@ -262,114 +463,32 @@ export function PostureSection({
                           {group.findings.map((finding) => {
                             const key = postureFindingKey(finding);
                             return (
-                              <tr
+                              <ActiveFindingRow
                                 key={key}
-                                className={`border-b border-border last:border-b-0 ${
-                                  onOpenResource ? "cursor-pointer hover:bg-surface-raised" : ""
-                                }`}
-                                onClick={onOpenResource ? () => onOpenResource(finding) : undefined}
-                                onKeyDown={
-                                  onOpenResource
-                                    ? (e) => {
-                                        if (e.key === "Enter" || e.key === " ") {
-                                          e.preventDefault();
-                                          onOpenResource(finding);
-                                        }
-                                      }
-                                    : undefined
-                                }
-                                tabIndex={onOpenResource ? 0 : undefined}
-                              >
-                                <td className="px-4 py-2.5 whitespace-nowrap align-top font-medium text-on-surface">
-                                  {finding.displayName}
-                                </td>
-                                <td className="px-3 py-2.5 whitespace-nowrap align-top">
-                                  <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
-                                    {finding.resourceTypeName}
-                                  </span>
-                                </td>
-                                <td className="px-3 py-2.5 whitespace-nowrap align-top text-xs text-on-surface-tertiary">
-                                  {finding.pluginName}
-                                  <span className="text-on-surface-faint">
-                                    {" "}
-                                    · {finding.accountName}
-                                  </span>
-                                </td>
-                                <td className="px-3 py-2.5 w-full align-top text-on-surface-secondary">
-                                  <span className="font-medium text-on-surface">
-                                    {finding.title}
-                                  </span>
-                                  <span className="block text-xs text-on-surface-tertiary">
-                                    {finding.reason}
-                                  </span>
-                                  {/* The reason box lives inside the row's own
-                                      cell so opening it never reflows the table. */}
-                                  {dismissing === key && onDismiss && (
-                                    <span
-                                      className="mt-2 flex flex-wrap items-center gap-2"
-                                      // The row is a click target; typing in
-                                      // the box must not open the resource.
-                                      onClick={(e) => e.stopPropagation()}
-                                      onKeyDown={(e) => e.stopPropagation()}
-                                    >
-                                      <input
-                                        type="text"
-                                        autoFocus
-                                        value={reason}
-                                        onChange={(e) => setReason(e.target.value)}
-                                        maxLength={500}
-                                        placeholder="Why is this acceptable? (optional)"
-                                        aria-label={`Reason for dismissing ${finding.title} on ${finding.displayName}`}
-                                        className="min-w-56 flex-1 rounded-lg border border-border bg-surface-raised px-2 py-1 text-xs text-on-surface"
-                                      />
-                                      <button
-                                        type="button"
-                                        disabled={isPending(finding)}
-                                        onClick={() =>
-                                          void run(finding, () => onDismiss(finding, reason))
-                                        }
-                                        className="rounded-lg border border-border px-2 py-1 text-xs text-on-surface hover:bg-surface-overlay disabled:opacity-50"
-                                      >
-                                        {isPending(finding) ? "Dismissing…" : "Confirm"}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setDismissing(null);
-                                          setReason("");
-                                        }}
-                                        className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary"
-                                      >
-                                        Cancel
-                                      </button>
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="px-4 py-2.5 whitespace-nowrap align-top text-right">
-                                  <span
-                                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${SEVERITY_BADGE_CLASSES[finding.severity]}`}
-                                  >
-                                    {POSTURE_SEVERITY_LABELS[finding.severity]}
-                                  </span>
-                                </td>
-                                {onDismiss && (
-                                  <td className="px-3 py-2.5 whitespace-nowrap align-top text-right">
-                                    <button
-                                      type="button"
-                                      disabled={isPending(finding)}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
+                                finding={finding}
+                                onOpenResource={onOpenResource}
+                                pending={isPending(finding)}
+                                editing={dismissing === key && onDismiss !== undefined}
+                                reason={reason}
+                                onReasonChange={setReason}
+                                onToggleReason={
+                                  onDismiss
+                                    ? () => {
                                         setActionError(null);
                                         setReason("");
                                         setDismissing(dismissing === key ? null : key);
-                                      }}
-                                      className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary disabled:opacity-50"
-                                    >
-                                      Dismiss
-                                    </button>
-                                  </td>
-                                )}
-                              </tr>
+                                      }
+                                    : undefined
+                                }
+                                onConfirm={() => {
+                                  if (onDismiss)
+                                    void run(finding, () => onDismiss(finding, reason));
+                                }}
+                                onCancel={() => {
+                                  setDismissing(null);
+                                  setReason("");
+                                }}
+                              />
                             );
                           })}
                         </tbody>
@@ -400,62 +519,17 @@ export function PostureSection({
                   <table className="w-full text-sm">
                     <tbody>
                       {dismissed.map((finding: DismissedPostureFinding) => (
-                        <tr
+                        <DismissedFindingRow
                           key={postureFindingKey(finding)}
-                          className={`border-b border-border last:border-b-0 ${
-                            onOpenResource ? "cursor-pointer hover:bg-surface-raised" : ""
-                          }`}
-                          onClick={onOpenResource ? () => onOpenResource(finding) : undefined}
-                          onKeyDown={
-                            onOpenResource
-                              ? (e) => {
-                                  if (e.key === "Enter" || e.key === " ") {
-                                    e.preventDefault();
-                                    onOpenResource(finding);
-                                  }
-                                }
+                          finding={finding}
+                          onOpenResource={onOpenResource}
+                          pending={isPending(finding)}
+                          onRestore={
+                            onRestore
+                              ? () => void run(finding, () => onRestore(finding))
                               : undefined
                           }
-                          tabIndex={onOpenResource ? 0 : undefined}
-                        >
-                          <td className="px-4 py-2.5 whitespace-nowrap align-top font-medium text-on-surface-secondary">
-                            {finding.displayName}
-                          </td>
-                          <td className="px-3 py-2.5 whitespace-nowrap align-top text-xs text-on-surface-tertiary">
-                            {finding.pluginName}
-                            <span className="text-on-surface-faint"> · {finding.accountName}</span>
-                          </td>
-                          <td className="px-3 py-2.5 w-full align-top text-on-surface-tertiary">
-                            <span className="font-medium">{finding.title}</span>
-                            <span className="block text-xs text-on-surface-faint">
-                              Dismissed {formatDismissedAt(finding.dismissal.dismissedAt)}
-                              {finding.dismissal.dismissedBy
-                                ? ` by ${finding.dismissal.dismissedBy}`
-                                : ""}
-                              {finding.dismissal.reason ? ` — ${finding.dismissal.reason}` : ""}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2.5 whitespace-nowrap align-top text-right">
-                            <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-on-surface-tertiary">
-                              {POSTURE_SEVERITY_LABELS[finding.severity]}
-                            </span>
-                          </td>
-                          {onRestore && (
-                            <td className="px-3 py-2.5 whitespace-nowrap align-top text-right">
-                              <button
-                                type="button"
-                                disabled={isPending(finding)}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void run(finding, () => onRestore(finding));
-                                }}
-                                className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary disabled:opacity-50"
-                              >
-                                {isPending(finding) ? "Restoring…" : "Restore"}
-                              </button>
-                            </td>
-                          )}
-                        </tr>
+                        />
                       ))}
                     </tbody>
                   </table>

@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import {
   POSTURE_SEVERITIES,
   POSTURE_SEVERITY_LABELS,
+  postureFindingKey,
   type DismissedPostureFinding,
   type PostureFinding,
   type PostureSeverity,
@@ -124,7 +125,7 @@ export function PostureScreen() {
           <Card list>
             {findings.map((finding) => (
               <PostureRow
-                key={`${finding.resourceId}:${finding.ruleId}`}
+                key={postureFindingKey(finding)}
                 finding={finding}
                 onPress={() => open(finding)}
                 actionLabel="Dismiss"
@@ -142,7 +143,7 @@ export function PostureScreen() {
           <Card list>
             {data.dismissed.map((finding) => (
               <PostureRow
-                key={`${finding.resourceId}:${finding.ruleId}`}
+                key={postureFindingKey(finding)}
                 finding={finding}
                 muted
                 detail={dismissalLine(finding)}
@@ -206,10 +207,25 @@ function PostureRow({
   /** Replaces the rule's explanation, e.g. who accepted it and why. */
   detail?: string;
 }) {
+  // VoiceOver treats an accessible Pressable as one element and will not focus
+  // an interactive child of it, so the right-hand action is offered as a
+  // custom action on the row rather than as a nested target a screen reader
+  // can never reach. The child stays touchable (and stays hidden from
+  // assistive tech) so a sighted tap still hits the smaller region.
+  const action =
+    actionLabel && onAction && !busy ? { name: actionLabel, label: actionLabel } : null;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${finding.displayName}, ${finding.title}, ${finding.severity}`}
+      {...(action
+        ? {
+            accessibilityActions: [action],
+            onAccessibilityAction: (e: { nativeEvent: { actionName: string } }) => {
+              if (e.nativeEvent.actionName === action.name) onAction?.();
+            },
+          }
+        : {})}
       onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
@@ -235,8 +251,10 @@ function PostureRow({
         </Text>
         {actionLabel && onAction && (
           <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`${actionLabel} ${finding.title} on ${finding.displayName}`}
+            // Reached through the row's custom action instead, so it must not
+            // also appear as a (VoiceOver-unfocusable) element of its own.
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
             disabled={busy}
             // The row itself opens the resource; the action must not.
             onPress={(e) => {

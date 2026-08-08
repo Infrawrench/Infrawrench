@@ -27,6 +27,8 @@ vi.mock("@/services/audit", () => ({
 
 const { postureRoutes } = await import("@/api/routes/posture");
 const app = () => buildTestApp(postureRoutes as unknown as Hono);
+/** A member: can read the Posture screen, deliberately cannot silence it. */
+const reader = () => buildTestApp(postureRoutes as unknown as Hono, ["resources:read"]);
 
 const json = (body: unknown) => ({
   method: "POST",
@@ -42,6 +44,9 @@ describe("posture dismissal routes", () => {
   describe("POST /dismissals", () => {
     it("records the dismissal against the calling user and audits it", async () => {
       mockDismiss.mockResolvedValue({
+        // `dismissPostureFinding` resolves to the row, not the wire shape.
+        id: "dismissal-1",
+        organizationId: "org-1",
         resourceId: "r-1",
         ruleId: "public",
         reason: "static site",
@@ -58,6 +63,15 @@ describe("posture dismissal routes", () => {
         ruleId: "public",
         reason: "static site",
         userId: "user-1",
+      });
+      // The wire shape only — the record's row id and organizationId are
+      // internal and the documented body forbids them.
+      expect(await res.json()).toEqual({
+        resourceId: "r-1",
+        ruleId: "public",
+        reason: "static site",
+        dismissedBy: "Ada",
+        dismissedAt: "2026-08-01T00:00:00.000Z",
       });
       // Silencing a security finding has to leave a trace.
       expect(mockLogAudit).toHaveBeenCalledWith(
@@ -131,5 +145,29 @@ describe("posture dismissal routes", () => {
       }
       expect(mockRestore).not.toHaveBeenCalled();
     });
+  });
+
+  // The permission is the point of the feature, not an implementation detail:
+  // a member who can read the Posture screen must not be able to silence it.
+  it("refuses a caller with resources:read but not resources:write", async () => {
+    const post = await reader().request(
+      "/dismissals",
+      json({ resourceId: "r-1", ruleId: "public" }),
+    );
+    expect(post.status).toBe(403);
+
+    const del = await reader().request("/dismissals?resourceId=r-1&ruleId=public", {
+      method: "DELETE",
+    });
+    expect(del.status).toBe(403);
+
+    expect(mockDismiss).not.toHaveBeenCalled();
+    expect(mockRestore).not.toHaveBeenCalled();
+  });
+
+  it("still lets that caller read the findings", async () => {
+    mockListPosture.mockResolvedValue({ findings: [], totalCount: 0 });
+    const res = await reader().request("/");
+    expect(res.status).toBe(200);
   });
 });

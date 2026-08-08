@@ -80,9 +80,12 @@ export async function cmdPostureDismiss(ctx: CliContext, rest: string[]): Promis
         "The Infrawrench desktop app is running — dismiss the finding from the app instead; the CLI shares its workspace.",
       );
     }
-    await dismissLocalPostureFinding(resourceId, ruleId, reason);
+    // Report the note as stored, not as typed: a blank `--reason " "` is
+    // persisted as no note, and the JSON has to agree with the next
+    // `posture --json`.
+    const stored = await dismissLocalPostureFinding(resourceId, ruleId, reason);
     if (ctx.flags.output === "json") {
-      printJson({ dismissed: { resourceId, ruleId, reason } });
+      printJson({ dismissed: { resourceId, ruleId, reason: stored } });
       return;
     }
     println(`${c.bold("Dismissed")} ${resourceId} ${c.dim(`· ${ruleId}`)}`);

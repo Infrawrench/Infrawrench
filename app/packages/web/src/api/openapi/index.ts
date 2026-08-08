@@ -393,6 +393,8 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /expiring/settings": "org:settings:write",
   "PUT /expiring/settings": "org:settings:write",
   "GET /posture": "resources:read",
+  "POST /posture/dismissals": "resources:write",
+  "DELETE /posture/dismissals": "resources:write",
   "GET /posture/settings": "org:settings:write",
   "PUT /posture/settings": "org:settings:write",
   // sleep/wake schedules — reads ride the resource read scope (the list is

@@ -276,8 +276,11 @@ export function genericTools(): ToolDefinition[] {
         "is destroyed. Identify the finding by the resourceId and ruleId that " +
         "list_posture_findings returns.",
       inputSchema: {
-        resourceId: z.string().describe("Infrawrench resource id the finding is on."),
-        ruleId: z.string().describe("The matched rule's id, as returned on the finding."),
+        // `.min(1)` so a blank id is a tool-input error rather than the plain
+        // `Error` `dismissPostureFinding` throws past the handler — the HTTP
+        // route guards this, and this second entry point has to as well.
+        resourceId: z.string().min(1).describe("Infrawrench resource id the finding is on."),
+        ruleId: z.string().min(1).describe("The matched rule's id, as returned on the finding."),
         reason: z
           .string()
           .max(500)
@@ -315,8 +318,8 @@ export function genericTools(): ToolDefinition[] {
         "Use when an accepted risk is no longer acceptable, or when a finding was dismissed " +
         "by mistake.",
       inputSchema: {
-        resourceId: z.string().describe("Infrawrench resource id the finding is on."),
-        ruleId: z.string().describe("The matched rule's id."),
+        resourceId: z.string().min(1).describe("Infrawrench resource id the finding is on."),
+        ruleId: z.string().min(1).describe("The matched rule's id."),
       },
       risk: "write",
       permission: "resources:write",

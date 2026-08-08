@@ -15,7 +15,13 @@ const PostureCategory = z
 export function registerPosturePaths(ctx: BuildContext) {
   const { registry, enums } = ctx;
 
-  const PostureFinding = strict({
+  // Kept as a raw shape so `DismissedPostureFinding` can be emitted as one
+  // flat object rather than an `allOf` branch. A branch that declares only
+  // `dismissal` while inheriting the rest through a sibling `$ref` is
+  // uninhabited under `additionalProperties: false` — JSON Schema evaluates
+  // that keyword against the properties in the same object, so every inherited
+  // field reads as unexpected and strict validators reject real payloads.
+  const postureFindingShape = {
     resourceId: z.string().describe("Infrawrench resource id."),
     pluginId: enums.PluginId,
     pluginName: z.string().openapi({ example: "AWS" }),
@@ -33,7 +39,9 @@ export function registerPosturePaths(ctx: BuildContext) {
     severity: PostureSeverity,
     category: PostureCategory,
     reason: z.string().describe("Plugin-authored explanation of why this is a finding."),
-  }).openapi("PostureFinding");
+  } as const;
+
+  const PostureFinding = strict(postureFindingShape).openapi("PostureFinding");
 
   const PostureSeverityCounts = strict({
     critical: z.number().int(),
@@ -53,7 +61,8 @@ export function registerPosturePaths(ctx: BuildContext) {
     reason: z.string().nullable().describe("The operator's note, when they left one."),
   }).openapi("PostureDismissal");
 
-  const DismissedPostureFinding = PostureFinding.extend({
+  const DismissedPostureFinding = strict({
+    ...postureFindingShape,
     dismissal: PostureDismissal,
   }).openapi("DismissedPostureFinding");
 
@@ -138,7 +147,7 @@ export function registerPosturePaths(ctx: BuildContext) {
       "out of band. The finding leaves `findings` and stops feeding the daily posture alerts, " +
       "but the rule keeps being evaluated and the finding is reported back under `dismissed` " +
       "for as long as it still matches. Idempotent: dismissing an already-dismissed finding " +
-      "rewrites the note and the author. Requires `resources:write`.",
+      "rewrites the note and the author.",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: PostureDismissalCreate } } },
@@ -160,8 +169,7 @@ export function registerPosturePaths(ctx: BuildContext) {
     description:
       "Undo a dismissal, putting the finding back on the list and back into the alert feed. " +
       "The finding is identified by query parameters rather than path segments because " +
-      "resource ids are provider-native and routinely contain slashes. Requires " +
-      "`resources:write`.",
+      "resource ids are provider-native and routinely contain slashes.",
     request: {
       params: OrgIdParam,
       query: strict({

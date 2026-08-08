@@ -153,6 +153,11 @@ export async function dismissPostureFinding(
 /**
  * Undo a dismissal. Returns whether a row was actually removed, so the route
  * can answer 404 for a key that was never dismissed rather than pretending.
+ *
+ * The key is trimmed exactly as `dismissPostureFinding` trims it before
+ * storing: `DELETE /dismissals` reads both halves out of the query string,
+ * which is where stray whitespace comes from, and a padded value that matched
+ * on the way in has to match on the way out.
  */
 export async function restorePostureFinding(
   organizationId: string,
@@ -164,8 +169,8 @@ export async function restorePostureFinding(
     .where(
       and(
         eq(postureDismissals.organizationId, organizationId),
-        eq(postureDismissals.resourceId, resourceId),
-        eq(postureDismissals.ruleId, ruleId),
+        eq(postureDismissals.resourceId, resourceId.trim()),
+        eq(postureDismissals.ruleId, ruleId.trim()),
       ),
     )
     .returning({ id: postureDismissals.id });

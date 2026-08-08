@@ -109,7 +109,16 @@ app.post("/dismissals", async (c) => {
     entityId: dismissal.resourceId,
     metadata: { ruleId: dismissal.ruleId, reason: dismissal.reason },
   });
-  return c.json(dismissal);
+  // Projected, not returned verbatim: the record carries the row's `id` and
+  // `organizationId`, which the documented `PostureDismissal` body forbids and
+  // no client has any use for.
+  return c.json({
+    resourceId: dismissal.resourceId,
+    ruleId: dismissal.ruleId,
+    dismissedAt: dismissal.dismissedAt,
+    dismissedBy: dismissal.dismissedBy,
+    reason: dismissal.reason,
+  });
 });
 
 /**

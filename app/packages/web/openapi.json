@@ -8603,23 +8603,101 @@
         "additionalProperties": false
       },
       "DismissedPostureFinding": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/PostureFinding"
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string",
+            "description": "Infrawrench resource id."
           },
-          {
-            "type": "object",
-            "properties": {
-              "dismissal": {
-                "$ref": "#/components/schemas/PostureDismissal"
-              }
-            },
-            "required": [
-              "dismissal"
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string",
+            "example": "AWS"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string",
+            "example": "S3 Bucket"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
             ],
-            "additionalProperties": false
+            "description": "Provider-native id, when known."
+          },
+          "ruleId": {
+            "type": "string",
+            "description": "The matched rule's stable id, unique within the plugin.",
+            "example": "hetzner-server-no-firewall"
+          },
+          "title": {
+            "type": "string",
+            "description": "Short rule title.",
+            "example": "No firewall attached"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ],
+            "description": "How bad the finding is. `critical` and `high` findings feed the posture alerts; `medium` and `low` are hygiene work surfaced on the posture screen only."
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "public-exposure",
+              "encryption",
+              "credential-age",
+              "data-protection",
+              "other"
+            ],
+            "description": "Grouping bucket for what kind of exposure the finding describes."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Plugin-authored explanation of why this is a finding."
+          },
+          "dismissal": {
+            "$ref": "#/components/schemas/PostureDismissal"
           }
-        ]
+        },
+        "required": [
+          "resourceId",
+          "pluginId",
+          "pluginName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "accountId",
+          "accountName",
+          "displayName",
+          "externalId",
+          "ruleId",
+          "title",
+          "severity",
+          "category",
+          "reason",
+          "dismissal"
+        ],
+        "additionalProperties": false
       },
       "PostureListResponse": {
         "type": "object",
@@ -24161,7 +24239,7 @@
           "Posture checks"
         ],
         "summary": "Dismiss a posture finding",
-        "description": "Accept a finding — the bucket really is meant to be public, the key really is rotated out of band. The finding leaves `findings` and stops feeding the daily posture alerts, but the rule keeps being evaluated and the finding is reported back under `dismissed` for as long as it still matches. Idempotent: dismissing an already-dismissed finding rewrites the note and the author. Requires `resources:write`.",
+        "description": "Accept a finding — the bucket really is meant to be public, the key really is rotated out of band. The finding leaves `findings` and stops feeding the daily posture alerts, but the rule keeps being evaluated and the finding is reported back under `dismissed` for as long as it still matches. Idempotent: dismissing an already-dismissed finding rewrites the note and the author.\n\n_Requires permission: `resources:write`._",
         "parameters": [
           {
             "schema": {
@@ -24206,14 +24284,15 @@
             }
           }
         },
-        "operationId": "postOrgOrgIdPostureDismissals"
+        "operationId": "postOrgOrgIdPostureDismissals",
+        "x-required-permission": "resources:write"
       },
       "delete": {
         "tags": [
           "Posture checks"
         ],
         "summary": "Restore a dismissed posture finding",
-        "description": "Undo a dismissal, putting the finding back on the list and back into the alert feed. The finding is identified by query parameters rather than path segments because resource ids are provider-native and routinely contain slashes. Requires `resources:write`.",
+        "description": "Undo a dismissal, putting the finding back on the list and back into the alert feed. The finding is identified by query parameters rather than path segments because resource ids are provider-native and routinely contain slashes.\n\n_Requires permission: `resources:write`._",
         "parameters": [
           {
             "schema": {
@@ -24272,7 +24351,8 @@
             }
           }
         },
-        "operationId": "deleteOrgOrgIdPostureDismissals"
+        "operationId": "deleteOrgOrgIdPostureDismissals",
+        "x-required-permission": "resources:write"
       }
     },
     "/api/org/{orgId}/posture/settings": {

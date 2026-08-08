@@ -120,22 +120,27 @@ export async function listLocalPosture(): Promise<PostureListResponse> {
  * The timestamps are written explicitly rather than left to the column
  * default: SQLite's `datetime('now')` produces `"YYYY-MM-DD HH:MM:SS"`, which
  * reads as a local-time instant everywhere the cloud path writes ISO.
+ *
+ * Returns the note as stored — trimmed, and `null` for a blank one — so the
+ * CLI can report what was persisted rather than what it was handed.
  */
 export async function dismissLocalPostureFinding(
   resourceId: string,
   ruleId: string,
   reason: string | null,
-): Promise<void> {
+): Promise<string | null> {
   const db = await getDb();
   const now = new Date().toISOString();
   const trimmed = (reason ?? "").trim();
+  const stored = trimmed === "" ? null : trimmed;
   await db.execute(
     `INSERT INTO posture_dismissals (id, resource_id, rule_id, reason, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(resource_id, rule_id)
      DO UPDATE SET reason = excluded.reason, updated_at = excluded.updated_at`,
-    [randomUUID(), resourceId, ruleId, trimmed === "" ? null : trimmed, now, now],
+    [randomUUID(), resourceId, ruleId, stored, now, now],
   );
+  return stored;
 }
 
 /**
