@@ -1,5 +1,6 @@
 import { useState, useEffect, useId, isValidElement, cloneElement } from "react";
 import type {
+  AlertTrigger,
   DriftAlertSettings,
   MsTeamsWebhook,
   PushDeviceSummary,
@@ -9,8 +10,15 @@ import type {
   SlackStatus,
 } from "@infrawrench/client-core";
 import type { Recipient } from "../api-types.js";
-import { DRIFT_ALERT_LIMITS } from "@infrawrench/client-core";
+import {
+  DRIFT_ALERT_LIMITS,
+  PUSHABLE_TRIGGERS,
+  alertTriggerDef,
+  pushTriggerEnabled,
+  withPushTrigger,
+} from "@infrawrench/client-core";
 import { useSettingsHost } from "./host.js";
+import { AlertRoutingSection } from "./AlertRoutingSection.js";
 import { WeeklyDigestSection } from "./WeeklyDigestSection.js";
 import { ExpiryAlertsSection } from "./ExpiryAlertsSection.js";
 
@@ -72,6 +80,8 @@ export function NotificationsSection() {
           configured — SMS and voice calls.
         </p>
       </div>
+
+      <AlertRoutingSection orgId={orgId} />
 
       <SlackSection orgId={orgId} />
 
@@ -397,30 +407,6 @@ function RecipientsPanel({
   );
 }
 
-/**
- * The triggers a channel can opt into, shared by the Slack and Teams sections.
- * All but the weekly digest are the alert triggers mobile push also has; the
- * weekly digest is channel-only (it goes to a team channel, not a phone) and
- * only sends once the org enables it in the Weekly digest section below.
- *
- * Drift is the one that arrives off: adding a channel opts it into everything
- * else, but drift is a continuous feed and turning it on has to be a decision.
- */
-const ALERT_TRIGGERS = [
-  { key: "syncIncidents", label: "Sync failures" },
-  { key: "budgetAlerts", label: "Budgets" },
-  { key: "anomalyAlerts", label: "Anomalies" },
-  { key: "metricAlerts", label: "Metric alerts" },
-  { key: "resourceDrift", label: "Drift" },
-  { key: "workflowPages", label: "Pages" },
-  { key: "providerIncidents", label: "Provider incidents" },
-  { key: "expiryAlerts", label: "Expiry alerts" },
-  { key: "logMatchAlerts", label: "Log matches" },
-  { key: "postureAlerts", label: "Posture" },
-  { key: "probeAlerts", label: "Probes" },
-  { key: "weeklyDigest", label: "Weekly digest" },
-] as const;
-
 interface AccountOption {
   id: string;
   displayName: string;
@@ -666,17 +652,6 @@ function MsTeamsSection({ orgId }: { orgId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId]);
 
-  async function handleToggle(hook: MsTeamsWebhook, patch: Partial<MsTeamsWebhook>) {
-    // Optimistic — the checkbox should not lag a round-trip.
-    setWebhooks((prev) => prev?.map((w) => (w.id === hook.id ? { ...w, ...patch } : w)) ?? prev);
-    try {
-      await api.patch(`/api/org/${orgId}/msteams/webhooks/${hook.id}`, patch);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update the channel");
-      void load();
-    }
-  }
-
   async function handleRemove(id: string) {
     await api.delete(`/api/org/${orgId}/msteams/webhooks/${id}`);
     void load();
@@ -757,16 +732,6 @@ function MsTeamsSection({ orgId }: { orgId: string }) {
                 <p className="text-xs text-on-surface-faint font-mono truncate">{w.urlHint}</p>
               </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-on-surface-tertiary">
-                {ALERT_TRIGGERS.map((t) => (
-                  <label key={t.key} className="flex items-center gap-1.5 whitespace-nowrap">
-                    <input
-                      type="checkbox"
-                      checked={w[t.key]}
-                      onChange={(e) => void handleToggle(w, { [t.key]: e.target.checked })}
-                    />
-                    <span>{t.label}</span>
-                  </label>
-                ))}
                 <button
                   type="button"
                   onClick={() => void handleRemove(w.id)}
@@ -948,24 +913,6 @@ function SlackSection({ orgId }: { orgId: string }) {
     void load();
   }
 
-  async function handleToggle(channel: SlackChannel, patch: Partial<SlackChannel>) {
-    // Optimistic — the checkbox should not lag a round-trip.
-    setStatus((prev) =>
-      prev
-        ? {
-            ...prev,
-            channels: prev.channels.map((c) => (c.id === channel.id ? { ...c, ...patch } : c)),
-          }
-        : prev,
-    );
-    try {
-      await api.patch(`/api/org/${orgId}/slack/channels/${channel.id}`, patch);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update the channel");
-      void load();
-    }
-  }
-
   async function handleRemoveChannel(id: string) {
     await api.delete(`/api/org/${orgId}/slack/channels/${id}`);
     void load();
@@ -1086,16 +1033,6 @@ function SlackSection({ orgId }: { orgId: string }) {
                     )}
                   </p>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-on-surface-tertiary">
-                    {ALERT_TRIGGERS.map((t) => (
-                      <label key={t.key} className="flex items-center gap-1.5 whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          checked={ch[t.key]}
-                          onChange={(e) => void handleToggle(ch, { [t.key]: e.target.checked })}
-                        />
-                        <span>{t.label}</span>
-                      </label>
-                    ))}
                     <button
                       type="button"
                       onClick={() => void handleRemoveChannel(ch.id)}
@@ -1420,112 +1357,23 @@ function PushPreferencesSection({ orgId }: { orgId: string }) {
       </p>
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-on-surface-secondary">
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={prefs.syncIncidents}
-            onChange={(e) => void updatePref({ syncIncidents: e.target.checked })}
-          />
-          <span>Sync-failure incidents</span>
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={prefs.budgetAlerts}
-            onChange={(e) => void updatePref({ budgetAlerts: e.target.checked })}
-          />
-          <span>Budget alerts</span>
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={prefs.anomalyAlerts}
-            onChange={(e) => void updatePref({ anomalyAlerts: e.target.checked })}
-          />
-          <span>Cost anomalies</span>
-        </label>
-        <label
-          className="flex items-center gap-2"
-          title="Metric threshold rules firing and recovering."
-        >
-          <input
-            type="checkbox"
-            checked={prefs.metricAlerts}
-            onChange={(e) => void updatePref({ metricAlerts: e.target.checked })}
-          />
-          <span>Metric alerts</span>
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={prefs.resourceDrift}
-            onChange={(e) => void updatePref({ resourceDrift: e.target.checked })}
-          />
-          <span>Resource drift</span>
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={prefs.workflowPages}
-            onChange={(e) => void updatePref({ workflowPages: e.target.checked })}
-          />
-          <span>Pages</span>
-        </label>
-        <label
-          className="flex items-center gap-2"
-          title="An upstream provider incident overlaps resources you hold."
-        >
-          <input
-            type="checkbox"
-            checked={prefs.providerIncidents}
-            onChange={(e) => void updatePref({ providerIncidents: e.target.checked })}
-          />
-          <span>Provider incidents</span>
-        </label>
-        <label
-          className="flex items-center gap-2"
-          title="Certificates, domains, tokens and keys approaching expiry."
-        >
-          <input
-            type="checkbox"
-            checked={prefs.expiryAlerts}
-            onChange={(e) => void updatePref({ expiryAlerts: e.target.checked })}
-          />
-          <span>Expiry alerts</span>
-        </label>
-        <label
-          className="flex items-center gap-2"
-          title="A saved log-workspace query with alerting enabled found matching lines."
-        >
-          <input
-            type="checkbox"
-            checked={prefs.logMatchAlerts}
-            onChange={(e) => void updatePref({ logMatchAlerts: e.target.checked })}
-          />
-          <span>Log matches</span>
-        </label>
-        <label
-          className="flex items-center gap-2"
-          title="Critical and high security posture findings on synced resources."
-        >
-          <input
-            type="checkbox"
-            checked={prefs.postureAlerts}
-            onChange={(e) => void updatePref({ postureAlerts: e.target.checked })}
-          />
-          <span>Posture</span>
-        </label>
-        <label
-          className="flex items-center gap-2"
-          title="A synthetic probe went down (consecutive failures) or recovered."
-        >
-          <input
-            type="checkbox"
-            checked={prefs.probeAlerts}
-            onChange={(e) => void updatePref({ probeAlerts: e.target.checked })}
-          />
-          <span>Probes</span>
-        </label>
+        {PUSHABLE_TRIGGERS.map((trigger) => {
+          const def = alertTriggerDef(trigger);
+          return (
+            <label key={trigger} className="flex items-center gap-2" title={def.description}>
+              <input
+                type="checkbox"
+                checked={pushTriggerEnabled(prefs, trigger)}
+                onChange={(e) =>
+                  void updatePref({
+                    mutedTriggers: withPushTrigger(prefs, trigger, e.target.checked),
+                  })
+                }
+              />
+              <span>{def.label}</span>
+            </label>
+          );
+        })}
       </div>
 
       {devices.length === 0 ? (
@@ -1581,21 +1429,8 @@ interface PushRecipientRow {
   userId: string;
   email: string;
   displayName: string | null;
-  syncIncidents: boolean;
-  budgetAlerts: boolean;
-  anomalyAlerts: boolean;
-  metricAlerts: boolean;
-  resourceDrift: boolean;
-  workflowPages: boolean;
-  providerIncidents: boolean;
-  /** Expiry-radar alerts; on by default like the other exceptional triggers. */
-  expiryAlerts: boolean;
-  /** Saved log-query matches; on by default like the other exceptional triggers. */
-  logMatchAlerts: boolean;
-  /** Posture findings; on by default like the other exceptional triggers. */
-  postureAlerts: boolean;
-  /** Synthetic probe down/recovered transitions; on by default. */
-  probeAlerts: boolean;
+  /** Triggers this member has turned off. Everything else reaches them. */
+  mutedTriggers: AlertTrigger[];
   devices: Array<{ id: string; platform: string; deviceName: string | null }>;
 }
 
@@ -1629,21 +1464,14 @@ function PushRosterSection({ orgId }: { orgId: string }) {
               <p className="text-on-surface-secondary">{r.displayName ?? r.email}</p>
               <p className="text-xs text-on-surface-tertiary">
                 {r.devices.length} device(s) ·{" "}
-                {[
-                  r.syncIncidents && "incidents",
-                  r.budgetAlerts && "budgets",
-                  r.anomalyAlerts && "anomalies",
-                  r.metricAlerts && "metric alerts",
-                  r.resourceDrift && "drift",
-                  r.workflowPages && "pages",
-                  r.providerIncidents && "provider incidents",
-                  r.expiryAlerts && "expiry",
-                  r.logMatchAlerts && "log matches",
-                  r.postureAlerts && "posture",
-                  r.probeAlerts && "probes",
-                ]
-                  .filter(Boolean)
-                  .join(", ") || "all triggers off"}
+                {/* Naming what is *muted* rather than what is on: the list is
+                    almost always shorter, and "muted: drift" reads as the
+                    exception it is where eleven trigger names read as noise. */}
+                {r.mutedTriggers.length === 0
+                  ? "all triggers on"
+                  : r.mutedTriggers.length === PUSHABLE_TRIGGERS.length
+                    ? "all triggers off"
+                    : `muted: ${r.mutedTriggers.map((t) => alertTriggerDef(t).label.toLowerCase()).join(", ")}`}
               </p>
             </li>
           ))}

@@ -28,9 +28,7 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { syntheticProbes } from "../db/schema";
 import { flattenMetricSeries, insertMetricPoints } from "../clickhouse/writers";
-import { sendPushToOrg } from "../push/dispatch";
-import { sendSlackToOrg } from "../slack";
-import { sendMsTeamsToOrg } from "../msteams";
+import { routeAlert } from "../alerts/route";
 import { notifyResourceOwner, ownerContextLine } from "../ownership/notify";
 import { lookupResourceOwner } from "../ownership/store";
 import type { ProbeRecord } from "./store";
@@ -198,15 +196,20 @@ async function notifyDown(probe: ProbeRecord, result: ProbeProxyResult): Promise
     (ownerLine ? `\n${ownerLine}` : "");
   const context = `${probe.method} ${probe.url} · down`;
 
-  await sendPushToOrg(probe.organizationId, "probeAlerts", {
+  await routeAlert({
+    organizationId: probe.organizationId,
+    trigger: "probeAlerts",
     title,
     body,
-    data: {
+    context,
+    url: probesUrl(probe.organizationId),
+    pushData: {
       type: "probe_alert",
       orgId: probe.organizationId,
       probeId: probe.id,
       status: "down",
     },
+    facts: { key: probe.name },
   });
   await notifyResourceOwner(probe.organizationId, probe.resourceId, "probeAlerts", (o) => ({
     title: `Your endpoint is down: ${probe.name}`,
@@ -221,19 +224,6 @@ async function notifyDown(probe: ProbeRecord, result: ProbeProxyResult): Promise
       status: "down",
     },
   }));
-  const url = probesUrl(probe.organizationId);
-  await sendSlackToOrg(probe.organizationId, "probeAlerts", {
-    title,
-    body,
-    context,
-    ...(url ? { url } : {}),
-  });
-  await sendMsTeamsToOrg(probe.organizationId, "probeAlerts", {
-    title,
-    body,
-    context,
-    ...(url ? { url } : {}),
-  });
 }
 
 async function notifyRecovered(probe: ProbeRecord, result: ProbeProxyResult): Promise<void> {
@@ -243,28 +233,22 @@ async function notifyRecovered(probe: ProbeRecord, result: ProbeProxyResult): Pr
     (result.status !== undefined ? ` (HTTP ${result.status}, ${result.latencyMs}ms)` : "");
   const context = `${probe.method} ${probe.url} · recovered`;
 
-  await sendPushToOrg(probe.organizationId, "probeAlerts", {
+  await routeAlert({
+    organizationId: probe.organizationId,
+    trigger: "probeAlerts",
+    // Recovery is not a page — see the same call in `metric-alerts/eval.ts`.
+    severity: "info",
     title,
     body,
-    data: {
+    context,
+    url: probesUrl(probe.organizationId),
+    pushData: {
       type: "probe_alert",
       orgId: probe.organizationId,
       probeId: probe.id,
       status: "up",
     },
-  });
-  const url = probesUrl(probe.organizationId);
-  await sendSlackToOrg(probe.organizationId, "probeAlerts", {
-    title,
-    body,
-    context,
-    ...(url ? { url } : {}),
-  });
-  await sendMsTeamsToOrg(probe.organizationId, "probeAlerts", {
-    title,
-    body,
-    context,
-    ...(url ? { url } : {}),
+    facts: { key: probe.name },
   });
 }
 

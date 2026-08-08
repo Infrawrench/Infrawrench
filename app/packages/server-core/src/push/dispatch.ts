@@ -1,4 +1,5 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { DEFAULT_MUTED_TRIGGERS } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { organizationMembers, pushDevices, pushPreferences } from "../db/schema";
 import { sendExpoPush, type ExpoPushMessage, type ExpoTicket } from "./expo-client";
@@ -28,26 +29,21 @@ interface TargetDevice {
   expoPushToken: string;
 }
 
-/** The `push_preferences` column backing each trigger's opt-in. */
-function prefColumnFor(trigger: PushTrigger) {
-  return {
-    syncIncidents: pushPreferences.syncIncidents,
-    budgetAlerts: pushPreferences.budgetAlerts,
-    anomalyAlerts: pushPreferences.anomalyAlerts,
-    metricAlerts: pushPreferences.metricAlerts,
-    resourceDrift: pushPreferences.resourceDrift,
-    workflowPages: pushPreferences.workflowPages,
-    providerIncidents: pushPreferences.providerIncidents,
-    expiryAlerts: pushPreferences.expiryAlerts,
-    logMatchAlerts: pushPreferences.logMatchAlerts,
-    postureAlerts: pushPreferences.postureAlerts,
-    probeAlerts: pushPreferences.probeAlerts,
-  }[trigger];
-}
-
 /**
- * Resolve the active devices of all org members whose per-org preference
- * enables `trigger` (no preference row = enabled).
+ * Resolve the active devices of all org members who have not muted `trigger`.
+ *
+ * This used to pick a boolean column out of an eleven-entry map — one of the
+ * six places a new trigger had to be added. `push_preferences.muted_triggers`
+ * makes it a containment test instead, so an unknown or newly added trigger is
+ * simply not in anyone's mute list and needs no migration to start arriving.
+ *
+ * The two branches are the "no row means the shipped defaults" contract. For a
+ * trigger that ships **on**, a missing row is a yes. For one that ships **muted**
+ * — `resourceDrift`, for the reason `ALERT_TRIGGERS` gives — a missing row must
+ * be a no, so it needs a row that positively does *not* mute it. Getting this
+ * backwards would start buzzing every phone in every org that has never opened
+ * the notifications screen, which is exactly what the old `.default(false)`
+ * column existed to prevent.
  *
  * `userId`, when given, narrows the same query to one member — used by
  * owner-routed alerts. It is a filter on top of the membership join, never a
@@ -59,7 +55,11 @@ async function resolveTargets(
   trigger: PushTrigger,
   userId?: string,
 ): Promise<TargetDevice[]> {
-  const prefColumn = prefColumnFor(trigger);
+  const muted = sql`${pushPreferences.mutedTriggers} @> ARRAY[${trigger}]::text[]`;
+  const wanted = DEFAULT_MUTED_TRIGGERS.includes(trigger)
+    ? sql`(${pushPreferences.id} IS NOT NULL AND NOT ${muted})`
+    : sql`(${pushPreferences.id} IS NULL OR NOT ${muted})`;
+
   return db
     .select({ id: pushDevices.id, expoPushToken: pushDevices.expoPushToken })
     .from(organizationMembers)
@@ -75,7 +75,7 @@ async function resolveTargets(
       and(
         eq(organizationMembers.organizationId, organizationId),
         isNull(pushDevices.disabledAt),
-        sql`(${pushPreferences.id} IS NULL OR ${prefColumn} = true)`,
+        wanted,
         ...(userId ? [eq(organizationMembers.userId, userId)] : []),
       ),
     );

@@ -11,6 +11,12 @@ import {
   check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type {
+  AlertCondition,
+  AlertDestination,
+  EscalationPolicy,
+  QuietHours,
+} from "@infrawrench/client-core";
 
 import { accounts, dashboards, organizations, users } from "./core-schema.js";
 
@@ -1249,9 +1255,15 @@ export const slackInstallations = pgTable(
 );
 
 /**
- * A Slack channel an org routes alerts to, with one opt-in per trigger. The
- * three flags mirror `pushPreferences` so a channel can take budget alerts
- * without also taking every sync incident.
+ * A Slack channel an org can route alerts to.
+ *
+ * The row is now **identity only** — which channel, in which install. It used
+ * to carry one boolean per trigger, which made it half of a routing table with
+ * no way to express a condition: a channel could take "all budget alerts" or
+ * none, never "budget alerts over $500 on prod". Routing moved to
+ * `alert_rules`, which references this row by id; see
+ * `client-core/src/alert-routing.ts` for why that also made adding a trigger a
+ * one-line change instead of a six-file one.
  */
 export const slackChannels = pgTable(
   "slack_channels",
@@ -1268,37 +1280,6 @@ export const slackChannels = pgTable(
     /** Channel name at the time it was added, refreshed when we list channels. */
     channelName: text("channel_name").notNull(),
     isPrivate: boolean("is_private").notNull().default(false),
-    syncIncidents: boolean("sync_incidents").notNull().default(true),
-    budgetAlerts: boolean("budget_alerts").notNull().default(true),
-    /** Statistical spend-spike alerts (see `cost/anomaly-eval.ts`). */
-    anomalyAlerts: boolean("anomaly_alerts").notNull().default(true),
-    /** Metric threshold rule firings/recoveries (see `metric-alerts/eval.ts`). */
-    metricAlerts: boolean("metric_alerts").notNull().default(true),
-    /**
-     * Batched resource-drift digests (see `drift/alerts.ts`). The one trigger
-     * that defaults **off**: drift is continuous and high-volume where the
-     * other alerts are exceptional, so shipping it default-on would start
-     * posting into every channel an org already connected.
-     */
-    resourceDrift: boolean("resource_drift").notNull().default(false),
-    /** Alerts raised by a workflow calling `infra.page(...)`. */
-    workflowPages: boolean("workflow_pages").notNull().default(true),
-    /** Provider status-page incidents overlapping the org's resources. */
-    providerIncidents: boolean("provider_incidents").notNull().default(true),
-    /** Approaching deadlines on synced resources (see `expiry/alerts.ts`). */
-    expiryAlerts: boolean("expiry_alerts").notNull().default(true),
-    /** Saved log-query matches (see `log-workspaces/pass.ts`). */
-    logMatchAlerts: boolean("log_match_alerts").notNull().default(true),
-    /** Critical/high security posture findings (see `posture/alerts.ts`). */
-    postureAlerts: boolean("posture_alerts").notNull().default(true),
-    /** Synthetic probe down/recovered transitions (see `probes/pass.ts`). */
-    probeAlerts: boolean("probe_alerts").notNull().default(true),
-    /**
-     * The Monday-morning weekly summary. Channel opt-in defaults on like the
-     * other triggers, but nothing sends until the org enables the digest in
-     * `org_digest_settings`.
-     */
-    weeklyDigest: boolean("weekly_digest").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -1390,9 +1371,12 @@ export const slackApprovalMessages = pgTable(
 );
 
 /**
- * A Microsoft Teams channel an org routes alerts to, identified by the webhook
- * URL of a Teams "Workflows" automation (or a legacy Office 365 connector).
- * The three flags mirror `slackChannels` and `pushPreferences`.
+ * A Microsoft Teams channel an org can route alerts to, identified by the
+ * webhook URL of a Teams "Workflows" automation (or a legacy Office 365
+ * connector).
+ *
+ * Like `slackChannels`, this row is identity and credential only; which alerts
+ * reach it is decided by `alert_rules`.
  *
  * There is no installation table above this one, as there is for Slack: Teams
  * has no app-only OAuth flow we can use, so each channel stands alone with its
@@ -1424,32 +1408,6 @@ export const msteamsWebhooks = pgTable(
     urlHost: text("url_host").notNull(),
     /** Non-secret display hint, e.g. `contoso.webhook.office.com · …a7f2`. */
     urlHint: text("url_hint").notNull(),
-    syncIncidents: boolean("sync_incidents").notNull().default(true),
-    budgetAlerts: boolean("budget_alerts").notNull().default(true),
-    /** Statistical spend-spike alerts (see `cost/anomaly-eval.ts`). */
-    anomalyAlerts: boolean("anomaly_alerts").notNull().default(true),
-    /** Metric threshold rule firings/recoveries (see `metric-alerts/eval.ts`). */
-    metricAlerts: boolean("metric_alerts").notNull().default(true),
-    /** Batched resource-drift digests. Defaults off — see `slackChannels`. */
-    resourceDrift: boolean("resource_drift").notNull().default(false),
-    /** Alerts raised by a workflow calling `infra.page(...)`. */
-    workflowPages: boolean("workflow_pages").notNull().default(true),
-    /** Provider status-page incidents overlapping the org's resources. */
-    providerIncidents: boolean("provider_incidents").notNull().default(true),
-    /** Approaching deadlines on synced resources (see `expiry/alerts.ts`). */
-    expiryAlerts: boolean("expiry_alerts").notNull().default(true),
-    /** Saved log-query matches (see `log-workspaces/pass.ts`). */
-    logMatchAlerts: boolean("log_match_alerts").notNull().default(true),
-    /** Critical/high security posture findings (see `posture/alerts.ts`). */
-    postureAlerts: boolean("posture_alerts").notNull().default(true),
-    /** Synthetic probe down/recovered transitions (see `probes/pass.ts`). */
-    probeAlerts: boolean("probe_alerts").notNull().default(true),
-    /**
-     * The Monday-morning weekly summary. Channel opt-in defaults on like the
-     * other triggers, but nothing sends until the org enables the digest in
-     * `org_digest_settings`.
-     */
-    weeklyDigest: boolean("weekly_digest").notNull().default(true),
     createdByUserId: text("created_by_user_id"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -2058,8 +2016,22 @@ export const pushDevices = pgTable(
 );
 
 /**
- * Per-(user, org) push trigger opt-outs. No row means everything is enabled —
+ * Per-(user, org) push trigger opt-outs. No row means the shipped defaults —
  * registering a device is the opt-in act.
+ *
+ * This is the one half of the old boolean matrix that did **not** become a
+ * routing rule, and the distinction is the point. An `alert_rules` row is an
+ * org decision about where the org is told; this is a member's decision about
+ * whether their own phone rings at 3am. Folding it into the org table would
+ * have let an admin un-mute somebody else's notifications, so it stayed
+ * personal — it just stopped being one column per trigger.
+ *
+ * `mutedTriggers` names the triggers this member has turned **off**; an unknown
+ * or new trigger is therefore on by default, which is why adding one needs no
+ * migration here. The shipped defaults for a member with no row live in
+ * `DEFAULT_MUTED_TRIGGERS` (`client-core/src/alert-routing.ts`) — currently
+ * just `resourceDrift`, which is the same decision its `false` column default
+ * used to encode.
  */
 export const pushPreferences = pgTable(
   "push_preferences",
@@ -2071,32 +2043,152 @@ export const pushPreferences = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    syncIncidents: boolean("sync_incidents").notNull().default(true),
-    budgetAlerts: boolean("budget_alerts").notNull().default(true),
-    /** Statistical spend-spike alerts (see `cost/anomaly-eval.ts`). */
-    anomalyAlerts: boolean("anomaly_alerts").notNull().default(true),
-    /** Metric threshold rule firings/recoveries (see `metric-alerts/eval.ts`). */
-    metricAlerts: boolean("metric_alerts").notNull().default(true),
-    /** Batched resource-drift digests. Defaults off — see `slackChannels`. */
-    resourceDrift: boolean("resource_drift").notNull().default(false),
-    /** Alerts raised by a workflow calling `infra.page(...)`. */
-    workflowPages: boolean("workflow_pages").notNull().default(true),
-    /** Provider status-page incidents overlapping the org's resources. */
-    providerIncidents: boolean("provider_incidents").notNull().default(true),
-    /** Approaching deadlines on synced resources (see `expiry/alerts.ts`). */
-    expiryAlerts: boolean("expiry_alerts").notNull().default(true),
-    /** Saved log-query matches (see `log-workspaces/pass.ts`). */
-    logMatchAlerts: boolean("log_match_alerts").notNull().default(true),
-    /** Critical/high security posture findings (see `posture/alerts.ts`). */
-    postureAlerts: boolean("posture_alerts").notNull().default(true),
-    /** Synthetic probe down/recovered transitions (see `probes/pass.ts`). */
-    probeAlerts: boolean("probe_alerts").notNull().default(true),
+    /** Trigger ids this member has muted. Empty array = everything on. */
+    mutedTriggers: text("muted_triggers")
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => ({
     userOrgUnique: uniqueIndex("push_preferences_user_org_unique").on(t.userId, t.organizationId),
     orgIdx: index("push_preferences_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
+ * An org's alert routing table: ordered rules that decide which destinations
+ * hear about an alert, evaluated by `routeAlertRules` in
+ * `client-core/src/alert-routing.ts`.
+ *
+ * **No row means the shipped default**, the same contract `org_digest_settings`
+ * and `org_cost_anomaly_settings` use: an org that has never opened the editor
+ * behaves as if it had one "everything except drift → every channel and every
+ * phone" rule, which is exactly what the boolean matrix did with every box
+ * ticked. That is what keeps "connect Slack, get alerts" true on day one.
+ *
+ * Everything variable about a rule is JSON rather than columns, deliberately.
+ * Conditions and destinations are a discriminated union that will grow; columns
+ * would put us back where we started, adding one per new idea. The shapes are
+ * validated by `validateAlertRule` on the way in, so the JSON is never
+ * unchecked — it is just not the database's job to check it.
+ */
+export const alertRules = pgTable(
+  "alert_rules",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    /** Ascending evaluation order. Ties break on id so the order is total. */
+    position: integer("position").notNull().default(0),
+    /**
+     * Empty matches every alert.
+     *
+     * `$type` here documents the shape and spares every reader a cast; it is
+     * *not* a guarantee. These columns outlive the build that wrote them, so
+     * `alerts/rules.ts` still re-checks each one on the way out — see `toRule`.
+     */
+    conditions: jsonb("conditions").$type<AlertCondition[]>().notNull().default([]),
+    /** Empty is legal: a rule that swallows alerts. */
+    destinations: jsonb("destinations").$type<AlertDestination[]>().notNull().default([]),
+    /** False (the default) makes the list first-match-wins. */
+    continueOnMatch: boolean("continue_on_match").notNull().default(false),
+    /** Hold matching alerts until the window closes. */
+    quietHours: jsonb("quiet_hours").$type<QuietHours>(),
+    /** Re-send elsewhere if nobody acknowledges. */
+    escalation: jsonb("escalation").$type<EscalationPolicy>(),
+    createdByUserId: text("created_by_user_id"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgPositionIdx: index("alert_rules_org_position_idx").on(t.organizationId, t.position),
+  }),
+);
+
+/**
+ * The follow-up queue: one row per (rule, alert) that is not finished when
+ * `routeAlert` returns.
+ *
+ * Two features share it because they are the same shape — an alert with a
+ * deadline and a claim column:
+ *
+ *   * **held** — quiet hours caught it. `deliverAfter` is when the window
+ *     closes, and the flush pass claims it exactly the way the poller claims a
+ *     due account: `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED)`,
+ *     writing a lease into the due column itself. N replicas send once.
+ *   * **awaiting_ack** — the rule asked to escalate. `escalateAt` is the second
+ *     deadline and is claimed by the same statement shape.
+ *
+ * `payload` is the whole `AlertEvent` because the pass that sends it runs
+ * minutes or hours after the thing that raised it, in a different process, and
+ * re-deriving an anomaly's wording from the cost tables at flush time would be
+ * a second implementation of the message. Storing the rendered alert means the
+ * held copy says exactly what the immediate copy would have said.
+ *
+ * This table is **not** part of the cooldown/claim protocol that decides
+ * whether an alert is raised at all — those live with each detector
+ * (`inCooldown`, `PageCooldownStore`, `org_drift_alert_settings`) and are
+ * untouched. A row only ever appears here after such a claim was already won.
+ */
+export const alertDeliveries = pgTable(
+  "alert_deliveries",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /**
+     * The rule that produced this leg. Nulled rather than cascaded when the
+     * rule is deleted: a held alert must still be delivered, and an escalation
+     * already in flight must still be able to complete.
+     */
+    ruleId: text("rule_id").references(() => alertRules.id, { onDelete: "set null" }),
+    /** Snapshot of the rule's name, so a deleted rule still explains the row. */
+    ruleName: text("rule_name"),
+    trigger: text("trigger").notNull(),
+    severity: text("severity").notNull(),
+    /**
+     * `held` | `awaiting_ack` | `sent` | `acknowledged` | `escalated` |
+     * `expired` — the `AlertDeliveryState` union in client-core. `sent` is what
+     * `flushHold` writes for a released hold whose rule does not escalate;
+     * everything else is terminal or waiting on one of the two deadlines.
+     */
+    state: text("state").notNull(),
+    /**
+     * The full `AlertEvent`, rendered — see the note above. Left untyped
+     * because `AlertEvent` is declared in `alerts/route.ts`, which imports this
+     * module; naming it here would close the cycle.
+     */
+    payload: jsonb("payload").notNull(),
+    /** The destinations this leg is for. */
+    destinations: jsonb("destinations").$type<AlertDestination[]>().notNull().default([]),
+    /** Snapshotted at raise time, so a later rule edit cannot change it. */
+    escalation: jsonb("escalation").$type<EscalationPolicy>(),
+    /** Quiet-hours release instant, and the flush pass's claim column. */
+    deliverAfter: timestamp("deliver_after"),
+    /** Escalation deadline, and the escalation pass's claim column. */
+    escalateAt: timestamp("escalate_at"),
+    acknowledgedAt: timestamp("acknowledged_at"),
+    acknowledgedByUserId: text("acknowledged_by_user_id"),
+    /** How the acknowledgement arrived, e.g. `slack`. For the audit line. */
+    acknowledgedVia: text("acknowledged_via"),
+    /** Bumped by every claim, so a permanently failing row can be given up on. */
+    attemptCount: integer("attempt_count").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("alert_deliveries_org_idx").on(t.organizationId, t.createdAt),
+    // Partial-shaped in practice: both passes scan one state and one timestamp,
+    // so leading with `state` keeps each claim an index range scan even when
+    // the table is mostly finished rows.
+    dueIdx: index("alert_deliveries_due_idx").on(t.state, t.deliverAfter),
+    escalateIdx: index("alert_deliveries_escalate_idx").on(t.state, t.escalateAt),
   }),
 );
 

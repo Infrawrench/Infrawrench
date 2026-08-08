@@ -19,6 +19,7 @@ import { cmdTags, cmdShowback } from "./commands/tags";
 import { cmdOrphans } from "./commands/orphans";
 import { cmdOversized } from "./commands/oversized";
 import { cmdAlerts, cmdAlertEvents } from "./commands/alerts";
+import { cmdRouting, cmdRoutingQueue } from "./commands/routing";
 import { cmdExpiring } from "./commands/expiring";
 import { cmdPosture, cmdPostureDismiss, cmdPostureRestore } from "./commands/posture";
 import { cmdDns } from "./commands/dns";
@@ -69,6 +70,8 @@ COMMANDS
                       recommended smaller size and monthly saving (cloud only)
   alerts              metric threshold alert rules ("CPU > 90% for 15m") with live firing status
   alerts events       recent metric alert firings & recoveries   [--limit 50]
+  routing             alert routing rules, in evaluation order
+  routing queue       alerts held for quiet hours or awaiting ack [--limit 50]
   expiring            certificates, domains, tokens & keys approaching expiry, soonest first
                       (--local scans this machine's workspace)
   posture             security posture findings (public buckets, world-open ingress, unencrypted
@@ -316,6 +319,13 @@ export async function runCli(): Promise<void> {
           break;
         }
         await cmdAlerts(ctx);
+        break;
+      case "routing":
+        if (rest[0] === "queue") {
+          await cmdRoutingQueue(ctx, parsed.range.limit);
+          break;
+        }
+        await cmdRouting(ctx);
         break;
       case "expiring":
         await cmdExpiring(ctx);

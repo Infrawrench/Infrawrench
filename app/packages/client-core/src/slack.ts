@@ -1,12 +1,12 @@
 import type { CloudFetch } from "./fetch";
 
 /**
- * Slack connection + per-channel alert routing. Server contract: org-scoped
+ * Slack connection management. Server contract: org-scoped
  * `/api/org/:orgId/slack/*` routes (see web `api/routes/slack.ts`).
  *
- * A channel opts into each alert trigger independently — the five mobile push
- * has, plus the channel-only weekly digest — so a channel can take budget
- * crossings without also taking every sync failure.
+ * A channel is a *destination*, not a policy. Which alerts reach it is decided
+ * by the org's routing rules (`alert-routing.ts`), which reference this row by
+ * id — so the twelve trigger booleans a channel used to carry are gone.
  */
 
 export interface SlackInstallation {
@@ -24,28 +24,6 @@ export interface SlackChannel {
   /** Channel name without the leading `#`. */
   channelName: string;
   isPrivate: boolean;
-  syncIncidents: boolean;
-  budgetAlerts: boolean;
-  /** Statistical spend-spike (cost anomaly) alerts. */
-  anomalyAlerts: boolean;
-  /** Metric threshold rule firings and recoveries. */
-  metricAlerts: boolean;
-  /** Batched resource-drift digests from the change timeline. Defaults off. */
-  resourceDrift: boolean;
-  /** Pages and approval requests raised by a workflow or by `POST /pages`. */
-  workflowPages: boolean;
-  /** A provider status-page incident overlaps resources the org holds. */
-  providerIncidents: boolean;
-  /** Daily digests of approaching resource deadlines (certs, domains, keys). */
-  expiryAlerts: boolean;
-  /** Saved log-query matches from the log workspace alert pass. */
-  logMatchAlerts: boolean;
-  /** Critical/high security posture findings from the posture alert pass. */
-  postureAlerts: boolean;
-  /** Synthetic probe down/recovered transitions. */
-  probeAlerts: boolean;
-  /** The Monday-morning weekly summary (only sends when the org enables it). */
-  weeklyDigest: boolean;
 }
 
 export interface SlackStatus {
@@ -101,18 +79,6 @@ export interface AddSlackChannelArgs {
   channelId: string;
   channelName: string;
   isPrivate?: boolean;
-  syncIncidents?: boolean;
-  budgetAlerts?: boolean;
-  anomalyAlerts?: boolean;
-  metricAlerts?: boolean;
-  resourceDrift?: boolean;
-  workflowPages?: boolean;
-  providerIncidents?: boolean;
-  expiryAlerts?: boolean;
-  logMatchAlerts?: boolean;
-  postureAlerts?: boolean;
-  probeAlerts?: boolean;
-  weeklyDigest?: boolean;
 }
 
 export async function addSlackChannel(
@@ -126,27 +92,15 @@ export async function addSlackChannel(
   });
 }
 
-export type SlackChannelTriggers = Pick<
-  SlackChannel,
-  | "syncIncidents"
-  | "budgetAlerts"
-  | "anomalyAlerts"
-  | "metricAlerts"
-  | "resourceDrift"
-  | "workflowPages"
-  | "providerIncidents"
-  | "expiryAlerts"
-  | "logMatchAlerts"
-  | "postureAlerts"
-  | "probeAlerts"
-  | "weeklyDigest"
->;
-
+/**
+ * Refresh a channel's cached name. Trigger opt-ins used to be patched here;
+ * they are `alert_rules` rows now.
+ */
 export async function updateSlackChannel(
   api: CloudFetch,
   orgId: string,
   channelId: string,
-  patch: Partial<SlackChannelTriggers>,
+  patch: { channelName?: string },
 ): Promise<SlackChannel | null> {
   return api.org<SlackChannel>(orgId, `/slack/channels/${encodeURIComponent(channelId)}`, {
     method: "PATCH",

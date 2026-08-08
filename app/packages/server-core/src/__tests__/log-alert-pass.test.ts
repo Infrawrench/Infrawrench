@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { alertReachedImpl, routed, unroutedResult } from "./helpers/route-alert";
 
 // --- capture vars, reset per test -----------------------------------------
 
@@ -12,9 +13,6 @@ const getLogs = vi.fn();
 const peerGetLogs = vi.fn();
 const getOrgAccountClient = vi.fn();
 const getClientForResource = vi.fn();
-const sendPushToOrg = vi.fn();
-const sendSlackToOrg = vi.fn();
-const sendMsTeamsToOrg = vi.fn();
 
 // --- module mocks (before the SUT import) ----------------------------------
 
@@ -78,14 +76,20 @@ vi.mock("../org-accounts", () => ({
 vi.mock("../peer-clients", () => ({
   getClientForResource: (...a: unknown[]) => getClientForResource(...a),
 }));
-vi.mock("../push/dispatch", () => ({
-  sendPushToOrg: (...a: unknown[]) => sendPushToOrg(...a),
-}));
-vi.mock("../slack", () => ({
-  sendSlackToOrg: (...a: unknown[]) => sendSlackToOrg(...a),
-}));
-vi.mock("../msteams", () => ({
-  sendMsTeamsToOrg: (...a: unknown[]) => sendMsTeamsToOrg(...a),
+
+/**
+ * All three transports sit behind `routeAlert` now, so that is the single seam
+ * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * it decides whether a cooldown or claim is kept, and faking it would hide
+ * exactly the bug it exists to prevent.
+ */
+// Defaults to a successful delivery: `routeAlert` never throws and always
+// returns a result, so a mock that resolves `undefined` would fail tests in a
+// way the real function cannot.
+const routeAlert = vi.fn(async (..._args: unknown[]) => routed());
+vi.mock("../alerts/route", () => ({
+  routeAlert: (...a: unknown[]) => routeAlert(...a),
+  alertReached: alertReachedImpl,
 }));
 
 import { runLogAlertPass } from "../log-workspaces/pass";
@@ -149,9 +153,7 @@ beforeEach(() => {
     activeContainer: "app",
   });
   getClientForResource.mockReset().mockResolvedValue({ client: { getLogs: peerGetLogs } });
-  sendPushToOrg.mockReset().mockResolvedValue({ attempted: 1, succeeded: 1 });
-  sendSlackToOrg.mockReset().mockResolvedValue({ attempted: 0, succeeded: 0, failed: 0 });
-  sendMsTeamsToOrg.mockReset().mockResolvedValue({ attempted: 0, succeeded: 0, failed: 0 });
+  routeAlert.mockReset().mockResolvedValue(routed());
 });
 
 // --- tests ------------------------------------------------------------------
@@ -165,19 +167,24 @@ describe("runLogAlertPass — match and dispatch", () => {
       tailLines: LOG_WORKSPACE_LIMITS.alertTailLines,
     });
 
-    expect(sendPushToOrg).toHaveBeenCalledTimes(1);
-    const [orgId, trigger, msg] = sendPushToOrg.mock.calls[0]!;
-    expect(orgId).toBe("org-1");
-    expect(trigger).toBe("logMatchAlerts");
-    expect(msg.title).toBe("Log match: prod errors");
-    expect(msg.data).toEqual({
+    expect(routeAlert).toHaveBeenCalledTimes(1);
+    const [event] = routeAlert.mock.calls[0]! as [
+      {
+        organizationId: string;
+        trigger: string;
+        title: string;
+        pushData: Record<string, unknown>;
+      },
+    ];
+    expect(event.organizationId).toBe("org-1");
+    expect(event.trigger).toBe("logMatchAlerts");
+    expect(event.title).toBe("Log match: prod errors");
+    expect(event.pushData).toEqual({
       type: "log_match",
       orgId: "org-1",
       queryId: "q1",
       matchCount: 1,
     });
-    expect(sendSlackToOrg).toHaveBeenCalledTimes(1);
-    expect(sendMsTeamsToOrg).toHaveBeenCalledTimes(1);
 
     const completion = completionWrites.at(-1)!;
     expect(completion["lastAlertedAt"]).toEqual(new Date(NOW));
@@ -209,7 +216,7 @@ describe("runLogAlertPass — match and dispatch", () => {
   });
 
   it("does not stamp lastAlertedAt when no channel delivered", async () => {
-    sendPushToOrg.mockResolvedValue({ attempted: 0, succeeded: 0 });
+    routeAlert.mockResolvedValue(unroutedResult());
     const result = await runLogAlertPass({ now: NOW });
     expect(result.notified).toBe(0);
     const completion = completionWrites.at(-1)!;
@@ -225,8 +232,7 @@ describe("runLogAlertPass — cooldown", () => {
     });
     const result = await runLogAlertPass({ now: NOW });
     expect(result).toEqual({ claimed: 1, evaluated: 1, matched: 1, notified: 0, failed: 0 });
-    expect(sendPushToOrg).not.toHaveBeenCalled();
-    expect(sendSlackToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
     const completion = completionWrites.at(-1)!;
     expect(completion["lastMatchAt"]).toEqual(new Date(NOW));
     expect(completion["lastAlertedAt"]).toBeUndefined();
@@ -238,7 +244,7 @@ describe("runLogAlertPass — cooldown", () => {
     });
     const result = await runLogAlertPass({ now: NOW });
     expect(result.notified).toBe(1);
-    expect(sendPushToOrg).toHaveBeenCalledTimes(1);
+    expect(routeAlert).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -247,7 +253,7 @@ describe("runLogAlertPass — no match", () => {
     getLogs.mockResolvedValue({ text: "all good\n", containers: [], activeContainer: "" });
     const result = await runLogAlertPass({ now: NOW });
     expect(result).toEqual({ claimed: 1, evaluated: 1, matched: 0, notified: 0, failed: 0 });
-    expect(sendPushToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
     const completion = completionWrites.at(-1)!;
     expect(completion["lastEvalAt"]).toEqual(new Date(NOW));
     expect(completion["lastMatchAt"]).toBeUndefined();
@@ -275,8 +281,8 @@ describe("runLogAlertPass — sidecar streams", () => {
       tailLines: LOG_WORKSPACE_LIMITS.alertTailLines,
     });
     // The notification names the stream through its parent, not the raw id.
-    const [, , msg] = sendPushToOrg.mock.calls[0]!;
-    expect(msg.body).toContain("prod-cluster/default:api-0");
+    const [event] = routeAlert.mock.calls[0]! as unknown as [{ body: string }];
+    expect(event.body).toContain("prod-cluster/default:api-0");
   });
 
   it("reports a gone parent instead of evaluating", async () => {
@@ -319,7 +325,7 @@ describe("runLogAlertPass — guard rails", () => {
     const result = await runLogAlertPass({ now: NOW });
     expect(result.failed).toBe(1);
     expect(getLogs).not.toHaveBeenCalled();
-    expect(sendPushToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
     expect(completionWrites.at(-1)!["lastEvalError"]).toMatch(/non-empty search/);
   });
 

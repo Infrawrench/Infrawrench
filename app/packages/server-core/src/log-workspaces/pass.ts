@@ -38,9 +38,7 @@ import { db } from "../db/client";
 import { logWorkspaceQueries, resources } from "../db/schema";
 import { getOrgAccountClient } from "../org-accounts";
 import { getClientForResource } from "../peer-clients";
-import { sendPushToOrg } from "../push/dispatch";
-import { sendSlackToOrg } from "../slack";
-import { sendMsTeamsToOrg } from "../msteams";
+import { alertReached, routeAlert } from "../alerts/route";
 import type { LogWorkspaceQueryRecord } from "./store";
 
 /** Lease written into `next_eval_at` by the claim. */
@@ -339,29 +337,22 @@ async function evaluateQuery(
       (lastSample ? ` — ${lastSample.slice(0, 200)}` : "");
     const url = logWorkspacesUrl(row.organizationId);
     const context = `Checked the last ${LOG_WORKSPACE_LIMITS.alertTailLines} lines per resource; next alert after the ${Math.round(LOG_WORKSPACE_LIMITS.alertCooldownMs / 60000)}-minute cooldown.`;
-    const pushed = await sendPushToOrg(row.organizationId, "logMatchAlerts", {
+    const routed = await routeAlert({
+      organizationId: row.organizationId,
+      trigger: "logMatchAlerts",
       title,
       body,
-      data: {
+      context,
+      url,
+      pushData: {
         type: "log_match",
         orgId: row.organizationId,
         queryId: row.id,
         matchCount: totalMatches,
       },
+      facts: { key: row.name },
     });
-    const slacked = await sendSlackToOrg(row.organizationId, "logMatchAlerts", {
-      title,
-      body,
-      context,
-      ...(url ? { url } : {}),
-    });
-    const teamed = await sendMsTeamsToOrg(row.organizationId, "logMatchAlerts", {
-      title,
-      body,
-      context,
-      ...(url ? { url } : {}),
-    });
-    const delivered = pushed.succeeded > 0 || slacked.succeeded > 0 || teamed.succeeded > 0;
+    const delivered = alertReached(routed);
     if (delivered) alertedAt = new Date(now);
     console.log(
       `[log-match] query ${row.id} ("${row.name}") matched ${totalMatches} line(s); ` +

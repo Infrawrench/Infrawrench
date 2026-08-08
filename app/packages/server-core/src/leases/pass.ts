@@ -35,10 +35,8 @@ import { db } from "../db/client";
 import { auditLogs, resourceLeases, resources } from "../db/schema";
 import { findActiveChangeFreeze } from "../change-freezes";
 import { getOrgAccountClient } from "../org-accounts";
-import { sendPushToOrg } from "../push/dispatch";
+import { routeAlert } from "../alerts/route";
 import { notifyResourceOwner } from "../ownership/notify";
-import { sendSlackToOrg } from "../slack";
-import { sendMsTeamsToOrg } from "../msteams";
 import type { LeaseRecord } from "./store";
 import {
   leaseOutcomeMessage,
@@ -145,61 +143,56 @@ async function guardedUpdate(
 }
 
 /**
- * Fan a lease message out on the `expiryAlerts` trigger — the same trio of
- * transports the expiry radar's daily digest uses. Returns how many
- * destinations were reached; a zero is logged, never thrown, and never blocks
- * the schedule (an org with no transports still gets its lease honored).
+ * Fan a lease message out on the `expiryAlerts` trigger — routed by the org's
+ * rules like every other alert. Returns how many destinations were reached; a
+ * zero is logged, never thrown, and never blocks the schedule (an org with no
+ * transports still gets its lease honored).
  *
  * When `resourceId` names a resource with a recorded owner, that person gets
  * the announcement on their own devices as well. A lease countdown is the
  * clearest case for owner routing in the product — "your test cluster is
  * deleted in 24 hours" is addressed to somebody in particular — but the org
  * fan-out still happens, so a colleague can act when the owner is away.
+ *
+ * The three per-transport try/catch blocks this replaced are now `routeAlert`'s
+ * job: it never throws, and a failing channel is counted rather than propagated.
+ *
+ * Takes the whole lease row rather than just its org id so the routing `facts`
+ * can carry the lease's scope. Without them an `accountId`, `pluginId` or
+ * `resourceTypeId` condition can never match a lease warning — a rule saying
+ * "expiries on the prod account go to #prod-oncall" would silently do nothing,
+ * which reads to the user as a broken rule rather than a missing fact.
  */
-async function notifyOrg(
-  organizationId: string,
-  message: LeaseMessage,
-  resourceId?: string,
-): Promise<number> {
-  let succeeded = 0;
+async function notifyOrg(row: LeaseRecord, message: LeaseMessage): Promise<number> {
   const body = message.lines.join("\n");
-  const ownerResult = await notifyResourceOwner(organizationId, resourceId, "expiryAlerts", () => ({
+  const routed = await routeAlert({
+    organizationId: row.organizationId,
+    trigger: "expiryAlerts",
     title: message.title,
-    body: `${body}\nYou are recorded as the owner.`,
-    data: { type: "expiry_alert", orgId: organizationId },
-  }));
-  succeeded += ownerResult.succeeded;
-  try {
-    const push = await sendPushToOrg(organizationId, "expiryAlerts", {
+    body,
+    pushData: { type: "expiry_alert", orgId: row.organizationId },
+    facts: {
+      accountId: row.accountId,
+      pluginId: row.pluginId,
+      resourceTypeId: row.resourceTypeId,
+      resourceId: row.resourceId,
+      key: row.displayName,
+    },
+  });
+  const ownerResult = await notifyResourceOwner(
+    row.organizationId,
+    row.resourceId,
+    "expiryAlerts",
+    () => ({
       title: message.title,
-      body,
-      data: { type: "expiry_alert", orgId: organizationId },
-    });
-    succeeded += push.succeeded;
-  } catch (e) {
-    console.error(`[leases] push fan-out failed for org ${organizationId}:`, e);
-  }
-  try {
-    const slack = await sendSlackToOrg(organizationId, "expiryAlerts", {
-      title: message.title,
-      body,
-    });
-    succeeded += slack.succeeded;
-  } catch (e) {
-    console.error(`[leases] Slack fan-out failed for org ${organizationId}:`, e);
-  }
-  try {
-    const msTeams = await sendMsTeamsToOrg(organizationId, "expiryAlerts", {
-      title: message.title,
-      body,
-    });
-    succeeded += msTeams.succeeded;
-  } catch (e) {
-    console.error(`[leases] Teams fan-out failed for org ${organizationId}:`, e);
-  }
+      body: `${body}\nYou are recorded as the owner.`,
+      data: { type: "expiry_alert", orgId: row.organizationId },
+    }),
+  );
+  const succeeded = routed.succeeded + routed.held + ownerResult.succeeded;
   if (succeeded === 0) {
     console.warn(
-      `[leases] lease announcement for org ${organizationId} reached no transports: ${message.title}`,
+      `[leases] lease announcement for org ${row.organizationId} reached no transports: ${message.title}`,
     );
   }
   return succeeded;
@@ -282,11 +275,7 @@ async function executeLease(
       now,
     );
     if (!recorded) return "noop"; // superseded by an edit — its schedule wins
-    await notifyOrg(
-      row.organizationId,
-      leaseWarningMessage(step.kind, messageInput(row), now),
-      row.resourceId,
-    );
+    await notifyOrg(row, leaseWarningMessage(step.kind, messageInput(row), now));
     console.log(
       `[leases] ${step.kind === "warn1" ? "first" : "final"} auto-delete warning sent for ` +
         `resource ${row.resourceId} (lease ${row.id})`,
@@ -353,11 +342,7 @@ async function executeLease(
         now,
       );
       await auditAutoDelete({ ...row, lastError: message }, "failed", now);
-      await notifyOrg(
-        row.organizationId,
-        leaseOutcomeMessage("failed", messageInput(row), message),
-        row.resourceId,
-      );
+      await notifyOrg(row, leaseOutcomeMessage("failed", messageInput(row), message));
     } else {
       await guardedUpdate(
         row,
@@ -409,11 +394,7 @@ async function executeLease(
     now,
   );
   await auditAutoDelete(row, "deleted", now);
-  await notifyOrg(
-    row.organizationId,
-    leaseOutcomeMessage("deleted", messageInput(row)),
-    row.resourceId,
-  );
+  await notifyOrg(row, leaseOutcomeMessage("deleted", messageInput(row)));
   return "deleted";
 }
 

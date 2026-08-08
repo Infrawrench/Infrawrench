@@ -2,11 +2,14 @@
  * Slack as an alert transport.
  *
  * An org installs the Infrawrench Slack app through the standard "Add to Slack"
- * OAuth flow; we keep the resulting bot token and post alerts into whichever
- * channels the org picked. A channel opts into each trigger independently — the
- * five mobile push has (sync incidents, budget alerts, cost anomalies, resource
- * drift, workflow pages) plus the channel-only weekly digest — so a channel can
- * take budget crossings without also taking every sync failure.
+ * OAuth flow; we keep the resulting bot token and post into whichever channels
+ * the org picked.
+ *
+ * This module knows nothing about triggers. It used to: every channel row
+ * carried a boolean per trigger and every send filtered on the matching column.
+ * Routing now lives in `alert_rules` (see `alerts/route.ts`), and a channel is
+ * addressed here by its stored row id, so "which alerts go to #incidents" is a
+ * question asked once, in one place, for all four transports.
  *
  * Config (env):
  *   SLACK_CLIENT_ID      — the Slack app's client id
@@ -20,14 +23,13 @@
  * the *inbound* half (`isSlackInboundConfigured()`): without it, alerts still
  * go out but `/infrawrench` commands and Approve/Deny buttons are refused.
  */
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import type { SlackAvailableChannel } from "@infrawrench/client-core";
 
 import { db } from "./db/client";
 import { slackChannels, slackInstallations } from "./db/schema";
 import { buildAad, decrypt, encrypt } from "./encryption";
-import type { ChannelTrigger } from "./push/types";
 
 const SLACK_API = "https://slack.com/api";
 
@@ -577,32 +579,26 @@ export function escapeMrkdwn(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-const TRIGGER_COLUMN = {
-  syncIncidents: slackChannels.syncIncidents,
-  budgetAlerts: slackChannels.budgetAlerts,
-  anomalyAlerts: slackChannels.anomalyAlerts,
-  metricAlerts: slackChannels.metricAlerts,
-  resourceDrift: slackChannels.resourceDrift,
-  workflowPages: slackChannels.workflowPages,
-  providerIncidents: slackChannels.providerIncidents,
-  expiryAlerts: slackChannels.expiryAlerts,
-  logMatchAlerts: slackChannels.logMatchAlerts,
-  postureAlerts: slackChannels.postureAlerts,
-  probeAlerts: slackChannels.probeAlerts,
-  weeklyDigest: slackChannels.weeklyDigest,
-} as const;
-
 interface TargetChannel {
   channelId: string;
   channelName: string;
   installationId: string;
 }
 
-/** Channels opted into `trigger`, across the org's live installs. */
-async function resolveTargets(
+/**
+ * Resolve stored channel-row ids (what an `alert_rules` destination holds) to
+ * postable channels, skipping any whose install has since been removed.
+ *
+ * This replaced a `TRIGGER_COLUMN` map and a `WHERE <trigger_column> = true`.
+ * Which alerts reach a channel is now `alert_rules`' business; this module's
+ * only remaining question is "given these channels, post this". That is what
+ * makes a new trigger cost nothing here.
+ */
+export async function resolveSlackChannels(
   organizationId: string,
-  trigger: ChannelTrigger,
+  rowIds: string[],
 ): Promise<TargetChannel[]> {
+  if (rowIds.length === 0) return [];
   return db
     .select({
       channelId: slackChannels.channelId,
@@ -614,10 +610,22 @@ async function resolveTargets(
     .where(
       and(
         eq(slackChannels.organizationId, organizationId),
-        eq(TRIGGER_COLUMN[trigger], true),
+        inArray(slackChannels.id, rowIds),
         isNull(slackInstallations.deletedAt),
       ),
     );
+}
+
+/** Every live channel the org has connected — what the default rule expands to. */
+export async function listLiveSlackChannelIds(organizationId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: slackChannels.id })
+    .from(slackChannels)
+    .innerJoin(slackInstallations, eq(slackInstallations.id, slackChannels.installationId))
+    .where(
+      and(eq(slackChannels.organizationId, organizationId), isNull(slackInstallations.deletedAt)),
+    );
+  return rows.map((r) => r.id);
 }
 
 /** Where one copy of a tracked alert landed, enough to update it in place. */
@@ -638,37 +646,38 @@ interface PostMessageResponse extends SlackEnvelope {
 }
 
 /**
- * Post one alert to every channel opted into `trigger`. Never throws — a Slack
- * outage must not fail the poller, the budget evaluator, or the workflow that
- * raised the alert. Per-channel errors are logged and counted as failures so
- * the caller can still tell whether anything landed.
+ * Post one alert to a specific set of stored channel rows. Never throws — a
+ * Slack outage must not fail the poller, the budget evaluator, or the workflow
+ * that raised the alert. Per-channel errors are logged and counted as failures
+ * so the caller can still tell whether anything landed.
  */
-export async function sendSlackToOrg(
+export async function sendSlackToChannels(
   organizationId: string,
-  trigger: ChannelTrigger,
+  rowIds: string[],
   alert: SlackAlert,
 ): Promise<SlackFanOutResult> {
-  const { attempted, succeeded, failed } = await sendSlackToOrgTracked(
+  const { attempted, succeeded, failed } = await sendSlackToChannelsTracked(
     organizationId,
-    trigger,
+    rowIds,
     alert,
   );
   return { attempted, succeeded, failed };
 }
 
 /**
- * `sendSlackToOrg`, but every delivered message comes back with its channel
- * and timestamp so the caller can later update it in place (approval requests
- * flip to "Approved by …" once decided). Same never-throws contract.
+ * `sendSlackToChannels`, but every delivered message comes back with its
+ * channel and timestamp so the caller can later update it in place — approval
+ * requests flip to "Approved by …" once decided, and an alert with an
+ * Acknowledge button flips to "Acked by …". Same never-throws contract.
  */
-export async function sendSlackToOrgTracked(
+export async function sendSlackToChannelsTracked(
   organizationId: string,
-  trigger: ChannelTrigger,
+  rowIds: string[],
   alert: SlackAlert,
 ): Promise<SlackTrackedFanOutResult> {
   try {
     if (!isSlackConfigured()) return { ...NO_DELIVERY, messages: [] };
-    const targets = await resolveTargets(organizationId, trigger);
+    const targets = await resolveSlackChannels(organizationId, rowIds);
     if (targets.length === 0) return { ...NO_DELIVERY, messages: [] };
 
     const installs = await loadInstallations(organizationId);
@@ -763,7 +772,7 @@ export async function postToSlackResponseUrl(
 
 /**
  * Send a one-off test message to every channel the org has added, regardless of
- * trigger opt-ins. Throws (unlike `sendSlackToOrg`) so the settings UI can show
+ * routing rules. Throws (unlike `sendSlackToChannels`) so the settings UI can show
  * the actual Slack error — `not_in_channel` on a private channel is the common
  * one, and the user needs to see it.
  */

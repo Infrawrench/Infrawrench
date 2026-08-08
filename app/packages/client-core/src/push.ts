@@ -1,4 +1,5 @@
 import type { CloudFetch } from "./fetch";
+import { DEFAULT_MUTED_TRIGGERS, type AlertTrigger } from "./alert-routing";
 
 /**
  * Device registration for mobile push. Server contract: user-scoped
@@ -228,52 +229,45 @@ export async function unregisterPushDevice(api: CloudFetch, deviceId: string): P
   await api.api(`/api/push/devices/${encodeURIComponent(deviceId)}`, { method: "DELETE" });
 }
 
+/**
+ * A member's own push mutes for one org.
+ *
+ * One array rather than eleven booleans: a trigger the member has not named is
+ * on, so a build that adds a trigger needs no migration and no client update to
+ * start delivering it. The shipped defaults for a member who has never saved
+ * anything are `DEFAULT_MUTED_TRIGGERS` in `alert-routing.ts`.
+ *
+ * This is the one piece of the old boolean matrix that stayed personal. Slack
+ * and Teams routing became org-level `alert_rules`; whether *your* phone rings
+ * is still yours.
+ */
 export interface PushPreferences {
-  syncIncidents: boolean;
-  budgetAlerts: boolean;
-  /** Statistical spend-spike (cost anomaly) alerts. */
-  anomalyAlerts: boolean;
-  /** Metric threshold rule firings and recoveries. */
-  metricAlerts: boolean;
-  /**
-   * Batched resource-drift digests from the change timeline. Defaults **off**:
-   * drift is continuous where the other alerts are exceptional.
-   */
-  resourceDrift: boolean;
-  /**
-   * Alerts raised by your own code — a workflow calling `infra.page(...)`, a
-   * run suspended on `infra.waitForApproval(...)`, or a server calling
-   * `POST /api/org/{orgId}/pages`.
-   */
-  workflowPages: boolean;
-  /** Provider status-page incidents overlapping resources the org holds. */
-  providerIncidents: boolean;
-  /** Daily digests of approaching resource deadlines (certs, domains, keys). */
-  expiryAlerts: boolean;
-  /** Saved log-query matches from the log workspace alert pass. */
-  logMatchAlerts: boolean;
-  /** Critical/high security posture findings from the posture alert pass. */
-  postureAlerts: boolean;
-  /** Synthetic probe down/recovered transitions. */
-  probeAlerts: boolean;
+  mutedTriggers: AlertTrigger[];
 }
 
 export async function getPushPreferences(api: CloudFetch, orgId: string): Promise<PushPreferences> {
   return (
     (await api.org<PushPreferences>(orgId, "/push/preferences")) ?? {
-      syncIncidents: true,
-      budgetAlerts: true,
-      anomalyAlerts: true,
-      metricAlerts: true,
-      resourceDrift: false,
-      workflowPages: true,
-      providerIncidents: true,
-      expiryAlerts: true,
-      logMatchAlerts: true,
-      postureAlerts: true,
-      probeAlerts: true,
+      mutedTriggers: [...DEFAULT_MUTED_TRIGGERS],
     }
   );
+}
+
+/** Whether `trigger` reaches this member's devices. */
+export function pushTriggerEnabled(prefs: PushPreferences, trigger: AlertTrigger): boolean {
+  return !prefs.mutedTriggers.includes(trigger);
+}
+
+/** Toggle one trigger, returning the new mute list. */
+export function withPushTrigger(
+  prefs: PushPreferences,
+  trigger: AlertTrigger,
+  enabled: boolean,
+): AlertTrigger[] {
+  const set = new Set(prefs.mutedTriggers);
+  if (enabled) set.delete(trigger);
+  else set.add(trigger);
+  return [...set];
 }
 
 export async function updatePushPreferences(

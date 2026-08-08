@@ -7,9 +7,9 @@ import { createHmac } from "node:crypto";
  *  - the signed install `state`, which is the only thing binding an OAuth
  *    round-trip to an org — a forgeable one would let anyone attach their
  *    workspace to someone else's org;
- *  - the fan-out, where the interesting behavior is that a channel only gets
- *    the triggers it opted into, and that alert text is escaped before it
- *    reaches Slack's mrkdwn parser.
+ *  - the fan-out, where the interesting behavior is that channels are addressed
+ *    by stored row id (routing itself is `alerts/route.ts`' job now), and that
+ *    alert text is escaped before it reaches Slack's mrkdwn parser.
  *
  * The DB is mocked with a chainable fake; `fetch` is spied on `globalThis`.
  */
@@ -34,9 +34,7 @@ const tables = {
     installationId: "installationId",
     channelId: "channelId",
     channelName: "channelName",
-    syncIncidents: "syncIncidents",
-    budgetAlerts: "budgetAlerts",
-    workflowPages: "workflowPages",
+    isPrivate: "isPrivate",
   },
 };
 vi.mock("../db/schema", () => tables);
@@ -160,13 +158,13 @@ describe("authorize URL", () => {
   });
 });
 
-describe("sendSlackToOrg", () => {
+describe("sendSlackToChannels", () => {
   const alert = { title: "Disk full", body: "node-1 at 98%" };
 
   it("is a no-op when the server has no Slack app", async () => {
     delete process.env["SLACK_CLIENT_ID"];
-    const { sendSlackToOrg } = await import("../slack");
-    expect(await sendSlackToOrg(ORG, "workflowPages", alert)).toEqual({
+    const { sendSlackToChannels } = await import("../slack");
+    expect(await sendSlackToChannels(ORG, ["row1"], alert)).toEqual({
       attempted: 0,
       succeeded: 0,
       failed: 0,
@@ -174,11 +172,11 @@ describe("sendSlackToOrg", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("is a no-op when no channel opted into the trigger", async () => {
+  it("is a no-op when the named rows resolve to nothing", async () => {
     installationRows = [installation()];
     channelRows = [];
-    const { sendSlackToOrg } = await import("../slack");
-    expect(await sendSlackToOrg(ORG, "budgetAlerts", alert)).toEqual({
+    const { sendSlackToChannels } = await import("../slack");
+    expect(await sendSlackToChannels(ORG, ["row1"], alert)).toEqual({
       attempted: 0,
       succeeded: 0,
       failed: 0,
@@ -186,14 +184,34 @@ describe("sendSlackToOrg", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("posts to every opted-in channel", async () => {
+  it("is a no-op when the rule named no channels at all, without querying", async () => {
+    // The empty-selection short circuit in `resolveSlackChannels` runs before
+    // the query. Worth its own case: a rule whose Slack destinations were all
+    // removed must not fall through to "every channel in the org", which is
+    // what an unguarded `inArray(…, [])` would risk.
     installationRows = [installation()];
+    channelRows = [{ id: "row1", channelId: "C1", channelName: "alerts", installationId: "inst1" }];
+    const { sendSlackToChannels } = await import("../slack");
+    expect(await sendSlackToChannels(ORG, [], alert)).toEqual({
+      attempted: 0,
+      succeeded: 0,
+      failed: 0,
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("posts to every named channel", async () => {
+    installationRows = [installation()];
+    // Ids match the ones requested below, so the fixture reads as the result of
+    // the `inArray(slackChannels.id, rowIds)` filter rather than as every row
+    // in the org. (The db fake ignores predicates; the filter itself is the
+    // query's job, covered by the route tests.)
     channelRows = [
-      { channelId: "C1", channelName: "alerts", installationId: "inst1" },
-      { channelId: "C2", channelName: "oncall", installationId: "inst1" },
+      { id: "row1", channelId: "C1", channelName: "alerts", installationId: "inst1" },
+      { id: "row2", channelId: "C2", channelName: "oncall", installationId: "inst1" },
     ];
-    const { sendSlackToOrg } = await import("../slack");
-    const result = await sendSlackToOrg(ORG, "syncIncidents", alert);
+    const { sendSlackToChannels } = await import("../slack");
+    const result = await sendSlackToChannels(ORG, ["row1", "row2"], alert);
     expect(result).toEqual({ attempted: 2, succeeded: 2, failed: 0 });
     expect(fetchSpy).toHaveBeenCalledTimes(2);
 
@@ -207,8 +225,8 @@ describe("sendSlackToOrg", () => {
     installationRows = [installation()];
     channelRows = [{ channelId: "C1", channelName: "secret", installationId: "inst1" }];
     fetchSpy.mockImplementation(async () => jsonResponse({ ok: false, error: "not_in_channel" }));
-    const { sendSlackToOrg } = await import("../slack");
-    expect(await sendSlackToOrg(ORG, "workflowPages", alert)).toEqual({
+    const { sendSlackToChannels } = await import("../slack");
+    expect(await sendSlackToChannels(ORG, ["row1"], alert)).toEqual({
       attempted: 1,
       succeeded: 0,
       failed: 1,
@@ -218,8 +236,8 @@ describe("sendSlackToOrg", () => {
   it("escapes mrkdwn delimiters in alert text", async () => {
     installationRows = [installation()];
     channelRows = [{ channelId: "C1", channelName: "alerts", installationId: "inst1" }];
-    const { sendSlackToOrg } = await import("../slack");
-    await sendSlackToOrg(ORG, "workflowPages", {
+    const { sendSlackToChannels } = await import("../slack");
+    await sendSlackToChannels(ORG, ["row1"], {
       title: "5 > 3",
       body: 'connect failed: <host "db" & port>',
     });
@@ -238,8 +256,8 @@ describe("sendSlackToOrg", () => {
     installationRows = [installation()];
     channelRows = [{ channelId: "C1", channelName: "alerts", installationId: "inst1" }];
     fetchSpy.mockRejectedValue(new Error("network down"));
-    const { sendSlackToOrg } = await import("../slack");
-    expect(await sendSlackToOrg(ORG, "workflowPages", alert)).toEqual({
+    const { sendSlackToChannels } = await import("../slack");
+    expect(await sendSlackToChannels(ORG, ["row1"], alert)).toEqual({
       attempted: 1,
       succeeded: 0,
       failed: 1,
@@ -247,12 +265,12 @@ describe("sendSlackToOrg", () => {
   });
 
   it("skips a channel whose install has been disconnected", async () => {
-    // resolveTargets joins on a live install, but the token map is built
+    // resolveSlackChannels joins on a live install, but the token map is built
     // separately — a row that survives the join without a token must not post.
     installationRows = [];
     channelRows = [{ channelId: "C1", channelName: "alerts", installationId: "gone" }];
-    const { sendSlackToOrg } = await import("../slack");
-    expect(await sendSlackToOrg(ORG, "workflowPages", alert)).toEqual({
+    const { sendSlackToChannels } = await import("../slack");
+    expect(await sendSlackToChannels(ORG, ["row1"], alert)).toEqual({
       attempted: 1,
       succeeded: 0,
       failed: 1,
@@ -329,8 +347,8 @@ describe("listSlackChannels", () => {
     channelRows = [
       { channelId: "C1", channelName: "alerts", installationId: "inst1", workflowPages: true },
     ];
-    const { sendSlackToOrg } = await import("../slack");
-    await sendSlackToOrg(ORG, "workflowPages", { title: "t", body: "b" });
+    const { sendSlackToChannels } = await import("../slack");
+    await sendSlackToChannels(ORG, ["row1"], { title: "t", body: "b" });
     const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
     expect((init.headers as Record<string, string>)["Content-Type"]).toMatch(/application\/json/);
   });
@@ -517,15 +535,15 @@ describe("slack link tokens", () => {
  * a Block Kit actions block, and each delivered message comes back with its
  * channel + ts so a decision can rewrite it later.
  */
-describe("sendSlackToOrgTracked", () => {
+describe("sendSlackToChannelsTracked", () => {
   it("renders buttons and returns the posted message refs", async () => {
     installationRows = [installation()];
     channelRows = [{ channelId: "C1", channelName: "approvals", installationId: "inst1" }];
     fetchSpy.mockImplementation(async () =>
       jsonResponse({ ok: true, ts: "1722700000.000100", channel: "C1" }),
     );
-    const { sendSlackToOrgTracked } = await import("../slack");
-    const result = await sendSlackToOrgTracked(ORG, "workflowPages", {
+    const { sendSlackToChannelsTracked } = await import("../slack");
+    const result = await sendSlackToChannelsTracked(ORG, ["row1"], {
       title: "Approval needed",
       body: "Roll the API to v42?",
       buttons: [
@@ -558,11 +576,11 @@ describe("sendSlackToOrgTracked", () => {
     });
   });
 
-  it("keeps sendSlackToOrg's shape for untracked callers", async () => {
+  it("keeps sendSlackToChannels' shape for untracked callers", async () => {
     installationRows = [installation()];
     channelRows = [{ channelId: "C1", channelName: "alerts", installationId: "inst1" }];
-    const { sendSlackToOrg } = await import("../slack");
-    expect(await sendSlackToOrg(ORG, "workflowPages", { title: "t", body: "b" })).toEqual({
+    const { sendSlackToChannels } = await import("../slack");
+    expect(await sendSlackToChannels(ORG, ["row1"], { title: "t", body: "b" })).toEqual({
       attempted: 1,
       succeeded: 1,
       failed: 0,

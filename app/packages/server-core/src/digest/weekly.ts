@@ -43,8 +43,7 @@ import { queryCosts } from "../clickhouse/cost-readers";
 import { listExpiring } from "../expiry/feed";
 import { MAX_RESOURCES_PER_PROJECTION, projectMonthlySpend } from "../cost/estimate";
 import { listPosture } from "../posture/feed";
-import { sendSlackToOrg } from "../slack";
-import { sendMsTeamsToOrg } from "../msteams";
+import { routeAlert } from "../alerts/route";
 import { isEmailConfigured, sendEmails, type EmailMessage } from "../email";
 import { generateDigestNarrative } from "./narrative";
 import {
@@ -357,27 +356,39 @@ export async function deliverWeeklyDigest(
     traceKey: `digest:${organizationId}:${digest.window.weekStart}:${origin}:${r.email}`,
   }));
 
-  const [slack, teams, email] = await Promise.all([
-    sendSlackToOrg(organizationId, "weeklyDigest", {
-      title,
-      body: formatDigestSlackBody(digest, narrative),
-      ...(context ? { context } : {}),
-      ...(url ? { url } : {}),
-    }),
-    sendMsTeamsToOrg(organizationId, "weeklyDigest", {
-      title,
-      body: formatDigestTeamsBody(digest, narrative),
-      ...(context ? { context } : {}),
-      ...(url ? { url } : {}),
-    }),
+  // `bypassQuietHours`: the digest already goes out at an hour the org chose
+  // in `org_digest_settings`, so letting a routing rule hold it until a
+  // *different* hour the org chose is two schedules arguing. Email is not a
+  // routable destination — the recipient list is an org-level address book
+  // that reaches people without an Infrawrench login — so it stays beside the
+  // routed transports rather than inside them.
+  const [routed, email] = await Promise.all([
+    routeAlert(
+      {
+        organizationId,
+        trigger: "weeklyDigest",
+        title,
+        body: formatDigestSlackBody(digest, narrative),
+        teamsBody: formatDigestTeamsBody(digest, narrative),
+        ...(context ? { context } : {}),
+        ...(url ? { url } : {}),
+      },
+      { bypassQuietHours: true },
+    ),
     sendEmails(emails, `digest for org ${organizationId}`),
   ]);
 
   return {
-    attempted: slack.attempted + teams.attempted + email.attempted,
-    succeeded: slack.succeeded + teams.succeeded + email.succeeded,
-    slack: { attempted: slack.attempted, succeeded: slack.succeeded },
-    teams: { attempted: teams.attempted, succeeded: teams.succeeded },
+    attempted: routed.attempted + email.attempted,
+    succeeded: routed.succeeded + email.succeeded,
+    slack: {
+      attempted: routed.attemptedByTransport.slack,
+      succeeded: routed.byTransport.slack,
+    },
+    teams: {
+      attempted: routed.attemptedByTransport.msTeams,
+      succeeded: routed.byTransport.msTeams,
+    },
     email: { attempted: email.attempted, succeeded: email.succeeded },
   };
 }

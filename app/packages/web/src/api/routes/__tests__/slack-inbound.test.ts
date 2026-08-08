@@ -36,7 +36,12 @@ vi.mock("@/db/schema", () => ({
   chatConversations: t("chatConversations", ["id"]),
 }));
 
-vi.mock("drizzle-orm", () => ({
+// Operators become inspectable sentinels for the fake db below. Spread over the
+// real module rather than replacing it: server-core's schema evaluates
+// `sql\`...\`` at import time, so an exhaustive list here breaks the moment a
+// route reaches a new corner of server-core.
+vi.mock("drizzle-orm", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("drizzle-orm")>()),
   and: (...a: unknown[]) => ({ and: a }),
   desc: (c: unknown) => ({ desc: c }),
   eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
@@ -123,6 +128,25 @@ vi.mock("@infrawrench/server-core/slack-approvals", () => ({
       return null;
     }
   },
+}));
+
+vi.mock("@infrawrench/server-core/alerts/route", () => ({
+  ALERT_ACK_ACTION_ID: "infrawrench_alert_ack",
+  parseAlertAckButtonValue: (raw: unknown) => {
+    if (typeof raw !== "string") return null;
+    try {
+      const p = JSON.parse(raw) as { o?: string; d?: string };
+      if (!p.o || !p.d) return null;
+      return { organizationId: p.o, deliveryId: p.d };
+    } catch {
+      return null;
+    }
+  },
+}));
+
+const acknowledgeAlert = vi.fn();
+vi.mock("@infrawrench/server-core/alerts/ack", () => ({
+  acknowledgeAlert: (...a: unknown[]) => acknowledgeAlert(...a),
 }));
 
 let memberPermissions: string[] = ["*"];
@@ -287,6 +311,7 @@ beforeEach(() => {
   tableRows["slackUserLinks"] = [];
   verifySignature.mockReturnValue(true);
   decideWorkflowApproval.mockResolvedValue({ outcome: "decided", approval: {} });
+  acknowledgeAlert.mockResolvedValue({ acknowledged: true, title: "Budget exceeded" });
   executePendingAction.mockResolvedValue({ allResolved: true });
   rejectPendingAction.mockResolvedValue({ allResolved: true });
   postToSlackResponseUrl.mockResolvedValue(undefined);
@@ -621,6 +646,118 @@ describe("POST /api/slack/interactions — workflow approval buttons", () => {
     expect(res.status).toBe(200);
     await flushAsync();
     expect(decideWorkflowApproval).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/slack/interactions — alert acknowledge button", () => {
+  const ACK_VALUE = { o: "org-1", d: "del-1" };
+  const ack = (value: unknown = ACK_VALUE, signature = "good") =>
+    interactionRequest("infrawrench_alert_ack", value, signature);
+
+  it("rejects a bad signature", async () => {
+    verifySignature.mockReturnValue(false);
+    const res = await ack(ACK_VALUE, "forged");
+    expect(res.status).toBe(401);
+    await flushAsync();
+    expect(acknowledgeAlert).not.toHaveBeenCalled();
+  });
+
+  it("sends an unlinked clicker the link prompt, acknowledges nothing", async () => {
+    const res = await ack();
+    expect(res.status).toBe(200);
+    await flushAsync();
+    expect(acknowledgeAlert).not.toHaveBeenCalled();
+    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("isn't linked");
+  });
+
+  it("refuses a button whose echoed value names an org the clicker isn't linked in", async () => {
+    // Same trust boundary as the approval buttons: membership resolves from the
+    // org in the (attacker-controllable) value, not from any org the clicker
+    // happens to be linked in.
+    linkedAstrid();
+    await ack({ o: "org-2", d: "del-1" });
+    await flushAsync();
+    expect(acknowledgeAlert).not.toHaveBeenCalled();
+    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("isn't linked");
+  });
+
+  it("acknowledges as the linked member and confirms the escalation is cancelled", async () => {
+    linkedAstrid();
+    await ack();
+    await flushAsync();
+    expect(acknowledgeAlert).toHaveBeenCalledWith({
+      deliveryId: "del-1",
+      organizationId: "org-1",
+      userId: "user-1",
+      via: "slack",
+    });
+    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain(
+      'escalation for \\"Budget exceeded\\" is cancelled',
+    );
+  });
+
+  it("tells a clicker who lost the race that someone already acknowledged", async () => {
+    linkedAstrid();
+    acknowledgeAlert.mockResolvedValue({
+      acknowledged: false,
+      reason: "already_acknowledged",
+      alreadyAcknowledgedBy: "user-2",
+    });
+    await ack();
+    await flushAsync();
+    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("already acknowledged");
+  });
+
+  it("says so when the alert escalated before the click landed", async () => {
+    linkedAstrid();
+    acknowledgeAlert.mockResolvedValue({ acknowledged: false, reason: "already_escalated" });
+    await ack();
+    await flushAsync();
+    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("already escalated");
+  });
+
+  it("says so when the delivery is no longer tracked", async () => {
+    linkedAstrid();
+    acknowledgeAlert.mockResolvedValue({ acknowledged: false, reason: "not_found" });
+    await ack();
+    await flushAsync();
+    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain(
+      "no longer waiting on an acknowledgement",
+    );
+  });
+
+  it("says the same for a row that was never awaiting an acknowledgement", async () => {
+    // `not_pending` covers held, sent and expired rows. Reporting "somebody
+    // already acknowledged that" for one of those would name an event that
+    // never happened.
+    linkedAstrid();
+    acknowledgeAlert.mockResolvedValue({ acknowledged: false, reason: "not_pending" });
+    await ack();
+    await flushAsync();
+    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain(
+      "no longer waiting on an acknowledgement",
+    );
+  });
+
+  it("refuses a linked member without org:settings:write", async () => {
+    // Acknowledging cancels the escalation for the whole org, so it takes the
+    // same permission as the web endpoint. `acknowledgeAlert` only arbitrates
+    // races — it is not an authorization check — so a read-only member reaching
+    // it would silence everyone's page.
+    linkedAstrid();
+    memberPermissions = ["resources:read"];
+    await ack();
+    await flushAsync();
+    expect(acknowledgeAlert).not.toHaveBeenCalled();
+    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("org:settings:write");
+  });
+
+  it("ignores a malformed button value", async () => {
+    linkedAstrid();
+    const res = await ack("not-json{");
+    expect(res.status).toBe(200);
+    await flushAsync();
+    expect(acknowledgeAlert).not.toHaveBeenCalled();
   });
 });
 

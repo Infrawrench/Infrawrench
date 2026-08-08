@@ -17,9 +17,7 @@ import { and, eq, isNull, ne } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { accounts, providerStatusIncidents, providerStatusNotifications } from "../db/schema.js";
 import { loadPlugins } from "../plugin-loader.js";
-import { sendPushToOrg } from "../push/dispatch.js";
-import { sendSlackToOrg } from "../slack.js";
-import { sendMsTeamsToOrg } from "../msteams.js";
+import { alertReached, routeAlert } from "../alerts/route.js";
 import { matchIncidentsForOrg, type IncidentMatch } from "./match.js";
 
 type IncidentRow = typeof providerStatusIncidents.$inferSelect;
@@ -132,62 +130,35 @@ async function notifyOneOrg(
     const title = `${providerName}: ${impactLabel.toLowerCase()} upstream`;
     const url = incident.url ?? undefined;
 
-    // Each transport is isolated: a Slack outage must not skip Teams (or
-    // vice versa). Only unclaim when *nothing* landed, so a later tick can
-    // retry once the org has a working channel.
-    let delivered = 0;
+    // Transport isolation used to be three try/catch blocks here; it is
+    // `routeAlert`'s contract now — it never throws and a failing channel is
+    // counted rather than propagated, so a Slack outage still cannot skip
+    // Teams. Only unclaim when *nothing* landed, so a later tick can retry
+    // once the org has a working channel.
+    const routed = await routeAlert({
+      organizationId,
+      trigger: "providerIncidents",
+      title,
+      body,
+      context,
+      ...(url ? { url } : {}),
+      pushData: {
+        type: "provider_incident",
+        orgId: organizationId,
+        pluginId: incident.pluginId,
+        incidentId: incident.id,
+        affectedResourceCount: match.affectedResourceCount,
+      },
+      // The provider is the useful axis here — "route AWS incidents to the
+      // team that runs on AWS" — and an upstream incident spans the org, so it
+      // deliberately carries no account.
+      facts: { pluginId: incident.pluginId, key: providerName },
+    });
 
-    try {
-      const push = await sendPushToOrg(organizationId, "providerIncidents", {
-        title,
-        body,
-        data: {
-          type: "provider_incident",
-          orgId: organizationId,
-          pluginId: incident.pluginId,
-          incidentId: incident.id,
-          affectedResourceCount: match.affectedResourceCount,
-        },
-      });
-      delivered += push.succeeded;
-    } catch (err) {
-      console.error(
-        `[poller] provider-incident push for org ${organizationId} (${incident.id}) failed:`,
-        err,
-      );
-    }
-
-    try {
-      const slack = await sendSlackToOrg(organizationId, "providerIncidents", {
-        title,
-        body,
-        context,
-        ...(url ? { url } : {}),
-      });
-      delivered += slack.succeeded;
-    } catch (err) {
-      console.error(
-        `[poller] provider-incident slack for org ${organizationId} (${incident.id}) failed:`,
-        err,
-      );
-    }
-
-    try {
-      const msTeams = await sendMsTeamsToOrg(organizationId, "providerIncidents", {
-        title,
-        body,
-        context,
-        ...(url ? { url } : {}),
-      });
-      delivered += msTeams.succeeded;
-    } catch (err) {
-      console.error(
-        `[poller] provider-incident msteams for org ${organizationId} (${incident.id}) failed:`,
-        err,
-      );
-    }
-
-    if (delivered === 0) {
+    // A hold keeps the claim: the row is the exactly-once token for
+    // (incident, org), and releasing it because the message has not gone out
+    // *yet* would let the next tick claim and queue a second copy.
+    if (!alertReached(routed)) {
       // Nothing landed — release the claim so a later tick retries once the
       // org has a working transport. Conditional on our own row id, so a
       // concurrent re-claim can't be deleted from under its owner.

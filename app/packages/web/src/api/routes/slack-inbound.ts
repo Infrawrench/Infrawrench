@@ -37,6 +37,12 @@ import { and, desc, eq, ilike, inArray, isNull, or } from "drizzle-orm";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 
 import {
+  ALERT_ACK_ACTION_ID,
+  parseAlertAckButtonValue,
+} from "@infrawrench/server-core/alerts/route";
+import { acknowledgeAlert } from "@infrawrench/server-core/alerts/ack";
+
+import {
   escapeMrkdwn,
   isSlackInboundConfigured,
   postToSlackResponseUrl,
@@ -622,6 +628,70 @@ export async function handleBlockAction(payload: SlackInteractionPayload): Promi
       return;
     }
     await respond({ response_type: "ephemeral", replace_original: true, ...message });
+    return;
+  }
+
+  /* ---- alert acknowledgement ---- */
+  if (action.action_id === ALERT_ACK_ACTION_ID) {
+    const value = parseAlertAckButtonValue(action.value);
+    if (!value) return;
+
+    // Same trust boundary as the approval buttons: a click carries only a
+    // Slack user id, and nothing is honoured until that resolves through
+    // `slack_user_links` to a member of the org named in the button.
+    const member = await linkedMemberForOrg(value.organizationId, teamId, slackUserId);
+    if (!member) {
+      const installs = await liveInstallOrgs(teamId);
+      await respond(linkPrompt(installs, teamId, slackUserId));
+      return;
+    }
+
+    // Same gate as POST /alert-rules/deliveries/:id/ack. Membership alone is
+    // not enough: acknowledging cancels the escalation, which is the org
+    // deciding nobody else needs to be woken up. `acknowledgeAlert` only
+    // arbitrates between two people racing for the same row — it is not an
+    // authorization check — so without this a read-only member could silence
+    // the page for everyone.
+    if (
+      !hasPermission(
+        await memberPermissions(value.organizationId, member.userId),
+        "org:settings:write",
+      )
+    ) {
+      await respond(ephemeral("You need the org:settings:write permission to acknowledge alerts."));
+      return;
+    }
+
+    const result = await acknowledgeAlert({
+      deliveryId: value.deliveryId,
+      organizationId: value.organizationId,
+      userId: member.userId,
+      via: "slack",
+    });
+
+    if (result.acknowledged) {
+      // Ephemeral rather than a message rewrite: the alert text is still the
+      // useful thing in the channel, and a `chat.update` would overwrite it.
+      // Only the clicking user sees this confirmation — the durable record of
+      // who took it is the `alert_deliveries` row, not the channel.
+      await respond(
+        ephemeral(
+          `Acknowledged — escalation for "${escapeMrkdwn(result.title ?? "this alert")}" is cancelled.`,
+        ),
+      );
+      return;
+    }
+    if (result.reason === "already_escalated") {
+      await respond(
+        ephemeral("That alert already escalated — the escalation channel has been notified."),
+      );
+      return;
+    }
+    if (result.reason === "not_found" || result.reason === "not_pending") {
+      await respond(ephemeral("That alert is no longer waiting on an acknowledgement."));
+      return;
+    }
+    await respond(ephemeral("Someone already acknowledged that alert."));
     return;
   }
 

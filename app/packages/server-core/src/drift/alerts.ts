@@ -38,9 +38,7 @@
 import { and, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts, orgDriftAlertSettings, resourceChanges } from "../db/schema";
-import { sendPushToOrg } from "../push/dispatch";
-import { sendSlackToOrg } from "../slack";
-import { sendMsTeamsToOrg } from "../msteams";
+import { routeAlert } from "../alerts/route";
 import type { ResourceChangeEvent } from "../resource-changes";
 import { getDriftAlertSettings, type DriftAlertSettings } from "./settings";
 import {
@@ -262,10 +260,16 @@ async function deliverWindow(
   const context = driftContext(summary);
   const url = changesUrl(organizationId);
 
-  const push = await sendPushToOrg(organizationId, "resourceDrift", {
+  const routed = await routeAlert({
+    organizationId,
+    trigger: "resourceDrift",
     title,
-    body: formatDriftPushBody(summary),
-    data: {
+    body: formatDriftSlackBody(summary),
+    teamsBody: formatDriftTeamsBody(summary),
+    pushBody: formatDriftPushBody(summary),
+    context,
+    url,
+    pushData: {
       type: "resource_drift",
       orgId: organizationId,
       changeCount: summary.total,
@@ -274,36 +278,29 @@ async function deliverWindow(
         ? { accountId: summary.accountIds[0] }
         : {}),
     },
+    // A window that covered exactly one account can be routed per account; one
+    // that spanned several deliberately carries no `accountId`, so an
+    // account-scoped rule does not claim a digest that is mostly about others.
+    facts:
+      summary.accountIds.length === 1 && summary.accountIds[0]
+        ? { accountId: summary.accountIds[0] }
+        : {},
   });
-  delivery.succeeded += push.succeeded;
+  delivery.succeeded += routed.succeeded + routed.held;
 
-  const slack = await sendSlackToOrg(organizationId, "resourceDrift", {
-    title,
-    body: formatDriftSlackBody(summary),
-    context,
-    ...(url ? { url } : {}),
-  });
-  delivery.succeeded += slack.succeeded;
-
-  const msTeams = await sendMsTeamsToOrg(organizationId, "resourceDrift", {
-    title,
-    body: formatDriftTeamsBody(summary),
-    context,
-    ...(url ? { url } : {}),
-  });
-  delivery.succeeded += msTeams.succeeded;
-
-  // Nobody is opted in (the common case for a default-off trigger), or every
-  // transport failed. Either way this window was not spent — the guard rolls
-  // the claim back on the way out.
+  // Nobody is routed here (the common case for a trigger the default rule
+  // excludes), or every transport failed. Either way this window was not spent
+  // — the guard rolls the claim back on the way out. A quiet-hours hold counts
+  // as spent: those changes *will* be reported, and rewinding `since` would
+  // report them a second time alongside the held copy.
   if (delivery.succeeded === 0) return { status: "undelivered", changes: summary.total };
 
   return {
     status: "sent",
     changes: summary.total,
-    push: push.succeeded,
-    slack: slack.succeeded,
-    msTeams: msTeams.succeeded,
+    push: routed.byTransport.push,
+    slack: routed.byTransport.slack,
+    msTeams: routed.byTransport.msTeams,
   };
 }
 

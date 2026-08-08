@@ -29,9 +29,7 @@ import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { itemsWithinLead } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { accounts, orgExpirySettings } from "../db/schema";
-import { sendPushToOrg } from "../push/dispatch";
-import { sendSlackToOrg } from "../slack";
-import { sendMsTeamsToOrg } from "../msteams";
+import { routeAlert } from "../alerts/route";
 import { listExpiring } from "./feed";
 import { getExpirySettings, type ExpirySettingsRecord } from "./settings";
 import {
@@ -243,40 +241,32 @@ async function deliverWindow(
   const context = expiryContext(summary);
   const url = expiringUrl(organizationId);
 
-  const push = await sendPushToOrg(organizationId, "expiryAlerts", {
-    title,
-    body: formatExpiryPushBody(summary),
-    data: { type: "expiry_alert", orgId: organizationId },
-  });
-  delivery.succeeded += push.succeeded;
-
-  const slack = await sendSlackToOrg(organizationId, "expiryAlerts", {
+  const routed = await routeAlert({
+    organizationId,
+    trigger: "expiryAlerts",
     title,
     body: formatExpirySlackBody(summary),
+    teamsBody: formatExpiryTeamsBody(summary),
+    pushBody: formatExpiryPushBody(summary),
     context,
-    ...(url ? { url } : {}),
+    url,
+    pushData: { type: "expiry_alert", orgId: organizationId },
   });
-  delivery.succeeded += slack.succeeded;
+  // A hold counts as spent: the digest *will* arrive, and rewinding the claim
+  // would rebuild the same window and deliver it twice.
+  delivery.succeeded += routed.succeeded + routed.held;
 
-  const msTeams = await sendMsTeamsToOrg(organizationId, "expiryAlerts", {
-    title,
-    body: formatExpiryTeamsBody(summary),
-    context,
-    ...(url ? { url } : {}),
-  });
-  delivery.succeeded += msTeams.succeeded;
-
-  // Nobody is opted in, or every transport failed. Either way this window was
-  // not spent — the guard rolls the claim back on the way out so the next tick
-  // can retry instead of waiting out a cooldown nobody heard about.
+  // Nobody is routed here, or every transport failed. Either way this window
+  // was not spent — the guard rolls the claim back on the way out so the next
+  // tick can retry instead of waiting out a cooldown nobody heard about.
   if (delivery.succeeded === 0) return { status: "undelivered", deadlines: due.length };
 
   return {
     status: "sent",
     deadlines: due.length,
-    push: push.succeeded,
-    slack: slack.succeeded,
-    msTeams: msTeams.succeeded,
+    push: routed.byTransport.push,
+    slack: routed.byTransport.slack,
+    msTeams: routed.byTransport.msTeams,
   };
 }
 

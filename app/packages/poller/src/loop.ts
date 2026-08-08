@@ -13,6 +13,7 @@ import { runLeasePass } from "@infrawrench/server-core/leases/pass";
 import { runLogAlertPass } from "@infrawrench/server-core/log-workspaces/pass";
 import { runMetricAlertPass } from "@infrawrench/server-core/metric-alerts/pass";
 import { runProbePass } from "@infrawrench/server-core/probes/pass";
+import { pruneAlertDeliveries, runAlertFollowUpPass } from "@infrawrench/server-core/alerts/pass";
 import {
   pruneResourceChanges,
   CHANGE_RETENTION_INTERVAL_MS,
@@ -176,6 +177,14 @@ export class PollerLoop extends TickLoop {
     // silently when the proxy env isn't configured. Defensive like the
     // others.
     await this.tickProbes();
+
+    // Twelfth pass: alert follow-up. Releases quiet-hours holds whose window
+    // has closed and escalates alerts nobody acknowledged, both claimed with
+    // the same `FOR UPDATE SKIP LOCKED` lease the account claim uses (the
+    // lease lives in the row's own deadline column). Cheap when idle — two
+    // indexed range scans that usually return nothing. Defensive like the
+    // others.
+    await this.tickAlertFollowUp();
   }
 
   private async runOne(row: PollAccountRow): Promise<void> {
@@ -357,6 +366,28 @@ export class PollerLoop extends TickLoop {
       await pruneCreditSnapshots();
     } catch (e) {
       console.error("[poller] credit snapshot retention tick failed:", e);
+    }
+    // Delivery rows ride the same hourly clock rather than their own: the work
+    // is idempotent and tiny, and a second in-process timer would be a second
+    // thing to reason about for no benefit.
+    try {
+      await pruneAlertDeliveries();
+    } catch (e) {
+      console.error("[poller] alert delivery retention failed:", e);
+    }
+  }
+
+  /** Release held alerts and escalate unacknowledged ones. */
+  private async tickAlertFollowUp(): Promise<void> {
+    try {
+      const stats = await runAlertFollowUpPass();
+      if (stats.flushed > 0 || stats.escalated > 0) {
+        console.log(
+          `[poller] alert follow-up: released ${stats.flushed} held, escalated ${stats.escalated}`,
+        );
+      }
+    } catch (e) {
+      console.error("[poller] alert follow-up tick failed:", e);
     }
   }
 

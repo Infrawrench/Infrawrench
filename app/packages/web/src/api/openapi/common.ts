@@ -1,3 +1,4 @@
+import { ALERT_SEVERITIES, ALERT_TRIGGERS } from "@infrawrench/client-core";
 import { z } from "./zod";
 import { ALL_PERMISSIONS } from "@infrawrench/server-core/permissions";
 
@@ -109,3 +110,31 @@ export const ErrorResponses = {
     content: { "application/json": { schema: ErrorResponse } },
   },
 } as const;
+
+/**
+ * Trigger ids, as an enum so a client sees the list rather than "some string".
+ *
+ * Sourced from the shared registry (`client-core/src/alert-routing.ts`), which
+ * is the same list the server routes on — adding a trigger regenerates this
+ * enum and needs no edit here. That is the point of the routing table: what
+ * used to be a column in three schemas is a value in one list.
+ *
+ * Registered here rather than in a paths module because push preferences, alert
+ * rules and the delivery queue all reference it, and registering the same
+ * component name twice is an error.
+ */
+export const AlertTriggerEnum = z
+  .enum(ALERT_TRIGGERS.map((t) => t.id) as [string, ...string[]])
+  .openapi("AlertTrigger", { description: "A kind of alert that can be routed." });
+
+/**
+ * How loud an alert is, independent of which trigger raised it.
+ *
+ * Derived from `ALERT_SEVERITIES` rather than spelled out, for the same reason
+ * as the trigger enum above: the ordered registry in client-core is the source
+ * of truth, and a hardcoded copy here would drift silently the day a level is
+ * added.
+ */
+export const AlertSeverityEnum = z
+  .enum(ALERT_SEVERITIES as [string, ...string[]])
+  .openapi("AlertSeverity", { description: "Alert severity, ordered info < warning < critical." });

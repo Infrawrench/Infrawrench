@@ -2,11 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildTestApp } from "./test-utils";
 
 /**
- * Regression coverage for the channel upsert: re-adding an existing channel
- * must not reset per-trigger opt-ins the request omitted. The channel row is
- * upserted (`onConflictDoUpdate`), so the conflict-update SET must contain a
- * trigger column only when the request explicitly sent it — defaults belong
- * to the INSERT half only.
+ * The channel upsert. Adding a channel no longer decides what it receives —
+ * that moved to `alert_rules` — so a channel row is just an identity plus a
+ * cached name, and the upsert exists to make re-adding an existing channel
+ * idempotent.
+ *
+ * What still needs pinning is the conflict half: it refreshes the name but must
+ * not clobber a stored field the request omitted (`isPrivate` is the only one
+ * left), and the org must own the installation before anything is written.
  */
 const mockInsert = vi.fn();
 const mockSelect = vi.fn();
@@ -73,29 +76,26 @@ describe("POST /channels upsert", () => {
     mockLiveInstallations();
   });
 
-  it("applies trigger defaults on insert", async () => {
+  it("inserts the channel under the caller's org with the name normalised", async () => {
     const captured = mockUpsert();
     const res = await postChannel({});
     expect(res.status).toBe(200);
     expect(captured.values).toMatchObject({
-      logMatchAlerts: true,
-      probeAlerts: true,
-      expiryAlerts: true,
-      postureAlerts: true,
-      metricAlerts: true,
-      weeklyDigest: true,
-      resourceDrift: false, // the one trigger that defaults off
+      organizationId: "org-1",
+      installationId: "inst-1",
+      channelId: "C1",
+      channelName: "alerts", // the leading "#" is display sugar, not stored
+      isPrivate: false,
     });
   });
 
-  it("leaves omitted triggers unchanged when re-adding an existing channel", async () => {
+  it("carries no trigger opt-ins — what a channel receives lives in alert_rules", async () => {
     const captured = mockUpsert();
-    const res = await postChannel({});
+    const res = await postChannel({ logMatchAlerts: false, weeklyDigest: true });
     expect(res.status).toBe(200);
-    // A channel whose logMatchAlerts (or any other trigger) was disabled must
-    // keep that stored value: the conflict-update SET may not mention it.
-    for (const column of [
-      "isPrivate",
+    // Trigger names in the body are inert. Were any of them to reach the row
+    // again, routing would have two sources of truth that could disagree.
+    for (const trigger of [
       "syncIncidents",
       "budgetAlerts",
       "anomalyAlerts",
@@ -109,20 +109,33 @@ describe("POST /channels upsert", () => {
       "probeAlerts",
       "weeklyDigest",
     ]) {
-      expect(captured.set, column).not.toHaveProperty(column);
+      expect(captured.values, trigger).not.toHaveProperty(trigger);
+      expect(captured.set, trigger).not.toHaveProperty(trigger);
     }
-    expect(captured.set).toMatchObject({ channelName: "alerts" });
   });
 
-  it("updates exactly the triggers the request explicitly sets", async () => {
+  it("refreshes the cached name on re-add without touching omitted fields", async () => {
     const captured = mockUpsert();
-    const res = await postChannel({ logMatchAlerts: false, weeklyDigest: true });
+    const res = await postChannel({});
     expect(res.status).toBe(200);
-    expect(captured.set).toMatchObject({ logMatchAlerts: false, weeklyDigest: true });
-    expect(captured.set).not.toHaveProperty("expiryAlerts");
-    expect(captured.set).not.toHaveProperty("metricAlerts");
-    expect(captured.set).not.toHaveProperty("postureAlerts");
-    expect(captured.values).toMatchObject({ logMatchAlerts: false, weeklyDigest: true });
+    expect(captured.set).toMatchObject({ channelName: "alerts" });
+    // The request said nothing about visibility, so the stored value stands.
+    expect(captured.set).not.toHaveProperty("isPrivate");
+  });
+
+  it("updates isPrivate when the request states it", async () => {
+    const captured = mockUpsert();
+    const res = await postChannel({ isPrivate: true });
+    expect(res.status).toBe(200);
+    expect(captured.values).toMatchObject({ isPrivate: true });
+    expect(captured.set).toMatchObject({ isPrivate: true });
+  });
+
+  it("400s on a missing channel id or name, writing nothing", async () => {
+    mockUpsert();
+    expect((await postChannel({ channelId: "  " })).status).toBe(400);
+    expect((await postChannel({ channelName: "#" })).status).toBe(400);
+    expect(mockInsert).not.toHaveBeenCalled();
   });
 
   it("404s when the installation does not belong to the org", async () => {

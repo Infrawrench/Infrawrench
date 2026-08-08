@@ -29,9 +29,7 @@ import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { alertablePostureFindings } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { accounts, orgPostureSettings } from "../db/schema";
-import { sendPushToOrg } from "../push/dispatch";
-import { sendSlackToOrg } from "../slack";
-import { sendMsTeamsToOrg } from "../msteams";
+import { routeAlert } from "../alerts/route";
 import { listPosture } from "./feed";
 import { getPostureSettings, type PostureSettingsRecord } from "./settings";
 import {
@@ -236,40 +234,31 @@ async function deliverWindow(
   const context = postureContext();
   const url = postureUrl(organizationId);
 
-  const push = await sendPushToOrg(organizationId, "postureAlerts", {
-    title,
-    body: formatPosturePushBody(summary),
-    data: { type: "posture_alert", orgId: organizationId },
-  });
-  delivery.succeeded += push.succeeded;
-
-  const slack = await sendSlackToOrg(organizationId, "postureAlerts", {
+  const routed = await routeAlert({
+    organizationId,
+    trigger: "postureAlerts",
     title,
     body: formatPostureSlackBody(summary),
+    teamsBody: formatPostureTeamsBody(summary),
+    pushBody: formatPosturePushBody(summary),
     context,
-    ...(url ? { url } : {}),
+    url,
+    pushData: { type: "posture_alert", orgId: organizationId },
   });
-  delivery.succeeded += slack.succeeded;
+  // A hold counts as spent — see the same note in `drift/alerts.ts`.
+  delivery.succeeded += routed.succeeded + routed.held;
 
-  const msTeams = await sendMsTeamsToOrg(organizationId, "postureAlerts", {
-    title,
-    body: formatPostureTeamsBody(summary),
-    context,
-    ...(url ? { url } : {}),
-  });
-  delivery.succeeded += msTeams.succeeded;
-
-  // Nobody is opted in, or every transport failed. Either way this window was
-  // not spent — the guard rolls the claim back on the way out so the next
+  // Nobody is routed here, or every transport failed. Either way this window
+  // was not spent — the guard rolls the claim back on the way out so the next
   // tick can retry instead of waiting out a cooldown nobody heard about.
   if (delivery.succeeded === 0) return { status: "undelivered", findings: alertable.length };
 
   return {
     status: "sent",
     findings: alertable.length,
-    push: push.succeeded,
-    slack: slack.succeeded,
-    msTeams: msTeams.succeeded,
+    push: routed.byTransport.push,
+    slack: routed.byTransport.slack,
+    msTeams: routed.byTransport.msTeams,
   };
 }
 

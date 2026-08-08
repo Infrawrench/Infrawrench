@@ -83,6 +83,7 @@ import { slackInboundRoutes } from "./routes/slack-inbound";
 import { msteamsRoutes } from "./routes/msteams";
 import { digestRoutes } from "./routes/digest";
 import { pushDeviceRoutes, pushOrgRoutes } from "./routes/push-devices";
+import alertRuleRoutes from "./routes/alert-rules";
 
 // API-key-authed; handles its own auth.
 import { syncRoutes } from "./routes/sync";
@@ -302,6 +303,7 @@ orgScoped.route("/slack", slackRoutes);
 orgScoped.route("/msteams", msteamsRoutes);
 orgScoped.route("/digest", digestRoutes);
 orgScoped.route("/push", pushOrgRoutes);
+orgScoped.route("/alert-rules", alertRuleRoutes);
 
 api.route("/api/org/:orgId", orgScoped);
 

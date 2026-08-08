@@ -25,8 +25,14 @@ import {
 
 import { db } from "../db/client";
 import { workflowApprovals, workflows } from "../db/schema";
-import { appPath, fanOutApprovalRequest, formatApprovalExpiry } from "../approvals/notify";
-import { updateSlackApprovalMessages } from "../slack-approvals";
+import { appPath, formatApprovalExpiry } from "../approvals/notify";
+import { routeAlert } from "../alerts/route";
+import { settleDeliveriesForPushTarget } from "../alerts/ack";
+import {
+  recordSlackApprovalMessages,
+  slackApprovalButtons,
+  updateSlackApprovalMessages,
+} from "../slack-approvals";
 import { sendOneShotPage } from "../twilio-pager";
 import { workflowPageCooldownStore } from "./paging";
 
@@ -111,20 +117,17 @@ function approvalsUrl(organizationId: string): string | null {
 /**
  * Fan an approval request out over every transport the org has configured.
  *
- * Push, Slack and Teams go through the shared `approvals/notify.ts` fan-out,
- * which break-glass access requests use too; only the wording and the deep
- * link differ. It reuses the `workflowPages` trigger rather than adding a sixth
- * column to three tables, for the reason API pages do: an approval *is*
- * something asking for a human, the opt-in a member or channel already made is
- * the same one, and the user-facing label ("Pages") already covers it. The
- * `workflow_pages` columns on `slack_channels` and `msteams_webhooks` predate
- * that change — only the push transport was wired, which is what the follow-up
- * was about.
+ * Reuses the `workflowPages` trigger rather than inventing one, for the reason
+ * API pages do: an approval *is* a workflow asking for a human, the routing an
+ * org already wrote for pages is the routing it wants for this, and the
+ * user-facing label ("Pages") already covers it. Adding a trigger is cheap now
+ * — one registry entry — but a trigger nobody would route differently is still
+ * a trigger nobody wants to configure.
  *
- * The SMS leg stays here rather than in the shared module: it is throttled on a
- * key only this caller knows (the workflow), and the two callers' cooldown
- * stories differ enough that folding them in would take more parameters than it
- * saved.
+ * The SMS leg stays here rather than in the shared approvals module: it is
+ * throttled on a key only this caller knows (the workflow), and the two
+ * callers' cooldown stories differ enough that folding them in would take more
+ * parameters than it saved.
  *
  * SMS rides `sendOneShotPage` (the same one-shot path budget alerts and
  * `infra.page` use), SMS-only: an approval blocks a run until a human answers,
@@ -161,29 +164,70 @@ async function notifyApprovalRequest(args: {
   const requester = requesterText(ctx.triggerSource);
   const expiry = formatApprovalExpiry(expiresAt, timeoutMinutes);
 
-  await fanOutApprovalRequest({
-    organizationId: ctx.organizationId,
-    kind: "workflow",
-    approvalId,
-    title,
-    message,
-    detailLines: [
-      `Workflow: ${ctx.workflowName} · run ${runId}`,
-      `Requested by: the run, ${requester}`,
-      `Timeout: ${expiry} — no decision counts as a denial.`,
-    ],
-    context: `${ctx.workflowName} · run ${runId} · ${expiry}`,
-    url: approvalsUrl(ctx.organizationId),
-    push: {
-      type: "workflow_approval",
-      orgId: ctx.organizationId,
-      workflowId: ctx.workflowId,
-      runId,
-      approvalId,
+  const detail =
+    `${message}\n\n` +
+    `Workflow: ${ctx.workflowName} · run ${runId}\n` +
+    `Requested by: the run, ${requester}\n` +
+    `Timeout: ${expiry} — no decision counts as a denial.`;
+  const context = `${ctx.workflowName} · run ${runId} · ${expiry}`;
+  const url = approvalsUrl(ctx.organizationId);
+
+  // Slack renders `*bold*`; the Teams Adaptive Card escaper turns `*` into a
+  // literal asterisk, so it gets the same text with the markup left out — the
+  // split the weekly digest and drift alerts already use. Slack's copy carries
+  // Approve/Deny buttons and is tracked so a decision can retire every copy in
+  // place — the buttons resolve through `decideWorkflowApproval`, the same
+  // conditional UPDATE the web UI uses.
+  //
+  // `bypassQuietHours`: an approval request has a timeout and no decision
+  // counts as a denial, so holding it until morning would silently deny the
+  // run. Quiet hours are for alerts you can read later; this is not one.
+  const routed = await routeAlert(
+    {
+      organizationId: ctx.organizationId,
+      trigger: "workflowPages",
+      title: `Approval needed: ${title}`,
+      body:
+        `*${ctx.workflowName}* needs a decision before run \`${runId}\` can continue.\n\n` + detail,
+      teamsBody:
+        `${ctx.workflowName} needs a decision before run ${runId} can continue.\n\n` + detail,
+      pushBody: message,
+      context,
+      ...(url ? { url } : {}),
+      pushData: {
+        type: "workflow_approval",
+        orgId: ctx.organizationId,
+        workflowId: ctx.workflowId,
+        runId,
+        approvalId,
+      },
+      facts: { key: ctx.workflowName },
     },
-    slackLead: `*${ctx.workflowName}* needs a decision before run \`${runId}\` can continue.`,
-    teamsLead: `${ctx.workflowName} needs a decision before run ${runId} can continue.`,
-  });
+    {
+      track: true,
+      bypassQuietHours: true,
+      slackButtons: slackApprovalButtons({
+        kind: "workflow",
+        approvalId,
+        organizationId: ctx.organizationId,
+      }),
+    },
+  );
+  try {
+    await recordSlackApprovalMessages(
+      ctx.organizationId,
+      "workflow",
+      approvalId,
+      routed.slackMessages,
+      // The decided/expired rendering, should the recorder find the request
+      // already settled: the same title/body every later update uses.
+      { title: `Approval needed: ${title}`, body: message },
+    );
+  } catch (err) {
+    // Losing the refs only costs the in-place update later; the buttons still
+    // work, so this must not fail the fan-out.
+    console.error(`[approvals] recording Slack messages for ${approvalId} failed:`, err);
+  }
 
   await pageAboutApproval(
     ctx,
@@ -246,11 +290,28 @@ function sleep(ms: number): Promise<void> {
  * already stopped listening for. Fire-and-forget: the updater never throws.
  */
 async function expirePending(approvalId: string): Promise<void> {
-  const [expired] = await db
-    .update(workflowApprovals)
-    .set({ status: "expired", decidedAt: new Date() })
-    .where(and(eq(workflowApprovals.id, approvalId), eq(workflowApprovals.status, "pending")))
-    .returning();
+  // Decision and delivery settlement share one transaction: a status that
+  // lands while the escalate clock keeps running is the failure mode settle
+  // exists to prevent, and fire-and-forget would reintroduce it.
+  const expired = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(workflowApprovals)
+      .set({ status: "expired", decidedAt: new Date() })
+      .where(and(eq(workflowApprovals.id, approvalId), eq(workflowApprovals.status, "pending")))
+      .returning();
+    if (!row) return null;
+    // `expired`, not `acknowledged`: the request timed out and nobody decided,
+    // so there is no acknowledgement to record — but the escalation clock still
+    // has to stop, or it would page about a request the run has already given up on.
+    await settleDeliveriesForPushTarget({
+      organizationId: row.organizationId,
+      field: "approvalId",
+      value: approvalId,
+      state: "expired",
+      executor: tx,
+    });
+    return row;
+  });
   if (!expired) return;
   void updateSlackApprovalMessages(expired.organizationId, "workflow", approvalId, {
     decision: "expired",
@@ -431,30 +492,77 @@ export async function decideWorkflowApproval(
   if (!existing) return { outcome: "not_found" };
 
   const now = new Date();
-  const [updated] = await db
-    .update(workflowApprovals)
-    .set({
-      status: decision,
-      decidedAt: now,
-      decidedByUserId: decidedBy.userId,
-      decidedByName: decidedBy.name ?? null,
-    })
-    .where(
-      and(
-        eq(workflowApprovals.id, approvalId),
-        eq(workflowApprovals.organizationId, organizationId),
-        eq(workflowApprovals.status, "pending"),
-      ),
-    )
-    .returning();
-  if (!updated) return { outcome: "conflict" };
-  // Deciding after the timeout passed but before the run's poll marked the row
-  // is still a conflict: the run will treat it as expired, so don't pretend.
-  if (updated.expiresAt.getTime() <= now.getTime() && decision === "approved") {
-    await db
+  // Decision and delivery settlement share one transaction so a landed decision
+  // cannot leave the escalation clock armed (the failure settle exists to stop).
+  // Slack updates stay outside: they are best-effort external I/O and must not
+  // roll back a decision that already has a durable row.
+  type TxOutcome =
+    | { kind: "conflict" }
+    | { kind: "late_expired"; title: string; message: string }
+    | { kind: "decided"; approval: WorkflowApprovalSummary; title: string; message: string };
+
+  const outcome = await db.transaction(async (tx): Promise<TxOutcome> => {
+    const [updated] = await tx
       .update(workflowApprovals)
-      .set({ status: "expired" })
-      .where(eq(workflowApprovals.id, approvalId));
+      .set({
+        status: decision,
+        decidedAt: now,
+        decidedByUserId: decidedBy.userId,
+        decidedByName: decidedBy.name ?? null,
+      })
+      .where(
+        and(
+          eq(workflowApprovals.id, approvalId),
+          eq(workflowApprovals.organizationId, organizationId),
+          eq(workflowApprovals.status, "pending"),
+        ),
+      )
+      .returning();
+    if (!updated) return { kind: "conflict" };
+
+    // Deciding after the timeout passed but before the run's poll marked the row
+    // is still a conflict: the run will treat it as expired, so don't pretend.
+    if (updated.expiresAt.getTime() <= now.getTime() && decision === "approved") {
+      await tx
+        .update(workflowApprovals)
+        .set({ status: "expired" })
+        .where(eq(workflowApprovals.id, approvalId));
+      // Same reason as the Slack update below: this is the one path where the
+      // run's poll never calls `expirePending`, so nothing else stops the
+      // escalation clock on the rows this request armed.
+      await settleDeliveriesForPushTarget({
+        organizationId,
+        field: "approvalId",
+        value: approvalId,
+        state: "expired",
+        executor: tx,
+      });
+      return { kind: "late_expired", title: updated.title, message: updated.message };
+    }
+
+    // Deciding *is* acknowledging: somebody looked at the request and acted, so
+    // the escalation this request armed has nothing left to escalate. Recorded
+    // against the decider, so the delivery history names who took it.
+    await settleDeliveriesForPushTarget({
+      organizationId,
+      field: "approvalId",
+      value: approvalId,
+      state: "acknowledged",
+      userId: decidedBy.userId,
+      via: opts.decidedVia === "Slack" ? "slack" : "web",
+      executor: tx,
+    });
+    return {
+      kind: "decided",
+      approval: toSummary(updated, null),
+      title: updated.title,
+      message: updated.message,
+    };
+  });
+
+  if (outcome.kind === "conflict") return { outcome: "conflict" };
+
+  if (outcome.kind === "late_expired") {
     // The Slack copies must land on "expired" here too — this path is the one
     // where the run's poll never gets to call expirePending (the row left
     // `pending` under the late approval), so nothing else retires them.
@@ -462,11 +570,12 @@ export async function decideWorkflowApproval(
       decision: "expired",
       decidedByName: decidedBy.name ?? null,
       via: opts.decidedVia ?? "the web app",
-      title: `Approval needed: ${updated.title}`,
-      body: updated.message,
+      title: `Approval needed: ${outcome.title}`,
+      body: outcome.message,
     });
     return { outcome: "conflict" };
   }
+
   // Retire any interactive Slack copies of this request: buttons off, outcome
   // and decider shown in place, threaded reply for the channel's history.
   // Fire-and-forget (the updater never throws) — the decision is already
@@ -475,8 +584,8 @@ export async function decideWorkflowApproval(
     decision,
     decidedByName: decidedBy.name ?? null,
     via: opts.decidedVia ?? "the web app",
-    title: `Approval needed: ${updated.title}`,
-    body: updated.message,
+    title: `Approval needed: ${outcome.title}`,
+    body: outcome.message,
   });
-  return { outcome: "decided", approval: toSummary(updated, null) };
+  return { outcome: "decided", approval: outcome.approval };
 }

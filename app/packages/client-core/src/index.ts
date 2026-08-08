@@ -36,6 +36,8 @@ export {
   unregisterPushDevice,
   getPushPreferences,
   updatePushPreferences,
+  pushTriggerEnabled,
+  withPushTrigger,
   type RegisterPushTokenArgs,
   type PushDeviceSummary,
   type PushNotificationData,
@@ -53,7 +55,6 @@ export {
   type SlackStatus,
   type SlackInstallation,
   type SlackChannel,
-  type SlackChannelTriggers,
   type SlackAvailableChannel,
   type SlackTestResult,
   type AddSlackChannelArgs,
@@ -66,7 +67,6 @@ export {
   sendMsTeamsTestMessage,
   type MsTeamsStatus,
   type MsTeamsWebhook,
-  type MsTeamsWebhookTriggers,
   type MsTeamsTestResult,
   type AddMsTeamsWebhookArgs,
 } from "./msteams";
@@ -387,6 +387,7 @@ export * from "./status-pages";
 export * from "./ownership";
 export * from "./log-workspaces";
 export * from "./log-discovery";
+export * from "./alert-routing";
 export * from "./metric-alerts";
 export * from "./rightsizing";
 export * from "./session-recordings";
