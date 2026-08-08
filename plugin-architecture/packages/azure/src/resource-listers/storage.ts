@@ -18,8 +18,7 @@ export async function listStorageAccounts(
     // The Storage RP spells the CMK block lowercase; accept both spellings.
     const encryption = props?.["encryption"] as Record<string, unknown> | undefined;
     const kvProps = (encryption?.["keyvaultproperties"] ?? encryption?.["keyVaultProperties"]) as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     const keyVaultName = extractVaultName(
       String(kvProps?.["keyvaulturi"] ?? kvProps?.["keyVaultUri"] ?? ""),
     );

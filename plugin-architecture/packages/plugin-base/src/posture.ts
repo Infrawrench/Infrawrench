@@ -22,11 +22,7 @@ export type PostureSeverity = "critical" | "high" | "medium" | "low";
 
 /** Grouping bucket for what kind of exposure a rule describes. */
 export type PostureCategory =
-  | "public-exposure"
-  | "encryption"
-  | "credential-age"
-  | "data-protection"
-  | "other";
+  "public-exposure" | "encryption" | "credential-age" | "data-protection" | "other";
 
 /**
  * One predicate inside a {@link PostureCheckRule}. All conditions must hold.

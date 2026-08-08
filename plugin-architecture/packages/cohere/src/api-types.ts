@@ -58,13 +58,7 @@ export interface CohereModel {
  * model is not discoverable through the endpoint filter.
  */
 export type CompatibleEndpoint =
-  | "chat"
-  | "embed"
-  | "classify"
-  | "summarize"
-  | "rerank"
-  | "rate"
-  | "generate";
+  "chat" | "embed" | "classify" | "summarize" | "rerank" | "rate" | "generate";
 
 export interface ListModelsResponse {
   models?: CohereModel[];

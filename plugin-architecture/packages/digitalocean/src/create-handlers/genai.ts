@@ -633,8 +633,7 @@ export async function genaiCreateResource(args: DoCreateArgs): Promise<ResourceI
     const uuid = String(r["uuid"] ?? "");
     const now = new Date().toISOString();
     const respConfig = r["config"] as
-      | { policies?: unknown[]; fallback_models?: unknown[] }
-      | undefined;
+      { policies?: unknown[]; fallback_models?: unknown[] } | undefined;
     const respFallback = Array.isArray(respConfig?.fallback_models)
       ? (respConfig.fallback_models as string[])
       : [];

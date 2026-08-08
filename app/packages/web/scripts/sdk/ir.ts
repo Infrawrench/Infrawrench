@@ -400,8 +400,7 @@ function lowerOperation(
     ? {
         required: raw.requestBody?.required === true,
         encoding: (bodyContent.mediaType.includes("multipart") ? "multipart" : "json") as
-          | "json"
-          | "multipart",
+          "json" | "multipart",
         type: toTypeRef(bodyContent.schema),
       }
     : null;

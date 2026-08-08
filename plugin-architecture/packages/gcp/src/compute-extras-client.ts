@@ -100,8 +100,7 @@ export async function listCloudTasksQueueTasks(
     const name = String(t["name"] ?? "");
     const shortName = name.split("/").pop() ?? name;
     const httpRequest = (t["httpRequest"] ?? t["appEngineHttpRequest"]) as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     return {
       name,
       shortName,

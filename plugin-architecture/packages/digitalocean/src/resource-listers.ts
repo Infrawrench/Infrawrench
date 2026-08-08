@@ -515,14 +515,10 @@ export function mapDroplet(
   // enable. We surface the next-window start so the button conditional can
   // fall back on it regardless of when DO eventually flips `features`.
   const nextBackupWindow = d["next_backup_window"] as
-    | { start?: string; end?: string }
-    | null
-    | undefined;
+    { start?: string; end?: string } | null | undefined;
   const nextBackupStart = nextBackupWindow?.start ?? "";
   const backupPolicy = d["backup_policy"] as
-    | { plan?: string; hour?: number; weekday?: string }
-    | null
-    | undefined;
+    { plan?: string; hour?: number; weekday?: string } | null | undefined;
   const parentResourceId = ctx.parentResourceIdForUrn(
     accountId,
     `do:droplet:${String(d["id"])}`,

@@ -33,8 +33,7 @@ export async function deleteCloudFanoutSnippet(orgId: string, id: string): Promi
 }
 
 export type CloudFanoutRunResult =
-  | { kind: "results"; results: FanoutHostResult[] }
-  | { kind: "freeze"; message: string };
+  { kind: "results"; results: FanoutHostResult[] } | { kind: "freeze"; message: string };
 
 export async function runCloudFanout(
   orgId: string,

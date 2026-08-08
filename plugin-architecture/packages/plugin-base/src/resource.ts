@@ -11,13 +11,7 @@ export type { AssociationSource };
  * value. Leaving it blank means "keep the current secret".
  */
 export type FieldKind =
-  | "string"
-  | "number"
-  | "boolean"
-  | "enum"
-  | "secret"
-  | "association"
-  | "password";
+  "string" | "number" | "boolean" | "enum" | "secret" | "association" | "password";
 
 export interface FieldDefinition {
   key: string;

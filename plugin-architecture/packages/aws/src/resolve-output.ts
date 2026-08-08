@@ -45,8 +45,7 @@ export async function resolveOutput(
       if (!cert) return "";
       if (outputKey === "dnsRecords") {
         const domainValidationOptions = cert["DomainValidationOptions"] as
-          | Record<string, unknown>[]
-          | undefined;
+          Record<string, unknown>[] | undefined;
         if (!domainValidationOptions) return "";
         const records = domainValidationOptions
           .map((dvo) => {
@@ -63,8 +62,7 @@ export async function resolveOutput(
       }
       if (outputKey === "domainValidationStatus") {
         const domainValidationOptions = cert["DomainValidationOptions"] as
-          | Record<string, unknown>[]
-          | undefined;
+          Record<string, unknown>[] | undefined;
         if (!domainValidationOptions) return "";
         return domainValidationOptions
           .map((dvo) => {

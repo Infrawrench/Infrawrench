@@ -48,8 +48,7 @@ export interface SshFanoutRunRequest {
 }
 
 export type SshFanoutRunOutcome =
-  | { kind: "results"; results: FanoutHostResult[] }
-  | { kind: "freeze"; message: string };
+  { kind: "results"; results: FanoutHostResult[] } | { kind: "freeze"; message: string };
 
 export interface SshFanoutViewProps {
   targets: SshFanoutTargetInfo[];

@@ -348,8 +348,7 @@ export async function computeCreateResource(args: DoCreateArgs): Promise<Resourc
     });
     const d = data.droplet;
     const networks = d["networks"] as
-      | { v4?: Array<{ type: string; ip_address: string }> }
-      | undefined;
+      { v4?: Array<{ type: string; ip_address: string }> } | undefined;
     const publicIp = networks?.v4?.find((n) => n.type === "public")?.ip_address ?? "";
     const privateIp = networks?.v4?.find((n) => n.type === "private")?.ip_address ?? "";
 

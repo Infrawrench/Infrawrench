@@ -92,8 +92,7 @@ export async function getSystemRole(
 }
 
 export type Principal =
-  | { kind: "user"; userId: string }
-  | { kind: "apiKey"; scopes: readonly string[] };
+  { kind: "user"; userId: string } | { kind: "apiKey"; scopes: readonly string[] };
 
 export interface EffectiveAccess {
   permissions: readonly string[];

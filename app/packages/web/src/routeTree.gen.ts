@@ -9,65 +9,55 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as AdminRouteImport } from './routes/admin'
-import { Route as OrgOrgIdRouteImport } from './routes/org.$orgId'
-import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as DeploySplatRouteImport } from './routes/deploy.$'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as OrgOrgIdRouteImport } from './routes/org.$orgId'
 import { Route as OrgOrgIdIndexRouteImport } from './routes/org.$orgId.index'
-import { Route as OrgOrgIdWorkflowsRouteImport } from './routes/org.$orgId.workflows'
-import { Route as OrgOrgIdSshFanoutRouteImport } from './routes/org.$orgId.ssh-fanout'
-import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settings'
-import { Route as OrgOrgIdSavingsRouteImport } from './routes/org.$orgId.savings'
-import { Route as OrgOrgIdProbesRouteImport } from './routes/org.$orgId.probes'
-import { Route as OrgOrgIdPostureRouteImport } from './routes/org.$orgId.posture'
-import { Route as OrgOrgIdMomentRouteImport } from './routes/org.$orgId.moment'
-import { Route as OrgOrgIdMetricAlertsRouteImport } from './routes/org.$orgId.metric-alerts'
-import { Route as OrgOrgIdLogsRouteImport } from './routes/org.$orgId.logs'
-import { Route as OrgOrgIdGraphRouteImport } from './routes/org.$orgId.graph'
-import { Route as OrgOrgIdExpiringRouteImport } from './routes/org.$orgId.expiring'
-import { Route as OrgOrgIdDeploymentsRouteImport } from './routes/org.$orgId.deployments'
-import { Route as OrgOrgIdCostsRouteImport } from './routes/org.$orgId.costs'
-import { Route as OrgOrgIdChatRouteImport } from './routes/org.$orgId.chat'
-import { Route as OrgOrgIdChangesRouteImport } from './routes/org.$orgId.changes'
 import { Route as OrgOrgIdAgentsRouteImport } from './routes/org.$orgId.agents'
-import { Route as OrgOrgIdSettingsIndexRouteImport } from './routes/org.$orgId.settings.index'
-import { Route as OrgOrgIdChatIndexRouteImport } from './routes/org.$orgId.chat.index'
-import { Route as OrgOrgIdSettingsTeamRouteImport } from './routes/org.$orgId.settings.team'
-import { Route as OrgOrgIdSettingsTagPolicyRouteImport } from './routes/org.$orgId.settings.tag-policy'
-import { Route as OrgOrgIdSettingsSshKeysRouteImport } from './routes/org.$orgId.settings.ssh-keys'
-import { Route as OrgOrgIdSettingsSshHostKeysRouteImport } from './routes/org.$orgId.settings.ssh-host-keys'
-import { Route as OrgOrgIdSettingsRolesRouteImport } from './routes/org.$orgId.settings.roles'
-import { Route as OrgOrgIdSettingsPagingRouteImport } from './routes/org.$orgId.settings.paging'
-import { Route as OrgOrgIdSettingsFreezesRouteImport } from './routes/org.$orgId.settings.freezes'
-import { Route as OrgOrgIdSettingsBillingRouteImport } from './routes/org.$orgId.settings.billing'
-import { Route as OrgOrgIdSettingsBastionsRouteImport } from './routes/org.$orgId.settings.bastions'
-import { Route as OrgOrgIdSettingsAuditLogRouteImport } from './routes/org.$orgId.settings.audit-log'
-import { Route as OrgOrgIdSettingsApprovalsRouteImport } from './routes/org.$orgId.settings.approvals'
-import { Route as OrgOrgIdSettingsApiKeysRouteImport } from './routes/org.$orgId.settings.api-keys'
-import { Route as OrgOrgIdDashboardDashboardIdRouteImport } from './routes/org.$orgId.dashboard.$dashboardId'
-import { Route as OrgOrgIdChatConversationIdRouteImport } from './routes/org.$orgId.chat.$conversationId'
+import { Route as OrgOrgIdChangesRouteImport } from './routes/org.$orgId.changes'
+import { Route as OrgOrgIdChatRouteImport } from './routes/org.$orgId.chat'
+import { Route as OrgOrgIdCostsRouteImport } from './routes/org.$orgId.costs'
+import { Route as OrgOrgIdDeploymentsRouteImport } from './routes/org.$orgId.deployments'
+import { Route as OrgOrgIdExpiringRouteImport } from './routes/org.$orgId.expiring'
+import { Route as OrgOrgIdGraphRouteImport } from './routes/org.$orgId.graph'
+import { Route as OrgOrgIdLogsRouteImport } from './routes/org.$orgId.logs'
+import { Route as OrgOrgIdMetricAlertsRouteImport } from './routes/org.$orgId.metric-alerts'
+import { Route as OrgOrgIdMomentRouteImport } from './routes/org.$orgId.moment'
+import { Route as OrgOrgIdPostureRouteImport } from './routes/org.$orgId.posture'
+import { Route as OrgOrgIdProbesRouteImport } from './routes/org.$orgId.probes'
+import { Route as OrgOrgIdSavingsRouteImport } from './routes/org.$orgId.savings'
+import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settings'
+import { Route as OrgOrgIdSshFanoutRouteImport } from './routes/org.$orgId.ssh-fanout'
+import { Route as OrgOrgIdWorkflowsRouteImport } from './routes/org.$orgId.workflows'
 import { Route as OrgOrgIdAccountsAccountIdRouteImport } from './routes/org.$orgId.accounts.$accountId'
+import { Route as OrgOrgIdChatIndexRouteImport } from './routes/org.$orgId.chat.index'
+import { Route as OrgOrgIdChatConversationIdRouteImport } from './routes/org.$orgId.chat.$conversationId'
+import { Route as OrgOrgIdDashboardDashboardIdRouteImport } from './routes/org.$orgId.dashboard.$dashboardId'
+import { Route as OrgOrgIdSettingsIndexRouteImport } from './routes/org.$orgId.settings.index'
+import { Route as OrgOrgIdSettingsApiKeysRouteImport } from './routes/org.$orgId.settings.api-keys'
+import { Route as OrgOrgIdSettingsApprovalsRouteImport } from './routes/org.$orgId.settings.approvals'
+import { Route as OrgOrgIdSettingsAuditLogRouteImport } from './routes/org.$orgId.settings.audit-log'
+import { Route as OrgOrgIdSettingsBastionsRouteImport } from './routes/org.$orgId.settings.bastions'
+import { Route as OrgOrgIdSettingsBillingRouteImport } from './routes/org.$orgId.settings.billing'
+import { Route as OrgOrgIdSettingsFreezesRouteImport } from './routes/org.$orgId.settings.freezes'
+import { Route as OrgOrgIdSettingsPagingRouteImport } from './routes/org.$orgId.settings.paging'
+import { Route as OrgOrgIdSettingsRolesRouteImport } from './routes/org.$orgId.settings.roles'
+import { Route as OrgOrgIdSettingsSshHostKeysRouteImport } from './routes/org.$orgId.settings.ssh-host-keys'
+import { Route as OrgOrgIdSettingsSshKeysRouteImport } from './routes/org.$orgId.settings.ssh-keys'
+import { Route as OrgOrgIdSettingsTagPolicyRouteImport } from './routes/org.$orgId.settings.tag-policy'
+import { Route as OrgOrgIdSettingsTeamRouteImport } from './routes/org.$orgId.settings.team'
 import { Route as OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRouteImport } from './routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId'
 
-const OnboardingRoute = OnboardingRouteImport.update({
-  id: '/onboarding',
-  path: '/onboarding',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
-const OrgOrgIdRoute = OrgOrgIdRouteImport.update({
-  id: '/org/$orgId',
-  path: '/org/$orgId',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const InviteTokenRoute = InviteTokenRouteImport.update({
-  id: '/invite/$token',
-  path: '/invite/$token',
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DeploySplatRoute = DeploySplatRouteImport.update({
@@ -75,84 +65,19 @@ const DeploySplatRoute = DeploySplatRouteImport.update({
   path: '/deploy/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OrgOrgIdRoute = OrgOrgIdRouteImport.update({
+  id: '/org/$orgId',
+  path: '/org/$orgId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OrgOrgIdIndexRoute = OrgOrgIdIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => OrgOrgIdRoute,
-} as any)
-const OrgOrgIdWorkflowsRoute = OrgOrgIdWorkflowsRouteImport.update({
-  id: '/workflows',
-  path: '/workflows',
-  getParentRoute: () => OrgOrgIdRoute,
-} as any)
-const OrgOrgIdSshFanoutRoute = OrgOrgIdSshFanoutRouteImport.update({
-  id: '/ssh-fanout',
-  path: '/ssh-fanout',
-  getParentRoute: () => OrgOrgIdRoute,
-} as any)
-const OrgOrgIdSettingsRoute = OrgOrgIdSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => OrgOrgIdRoute,
-} as any)
-const OrgOrgIdSavingsRoute = OrgOrgIdSavingsRouteImport.update({
-  id: '/savings',
-  path: '/savings',
-  getParentRoute: () => OrgOrgIdRoute,
-} as any)
-const OrgOrgIdProbesRoute = OrgOrgIdProbesRouteImport.update({
-  id: '/probes',
-  path: '/probes',
-  getParentRoute: () => OrgOrgIdRoute,
-} as any)
-const OrgOrgIdPostureRoute = OrgOrgIdPostureRouteImport.update({
-  id: '/posture',
-  path: '/posture',
-  getParentRoute: () => OrgOrgIdRoute,
-} as any)
-const OrgOrgIdMomentRoute = OrgOrgIdMomentRouteImport.update({
-  id: '/moment',
-  path: '/moment',
-  getParentRoute: () => OrgOrgIdRoute,
-} as any)
-const OrgOrgIdMetricAlertsRoute = OrgOrgIdMetricAlertsRouteImport.update({
-  id: '/metric-alerts',
-  path: '/metric-alerts',
-  getParentRoute: () => OrgOrgIdRoute,
-} as any)
-const OrgOrgIdLogsRoute = OrgOrgIdLogsRouteImport.update({
-  id: '/logs',
-  path: '/logs',
-  getParentRoute: () => OrgOrgIdRoute,
-} as any)
-const OrgOrgIdGraphRoute = OrgOrgIdGraphRouteImport.update({
-  id: '/graph',
-  path: '/graph',
-  getParentRoute: () => OrgOrgIdRoute,
-} as any)
-const OrgOrgIdExpiringRoute = OrgOrgIdExpiringRouteImport.update({
-  id: '/expiring',
-  path: '/expiring',
-  getParentRoute: () => OrgOrgIdRoute,
-} as any)
-const OrgOrgIdDeploymentsRoute = OrgOrgIdDeploymentsRouteImport.update({
-  id: '/deployments',
-  path: '/deployments',
-  getParentRoute: () => OrgOrgIdRoute,
-} as any)
-const OrgOrgIdCostsRoute = OrgOrgIdCostsRouteImport.update({
-  id: '/costs',
-  path: '/costs',
-  getParentRoute: () => OrgOrgIdRoute,
-} as any)
-const OrgOrgIdChatRoute = OrgOrgIdChatRouteImport.update({
-  id: '/chat',
-  path: '/chat',
-  getParentRoute: () => OrgOrgIdRoute,
-} as any)
-const OrgOrgIdChangesRoute = OrgOrgIdChangesRouteImport.update({
-  id: '/changes',
-  path: '/changes',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdAgentsRoute = OrgOrgIdAgentsRouteImport.update({
@@ -160,62 +85,118 @@ const OrgOrgIdAgentsRoute = OrgOrgIdAgentsRouteImport.update({
   path: '/agents',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
-const OrgOrgIdSettingsIndexRoute = OrgOrgIdSettingsIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => OrgOrgIdSettingsRoute,
+const OrgOrgIdChangesRoute = OrgOrgIdChangesRouteImport.update({
+  id: '/changes',
+  path: '/changes',
+  getParentRoute: () => OrgOrgIdRoute,
 } as any)
+const OrgOrgIdChatRoute = OrgOrgIdChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdCostsRoute = OrgOrgIdCostsRouteImport.update({
+  id: '/costs',
+  path: '/costs',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdDeploymentsRoute = OrgOrgIdDeploymentsRouteImport.update({
+  id: '/deployments',
+  path: '/deployments',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdExpiringRoute = OrgOrgIdExpiringRouteImport.update({
+  id: '/expiring',
+  path: '/expiring',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdGraphRoute = OrgOrgIdGraphRouteImport.update({
+  id: '/graph',
+  path: '/graph',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdLogsRoute = OrgOrgIdLogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdMetricAlertsRoute = OrgOrgIdMetricAlertsRouteImport.update({
+  id: '/metric-alerts',
+  path: '/metric-alerts',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdMomentRoute = OrgOrgIdMomentRouteImport.update({
+  id: '/moment',
+  path: '/moment',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdPostureRoute = OrgOrgIdPostureRouteImport.update({
+  id: '/posture',
+  path: '/posture',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdProbesRoute = OrgOrgIdProbesRouteImport.update({
+  id: '/probes',
+  path: '/probes',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdSavingsRoute = OrgOrgIdSavingsRouteImport.update({
+  id: '/savings',
+  path: '/savings',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdSettingsRoute = OrgOrgIdSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdSshFanoutRoute = OrgOrgIdSshFanoutRouteImport.update({
+  id: '/ssh-fanout',
+  path: '/ssh-fanout',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdWorkflowsRoute = OrgOrgIdWorkflowsRouteImport.update({
+  id: '/workflows',
+  path: '/workflows',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdAccountsAccountIdRoute =
+  OrgOrgIdAccountsAccountIdRouteImport.update({
+    id: '/accounts/$accountId',
+    path: '/accounts/$accountId',
+    getParentRoute: () => OrgOrgIdRoute,
+  } as any)
 const OrgOrgIdChatIndexRoute = OrgOrgIdChatIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => OrgOrgIdChatRoute,
 } as any)
-const OrgOrgIdSettingsTeamRoute = OrgOrgIdSettingsTeamRouteImport.update({
-  id: '/team',
-  path: '/team',
-  getParentRoute: () => OrgOrgIdSettingsRoute,
-} as any)
-const OrgOrgIdSettingsTagPolicyRoute =
-  OrgOrgIdSettingsTagPolicyRouteImport.update({
-    id: '/tag-policy',
-    path: '/tag-policy',
-    getParentRoute: () => OrgOrgIdSettingsRoute,
+const OrgOrgIdChatConversationIdRoute =
+  OrgOrgIdChatConversationIdRouteImport.update({
+    id: '/$conversationId',
+    path: '/$conversationId',
+    getParentRoute: () => OrgOrgIdChatRoute,
   } as any)
-const OrgOrgIdSettingsSshKeysRoute = OrgOrgIdSettingsSshKeysRouteImport.update({
-  id: '/ssh-keys',
-  path: '/ssh-keys',
-  getParentRoute: () => OrgOrgIdSettingsRoute,
-} as any)
-const OrgOrgIdSettingsSshHostKeysRoute =
-  OrgOrgIdSettingsSshHostKeysRouteImport.update({
-    id: '/ssh-host-keys',
-    path: '/ssh-host-keys',
-    getParentRoute: () => OrgOrgIdSettingsRoute,
+const OrgOrgIdDashboardDashboardIdRoute =
+  OrgOrgIdDashboardDashboardIdRouteImport.update({
+    id: '/dashboard/$dashboardId',
+    path: '/dashboard/$dashboardId',
+    getParentRoute: () => OrgOrgIdRoute,
   } as any)
-const OrgOrgIdSettingsRolesRoute = OrgOrgIdSettingsRolesRouteImport.update({
-  id: '/roles',
-  path: '/roles',
+const OrgOrgIdSettingsIndexRoute = OrgOrgIdSettingsIndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
-const OrgOrgIdSettingsPagingRoute = OrgOrgIdSettingsPagingRouteImport.update({
-  id: '/paging',
-  path: '/paging',
+const OrgOrgIdSettingsApiKeysRoute = OrgOrgIdSettingsApiKeysRouteImport.update({
+  id: '/api-keys',
+  path: '/api-keys',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
-const OrgOrgIdSettingsFreezesRoute = OrgOrgIdSettingsFreezesRouteImport.update({
-  id: '/freezes',
-  path: '/freezes',
-  getParentRoute: () => OrgOrgIdSettingsRoute,
-} as any)
-const OrgOrgIdSettingsBillingRoute = OrgOrgIdSettingsBillingRouteImport.update({
-  id: '/billing',
-  path: '/billing',
-  getParentRoute: () => OrgOrgIdSettingsRoute,
-} as any)
-const OrgOrgIdSettingsBastionsRoute =
-  OrgOrgIdSettingsBastionsRouteImport.update({
-    id: '/bastions',
-    path: '/bastions',
+const OrgOrgIdSettingsApprovalsRoute =
+  OrgOrgIdSettingsApprovalsRouteImport.update({
+    id: '/approvals',
+    path: '/approvals',
     getParentRoute: () => OrgOrgIdSettingsRoute,
   } as any)
 const OrgOrgIdSettingsAuditLogRoute =
@@ -224,35 +205,54 @@ const OrgOrgIdSettingsAuditLogRoute =
     path: '/audit-log',
     getParentRoute: () => OrgOrgIdSettingsRoute,
   } as any)
-const OrgOrgIdSettingsApprovalsRoute =
-  OrgOrgIdSettingsApprovalsRouteImport.update({
-    id: '/approvals',
-    path: '/approvals',
+const OrgOrgIdSettingsBastionsRoute =
+  OrgOrgIdSettingsBastionsRouteImport.update({
+    id: '/bastions',
+    path: '/bastions',
     getParentRoute: () => OrgOrgIdSettingsRoute,
   } as any)
-const OrgOrgIdSettingsApiKeysRoute = OrgOrgIdSettingsApiKeysRouteImport.update({
-  id: '/api-keys',
-  path: '/api-keys',
+const OrgOrgIdSettingsBillingRoute = OrgOrgIdSettingsBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
-const OrgOrgIdDashboardDashboardIdRoute =
-  OrgOrgIdDashboardDashboardIdRouteImport.update({
-    id: '/dashboard/$dashboardId',
-    path: '/dashboard/$dashboardId',
-    getParentRoute: () => OrgOrgIdRoute,
+const OrgOrgIdSettingsFreezesRoute = OrgOrgIdSettingsFreezesRouteImport.update({
+  id: '/freezes',
+  path: '/freezes',
+  getParentRoute: () => OrgOrgIdSettingsRoute,
+} as any)
+const OrgOrgIdSettingsPagingRoute = OrgOrgIdSettingsPagingRouteImport.update({
+  id: '/paging',
+  path: '/paging',
+  getParentRoute: () => OrgOrgIdSettingsRoute,
+} as any)
+const OrgOrgIdSettingsRolesRoute = OrgOrgIdSettingsRolesRouteImport.update({
+  id: '/roles',
+  path: '/roles',
+  getParentRoute: () => OrgOrgIdSettingsRoute,
+} as any)
+const OrgOrgIdSettingsSshHostKeysRoute =
+  OrgOrgIdSettingsSshHostKeysRouteImport.update({
+    id: '/ssh-host-keys',
+    path: '/ssh-host-keys',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
   } as any)
-const OrgOrgIdChatConversationIdRoute =
-  OrgOrgIdChatConversationIdRouteImport.update({
-    id: '/$conversationId',
-    path: '/$conversationId',
-    getParentRoute: () => OrgOrgIdChatRoute,
+const OrgOrgIdSettingsSshKeysRoute = OrgOrgIdSettingsSshKeysRouteImport.update({
+  id: '/ssh-keys',
+  path: '/ssh-keys',
+  getParentRoute: () => OrgOrgIdSettingsRoute,
+} as any)
+const OrgOrgIdSettingsTagPolicyRoute =
+  OrgOrgIdSettingsTagPolicyRouteImport.update({
+    id: '/tag-policy',
+    path: '/tag-policy',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
   } as any)
-const OrgOrgIdAccountsAccountIdRoute =
-  OrgOrgIdAccountsAccountIdRouteImport.update({
-    id: '/accounts/$accountId',
-    path: '/accounts/$accountId',
-    getParentRoute: () => OrgOrgIdRoute,
-  } as any)
+const OrgOrgIdSettingsTeamRoute = OrgOrgIdSettingsTeamRouteImport.update({
+  id: '/team',
+  path: '/team',
+  getParentRoute: () => OrgOrgIdSettingsRoute,
+} as any)
 const OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute =
   OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRouteImport.update({
     id: '/resources/$pluginId/$resourceTypeId/$resourceId',
@@ -520,13 +520,6 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/onboarding': {
-      id: '/onboarding'
-      path: '/onboarding'
-      fullPath: '/onboarding'
-      preLoaderRoute: typeof OnboardingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/admin': {
       id: '/admin'
       path: '/admin'
@@ -534,18 +527,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/org/$orgId': {
-      id: '/org/$orgId'
-      path: '/org/$orgId'
-      fullPath: '/org/$orgId'
-      preLoaderRoute: typeof OrgOrgIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/invite/$token': {
-      id: '/invite/$token'
-      path: '/invite/$token'
-      fullPath: '/invite/$token'
-      preLoaderRoute: typeof InviteTokenRouteImport
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/deploy/$': {
@@ -555,116 +541,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DeploySplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/org/$orgId': {
+      id: '/org/$orgId'
+      path: '/org/$orgId'
+      fullPath: '/org/$orgId'
+      preLoaderRoute: typeof OrgOrgIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/org/$orgId/': {
       id: '/org/$orgId/'
       path: '/'
       fullPath: '/org/$orgId/'
       preLoaderRoute: typeof OrgOrgIdIndexRouteImport
-      parentRoute: typeof OrgOrgIdRoute
-    }
-    '/org/$orgId/workflows': {
-      id: '/org/$orgId/workflows'
-      path: '/workflows'
-      fullPath: '/org/$orgId/workflows'
-      preLoaderRoute: typeof OrgOrgIdWorkflowsRouteImport
-      parentRoute: typeof OrgOrgIdRoute
-    }
-    '/org/$orgId/ssh-fanout': {
-      id: '/org/$orgId/ssh-fanout'
-      path: '/ssh-fanout'
-      fullPath: '/org/$orgId/ssh-fanout'
-      preLoaderRoute: typeof OrgOrgIdSshFanoutRouteImport
-      parentRoute: typeof OrgOrgIdRoute
-    }
-    '/org/$orgId/settings': {
-      id: '/org/$orgId/settings'
-      path: '/settings'
-      fullPath: '/org/$orgId/settings'
-      preLoaderRoute: typeof OrgOrgIdSettingsRouteImport
-      parentRoute: typeof OrgOrgIdRoute
-    }
-    '/org/$orgId/savings': {
-      id: '/org/$orgId/savings'
-      path: '/savings'
-      fullPath: '/org/$orgId/savings'
-      preLoaderRoute: typeof OrgOrgIdSavingsRouteImport
-      parentRoute: typeof OrgOrgIdRoute
-    }
-    '/org/$orgId/probes': {
-      id: '/org/$orgId/probes'
-      path: '/probes'
-      fullPath: '/org/$orgId/probes'
-      preLoaderRoute: typeof OrgOrgIdProbesRouteImport
-      parentRoute: typeof OrgOrgIdRoute
-    }
-    '/org/$orgId/posture': {
-      id: '/org/$orgId/posture'
-      path: '/posture'
-      fullPath: '/org/$orgId/posture'
-      preLoaderRoute: typeof OrgOrgIdPostureRouteImport
-      parentRoute: typeof OrgOrgIdRoute
-    }
-    '/org/$orgId/moment': {
-      id: '/org/$orgId/moment'
-      path: '/moment'
-      fullPath: '/org/$orgId/moment'
-      preLoaderRoute: typeof OrgOrgIdMomentRouteImport
-      parentRoute: typeof OrgOrgIdRoute
-    }
-    '/org/$orgId/metric-alerts': {
-      id: '/org/$orgId/metric-alerts'
-      path: '/metric-alerts'
-      fullPath: '/org/$orgId/metric-alerts'
-      preLoaderRoute: typeof OrgOrgIdMetricAlertsRouteImport
-      parentRoute: typeof OrgOrgIdRoute
-    }
-    '/org/$orgId/logs': {
-      id: '/org/$orgId/logs'
-      path: '/logs'
-      fullPath: '/org/$orgId/logs'
-      preLoaderRoute: typeof OrgOrgIdLogsRouteImport
-      parentRoute: typeof OrgOrgIdRoute
-    }
-    '/org/$orgId/graph': {
-      id: '/org/$orgId/graph'
-      path: '/graph'
-      fullPath: '/org/$orgId/graph'
-      preLoaderRoute: typeof OrgOrgIdGraphRouteImport
-      parentRoute: typeof OrgOrgIdRoute
-    }
-    '/org/$orgId/expiring': {
-      id: '/org/$orgId/expiring'
-      path: '/expiring'
-      fullPath: '/org/$orgId/expiring'
-      preLoaderRoute: typeof OrgOrgIdExpiringRouteImport
-      parentRoute: typeof OrgOrgIdRoute
-    }
-    '/org/$orgId/deployments': {
-      id: '/org/$orgId/deployments'
-      path: '/deployments'
-      fullPath: '/org/$orgId/deployments'
-      preLoaderRoute: typeof OrgOrgIdDeploymentsRouteImport
-      parentRoute: typeof OrgOrgIdRoute
-    }
-    '/org/$orgId/costs': {
-      id: '/org/$orgId/costs'
-      path: '/costs'
-      fullPath: '/org/$orgId/costs'
-      preLoaderRoute: typeof OrgOrgIdCostsRouteImport
-      parentRoute: typeof OrgOrgIdRoute
-    }
-    '/org/$orgId/chat': {
-      id: '/org/$orgId/chat'
-      path: '/chat'
-      fullPath: '/org/$orgId/chat'
-      preLoaderRoute: typeof OrgOrgIdChatRouteImport
-      parentRoute: typeof OrgOrgIdRoute
-    }
-    '/org/$orgId/changes': {
-      id: '/org/$orgId/changes'
-      path: '/changes'
-      fullPath: '/org/$orgId/changes'
-      preLoaderRoute: typeof OrgOrgIdChangesRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/agents': {
@@ -674,12 +569,117 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdAgentsRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
-    '/org/$orgId/settings/': {
-      id: '/org/$orgId/settings/'
-      path: '/'
-      fullPath: '/org/$orgId/settings/'
-      preLoaderRoute: typeof OrgOrgIdSettingsIndexRouteImport
-      parentRoute: typeof OrgOrgIdSettingsRoute
+    '/org/$orgId/changes': {
+      id: '/org/$orgId/changes'
+      path: '/changes'
+      fullPath: '/org/$orgId/changes'
+      preLoaderRoute: typeof OrgOrgIdChangesRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/chat': {
+      id: '/org/$orgId/chat'
+      path: '/chat'
+      fullPath: '/org/$orgId/chat'
+      preLoaderRoute: typeof OrgOrgIdChatRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/costs': {
+      id: '/org/$orgId/costs'
+      path: '/costs'
+      fullPath: '/org/$orgId/costs'
+      preLoaderRoute: typeof OrgOrgIdCostsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/deployments': {
+      id: '/org/$orgId/deployments'
+      path: '/deployments'
+      fullPath: '/org/$orgId/deployments'
+      preLoaderRoute: typeof OrgOrgIdDeploymentsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/expiring': {
+      id: '/org/$orgId/expiring'
+      path: '/expiring'
+      fullPath: '/org/$orgId/expiring'
+      preLoaderRoute: typeof OrgOrgIdExpiringRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/graph': {
+      id: '/org/$orgId/graph'
+      path: '/graph'
+      fullPath: '/org/$orgId/graph'
+      preLoaderRoute: typeof OrgOrgIdGraphRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/logs': {
+      id: '/org/$orgId/logs'
+      path: '/logs'
+      fullPath: '/org/$orgId/logs'
+      preLoaderRoute: typeof OrgOrgIdLogsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/metric-alerts': {
+      id: '/org/$orgId/metric-alerts'
+      path: '/metric-alerts'
+      fullPath: '/org/$orgId/metric-alerts'
+      preLoaderRoute: typeof OrgOrgIdMetricAlertsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/moment': {
+      id: '/org/$orgId/moment'
+      path: '/moment'
+      fullPath: '/org/$orgId/moment'
+      preLoaderRoute: typeof OrgOrgIdMomentRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/posture': {
+      id: '/org/$orgId/posture'
+      path: '/posture'
+      fullPath: '/org/$orgId/posture'
+      preLoaderRoute: typeof OrgOrgIdPostureRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/probes': {
+      id: '/org/$orgId/probes'
+      path: '/probes'
+      fullPath: '/org/$orgId/probes'
+      preLoaderRoute: typeof OrgOrgIdProbesRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/savings': {
+      id: '/org/$orgId/savings'
+      path: '/savings'
+      fullPath: '/org/$orgId/savings'
+      preLoaderRoute: typeof OrgOrgIdSavingsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/settings': {
+      id: '/org/$orgId/settings'
+      path: '/settings'
+      fullPath: '/org/$orgId/settings'
+      preLoaderRoute: typeof OrgOrgIdSettingsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/ssh-fanout': {
+      id: '/org/$orgId/ssh-fanout'
+      path: '/ssh-fanout'
+      fullPath: '/org/$orgId/ssh-fanout'
+      preLoaderRoute: typeof OrgOrgIdSshFanoutRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/workflows': {
+      id: '/org/$orgId/workflows'
+      path: '/workflows'
+      fullPath: '/org/$orgId/workflows'
+      preLoaderRoute: typeof OrgOrgIdWorkflowsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/accounts/$accountId': {
+      id: '/org/$orgId/accounts/$accountId'
+      path: '/accounts/$accountId'
+      fullPath: '/org/$orgId/accounts/$accountId'
+      preLoaderRoute: typeof OrgOrgIdAccountsAccountIdRouteImport
+      parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/chat/': {
       id: '/org/$orgId/chat/'
@@ -688,81 +688,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdChatIndexRouteImport
       parentRoute: typeof OrgOrgIdChatRoute
     }
-    '/org/$orgId/settings/team': {
-      id: '/org/$orgId/settings/team'
-      path: '/team'
-      fullPath: '/org/$orgId/settings/team'
-      preLoaderRoute: typeof OrgOrgIdSettingsTeamRouteImport
-      parentRoute: typeof OrgOrgIdSettingsRoute
+    '/org/$orgId/chat/$conversationId': {
+      id: '/org/$orgId/chat/$conversationId'
+      path: '/$conversationId'
+      fullPath: '/org/$orgId/chat/$conversationId'
+      preLoaderRoute: typeof OrgOrgIdChatConversationIdRouteImport
+      parentRoute: typeof OrgOrgIdChatRoute
     }
-    '/org/$orgId/settings/tag-policy': {
-      id: '/org/$orgId/settings/tag-policy'
-      path: '/tag-policy'
-      fullPath: '/org/$orgId/settings/tag-policy'
-      preLoaderRoute: typeof OrgOrgIdSettingsTagPolicyRouteImport
-      parentRoute: typeof OrgOrgIdSettingsRoute
+    '/org/$orgId/dashboard/$dashboardId': {
+      id: '/org/$orgId/dashboard/$dashboardId'
+      path: '/dashboard/$dashboardId'
+      fullPath: '/org/$orgId/dashboard/$dashboardId'
+      preLoaderRoute: typeof OrgOrgIdDashboardDashboardIdRouteImport
+      parentRoute: typeof OrgOrgIdRoute
     }
-    '/org/$orgId/settings/ssh-keys': {
-      id: '/org/$orgId/settings/ssh-keys'
-      path: '/ssh-keys'
-      fullPath: '/org/$orgId/settings/ssh-keys'
-      preLoaderRoute: typeof OrgOrgIdSettingsSshKeysRouteImport
-      parentRoute: typeof OrgOrgIdSettingsRoute
-    }
-    '/org/$orgId/settings/ssh-host-keys': {
-      id: '/org/$orgId/settings/ssh-host-keys'
-      path: '/ssh-host-keys'
-      fullPath: '/org/$orgId/settings/ssh-host-keys'
-      preLoaderRoute: typeof OrgOrgIdSettingsSshHostKeysRouteImport
-      parentRoute: typeof OrgOrgIdSettingsRoute
-    }
-    '/org/$orgId/settings/roles': {
-      id: '/org/$orgId/settings/roles'
-      path: '/roles'
-      fullPath: '/org/$orgId/settings/roles'
-      preLoaderRoute: typeof OrgOrgIdSettingsRolesRouteImport
-      parentRoute: typeof OrgOrgIdSettingsRoute
-    }
-    '/org/$orgId/settings/paging': {
-      id: '/org/$orgId/settings/paging'
-      path: '/paging'
-      fullPath: '/org/$orgId/settings/paging'
-      preLoaderRoute: typeof OrgOrgIdSettingsPagingRouteImport
-      parentRoute: typeof OrgOrgIdSettingsRoute
-    }
-    '/org/$orgId/settings/freezes': {
-      id: '/org/$orgId/settings/freezes'
-      path: '/freezes'
-      fullPath: '/org/$orgId/settings/freezes'
-      preLoaderRoute: typeof OrgOrgIdSettingsFreezesRouteImport
-      parentRoute: typeof OrgOrgIdSettingsRoute
-    }
-    '/org/$orgId/settings/billing': {
-      id: '/org/$orgId/settings/billing'
-      path: '/billing'
-      fullPath: '/org/$orgId/settings/billing'
-      preLoaderRoute: typeof OrgOrgIdSettingsBillingRouteImport
-      parentRoute: typeof OrgOrgIdSettingsRoute
-    }
-    '/org/$orgId/settings/bastions': {
-      id: '/org/$orgId/settings/bastions'
-      path: '/bastions'
-      fullPath: '/org/$orgId/settings/bastions'
-      preLoaderRoute: typeof OrgOrgIdSettingsBastionsRouteImport
-      parentRoute: typeof OrgOrgIdSettingsRoute
-    }
-    '/org/$orgId/settings/audit-log': {
-      id: '/org/$orgId/settings/audit-log'
-      path: '/audit-log'
-      fullPath: '/org/$orgId/settings/audit-log'
-      preLoaderRoute: typeof OrgOrgIdSettingsAuditLogRouteImport
-      parentRoute: typeof OrgOrgIdSettingsRoute
-    }
-    '/org/$orgId/settings/approvals': {
-      id: '/org/$orgId/settings/approvals'
-      path: '/approvals'
-      fullPath: '/org/$orgId/settings/approvals'
-      preLoaderRoute: typeof OrgOrgIdSettingsApprovalsRouteImport
+    '/org/$orgId/settings/': {
+      id: '/org/$orgId/settings/'
+      path: '/'
+      fullPath: '/org/$orgId/settings/'
+      preLoaderRoute: typeof OrgOrgIdSettingsIndexRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
     '/org/$orgId/settings/api-keys': {
@@ -772,26 +716,82 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsApiKeysRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
-    '/org/$orgId/dashboard/$dashboardId': {
-      id: '/org/$orgId/dashboard/$dashboardId'
-      path: '/dashboard/$dashboardId'
-      fullPath: '/org/$orgId/dashboard/$dashboardId'
-      preLoaderRoute: typeof OrgOrgIdDashboardDashboardIdRouteImport
-      parentRoute: typeof OrgOrgIdRoute
+    '/org/$orgId/settings/approvals': {
+      id: '/org/$orgId/settings/approvals'
+      path: '/approvals'
+      fullPath: '/org/$orgId/settings/approvals'
+      preLoaderRoute: typeof OrgOrgIdSettingsApprovalsRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
     }
-    '/org/$orgId/chat/$conversationId': {
-      id: '/org/$orgId/chat/$conversationId'
-      path: '/$conversationId'
-      fullPath: '/org/$orgId/chat/$conversationId'
-      preLoaderRoute: typeof OrgOrgIdChatConversationIdRouteImport
-      parentRoute: typeof OrgOrgIdChatRoute
+    '/org/$orgId/settings/audit-log': {
+      id: '/org/$orgId/settings/audit-log'
+      path: '/audit-log'
+      fullPath: '/org/$orgId/settings/audit-log'
+      preLoaderRoute: typeof OrgOrgIdSettingsAuditLogRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
     }
-    '/org/$orgId/accounts/$accountId': {
-      id: '/org/$orgId/accounts/$accountId'
-      path: '/accounts/$accountId'
-      fullPath: '/org/$orgId/accounts/$accountId'
-      preLoaderRoute: typeof OrgOrgIdAccountsAccountIdRouteImport
-      parentRoute: typeof OrgOrgIdRoute
+    '/org/$orgId/settings/bastions': {
+      id: '/org/$orgId/settings/bastions'
+      path: '/bastions'
+      fullPath: '/org/$orgId/settings/bastions'
+      preLoaderRoute: typeof OrgOrgIdSettingsBastionsRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
+    '/org/$orgId/settings/billing': {
+      id: '/org/$orgId/settings/billing'
+      path: '/billing'
+      fullPath: '/org/$orgId/settings/billing'
+      preLoaderRoute: typeof OrgOrgIdSettingsBillingRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
+    '/org/$orgId/settings/freezes': {
+      id: '/org/$orgId/settings/freezes'
+      path: '/freezes'
+      fullPath: '/org/$orgId/settings/freezes'
+      preLoaderRoute: typeof OrgOrgIdSettingsFreezesRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
+    '/org/$orgId/settings/paging': {
+      id: '/org/$orgId/settings/paging'
+      path: '/paging'
+      fullPath: '/org/$orgId/settings/paging'
+      preLoaderRoute: typeof OrgOrgIdSettingsPagingRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
+    '/org/$orgId/settings/roles': {
+      id: '/org/$orgId/settings/roles'
+      path: '/roles'
+      fullPath: '/org/$orgId/settings/roles'
+      preLoaderRoute: typeof OrgOrgIdSettingsRolesRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
+    '/org/$orgId/settings/ssh-host-keys': {
+      id: '/org/$orgId/settings/ssh-host-keys'
+      path: '/ssh-host-keys'
+      fullPath: '/org/$orgId/settings/ssh-host-keys'
+      preLoaderRoute: typeof OrgOrgIdSettingsSshHostKeysRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
+    '/org/$orgId/settings/ssh-keys': {
+      id: '/org/$orgId/settings/ssh-keys'
+      path: '/ssh-keys'
+      fullPath: '/org/$orgId/settings/ssh-keys'
+      preLoaderRoute: typeof OrgOrgIdSettingsSshKeysRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
+    '/org/$orgId/settings/tag-policy': {
+      id: '/org/$orgId/settings/tag-policy'
+      path: '/tag-policy'
+      fullPath: '/org/$orgId/settings/tag-policy'
+      preLoaderRoute: typeof OrgOrgIdSettingsTagPolicyRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
+    '/org/$orgId/settings/team': {
+      id: '/org/$orgId/settings/team'
+      path: '/team'
+      fullPath: '/org/$orgId/settings/team'
+      preLoaderRoute: typeof OrgOrgIdSettingsTeamRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
     }
     '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId': {
       id: '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId'

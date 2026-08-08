@@ -955,8 +955,7 @@ export async function listSNSTopics(
         { TopicArn: topicArn },
       );
       const attrResult = attrData["GetTopicAttributesResult"] as
-        | Record<string, unknown>
-        | undefined;
+        Record<string, unknown> | undefined;
       const attrEntries = ensureArray(
         (attrResult?.["Attributes"] as Record<string, unknown> | undefined)?.["entry"],
       ) as Record<string, unknown>[];

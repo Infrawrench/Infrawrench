@@ -13,8 +13,7 @@ export function SidebarResourceItem({
   acceptsSecretImport?: boolean;
   sshHostValue?: string | undefined;
   onContextMenu?:
-    | ((e: { preventDefault: () => void; clientX: number; clientY: number }) => void)
-    | undefined;
+    ((e: { preventDefault: () => void; clientX: number; clientY: number }) => void) | undefined;
 }) {
   const navigate = useNavigate();
   const {

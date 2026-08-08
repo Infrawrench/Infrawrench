@@ -58,8 +58,7 @@ interface LocalShellParams {
 }
 
 type OpenSshShellParams =
-  | ({ mode: "cloud" } & CloudShellParams)
-  | ({ mode: "local" } & LocalShellParams);
+  ({ mode: "cloud" } & CloudShellParams) | ({ mode: "local" } & LocalShellParams);
 
 export async function openSshShell(params: OpenSshShellParams): Promise<SshShellHandle> {
   if (params.mode === "cloud") {

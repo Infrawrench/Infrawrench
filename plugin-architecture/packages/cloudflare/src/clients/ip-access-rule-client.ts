@@ -65,11 +65,7 @@ export async function createIpAccessRule(
   const created = await api.cf.firewall.accessRules.create({
     zone_id: zoneId,
     mode: (fields["mode"] || "block") as
-      | "block"
-      | "challenge"
-      | "whitelist"
-      | "js_challenge"
-      | "managed_challenge",
+      "block" | "challenge" | "whitelist" | "js_challenge" | "managed_challenge",
     configuration: {
       target: (fields["target"] || "ip") as "ip" | "ip_range" | "asn" | "country",
       value: fields["value"] ?? "",
@@ -93,11 +89,7 @@ export async function editIpAccessRule(
     ...(fields["mode"]
       ? {
           mode: fields["mode"] as
-            | "block"
-            | "challenge"
-            | "whitelist"
-            | "js_challenge"
-            | "managed_challenge",
+            "block" | "challenge" | "whitelist" | "js_challenge" | "managed_challenge",
         }
       : {}),
     ...(fields["notes"] !== undefined ? { notes: fields["notes"] } : {}),

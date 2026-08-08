@@ -27,8 +27,7 @@ export function extractName(azureId: string): string {
  */
 export function propsOf(node: unknown): Record<string, unknown> | undefined {
   return (node as Record<string, unknown> | undefined)?.["properties"] as
-    | Record<string, unknown>
-    | undefined;
+    Record<string, unknown> | undefined;
 }
 
 /**

@@ -105,8 +105,7 @@ export const COST_RANGE_PRESETS = [
 export type CostRangePreset = (typeof COST_RANGE_PRESETS)[number];
 
 export type CostDateRange =
-  | { kind: "relative"; preset: CostRangePreset }
-  | { kind: "absolute"; from: string; to: string };
+  { kind: "relative"; preset: CostRangePreset } | { kind: "absolute"; from: string; to: string };
 
 export const COST_CHART_TYPES = ["stacked_bar", "multi_bar", "line", "area", "pie"] as const;
 export type CostChartType = (typeof COST_CHART_TYPES)[number];

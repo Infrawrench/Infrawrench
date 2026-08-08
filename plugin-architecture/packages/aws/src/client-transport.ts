@@ -122,8 +122,7 @@ async function resolveEndpoint(creds: AwsCredentials, service: string): Promise<
   const client = clients[binding.clientKey] as unknown as {
     config: {
       endpoint?: () =>
-        | Promise<{ hostname: string; path?: string }>
-        | { hostname: string; path?: string };
+        Promise<{ hostname: string; path?: string }> | { hostname: string; path?: string };
     };
   };
   const config = client.config;

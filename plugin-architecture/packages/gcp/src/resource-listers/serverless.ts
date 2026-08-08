@@ -91,8 +91,7 @@ export async function listCloudFunctions(
     const buildConfig = fn["buildConfig"] as Record<string, unknown> | undefined;
     const stateMessages =
       (fn["stateMessages"] as
-        | Array<{ severity?: string; type?: string; message?: string }>
-        | undefined) ?? [];
+        Array<{ severity?: string; type?: string; message?: string }> | undefined) ?? [];
     const stateMessage = stateMessages
       .map((m) => `[${m.severity ?? "INFO"}] ${m.type ? `${m.type}: ` : ""}${m.message ?? ""}`)
       .join("\n");

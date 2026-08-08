@@ -59,8 +59,7 @@ export async function listVMs(ctx: ListerContext, accountId: string): Promise<Re
     let publicIpName = "";
     const networkProfile = props?.["networkProfile"] as Record<string, unknown> | undefined;
     const nics = networkProfile?.["networkInterfaces"] as
-      | Array<Record<string, unknown>>
-      | undefined;
+      Array<Record<string, unknown>> | undefined;
     if (nics && nics.length > 0) {
       const firstNic = nics[0];
       const nicId = firstNic ? String(firstNic["id"] ?? "") : "";
@@ -72,13 +71,11 @@ export async function listVMs(ctx: ListerContext, accountId: string): Promise<Re
           const nicProps = nic["properties"] as Record<string, unknown> | undefined;
           networkSecurityGroup = extractName(refId(nicProps, "networkSecurityGroup"));
           const ipConfigs = nicProps?.["ipConfigurations"] as
-            | Array<Record<string, unknown>>
-            | undefined;
+            Array<Record<string, unknown>> | undefined;
           const firstIpConfig = ipConfigs?.[0];
           if (firstIpConfig) {
             const ipConfigProps = firstIpConfig["properties"] as
-              | Record<string, unknown>
-              | undefined;
+              Record<string, unknown> | undefined;
             privateIp = String(ipConfigProps?.["privateIPAddress"] ?? "");
             const subnetParts = subnetRef(refId(ipConfigProps, "subnet")).split("/");
             if (subnetParts.length === 3) {
@@ -87,8 +84,7 @@ export async function listVMs(ctx: ListerContext, accountId: string): Promise<Re
               subnetName = subnetParts[2] ?? "";
             }
             const publicIpRef = ipConfigProps?.["publicIPAddress"] as
-              | Record<string, unknown>
-              | undefined;
+              Record<string, unknown> | undefined;
             const publicIpId = String(publicIpRef?.["id"] ?? "");
             publicIpName = extractName(publicIpId);
             if (publicIpId) {
@@ -99,8 +95,7 @@ export async function listVMs(ctx: ListerContext, accountId: string): Promise<Re
                 const pipProps = pip["properties"] as Record<string, unknown> | undefined;
                 publicIp = String(pipProps?.["ipAddress"] ?? "");
                 const dnsSettings = pipProps?.["dnsSettings"] as
-                  | Record<string, unknown>
-                  | undefined;
+                  Record<string, unknown> | undefined;
                 fqdn = String(dnsSettings?.["fqdn"] ?? "");
               } catch {
                 // Public IP might not be accessible
@@ -431,8 +426,7 @@ export async function listContainerInstances(
     const containers = props?.["containers"] as Array<Record<string, unknown>> | undefined;
     const ipAddr = props?.["ipAddress"] as Record<string, unknown> | undefined;
     const registryCreds = props?.["imageRegistryCredentials"] as
-      | Array<Record<string, unknown>>
-      | undefined;
+      Array<Record<string, unknown>> | undefined;
     const subnetIds = props?.["subnetIds"] as Array<Record<string, unknown>> | undefined;
 
     return {

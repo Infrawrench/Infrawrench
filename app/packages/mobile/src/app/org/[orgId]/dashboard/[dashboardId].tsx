@@ -32,10 +32,7 @@ import { spacing } from "@/lib/theme";
 
 /** Which sheet is open, if any. `configure` carries the widget being edited. */
 type OpenSheet =
-  | { kind: "add" }
-  | { kind: AddCardChoice }
-  | { kind: "configure"; widget: DashboardWidget }
-  | null;
+  { kind: "add" } | { kind: AddCardChoice } | { kind: "configure"; widget: DashboardWidget } | null;
 
 /**
  * One dashboard's cards. The name goes in the header rather than the body —
