@@ -15,6 +15,7 @@ import {
   type EscalationPolicy,
   type QuietHours,
   defaultAlertRule,
+  isQuietHours,
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client";
@@ -42,7 +43,7 @@ function toRule(row: Row): AlertRule {
     conditions: Array.isArray(row.conditions) ? (row.conditions as AlertCondition[]) : [],
     destinations: Array.isArray(row.destinations) ? (row.destinations as AlertDestination[]) : [],
     continueOnMatch: row.continueOnMatch,
-    quietHours: (row.quietHours as QuietHours | null) ?? null,
+    quietHours: isQuietHours(row.quietHours) ? row.quietHours : null,
     escalation: (row.escalation as EscalationPolicy | null) ?? null,
   };
 }
@@ -74,9 +75,25 @@ export async function resolveRoutingRules(
   const stored = await listAlertRules(organizationId);
   if (stored.length > 0) return { rules: stored, usingDefaults: false };
 
+  // Both lookups degrade to "no channels" rather than failing the alert, but
+  // they are logged: a transient database error here silently narrows the
+  // default fan-out to push only, and an unlogged degraded default is
+  // indistinguishable from an org that genuinely has no channels connected.
   const [slackIds, teamsIds] = await Promise.all([
-    listLiveSlackChannelIds(organizationId).catch(() => [] as string[]),
-    listMsTeamsWebhookIds(organizationId).catch(() => [] as string[]),
+    listLiveSlackChannelIds(organizationId).catch((err) => {
+      console.error(
+        `[alerts] default rule for org ${organizationId}: Slack channel lookup failed, routing without Slack:`,
+        err,
+      );
+      return [] as string[];
+    }),
+    listMsTeamsWebhookIds(organizationId).catch((err) => {
+      console.error(
+        `[alerts] default rule for org ${organizationId}: Teams webhook lookup failed, routing without Teams:`,
+        err,
+      );
+      return [] as string[];
+    }),
   ]);
   const destinations: AlertDestination[] = [
     { kind: "push" },

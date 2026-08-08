@@ -8,7 +8,7 @@
  * mutes live on `/push/preferences` and need no permission at all.)
  */
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import {
   ALERT_RULE_LIMITS,
   isAlertTrigger,
@@ -60,7 +60,13 @@ app.get("/", async (c) => {
       })
       .from(slackChannels)
       .innerJoin(slackInstallations, eq(slackInstallations.id, slackChannels.installationId))
-      .where(eq(slackChannels.organizationId, organizationId)),
+      // Disconnected installations are filtered out, exactly as
+      // `resolveSlackChannels` does at delivery time. Offering a channel the
+      // sender can no longer reach would let the editor build a rule that
+      // silently routes nowhere.
+      .where(
+        and(eq(slackChannels.organizationId, organizationId), isNull(slackInstallations.deletedAt)),
+      ),
     db
       .select({ id: msteamsWebhooks.id, label: msteamsWebhooks.label })
       .from(msteamsWebhooks)
@@ -114,32 +120,68 @@ const DESTINATION_KINDS = new Set(["push", "slack", "msteams"]);
  * Structural check before the semantic one.
  *
  * `validateAlertRule` (shared with the editor) enforces limits and coherence,
- * but it trusts the discriminants — it is written against typed input. This
- * request is `unknown` JSON, so the union tags are checked here first;
- * otherwise a condition with a bogus `field` would fall through every `case`
- * in `conditionMatches` and silently never match, which reads to the user as
- * "the rule I saved does nothing".
+ * but it trusts the discriminants and the field types — it is written against
+ * typed input. `c.req.json<T>()` validates nothing at runtime, so this request
+ * is `unknown` JSON wearing a type, and both halves of that have to be checked
+ * here:
+ *
+ *   * **Tags.** A condition with a bogus `field` would fall through every
+ *     `case` in `conditionMatches` and silently never match, which reads to the
+ *     user as "the rule I saved does nothing".
+ *   * **Shapes.** `{ conditions: [{ field: "trigger" }] }` would throw inside
+ *     `values.filter`, and a numeric `name` would throw inside `.trim()` — a
+ *     500 where the honest answer is a 400 naming the bad field.
+ *
+ * Destination *identifiers* are checked here too, not just kinds: a `slack`
+ * destination with no `channelId` saves cleanly and then routes nowhere, since
+ * `resolveSlackChannels` has nothing to look up. Ownership of a real id is a
+ * separate check (`foreignDestination`) because it needs a database round trip.
  */
+function destinationError(dest: AlertDestination | null | undefined, what: string): string | null {
+  if (!dest || typeof dest !== "object" || !DESTINATION_KINDS.has(dest.kind)) {
+    return `Unknown ${what} "${(dest as { kind?: string } | null)?.kind ?? "?"}"`;
+  }
+  if (dest.kind === "slack" && (typeof dest.channelId !== "string" || !dest.channelId)) {
+    return `A Slack ${what} needs a channelId`;
+  }
+  if (dest.kind === "msteams" && (typeof dest.webhookId !== "string" || !dest.webhookId)) {
+    return `A Teams ${what} needs a webhookId`;
+  }
+  return null;
+}
+
 function structuralError(rule: RuleBody): string | null {
+  if (!rule || typeof rule !== "object") return "each rule must be an object";
   if (typeof rule.name !== "string") return "name is required";
+  if (rule.conditions !== undefined && !Array.isArray(rule.conditions)) {
+    return "conditions must be an array";
+  }
   for (const cond of rule.conditions ?? []) {
     if (!cond || typeof cond !== "object" || !CONDITION_FIELDS.has(cond.field)) {
       return `Unknown condition field "${(cond as { field?: string } | null)?.field ?? "?"}"`;
     }
     if (cond.field === "trigger") {
+      if (!Array.isArray(cond.values)) return "A trigger condition needs a values array";
       const bad = cond.values.filter((v) => !isAlertTrigger(v));
       if (bad.length > 0) return `Unknown trigger(s): ${bad.join(", ")}`;
     }
   }
+  if (rule.destinations !== undefined && !Array.isArray(rule.destinations)) {
+    return "destinations must be an array";
+  }
   for (const dest of rule.destinations ?? []) {
-    if (!dest || typeof dest !== "object" || !DESTINATION_KINDS.has(dest.kind)) {
-      return `Unknown destination "${(dest as { kind?: string } | null)?.kind ?? "?"}"`;
+    const err = destinationError(dest, "destination");
+    if (err) return err;
+  }
+  if (rule.escalation != null) {
+    if (typeof rule.escalation !== "object") return "escalation must be an object";
+    if (!Array.isArray(rule.escalation.destinations)) {
+      return "escalation destinations must be an array";
     }
   }
   for (const dest of rule.escalation?.destinations ?? []) {
-    if (!dest || typeof dest !== "object" || !DESTINATION_KINDS.has(dest.kind)) {
-      return `Unknown escalation destination "${(dest as { kind?: string } | null)?.kind ?? "?"}"`;
-    }
+    const err = destinationError(dest, "escalation destination");
+    if (err) return err;
   }
   return null;
 }
@@ -170,10 +212,17 @@ app.put("/", async (c) => {
   }
 
   const [ownChannels, ownWebhooks, ownRules] = await Promise.all([
+    // Live installations only, matching the GET list and `resolveSlackChannels`.
+    // A channel whose install was disconnected is still a row in this org's
+    // table, so ownership alone would accept it — and it would then be dropped
+    // at delivery time, turning a first-match rule into silence.
     db
       .select({ id: slackChannels.id })
       .from(slackChannels)
-      .where(eq(slackChannels.organizationId, organizationId)),
+      .innerJoin(slackInstallations, eq(slackInstallations.id, slackChannels.installationId))
+      .where(
+        and(eq(slackChannels.organizationId, organizationId), isNull(slackInstallations.deletedAt)),
+      ),
     db
       .select({ id: msteamsWebhooks.id })
       .from(msteamsWebhooks)

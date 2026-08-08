@@ -47,6 +47,21 @@ export const SEVERITY_LABELS: Record<AlertSeverity, string> = {
   critical: "Critical",
 };
 
+/** The severities, weakest first. The one list every other surface derives from. */
+export const ALERT_SEVERITIES = Object.keys(SEVERITY_RANK) as AlertSeverity[];
+
+/**
+ * Narrow unknown JSON to a severity.
+ *
+ * Worth a guard rather than a cast because an unrecognised value does not fail
+ * loudly anywhere downstream — `SEVERITY_RANK[bad]` is `undefined`, and every
+ * `>=` comparison against `undefined` is false, so a typo'd `urgentOverride`
+ * quietly holds *every* alert including the ones it was written to let through.
+ */
+export function isAlertSeverity(value: unknown): value is AlertSeverity {
+  return typeof value === "string" && value in SEVERITY_RANK;
+}
+
 /**
  * One kind of thing that can raise an alert.
  *
@@ -630,6 +645,29 @@ export function isWithinQuietHours(quiet: QuietHours, instant: Date): boolean {
 }
 
 /**
+ * Narrow unknown JSON to a quiet-hours window.
+ *
+ * The stored column outlives the build that wrote it — a rule saved by a newer
+ * version, or hand-edited in psql — and the arithmetic below assumes numbers
+ * and an array. A malformed object would make `windowCovers` throw on
+ * `days.includes` or leave `delta` as `NaN` and produce an Invalid Date, both
+ * inside the fan-out of an unrelated alert. Reading it back through this guard
+ * degrades that to "this rule has no quiet hours", which is the safe direction:
+ * the alert goes out.
+ */
+export function isQuietHours(value: unknown): value is QuietHours {
+  if (!value || typeof value !== "object") return false;
+  const q = value as Partial<QuietHours>;
+  const minute = (n: unknown): boolean =>
+    Number.isInteger(n) && (n as number) >= 0 && (n as number) <= 1439;
+  if (!minute(q.startMinute) || !minute(q.endMinute)) return false;
+  if (typeof q.timezone !== "string" || !q.timezone) return false;
+  if (!Array.isArray(q.days)) return false;
+  if (q.days.some((d) => !Number.isInteger(d) || d < 1 || d > 7)) return false;
+  return q.urgentOverride == null || isAlertSeverity(q.urgentOverride);
+}
+
+/**
  * When the window covering `instant` closes, or `null` when `instant` is not
  * inside one.
  *
@@ -764,10 +802,20 @@ export function validateAlertRule(rule: {
   }
   if (rule.quietHours) {
     const q = rule.quietHours;
+    if (typeof q !== "object") return "Quiet hours must be an object";
     const bad = (n: number): boolean => !Number.isInteger(n) || n < 0 || n > 1439;
     if (bad(q.startMinute) || bad(q.endMinute)) return "Quiet hours must be times of day";
-    if (q.days.some((d) => !Number.isInteger(d) || d < 1 || d > 7)) {
+    if (!Array.isArray(q.days) || q.days.some((d) => !Number.isInteger(d) || d < 1 || d > 7)) {
       return "Quiet-hours days must be ISO weekdays (1–7)";
+    }
+    if (typeof q.timezone !== "string") return "Quiet hours need a timezone";
+    // Null means "hold everything", which is the documented default. Anything
+    // else must be a real severity: an unrecognised value ranks below every
+    // real one, so it would hold every alert including the pages the override
+    // exists to let through — the exact opposite of what was asked for, and
+    // silently.
+    if (q.urgentOverride != null && !isAlertSeverity(q.urgentOverride)) {
+      return `Quiet-hours override must be one of ${ALERT_SEVERITIES.join(", ")}`;
     }
     try {
       localClock(q.timezone, new Date(0));

@@ -14,6 +14,7 @@ import {
   type AlertCondition,
   type AlertMatchInput,
   type AlertRule,
+  type AlertSeverity,
   type QuietHours,
 } from "../alert-routing";
 
@@ -328,6 +329,22 @@ describe("quiet hours", () => {
     );
   });
 
+  it("lands on the local hour across a spring-forward", () => {
+    // The one branch the other zone cases never reach: the DST correction pass
+    // in `quietHoursEnd`. Europe/Berlin springs forward on 2026-03-29 (the last
+    // Sunday of March), 02:00 CET → 03:00 CEST.
+    //
+    // An alert at 23:00 Berlin on the Saturday is inside a 22:00→08:00 window.
+    // The window is 10 wall-clock hours but only 9 real ones, because an hour
+    // is skipped. Adding 9h of *real* time to the instant lands at 09:00 local,
+    // an hour past what the user typed; the correction pulls it back to 08:00.
+    const berlin: QuietHours = { ...OVERNIGHT, timezone: "Europe/Berlin" };
+    const saturdayNight = new Date("2026-03-28T22:00:00Z"); // 23:00 CET
+    expect(isWithinQuietHours(berlin, saturdayNight)).toBe(true);
+    // 08:00 CEST on the Sunday is 06:00 UTC.
+    expect(quietHoursEnd(berlin, saturdayNight)?.toISOString()).toBe("2026-03-29T06:00:00.000Z");
+  });
+
   it("treats an unreadable timezone as no quiet hours rather than silence", () => {
     // A typo'd zone must not swallow a pager.
     const broken: QuietHours = { ...OVERNIGHT, timezone: "Mars/Olympus_Mons" };
@@ -409,6 +426,37 @@ describe("validateAlertRule", () => {
         },
       }),
     ).toMatch(/unknown timezone/i);
+  });
+
+  it("rejects a quiet-hours override that is not a real severity", () => {
+    // The failure this prevents is silent and backwards: `SEVERITY_RANK[bad]`
+    // is undefined, every `>=` against it is false, so a typo'd override holds
+    // *everything* — including the pages it was written to let through.
+    expect(
+      validateAlertRule({
+        ...ok,
+        quietHours: {
+          timezone: "UTC",
+          startMinute: 0,
+          endMinute: 60,
+          days: [1],
+          urgentOverride: "urgent" as unknown as AlertSeverity,
+        },
+      }),
+    ).toMatch(/override must be one of/i);
+    // Null is the documented "hold everything", and stays legal.
+    expect(
+      validateAlertRule({
+        ...ok,
+        quietHours: {
+          timezone: "UTC",
+          startMinute: 0,
+          endMinute: 60,
+          days: [1],
+          urgentOverride: null,
+        },
+      }),
+    ).toBeNull();
   });
 
   it("rejects an escalation with nowhere to go", () => {

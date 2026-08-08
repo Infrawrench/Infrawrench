@@ -156,29 +156,43 @@ async function guardedUpdate(
  *
  * The three per-transport try/catch blocks this replaced are now `routeAlert`'s
  * job: it never throws, and a failing channel is counted rather than propagated.
+ *
+ * Takes the whole lease row rather than just its org id so the routing `facts`
+ * can carry the lease's scope. Without them an `accountId`, `pluginId` or
+ * `resourceTypeId` condition can never match a lease warning — a rule saying
+ * "expiries on the prod account go to #prod-oncall" would silently do nothing,
+ * which reads to the user as a broken rule rather than a missing fact.
  */
-async function notifyOrg(
-  organizationId: string,
-  message: LeaseMessage,
-  resourceId?: string,
-): Promise<number> {
+async function notifyOrg(row: LeaseRecord, message: LeaseMessage): Promise<number> {
   const body = message.lines.join("\n");
   const routed = await routeAlert({
-    organizationId,
+    organizationId: row.organizationId,
     trigger: "expiryAlerts",
     title: message.title,
     body,
-    pushData: { type: "expiry_alert", orgId: organizationId },
+    pushData: { type: "expiry_alert", orgId: row.organizationId },
+    facts: {
+      accountId: row.accountId,
+      pluginId: row.pluginId,
+      resourceTypeId: row.resourceTypeId,
+      resourceId: row.resourceId,
+      key: row.displayName,
+    },
   });
-  const ownerResult = await notifyResourceOwner(organizationId, resourceId, "expiryAlerts", () => ({
-    title: message.title,
-    body: `${body}\nYou are recorded as the owner.`,
-    data: { type: "expiry_alert", orgId: organizationId },
-  }));
+  const ownerResult = await notifyResourceOwner(
+    row.organizationId,
+    row.resourceId,
+    "expiryAlerts",
+    () => ({
+      title: message.title,
+      body: `${body}\nYou are recorded as the owner.`,
+      data: { type: "expiry_alert", orgId: row.organizationId },
+    }),
+  );
   const succeeded = routed.succeeded + routed.held + ownerResult.succeeded;
   if (succeeded === 0) {
     console.warn(
-      `[leases] lease announcement for org ${organizationId} reached no transports: ${message.title}`,
+      `[leases] lease announcement for org ${row.organizationId} reached no transports: ${message.title}`,
     );
   }
   return succeeded;
@@ -261,11 +275,7 @@ async function executeLease(
       now,
     );
     if (!recorded) return "noop"; // superseded by an edit — its schedule wins
-    await notifyOrg(
-      row.organizationId,
-      leaseWarningMessage(step.kind, messageInput(row), now),
-      row.resourceId,
-    );
+    await notifyOrg(row, leaseWarningMessage(step.kind, messageInput(row), now));
     console.log(
       `[leases] ${step.kind === "warn1" ? "first" : "final"} auto-delete warning sent for ` +
         `resource ${row.resourceId} (lease ${row.id})`,
@@ -332,11 +342,7 @@ async function executeLease(
         now,
       );
       await auditAutoDelete({ ...row, lastError: message }, "failed", now);
-      await notifyOrg(
-        row.organizationId,
-        leaseOutcomeMessage("failed", messageInput(row), message),
-        row.resourceId,
-      );
+      await notifyOrg(row, leaseOutcomeMessage("failed", messageInput(row), message));
     } else {
       await guardedUpdate(
         row,
@@ -388,11 +394,7 @@ async function executeLease(
     now,
   );
   await auditAutoDelete(row, "deleted", now);
-  await notifyOrg(
-    row.organizationId,
-    leaseOutcomeMessage("deleted", messageInput(row)),
-    row.resourceId,
-  );
+  await notifyOrg(row, leaseOutcomeMessage("deleted", messageInput(row)));
   return "deleted";
 }
 

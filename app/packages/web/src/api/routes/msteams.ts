@@ -78,7 +78,10 @@ app.patch("/webhooks/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json<{ label?: string }>();
 
-  const label = body.label?.trim();
+  // `c.req.json<T>()` is a cast, not a check: a numeric `label` would throw
+  // inside `.trim()` and surface as a 500 for what is plainly a bad request.
+  if (typeof body.label !== "string") return c.json({ error: "label must be a string" }, 400);
+  const label = body.label.trim();
   if (!label) return c.json({ error: "label cannot be empty" }, 400);
 
   const result = await db

@@ -646,6 +646,22 @@ export async function handleBlockAction(payload: SlackInteractionPayload): Promi
       return;
     }
 
+    // Same gate as POST /alert-rules/deliveries/:id/ack. Membership alone is
+    // not enough: acknowledging cancels the escalation, which is the org
+    // deciding nobody else needs to be woken up. `acknowledgeAlert` only
+    // arbitrates between two people racing for the same row — it is not an
+    // authorization check — so without this a read-only member could silence
+    // the page for everyone.
+    if (
+      !hasPermission(
+        await memberPermissions(value.organizationId, member.userId),
+        "org:settings:write",
+      )
+    ) {
+      await respond(ephemeral("You need the org:settings:write permission to acknowledge alerts."));
+      return;
+    }
+
     const result = await acknowledgeAlert({
       deliveryId: value.deliveryId,
       organizationId: value.organizationId,
@@ -654,11 +670,14 @@ export async function handleBlockAction(payload: SlackInteractionPayload): Promi
     });
 
     if (result.acknowledged) {
-      // Threaded rather than a message rewrite: the alert text is still the
-      // useful thing in the channel, and a reply leaves an audit trail of who
-      // took it that a `chat.update` would overwrite.
+      // Ephemeral rather than a message rewrite: the alert text is still the
+      // useful thing in the channel, and a `chat.update` would overwrite it.
+      // Only the clicking user sees this confirmation — the durable record of
+      // who took it is the `alert_deliveries` row, not the channel.
       await respond(
-        ephemeral(`Acknowledged — escalation for "${result.title ?? "this alert"}" is cancelled.`),
+        ephemeral(
+          `Acknowledged — escalation for "${escapeMrkdwn(result.title ?? "this alert")}" is cancelled.`,
+        ),
       );
       return;
     }
@@ -668,8 +687,8 @@ export async function handleBlockAction(payload: SlackInteractionPayload): Promi
       );
       return;
     }
-    if (result.reason === "not_found") {
-      await respond(ephemeral("That alert is no longer tracked."));
+    if (result.reason === "not_found" || result.reason === "not_pending") {
+      await respond(ephemeral("That alert is no longer waiting on an acknowledgement."));
       return;
     }
     await respond(ephemeral("Someone already acknowledged that alert."));

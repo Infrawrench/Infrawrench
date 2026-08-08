@@ -139,18 +139,24 @@ function DestinationPicker({
     ...catalog.msTeamsWebhooks.map((w): AlertDestination => ({ kind: "msteams", webhookId: w.id })),
   ];
 
-  if (options.length === 1) {
-    return <p className="text-xs text-on-surface-faint">{emptyLabel}</p>;
-  }
+  // `push` is always an option, so the list is never empty and the checkboxes
+  // are always rendered. An earlier version treated "only push" as the empty
+  // state and hid every checkbox, which left an org that uses push alone unable
+  // to build a working rule — and made an existing push destination invisible
+  // and so unremovable. The hint is additional, not a replacement.
+  const noChannels = catalog.slackChannels.length === 0 && catalog.msTeamsWebhooks.length === 0;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-on-surface-tertiary">
-      {options.map((d) => (
-        <label key={destKey(d)} className="flex items-center gap-1.5 whitespace-nowrap">
-          <input type="checkbox" checked={has(d)} onChange={(e) => toggle(d, e.target.checked)} />
-          <span>{destinationLabel(d, catalog)}</span>
-        </label>
-      ))}
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-on-surface-tertiary">
+        {options.map((d) => (
+          <label key={destKey(d)} className="flex items-center gap-1.5 whitespace-nowrap">
+            <input type="checkbox" checked={has(d)} onChange={(e) => toggle(d, e.target.checked)} />
+            <span>{destinationLabel(d, catalog)}</span>
+          </label>
+        ))}
+      </div>
+      {noChannels ? <p className="text-xs text-on-surface-faint">{emptyLabel}</p> : null}
     </div>
   );
 }
@@ -219,16 +225,22 @@ function ConditionRow({
     [data.accounts],
   );
 
+  // Every control in the row is labelled off the field name in the leading
+  // span. The span is visible text, but it sits beside the controls rather than
+  // wrapping them, so a screen reader has nothing to tie the two together
+  // without these — and "at least / exactly" on its own says nothing about what
+  // is being compared.
+  const fieldLabel = CONDITION_LABELS[condition.field];
+
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
-      <span className="text-on-surface-tertiary w-28 shrink-0">
-        {CONDITION_LABELS[condition.field]}
-      </span>
+      <span className="text-on-surface-tertiary w-28 shrink-0">{fieldLabel}</span>
 
       {condition.field === "severity" ? (
         <>
           <select
             className={INPUT}
+            aria-label={`${fieldLabel} comparison`}
             value={condition.op}
             onChange={(e) => onChange({ ...condition, op: e.target.value as "gte" | "eq" })}
           >
@@ -237,6 +249,7 @@ function ConditionRow({
           </select>
           <select
             className={INPUT}
+            aria-label={fieldLabel}
             value={condition.severity}
             onChange={(e) => onChange({ ...condition, severity: e.target.value as AlertSeverity })}
           >
@@ -251,6 +264,7 @@ function ConditionRow({
         <>
           <select
             className={INPUT}
+            aria-label={`${fieldLabel} comparison`}
             value={condition.op}
             onChange={(e) => onChange({ ...condition, op: e.target.value as "gte" | "lt" })}
           >
@@ -258,21 +272,17 @@ function ConditionRow({
             <option value="lt">under</option>
           </select>
           <span className="text-on-surface-faint">$</span>
-          <input
-            className={`${INPUT} w-28`}
-            type="number"
-            min={0}
-            step="0.01"
-            value={(condition.cents / 100).toString()}
-            onChange={(e) =>
-              onChange({ ...condition, cents: Math.round(Number(e.target.value) * 100) || 0 })
-            }
+          <AmountInput
+            cents={condition.cents}
+            label={fieldLabel}
+            onChange={(cents) => onChange({ ...condition, cents })}
           />
         </>
       ) : condition.field === "key" || condition.field === "text" ? (
         <>
           <select
             className={INPUT}
+            aria-label={`${fieldLabel} comparison`}
             value={condition.op}
             onChange={(e) => {
               // Narrowed per field rather than shared: `key` also accepts an
@@ -293,6 +303,7 @@ function ConditionRow({
           </select>
           <input
             className={`${INPUT} flex-1 min-w-40`}
+            aria-label={`${fieldLabel} to match`}
             value={condition.value}
             placeholder={condition.field === "key" ? "service or rule name" : "text in the alert"}
             onChange={(e) => onChange({ ...condition, value: e.target.value })}
@@ -302,6 +313,7 @@ function ConditionRow({
         <>
           <select
             className={INPUT}
+            aria-label={`${fieldLabel} comparison`}
             value={condition.op}
             onChange={(e) => onChange({ ...condition, op: e.target.value as "in" | "notIn" })}
           >
@@ -309,6 +321,7 @@ function ConditionRow({
             <option value="notIn">is not one of</option>
           </select>
           <MultiSelect
+            label={fieldLabel}
             values={condition.values}
             options={
               condition.field === "trigger"
@@ -328,6 +341,7 @@ function ConditionRow({
       <button
         type="button"
         onClick={onRemove}
+        aria-label={`Remove the ${fieldLabel} condition`}
         className="ml-auto text-xs text-red-400 hover:text-red-500 dark:text-red-300"
       >
         Remove
@@ -337,25 +351,73 @@ function ConditionRow({
 }
 
 /**
+ * A dollars field over a cents value.
+ *
+ * The text is held locally while the field has focus, because deriving it from
+ * `cents` on every keystroke fights the user: `12.` round-trips to `12` the
+ * instant the decimal point is typed, and `12.50` loses its trailing zero. The
+ * committed value still updates on each change — only the *rendering* is
+ * deferred — so nothing has to be saved for the rule to be valid. On blur the
+ * field re-syncs to the canonical value, which is what normalizes `12.005` and
+ * an empty box.
+ */
+function AmountInput({
+  cents,
+  label,
+  onChange,
+}: {
+  cents: number;
+  label: string;
+  onChange: (cents: number) => void;
+}) {
+  const [text, setText] = useState<string | null>(null);
+
+  return (
+    <input
+      className={`${INPUT} w-28`}
+      type="number"
+      min={0}
+      step="0.01"
+      aria-label={`${label} in dollars`}
+      value={text ?? (cents / 100).toString()}
+      onChange={(e) => {
+        setText(e.target.value);
+        onChange(Math.max(0, Math.round(Number(e.target.value) * 100)) || 0);
+      }}
+      onBlur={() => setText(null)}
+    />
+  );
+}
+
+/**
  * A checkbox list for the enumerable fields, and a comma-separated text input
  * for resource type ids — there are hundreds of those across 48 plugins, and a
  * picker over all of them is worse than typing the one you mean.
  */
 function MultiSelect({
+  label,
   values,
   options,
   freeText,
   onChange,
 }: {
+  /** The condition's field name, so each control can name what it selects. */
+  label: string;
   values: string[];
   options: Array<{ value: string; label: string }>;
   freeText?: boolean;
   onChange: (next: string[]) => void;
 }) {
+  // A Set rather than `values.includes` in the map below: the checkbox list can
+  // run to every trigger or every account, and `includes` rescans the selection
+  // for each one.
+  const selected = useMemo(() => new Set(values), [values]);
+
   if (freeText || options.length === 0) {
     return (
       <input
         className={`${INPUT} flex-1 min-w-40`}
+        aria-label={`${label} ids, comma-separated`}
         value={values.join(", ")}
         placeholder="comma-separated ids"
         onChange={(e) =>
@@ -370,12 +432,16 @@ function MultiSelect({
     );
   }
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-on-surface-tertiary">
+    <div
+      role="group"
+      aria-label={label}
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-on-surface-tertiary"
+    >
       {options.map((o) => (
         <label key={o.value} className="flex items-center gap-1.5 whitespace-nowrap">
           <input
             type="checkbox"
-            checked={values.includes(o.value)}
+            checked={selected.has(o.value)}
             onChange={(e) =>
               onChange(
                 e.target.checked ? [...values, o.value] : values.filter((v) => v !== o.value),
@@ -408,6 +474,7 @@ function QuietHoursEditor({
         <input
           className={INPUT}
           type="time"
+          aria-label="Quiet hours start"
           value={minutesToTime(value.startMinute)}
           onChange={(e) => onChange({ ...value, startMinute: timeToMinutes(e.target.value) })}
         />
@@ -415,11 +482,15 @@ function QuietHoursEditor({
         <input
           className={INPUT}
           type="time"
+          aria-label="Quiet hours end"
           value={minutesToTime(value.endMinute)}
           onChange={(e) => onChange({ ...value, endMinute: timeToMinutes(e.target.value) })}
         />
+        {/* The placeholder is an example of the format, not the label — it
+            disappears the moment anything is typed. */}
         <input
           className={`${INPUT} w-52`}
+          aria-label="Quiet hours timezone"
           value={value.timezone}
           placeholder="Europe/Berlin"
           onChange={(e) => onChange({ ...value, timezone: e.target.value.trim() })}
@@ -427,7 +498,11 @@ function QuietHoursEditor({
         {wraps && <span className="text-xs text-on-surface-faint">(overnight)</span>}
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-on-surface-tertiary">
+      <div
+        role="group"
+        aria-label="Days the quiet-hours window applies on"
+        className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-on-surface-tertiary"
+      >
         <span>On</span>
         {WEEKDAYS.map((d) => (
           <label key={d.iso} className="flex items-center gap-1.5">
@@ -497,6 +572,7 @@ function EscalationEditor({
           className={`${INPUT} w-20`}
           type="number"
           min={1}
+          aria-label="Minutes to wait before escalating"
           value={value.afterMinutes}
           onChange={(e) => onChange({ ...value, afterMinutes: Number(e.target.value) || 1 })}
         />
@@ -546,6 +622,7 @@ function RuleCard({
         <span className="text-xs text-on-surface-faint w-6 shrink-0">{index + 1}</span>
         <input
           className={`${INPUT} flex-1 min-w-48 font-medium`}
+          aria-label={`Name of rule ${index + 1}`}
           value={rule.name}
           placeholder="Rule name"
           onChange={(e) => onChange({ ...rule, name: e.target.value })}
@@ -564,7 +641,7 @@ function RuleCard({
             disabled={index === 0}
             onClick={() => onMove(-1)}
             className="px-1.5 text-xs text-on-surface-tertiary disabled:opacity-30"
-            aria-label="Move up"
+            aria-label={`Move rule ${index + 1} up`}
           >
             ↑
           </button>
@@ -573,7 +650,7 @@ function RuleCard({
             disabled={index === total - 1}
             onClick={() => onMove(1)}
             className="px-1.5 text-xs text-on-surface-tertiary disabled:opacity-30"
-            aria-label="Move down"
+            aria-label={`Move rule ${index + 1} down`}
           >
             ↓
           </button>
@@ -581,6 +658,7 @@ function RuleCard({
         <button
           type="button"
           onClick={onRemove}
+          aria-label={`Delete rule ${index + 1}${rule.name ? `, ${rule.name}` : ""}`}
           className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
         >
           Delete
@@ -616,6 +694,7 @@ function RuleCard({
         <div className="flex items-center gap-2">
           <select
             className={INPUT}
+            aria-label="Condition to add"
             value={addField}
             onChange={(e) => setAddField(e.target.value as AlertCondition["field"])}
           >
@@ -769,6 +848,12 @@ function blankRule(position: number): AlertRule {
 
 export function AlertRoutingSection({ orgId }: { orgId: string }) {
   const { api } = useSettingsHost();
+  // The effects below depend on `apiGet`, not on `api`. The host's `api`
+  // container is rebuilt whenever the host value is (a permission refresh does
+  // it), while the method itself is stable on both platforms — module-level on
+  // web, `useMemo`'d on desktop. Depending on the container would refetch the
+  // whole rule list every time permissions settle.
+  const apiGet = api.get;
   const [data, setData] = useState<AlertRulesResponse | null>(null);
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [dirty, setDirty] = useState(false);
@@ -781,7 +866,7 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await api.get<AlertRulesResponse>(`/api/org/${orgId}/alert-rules`);
+        const res = await apiGet<AlertRulesResponse>(`/api/org/${orgId}/alert-rules`);
         if (cancelled) return;
         setData(res);
         setRules(res.rules);
@@ -795,7 +880,7 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [orgId, reloadNonce]);
+  }, [apiGet, orgId, reloadNonce]);
 
   function update(next: AlertRule[]): void {
     setRules(next);
@@ -965,14 +1050,15 @@ const STATE_LABELS: Record<string, string> = {
  */
 function AlertDeliveriesPanel({ orgId }: { orgId: string }) {
   const { api } = useSettingsHost();
+  // See the note in `AlertRoutingSection`: the stable method, not the container.
+  const apiGet = api.get;
   const [rows, setRows] = useState<DeliveryRow[] | null>(null);
 
   useEffect(() => {
-    api
-      .get<DeliveryRow[]>(`/api/org/${orgId}/alert-rules/deliveries?limit=20`)
+    apiGet<DeliveryRow[]>(`/api/org/${orgId}/alert-rules/deliveries?limit=20`)
       .then(setRows)
       .catch(() => setRows([]));
-  }, [orgId]);
+  }, [apiGet, orgId]);
 
   if (!rows || rows.length === 0) return null;
 

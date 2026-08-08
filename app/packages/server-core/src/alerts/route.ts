@@ -135,17 +135,29 @@ export interface AlertRouteResult {
   deliveryIds: string[];
 }
 
-const NOTHING: AlertRouteResult = {
-  attempted: 0,
-  succeeded: 0,
-  byTransport: { push: 0, slack: 0, msTeams: 0 },
-  attemptedByTransport: { push: 0, slack: 0, msTeams: 0 },
-  held: 0,
-  unrouted: true,
-  matchedRuleIds: [],
-  slackMessages: [],
-  deliveryIds: [],
-};
+/**
+ * An empty result.
+ *
+ * A factory rather than a shared constant: the result carries two count objects
+ * and three arrays, and this module already mutates count objects in place
+ * through `addCounts`. A single shared instance would hand every caller of every
+ * empty result the same `byTransport` and `deliveryIds`, so one caller that
+ * pushed onto or added into a field it was handed would corrupt every later
+ * empty result in the process.
+ */
+function nothing(): AlertRouteResult {
+  return {
+    attempted: 0,
+    succeeded: 0,
+    byTransport: { push: 0, slack: 0, msTeams: 0 },
+    attemptedByTransport: { push: 0, slack: 0, msTeams: 0 },
+    held: 0,
+    unrouted: true,
+    matchedRuleIds: [],
+    slackMessages: [],
+    deliveryIds: [],
+  };
+}
 
 /**
  * Whether an alert reached its audience or is guaranteed to.
@@ -415,7 +427,7 @@ export async function routeAlert(
           `[alerts] ${event.trigger} for org ${event.organizationId} matched no rule with destinations`,
         );
       }
-      return { ...NOTHING, unrouted: decision.unrouted, matchedRuleIds: decision.matchedRuleIds };
+      return { ...nothing(), unrouted: decision.unrouted, matchedRuleIds: decision.matchedRuleIds };
     }
 
     let attempted = 0;
@@ -488,13 +500,32 @@ export async function routeAlert(
       // `releaseUnlessDelivered` rule the drift notifier uses on its claim.
       // Only rows this call armed are released — a replay's row belongs to the
       // pass that owns it and deciding its fate here would race with that pass.
+      //
+      // A failed delete must not simply be logged: the row would stay in
+      // `awaiting_ack` with `escalateAt` set, and the follow-up pass would
+      // produce exactly the escalation this block exists to prevent. So there
+      // is a fallback — expire the row in place, which clears both deadlines
+      // and makes it invisible to both claims — and the id is only dropped from
+      // `deliveryIds` once one of the two disarmed it. If both fail the caller
+      // keeps the id and can still settle the row itself.
       if (armed && ackId && out.succeeded === 0) {
+        let released = false;
         try {
           await db.delete(alertDeliveries).where(eq(alertDeliveries.id, ackId));
+          released = true;
         } catch (err) {
           console.error("[alerts] failed to release ack row:", err);
+          try {
+            await db
+              .update(alertDeliveries)
+              .set({ state: "expired", deliverAfter: null, escalateAt: null, updatedAt: now })
+              .where(eq(alertDeliveries.id, ackId));
+            released = true;
+          } catch (fallbackErr) {
+            console.error("[alerts] failed to expire undeliverable ack row:", fallbackErr);
+          }
         }
-        deliveryIds.splice(deliveryIds.indexOf(ackId), 1);
+        if (released) deliveryIds.splice(deliveryIds.indexOf(ackId), 1);
       }
     }
 
@@ -511,6 +542,6 @@ export async function routeAlert(
     };
   } catch (err) {
     console.error("[alerts] routeAlert failed:", err);
-    return NOTHING;
+    return nothing();
   }
 }

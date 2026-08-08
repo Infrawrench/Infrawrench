@@ -6,7 +6,15 @@
 -- exactly what they routed before.
 --
 -- Ordering matters below. The rules are generated from the boolean columns, so
--- they must be written *before* those columns are dropped.
+-- they must be read here before anything drops them.
+--
+-- This is the **expand** half of an expand/contract split. The legacy trigger
+-- columns are deliberately left in place: Drizzle's `select()` names every
+-- column in the schema, so an old replica mid-rollout still asks for them, and
+-- dropping them here would break every read of `slack_channels`,
+-- `msteams_webhooks` and `push_preferences` until the rollout finished. The 35
+-- drops live in `0080_drop_legacy_alert_trigger_columns.sql`, to be applied
+-- once this release is fully rolled out.
 
 --> statement-breakpoint
 CREATE TABLE "alert_rules" (
@@ -167,6 +175,13 @@ FROM grouped g;
 --
 -- Every trigger a phone can receive, at the end of the list. Per-member mutes
 -- still apply on top; this rule only says the org's phones are in scope.
+--
+-- The position is derived from the org's own highest channel rule rather than
+-- pinned to a constant. A constant would have to be larger than any possible
+-- channel-rule count, and "larger than any possible" is exactly the kind of
+-- assumption that is true until it is not — the channel rules take positions
+-- 0..N-1 from `row_number()`, one per distinct opt-in set. `COALESCE` covers
+-- the org that has channels but produced no channel rule.
 INSERT INTO "alert_rules" (
   "id", "organization_id", "name", "enabled", "position",
   "conditions", "destinations", "continue_on_match"
@@ -176,7 +191,14 @@ SELECT
   o."organization_id",
   'Mobile push',
   true,
-  100,
+  COALESCE(
+    (
+      SELECT MAX(r."position") + 1
+      FROM "alert_rules" r
+      WHERE r."organization_id" = o."organization_id"
+    ),
+    0
+  ),
   jsonb_build_array(
     jsonb_build_object(
       'field', 'trigger', 'op', 'notIn', 'values', jsonb_build_array('weeklyDigest')
@@ -211,76 +233,3 @@ UPDATE "push_preferences" SET "muted_triggers" = ARRAY(
     CASE WHEN NOT "probe_alerts"       THEN 'probeAlerts'       END
   ]) AS t WHERE t IS NOT NULL
 );
-
---> statement-breakpoint
-ALTER TABLE "push_preferences" DROP COLUMN "sync_incidents";
---> statement-breakpoint
-ALTER TABLE "push_preferences" DROP COLUMN "budget_alerts";
---> statement-breakpoint
-ALTER TABLE "push_preferences" DROP COLUMN "anomaly_alerts";
---> statement-breakpoint
-ALTER TABLE "push_preferences" DROP COLUMN "metric_alerts";
---> statement-breakpoint
-ALTER TABLE "push_preferences" DROP COLUMN "resource_drift";
---> statement-breakpoint
-ALTER TABLE "push_preferences" DROP COLUMN "workflow_pages";
---> statement-breakpoint
-ALTER TABLE "push_preferences" DROP COLUMN "provider_incidents";
---> statement-breakpoint
-ALTER TABLE "push_preferences" DROP COLUMN "expiry_alerts";
---> statement-breakpoint
-ALTER TABLE "push_preferences" DROP COLUMN "log_match_alerts";
---> statement-breakpoint
-ALTER TABLE "push_preferences" DROP COLUMN "posture_alerts";
---> statement-breakpoint
-ALTER TABLE "push_preferences" DROP COLUMN "probe_alerts";
-
---> statement-breakpoint
-ALTER TABLE "slack_channels" DROP COLUMN "sync_incidents";
---> statement-breakpoint
-ALTER TABLE "slack_channels" DROP COLUMN "budget_alerts";
---> statement-breakpoint
-ALTER TABLE "slack_channels" DROP COLUMN "anomaly_alerts";
---> statement-breakpoint
-ALTER TABLE "slack_channels" DROP COLUMN "metric_alerts";
---> statement-breakpoint
-ALTER TABLE "slack_channels" DROP COLUMN "resource_drift";
---> statement-breakpoint
-ALTER TABLE "slack_channels" DROP COLUMN "workflow_pages";
---> statement-breakpoint
-ALTER TABLE "slack_channels" DROP COLUMN "provider_incidents";
---> statement-breakpoint
-ALTER TABLE "slack_channels" DROP COLUMN "expiry_alerts";
---> statement-breakpoint
-ALTER TABLE "slack_channels" DROP COLUMN "log_match_alerts";
---> statement-breakpoint
-ALTER TABLE "slack_channels" DROP COLUMN "posture_alerts";
---> statement-breakpoint
-ALTER TABLE "slack_channels" DROP COLUMN "probe_alerts";
---> statement-breakpoint
-ALTER TABLE "slack_channels" DROP COLUMN "weekly_digest";
-
---> statement-breakpoint
-ALTER TABLE "msteams_webhooks" DROP COLUMN "sync_incidents";
---> statement-breakpoint
-ALTER TABLE "msteams_webhooks" DROP COLUMN "budget_alerts";
---> statement-breakpoint
-ALTER TABLE "msteams_webhooks" DROP COLUMN "anomaly_alerts";
---> statement-breakpoint
-ALTER TABLE "msteams_webhooks" DROP COLUMN "metric_alerts";
---> statement-breakpoint
-ALTER TABLE "msteams_webhooks" DROP COLUMN "resource_drift";
---> statement-breakpoint
-ALTER TABLE "msteams_webhooks" DROP COLUMN "workflow_pages";
---> statement-breakpoint
-ALTER TABLE "msteams_webhooks" DROP COLUMN "provider_incidents";
---> statement-breakpoint
-ALTER TABLE "msteams_webhooks" DROP COLUMN "expiry_alerts";
---> statement-breakpoint
-ALTER TABLE "msteams_webhooks" DROP COLUMN "log_match_alerts";
---> statement-breakpoint
-ALTER TABLE "msteams_webhooks" DROP COLUMN "posture_alerts";
---> statement-breakpoint
-ALTER TABLE "msteams_webhooks" DROP COLUMN "probe_alerts";
---> statement-breakpoint
-ALTER TABLE "msteams_webhooks" DROP COLUMN "weekly_digest";

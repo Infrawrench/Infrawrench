@@ -43,9 +43,14 @@ const CLAIM_LEASE_MS = 5 * 60_000;
 const BATCH = 50;
 
 /**
- * Give up on a row after this many claims. A row that keeps failing is failing
- * for a reason that will not fix itself — a deleted channel, a revoked webhook
- * — and retrying it forever would mean the pass never drains.
+ * Give up on a row after this many *delivery attempts*. A row that keeps
+ * failing is failing for a reason that will not fix itself — a deleted channel,
+ * a revoked webhook — and retrying it forever would mean the pass never drains.
+ *
+ * The claim increments `attemptCount` before `flushHold`/`escalate` read it, so
+ * the guards below compare with `>`: claim N runs the Nth send, and claim
+ * `MAX_ATTEMPTS + 1` is the one that does no send and expires the row. That is
+ * one extra *claim*, not one extra delivery.
  */
 const MAX_ATTEMPTS = 5;
 
@@ -136,18 +141,21 @@ async function finish(id: string, state: string, now: Date): Promise<void> {
  * make the message the user sees depend on when they happened to save a form.
  * The queued destinations are what the rule said when the alert happened, which
  * is the honest answer.
+ *
+ * Returns true only when the message actually went somewhere — a dropped
+ * payload, an exhausted row and a send that reached nobody all return false.
  */
-async function flushHold(row: Row, now: Date): Promise<void> {
+async function flushHold(row: Row, now: Date): Promise<boolean> {
   const event = toEvent(row);
   if (!event) {
     console.error(`[alerts] held delivery ${row.id} has an unreadable payload; dropping`);
     await finish(row.id, "expired", now);
-    return;
+    return false;
   }
   if (row.attemptCount > MAX_ATTEMPTS) {
     console.error(`[alerts] held delivery ${row.id} exceeded ${MAX_ATTEMPTS} attempts; giving up`);
     await finish(row.id, "expired", now);
-    return;
+    return false;
   }
 
   const destinations = (row.destinations as AlertDestination[] | null) ?? [];
@@ -181,41 +189,52 @@ async function flushHold(row: Row, now: Date): Promise<void> {
   // would lose it, and deleting it would hide a broken channel.
   if (result.succeeded === 0 && result.held === 0) {
     console.error(`[alerts] flush of held delivery ${row.id} reached nobody; will retry`);
-    return;
+    return false;
   }
 
   if (!escalation) {
     await finish(row.id, "sent", now);
-    return;
+    return true;
   }
 
   // A held alert that also escalates starts its acknowledgement clock *now*,
   // not when it was raised — nobody could have acknowledged a message that had
   // not been sent yet, so carrying the original deadline forward would escalate
   // it the instant the quiet window closed.
+  //
+  // `attemptCount` is reset with it. The counter is shared by both halves of
+  // this pass, so a hold that needed four flush attempts would otherwise reach
+  // the escalation half with one claim left and give up before it ever reached
+  // the escalation destinations — exactly the silence the policy exists to
+  // prevent. The flush attempts are spent; the escalation gets its own budget.
   await db
     .update(alertDeliveries)
     .set({
       state: "awaiting_ack",
       deliverAfter: null,
       escalateAt: new Date(now.getTime() + escalation.afterMinutes * 60_000),
+      attemptCount: 0,
       updatedAt: now,
     })
     .where(eq(alertDeliveries.id, row.id));
+  return true;
 }
 
-/** Send one overdue alert to its escalation destinations. */
-async function escalate(row: Row, now: Date): Promise<void> {
+/**
+ * Send one overdue alert to its escalation destinations. Returns true only when
+ * the escalation reached somebody, on the same terms as {@link flushHold}.
+ */
+async function escalate(row: Row, now: Date): Promise<boolean> {
   const event = toEvent(row);
   const escalation = row.escalation as EscalationPolicy | null;
   if (!event || !escalation || escalation.destinations.length === 0) {
     await finish(row.id, "expired", now);
-    return;
+    return false;
   }
   if (row.attemptCount > MAX_ATTEMPTS) {
     console.error(`[alerts] escalation ${row.id} exceeded ${MAX_ATTEMPTS} attempts; giving up`);
     await finish(row.id, "expired", now);
-    return;
+    return false;
   }
 
   const minutes = escalation.afterMinutes;
@@ -249,12 +268,19 @@ async function escalate(row: Row, now: Date): Promise<void> {
 
   if (result.succeeded === 0) {
     console.error(`[alerts] escalation of ${row.id} reached nobody; will retry`);
-    return;
+    return false;
   }
   await finish(row.id, "escalated", now);
+  return true;
 }
 
 export interface AlertFollowUpStats {
+  /**
+   * Rows that actually went somewhere. A claim that dropped an unreadable
+   * payload, gave up on an exhausted row, or sent to nobody is not counted —
+   * this number is read as "follow-ups that worked", so counting claims here
+   * would report successful deliveries for rows that delivered nothing.
+   */
   flushed: number;
   escalated: number;
 }
@@ -270,8 +296,7 @@ export async function runAlertFollowUpPass(now = new Date()): Promise<AlertFollo
     const holds = await claimReleasedHolds(now);
     for (const row of holds) {
       try {
-        await flushHold(row, now);
-        stats.flushed += 1;
+        if (await flushHold(row, now)) stats.flushed += 1;
       } catch (err) {
         console.error(`[alerts] failed to flush held delivery ${row.id}:`, err);
       }
@@ -287,8 +312,7 @@ export async function runAlertFollowUpPass(now = new Date()): Promise<AlertFollo
     const overdue = await claimOverdueEscalations(now);
     for (const row of overdue) {
       try {
-        await escalate(row, now);
-        stats.escalated += 1;
+        if (await escalate(row, now)) stats.escalated += 1;
       } catch (err) {
         console.error(`[alerts] failed to escalate delivery ${row.id}:`, err);
       }

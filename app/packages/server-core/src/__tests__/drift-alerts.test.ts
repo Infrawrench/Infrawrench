@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { alertReachedImpl, routed, unroutedResult } from "./helpers/route-alert";
 
 /**
  * Drift notification orchestration. The pure batching and rendering is covered
@@ -124,41 +125,8 @@ vi.mock("../drift/settings", () => ({
 const routeAlert = vi.fn(async (..._args: unknown[]) => routed());
 vi.mock("../alerts/route", () => ({
   routeAlert: (...a: unknown[]) => routeAlert(...a),
-  alertReached: (r: { succeeded?: number; held?: number } | null | undefined) =>
-    (r?.succeeded ?? 0) > 0 || (r?.held ?? 0) > 0,
+  alertReached: alertReachedImpl,
 }));
-
-/** A delivery that reached one Slack channel and one phone. */
-function routed(over: Record<string, unknown> = {}) {
-  return {
-    attempted: 2,
-    succeeded: 2,
-    byTransport: { push: 1, slack: 1, msTeams: 0 },
-    attemptedByTransport: { push: 1, slack: 1, msTeams: 0 },
-    held: 0,
-    unrouted: false,
-    matchedRuleIds: ["rule1"],
-    // The tracked-Slack half of the result. Present by default because
-    // `byTransport.slack` is 1 — a result claiming a Slack delivery with no
-    // message to show for it is a shape the real function never returns.
-    slackMessages: [{ installationId: "inst1", channelId: "C1", ts: "1722700000.000100" }],
-    deliveryIds: [],
-    ...over,
-  };
-}
-
-/** A delivery that reached nobody — no rule matched, or every channel failed. */
-function unroutedResult() {
-  return routed({
-    attempted: 0,
-    succeeded: 0,
-    byTransport: { push: 0, slack: 0, msTeams: 0 },
-    attemptedByTransport: { push: 0, slack: 0, msTeams: 0 },
-    matchedRuleIds: [],
-    slackMessages: [],
-    unrouted: true,
-  });
-}
 
 import { notifyResourceDrift } from "../drift/alerts";
 import { MAX_SCANNED_CHANGES } from "../drift/summary";
@@ -250,10 +218,7 @@ describe("cooldown claim", () => {
   it("sends once when it wins the claim", async () => {
     const result = await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW);
     expect(result).toEqual({ status: "sent", changes: 1, push: 1, slack: 1, msTeams: 0 });
-    expect(routeAlert).toHaveBeenCalledWith(
-      expect.objectContaining({ trigger: "resourceDrift" }),
-      ...[],
-    );
+    expect(routeAlert).toHaveBeenCalledWith(expect.objectContaining({ trigger: "resourceDrift" }));
   });
 
   it("stays silent when another replica already holds the window", async () => {

@@ -172,7 +172,7 @@ describe("sendSlackToChannels", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("is a no-op when the rule named no channels", async () => {
+  it("is a no-op when the named rows resolve to nothing", async () => {
     installationRows = [installation()];
     channelRows = [];
     const { sendSlackToChannels } = await import("../slack");
@@ -184,14 +184,34 @@ describe("sendSlackToChannels", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("is a no-op when the rule named no channels at all, without querying", async () => {
+    // The empty-selection short circuit in `resolveSlackChannels` runs before
+    // the query. Worth its own case: a rule whose Slack destinations were all
+    // removed must not fall through to "every channel in the org", which is
+    // what an unguarded `inArray(…, [])` would risk.
+    installationRows = [installation()];
+    channelRows = [{ id: "row1", channelId: "C1", channelName: "alerts", installationId: "inst1" }];
+    const { sendSlackToChannels } = await import("../slack");
+    expect(await sendSlackToChannels(ORG, [], alert)).toEqual({
+      attempted: 0,
+      succeeded: 0,
+      failed: 0,
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("posts to every named channel", async () => {
     installationRows = [installation()];
+    // Ids match the ones requested below, so the fixture reads as the result of
+    // the `inArray(slackChannels.id, rowIds)` filter rather than as every row
+    // in the org. (The db fake ignores predicates; the filter itself is the
+    // query's job, covered by the route tests.)
     channelRows = [
-      { channelId: "C1", channelName: "alerts", installationId: "inst1" },
-      { channelId: "C2", channelName: "oncall", installationId: "inst1" },
+      { id: "row1", channelId: "C1", channelName: "alerts", installationId: "inst1" },
+      { id: "row2", channelId: "C2", channelName: "oncall", installationId: "inst1" },
     ];
     const { sendSlackToChannels } = await import("../slack");
-    const result = await sendSlackToChannels(ORG, ["row1"], alert);
+    const result = await sendSlackToChannels(ORG, ["row1", "row2"], alert);
     expect(result).toEqual({ attempted: 2, succeeded: 2, failed: 0 });
     expect(fetchSpy).toHaveBeenCalledTimes(2);
 

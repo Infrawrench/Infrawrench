@@ -205,12 +205,16 @@
       "description": "Mobile push notification devices and preferences."
     },
     {
+      "name": "Alerts",
+      "description": "Ordered alert routing rules — which alerts reach which destinations, with quiet hours and escalation — plus the held and awaiting-acknowledgement delivery queue."
+    },
+    {
       "name": "Slack",
-      "description": "Slack workspace connection and per-channel alert routing."
+      "description": "Slack workspace connection and the channels alert rules can name as destinations."
     },
     {
       "name": "Microsoft Teams",
-      "description": "Microsoft Teams webhook connections and per-channel alert routing."
+      "description": "Microsoft Teams webhook connections and the channels alert rules can name as destinations."
     }
   ],
   "components": {
@@ -15568,7 +15572,7 @@
             "items": {
               "$ref": "#/components/schemas/AlertTrigger"
             },
-            "description": "Triggers this member has turned off for this organization. Anything not listed is delivered, so a trigger added by a later release arrives without the client changing. A member who has never saved preferences gets ['resourceDrift']."
+            "description": "Triggers this member has turned off for this organization. Anything not listed is delivered, so a trigger added by a later release arrives without the client changing. A member who has never saved preferences gets ['resourceDrift']. A `channelOnly` trigger (one push cannot deliver, such as `weeklyDigest`) is accepted here and simply has no effect — rejecting a preference that is already a no-op would buy nothing."
           }
         },
         "required": [
@@ -15583,7 +15587,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AlertTrigger"
-            }
+            },
+            "description": "Triggers this member has turned off for this organization. Anything not listed is delivered, so a trigger added by a later release arrives without the client changing. A member who has never saved preferences gets ['resourceDrift']. A `channelOnly` trigger (one push cannot deliver, such as `weeklyDigest`) is accepted here and simply has no effect — rejecting a preference that is already a no-op would buy nothing."
           }
         },
         "required": [
@@ -15662,7 +15667,7 @@
         "description": "Alert severity, ordered info < warning < critical."
       },
       "AlertCondition": {
-        "anyOf": [
+        "oneOf": [
           {
             "type": "object",
             "properties": {
@@ -15897,7 +15902,7 @@
         "description": "One clause of a rule. A rule matches when every condition matches; 'or' is expressed by writing a second rule. A condition on a fact the alert does not carry never matches — in either direction, so `accountId notIn [x]` does not match an alert with no account."
       },
       "AlertDestination": {
-        "anyOf": [
+        "oneOf": [
           {
             "type": "object",
             "properties": {
@@ -34800,10 +34805,11 @@
                     "reason": {
                       "type": "string",
                       "enum": [
-                        "not_found",
+                        "not_pending",
                         "already_escalated",
                         "already_acknowledged"
-                      ]
+                      ],
+                      "description": "Why the acknowledgement did not take. `not_pending` means the delivery exists but was never awaiting one — still held, already sent, or expired."
                     },
                     "title": {
                       "type": "string"
@@ -35637,7 +35643,7 @@
           "Microsoft Teams"
         ],
         "summary": "Connect a Teams channel as an alert destination",
-        "description": "Adds a channel by webhook URL, or updates the one already holding that URL. Each trigger defaults to enabled. Responds 400 when the URL is not https or its host is not Microsoft-operated.",
+        "description": "Adds a channel by webhook URL, or updates the one already holding that URL. Which alerts reach it is decided by /alert-rules — connecting a channel routes nothing to it on its own. Responds 400 when the URL is not https or its host is not Microsoft-operated.",
         "parameters": [
           {
             "schema": {

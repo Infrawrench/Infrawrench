@@ -11,6 +11,12 @@ import {
   check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type {
+  AlertCondition,
+  AlertDestination,
+  EscalationPolicy,
+  QuietHours,
+} from "@infrawrench/client-core";
 
 import { accounts, dashboards, organizations, users } from "./core-schema.js";
 
@@ -2079,16 +2085,22 @@ export const alertRules = pgTable(
     enabled: boolean("enabled").notNull().default(true),
     /** Ascending evaluation order. Ties break on id so the order is total. */
     position: integer("position").notNull().default(0),
-    /** `AlertCondition[]`. Empty matches every alert. */
-    conditions: jsonb("conditions").notNull().default([]),
-    /** `AlertDestination[]`. Empty is legal: a rule that swallows alerts. */
-    destinations: jsonb("destinations").notNull().default([]),
+    /**
+     * Empty matches every alert.
+     *
+     * `$type` here documents the shape and spares every reader a cast; it is
+     * *not* a guarantee. These columns outlive the build that wrote them, so
+     * `alerts/rules.ts` still re-checks each one on the way out — see `toRule`.
+     */
+    conditions: jsonb("conditions").$type<AlertCondition[]>().notNull().default([]),
+    /** Empty is legal: a rule that swallows alerts. */
+    destinations: jsonb("destinations").$type<AlertDestination[]>().notNull().default([]),
     /** False (the default) makes the list first-match-wins. */
     continueOnMatch: boolean("continue_on_match").notNull().default(false),
-    /** `QuietHours | null` — hold matching alerts until the window closes. */
-    quietHours: jsonb("quiet_hours"),
-    /** `EscalationPolicy | null` — re-send elsewhere if nobody acknowledges. */
-    escalation: jsonb("escalation"),
+    /** Hold matching alerts until the window closes. */
+    quietHours: jsonb("quiet_hours").$type<QuietHours>(),
+    /** Re-send elsewhere if nobody acknowledges. */
+    escalation: jsonb("escalation").$type<EscalationPolicy>(),
     createdByUserId: text("created_by_user_id"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -2140,14 +2152,23 @@ export const alertDeliveries = pgTable(
     ruleName: text("rule_name"),
     trigger: text("trigger").notNull(),
     severity: text("severity").notNull(),
-    /** `held` | `awaiting_ack` | `acknowledged` | `escalated` | `expired`. */
+    /**
+     * `held` | `awaiting_ack` | `sent` | `acknowledged` | `escalated` |
+     * `expired` — the `AlertDeliveryState` union in client-core. `sent` is what
+     * `flushHold` writes for a released hold whose rule does not escalate;
+     * everything else is terminal or waiting on one of the two deadlines.
+     */
     state: text("state").notNull(),
-    /** The full `AlertEvent`, rendered — see the note above. */
+    /**
+     * The full `AlertEvent`, rendered — see the note above. Left untyped
+     * because `AlertEvent` is declared in `alerts/route.ts`, which imports this
+     * module; naming it here would close the cycle.
+     */
     payload: jsonb("payload").notNull(),
-    /** `AlertDestination[]` this leg is for. */
-    destinations: jsonb("destinations").notNull().default([]),
-    /** `EscalationPolicy | null`, snapshotted at raise time. */
-    escalation: jsonb("escalation"),
+    /** The destinations this leg is for. */
+    destinations: jsonb("destinations").$type<AlertDestination[]>().notNull().default([]),
+    /** Snapshotted at raise time, so a later rule edit cannot change it. */
+    escalation: jsonb("escalation").$type<EscalationPolicy>(),
     /** Quiet-hours release instant, and the flush pass's claim column. */
     deliverAfter: timestamp("deliver_after"),
     /** Escalation deadline, and the escalation pass's claim column. */

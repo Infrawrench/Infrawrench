@@ -7,7 +7,7 @@
  * org member first, so this module can take "who" on trust and worry only about
  * "which row".
  */
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "../db/client";
 import { alertDeliveries } from "../db/schema";
@@ -17,8 +17,18 @@ export interface AckResult {
   acknowledged: boolean;
   /** Set when somebody got there first, so the UI can name them. */
   alreadyAcknowledgedBy?: string | null;
-  /** Set when the row is past acknowledging (escalated, expired, gone). */
-  reason?: "not_found" | "already_escalated" | "already_acknowledged";
+  /**
+   * Set when the row did not move, and why.
+   *
+   * `not_pending` is the catch-all for a row that exists but was never waiting
+   * on an acknowledgement — still `held`, already `sent` without an escalation
+   * policy, or `expired`. It is deliberately distinct from
+   * `already_acknowledged`: reporting "somebody already acknowledged this" for a
+   * row nobody ever could have acknowledged names an event that did not happen,
+   * and does it with `alreadyAcknowledgedBy: null` so the message cannot even
+   * say who.
+   */
+  reason?: "not_found" | "not_pending" | "already_escalated" | "already_acknowledged";
   /** Alert title, for the message the caller writes back into Slack. */
   title?: string;
 }
@@ -90,6 +100,11 @@ export async function acknowledgeAlert(args: {
   if (row.state === "escalated") {
     return { acknowledged: false, reason: "already_escalated", ...title };
   }
+  if (row.state !== "acknowledged") {
+    // `held`, `sent` or `expired` — the row exists but was never awaiting an
+    // acknowledgement, so there is nothing here to take and nobody to name.
+    return { acknowledged: false, reason: "not_pending", ...title };
+  }
   return {
     acknowledged: false,
     reason: "already_acknowledged",
@@ -113,6 +128,72 @@ export async function listAlertDeliveries(
     .where(eq(alertDeliveries.organizationId, organizationId))
     .orderBy(desc(alertDeliveries.createdAt))
     .limit(Math.min(Math.max(limit, 1), 200));
+}
+
+/**
+ * Settle every awaiting-acknowledgement delivery raised about one thing that
+ * has now been dealt with elsewhere.
+ *
+ * Some alerts have their own resolution — a workflow approval is approved,
+ * denied or times out — and that resolution *is* the acknowledgement. Without
+ * this the escalation clock keeps running on a settled request and fires a
+ * "nobody acknowledged this" page about a decision that was made ten minutes
+ * ago, which is worse than no escalation at all: it wakes someone up to look at
+ * something already closed.
+ *
+ * Matched on the deep-link payload rather than a stored id list because that is
+ * the identifier the alert already carries — `routeAlert` writes the whole
+ * `AlertEvent` into `payload`, `pushData.approvalId` included — so no new
+ * column and no bookkeeping that can drift from the rows it describes. Scoped
+ * to the org and to `awaiting_ack`, so it can never touch a finished row or
+ * another org's.
+ *
+ * `state` is the caller's to choose because it is a claim about what happened:
+ * `acknowledged` when a person decided, `expired` when the deadline passed and
+ * nobody did. Never throws — settling is bookkeeping behind a decision that has
+ * already landed.
+ */
+export async function settleDeliveriesForPushTarget(args: {
+  organizationId: string;
+  /** A `pushData` key present on the alert, e.g. `approvalId`. */
+  field: "approvalId";
+  value: string;
+  state: "acknowledged" | "expired";
+  userId?: string | null;
+  via?: string;
+}): Promise<number> {
+  const now = new Date();
+  try {
+    const rows = await db
+      .update(alertDeliveries)
+      .set({
+        state: args.state,
+        // Both deadlines cleared, so neither claim in the follow-up pass can
+        // pick the row up again.
+        escalateAt: null,
+        deliverAfter: null,
+        ...(args.state === "acknowledged"
+          ? {
+              acknowledgedAt: now,
+              acknowledgedByUserId: args.userId ?? null,
+              acknowledgedVia: args.via ?? "workflow",
+            }
+          : {}),
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(alertDeliveries.organizationId, args.organizationId),
+          eq(alertDeliveries.state, "awaiting_ack"),
+          sql`${alertDeliveries.payload} -> 'pushData' ->> ${args.field} = ${args.value}`,
+        ),
+      )
+      .returning({ id: alertDeliveries.id });
+    return rows.length;
+  } catch (err) {
+    console.error("[alerts] failed to settle deliveries for", args.field, args.value, err);
+    return 0;
+  }
 }
 
 /** Cancel held or awaiting-ack rows — used when an admin clears the queue. */

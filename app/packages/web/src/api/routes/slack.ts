@@ -207,7 +207,12 @@ app.patch("/channels/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json<{ channelName?: string }>();
 
-  const channelName = body.channelName?.trim().replace(/^#/, "");
+  // `c.req.json<T>()` is a cast, not a check: a numeric `channelName` would
+  // throw inside `.trim()` and surface as a 500 for a plainly bad request.
+  if (typeof body.channelName !== "string") {
+    return c.json({ error: "channelName must be a string" }, 400);
+  }
+  const channelName = body.channelName.trim().replace(/^#/, "");
   if (!channelName) return c.json({ error: "channelName is required" }, 400);
 
   const result = await db

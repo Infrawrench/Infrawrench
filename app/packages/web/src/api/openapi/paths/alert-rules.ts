@@ -13,7 +13,7 @@ import type { BuildContext } from "../context";
  */
 
 const AlertDestination = z
-  .union([
+  .discriminatedUnion("kind", [
     strict({ kind: z.literal("push") }),
     strict({
       kind: z.literal("slack"),
@@ -30,7 +30,7 @@ const AlertDestination = z
   });
 
 const AlertCondition = z
-  .union([
+  .discriminatedUnion("field", [
     strict({
       field: z.literal("trigger"),
       op: z.enum(["in", "notIn"]),
@@ -264,7 +264,15 @@ export function registerAlertRulePaths(ctx: BuildContext) {
             schema: strict({
               acknowledged: z.boolean(),
               alreadyAcknowledgedBy: z.string().nullable().optional(),
-              reason: z.enum(["not_found", "already_escalated", "already_acknowledged"]).optional(),
+              // `not_found` is absent on purpose: the handler maps it to 404,
+              // so it can never reach a client through this response.
+              reason: z
+                .enum(["not_pending", "already_escalated", "already_acknowledged"])
+                .optional()
+                .openapi({
+                  description:
+                    "Why the acknowledgement did not take. `not_pending` means the delivery exists but was never awaiting one — still held, already sent, or expired.",
+                }),
               title: z.string().optional(),
             }),
           },

@@ -318,10 +318,20 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
           "On-call alerts raised by your own systems, fanned out over the org's SMS, push, Slack, and Teams transports.",
       },
       { name: "Push", description: "Mobile push notification devices and preferences." },
-      { name: "Slack", description: "Slack workspace connection and per-channel alert routing." },
+      {
+        name: "Alerts",
+        description:
+          "Ordered alert routing rules — which alerts reach which destinations, with quiet hours and escalation — plus the held and awaiting-acknowledgement delivery queue.",
+      },
+      {
+        name: "Slack",
+        description:
+          "Slack workspace connection and the channels alert rules can name as destinations.",
+      },
       {
         name: "Microsoft Teams",
-        description: "Microsoft Teams webhook connections and per-channel alert routing.",
+        description:
+          "Microsoft Teams webhook connections and the channels alert rules can name as destinations.",
       },
     ],
   });

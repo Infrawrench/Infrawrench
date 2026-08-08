@@ -12,18 +12,19 @@ const PushDevice = strict({
   disabled: z.boolean().openapi({ description: "True when delivery failures disabled the device" }),
 }).openapi("PushDevice");
 
+const MUTED_TRIGGERS_DESCRIPTION =
+  "Triggers this member has turned off for this organization. Anything not listed is delivered, so a trigger added by a later release arrives without the client changing. A member who has never saved preferences gets ['resourceDrift']. A `channelOnly` trigger (one push cannot deliver, such as `weeklyDigest`) is accepted here and simply has no effect — rejecting a preference that is already a no-op would buy nothing.";
+
 const PushPreferences = strict({
-  mutedTriggers: z.array(AlertTriggerEnum).openapi({
-    description:
-      "Triggers this member has turned off for this organization. Anything not listed is delivered, so a trigger added by a later release arrives without the client changing. A member who has never saved preferences gets ['resourceDrift'].",
-  }),
+  mutedTriggers: z.array(AlertTriggerEnum).openapi({ description: MUTED_TRIGGERS_DESCRIPTION }),
 }).openapi("PushPreferences");
 
-// Registered under its own name — `.partial()` on a registered schema would
-// otherwise collapse back into the full $ref (both fields required) in the
-// generated document.
+// Registered as its own component rather than reusing `PushPreferences`, so the
+// request body and the response shape can diverge without a client break — the
+// response is what the server settled on, which need not stay identical to what
+// a client is allowed to send.
 const PushPreferencesUpdate = strict({
-  mutedTriggers: z.array(AlertTriggerEnum),
+  mutedTriggers: z.array(AlertTriggerEnum).openapi({ description: MUTED_TRIGGERS_DESCRIPTION }),
 }).openapi("PushPreferencesUpdate");
 
 const PushRecipient = strict({

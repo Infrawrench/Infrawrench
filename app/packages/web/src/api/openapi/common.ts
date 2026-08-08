@@ -1,4 +1,4 @@
-import { ALERT_TRIGGERS } from "@infrawrench/client-core";
+import { ALERT_SEVERITIES, ALERT_TRIGGERS } from "@infrawrench/client-core";
 import { z } from "./zod";
 import { ALL_PERMISSIONS } from "@infrawrench/server-core/permissions";
 
@@ -127,7 +127,14 @@ export const AlertTriggerEnum = z
   .enum(ALERT_TRIGGERS.map((t) => t.id) as [string, ...string[]])
   .openapi("AlertTrigger", { description: "A kind of alert that can be routed." });
 
-/** How loud an alert is, independent of which trigger raised it. */
+/**
+ * How loud an alert is, independent of which trigger raised it.
+ *
+ * Derived from `ALERT_SEVERITIES` rather than spelled out, for the same reason
+ * as the trigger enum above: the ordered registry in client-core is the source
+ * of truth, and a hardcoded copy here would drift silently the day a level is
+ * added.
+ */
 export const AlertSeverityEnum = z
-  .enum(["info", "warning", "critical"])
+  .enum(ALERT_SEVERITIES as [string, ...string[]])
   .openapi("AlertSeverity", { description: "Alert severity, ordered info < warning < critical." });

@@ -6,7 +6,7 @@ sidebar_order: 14
 
 Every alert Infrawrench raises — a sync failure, a budget crossing, a cost anomaly, a probe going down — passes through your organization's **routing rules** on its way out. A rule says which alerts it is about, where they go, whether to hold them at night, and what to do if nobody responds.
 
-> **Cloud only.** Routing is applied by the cloud's background poller as alerts are raised; there is nothing to configure on desktop, and the rules editor is a web/desktop surface rather than a mobile one.
+> **Cloud-managed.** Rules live with your organization in the cloud, and the cloud's background poller applies them as alerts are raised. You can edit them from the web app or from the desktop app's Settings tab while signed in to your organization — the desktop app edits the same cloud configuration, it does not keep a local copy. There is no rules editor on mobile; the mobile app carries your personal push mutes instead.
 
 ## The shape of a rule
 

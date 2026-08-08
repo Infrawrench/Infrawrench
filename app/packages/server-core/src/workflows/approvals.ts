@@ -27,6 +27,7 @@ import { db } from "../db/client";
 import { workflowApprovals, workflows } from "../db/schema";
 import { appPath, formatApprovalExpiry } from "../approvals/notify";
 import { routeAlert } from "../alerts/route";
+import { settleDeliveriesForPushTarget } from "../alerts/ack";
 import {
   recordSlackApprovalMessages,
   slackApprovalButtons,
@@ -301,6 +302,15 @@ async function expirePending(approvalId: string): Promise<void> {
     title: `Approval needed: ${expired.title}`,
     body: expired.message,
   });
+  // `expired`, not `acknowledged`: the request timed out and nobody decided, so
+  // there is no acknowledgement to record — but the escalation clock still has
+  // to stop, or it would page about a request the run has already given up on.
+  void settleDeliveriesForPushTarget({
+    organizationId: expired.organizationId,
+    field: "approvalId",
+    value: approvalId,
+    state: "expired",
+  });
 }
 
 /**
@@ -508,6 +518,15 @@ export async function decideWorkflowApproval(
       title: `Approval needed: ${updated.title}`,
       body: updated.message,
     });
+    // Same reason as the Slack update above: this is the one path where the
+    // run's poll never calls `expirePending`, so nothing else stops the
+    // escalation clock on the rows this request armed.
+    void settleDeliveriesForPushTarget({
+      organizationId,
+      field: "approvalId",
+      value: approvalId,
+      state: "expired",
+    });
     return { outcome: "conflict" };
   }
   // Retire any interactive Slack copies of this request: buttons off, outcome
@@ -520,6 +539,17 @@ export async function decideWorkflowApproval(
     via: opts.decidedVia ?? "the web app",
     title: `Approval needed: ${updated.title}`,
     body: updated.message,
+  });
+  // Deciding *is* acknowledging: somebody looked at the request and acted, so
+  // the escalation this request armed has nothing left to escalate. Recorded
+  // against the decider, so the delivery history names who took it.
+  void settleDeliveriesForPushTarget({
+    organizationId,
+    field: "approvalId",
+    value: approvalId,
+    state: "acknowledged",
+    userId: decidedBy.userId,
+    via: opts.decidedVia === "Slack" ? "slack" : "web",
   });
   return { outcome: "decided", approval: toSummary(updated, null) };
 }

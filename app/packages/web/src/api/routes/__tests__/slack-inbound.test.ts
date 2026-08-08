@@ -721,7 +721,35 @@ describe("POST /api/slack/interactions — alert acknowledge button", () => {
     acknowledgeAlert.mockResolvedValue({ acknowledged: false, reason: "not_found" });
     await ack();
     await flushAsync();
-    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("no longer tracked");
+    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain(
+      "no longer waiting on an acknowledgement",
+    );
+  });
+
+  it("says the same for a row that was never awaiting an acknowledgement", async () => {
+    // `not_pending` covers held, sent and expired rows. Reporting "somebody
+    // already acknowledged that" for one of those would name an event that
+    // never happened.
+    linkedAstrid();
+    acknowledgeAlert.mockResolvedValue({ acknowledged: false, reason: "not_pending" });
+    await ack();
+    await flushAsync();
+    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain(
+      "no longer waiting on an acknowledgement",
+    );
+  });
+
+  it("refuses a linked member without org:settings:write", async () => {
+    // Acknowledging cancels the escalation for the whole org, so it takes the
+    // same permission as the web endpoint. `acknowledgeAlert` only arbitrates
+    // races — it is not an authorization check — so a read-only member reaching
+    // it would silence everyone's page.
+    linkedAstrid();
+    memberPermissions = ["resources:read"];
+    await ack();
+    await flushAsync();
+    expect(acknowledgeAlert).not.toHaveBeenCalled();
+    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("org:settings:write");
   });
 
   it("ignores a malformed button value", async () => {

@@ -54,7 +54,7 @@ export function registerMsTeamsPaths(ctx: BuildContext) {
     tags: ["Microsoft Teams"],
     summary: "Connect a Teams channel as an alert destination",
     description:
-      "Adds a channel by webhook URL, or updates the one already holding that URL. Each trigger defaults to enabled. Responds 400 when the URL is not https or its host is not Microsoft-operated.",
+      "Adds a channel by webhook URL, or updates the one already holding that URL. Which alerts reach it is decided by /alert-rules — connecting a channel routes nothing to it on its own. Responds 400 when the URL is not https or its host is not Microsoft-operated.",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: MsTeamsWebhookCreate } } },

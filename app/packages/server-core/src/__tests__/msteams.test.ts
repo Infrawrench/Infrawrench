@@ -37,6 +37,8 @@ vi.mock("../db/schema", () => tables);
 
 /** Rows the next `select().from(...)` chain resolves to. */
 let webhookRows: unknown[] = [];
+/** When set, the next select rejects with it instead of resolving. */
+let queryError: Error | null = null;
 /** The `where(...)` argument of the most recent select, for trigger assertions. */
 let lastWhere: unknown;
 
@@ -48,7 +50,10 @@ vi.mock("../db/client", () => {
       lastWhere = w;
       return self;
     };
-    self["then"] = (resolve: (v: unknown) => unknown) => Promise.resolve(webhookRows).then(resolve);
+    self["then"] = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+      queryError
+        ? Promise.resolve().then(() => reject?.(queryError))
+        : Promise.resolve(webhookRows).then(resolve);
     return self;
   };
   return { db: { select: () => ({ from: () => chain() }) } };
@@ -78,6 +83,7 @@ let fetchSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   webhookRows = [];
+  queryError = null;
   lastWhere = undefined;
   fetchSpy = vi
     .spyOn(globalThis, "fetch")
@@ -236,8 +242,11 @@ describe("fan-out", () => {
     fetchSpy
       .mockResolvedValueOnce(new Response("nope", { status: 500 }))
       .mockResolvedValueOnce(new Response("", { status: 200 }));
-    const res = await sendMsTeamsToWebhooks(ORG, ["row1"], { title: "t", body: "b" });
+    // The requested ids match the fixture rows, so this reads as the two-webhook
+    // fan-out it is meant to be.
+    const res = await sendMsTeamsToWebhooks(ORG, ["a", "b"], { title: "t", body: "b" });
     expect(res).toEqual({ attempted: 2, succeeded: 1, failed: 1 });
+    expect(lastWhere).toMatchObject({ and: [{}, { inArray: [expect.anything(), ["a", "b"]] }] });
   });
 
   it("skips a row whose URL cannot be decrypted", async () => {
@@ -248,7 +257,7 @@ describe("fan-out", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("never throws, even when the query itself blows up", async () => {
+  it("counts a rejected post as a failure instead of throwing", async () => {
     const { sendMsTeamsToWebhooks } = await import("../msteams");
     webhookRows = [webhook()];
     fetchSpy.mockRejectedValue(new Error("network down"));
@@ -257,6 +266,20 @@ describe("fan-out", () => {
       succeeded: 0,
       failed: 1,
     });
+  });
+
+  it("never throws, even when the query itself blows up", async () => {
+    // The outer try/catch, which the per-post rejection above never reaches: a
+    // database failure must return NO_DELIVERY rather than propagate into the
+    // poller that raised the alert.
+    const { sendMsTeamsToWebhooks } = await import("../msteams");
+    queryError = new Error("connection refused");
+    await expect(sendMsTeamsToWebhooks(ORG, ["row1"], { title: "t", body: "b" })).resolves.toEqual({
+      attempted: 0,
+      succeeded: 0,
+      failed: 0,
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 

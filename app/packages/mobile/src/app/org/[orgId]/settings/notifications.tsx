@@ -59,6 +59,16 @@ interface TestPushResult {
   succeeded: number;
 }
 
+/**
+ * A `react-query` `onError` handler that surfaces the failure as an alert.
+ *
+ * Module scope rather than inside each section: it closes over nothing but its
+ * own `title`, so rebuilding it every render is wasted work and hands memoized
+ * children a new function identity for no reason.
+ */
+const alertError = (title: string) => (e: unknown) =>
+  Alert.alert(title, e instanceof Error ? e.message : "Unknown error");
+
 export default function NotificationsScreen() {
   const { api, orgId } = useOrgApi();
   const queryClient = useQueryClient();
@@ -464,8 +474,6 @@ function SlackSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
   });
 
   const refetchStatus = () => queryClient.invalidateQueries({ queryKey: statusKey });
-  const alertError = (title: string) => (e: unknown) =>
-    Alert.alert(title, e instanceof Error ? e.message : "Unknown error");
 
   const connect = useMutation({
     mutationFn: async () => {
@@ -693,8 +701,6 @@ function MsTeamsSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
   });
 
   const refetchStatus = () => queryClient.invalidateQueries({ queryKey: statusKey });
-  const alertError = (title: string) => (e: unknown) =>
-    Alert.alert(title, e instanceof Error ? e.message : "Unknown error");
 
   const add = useMutation({
     mutationFn: () => addMsTeamsWebhook(api, orgId, { label, url }),

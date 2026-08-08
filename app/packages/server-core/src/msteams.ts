@@ -1,10 +1,11 @@
 /**
  * Microsoft Teams as an alert transport.
  *
- * An org adds one or more Teams *webhook URLs*; we POST an Adaptive Card to
- * each one an `alert_rules` destination names. Like `slack.ts`, this module has
- * no notion of a trigger — routing is decided once in `alerts/route.ts` and the
- * webhook is addressed here by its stored row id.
+ * An org adds one or more Teams *webhook URLs*, and each stored webhook is a
+ * destination an `alert_rules` rule can name; we POST an Adaptive Card to every
+ * webhook the matched rules named. Like `slack.ts`, this module has no notion
+ * of a trigger — routing is decided once in `alerts/route.ts` and the webhook
+ * is addressed here by its stored row id.
  *
  * Why webhooks and not an "Add to Teams" OAuth flow like Slack
  * -----------------------------------------------------------
