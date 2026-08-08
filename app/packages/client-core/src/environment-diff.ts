@@ -410,7 +410,7 @@ function bag(value: unknown): Record<string, unknown> {
 }
 
 interface Slot {
-  /** `${resourceTypeId} ${normalizedName}#${ordinal}` — the synthetic diff id. */
+  /** `${resourceTypeId}\0${normalizedName}#${ordinal}` — the synthetic diff id. */
   id: string;
   key: string;
   resource: EnvironmentDiffResource;
@@ -429,7 +429,7 @@ interface Slot {
 function buildSlots(side: EnvironmentDiffSide, tokens: ReadonlySet<string>): Slot[] {
   const groups = new Map<string, EnvironmentDiffResource[]>();
   for (const r of side.resources) {
-    const key = `${r.resourceTypeId} ${normalizeEnvironmentName(r.displayName, tokens)}`;
+    const key = `${r.resourceTypeId}\0${normalizeEnvironmentName(r.displayName, tokens)}`;
     const existing = groups.get(key);
     if (existing) existing.push(r);
     else groups.set(key, [r]);

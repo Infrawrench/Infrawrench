@@ -224,6 +224,7 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "dns") {
     return dnsTabTarget();
+  }
   if (segments[0] === "environment-diff") {
     const params = new URLSearchParams(search ?? "");
     return environmentDiffTabTarget(params.get("a") ?? undefined, params.get("b") ?? undefined);
