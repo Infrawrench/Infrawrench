@@ -224,6 +224,12 @@ export function registerTeamPaths(ctx: BuildContext) {
     responses: {
       200: { description: "Invited", content: { "application/json": { schema: InviteResponse } } },
       402: ErrorResponses[402],
+      403: {
+        description:
+          "The role would grant permissions the caller does not hold, or the caller is not " +
+          "an owner and tried to invite an owner",
+        content: { "application/json": { schema: ErrorResponse } },
+      },
       409: {
         description: "All seats are in use; retry with addSeat to buy one more",
         content: { "application/json": { schema: SeatLimitResponse } },

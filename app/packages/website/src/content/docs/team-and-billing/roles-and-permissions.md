@@ -57,6 +57,8 @@ Use **Settings → Team → (member) → Role picker** to change a member's role
 
 <insert [Team page member row with the new role picker dropdown open] here>
 
+You cannot hand out more authority than you hold. A role you assign must be a subset of your own effective permissions, so an admin (who has no `billing:write`) cannot move someone onto a custom role that grants it. The same two rules apply when you **invite** someone, not just when you change an existing member's role — otherwise the invite form would be a way around the picker.
+
 ## API key scopes
 
 API keys store the same permission strings as roles. When you create a key, pick the exact scopes it should carry; the server enforces them with the same matcher used for session permissions, including wildcards. Older keys created with the deprecated `sync:read`/`sync:write` scopes are renamed automatically the next time they authenticate. Keys that were still active when workflows got permissions of their own had the matching workflow scopes added once, during that upgrade, so a `dashboards:write` key kept the workflow access it had — you can see the added scopes on the key. Revoked keys were skipped. Nothing is added at authentication time: a key carries the scopes it is listed as carrying.

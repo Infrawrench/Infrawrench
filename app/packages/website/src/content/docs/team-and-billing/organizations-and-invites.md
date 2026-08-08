@@ -21,6 +21,8 @@ The invitee gets an email with a link. They sign up (or sign in), and the org ap
 
 Inviting teammates requires the paid plan — the [free plan](./billing-and-plans.md) is a single user, and the invite form will prompt you to upgrade.
 
+You can only invite someone into a role you could assign an existing member: the role's permissions must be a subset of your own, and only an owner can invite another owner. If the role picker refuses a choice, ask an owner to send that invite.
+
 On the paid plan, every member and pending invite occupies a [seat](./billing-and-plans.md) — counting both your monthly seats and any [prepaid capacity slots](./billing-and-plans.md#prepaid-capacity-slots). If all seats are taken, you'll be asked to confirm adding one (billed pro-rata) before the invite is sent — this needs billing permission, so a member who can invite but can't manage billing will be asked to get a billing admin to add the seat first.
 
 If your capacity is entirely prepaid slots there is no monthly seat to add, so the prompt instead points you at **Settings → Billing** to buy another slot.
