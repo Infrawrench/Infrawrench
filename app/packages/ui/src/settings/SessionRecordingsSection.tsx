@@ -176,10 +176,20 @@ export function SessionRecordingsSection() {
               defaultValue={settings.retentionDays}
               disabled={!canWrite}
               onBlur={(e) => {
-                const days = Number(e.target.value);
-                if (Number.isInteger(days) && days !== settings.retentionDays) {
-                  void savePolicy({ retentionDays: days });
+                const raw = e.target.value.trim();
+                // Empty/partial input: Number('') is 0 and Number('12.') is
+                // not an integer — neither should silently ship to the API.
+                const days = raw === "" ? NaN : Number(raw);
+                if (
+                  !Number.isInteger(days) ||
+                  days < 1 ||
+                  days > 3650 ||
+                  days === settings.retentionDays
+                ) {
+                  e.target.value = String(settings.retentionDays);
+                  return;
                 }
+                void savePolicy({ retentionDays: days });
               }}
             />
           </div>

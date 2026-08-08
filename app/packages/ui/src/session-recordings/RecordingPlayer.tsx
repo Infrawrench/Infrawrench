@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   castOutputThrough,
   castResumeIndex,
@@ -8,6 +8,8 @@ import {
 } from "@infrawrench/client-core";
 
 import type { MountPlaybackTerminal, PlaybackTerminal } from "./terminal.js";
+
+const PLAYBACK_SPEEDS = [0.5, 1, 2, 4] as const;
 
 /**
  * Playback for one recorded SSH session.
@@ -55,7 +57,12 @@ export function RecordingPlayer({
   const positionRef = useRef(0);
   const eventIndexRef = useRef(0);
   const speedRef = useRef(speed);
-  speedRef.current = speed;
+  // Keep the rAF loop reading the latest speed without re-subscribing every
+  // change. Written in an effect so render stays pure (Strict Mode may replay
+  // render and would otherwise double-write the ref for work that never commits).
+  useEffect(() => {
+    speedRef.current = speed;
+  }, [speed]);
 
   const duration = cast.durationSeconds;
 
@@ -164,8 +171,6 @@ export function RecordingPlayer({
     setPlaying((p) => !p);
   }, [atEnd, seekTo]);
 
-  const speeds = useMemo(() => [0.5, 1, 2, 4], []);
-
   return (
     <div className="space-y-2">
       <div
@@ -206,7 +211,7 @@ export function RecordingPlayer({
         </span>
 
         <div className="flex items-center gap-1" role="group" aria-label="Playback speed">
-          {speeds.map((s) => (
+          {PLAYBACK_SPEEDS.map((s) => (
             <button
               key={s}
               type="button"

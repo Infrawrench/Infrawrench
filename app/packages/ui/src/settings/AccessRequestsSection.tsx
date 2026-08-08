@@ -365,6 +365,7 @@ function RequestForm({
   // for them changes nothing, and the server rejects a request made entirely
   // of them. Greying them out explains why rather than 400-ing after the fact.
   const held = useMemo(() => new Set(catalog?.held ?? []), [catalog]);
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
   const available = catalog?.permissions ?? [];
 
   const durations = DURATION_PRESETS.filter(
@@ -399,13 +400,14 @@ function RequestForm({
                 <input
                   type="checkbox"
                   disabled={alreadyHeld}
-                  checked={selected.includes(permission)}
+                  checked={selectedSet.has(permission)}
                   onChange={(e) =>
-                    setSelected((prev) =>
-                      e.target.checked
-                        ? [...prev, permission]
-                        : prev.filter((p) => p !== permission),
-                    )
+                    setSelected((prev) => {
+                      const next = new Set(prev);
+                      if (e.target.checked) next.add(permission);
+                      else next.delete(permission);
+                      return [...next];
+                    })
                   }
                 />
                 <code>{permission}</code>
