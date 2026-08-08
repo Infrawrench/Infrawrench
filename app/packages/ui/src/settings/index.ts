@@ -20,6 +20,7 @@ export { FreezesSection } from "./FreezesSection.js";
 export { TagPolicySection } from "./TagPolicySection.js";
 export { ConfigAsCodeSection } from "./ConfigAsCodeSection.js";
 export { CurrencySection } from "./CurrencySection.js";
+export { CostExportsSection } from "./CostExportsSection.js";
 export { ApprovalsSection } from "./ApprovalsSection.js";
 export { NotificationsSection } from "./NotificationsSection.js";
 export { JiraSection } from "./JiraSection.js";

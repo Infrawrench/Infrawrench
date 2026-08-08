@@ -17,6 +17,11 @@ export default function SettingsScreen() {
         <Row title="API keys" subtitle="View and revoke API keys" onPress={go("api-keys")} />
         <Row title="Audit log" subtitle="Recent activity in this org" onPress={go("audit-log")} />
         <Row
+          title="Cost exports"
+          subtitle="Scheduled cost dumps and their last run"
+          onPress={go("cost-exports")}
+        />
+        <Row
           title="Notifications"
           subtitle="Push preferences and devices"
           onPress={go("notifications")}

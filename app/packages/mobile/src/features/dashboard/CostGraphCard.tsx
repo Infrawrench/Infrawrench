@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import {
   costQueryForConfig,
+  describeCostConversion,
   formatMoney,
   type CostGraphConfig,
   type CostQueryResponse,
@@ -34,6 +35,7 @@ export function CostGraphCard({ title, config }: { title: string; config: CostGr
   const response = query.data ?? null;
   const currency = response?.currencies[0] ?? "USD";
   const mixedCurrency = (response?.currencies.length ?? 0) > 1;
+  const conversionNote = describeCostConversion(response?.conversion);
   const total = response
     ? Object.entries(response.totals)
         .map(([cur, amt]) => formatMoney(amt, cur))
@@ -63,6 +65,13 @@ export function CostGraphCard({ title, config }: { title: string; config: CostGr
       {mixedCurrency && (
         <Text style={styles.note}>Mixed currencies — series are shown per currency.</Text>
       )}
+      {/*
+        A converted total has to carry its caveat on the card, next to the
+        number. Mobile has no rate editor (a deliberate omission), so this is
+        the only place a phone reader learns the figure is a conversion at
+        rates their org stated rather than a collected one.
+      */}
+      {conversionNote && <Text style={styles.note}>{conversionNote}</Text>}
 
       {query.isLoading ? (
         <Text style={styles.state}>Loading costs…</Text>

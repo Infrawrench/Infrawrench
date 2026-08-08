@@ -14,6 +14,7 @@ import { runLogAlertPass } from "@infrawrench/server-core/log-workspaces/pass";
 import { runMetricAlertPass } from "@infrawrench/server-core/metric-alerts/pass";
 import { runProbePass } from "@infrawrench/server-core/probes/pass";
 import { pruneAlertDeliveries, runAlertFollowUpPass } from "@infrawrench/server-core/alerts/pass";
+import { runCostExportPass } from "@infrawrench/server-core/cost-exports/pass";
 import {
   pruneResourceChanges,
   CHANGE_RETENTION_INTERVAL_MS,
@@ -185,6 +186,15 @@ export class PollerLoop extends TickLoop {
     // indexed range scans that usually return nothing. Defensive like the
     // others.
     await this.tickAlertFollowUp();
+
+    // Thirteenth pass: scheduled cost exports. Claims due exports with the
+    // accounts lease protocol (`cost_exports.next_run_at` doubles as the
+    // lease), streams the org's cost rows out of ClickHouse for every period
+    // in the restatement window and writes one object per period to the
+    // export's bucket or HTTPS endpoint. Each run records its own
+    // success/failure on the row, so a broken destination shows up in Settings
+    // instead of going quiet. Defensive like the others.
+    await this.tickCostExports();
   }
 
   private async runOne(row: PollAccountRow): Promise<void> {
@@ -312,6 +322,15 @@ export class PollerLoop extends TickLoop {
       await runProbePass({ limit: 8 });
     } catch (e) {
       console.error("[poller] probe tick failed:", e);
+    }
+  }
+
+  /** Write any scheduled cost exports that have come due. */
+  private async tickCostExports(): Promise<void> {
+    try {
+      await runCostExportPass({ limit: 2 });
+    } catch (e) {
+      console.error("[cost-export] export tick failed:", e);
     }
   }
 

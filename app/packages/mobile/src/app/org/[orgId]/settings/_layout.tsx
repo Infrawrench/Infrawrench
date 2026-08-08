@@ -16,6 +16,7 @@ export default function SettingsLayout() {
       <Stack.Screen name="team" options={{ title: "Team" }} />
       <Stack.Screen name="api-keys" options={{ title: "API keys" }} />
       <Stack.Screen name="audit-log" options={{ title: "Audit log" }} />
+      <Stack.Screen name="cost-exports" options={{ title: "Cost exports" }} />
       <Stack.Screen name="notifications" options={{ title: "Notifications" }} />
       <Stack.Screen name="approvals" options={{ title: "Approvals" }} />
       <Stack.Screen name="access-requests" options={{ title: "Break-glass access" }} />

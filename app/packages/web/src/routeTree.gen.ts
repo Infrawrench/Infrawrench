@@ -58,6 +58,7 @@ import { Route as OrgOrgIdSettingsSshKeysRouteImport } from './routes/org.$orgId
 import { Route as OrgOrgIdSettingsTagPolicyRouteImport } from './routes/org.$orgId.settings.tag-policy'
 import { Route as OrgOrgIdSettingsJiraRouteImport } from './routes/org.$orgId.settings.jira'
 import { Route as OrgOrgIdSettingsCurrencyRouteImport } from './routes/org.$orgId.settings.currency'
+import { Route as OrgOrgIdSettingsCostExportsRouteImport } from './routes/org.$orgId.settings.cost-exports'
 import { Route as OrgOrgIdSettingsTeamRouteImport } from './routes/org.$orgId.settings.team'
 import { Route as OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRouteImport } from './routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId'
 
@@ -321,6 +322,12 @@ const OrgOrgIdSettingsCurrencyRoute =
     path: '/currency',
     getParentRoute: () => OrgOrgIdSettingsRoute,
   } as any)
+const OrgOrgIdSettingsCostExportsRoute =
+  OrgOrgIdSettingsCostExportsRouteImport.update({
+    id: '/cost-exports',
+    path: '/cost-exports',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsTeamRoute = OrgOrgIdSettingsTeamRouteImport.update({
   id: '/team',
   path: '/team',
@@ -381,6 +388,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
   '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
+  '/org/$orgId/settings/cost-exports': typeof OrgOrgIdSettingsCostExportsRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/chat/': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
@@ -431,6 +439,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
   '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
+  '/org/$orgId/settings/cost-exports': typeof OrgOrgIdSettingsCostExportsRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsIndexRoute
@@ -485,6 +494,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
   '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
+  '/org/$orgId/settings/cost-exports': typeof OrgOrgIdSettingsCostExportsRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/chat/': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
@@ -899,6 +909,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsCurrencyRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/cost-exports': {
+      id: '/org/$orgId/settings/cost-exports'
+      path: '/cost-exports'
+      fullPath: '/org/$orgId/settings/cost-exports'
+      preLoaderRoute: typeof OrgOrgIdSettingsCostExportsRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/api-keys': {
       id: '/org/$orgId/settings/api-keys'
       path: '/api-keys'
@@ -1046,6 +1063,7 @@ interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsTagPolicyRoute: typeof OrgOrgIdSettingsTagPolicyRoute
   OrgOrgIdSettingsJiraRoute: typeof OrgOrgIdSettingsJiraRoute
   OrgOrgIdSettingsCurrencyRoute: typeof OrgOrgIdSettingsCurrencyRoute
+  OrgOrgIdSettingsCostExportsRoute: typeof OrgOrgIdSettingsCostExportsRoute
   OrgOrgIdSettingsTeamRoute: typeof OrgOrgIdSettingsTeamRoute
   OrgOrgIdSettingsIndexRoute: typeof OrgOrgIdSettingsIndexRoute
 }
@@ -1070,6 +1088,7 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsTagPolicyRoute: OrgOrgIdSettingsTagPolicyRoute,
   OrgOrgIdSettingsJiraRoute: OrgOrgIdSettingsJiraRoute,
   OrgOrgIdSettingsCurrencyRoute: OrgOrgIdSettingsCurrencyRoute,
+  OrgOrgIdSettingsCostExportsRoute: OrgOrgIdSettingsCostExportsRoute,
   OrgOrgIdSettingsTeamRoute: OrgOrgIdSettingsTeamRoute,
   OrgOrgIdSettingsIndexRoute: OrgOrgIdSettingsIndexRoute,
 }

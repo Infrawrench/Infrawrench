@@ -53,6 +53,15 @@ export interface RangeFlags {
    * validates the shape and can say what it expected.
    */
   currency?: string | undefined;
+  /**
+   * `costs --where "provider = 'aws' AND tag['env'] != 'dev'"` — the cost
+   * filter in the cost query language.
+   *
+   * Left a raw string: the command compiles it with the shared parser from
+   * `@infrawrench/client-core` so a mistake is reported with its offset and a
+   * caret, which a generic flag error here could not do.
+   */
+  where?: string | undefined;
 }
 
 /** Flags for the push-up commands (`page`, `costs push`). */
@@ -149,6 +158,8 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         // `costs` money selectors: which number, and which kinds of charge.
         basis: { type: "string" },
         currency: { type: "string" },
+        // `costs --where "<cost query>"` — the filter, as text.
+        where: { type: "string" },
         // Repeatable: one --charge-type per kind to keep.
         "charge-type": { type: "string", multiple: true },
         // `costs --anomalies` — same command, different question.
@@ -267,6 +278,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       window: str("window"),
       basis: str("basis"),
       currency: str("currency"),
+      where: str("where"),
       chargeTypes: Array.isArray(multi["charge-type"]) ? multi["charge-type"] : [],
     },
     deploy: {

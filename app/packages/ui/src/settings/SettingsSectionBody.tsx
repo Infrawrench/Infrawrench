@@ -13,6 +13,7 @@ import { FreezesSection } from "./FreezesSection.js";
 import { TagPolicySection } from "./TagPolicySection.js";
 import { ConfigAsCodeSection } from "./ConfigAsCodeSection.js";
 import { CurrencySection } from "./CurrencySection.js";
+import { CostExportsSection } from "./CostExportsSection.js";
 import { ApprovalsSection } from "./ApprovalsSection.js";
 import { NotificationsSection } from "./NotificationsSection.js";
 import { JiraSection } from "./JiraSection.js";
@@ -55,6 +56,8 @@ export function SettingsSectionBody({ section }: { section: string }): ReactNode
       return <ConfigAsCodeSection />;
     case "currency":
       return <CurrencySection />;
+    case "cost-exports":
+      return <CostExportsSection />;
     case "approvals":
       return <ApprovalsSection />;
     case "paging":

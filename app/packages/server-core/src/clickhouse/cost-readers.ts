@@ -24,8 +24,18 @@ export type { CostBasis, CostChargeType, CostFilter };
  * What ClickHouse itself can answer. The wire request carries three more
  * knobs (`topN`, `comparePreviousPeriod`, `forecast`) that the web service
  * layer resolves into extra queries before getting here.
+ *
+ * `query` — the cost query language's text form — is omitted for a different
+ * reason, and deliberately: it is compiled to `filters` by the service layer,
+ * and this type is where that is enforced. Query *text* has no meaning down
+ * here and must never acquire one; the only thing that reaches the SQL below is
+ * a `CostFilter[]` whose values are bound as parameters like every other
+ * filter's.
  */
-export type CostQuery = Omit<CostQueryRequest, "topN" | "comparePreviousPeriod" | "forecast">;
+export type CostQuery = Omit<
+  CostQueryRequest,
+  "topN" | "comparePreviousPeriod" | "forecast" | "query"
+>;
 
 /** One grouped series. `key` is "" when the query is ungrouped. */
 export interface CostSeriesGroup {
