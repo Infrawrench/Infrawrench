@@ -40,6 +40,6 @@ Picking a resource stores a live [output reference](../core-concepts/output-refe
 
 ## Seeing every zone at once
 
-This page is about one zone's records. For every zone and record across every provider in a single table — with records still pointing at buckets and apps you no longer own flagged as takeover risks — see [Domains & dangling DNS](./domains.md).
+This page is about one zone's records. For every zone and record across every provider in a single table — with records pointing at provider names nothing in the connected workspace claims flagged as potential takeover risks — see [Domains & dangling DNS](./domains.md).
 
 Live tracking is supported on Cloudflare, DigitalOcean, AWS Route 53, and Google Cloud DNS. Netlify DNS records are immutable at the provider, so a Netlify record captures the value at creation time but does not auto-update.

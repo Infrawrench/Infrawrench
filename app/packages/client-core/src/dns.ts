@@ -296,6 +296,11 @@ function readNumber(fields: Record<string, unknown>, key: string | undefined): n
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/** Truncate to an integer so values match OpenAPI `z.number().int()`. */
+function intOrNull(value: number | null): number | null {
+  return value === null ? null : Math.trunc(value);
+}
+
 function readBoolean(fields: Record<string, unknown>, key: string | undefined): boolean {
   if (!key) return false;
   const raw = fields[key];
@@ -319,8 +324,13 @@ export function normalizeDnsHost(value: string): string {
   if (slash !== -1) host = host.slice(0, slash);
   const at = host.lastIndexOf("@");
   if (at !== -1) host = host.slice(at + 1);
-  // Strip a port, but never mistake an IPv6 address's colons for one.
-  if (!host.includes("::")) {
+  // Strip a port, but never mistake an IPv6 address's colons for one. A bare
+  // host:port has exactly one colon; anything with more is an address.
+  // Bracketed form: `[2001:db8::1]:443` → `2001:db8::1`.
+  if (host.startsWith("[")) {
+    const end = host.indexOf("]");
+    if (end !== -1) host = host.slice(1, end);
+  } else if (host.indexOf(":") === host.lastIndexOf(":")) {
     const colon = host.lastIndexOf(":");
     if (colon !== -1 && /^\d+$/.test(host.slice(colon + 1))) host = host.slice(0, colon);
   }
@@ -582,7 +592,7 @@ export function computeDnsInventory(
       status: readString(fields, role.statusKey) || null,
       isPrivate,
       recordCount: 0,
-      providerRecordCount: readNumber(fields, role.recordCountKey),
+      providerRecordCount: intOrNull(readNumber(fields, role.recordCountKey)),
       danglingCount: 0,
     };
     zones.push(zone);
@@ -748,6 +758,12 @@ function classifyTargets(args: {
         if (claimant) {
           return { value, classification: "owned" as const, resource: claimant, service: null };
         }
+        // Ambiguous identity (two synced resources answer to the same token)
+        // must never become a takeover finding — the host is claimed, just
+        // not uniquely. Fall through as external rather than dangling.
+        if (claim && claim.claimants > 1) {
+          return { value, classification: "external" as const, resource: null, service: null };
+        }
         return {
           value,
           classification: "dangling" as const,
@@ -787,12 +803,16 @@ export function danglingDnsRecords(inventory: DnsInventoryResponse): DnsRecordEn
   return inventory.records.filter((r) => r.status === "dangling");
 }
 
-const EMPTY_INVENTORY: Omit<DnsInventoryResponse, "generatedAt"> = {
-  zones: [],
-  records: [],
-  counts: { zones: 0, records: 0, owned: 0, dangling: 0, external: 0, notAnalysed: 0 },
-  skippedNamespaces: [],
-};
+/** Fresh empty inventory — never share mutable arrays/objects across callers. */
+function emptyInventory(): DnsInventoryResponse {
+  return {
+    zones: [],
+    records: [],
+    counts: { zones: 0, records: 0, owned: 0, dangling: 0, external: 0, notAnalysed: 0 },
+    skippedNamespaces: [],
+    generatedAt: new Date().toISOString(),
+  };
+}
 
 /**
  * Read `GET /api/org/:orgId/dns` (permission `resources:read`).
@@ -806,5 +826,5 @@ export async function fetchDnsInventory(
   orgId: string,
 ): Promise<DnsInventoryResponse> {
   const res = await api.org<DnsInventoryResponse>(orgId, "/dns");
-  return res ?? { ...EMPTY_INVENTORY, generatedAt: new Date().toISOString() };
+  return res ?? emptyInventory();
 }

@@ -66,7 +66,9 @@ export function registerDnsPaths(ctx: BuildContext) {
       .boolean()
       .describe("Whether the provider proxies the record (Cloudflare's orange cloud)."),
     targets: z.array(DnsRecordTarget),
-    status: DnsTargetClassification.describe("Worst classification across `targets`."),
+    status: DnsTargetClassification.openapi({
+      description: "Worst classification across `targets`.",
+    }),
   }).openapi("DnsRecord");
 
   const DnsZone = strict({

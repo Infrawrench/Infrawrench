@@ -32,6 +32,7 @@ import {
   chatTabTarget,
   dashboardTabTarget,
   deploymentsTabTarget,
+  dnsTabTarget,
   workflowsTabTarget,
   navigateToWorkspaceTarget,
 } from "../lib/workspace-tabs";
@@ -267,13 +268,13 @@ export function SidebarDashboards() {
       onClick: () => void navigate({ to: "/posture" }),
     },
     // Domains also has a local half — the inventory is computed from stored
-    // state and the locally loaded plugins' DNS declarations. A plain route,
-    // same as Posture.
+    // state and the locally loaded plugins' DNS declarations. A workspace-tab
+    // kind (same as Logs), so the strip stays in sync with the active panel.
     {
       key: "dns",
       label: "Domains",
       icon: <DomainsIcon />,
-      onClick: () => void navigate({ to: "/dns" }),
+      onClick: () => void navigateToWorkspaceTarget(navigate, dnsTabTarget(), { label: "Domains" }),
     },
     // Fan-out SSH has a local half — local SSH accounts exec through the
     // machine's own ssh machinery — so, like Graph, it shows in both modes.

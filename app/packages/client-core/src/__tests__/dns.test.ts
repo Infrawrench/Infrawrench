@@ -126,6 +126,10 @@ describe("normalizeDnsHost", () => {
 
   it("leaves an IPv6 address alone rather than reading its tail as a port", () => {
     expect(normalizeDnsHost("2606:4700::6810:85e5")).toBe("2606:4700::6810:85e5");
+    // Uncompressed form has no `::` and ends in a numeric group — must not
+    // strip that group as if it were a TCP port.
+    expect(normalizeDnsHost("2001:db8:0:0:0:0:0:1")).toBe("2001:db8:0:0:0:0:0:1");
+    expect(normalizeDnsHost("[2001:db8::1]:443")).toBe("2001:db8::1");
   });
 });
 
@@ -252,6 +256,129 @@ describe("target classification", () => {
     );
     expect(inventory.records[0]?.status).toBe("owned");
     expect(inventory.records[0]?.targets[0]?.resource?.displayName).toBe("web-1");
+  });
+
+  it("does not flag an ambiguously claimed host as dangling", () => {
+    // Two resources answer to the same identity token (`hostname` is one of
+    // IDENTITY_FIELD_KEYS). The host also matches the vercel namespace, but
+    // neither project's *name* is the label — without the ambiguity guard the
+    // namespace pass would promote this to a takeover finding.
+    expect(
+      statusOf(
+        scan([
+          zone(),
+          record({ type: "CNAME", name: "www", content: "shared.vercel.app" }),
+          project({
+            id: "proj-1",
+            fields: { name: "alpha", hostname: "shared.vercel.app" },
+          }),
+          project({
+            id: "proj-2",
+            fields: { name: "beta", hostname: "shared.vercel.app" },
+          }),
+        ]),
+      ),
+    ).toBe("external");
+  });
+
+  it("resolves a Netlify branch alias to the site name after the -- prefix", () => {
+    const netlify: DnsScanPlugin = {
+      id: "netlify",
+      displayName: "Netlify",
+      resourceTypes: [
+        {
+          id: "site",
+          displayName: "Site",
+          dnsServiceHosts: [
+            {
+              id: "netlify-subdomain",
+              label: "Netlify site subdomain",
+              hostPattern: String.raw`(?:[a-z0-9][a-z0-9-]*--)?([a-z0-9][a-z0-9-]*)\.netlify\.(?:app|com)`,
+              reason: "Anyone can claim the subdomain.",
+            },
+          ],
+        },
+      ],
+    };
+    const site: DnsScanResource = {
+      id: "site-1",
+      pluginId: "netlify",
+      resourceTypeId: "site",
+      accountId: "nl-acc",
+      displayName: "Marketing",
+      externalId: "site-ext",
+      parentResourceId: null,
+      fields: { name: "mysite" },
+    };
+    const inventory = computeDnsInventory(
+      {
+        plugins: [CLOUDFLARE, netlify],
+        accounts: [
+          { id: "cf-acc", displayName: "Cloudflare prod", pluginId: "cloudflare" },
+          { id: "nl-acc", displayName: "Netlify team", pluginId: "netlify" },
+        ],
+        resources: [
+          zone(),
+          record({ type: "CNAME", name: "www", content: "staging--mysite.netlify.app" }),
+          site,
+        ],
+      },
+      { now: NOW },
+    );
+    expect(inventory.records[0]?.status).toBe("owned");
+  });
+
+  it("does not treat a dotted Spaces-like label as a bucket endpoint", () => {
+    // Spaces bucket names cannot contain periods; a host like
+    // `a.b.nyc3.digitaloceanspaces.com` must not match the namespace.
+    const doSpaces: DnsScanPlugin = {
+      id: "digitalocean",
+      displayName: "DigitalOcean",
+      resourceTypes: [
+        {
+          id: "spaces-bucket",
+          displayName: "Spaces Bucket",
+          dnsServiceHosts: [
+            {
+              id: "spaces-endpoint",
+              label: "Spaces bucket endpoint",
+              hostPattern: String.raw`([a-z0-9][a-z0-9-]*)\.[a-z0-9]+\.(?:cdn\.)?digitaloceanspaces\.com`,
+              reason: "Anyone can recreate the bucket.",
+            },
+          ],
+        },
+      ],
+    };
+    const bucket: DnsScanResource = {
+      id: "bucket-1",
+      pluginId: "digitalocean",
+      resourceTypeId: "spaces-bucket",
+      accountId: "do-acc",
+      displayName: "real-bucket",
+      externalId: "bucket-ext",
+      parentResourceId: null,
+      fields: { name: "real-bucket" },
+    };
+    const inventory = computeDnsInventory(
+      {
+        plugins: [CLOUDFLARE, doSpaces],
+        accounts: [
+          { id: "cf-acc", displayName: "Cloudflare prod", pluginId: "cloudflare" },
+          { id: "do-acc", displayName: "DO", pluginId: "digitalocean" },
+        ],
+        resources: [
+          zone(),
+          record({
+            type: "CNAME",
+            name: "www",
+            content: "a.b.nyc3.digitaloceanspaces.com",
+          }),
+          bucket,
+        ],
+      },
+      { now: NOW },
+    );
+    expect(inventory.records[0]?.status).toBe("external");
   });
 
   it("never analyses a record type with no host target", () => {

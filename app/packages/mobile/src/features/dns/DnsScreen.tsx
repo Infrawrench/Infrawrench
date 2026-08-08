@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import type { DnsRecordEntry, DnsTargetClassification } from "@infrawrench/client-core";
@@ -5,6 +6,16 @@ import { Card, EmptyView, ErrorView, LoadingView, Screen, SectionTitle } from "@
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { colors, radii, spacing } from "@/lib/theme";
 import { useDns } from "./useDns";
+
+type StatusFilter = "all" | DnsTargetClassification;
+
+const FILTER_OPTIONS: Array<{ key: StatusFilter; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "dangling", label: "Dangling" },
+  { key: "owned", label: "Internal" },
+  { key: "external", label: "External" },
+  { key: "not-analysed", label: "—" },
+];
 
 /**
  * Domains — the native counterpart of the web/desktop Domains screens and the
@@ -19,9 +30,17 @@ export function DnsScreen() {
   const router = useRouter();
   const { orgId } = useOrgApi();
   const dns = useDns();
+  const [filter, setFilter] = useState<StatusFilter>("all");
 
-  if (dns.isLoading) return <LoadingView />;
-  if (dns.isError) {
+  const records = useMemo(() => {
+    const list = dns.data?.records ?? [];
+    return filter === "all" ? list : list.filter((r) => r.status === filter);
+  }, [dns.data, filter]);
+
+  if (dns.isLoading && !dns.data) return <LoadingView />;
+  // Only blank the screen when there is no cached inventory. A failed
+  // pull-to-refresh must keep the last list on screen.
+  if (dns.isError && !dns.data) {
     return (
       <ErrorView
         message={
@@ -51,8 +70,28 @@ export function DnsScreen() {
       )}/${encodeURIComponent(resourceId)}?accountId=${encodeURIComponent(accountId)}`,
     );
 
+  const refetchError =
+    dns.isError && dns.error instanceof Error
+      ? dns.error.message
+      : dns.isError
+        ? "Couldn't refresh the DNS inventory."
+        : null;
+
   return (
     <Screen onRefresh={() => void dns.refetch()} refreshing={dns.isRefetching}>
+      {refetchError && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Refresh failed: ${refetchError}. Retry.`}
+          onPress={() => void dns.refetch()}
+          style={styles.refreshError}
+        >
+          <Text style={styles.refreshErrorText}>
+            Couldn&apos;t refresh — showing the last loaded inventory. Tap to retry.
+          </Text>
+        </Pressable>
+      )}
+
       <View style={styles.chips}>
         <Chip count={data.counts.zones} label="Zones" color={colors.textMuted} />
         <Chip count={data.counts.records} label="Records" color={colors.textMuted} />
@@ -62,24 +101,54 @@ export function DnsScreen() {
       </View>
 
       {data.records.length > 0 && (
+        <View style={styles.filters}>
+          {FILTER_OPTIONS.map((option) => {
+            const active = filter === option.key;
+            return (
+              <Pressable
+                key={option.key}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`Filter ${option.label}`}
+                onPress={() => setFilter(option.key)}
+                style={[styles.filterChip, active && styles.filterChipActive]}
+              >
+                <Text style={[styles.filterLabel, active && styles.filterLabelActive]}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+
+      {data.records.length > 0 && (
         <View style={{ gap: spacing.sm }}>
           <SectionTitle>Records</SectionTitle>
-          <Card list>
-            {data.records.map((record) => (
-              <DnsRow
-                key={record.resourceId}
-                record={record}
-                onPress={() =>
-                  openResource(
-                    record.pluginId,
-                    record.resourceTypeId,
-                    record.resourceId,
-                    record.accountId,
-                  )
-                }
-              />
-            ))}
-          </Card>
+          {records.length === 0 ? (
+            <Text style={styles.reason}>
+              {filter === "all"
+                ? "No records."
+                : `No ${STATUS_LABELS[filter as DnsTargetClassification] ?? filter} records.`}
+            </Text>
+          ) : (
+            <Card list>
+              {records.map((record) => (
+                <DnsRow
+                  key={record.resourceId}
+                  record={record}
+                  onPress={() =>
+                    openResource(
+                      record.pluginId,
+                      record.resourceTypeId,
+                      record.resourceId,
+                      record.accountId,
+                    )
+                  }
+                />
+              ))}
+            </Card>
+          )}
         </View>
       )}
 
@@ -207,6 +276,27 @@ const styles = StyleSheet.create({
   },
   chipCount: { fontSize: 14, fontWeight: "700" },
   chipLabel: { color: colors.textMuted, fontSize: 12 },
+  filters: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  filterChip: {
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.lg,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.surface,
+  },
+  filterChipActive: { borderColor: colors.accent, backgroundColor: colors.surfaceOverlay },
+  filterLabel: { color: colors.textMuted, fontSize: 12, fontWeight: "500" },
+  filterLabelActive: { color: colors.accent },
+  refreshError: {
+    backgroundColor: colors.surface,
+    borderColor: colors.danger,
+    borderWidth: 1,
+    borderRadius: radii.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  refreshErrorText: { color: colors.danger, fontSize: 12 },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: 10 },
   rowPressed: { backgroundColor: colors.surfaceOverlay },
   rowMain: { flex: 1, gap: 2 },

@@ -1,12 +1,12 @@
 ---
 title: Domains & dangling DNS
-description: Every DNS zone and record across every provider in one view, with subdomain-takeover risks — a record still pointing at a bucket or app you no longer own — flagged automatically.
+description: Every DNS zone and record across every provider in one view, with potential subdomain-takeover risks — a record pointing at a provider name nothing in the connected workspace claims — flagged automatically.
 sidebar_order: 9
 ---
 
-DNS is the one thing you own that is spread across the most consoles. A zone in Cloudflare, a hosted zone in Route 53 from the migration that never finished, a DigitalOcean domain someone set up for a side project, a Netlify zone that came with a site. **Domains** puts all of it in one table — every zone and every record, across every connected provider — and, more usefully, tells you which records point at something you no longer own.
+DNS is the one thing you own that is spread across the most consoles. A zone in Cloudflare, a hosted zone in Route 53 from the migration that never finished, a DigitalOcean domain someone set up for a side project, a Netlify zone that came with a site. **Domains** puts all of it in one table — every zone and every record, across every connected provider — and, more usefully, flags records whose targets nothing in the connected workspace claims.
 
-That last part is the subdomain-takeover problem. You delete the S3 bucket, tear down the Vercel project, rename the Netlify site — and the `CNAME` in your zone stays behind, still pointing at a name the provider has now released. Whoever registers that name next serves their content on your domain, with your TLS, inside your cookie scope.
+That last part is the subdomain-takeover problem. You delete the S3 bucket, tear down the Vercel project, rename the Netlify site — and the `CNAME` in your zone stays behind, still pointing at a name the provider has now released. Whoever registers that name next can serve their content on your hostname; depending on how TLS and cookies are configured for that deployment, that can also put their content behind your certificate and inside your cookie scope.
 
 Like the [posture checks](./posture-checks.md), [orphan finder](./orphan-finder.md) and [expiry radar](./expiry-radar.md), this costs nothing to have on. It is computed entirely from state your accounts already sync — no extra provider API calls, and **no DNS resolution**: a record's target is judged against what you actually have, not against what a resolver answers right now.
 
@@ -58,7 +58,7 @@ A record is dangling when its target matches a **provider namespace one of your 
 - Netlify site subdomains, Vercel deployment aliases, Fly.io app hostnames
 - `workers.dev` Worker subdomains
 
-So a `CNAME` to `assets.s3.amazonaws.com` is fine while that bucket is in one of your connected accounts, and becomes a finding the moment the bucket is gone.
+So a `CNAME` to `assets.s3.amazonaws.com` is fine while that bucket is in one of your connected accounts, and becomes a finding after the next sync reflects that the bucket is gone.
 
 ### Why it stays quiet
 
