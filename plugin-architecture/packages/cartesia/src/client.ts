@@ -11,8 +11,11 @@ import type {
   TranscribeAudioPayload,
   TranscribeAudioResult,
   TranscriptWord,
+  CostFetchRange,
+  CostRow,
 } from "@infrawrench/plugin-base";
 import { base64ToBytes, bytesToBase64, jsonRestFetch } from "@infrawrench/plugin-base";
+import { cartesiaCostSetupError, fetchCartesiaCostData } from "./cost-data.js";
 
 const BASE_URL = "https://api.cartesia.ai";
 
@@ -695,6 +698,33 @@ export class CartesiaClient implements PluginClient {
       true,
     );
     return (body.data ?? []).reduce((sum, bucket) => sum + (bucket.credits ?? 0), 0);
+  }
+
+  // ---- Cost ----------------------------------------------------------------
+
+  /**
+   * Daily spend from `GET /usage/credits`, grouped by capability. The work
+   * lives in `cost-data.ts` so it can be tested without a client; this hands it
+   * the admin key and the host's HTTP/CA settings.
+   *
+   * The admin-key guard is repeated here so the failure is visible at the
+   * host-facing entry point, not buried a call away: without an admin key the
+   * endpoint is unreachable and the account would otherwise report no spend
+   * forever rather than telling the user what to do.
+   */
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    if (!this.hasAdminKey) throw cartesiaCostSetupError();
+
+    return fetchCartesiaCostData(
+      {
+        adminApiKey: this.adminApiKey,
+        apiVersion: CARTESIA_VERSION,
+        baseUrl: BASE_URL,
+        ...(this.services?.http ? { http: this.services.http } : {}),
+        ...(this.caCert ? { caCert: this.caCert } : {}),
+      },
+      range,
+    );
   }
 
   // ---- Mapping -------------------------------------------------------------

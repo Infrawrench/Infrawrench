@@ -1,6 +1,6 @@
 ---
 title: Cartesia
-description: Browse Cartesia voices and pronunciation dictionaries, list API keys and credit usage with an admin key, and run Sonic synthesis and Ink Whisper transcription from the Speech tab.
+description: Browse Cartesia voices and pronunciation dictionaries, list API keys and track estimated credit spend with an admin key, and run Sonic synthesis and Ink Whisper transcription from the Speech tab.
 sidebar_order: 46
 ---
 
@@ -16,9 +16,21 @@ Cartesia gates two endpoints behind a **separate admin key**, so this plugin ask
 
 **API Key** (required) — Cartesia console → **API Keys**. Starts `sk_car_`. This drives voice and pronunciation-dictionary listing, text-to-speech and transcription.
 
-**Admin API Key** (optional) — created in the same console with the **Admin** key type. Starts `sk_car_admin_` and is **not** interchangeable with the key above. Cartesia only accepts an admin key on `/usage/credits` and `/api-keys`, so leaving it blank simply hides the **API Keys** list and the credit-usage figure. Voices, dictionaries, synthesis and transcription all keep working.
+**Admin API Key** (optional) — created in the same console with the **Admin** key type. Starts `sk_car_admin_` and is **not** interchangeable with the key above. Cartesia only accepts an admin key on `/usage/credits` and `/api-keys`, so leaving it blank hides the **API Keys** list and the credit-usage figure, and cost collection cannot run (see [Cost](#cost)). Voices, dictionaries, synthesis and transcription all keep working. Admin keys are created at **play.cartesia.ai/keys/admin**, and only by an organization admin.
 
 <insert [Cartesia Add-account form showing the required API key and the optional admin API key with its sk_car_admin_ placeholder] here>
+
+## Cost
+
+Cartesia spend appears on the **Costs** page, broken down by **capability** — text to speech, speech to text, voice changer and so on — one row per day. It comes from `GET /usage/credits` with daily buckets, and up to a year of history is collected (longer backfills are split into year-long calls, because that is the most Cartesia will answer at once).
+
+Two things to know before you read the numbers.
+
+**It needs the admin key.** Credit usage is one of the routes Cartesia refuses a standard `sk_car_` key on. With the **Admin API Key** field blank there is nothing to collect, so the account shows a setup notice with a link to the console page that creates one — not a silent zero. Only organization admins can create admin keys.
+
+**The amounts are converted from credits, so they are an estimate, not an invoice figure.** Cartesia meters in credits (roughly one credit per character of speech, more per second of audio) and publishes no price per credit and no overage rate — the only public prices are the plan bundles. Infrawrench converts at the cheapest published bundle rate, the Scale plan's $299 per 8 M credits, which is the same rate for every account. If you are on a smaller plan your real cost per credit is higher and the figure here reads low; if you are on a negotiated Enterprise contract it is not modelled at all. Plan-included credits are not subtracted either, so usage inside your monthly allowance still shows as spend. Treat it as the value of what you consumed, and reconcile against Cartesia's own billing before you invoice anyone for it. Budgets and anomaly alerts work off it all the same — it is a faithful picture of consumption trends, just not of your bill.
+
+<insert [Costs page filtered to a Cartesia account, showing the per-capability breakdown and the estimated-amounts notice] here>
 
 ## The Speech tab
 

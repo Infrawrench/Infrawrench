@@ -34,13 +34,39 @@ const manifest: PluginManifest = {
       key: "adminApiKey",
       label: "Admin API Key (optional)",
       description:
-        "A separate Cartesia *admin* key, created in the console with the Admin key type. It starts with sk_car_admin_ and is NOT interchangeable with the key above. Cartesia only accepts an admin key on /usage/credits and /api-keys, so leaving this blank simply hides the API Keys list and the credit-usage stats — voices, pronunciation dictionaries, synthesis, and transcription all keep working.",
+        "A separate Cartesia *admin* key, created in the console with the Admin key type. It starts with sk_car_admin_ and is NOT interchangeable with the key above. Cartesia only accepts an admin key on /usage/credits and /api-keys, so leaving this blank hides the API Keys list and the credit-usage stats, and cost collection cannot run — voices, pronunciation dictionaries, synthesis, and transcription all keep working.",
       sensitive: true,
       optional: true,
       placeholder: "sk_car_admin_...",
     },
     caCertCredentialField,
   ],
+  /**
+   * Spend comes from `GET /usage/credits?interval=day&group_by=capability`
+   * (https://docs.cartesia.ai/api-reference/usage/credits), which returns clean
+   * daily buckets of credits per capability — hence `service` and no other
+   * dimension. A year is the most the endpoint will span in one call, so that
+   * is also the honest history bound; longer backfills chunk. Cartesia settles
+   * a day's credits quickly, but a two-day restatement window costs one extra
+   * request and absorbs any late-arriving usage on the boundary.
+   *
+   * `estimated` because the response is *credits*, not money: Cartesia
+   * publishes no per-credit or overage price, so the plugin converts at the
+   * best published bundle rate ($299 / 8 M credits, the Scale plan — see
+   * USD_PER_CREDIT in cost-data.ts and https://cartesia.ai/pricing). An account
+   * on a cheaper plan or a negotiated contract will not reconcile to its
+   * invoice, and the user should be told that before they trust the number.
+   *
+   * Requires the *admin* key (`sk_car_admin_…`) — credit usage is one of the
+   * routes Cartesia refuses a standard key on. Without one, `fetchCostData`
+   * throws `CostSetupError` pointing at the console page that creates it.
+   */
+  costs: {
+    dimensions: ["service"],
+    maxHistoryDays: 365,
+    restatementDays: 2,
+    estimated: true,
+  },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
