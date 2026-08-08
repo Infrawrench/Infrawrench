@@ -1,9 +1,12 @@
 import type {
+  CostFetchRange,
+  CostRow,
   DashboardStat,
   DetailViewSchema,
   HostServices,
   LogsFetchParams,
   LogsFetchResult,
+  MetricSeries,
   PeerPaneContext,
   PeerPaneSchema,
   PluginClient,
@@ -16,7 +19,9 @@ import type { K8sList, K8sNamespace, ParsedKubeconfig } from "./types.js";
 import { parseKubeconfig } from "./types.js";
 
 import {
+  renderClusterDetail,
   renderGenericDetail,
+  renderNamespaceDetail,
   renderPodDetail,
   renderDeploymentDetail,
   renderServiceDetail,
@@ -39,6 +44,22 @@ import { createResource } from "./create-resource.js";
 import { getLogs } from "./logs.js";
 import { applyManifest, describeResource, getManifest, importYaml } from "./manifest-ops.js";
 import { renderPeerPane } from "./peer-pane.js";
+import { computeClusterCost, type ClusterCostResult } from "./cluster-cost.js";
+import { buildCostIndex, type CostIndex } from "./cost-surface.js";
+import { parseNodeRates, type NodeRateTable } from "./node-rates.js";
+import { allocationToCostRows } from "./cost-data.js";
+import { buildCostMetricSeries } from "./metric-series.js";
+
+/**
+ * How long a cost snapshot is reused.
+ *
+ * One peer-pane render asks for the allocation from several places (pill
+ * subtitles, dashboard stats, the namespace table) and each computation is
+ * three cluster-wide list calls. 30s is long enough to collapse those into
+ * one pass and short enough that a refresh after scaling a Deployment shows
+ * the new number.
+ */
+const COST_CACHE_MS = 30_000;
 
 /**
  * Kubernetes plugin client. This is a thin composition layer: it parses the
@@ -49,10 +70,24 @@ export class KubernetesClient implements PluginClient {
   private readonly parsed: ParsedKubeconfig;
   private readonly services?: HostServices;
   private readonly fetcher: K8sFetcher;
+  private readonly rates: NodeRateTable;
+  private costCache: { at: number; promise: Promise<ClusterCostResult> } | null = null;
+  /**
+   * The most recent successful cost index. `renderDetail` is synchronous — it
+   * cannot await an allocation — so it renders the cost table from whatever
+   * the last async pass (dashboard stats, peer pane, metrics) computed, and
+   * omits the table entirely on a cold client. That is why the cost sections
+   * are all conditional rather than showing "loading".
+   */
+  private lastCostIndex: CostIndex | undefined;
 
   constructor(credentials: Record<string, string>, services?: HostServices) {
     const kubeconfig = credentials["kubeconfig"];
     if (!kubeconfig) throw new Error("Kubernetes plugin: missing kubeconfig credential");
+    // Node prices arrive from the parent cloud plugin through the peer
+    // integration's credentialMappings, or from the optional field on a
+    // standalone Kubernetes account. Absent means "no money", not "free".
+    this.rates = parseNodeRates(credentials["nodeHourlyRates"]);
     if (services) this.services = services;
     // When the host k8s driver is available it owns all auth via the
     // official SDK, so the hand-rolled parser's output is unused. Wrap the
@@ -73,6 +108,32 @@ export class KubernetesClient implements PluginClient {
 
   private get listerCtx(): ListerContext {
     return { k8sFetch: this.k8sFetch };
+  }
+
+  /** Cost allocation, cached briefly and shared by every surface. */
+  private clusterCost(): Promise<ClusterCostResult> {
+    const now = Date.now();
+    if (this.costCache && now - this.costCache.at < COST_CACHE_MS) return this.costCache.promise;
+    const promise = computeClusterCost(this.k8sFetch, this.rates);
+    this.costCache = { at: now, promise };
+    return promise;
+  }
+
+  /**
+   * Cost allocation for display. Swallows failures: a cluster whose node list
+   * is forbidden, or which has no metrics-server, still renders everything
+   * else. Nothing about cost is allowed to break a listing.
+   */
+  private async costIndex(): Promise<CostIndex | undefined> {
+    try {
+      const result = await this.clusterCost();
+      const index = buildCostIndex(result.allocation, result.rateSource, result.utilization.status);
+      this.lastCostIndex = index;
+      return index;
+    } catch {
+      this.costCache = null;
+      return undefined;
+    }
   }
 
   async listResources(
@@ -151,22 +212,83 @@ export class KubernetesClient implements PluginClient {
     resourceId: string,
     accountId: string,
   ): Promise<DashboardStat[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    return fetchDashboardStats(resource, this.k8sFetch);
+    const [resource, costs] = await Promise.all([
+      this.getResource(resourceTypeId, resourceId, accountId),
+      this.costIndex(),
+    ]);
+    return fetchDashboardStats(resource, this.k8sFetch, costs);
+  }
+
+  /**
+   * Time series for the Metrics tab. Also what the *cloud* cluster resource
+   * shows on its own Metrics tab: the six managed-Kubernetes resource types
+   * set `exposeMetricsToParent` on their kubernetes peer integration, so the
+   * host calls this with the peer's credentials and merges the result into the
+   * parent's chart.
+   */
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    const costs = await this.costIndex();
+    if (!costs) return [];
+
+    // The parent cloud cluster asks with its own resource type id, which is
+    // not one of ours (doks-cluster, gke-cluster, …). Treat anything we don't
+    // recognise as "the whole cluster" — that is what the parent is.
+    const known = new Set([
+      "k8s-cluster",
+      "k8s-namespace",
+      "k8s-pod",
+      "k8s-deployment",
+      "k8s-statefulset",
+      "k8s-daemonset",
+    ]);
+    if (!known.has(resourceTypeId)) {
+      return buildCostMetricSeries("k8s-cluster", {}, "cluster", costs, timeRange);
+    }
+
+    const resource = await this.getResource(resourceTypeId, resourceId, accountId).catch(
+      () => null,
+    );
+    if (!resource) return [];
+    return buildCostMetricSeries(
+      resourceTypeId,
+      resource.fields,
+      resource.displayName,
+      costs,
+      timeRange,
+    );
+  }
+
+  /**
+   * Derived per-namespace / per-workload allocation, written as daily cost
+   * rows. Not billed amounts — see `cost-data.ts`.
+   */
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    const result = await this.clusterCost();
+    return allocationToCostRows(result.allocation, range);
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
+    const costs = this.lastCostIndex;
     switch (resource.resourceTypeId) {
+      case "k8s-cluster":
+        return renderClusterDetail(resource, costs);
+      case "k8s-namespace":
+        return renderNamespaceDetail(resource, costs);
       case "k8s-pod":
-        return renderPodDetail(resource);
+        return renderPodDetail(resource, costs);
       case "k8s-deployment":
-        return renderDeploymentDetail(resource);
+        return renderDeploymentDetail(resource, costs);
       case "k8s-service":
         return renderServiceDetail(resource);
       case "k8s-statefulset":
-        return renderStatefulSetDetail(resource);
+        return renderStatefulSetDetail(resource, costs);
       case "k8s-daemonset":
-        return renderDaemonSetDetail(resource);
+        return renderDaemonSetDetail(resource, costs);
       case "k8s-job":
         return renderJobDetail(resource);
       case "k8s-cronjob":
@@ -213,7 +335,9 @@ export class KubernetesClient implements PluginClient {
   }
 
   async renderPeerPane(context: PeerPaneContext): Promise<PeerPaneSchema> {
-    return renderPeerPane(context, this.listerCtx);
+    // The peer pane shares the client's cost cache rather than recomputing:
+    // one render touches the allocation from several places.
+    return renderPeerPane(context, this.listerCtx, () => this.costIndex());
   }
 
   async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {

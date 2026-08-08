@@ -36,6 +36,11 @@ export const DOKSClusterResourceType = rt({
       hidden: true,
       description: "HTTPS endpoint for the Kubernetes API server",
     }),
+    o("nodeHourlyRates", "Node Hourly Rates", {
+      hidden: true,
+      description:
+        "JSON map of node instance type to hourly price, handed to the Kubernetes peer so it can derive per-namespace and per-workload cost. Empty when no price is available.",
+    }),
   ],
   parentTypeId: "project",
   showInSidebar: true,
@@ -45,8 +50,19 @@ export const DOKSClusterResourceType = rt({
   peerIntegrations: [
     {
       pluginId: "kubernetes",
-      credentialMappings: [{ outputKey: "kubeconfig", credentialKey: "kubeconfig" }],
+      credentialMappings: [
+        { outputKey: "kubeconfig", credentialKey: "kubeconfig" },
+        // What this cluster's nodes cost per hour. The kubernetes plugin has
+        // no way to know — the money is on THIS account — so it arrives the
+        // same way the kubeconfig does. Resolves to "" when we have no price,
+        // which the peer reads as "show capacity without money".
+        { outputKey: "nodeHourlyRates", credentialKey: "nodeHourlyRates" },
+      ],
       tabLabel: "Kubernetes",
+      // Merge the peer's derived cost/efficiency series into THIS resource's
+      // own Metrics tab, so cluster spend sits next to the provider's node
+      // metrics instead of being buried one tab deeper.
+      exposeMetricsToParent: true,
     },
   ],
   secretExportTemplates: [

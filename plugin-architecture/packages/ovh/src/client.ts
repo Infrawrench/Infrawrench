@@ -324,6 +324,18 @@ export class OvhClient implements PluginClient {
     outputKey: string,
     accountId: string,
   ): Promise<string> {
+    if (outputKey === "nodeHourlyRates") {
+      // The Kubernetes peer asks every managed-cluster type what its nodes
+      // cost per hour, so it can derive per-namespace and per-workload spend.
+      // OVHcloud publishes no pricing API this plugin reads today.
+      // Returning "" is the honest answer and makes the peer show capacity and
+      // efficiency without money rather than inventing a price. It must return
+      // rather than fall through: the host resolves every credentialMapping
+      // before building the peer client, so a throw here would take the whole
+      // Kubernetes tab down.
+      return "";
+    }
+
     if (typeId === "managed-kube" && outputKey === "kubeconfig") {
       const externalId = resourceId.split(":").pop();
       if (!externalId) throw new Error("Cannot parse cluster ID");

@@ -156,11 +156,17 @@ export function PeerPaneView({
       ? (pane.schema.status.label ?? "Failed to load workloads")
       : null;
   const guidance = pane.schema.guidance;
+  // Guidance was originally a whole-pane replacement (the host's "this peer is
+  // unreachable" state, which always comes with zero groups). A peer can also
+  // use it to caveat data it *did* return — Kubernetes cost allocation
+  // explaining that node prices are derived, or missing. In that case it has
+  // to render as a banner above the groups; replacing them would hide the
+  // workloads to explain a footnote about them.
+  const guidanceIsBanner = !!guidance && resourceGroups.length > 0;
 
-  if (guidance) {
-    return (
-      <div className="py-12 px-6 max-w-2xl">
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-6 space-y-4">
+  const guidanceBlock = guidance ? (
+    <div className={guidanceIsBanner ? "" : "py-12 px-6 max-w-2xl"}>
+      <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-6 space-y-4">
           <div className="flex items-start gap-3">
             <div className="size-2 rounded-full bg-amber-400 flex-shrink-0 mt-1.5" />
             <p className="text-sm font-medium text-on-surface leading-relaxed">{guidance.title}</p>
@@ -196,10 +202,11 @@ export function PeerPaneView({
               {guidance.action.label}
             </button>
           )}
-        </div>
       </div>
-    );
-  }
+    </div>
+  ) : null;
+
+  if (guidanceBlock && !guidanceIsBanner) return guidanceBlock;
 
   if (isProvisioning) {
     return (
@@ -232,6 +239,7 @@ export function PeerPaneView({
       className={`space-y-3 transition-colors rounded-xl ${isOver && supportsSecretImport ? "ring-2 ring-blue-500/50 bg-accent-muted" : ""}`}
       data-parent-resource-id={parentResourceId}
     >
+      {guidanceBlock}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           {namespaces.length > 1 && (

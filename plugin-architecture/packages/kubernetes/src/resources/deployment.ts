@@ -26,4 +26,5 @@ export const DeploymentResourceType = rt({
   parentTypeId: "k8s-namespace",
   supportsCreate: true,
   iconKey: "deployment",
+  supportsMetrics: true,
 });

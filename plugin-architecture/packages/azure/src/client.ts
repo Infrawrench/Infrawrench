@@ -366,12 +366,44 @@ export class AzureClient implements PluginClient {
 
   // ─── Delegations ───────────────────────────────────────────────────────
 
+  /**
+   * Pay-as-you-go hourly price of an AKS cluster's node VM size, handed to the
+   * Kubernetes peer so it can derive per-namespace and per-workload cost.
+   *
+   * Retail list price, not a billed amount — reservations and Spot move the
+   * real number — so the payload is marked `list-price`. Never throws: the
+   * host resolves every credentialMapping before building the peer client.
+   *
+   * Shape is the JSON that `kubernetes/src/node-rates.ts` parses.
+   */
+  private async aksNodeHourlyRates(resourceId: string, accountId: string): Promise<string> {
+    const cluster = await this.getResource("azure-aks-cluster", resourceId, accountId);
+    const vmSize = String(cluster.fields["vmSize"] ?? "").trim();
+    const location = String(cluster.fields["location"] ?? "").trim();
+    if (!vmSize || !location) return "";
+
+    const rates = await this.getPricingRatesForRegion(location);
+    const hourly = rates.vmHourlyUsd[vmSize];
+    if (hourly == null || !(hourly > 0)) return "";
+
+    return JSON.stringify({
+      currency: "USD",
+      source: "list-price",
+      byInstanceType: { [vmSize]: hourly },
+      byNodeName: {},
+    });
+  }
+
   async resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
   ): Promise<string> {
+    if (outputKey === "nodeHourlyRates") {
+      if (typeId !== "azure-aks-cluster") return "";
+      return this.aksNodeHourlyRates(resourceId, accountId).catch(() => "");
+    }
     return resolveAzureOutput(
       {
         ctx: this.httpCtx,

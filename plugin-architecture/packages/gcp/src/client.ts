@@ -445,6 +445,21 @@ export class GcpClient implements PluginClient {
     outputKey: string,
     accountId: string,
   ): Promise<string> {
+    if (outputKey === "nodeHourlyRates") {
+      // The Kubernetes peer asks every managed-cluster type what its nodes
+      // cost per hour, so it can derive per-namespace and per-workload spend.
+      // GCP's Cloud Billing SKUs price vCPU-hours and GiB-hours
+      // separately rather than per machine type, so turning them into a
+      // per-node hourly rate needs a machine-type -> (vCPU, GiB) lookup this
+      // plugin does not yet have.
+      // Returning "" is the honest answer and makes the peer show capacity and
+      // efficiency without money rather than inventing a price. It must return
+      // rather than fall through: the host resolves every credentialMapping
+      // before building the peer client, so a throw here would take the whole
+      // Kubernetes tab down.
+      return "";
+    }
+
     return runResolveOutput(this.sharedCtx, typeId, resourceId, outputKey, accountId);
   }
 

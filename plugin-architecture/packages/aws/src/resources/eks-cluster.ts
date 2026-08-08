@@ -55,6 +55,11 @@ export const EKSClusterResourceType = rt({
       hidden: true,
       description: "Generated kubeconfig YAML for kubectl access",
     }),
+    o("nodeHourlyRates", "Node Hourly Rates", {
+      hidden: true,
+      description:
+        "JSON map of node instance type to hourly price, handed to the Kubernetes peer so it can derive per-namespace and per-workload cost. Empty when no price is available.",
+    }),
   ],
   // The cluster stores the service role as a full ARN while an IAM role's
   // external id is the bare role name, so match the role's `roleArn` output.
@@ -70,8 +75,19 @@ export const EKSClusterResourceType = rt({
   peerIntegrations: [
     {
       pluginId: "kubernetes",
-      credentialMappings: [{ outputKey: "kubeconfig", credentialKey: "kubeconfig" }],
+      credentialMappings: [
+        { outputKey: "kubeconfig", credentialKey: "kubeconfig" },
+        // What this cluster's nodes cost per hour. The kubernetes plugin has
+        // no way to know — the money is on THIS account — so it arrives the
+        // same way the kubeconfig does. Resolves to "" when we have no price,
+        // which the peer reads as "show capacity without money".
+        { outputKey: "nodeHourlyRates", credentialKey: "nodeHourlyRates" },
+      ],
       tabLabel: "Kubernetes",
+      // Merge the peer's derived cost/efficiency series into THIS resource's
+      // own Metrics tab, so cluster spend sits next to the provider's node
+      // metrics instead of being buried one tab deeper.
+      exposeMetricsToParent: true,
     },
   ],
   secretExportTemplates: [

@@ -27,4 +27,5 @@ export const StatefulSetResourceType = rt({
   ],
   parentTypeId: "k8s-namespace",
   supportsCreate: true,
+  supportsMetrics: true,
 });

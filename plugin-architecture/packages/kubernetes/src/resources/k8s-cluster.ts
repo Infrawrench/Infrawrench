@@ -23,4 +23,6 @@ export const KubernetesClusterResourceType = rt({
   ],
   outputs: [o("serverVersion", "Server Version"), o("namespaces", "Namespaces (JSON array)")],
   iconKey: "kubernetes",
+  // Derived cost and efficiency series (see `metric-series.ts`).
+  supportsMetrics: true,
 });

@@ -9,4 +9,5 @@ export const NamespaceResourceType = rt({
   outputs: [],
   parentTypeId: "k8s-cluster",
   supportsCreate: true,
+  supportsMetrics: true,
 });

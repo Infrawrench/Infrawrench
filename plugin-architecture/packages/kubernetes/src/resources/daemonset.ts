@@ -24,4 +24,5 @@ export const DaemonSetResourceType = rt({
   ],
   parentTypeId: "k8s-namespace",
   supportsCreate: true,
+  supportsMetrics: true,
 });

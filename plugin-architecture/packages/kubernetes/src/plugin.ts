@@ -42,7 +42,39 @@ const manifest: PluginManifest = {
       multiline: true,
       placeholder: "apiVersion: v1\nkind: Config\n...",
     },
+    {
+      key: "nodeHourlyRates",
+      label: "Node hourly rates",
+      description:
+        "Optional. What this cluster's nodes cost per hour, so workload costs can be derived. " +
+        "Clusters opened from their cloud account (DigitalOcean, GCP, AWS, Azure, Scaleway, " +
+        "OVHcloud) get this automatically. Otherwise list instance types: " +
+        "s-2vcpu-4gb=0.0357, m5.large=0.096. Left blank, capacity and efficiency are still " +
+        "shown — only the money is omitted.",
+      sensitive: false,
+      optional: true,
+      multiline: true,
+      placeholder: "s-2vcpu-4gb=0.0357, m5.large=0.096",
+    },
   ],
+  /**
+   * Kubernetes has no billing API. What this reports is a DERIVED allocation:
+   * node price x each pod's share of the node, rolled up by namespace and
+   * workload, plus explicit idle and system-reserved buckets. The real money
+   * is invoiced to the cloud account that owns the nodes — summing both
+   * accounts double-counts.
+   *
+   * `maxHistoryDays: 1` because a cluster cannot be asked what ran last
+   * Tuesday: `/api/v1/pods` describes right now and nothing else. Each daily
+   * pass appends one honest snapshot rather than backfilling a year of
+   * fiction. `restatementDays: 1` for the same reason — there is nothing to
+   * restate.
+   */
+  costs: {
+    dimensions: ["service", "resource", "tag"],
+    maxHistoryDays: 1,
+    restatementDays: 1,
+  },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

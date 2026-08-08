@@ -31,14 +31,33 @@ export interface K8sNode {
   spec?: { unschedulable?: boolean };
   status?: {
     conditions?: Array<{ type: string; status: string }>;
+    /**
+     * Total machine size — what the cloud invoice is for. Distinct from
+     * `allocatable`, which subtracts kube-reserved, system-reserved and
+     * eviction headroom and is what the scheduler actually hands out.
+     */
+    capacity?: Record<string, string>;
     allocatable?: Record<string, string>;
     nodeInfo?: { kubeletVersion?: string };
   };
 }
 
+/** A container's `resources` block. Values are Kubernetes quantity strings. */
+export interface K8sResourceRequirements {
+  requests?: Record<string, string>;
+  limits?: Record<string, string>;
+}
+
 export interface K8sPodContainer {
   name: string;
   image: string;
+  /** CPU/memory requests and limits. Absent means "unbounded, unreserved". */
+  resources?: K8sResourceRequirements;
+  /**
+   * Only meaningful on an entry in `initContainers`: `Always` marks it a
+   * sidecar (KEP-753), which changes the pod's effective request.
+   */
+  restartPolicy?: string;
   /** Whole-ConfigMap/Secret env imports. */
   envFrom?: Array<{
     configMapRef?: { name?: string };
@@ -60,6 +79,13 @@ export interface K8sPodContainer {
 export interface K8sPodSpec {
   containers: K8sPodContainer[];
   initContainers?: K8sPodContainer[];
+  /**
+   * Pod-level resources (KEP-2837, beta and on by default since v1.34). When
+   * present these OVERRIDE the container aggregate for the resources named.
+   */
+  resources?: K8sResourceRequirements;
+  /** Runtime overhead the scheduler reserves on top of the containers. */
+  overhead?: Record<string, string>;
   /** The node the scheduler placed the pod on — empty while still Pending. */
   nodeName?: string;
   serviceAccountName?: string;
@@ -74,7 +100,7 @@ export interface K8sPodSpec {
 }
 
 export interface K8sPod {
-  metadata: K8sMeta;
+  metadata: K8sMeta & { ownerReferences?: K8sOwnerReference[] };
   spec: K8sPodSpec;
   status: {
     phase: string;
@@ -126,7 +152,7 @@ export interface K8sStatefulSet {
 
 export interface K8sDaemonSet {
   metadata: K8sMeta;
-  spec: { template: { spec: { containers: Array<{ name: string; image: string }> } } };
+  spec: { template: { spec: K8sPodSpec } };
   status: {
     desiredNumberScheduled: number;
     numberReady: number;
@@ -140,7 +166,7 @@ export interface K8sJob {
   spec: {
     completions?: number;
     parallelism?: number;
-    template: { spec: { containers: Array<{ name: string; image: string }> } };
+    template: { spec: K8sPodSpec };
   };
   status: {
     succeeded?: number;
@@ -158,7 +184,7 @@ export interface K8sCronJob {
     schedule: string;
     suspend?: boolean;
     jobTemplate: {
-      spec: { template: { spec: { containers: Array<{ name: string; image: string }> } } };
+      spec: { template: { spec: K8sPodSpec } };
     };
   };
   status: { lastScheduleTime?: string; lastSuccessfulTime?: string };

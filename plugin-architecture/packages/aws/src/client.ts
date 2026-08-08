@@ -114,7 +114,7 @@ import {
   fetchMetricSeries as fetchMetricSeriesImpl,
 } from "./dashboard-metrics.js";
 import { estimateAwsCost } from "./cost-estimate.js";
-import { fetchEc2MonthlyPrices } from "./pricing.js";
+import { fetchEc2MonthlyPrices, HOURS_PER_MONTH as PRICING_HOURS_PER_MONTH } from "./pricing.js";
 import { fetchAwsCostData } from "./cost-data.js";
 import { attachResource as attachResourceImpl } from "./attach-handlers.js";
 import { resolveOutput as resolveOutputImpl } from "./resolve-output.js";
@@ -429,12 +429,53 @@ export class AWSClient implements PluginClient {
     );
   }
 
+  /**
+   * On-demand hourly price of the instance types an EKS cluster's managed node
+   * groups run. Handed to the Kubernetes peer so it can derive per-namespace
+   * and per-workload cost.
+   *
+   * These are published list prices, not billed amounts — Savings Plans,
+   * Reserved Instances and Spot all move the real number — so the payload is
+   * marked `list-price` and the UI hedges it accordingly. Never throws: the
+   * host resolves every credentialMapping before building the peer client, so
+   * a pricing-API hiccup must not take the whole Kubernetes tab down.
+   *
+   * Shape is the JSON that `kubernetes/src/node-rates.ts` parses.
+   */
+  private async eksNodeHourlyRates(resourceId: string, accountId: string): Promise<string> {
+    const cluster = await this.getResource("eks-cluster", resourceId, accountId);
+    const types = String(cluster.fields["instanceTypes"] ?? "")
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+    if (types.length === 0) return "";
+
+    const region = String(cluster.fields["region"] ?? "") || this.creds.region;
+    const monthly = await fetchEc2MonthlyPrices(this.creds, region, types);
+    const byInstanceType: Record<string, number> = {};
+    for (const [type, price] of Object.entries(monthly)) {
+      byInstanceType[type] = price / PRICING_HOURS_PER_MONTH;
+    }
+    if (Object.keys(byInstanceType).length === 0) return "";
+
+    return JSON.stringify({
+      currency: "USD",
+      source: "list-price",
+      byInstanceType,
+      byNodeName: {},
+    });
+  }
+
   async resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
   ): Promise<string> {
+    if (outputKey === "nodeHourlyRates") {
+      if (typeId !== "eks-cluster") return "";
+      return this.eksNodeHourlyRates(resourceId, accountId).catch(() => "");
+    }
     return resolveOutputImpl(
       {
         creds: this.creds,

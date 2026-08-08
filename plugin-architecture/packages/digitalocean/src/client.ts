@@ -383,6 +383,50 @@ export class DigitalOceanClient implements PluginClient {
     return found;
   }
 
+  /**
+   * Hourly price of each node size in a DOKS cluster.
+   *
+   * DigitalOcean bills Droplet-based worker nodes at the published size price,
+   * and `/v2/sizes` carries `price_hourly` for exactly those slugs — so this
+   * is what the account is actually charged for these nodes, not a modelled
+   * estimate. Only the sizes this cluster's node pools use are emitted, so the
+   * peer never matches a price to a node that isn't ours.
+   *
+   * Shape is the JSON that `kubernetes/src/node-rates.ts` parses.
+   */
+  private async doksNodeHourlyRates(clusterId: string): Promise<string> {
+    const [cluster, sizes] = await Promise.all([
+      this.fetch<{
+        kubernetes_cluster?: { node_pools?: Array<{ size?: string }> };
+      }>(`/kubernetes/clusters/${clusterId}`),
+      this.fetch<{ sizes: Array<{ slug: string; price_hourly: number }> }>(
+        "/sizes?per_page=200",
+      ),
+    ]);
+
+    const used = new Set(
+      (cluster.kubernetes_cluster?.node_pools ?? [])
+        .map((pool) => pool.size)
+        .filter((slug): slug is string => !!slug),
+    );
+    if (used.size === 0) return "";
+
+    const byInstanceType: Record<string, number> = {};
+    for (const size of sizes.sizes ?? []) {
+      if (used.has(size.slug) && Number.isFinite(size.price_hourly) && size.price_hourly > 0) {
+        byInstanceType[size.slug] = size.price_hourly;
+      }
+    }
+    if (Object.keys(byInstanceType).length === 0) return "";
+
+    return JSON.stringify({
+      currency: "USD",
+      source: "billed",
+      byInstanceType,
+      byNodeName: {},
+    });
+  }
+
   async resolveOutput(
     typeId: string,
     resourceId: string,
@@ -396,6 +440,16 @@ export class DigitalOceanClient implements PluginClient {
     // `/kubernetes/clusters/{accountId}:doks-cluster:{uuid}/kubeconfig`,
     // which 404s as "cluster not found".
     const externalId = resourceId.split(":").slice(2).join(":");
+
+    if (outputKey === "nodeHourlyRates") {
+      // What this cluster's nodes actually cost, handed to the Kubernetes peer
+      // so it can derive per-namespace and per-workload spend. Must never
+      // throw: the host resolves every credentialMapping before building the
+      // peer client, so a failure here would take the whole Kubernetes tab
+      // down over a price lookup.
+      if (typeId !== "doks-cluster") return "";
+      return this.doksNodeHourlyRates(externalId).catch(() => "");
+    }
 
     if (typeId === "doks-cluster" && outputKey === "kubeconfig") {
       // The kubeconfig endpoint returns raw `application/yaml` text, not a

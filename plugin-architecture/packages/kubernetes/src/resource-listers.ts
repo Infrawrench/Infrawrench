@@ -1,5 +1,8 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 
+import { effectivePodResources } from "./pod-resources.js";
+import { formatCores, formatMemory } from "./quantity.js";
+
 import type {
   K8sList,
   K8sNamespace,
@@ -20,6 +23,28 @@ import type {
 
 export interface ListerContext {
   k8sFetch<T>(path: string, options?: RequestInit): Promise<T>;
+}
+
+/**
+ * Options every namespaced lister accepts.
+ *
+ * `includeSystemNamespaces` exists for exactly one caller: cost allocation.
+ * The listings deliberately hide the control-plane namespaces because a user
+ * browsing their workloads does not want to wade through `kube-system` — but
+ * kube-system's pods are on the same nodes, hold real capacity, and cost real
+ * money. Inheriting the skip-set into cost allocation would make that spend
+ * silently vanish and would make every other namespace's share look larger
+ * than it is. So cost passes `includeSystemNamespaces: true` and labels those
+ * namespaces rather than dropping them.
+ */
+export interface ListerOptions {
+  includeSystemNamespaces?: boolean;
+}
+
+/** Should this namespace be dropped from a listing? */
+function skipNamespace(namespace: string | undefined, opts?: ListerOptions): boolean {
+  if (opts?.includeSystemNamespaces) return false;
+  return SYSTEM_NAMESPACES.has(namespace ?? "");
 }
 
 export const SYSTEM_NAMESPACES = new Set([
@@ -91,6 +116,23 @@ function podReferences(
   return { configMaps: [...configMaps].join(", "), secrets: [...secrets].join(", ") };
 }
 
+/**
+ * The four resource fields every pod-bearing object carries, so the peer pane,
+ * the detail view and the cost model all read the same numbers from the same
+ * place. Stored as display strings (`250m`, `512Mi`) because that is what
+ * `fields` is — the machine-readable values are re-derived by the cost model
+ * from the raw API objects, not from these.
+ */
+function resourceFields(spec: K8sPodSpec): Record<string, string> {
+  const { requests, limits } = effectivePodResources(spec);
+  return {
+    requestCpu: formatCores(requests.cpuCores),
+    requestMemory: formatMemory(requests.memoryBytes),
+    limitCpu: formatCores(limits.cpuCores),
+    limitMemory: formatMemory(limits.memoryBytes),
+  };
+}
+
 export async function listClusters(
   ctx: ListerContext,
   accountId: string,
@@ -153,6 +195,13 @@ export async function listNodes(
   return data.items.map((n) => {
     const ready = (n.status?.conditions ?? []).find((c) => c.type === "Ready");
     const labels = n.metadata.labels ?? {};
+    // Capacity is the whole machine — what the cloud bill is for. Allocatable
+    // is capacity minus kube-reserved, system-reserved and eviction headroom,
+    // i.e. what the scheduler will actually hand out. Cost allocation needs
+    // both: the invoice is against capacity, but idle is measured against
+    // allocatable, and the gap between them is nobody's workload.
+    const capacityCpu = n.status?.capacity?.["cpu"] ?? "";
+    const capacityMemory = n.status?.capacity?.["memory"] ?? "";
     return {
       id: `${accountId}:k8s-node:${n.metadata.name}`,
       pluginId: "kubernetes",
@@ -163,9 +212,25 @@ export async function listNodes(
         name: n.metadata.name,
         ready: ready?.status === "True" ? "true" : "false",
         unschedulable: n.spec?.unschedulable ? "true" : "false",
-        instanceType: labels["node.kubernetes.io/instance-type"] ?? "",
-        zone: labels["topology.kubernetes.io/zone"] ?? "",
+        // Well-known labels. The `beta.kubernetes.io` / `failure-domain.beta`
+        // forms are the pre-1.17 spellings; long deprecated but still set by
+        // older node bootstrappers, so fall back to them rather than showing
+        // an empty instance type (which would cost us the price lookup).
+        instanceType:
+          labels["node.kubernetes.io/instance-type"] ??
+          labels["beta.kubernetes.io/instance-type"] ??
+          "",
+        zone:
+          labels["topology.kubernetes.io/zone"] ??
+          labels["failure-domain.beta.kubernetes.io/zone"] ??
+          "",
+        region:
+          labels["topology.kubernetes.io/region"] ??
+          labels["failure-domain.beta.kubernetes.io/region"] ??
+          "",
         version: n.status?.nodeInfo?.kubeletVersion ?? "",
+        capacityCpu,
+        capacityMemory,
         allocatableCpu: n.status?.allocatable?.["cpu"] ?? "",
         allocatableMemory: n.status?.allocatable?.["memory"] ?? "",
       },
@@ -178,13 +243,17 @@ export async function listNodes(
   });
 }
 
-export async function listPods(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
+export async function listPods(
+  ctx: ListerContext,
+  accountId: string,
+  opts?: ListerOptions,
+): Promise<ResourceInstance[]> {
   const now = new Date().toISOString();
   const data = await ctx.k8sFetch<K8sList<K8sPod>>("/api/v1/pods");
   const results: ResourceInstance[] = [];
 
   for (const pod of data.items) {
-    if (SYSTEM_NAMESPACES.has(pod.metadata.namespace ?? "")) continue;
+    if (skipNamespace(pod.metadata.namespace, opts)) continue;
 
     const isEphemeral = pod.metadata.labels?.["infrawrench.io/ephemeral"] === "true";
     const phase = pod.status.phase;
@@ -244,6 +313,7 @@ export async function listPods(ctx: ListerContext, accountId: string): Promise<R
         containerName: container?.name ?? pod.metadata.name,
         restarts,
         nodeName: pod.spec.nodeName ?? "",
+        ...resourceFields(pod.spec),
         configMaps,
         secrets,
         ...(isEphemeral ? { ephemeral: "true", expiresAt, ttlSeconds } : {}),
@@ -262,11 +332,12 @@ export async function listPods(ctx: ListerContext, accountId: string): Promise<R
 export async function listDeployments(
   ctx: ListerContext,
   accountId: string,
+  opts?: ListerOptions,
 ): Promise<ResourceInstance[]> {
   const now = new Date().toISOString();
   const data = await ctx.k8sFetch<K8sList<K8sDeployment>>("/apis/apps/v1/deployments");
   return data.items
-    .filter((d) => !SYSTEM_NAMESPACES.has(d.metadata.namespace ?? ""))
+    .filter((d) => !skipNamespace(d.metadata.namespace, opts))
     .map((d) => {
       const container = d.spec.template.spec.containers[0];
       return {
@@ -282,6 +353,7 @@ export async function listDeployments(
           readyReplicas: d.status.readyReplicas ?? 0,
           image: container?.image ?? "",
           serviceAccountName: d.spec.template.spec.serviceAccountName ?? "",
+          ...resourceFields(d.spec.template.spec),
         },
         resolvedOutputs: {},
         secretStates: [],
@@ -343,11 +415,12 @@ export async function listServices(
 export async function listStatefulSets(
   ctx: ListerContext,
   accountId: string,
+  opts?: ListerOptions,
 ): Promise<ResourceInstance[]> {
   const now = new Date().toISOString();
   const data = await ctx.k8sFetch<K8sList<K8sStatefulSet>>("/apis/apps/v1/statefulsets");
   return data.items
-    .filter((s) => !SYSTEM_NAMESPACES.has(s.metadata.namespace ?? ""))
+    .filter((s) => !skipNamespace(s.metadata.namespace, opts))
     .map((s) => {
       const container = s.spec.template.spec.containers[0];
       return {
@@ -363,6 +436,7 @@ export async function listStatefulSets(
           readyReplicas: s.status.readyReplicas ?? 0,
           image: container?.image ?? "",
           serviceAccountName: s.spec.template.spec.serviceAccountName ?? "",
+          ...resourceFields(s.spec.template.spec),
         },
         resolvedOutputs: {},
         secretStates: [],
@@ -376,11 +450,12 @@ export async function listStatefulSets(
 export async function listDaemonSets(
   ctx: ListerContext,
   accountId: string,
+  opts?: ListerOptions,
 ): Promise<ResourceInstance[]> {
   const now = new Date().toISOString();
   const data = await ctx.k8sFetch<K8sList<K8sDaemonSet>>("/apis/apps/v1/daemonsets");
   return data.items
-    .filter((d) => !SYSTEM_NAMESPACES.has(d.metadata.namespace ?? ""))
+    .filter((d) => !skipNamespace(d.metadata.namespace, opts))
     .map((d) => {
       const container = d.spec.template.spec.containers[0];
       return {
@@ -395,6 +470,7 @@ export async function listDaemonSets(
           desiredNumberScheduled: d.status.desiredNumberScheduled,
           numberReady: d.status.numberReady,
           image: container?.image ?? "",
+          ...resourceFields(d.spec.template.spec),
         },
         resolvedOutputs: {},
         secretStates: [],

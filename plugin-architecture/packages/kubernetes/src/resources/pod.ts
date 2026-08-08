@@ -18,6 +18,13 @@ export const PodResourceType = rt({
       required: false,
       description: "The node the scheduler placed this pod on — empty while unscheduled",
     }),
+    f("requestCpu", "CPU Request", {
+      required: false,
+      description: "Effective pod CPU request — init/sidecar rules applied, not a naive sum",
+    }),
+    f("requestMemory", "Memory Request", { required: false }),
+    f("limitCpu", "CPU Limit", { required: false }),
+    f("limitMemory", "Memory Limit", { required: false }),
     f("configMaps", "ConfigMaps", {
       required: false,
       description: "namespace/name of every ConfigMap this pod mounts or reads env from",
@@ -57,4 +64,5 @@ export const PodResourceType = rt({
   ],
   parentTypeId: "k8s-namespace",
   supportsCreate: true,
+  supportsMetrics: true,
 });
