@@ -109,7 +109,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
-    "@clickhouse/client": "^1.13.0",
+    "@clickhouse/client": "^1.23.1",
     "@infrawrench/client-core": "workspace:*",
     "@infrawrench/plugin-anthropic": "workspace:*",
     "@infrawrench/plugin-assemblyai": "workspace:*",
@@ -164,17 +164,17 @@
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",
     "drizzle-orm": "^0.45.2",
-    "postgres": "^3.4.5",
-    "ssh2": "^1.16.0",
-    "undici": "^7.28.0",
-    "ws": "^8.21.1"
+    "postgres": "^3.4.9",
+    "ssh2": "^1.17.0",
+    "undici": "^7.29.0",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "@types/ssh2": "^1.15.4",
-    "@types/ws": "^8.5.13",
-    "@vitest/coverage-v8": "^4.1.8",
+    "@types/node": "^22.20.1",
+    "@types/ssh2": "^1.15.5",
+    "@types/ws": "^8.18.1",
+    "@vitest/coverage-v8": "^4.1.10",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.10"
   }
 }

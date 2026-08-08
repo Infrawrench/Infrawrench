@@ -35,9 +35,9 @@
     "mongodb": ">=7"
   },
   "devDependencies": {
-    "mongodb": "^7.2.0",
+    "mongodb": "^7.5.0",
+    "tsdown": "^0.22.14",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.8",
-    "tsdown": "^0.22.14"
+    "vitest": "^4.1.10"
   }
 }

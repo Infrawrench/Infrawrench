@@ -35,9 +35,9 @@
     "mysql2": ">=3.22.0"
   },
   "devDependencies": {
-    "mysql2": "^3.22.3",
+    "mysql2": "^3.23.2",
+    "tsdown": "^0.22.14",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.8",
-    "tsdown": "^0.22.14"
+    "vitest": "^4.1.10"
   }
 }

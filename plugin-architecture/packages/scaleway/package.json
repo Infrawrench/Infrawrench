@@ -25,15 +25,15 @@
   },
   "dependencies": {
     "@infrawrench/plugin-base": "workspace:*",
-    "@scaleway/sdk-block": "^2.7.1",
-    "@scaleway/sdk-client": "^2.3.1",
-    "@scaleway/sdk-instance": "^2.8.1",
-    "@scaleway/sdk-k8s": "^2.10.1",
-    "@scaleway/sdk-rdb": "^2.7.1"
+    "@scaleway/sdk-block": "^2.11.0",
+    "@scaleway/sdk-client": "^2.6.0",
+    "@scaleway/sdk-instance": "^2.12.0",
+    "@scaleway/sdk-k8s": "^2.18.0",
+    "@scaleway/sdk-rdb": "^2.10.0"
   },
   "devDependencies": {
+    "tsdown": "^0.22.14",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.8",
-    "tsdown": "^0.22.14"
+    "vitest": "^4.1.10"
   }
 }
