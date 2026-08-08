@@ -11,6 +11,7 @@ import {
   DeployIcon,
   ExpiryIcon,
   PostureIcon,
+  DomainsIcon,
   FanoutIcon,
   GraphIcon,
   LogsIcon,
@@ -31,6 +32,7 @@ import {
   chatTabTarget,
   dashboardTabTarget,
   deploymentsTabTarget,
+  dnsTabTarget,
   workflowsTabTarget,
   navigateToWorkspaceTarget,
 } from "../lib/workspace-tabs";
@@ -264,6 +266,15 @@ export function SidebarDashboards() {
       label: "Posture",
       icon: <PostureIcon />,
       onClick: () => void navigate({ to: "/posture" }),
+    },
+    // Domains also has a local half — the inventory is computed from stored
+    // state and the locally loaded plugins' DNS declarations. A workspace-tab
+    // kind (same as Logs), so the strip stays in sync with the active panel.
+    {
+      key: "dns",
+      label: "Domains",
+      icon: <DomainsIcon />,
+      onClick: () => void navigateToWorkspaceTarget(navigate, dnsTabTarget(), { label: "Domains" }),
     },
     // Fan-out SSH has a local half — local SSH accounts exec through the
     // machine's own ssh machinery — so, like Graph, it shows in both modes.

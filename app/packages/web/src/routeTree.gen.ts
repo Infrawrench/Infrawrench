@@ -20,6 +20,7 @@ import { Route as OrgOrgIdChangesRouteImport } from './routes/org.$orgId.changes
 import { Route as OrgOrgIdChatRouteImport } from './routes/org.$orgId.chat'
 import { Route as OrgOrgIdCostsRouteImport } from './routes/org.$orgId.costs'
 import { Route as OrgOrgIdDeploymentsRouteImport } from './routes/org.$orgId.deployments'
+import { Route as OrgOrgIdDnsRouteImport } from './routes/org.$orgId.dns'
 import { Route as OrgOrgIdExpiringRouteImport } from './routes/org.$orgId.expiring'
 import { Route as OrgOrgIdGraphRouteImport } from './routes/org.$orgId.graph'
 import { Route as OrgOrgIdLogsRouteImport } from './routes/org.$orgId.logs'
@@ -103,6 +104,11 @@ const OrgOrgIdCostsRoute = OrgOrgIdCostsRouteImport.update({
 const OrgOrgIdDeploymentsRoute = OrgOrgIdDeploymentsRouteImport.update({
   id: '/deployments',
   path: '/deployments',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdDnsRoute = OrgOrgIdDnsRouteImport.update({
+  id: '/dns',
+  path: '/dns',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdExpiringRoute = OrgOrgIdExpiringRouteImport.update({
@@ -271,6 +277,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
+  '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
@@ -311,6 +318,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
+  '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
@@ -353,6 +361,7 @@ export interface FileRoutesById {
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
+  '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
@@ -397,6 +406,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/chat'
     | '/org/$orgId/costs'
     | '/org/$orgId/deployments'
+    | '/org/$orgId/dns'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
     | '/org/$orgId/logs'
@@ -437,6 +447,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/changes'
     | '/org/$orgId/costs'
     | '/org/$orgId/deployments'
+    | '/org/$orgId/dns'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
     | '/org/$orgId/logs'
@@ -478,6 +489,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/chat'
     | '/org/$orgId/costs'
     | '/org/$orgId/deployments'
+    | '/org/$orgId/dns'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
     | '/org/$orgId/logs'
@@ -595,6 +607,13 @@ declare module '@tanstack/react-router' {
       path: '/deployments'
       fullPath: '/org/$orgId/deployments'
       preLoaderRoute: typeof OrgOrgIdDeploymentsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/dns': {
+      id: '/org/$orgId/dns'
+      path: '/dns'
+      fullPath: '/org/$orgId/dns'
+      preLoaderRoute: typeof OrgOrgIdDnsRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/expiring': {
@@ -858,6 +877,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdChatRoute: typeof OrgOrgIdChatRouteWithChildren
   OrgOrgIdCostsRoute: typeof OrgOrgIdCostsRoute
   OrgOrgIdDeploymentsRoute: typeof OrgOrgIdDeploymentsRoute
+  OrgOrgIdDnsRoute: typeof OrgOrgIdDnsRoute
   OrgOrgIdExpiringRoute: typeof OrgOrgIdExpiringRoute
   OrgOrgIdGraphRoute: typeof OrgOrgIdGraphRoute
   OrgOrgIdLogsRoute: typeof OrgOrgIdLogsRoute
@@ -881,6 +901,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdChatRoute: OrgOrgIdChatRouteWithChildren,
   OrgOrgIdCostsRoute: OrgOrgIdCostsRoute,
   OrgOrgIdDeploymentsRoute: OrgOrgIdDeploymentsRoute,
+  OrgOrgIdDnsRoute: OrgOrgIdDnsRoute,
   OrgOrgIdExpiringRoute: OrgOrgIdExpiringRoute,
   OrgOrgIdGraphRoute: OrgOrgIdGraphRoute,
   OrgOrgIdLogsRoute: OrgOrgIdLogsRoute,

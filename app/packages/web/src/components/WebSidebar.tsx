@@ -20,6 +20,7 @@ import {
   GraphIcon,
   ExpiryIcon,
   PostureIcon,
+  DomainsIcon,
   FanoutIcon,
   LogsIcon,
   MetricAlertIcon,
@@ -513,6 +514,12 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <PostureIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/posture", params: { orgId: orgId! } }),
+              },
+              {
+                key: "dns",
+                label: "Domains",
+                icon: <DomainsIcon />,
+                onClick: () => void navigate({ to: "/org/$orgId/dns", params: { orgId: orgId! } }),
               },
               {
                 key: "probes",

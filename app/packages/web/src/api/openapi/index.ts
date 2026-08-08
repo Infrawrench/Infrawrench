@@ -31,6 +31,7 @@ import { registerResourceChangePaths } from "./paths/resource-changes";
 import { registerStatusIncidentPaths } from "./paths/status-incidents";
 import { registerExpiringPaths } from "./paths/expiring";
 import { registerPosturePaths } from "./paths/posture";
+import { registerDnsPaths } from "./paths/dns";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
 import { registerLeasePaths } from "./paths/leases";
@@ -124,6 +125,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerStatusIncidentPaths(ctx);
   registerExpiringPaths(ctx);
   registerPosturePaths(ctx);
+  registerDnsPaths(ctx);
   registerMomentPaths(ctx);
   registerSchedulePaths(ctx);
   registerLeasePaths(ctx);
@@ -208,6 +210,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Orphans",
         description:
           "Likely-orphaned and idle resources flagged by plugin heuristics, with best-effort cost.",
+      },
+      {
+        name: "DNS",
+        description:
+          "Cross-provider DNS inventory — every synced zone and record, with dangling targets flagged as subdomain-takeover candidates.",
       },
       {
         name: "Sleep schedules",
@@ -395,6 +402,7 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /posture": "resources:read",
   "POST /posture/dismissals": "resources:write",
   "DELETE /posture/dismissals": "resources:write",
+  "GET /dns": "resources:read",
   "GET /posture/settings": "org:settings:write",
   "PUT /posture/settings": "org:settings:write",
   // sleep/wake schedules — reads ride the resource read scope (the list is

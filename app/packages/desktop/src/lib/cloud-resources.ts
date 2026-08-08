@@ -1,6 +1,7 @@
 import type { AssociationSource } from "@infrawrench/plugin-base";
 import type {
   DependencyGraphData,
+  DnsInventoryResponse,
   ExpiryListResponse,
   PostureListResponse,
   ResourcePickerOption,
@@ -57,6 +58,10 @@ export async function restoreCloudPostureFinding(
   ruleId: string,
 ): Promise<void> {
   await invoke("cloud_posture_restore", { orgId, resourceId, ruleId });
+}
+
+export async function fetchCloudDns(orgId: string): Promise<DnsInventoryResponse> {
+  return invoke("cloud_dns", { orgId });
 }
 
 export async function getCloudResourceDetail(

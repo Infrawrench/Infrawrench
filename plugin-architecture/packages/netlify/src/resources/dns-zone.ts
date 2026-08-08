@@ -21,6 +21,7 @@ export const NetlifyDnsZoneResourceType = rt({
   dependsOn: [{ fieldKey: "siteId", targetTypeId: "netlify-site", label: "for site" }],
   supportsCreate: true,
   iconKey: "dns",
+  dnsRole: { role: "zone", domainKey: "name" },
   attachTargets: [
     {
       pluginId: "netlify",

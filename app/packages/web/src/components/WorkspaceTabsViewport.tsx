@@ -38,6 +38,7 @@ import { LogWorkspacePanel, type LogWorkspaceClient } from "@infrawrench/ui";
 import { WebChangesPanel } from "./WebChangesPanel";
 import { WebExpiryPanel } from "./WebExpiryPanel";
 import { WebPosturePanel } from "./WebPosturePanel";
+import { WebDnsPanel } from "./WebDnsPanel";
 import { WebMetricAlertsPanel } from "./WebMetricAlertsPanel";
 import { WebProbesPanel } from "./WebProbesPanel";
 import { WebSshFanoutPanel } from "./WebSshFanoutPanel";
@@ -330,6 +331,39 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
                   finding.resourceId,
                   finding.pluginId,
                   finding.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "dns":
+      return (
+        <WebDnsPanel
+          // Keyed by org so switching org remounts and refetches rather than
+          // showing the previous org's zones.
+          key={orgId}
+          orgId={orgId}
+          openRecord={(record) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  record.accountId,
+                  record.resourceId,
+                  record.pluginId,
+                  record.resourceTypeId,
+                ),
+              ),
+            )
+          }
+          openZone={(zone) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  zone.accountId,
+                  zone.resourceId,
+                  zone.pluginId,
+                  zone.resourceTypeId,
                 ),
               ),
             )

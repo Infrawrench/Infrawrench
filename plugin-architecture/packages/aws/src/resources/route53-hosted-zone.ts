@@ -14,4 +14,10 @@ export const Route53HostedZoneResourceType = rt({
   outputs: [o("hostedZoneId", "Hosted Zone ID"), o("nameServers", "Name Servers")],
   supportsCreate: true,
   iconKey: "dns",
+  dnsRole: {
+    role: "zone",
+    domainKey: "name",
+    recordCountKey: "recordCount",
+    privateKey: "isPrivate",
+  },
 });

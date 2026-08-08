@@ -51,6 +51,21 @@ export const NetlifySiteResourceType = rt({
   ],
   supportsCreate: true,
   iconKey: "site",
+  // `<site-name>.netlify.app` (and the legacy `.netlify.com`), plus branch /
+  // deploy-preview aliases of the form `<branch>--<site-name>.netlify.app`.
+  // Capture group 1 is always the site name so the existing `name` claimant
+  // resolves them. `url`/`sslUrl` are full URLs, reduced to their host before
+  // comparing.
+  dnsServiceHosts: [
+    {
+      id: "netlify-subdomain",
+      label: "Netlify site subdomain",
+      hostPattern: String.raw`(?:[a-z0-9][a-z0-9-]*--)?([a-z0-9][a-z0-9-]*)\.netlify\.(?:app|com)`,
+      hostKeys: ["url", "sslUrl"],
+      reason:
+        "Deleting or renaming a site frees its subdomain for any Netlify user to claim, and Netlify will serve their deploy under your hostname.",
+    },
+  ],
   secretExportTemplates: [
     {
       id: "site-url",

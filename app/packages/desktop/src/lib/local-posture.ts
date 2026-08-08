@@ -8,44 +8,28 @@
  * stored state, so it works with the network off. The CLI's `--local` twin
  * lives in electron/local-posture.ts, which has no renderer to call into.
  *
- * Dismissals are local too, in the `posture_dismissals` table: accepting a
- * finding on a workspace that has never seen the cloud must not require an
- * account. Cloud mode records the same decision through the API instead
- * (lib/cloud-resources.ts), because there it is org state.
+ * The rows come from `local-dns.ts` because the dangling-DNS finding is
+ * cross-resource: it needs the whole workspace's DNS inventory, computed over
+ * exactly the rows this scan sees. Dismissals are local too, in the
+ * `posture_dismissals` table: accepting a finding on a workspace that has never
+ * seen the cloud must not require an account. Cloud mode records the same
+ * decision through the API instead (lib/cloud-resources.ts), because there it
+ * is org state.
  */
 import {
+  computeDnsInventory,
   computePostureFindings,
   type PostureDismissal,
   type PostureListResponse,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
-import { loadPlugins } from "../plugins/loader";
-
-interface ResourceRow {
-  id: string;
-  plugin_id: string;
-  resource_type_id: string;
-  account_id: string;
-  display_name: string;
-  external_id: string | null;
-  fields_json: string | null;
-}
+import { localScanRows } from "./local-dns";
 
 interface DismissalRow {
   resource_id: string;
   rule_id: string;
   reason: string | null;
   updated_at: string;
-}
-
-/** SQLite stores the fields bag as TEXT; a hand-edited row may not parse. */
-function parseBag(json: string | null): unknown {
-  if (!json) return undefined;
-  try {
-    return JSON.parse(json) as unknown;
-  } catch {
-    return undefined;
-  }
 }
 
 /**
@@ -66,43 +50,17 @@ export async function loadLocalPosture(): Promise<PostureListResponse> {
   const db = await getDb();
 
   // Independent reads; neither feeds the other's query.
-  const [resourceRows, accountRows, dismissalRows, plugins] = await Promise.all([
-    db.select<ResourceRow[]>(
-      `SELECT id, plugin_id, resource_type_id, account_id, display_name,
-              external_id, fields_json
-       FROM resources WHERE deleted_at IS NULL`,
-    ),
-    db.select<{ id: string; display_name: string; plugin_id: string }[]>(
-      `SELECT id, display_name, plugin_id FROM accounts WHERE deleted_at IS NULL`,
-    ),
+  const [rows, dismissalRows] = await Promise.all([
+    localScanRows(),
     db.select<DismissalRow[]>(
       `SELECT resource_id, rule_id, reason, updated_at FROM posture_dismissals`,
     ),
-    loadPlugins(),
   ]);
 
-  return computePostureFindings({
-    plugins: plugins.map(({ plugin }) => ({
-      id: plugin.manifest.id,
-      displayName: plugin.manifest.displayName,
-      resourceTypes: plugin.resourceTypes,
-    })),
-    accounts: accountRows.map((a) => ({
-      id: a.id,
-      displayName: a.display_name,
-      pluginId: a.plugin_id,
-    })),
-    resources: resourceRows.map((r) => ({
-      id: r.id,
-      pluginId: r.plugin_id,
-      resourceTypeId: r.resource_type_id,
-      accountId: r.account_id,
-      displayName: r.display_name,
-      externalId: r.external_id,
-      fields: parseBag(r.fields_json),
-    })),
-    dismissals: dismissalRows.map(toDismissal),
-  });
+  return computePostureFindings(
+    { ...rows, dismissals: dismissalRows.map(toDismissal) },
+    { dns: computeDnsInventory(rows) },
+  );
 }
 
 /**

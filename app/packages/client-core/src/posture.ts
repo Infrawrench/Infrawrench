@@ -30,6 +30,7 @@
  */
 import type { PostureCategory, PostureCheckRule, PostureSeverity } from "@infrawrench/plugin-base";
 
+import type { DnsInventoryResponse } from "./dns";
 import type { CloudFetch } from "./fetch";
 
 export type {
@@ -184,7 +185,28 @@ export interface PostureScanInput {
 export interface PostureScanOptions {
   /** Scan instant for `olderThanDays` conditions; defaults to `Date.now()`. */
   now?: number;
+  /**
+   * A DNS inventory over the same rows (`computeDnsInventory`). When present,
+   * every record with a dangling target becomes a {@link DANGLING_DNS_RULE_ID}
+   * finding, so subdomain takeover pages through the posture fan-out instead
+   * of growing an alert channel of its own.
+   *
+   * Passed in rather than computed here because it is a cross-resource
+   * question — a record is dangling relative to the whole workspace, not to
+   * its own field bag — and every other rule in this module is a pure
+   * per-resource predicate. Hosts that don't have the inventory to hand simply
+   * omit it and get the declarative rules alone.
+   */
+  dns?: DnsInventoryResponse;
 }
+
+/**
+ * Rule id of the one built-in, cross-resource posture finding: a DNS record
+ * pointing into a provider namespace this workspace manages that nothing in it
+ * claims. Not a plugin `postureChecks` rule — no field bag can express it —
+ * but it rides the same findings list, severities and alert fan-out.
+ */
+export const DANGLING_DNS_RULE_ID = "dns-dangling-target";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -359,6 +381,16 @@ export function computePostureFindings(
     }
   }
 
+  // Cross-resource dangling-DNS findings use the same dismissal partition as
+  // the declarative rules, so accepting a takeover risk silences it too.
+  if (options.dns) {
+    for (const finding of danglingDnsFindings(options.dns)) {
+      const dismissal = dismissals.get(postureFindingKey(finding));
+      if (dismissal) dismissed.push({ ...finding, dismissal });
+      else findings.push(finding);
+    }
+  }
+
   const bySeverity = (a: PostureFinding, b: PostureFinding) =>
     SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||
     a.accountName.localeCompare(b.accountName) ||
@@ -384,6 +416,51 @@ export function computePostureFindings(
     dismissedCount: dismissed.length,
     generatedAt: new Date(now).toISOString(),
   };
+}
+
+/**
+ * Turn each dangling record into a finding against the record resource, so the
+ * Posture surface links straight to the row you have to edit or delete.
+ *
+ * One finding per record, not per target: a round-robin CNAME with two dead
+ * targets is one thing to fix. The worst severity across its dangling targets
+ * wins, and the reason names the specific target so the fix is unambiguous —
+ * including the "you may just not have connected that account" escape hatch,
+ * which is the one honest false positive this check has (see `dns.ts`).
+ */
+function danglingDnsFindings(dns: DnsInventoryResponse): PostureFinding[] {
+  const findings: PostureFinding[] = [];
+  for (const record of dns.records) {
+    const dangling = record.targets.filter((t) => t.classification === "dangling" && t.service);
+    if (dangling.length === 0) continue;
+    const worst = dangling.reduce((a, b) =>
+      SEVERITY_RANK[a.service!.severity] <= SEVERITY_RANK[b.service!.severity] ? a : b,
+    );
+    const service = worst.service!;
+    const others =
+      dangling.length > 1 ? ` (and ${dangling.length - 1} more target(s) on this record)` : "";
+    findings.push({
+      resourceId: record.resourceId,
+      pluginId: record.pluginId,
+      pluginName: record.pluginName,
+      resourceTypeId: record.resourceTypeId,
+      resourceTypeName: record.resourceTypeName,
+      accountId: record.accountId,
+      accountName: record.accountName,
+      displayName: record.name,
+      externalId: null,
+      ruleId: DANGLING_DNS_RULE_ID,
+      title: "Dangling DNS record — subdomain takeover risk",
+      severity: service.severity,
+      category: "public-exposure",
+      reason:
+        `${record.type} ${record.name} points at ${worst.value}, a ${service.label}, ` +
+        `but no synced ${service.pluginName} resource claims "${service.claimLabel}"${others}. ` +
+        `${service.reason} Delete the record, or repoint it — and if the ${service.label} lives in a ` +
+        `${service.pluginName} account you haven't connected here, connect it to clear this finding.`,
+    });
+  }
+  return findings;
 }
 
 /** The findings the poller alerts on — critical and high only. */

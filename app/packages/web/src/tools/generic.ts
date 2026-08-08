@@ -16,6 +16,7 @@ import {
   dismissPostureFinding,
   restorePostureFinding,
 } from "@infrawrench/server-core/posture/dismissals";
+import { listDns } from "@infrawrench/server-core/dns/feed";
 import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
 import { resolveStoredSshPublicKey } from "./ssh-key-lookup";
 import { logAudit } from "../services/audit";
@@ -337,6 +338,57 @@ export function genericTools(): ToolDefinition[] {
           metadata: { ruleId, source: auth.source },
         });
         return ok({ restored: { resourceId, ruleId } });
+      },
+    },
+
+    {
+      name: "list_dns_records",
+      title: "List DNS zones and records",
+      description:
+        "Every DNS zone and record across the organization's connected providers (Cloudflare, " +
+        "Route 53, Cloud DNS, DigitalOcean, Netlify, Azure DNS, Vercel), with each record's " +
+        "target classified against the rest of the workspace: `owned` (resolves to a synced " +
+        "resource), `dangling` (points into a provider namespace the workspace manages that " +
+        "nothing synced claims — the subdomain-takeover signature), `external`, or " +
+        "`not-analysed`. Purely a read over already-synced state: no provider API calls and no " +
+        'DNS resolution. Use it to answer "what points at this?", to audit a domain before ' +
+        "handing it over, or to find takeover risks — those also appear in " +
+        "`list_posture_findings` as `dns-dangling-target`.",
+      inputSchema: {
+        status: z
+          .enum(["owned", "dangling", "external", "not-analysed"])
+          .optional()
+          .describe("Only return records with this status."),
+        domain: z
+          .string()
+          .optional()
+          .describe("Only return zones and records under this domain (suffix match)."),
+      },
+      risk: "read",
+      // Mirrors `GET /dns` — the inventory is computed over the org's resource set.
+      permission: "resources:read",
+      handler: async (input, auth) => {
+        const status = input["status"] as string | undefined;
+        const domain = (input["domain"] as string | undefined)?.trim().toLowerCase();
+        const inventory = await listDns(auth.organizationId);
+
+        const inDomain = (value: string | null) =>
+          !domain || (value !== null && (value === domain || value.endsWith(`.${domain}`)));
+        const zones = inventory.zones.filter((z) => inDomain(z.domain));
+        const records = inventory.records.filter(
+          (r) => (!status || r.status === status) && (inDomain(r.name) || inDomain(r.zoneDomain)),
+        );
+
+        // Counts always describe the whole inventory so a filtered view still
+        // shows the overall picture; matchedCount is the filtered length.
+        return ok({
+          zones,
+          records,
+          matchedCount: records.length,
+          counts: inventory.counts,
+          skippedNamespaces: inventory.skippedNamespaces,
+          generatedAt: inventory.generatedAt,
+        });
       },
     },
 

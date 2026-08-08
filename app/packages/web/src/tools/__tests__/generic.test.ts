@@ -93,6 +93,10 @@ vi.mock("@infrawrench/server-core/posture/dismissals", () => ({
   dismissPostureFinding: (...a: unknown[]) => mockDismissPosture(...a),
   restorePostureFinding: (...a: unknown[]) => mockRestorePosture(...a),
 }));
+const mockListDns = vi.fn();
+vi.mock("@infrawrench/server-core/dns/feed", () => ({
+  listDns: (...a: unknown[]) => mockListDns(...a),
+}));
 const mockResolveSshKey = vi.fn();
 vi.mock("../ssh-key-lookup", () => ({
   resolveStoredSshPublicKey: (...a: unknown[]) => mockResolveSshKey(...a),
@@ -192,6 +196,52 @@ describe("genericTools", () => {
     // Counts describe the whole feed, not the filtered view.
     expect(out.totalCount).toBe(2);
     expect(out.counts).toEqual({ critical: 1, high: 0, medium: 1, low: 0 });
+  });
+
+  it("list_dns_records filters by status and domain, keeping whole-inventory counts", async () => {
+    const record = (name: string, status: string, zoneDomain: string) => ({
+      resourceId: `r-${name}`,
+      pluginId: "cloudflare",
+      pluginName: "Cloudflare",
+      resourceTypeId: "dns-record",
+      resourceTypeName: "DNS Record",
+      accountId: "a1",
+      accountName: "Prod",
+      zoneResourceId: "z1",
+      zoneDomain,
+      name,
+      type: "CNAME",
+      ttl: 300,
+      priority: null,
+      proxied: false,
+      targets: [],
+      status,
+    });
+    mockListDns.mockResolvedValue({
+      zones: [
+        { resourceId: "z1", domain: "example.com" },
+        { resourceId: "z2", domain: "other.com" },
+      ],
+      records: [
+        record("www.example.com", "dangling", "example.com"),
+        record("api.example.com", "owned", "example.com"),
+        record("www.other.com", "dangling", "other.com"),
+      ],
+      counts: { zones: 2, records: 3, owned: 1, dangling: 2, external: 0, notAnalysed: 0 },
+      skippedNamespaces: [],
+      generatedAt: "2026-08-01T00:00:00.000Z",
+    });
+    const r = await tool("list_dns_records").handler(
+      { status: "dangling", domain: "example.com" },
+      auth,
+    );
+    const out = JSON.parse(r.content[0]!.text);
+    expect(mockListDns).toHaveBeenCalledWith("o1");
+    expect(out.records.map((x: { name: string }) => x.name)).toEqual(["www.example.com"]);
+    expect(out.zones.map((x: { domain: string }) => x.domain)).toEqual(["example.com"]);
+    expect(out.matchedCount).toBe(1);
+    // Counts describe the whole inventory, not the filtered view.
+    expect(out.counts.dangling).toBe(2);
   });
 
   it("list_posture_findings filters by category", async () => {

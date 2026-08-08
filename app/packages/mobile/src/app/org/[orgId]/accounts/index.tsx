@@ -51,6 +51,11 @@ export default function AccountsScreen() {
           onPress={() => router.push(`/org/${orgId}/posture`)}
         />
         <Row
+          title="Domains"
+          subtitle="Every DNS zone and record, with dangling targets flagged"
+          onPress={() => router.push(`/org/${orgId}/dns`)}
+        />
+        <Row
           title="Probes"
           subtitle="Uptime and latency checks from outside your infra"
           onPress={() => router.push(`/org/${orgId}/probes`)}

@@ -20,6 +20,7 @@ import { cmdOversized } from "./commands/oversized";
 import { cmdAlerts, cmdAlertEvents } from "./commands/alerts";
 import { cmdExpiring } from "./commands/expiring";
 import { cmdPosture, cmdPostureDismiss, cmdPostureRestore } from "./commands/posture";
+import { cmdDns } from "./commands/dns";
 import { cmdChanges } from "./commands/changes";
 import { cmdMoment } from "./commands/moment";
 import { cmdIncidents } from "./commands/incidents";
@@ -66,6 +67,8 @@ COMMANDS
   posture dismiss     accept a finding as a known risk — it leaves the list and the daily alerts
                       <resourceId> <ruleId> [--reason <text>]   (ids from posture --json)
   posture restore     put a dismissed finding back   <resourceId> <ruleId>
+  dns                 every DNS zone & record across your providers, with dangling targets
+                      (subdomain-takeover risks) flagged   (--local scans this machine's workspace)
   changes             what appeared / changed / disappeared across your providers
                       [--last 7d] [--limit 50] [--kind created|updated|deleted] [-a <account>] [--resource <id>]
   incidents           provider status-page incidents overlapping your resources ("is it me or is it them?")
@@ -297,6 +300,9 @@ export async function runCli(): Promise<void> {
         if (rest[0] === "dismiss") await cmdPostureDismiss(ctx, rest.slice(1));
         else if (rest[0] === "restore") await cmdPostureRestore(ctx, rest.slice(1));
         else await cmdPosture(ctx);
+        break;
+      case "dns":
+        await cmdDns(ctx);
         break;
       case "changes":
         await cmdChanges(ctx, parsed.range);

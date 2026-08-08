@@ -113,8 +113,13 @@ export interface InferredDependencyEdges {
  * lookup index — a resource is findable by any of these, not just its external
  * id, because plugins reference each other by name and address as often as by
  * id (a target group is referenced by name, a DNS record points at an IP).
+ *
+ * Exported because the DNS surface (`./dns`) answers the same question of the
+ * same rows — "does anything in this workspace answer to this value?" — and a
+ * second, drifting definition of identity would make a record read as owned on
+ * the canvas and dangling on the Domains view.
  */
-const IDENTITY_FIELD_KEYS = new Set([
+export const IDENTITY_FIELD_KEYS: ReadonlySet<string> = new Set([
   "id",
   "uuid",
   "arn",

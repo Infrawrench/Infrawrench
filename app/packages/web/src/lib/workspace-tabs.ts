@@ -10,6 +10,7 @@ import {
   changesTabTarget,
   expiringTabTarget,
   postureTabTarget,
+  dnsTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
@@ -116,6 +117,12 @@ export function getWorkspaceNavigateArgs(
     case "posture":
       return {
         to: "/org/$orgId/posture",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "dns":
+      return {
+        to: "/org/$orgId/dns",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -262,6 +269,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "posture") {
     return postureTabTarget();
+  }
+  if (s[0] === "dns") {
+    return dnsTabTarget();
   }
   if (s[0] === "ssh-fanout") {
     return sshFanoutTabTarget();

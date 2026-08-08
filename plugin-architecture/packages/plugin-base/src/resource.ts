@@ -1,6 +1,6 @@
 import type { PeerGuidanceAction } from "./schema.js";
 import type { AssociationSource } from "./create.js";
-import type { PostureCheckRule } from "./posture.js";
+import type { PostureCheckRule, PostureSeverity } from "./posture.js";
 
 export type { AssociationSource };
 
@@ -313,6 +313,126 @@ export interface ExpiryFieldRule {
 }
 
 /**
+ * Marks a resource type as one half of the DNS surface — a zone (the thing a
+ * domain's records live in) or a record — and names the fields the host reads
+ * to render it. Feeds the cross-provider Domains view and the dangling-DNS
+ * posture check.
+ *
+ * Same contract as `orphanRule`, `expiryFields` and `postureChecks`: evaluated
+ * over already-synced `fields`, never an extra provider API call. Every key
+ * defaults to the name the majority of providers already use, so a type whose
+ * lister stores `type`/`name`/`content`/`ttl` needs only `{ role: "record" }`.
+ */
+export type DnsRoleDeclaration = DnsZoneRole | DnsRecordRole;
+
+/** A DNS zone / managed domain: the container records hang off. */
+export interface DnsZoneRole {
+  role: "zone";
+  /**
+   * Field holding the apex domain (`"example.com"`). Default `"name"`. The
+   * host strips a trailing dot, so Cloud DNS's `dnsName` works unchanged.
+   */
+  domainKey?: string;
+  /** Field holding the provider's own record count, when the lister stores one. */
+  recordCountKey?: string;
+  /** Field holding the zone's status; drives the status dot on the surface. */
+  statusKey?: string;
+  /**
+   * Field that marks the zone as split-horizon/internal. Private zones are
+   * listed but never analysed for takeover — an internal name resolving to
+   * nothing is a broken deploy, not an exposure.
+   */
+  privateKey?: string;
+  /**
+   * Values of `privateKey` (case-insensitive) that mean private. Omit for a
+   * boolean field, where truthiness is the test.
+   */
+  privateValues?: string[];
+  /**
+   * Set on types that are private by definition (Azure Private DNS), where
+   * there is no field to read because the type itself is the answer. Mutually
+   * exclusive with `privateKey`.
+   */
+  isPrivate?: boolean;
+}
+
+/** A DNS record inside a zone. */
+export interface DnsRecordRole {
+  role: "record";
+  /**
+   * Field holding the record name. Default `"name"`. May be relative (`"www"`,
+   * `"@"`) or fully qualified with or without a trailing dot — the host
+   * normalises against the owning zone's domain either way.
+   */
+  nameKey?: string;
+  /** Field holding the record type (`"A"`, `"CNAME"`…). Default `"type"`. */
+  typeKey?: string;
+  /**
+   * Field holding the record's target. Default `"content"`. A comma-joined
+   * list (Route 53's `values`, Cloud DNS's `rrdatas`) is split by the host and
+   * each element analysed separately.
+   */
+  contentKey?: string;
+  /** Field holding the TTL in seconds. Default `"ttl"`. */
+  ttlKey?: string;
+  /** Field holding MX/SRV priority, when the lister stores one. */
+  priorityKey?: string;
+  /** Field that is truthy when the provider proxies the record (Cloudflare's orange cloud). */
+  proxiedKey?: string;
+  /**
+   * Field naming the owning zone, used only when the sync path recorded no
+   * `parentResourceId`. Its value is matched against each zone's external id
+   * and against the zone's declared `domainKey`, so either form works.
+   */
+  zoneKey?: string;
+}
+
+/**
+ * Declares the hostname space instances of this type are served at — the
+ * provider-owned namespace a CNAME points into (`myapp.vercel.app`,
+ * `assets.s3.amazonaws.com`). This is what makes dangling-DNS detection
+ * possible without a history table: a record pointing into a namespace we
+ * manage, that no synced resource claims, is a subdomain-takeover candidate.
+ *
+ * Only declare a namespace whose claimant this plugin's lister genuinely
+ * syncs. The host will not evaluate a rule unless the org has a synced account
+ * for the plugin **and** at least one synced resource of a type declaring the
+ * matched pattern — missing data must never alarm, and "you don't have AWS
+ * connected" is missing data, not a finding.
+ */
+export interface DnsServiceHostRule {
+  /** Stable id, unique within the plugin; appears in the finding. */
+  id: string;
+  /** Human name of the namespace, e.g. "S3 bucket endpoint". */
+  label: string;
+  /**
+   * Regex source matched against the whole lowercased hostname — hosts anchor
+   * it themselves, so don't write `^`/`$`. Capture group 1 must be the part
+   * that identifies the instance (the bucket name, the app slug); for an
+   * opaque provider-minted label capture it anyway and set `labelIs: "opaque"`.
+   */
+  hostPattern: string;
+  /**
+   * How capture group 1 relates to the instance:
+   * - `"name"` (default) — it IS the resource's name/external id, so
+   *   `myapp.vercel.app` is claimed by a project called `myapp`.
+   * - `"opaque"` — the provider mints it (`d111111abcdef8.cloudfront.net`), so
+   *   only an exact `hostKeys` value can claim the hostname.
+   */
+  labelIs?: "name" | "opaque";
+  /**
+   * Fields holding the full hostname an instance answers to, checked in
+   * addition to (and, for `labelIs: "opaque"`, instead of) the name match. A
+   * value that is a URL is reduced to its host, so a `url` field works.
+   */
+  hostKeys?: string[];
+  /** Severity of an unclaimed pointer into this namespace. Default `"high"`. */
+  severity?: PostureSeverity;
+  /** Plugin-authored sentence on what an attacker who claims the name gains. */
+  reason: string;
+}
+
+/**
  * Declares that a resource type can be powered off and back on through a pair
  * of the plugin's own invoke-actions ("plugin-action" `HostAction`s dispatched
  * via `client.invokeAction`). The generic convention behind sleep/wake
@@ -608,6 +728,18 @@ export interface ResourceTypeDefinition {
    * never matches. See `PostureCheckRule` in `posture.ts`.
    */
   postureChecks?: PostureCheckRule[];
+  /**
+   * Marks this type as a DNS zone or a DNS record and names the fields the
+   * host reads; see {@link DnsRoleDeclaration}. Absent = the type never
+   * appears on the Domains surface.
+   */
+  dnsRole?: DnsRoleDeclaration;
+  /**
+   * Provider hostname namespaces instances of this type are served at; see
+   * {@link DnsServiceHostRule}. Absent = a record pointing at this type's
+   * hostnames is never analysed for takeover.
+   */
+  dnsServiceHosts?: DnsServiceHostRule[];
   /**
    * Start/stop action pair for sleep/wake schedules; see
    * {@link LifecycleActionsDeclaration}. Absent = the type cannot be
