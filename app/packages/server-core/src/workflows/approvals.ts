@@ -290,26 +290,34 @@ function sleep(ms: number): Promise<void> {
  * already stopped listening for. Fire-and-forget: the updater never throws.
  */
 async function expirePending(approvalId: string): Promise<void> {
-  const [expired] = await db
-    .update(workflowApprovals)
-    .set({ status: "expired", decidedAt: new Date() })
-    .where(and(eq(workflowApprovals.id, approvalId), eq(workflowApprovals.status, "pending")))
-    .returning();
+  // Decision and delivery settlement share one transaction: a status that
+  // lands while the escalate clock keeps running is the failure mode settle
+  // exists to prevent, and fire-and-forget would reintroduce it.
+  const expired = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(workflowApprovals)
+      .set({ status: "expired", decidedAt: new Date() })
+      .where(and(eq(workflowApprovals.id, approvalId), eq(workflowApprovals.status, "pending")))
+      .returning();
+    if (!row) return null;
+    // `expired`, not `acknowledged`: the request timed out and nobody decided,
+    // so there is no acknowledgement to record — but the escalation clock still
+    // has to stop, or it would page about a request the run has already given up on.
+    await settleDeliveriesForPushTarget({
+      organizationId: row.organizationId,
+      field: "approvalId",
+      value: approvalId,
+      state: "expired",
+      executor: tx,
+    });
+    return row;
+  });
   if (!expired) return;
   void updateSlackApprovalMessages(expired.organizationId, "workflow", approvalId, {
     decision: "expired",
     decidedByName: null,
     title: `Approval needed: ${expired.title}`,
     body: expired.message,
-  });
-  // `expired`, not `acknowledged`: the request timed out and nobody decided, so
-  // there is no acknowledgement to record — but the escalation clock still has
-  // to stop, or it would page about a request the run has already given up on.
-  void settleDeliveriesForPushTarget({
-    organizationId: expired.organizationId,
-    field: "approvalId",
-    value: approvalId,
-    state: "expired",
   });
 }
 
@@ -484,30 +492,77 @@ export async function decideWorkflowApproval(
   if (!existing) return { outcome: "not_found" };
 
   const now = new Date();
-  const [updated] = await db
-    .update(workflowApprovals)
-    .set({
-      status: decision,
-      decidedAt: now,
-      decidedByUserId: decidedBy.userId,
-      decidedByName: decidedBy.name ?? null,
-    })
-    .where(
-      and(
-        eq(workflowApprovals.id, approvalId),
-        eq(workflowApprovals.organizationId, organizationId),
-        eq(workflowApprovals.status, "pending"),
-      ),
-    )
-    .returning();
-  if (!updated) return { outcome: "conflict" };
-  // Deciding after the timeout passed but before the run's poll marked the row
-  // is still a conflict: the run will treat it as expired, so don't pretend.
-  if (updated.expiresAt.getTime() <= now.getTime() && decision === "approved") {
-    await db
+  // Decision and delivery settlement share one transaction so a landed decision
+  // cannot leave the escalation clock armed (the failure settle exists to stop).
+  // Slack updates stay outside: they are best-effort external I/O and must not
+  // roll back a decision that already has a durable row.
+  type TxOutcome =
+    | { kind: "conflict" }
+    | { kind: "late_expired"; title: string; message: string }
+    | { kind: "decided"; approval: WorkflowApprovalSummary; title: string; message: string };
+
+  const outcome = await db.transaction(async (tx): Promise<TxOutcome> => {
+    const [updated] = await tx
       .update(workflowApprovals)
-      .set({ status: "expired" })
-      .where(eq(workflowApprovals.id, approvalId));
+      .set({
+        status: decision,
+        decidedAt: now,
+        decidedByUserId: decidedBy.userId,
+        decidedByName: decidedBy.name ?? null,
+      })
+      .where(
+        and(
+          eq(workflowApprovals.id, approvalId),
+          eq(workflowApprovals.organizationId, organizationId),
+          eq(workflowApprovals.status, "pending"),
+        ),
+      )
+      .returning();
+    if (!updated) return { kind: "conflict" };
+
+    // Deciding after the timeout passed but before the run's poll marked the row
+    // is still a conflict: the run will treat it as expired, so don't pretend.
+    if (updated.expiresAt.getTime() <= now.getTime() && decision === "approved") {
+      await tx
+        .update(workflowApprovals)
+        .set({ status: "expired" })
+        .where(eq(workflowApprovals.id, approvalId));
+      // Same reason as the Slack update below: this is the one path where the
+      // run's poll never calls `expirePending`, so nothing else stops the
+      // escalation clock on the rows this request armed.
+      await settleDeliveriesForPushTarget({
+        organizationId,
+        field: "approvalId",
+        value: approvalId,
+        state: "expired",
+        executor: tx,
+      });
+      return { kind: "late_expired", title: updated.title, message: updated.message };
+    }
+
+    // Deciding *is* acknowledging: somebody looked at the request and acted, so
+    // the escalation this request armed has nothing left to escalate. Recorded
+    // against the decider, so the delivery history names who took it.
+    await settleDeliveriesForPushTarget({
+      organizationId,
+      field: "approvalId",
+      value: approvalId,
+      state: "acknowledged",
+      userId: decidedBy.userId,
+      via: opts.decidedVia === "Slack" ? "slack" : "web",
+      executor: tx,
+    });
+    return {
+      kind: "decided",
+      approval: toSummary(updated, null),
+      title: updated.title,
+      message: updated.message,
+    };
+  });
+
+  if (outcome.kind === "conflict") return { outcome: "conflict" };
+
+  if (outcome.kind === "late_expired") {
     // The Slack copies must land on "expired" here too — this path is the one
     // where the run's poll never gets to call expirePending (the row left
     // `pending` under the late approval), so nothing else retires them.
@@ -515,20 +570,12 @@ export async function decideWorkflowApproval(
       decision: "expired",
       decidedByName: decidedBy.name ?? null,
       via: opts.decidedVia ?? "the web app",
-      title: `Approval needed: ${updated.title}`,
-      body: updated.message,
-    });
-    // Same reason as the Slack update above: this is the one path where the
-    // run's poll never calls `expirePending`, so nothing else stops the
-    // escalation clock on the rows this request armed.
-    void settleDeliveriesForPushTarget({
-      organizationId,
-      field: "approvalId",
-      value: approvalId,
-      state: "expired",
+      title: `Approval needed: ${outcome.title}`,
+      body: outcome.message,
     });
     return { outcome: "conflict" };
   }
+
   // Retire any interactive Slack copies of this request: buttons off, outcome
   // and decider shown in place, threaded reply for the channel's history.
   // Fire-and-forget (the updater never throws) — the decision is already
@@ -537,19 +584,8 @@ export async function decideWorkflowApproval(
     decision,
     decidedByName: decidedBy.name ?? null,
     via: opts.decidedVia ?? "the web app",
-    title: `Approval needed: ${updated.title}`,
-    body: updated.message,
+    title: `Approval needed: ${outcome.title}`,
+    body: outcome.message,
   });
-  // Deciding *is* acknowledging: somebody looked at the request and acted, so
-  // the escalation this request armed has nothing left to escalate. Recorded
-  // against the decider, so the delivery history names who took it.
-  void settleDeliveriesForPushTarget({
-    organizationId,
-    field: "approvalId",
-    value: approvalId,
-    state: "acknowledged",
-    userId: decidedBy.userId,
-    via: opts.decidedVia === "Slack" ? "slack" : "web",
-  });
-  return { outcome: "decided", approval: toSummary(updated, null) };
+  return { outcome: "decided", approval: outcome.approval };
 }

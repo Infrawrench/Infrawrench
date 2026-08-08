@@ -39,7 +39,7 @@ function routed(over: Record<string, unknown> = {}) {
     // The tracked-Slack half of the result. Present by default because
     // `byTransport.slack` is 1 — a result claiming a Slack delivery with no
     // message to show for it is a shape the real function never returns.
-    slackMessages: [{ installationId: "inst1", channelId: "C1", ts: "1722700000.000100" }],
+    slackMessages: [],
     deliveryIds: [],
     ...over,
   };

@@ -306,9 +306,7 @@ export type AlertCondition =
  * should hold.
  */
 export type AlertDestination =
-  | { kind: "push" }
-  | { kind: "slack"; channelId: string }
-  | { kind: "msteams"; webhookId: string };
+  { kind: "push" } | { kind: "slack"; channelId: string } | { kind: "msteams"; webhookId: string };
 
 export function destinationKey(d: AlertDestination): string {
   switch (d.kind) {
@@ -862,12 +860,7 @@ export type AlertRuleInput = Omit<AlertRule, "id"> & { id?: string };
  * the only evidence that escalation was unnecessary rather than merely unarmed.
  */
 export type AlertDeliveryState =
-  | "held"
-  | "awaiting_ack"
-  | "sent"
-  | "acknowledged"
-  | "escalated"
-  | "expired";
+  "held" | "awaiting_ack" | "sent" | "acknowledged" | "escalated" | "expired";
 
 /** `GET /api/org/:orgId/alert-deliveries` — the held/awaiting-ack queue. */
 export interface AlertDeliveryRecord {

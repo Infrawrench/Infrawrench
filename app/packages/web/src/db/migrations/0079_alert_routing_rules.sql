@@ -12,9 +12,9 @@
 -- columns are deliberately left in place: Drizzle's `select()` names every
 -- column in the schema, so an old replica mid-rollout still asks for them, and
 -- dropping them here would break every read of `slack_channels`,
--- `msteams_webhooks` and `push_preferences` until the rollout finished. The 35
--- drops live in `0080_drop_legacy_alert_trigger_columns.sql`, to be applied
--- once this release is fully rolled out.
+-- `msteams_webhooks` and `push_preferences` until the rollout finished. Drop
+-- those 35 columns in a later release only after this expand is fully rolled
+-- out — never in the same deploy wave as this migration.
 
 --> statement-breakpoint
 CREATE TABLE "alert_rules" (

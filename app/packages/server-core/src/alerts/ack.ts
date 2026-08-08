@@ -130,6 +130,9 @@ export async function listAlertDeliveries(
     .limit(Math.min(Math.max(limit, 1), 200));
 }
 
+/** Minimal DB surface used by settlement — the module client or a transaction. */
+type SettlementDb = Pick<typeof db, "update">;
+
 /**
  * Settle every awaiting-acknowledgement delivery raised about one thing that
  * has now been dealt with elsewhere.
@@ -150,8 +153,14 @@ export async function listAlertDeliveries(
  *
  * `state` is the caller's to choose because it is a claim about what happened:
  * `acknowledged` when a person decided, `expired` when the deadline passed and
- * nobody did. Never throws — settling is bookkeeping behind a decision that has
- * already landed.
+ * nobody did.
+ *
+ * Propagates database errors rather than swallowing them: a failed settle
+ * leaves the row armed to escalate, which is the failure mode this helper
+ * exists to prevent. Callers that land a decision should run this inside the
+ * same transaction (pass `executor`) so the decision and the settle commit
+ * together — a decision that lands while the escalate clock keeps running is
+ * worse than no decision at all.
  */
 export async function settleDeliveriesForPushTarget(args: {
   organizationId: string;
@@ -161,39 +170,40 @@ export async function settleDeliveriesForPushTarget(args: {
   state: "acknowledged" | "expired";
   userId?: string | null;
   via?: string;
+  /**
+   * Transaction handle so the settle can commit with the decision that
+   * triggered it. Defaults to the module-scope client.
+   */
+  executor?: SettlementDb;
 }): Promise<number> {
   const now = new Date();
-  try {
-    const rows = await db
-      .update(alertDeliveries)
-      .set({
-        state: args.state,
-        // Both deadlines cleared, so neither claim in the follow-up pass can
-        // pick the row up again.
-        escalateAt: null,
-        deliverAfter: null,
-        ...(args.state === "acknowledged"
-          ? {
-              acknowledgedAt: now,
-              acknowledgedByUserId: args.userId ?? null,
-              acknowledgedVia: args.via ?? "workflow",
-            }
-          : {}),
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(alertDeliveries.organizationId, args.organizationId),
-          eq(alertDeliveries.state, "awaiting_ack"),
-          sql`${alertDeliveries.payload} -> 'pushData' ->> ${args.field} = ${args.value}`,
-        ),
-      )
-      .returning({ id: alertDeliveries.id });
-    return rows.length;
-  } catch (err) {
-    console.error("[alerts] failed to settle deliveries for", args.field, args.value, err);
-    return 0;
-  }
+  const exec = args.executor ?? db;
+  const rows = await exec
+    .update(alertDeliveries)
+    .set({
+      state: args.state,
+      // Both deadlines cleared, so neither claim in the follow-up pass can
+      // pick the row up again.
+      escalateAt: null,
+      deliverAfter: null,
+      ...(args.state === "acknowledged"
+        ? {
+            acknowledgedAt: now,
+            acknowledgedByUserId: args.userId ?? null,
+            acknowledgedVia: args.via ?? "workflow",
+          }
+        : {}),
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(alertDeliveries.organizationId, args.organizationId),
+        eq(alertDeliveries.state, "awaiting_ack"),
+        sql`${alertDeliveries.payload} -> 'pushData' ->> ${args.field} = ${args.value}`,
+      ),
+    )
+    .returning({ id: alertDeliveries.id });
+  return rows.length;
 }
 
 /** Cancel held or awaiting-ack rows — used when an admin clears the queue. */

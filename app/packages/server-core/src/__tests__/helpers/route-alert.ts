@@ -22,10 +22,10 @@ export function routed(over: Record<string, unknown> = {}) {
     held: 0,
     unrouted: false,
     matchedRuleIds: ["rule1"],
-    // The tracked-Slack half of the result. Present by default because
-    // `byTransport.slack` is 1 — a result claiming a Slack delivery with no
-    // message to show for it is a shape the real function never returns.
-    slackMessages: [{ installationId: "inst1", channelId: "C1", ts: "1722700000.000100" }],
+    // Empty by default: `routeAlert` only fills this when `track: true`. Most
+    // detectors call without tracking, so the default fixture matches that
+    // shape. Tests that exercise the tracked path pass messages via `over`.
+    slackMessages: [],
     deliveryIds: [],
     ...over,
   };
