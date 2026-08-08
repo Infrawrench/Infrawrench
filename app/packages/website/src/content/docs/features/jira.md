@@ -18,14 +18,14 @@ offering to file it again.
 
 ## What can be filed
 
-| Finding | Where it lives |
-| --- | --- |
-| Cost anomaly | [Cost anomaly alerts](./cost-anomaly-alerts.md) — the Anomalies table on the Costs panel |
-| Orphaned resource | [Orphan finder](./orphan-finder.md) — Potential savings |
-| Oversized resource | [Right-sizing](./right-sizing.md) — the Oversized section |
-| Posture finding | [Posture checks](./posture-checks.md) |
-| Expiring credential | [Expiry radar](./expiry-radar.md) |
-| Failed probe | [Synthetic probes](./synthetic-probes.md) |
+| Finding             | Where it lives                                                                           |
+| ------------------- | ---------------------------------------------------------------------------------------- |
+| Cost anomaly        | [Cost anomaly alerts](./cost-anomaly-alerts.md) — the Anomalies table on the Costs panel |
+| Orphaned resource   | [Orphan finder](./orphan-finder.md) — Potential savings                                  |
+| Oversized resource  | [Right-sizing](./right-sizing.md) — the Oversized section                                |
+| Posture finding     | [Posture checks](./posture-checks.md)                                                    |
+| Expiring credential | [Expiry radar](./expiry-radar.md)                                                        |
+| Failed probe        | [Synthetic probes](./synthetic-probes.md)                                                |
 
 Each one prefills the issue for you: a summary naming the finding, and a description carrying
 the numbers behind it — the day and the baseline for an anomaly, the current and recommended

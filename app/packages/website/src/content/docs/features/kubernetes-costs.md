@@ -14,11 +14,11 @@ So Infrawrench derives it. Node capacity, times what that node costs per hour, t
 
 ## What it needs
 
-| Input                     | Where it comes from                                    | Without it                                                     |
-| ------------------------- | ------------------------------------------------------ | -------------------------------------------------------------- |
-| Node capacity and pod requests | The Kubernetes API. Always available.             | Nothing works; this is the baseline.                            |
-| A per-node hourly price   | The parent cloud plugin, or the optional field on the account. | Capacity and requests are still shown — the money is omitted.   |
-| Live CPU/memory usage     | `metrics.k8s.io`, served by metrics-server.            | Allocation falls back to requests alone. Efficiency is hidden.  |
+| Input                          | Where it comes from                                            | Without it                                                     |
+| ------------------------------ | -------------------------------------------------------------- | -------------------------------------------------------------- |
+| Node capacity and pod requests | The Kubernetes API. Always available.                          | Nothing works; this is the baseline.                           |
+| A per-node hourly price        | The parent cloud plugin, or the optional field on the account. | Capacity and requests are still shown — the money is omitted.  |
+| Live CPU/memory usage          | `metrics.k8s.io`, served by metrics-server.                    | Allocation falls back to requests alone. Efficiency is hidden. |
 
 ### metrics-server is optional
 
@@ -38,14 +38,14 @@ Two sources, in order.
 
 **1. The cloud account that owns the nodes.** When you open the Kubernetes pane from a managed cluster resource, the cloud plugin hands its node prices to the Kubernetes plugin along with the kubeconfig. What it can supply varies:
 
-| Provider     | What it supplies                                                         | Quality       |
-| ------------ | ------------------------------------------------------------------------ | ------------- |
-| DigitalOcean | The published hourly price of each node pool's Droplet size — which is what DOKS worker nodes are actually billed at. | Real price    |
-| AWS          | On-demand hourly price of the managed node groups' instance types.        | List price    |
-| Azure        | Retail pay-as-you-go hourly price of the cluster's node VM size.          | List price    |
-| GCP          | Not yet — see [Limitations](#limitations).                                | None          |
-| Scaleway     | Not yet.                                                                  | None          |
-| OVHcloud     | Not yet.                                                                  | None          |
+| Provider     | What it supplies                                                                                                      | Quality    |
+| ------------ | --------------------------------------------------------------------------------------------------------------------- | ---------- |
+| DigitalOcean | The published hourly price of each node pool's Droplet size — which is what DOKS worker nodes are actually billed at. | Real price |
+| AWS          | On-demand hourly price of the managed node groups' instance types.                                                    | List price |
+| Azure        | Retail pay-as-you-go hourly price of the cluster's node VM size.                                                      | List price |
+| GCP          | Not yet — see [Limitations](#limitations).                                                                            | None       |
+| Scaleway     | Not yet.                                                                                                              | None       |
+| OVHcloud     | Not yet.                                                                                                              | None       |
 
 List prices are exactly that: Savings Plans, Reserved Instances, committed-use discounts and Spot all move the real number, usually downward. The pane says which kind of price it used.
 
@@ -67,9 +67,9 @@ The instance type is matched against each node's `node.kubernetes.io/instance-ty
 
 A node is one price for two resources, so the price has to be divided before a pod's share of it means anything. Infrawrench splits it **65% CPU / 35% memory**.
 
-That is not a round number picked for tidiness. Cloud providers that publish *component* pricing charge separately per vCPU-hour and per GiB-hour, and a general-purpose instance's price is the sum. Taking those published rates for the mainstream general-purpose families — which run at roughly 4 GiB of RAM per vCPU — the CPU term is consistently a little under two thirds of the machine price. GCP's N2 family in `us-central1`, for instance, prices vCPUs at $0.031611/hour and RAM at $0.004237/GiB-hour; for an `n2-standard-4` that is $0.126 of CPU against $0.068 of RAM, a 65% CPU share.
+That is not a round number picked for tidiness. Cloud providers that publish _component_ pricing charge separately per vCPU-hour and per GiB-hour, and a general-purpose instance's price is the sum. Taking those published rates for the mainstream general-purpose families — which run at roughly 4 GiB of RAM per vCPU — the CPU term is consistently a little under two thirds of the machine price. GCP's N2 family in `us-central1`, for instance, prices vCPUs at $0.031611/hour and RAM at $0.004237/GiB-hour; for an `n2-standard-4` that is $0.126 of CPU against $0.068 of RAM, a 65% CPU share.
 
-The split only moves money *between* tenants sharing a node. It never changes the cluster total, the idle bucket, or any efficiency figure — so a few points of error is not load-bearing.
+The split only moves money _between_ tenants sharing a node. It never changes the cluster total, the idle bucket, or any efficiency figure — so a few points of error is not load-bearing.
 
 ### A pod is charged the greater of its request and its usage
 
@@ -89,7 +89,7 @@ Whatever the workloads on a node do not hold is reported separately, in two buck
 - **Idle** — schedulable capacity nobody asked for. This is the cluster being bigger than its workloads.
 - **System reserved** — the gap between the node's capacity and its allocatable, which the kubelet keeps for itself. Never any workload's fault.
 
-Neither is spread across the namespaces. Doing that would overcharge every tenant *and* hide the actual finding, which is that you are paying for a cluster larger than what you run on it. A cluster where half the money is in the idle row is telling you something specific, and it is not "the `payments` namespace is expensive".
+Neither is spread across the namespaces. Doing that would overcharge every tenant _and_ hide the actual finding, which is that you are paying for a cluster larger than what you run on it. A cluster where half the money is in the idle row is telling you something specific, and it is not "the `payments` namespace is expensive".
 
 <insert [Cluster detail view showing the "Cost by namespace" table with per-namespace rows and the distinct "(idle · unallocated capacity)" and "(system reserved · kubelet)" rows at the bottom] here>
 
@@ -124,14 +124,14 @@ Kubernetes accounts collect a daily snapshot into the same store every other pro
 
 The dimensions it reports:
 
-| Dimension            | Values                                                                          |
-| -------------------- | ------------------------------------------------------------------------------- |
-| Service              | `kubernetes-workload`, `kubernetes-idle`, `kubernetes-system-reserved`           |
-| Resource             | The workload identity, `namespace/Kind/name`                                     |
-| Tag `namespace`      | The Kubernetes namespace                                                         |
-| Tag `workload`       | The owning Deployment / StatefulSet / DaemonSet / Job name                        |
-| Tag `workload_kind`  | That owner's kind                                                                |
-| Tag `system`         | `true` for the control-plane namespaces                                          |
+| Dimension           | Values                                                                 |
+| ------------------- | ---------------------------------------------------------------------- |
+| Service             | `kubernetes-workload`, `kubernetes-idle`, `kubernetes-system-reserved` |
+| Resource            | The workload identity, `namespace/Kind/name`                           |
+| Tag `namespace`     | The Kubernetes namespace                                               |
+| Tag `workload`      | The owning Deployment / StatefulSet / DaemonSet / Job name             |
+| Tag `workload_kind` | That owner's kind                                                      |
+| Tag `system`        | `true` for the control-plane namespaces                                |
 
 Group by the `namespace` tag for a per-team view; filter `service is not kubernetes-idle` to see only what workloads hold.
 

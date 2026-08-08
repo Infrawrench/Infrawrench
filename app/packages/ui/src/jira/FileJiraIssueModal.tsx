@@ -152,9 +152,7 @@ export function FileJiraIssueModal({
                 onChange={(e) => setProjectKey(e.target.value)}
                 className={inputClass}
               >
-                <option value="">
-                  {projects === null ? "Loading…" : "Select a project"}
-                </option>
+                <option value="">{projects === null ? "Loading…" : "Select a project"}</option>
                 {(projects ?? []).map((p) => (
                   <option key={p.id} value={p.key}>
                     {p.name} ({p.key})

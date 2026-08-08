@@ -399,9 +399,7 @@ export class DigitalOceanClient implements PluginClient {
       this.fetch<{
         kubernetes_cluster?: { node_pools?: Array<{ size?: string }> };
       }>(`/kubernetes/clusters/${clusterId}`),
-      this.fetch<{ sizes: Array<{ slug: string; price_hourly: number }> }>(
-        "/sizes?per_page=200",
-      ),
+      this.fetch<{ sizes: Array<{ slug: string; price_hourly: number }> }>("/sizes?per_page=200"),
     ]);
 
     const used = new Set(

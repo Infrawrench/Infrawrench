@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.4.0",
+    "version": "1.3.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -55,6 +55,14 @@
     {
       "name": "Custom graphs",
       "description": "Script-defined dashboard charts run in a server-side sandbox."
+    },
+    {
+      "name": "Cost reports",
+      "description": "Named, addressable saved cost graphs. A report owns its config as an org object, so dashboards can reference it by id (the `cost_report` widget kind) and it can be run by id without the caller reassembling the query."
+    },
+    {
+      "name": "Cost exports",
+      "description": "Recurring dumps of raw cost rows into a warehouse or object store. A run streams the org's cost rows out of storage and writes one object per period at a deterministic key, to S3-compatible storage or an HTTPS endpoint. Because provider spend is restated for days after the fact, every run also re-writes the periods inside a trailing restatement window and stamps each row with the collection watermark, so a consumer can tell a settled period from a still-moving one."
     },
     {
       "name": "Workflows",
@@ -177,6 +185,10 @@
       "description": "Org-level change freeze windows. While one is in effect, destructive actions are blocked (423) unless explicitly overridden by an admin."
     },
     {
+      "name": "Currency",
+      "description": "Opt-in conversion of mixed-currency spend into one display currency, at exchange rates the organization states itself with an effective date. Nothing is converted until a display currency is set, no live FX is ever fetched, and a currency with no configured rate is reported unconverted rather than dropped from the total."
+    },
+    {
       "name": "API keys",
       "description": "Programmatic access tokens."
     },
@@ -215,6 +227,10 @@
     {
       "name": "Microsoft Teams",
       "description": "Microsoft Teams webhook connections and the channels alert rules can name as destinations."
+    },
+    {
+      "name": "Jira",
+      "description": "Jira Cloud connection, project and issue-type pickers, and filing a finding (cost anomaly, orphan, oversized resource, posture finding, expiring credential, failed probe) as a tracked issue."
     }
   ],
   "components": {
@@ -1124,7 +1140,6 @@
           "ssh",
           "together",
           "turso",
-          "uploadthing",
           "vercel",
           "workos",
           "xai"
@@ -1459,85 +1474,6 @@
         ],
         "additionalProperties": false
       },
-      "TerraformExport": {
-        "type": "object",
-        "properties": {
-          "hcl": {
-            "type": "string"
-          },
-          "exported": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "$ref": "#/components/schemas/ResourceId"
-                },
-                "displayName": {
-                  "type": "string"
-                },
-                "pluginId": {
-                  "type": "string"
-                },
-                "resourceTypeId": {
-                  "type": "string"
-                },
-                "address": {
-                  "type": "string"
-                },
-                "importId": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "displayName",
-                "pluginId",
-                "resourceTypeId",
-                "address"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "unsupported": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "$ref": "#/components/schemas/ResourceId"
-                },
-                "displayName": {
-                  "type": "string"
-                },
-                "pluginId": {
-                  "type": "string"
-                },
-                "resourceTypeId": {
-                  "type": "string"
-                },
-                "reason": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "displayName",
-                "pluginId",
-                "resourceTypeId",
-                "reason"
-              ],
-              "additionalProperties": false
-            }
-          }
-        },
-        "required": [
-          "hcl",
-          "exported",
-          "unsupported"
-        ],
-        "additionalProperties": false
-      },
       "SyncResponse": {
         "type": "object",
         "properties": {
@@ -1598,12 +1534,6 @@
             "type": "boolean"
           },
           "sshTunnelAttachSource": {
-            "type": "boolean"
-          },
-          "showInSidebar": {
-            "type": "boolean"
-          },
-          "accountRoot": {
             "type": "boolean"
           },
           "schedulable": {
@@ -2074,8 +2004,6 @@
           "turso-organization-member",
           "upload-preset",
           "user",
-          "ut-app",
-          "ut-file",
           "vector-store",
           "vectorize-index",
           "vercel-deployment",
@@ -2284,9 +2212,11 @@
         "type": "string",
         "enum": [
           "cost_graph",
+          "cost_report",
           "budget",
           "custom_graph"
-        ]
+        ],
+        "description": "`cost_graph` stores its whole config inline — a one-off card. `cost_report` points at a saved cost report by id, so editing the report updates every dashboard showing it."
       },
       "DashboardWidget": {
         "type": "object",
@@ -2623,6 +2553,7 @@
               "agents",
               "costs",
               "savings",
+              "cost-reports",
               "graph",
               "logs",
               "changes",
@@ -2653,6 +2584,11 @@
             "$ref": "#/components/schemas/ResourceId"
           },
           "conversationId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "reportId": {
             "type": "string",
             "format": "uuid",
             "example": "00000000-0000-0000-0000-000000000000"
@@ -3115,7 +3051,9 @@
           "service",
           "region",
           "resource",
-          "tag"
+          "tag",
+          "charge_type",
+          "commitment"
         ]
       },
       "CostFilter": {
@@ -3149,6 +3087,28 @@
         ],
         "additionalProperties": false
       },
+      "CostBasis": {
+        "type": "string",
+        "enum": [
+          "cash",
+          "amortized"
+        ],
+        "description": "Which number to sum. `cash` is what the provider charged on the day it charged it — the default, and what every query returned before this existed. `amortized` spreads a commitment's up-front fee across the term it buys, so a year of capacity bought on one day is counted on the days it covers. Providers that report no amortized amount fall back to their cash amount, so an amortized query over a mixed estate never drops their spend."
+      },
+      "CostChargeType": {
+        "type": "string",
+        "enum": [
+          "usage",
+          "commitment_fee",
+          "commitment_discount",
+          "credit",
+          "tax",
+          "refund",
+          "adjustment",
+          "support",
+          "other"
+        ]
+      },
       "CostQueryRequest": {
         "type": "object",
         "properties": {
@@ -3180,7 +3140,9 @@
               "service",
               "region",
               "resource",
-              "tag"
+              "tag",
+              "charge_type",
+              "commitment"
             ]
           },
           "groupByTagKey": {
@@ -3192,6 +3154,12 @@
               "$ref": "#/components/schemas/CostFilter"
             }
           },
+          "query": {
+            "type": "string",
+            "maxLength": 4000,
+            "description": "The same filter written as text, in the cost query language — an alternative to `filters`, compiled server-side into exactly that structure.\n\nGrammar: a conjunction of equality terms joined by `AND`. A term is `dimension = 'value'`, `dimension != 'value'`, `dimension IN ('a','b')` or `dimension NOT IN ('a','b')`; the tag dimension takes its key in brackets, `tag['owner'] = 'platform'`. Keywords are case-insensitive, strings may be single- or double-quoted, and a quote inside a value is escaped by doubling it (`'it''s'`) or with a backslash (`'it\\'s'`).\n\n`OR` is deliberately not supported: the stored filter is a conjunction, so several values of one dimension go in an `IN` list and unrelated alternatives need separate queries. Anything the structured filter cannot express is a parse error rather than a second execution path.\n\nSending both `query` and a non-empty `filters` is a 400, not a precedence rule. A parse failure is a 400 whose body carries `queryError` with the character `offset`, the `length` of the offending span, and the `expected` alternatives there.",
+            "example": "provider = 'aws' AND tag['env'] != 'dev'"
+          },
           "topN": {
             "type": "integer",
             "minimum": 1,
@@ -3202,6 +3170,16 @@
           },
           "forecast": {
             "type": "boolean"
+          },
+          "costBasis": {
+            "$ref": "#/components/schemas/CostBasis"
+          },
+          "chargeTypes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostChargeType"
+            },
+            "description": "Restrict to these kinds of charge. Omitted is all of them, which is what makes an unfiltered total net rather than gross — credits, refunds and commitment discounts are included. Rows collected before charge types existed, and rows from providers that cannot distinguish them, are `usage`."
           }
         },
         "required": [
@@ -3421,6 +3399,18 @@
               ]
             }
           },
+          "chargeTypes": {
+            "type": "boolean",
+            "description": "Whether this account's plugin can tell one kind of charge from another. False means every row it writes is recorded as `usage` — not that the provider only bills usage."
+          },
+          "amortization": {
+            "type": "boolean",
+            "description": "Whether this account's plugin reports an amortized amount distinct from the cash amount. Clients offer the amortized cost basis only when at least one account says yes; elsewhere the amortized view is the cash numbers under another name."
+          },
+          "estimated": {
+            "type": "boolean",
+            "description": "Whether this account's amounts are derived by Infrawrench — inventory priced against a rate card, or metered usage priced at published list rates — rather than reported as billed spend. True means the series cannot be reconciled against an invoice: resources deleted part-way through a period are no longer in inventory to be priced, all rates are list rather than negotiated, and credits, tax and refunds never appear."
+          },
           "costLastPolledAt": {
             "type": [
               "string",
@@ -3505,11 +3495,834 @@
           "supportsCosts",
           "periodNative",
           "dimensions",
+          "chargeTypes",
+          "amortization",
+          "estimated",
           "costLastPolledAt",
           "costBackfilledAt",
           "costPollFailureCount",
           "costPollError",
           "coverage"
+        ],
+        "additionalProperties": false
+      },
+      "CostDateRange": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "relative"
+                ]
+              },
+              "preset": {
+                "type": "string",
+                "enum": [
+                  "7d",
+                  "30d",
+                  "90d",
+                  "mtd",
+                  "last_month",
+                  "qtd",
+                  "ytd",
+                  "12m"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "preset"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "absolute"
+                ]
+              },
+              "from": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "example": "2026-07-01"
+              },
+              "to": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "example": "2026-07-01"
+              }
+            },
+            "required": [
+              "kind",
+              "from",
+              "to"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "A relative preset resolves against today every time the report runs, so a saved report keeps meaning 'the last 30 days'; an absolute range pins it to fixed dates."
+      },
+      "CostReportFilter": {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "enum": [
+              "provider",
+              "account",
+              "service",
+              "region",
+              "resource",
+              "tag",
+              "charge_type",
+              "commitment"
+            ]
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "in",
+              "not_in"
+            ]
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "tagKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "dimension",
+          "op",
+          "values"
+        ],
+        "additionalProperties": false
+      },
+      "CostGraphConfig": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "enum": [
+              1
+            ]
+          },
+          "chartType": {
+            "type": "string",
+            "enum": [
+              "stacked_bar",
+              "multi_bar",
+              "line",
+              "area",
+              "pie"
+            ]
+          },
+          "binning": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly",
+              "cumulative"
+            ]
+          },
+          "dateRange": {
+            "$ref": "#/components/schemas/CostDateRange"
+          },
+          "groupBy": {
+            "type": "string",
+            "enum": [
+              "none",
+              "provider",
+              "account",
+              "service",
+              "region",
+              "resource",
+              "tag",
+              "charge_type",
+              "commitment"
+            ]
+          },
+          "groupByTagKey": {
+            "type": "string"
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostReportFilter"
+            }
+          },
+          "topN": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 15
+          },
+          "comparePreviousPeriod": {
+            "type": "boolean"
+          },
+          "showForecast": {
+            "type": "boolean"
+          },
+          "costBasis": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "amortized"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "chartType",
+          "binning",
+          "dateRange",
+          "groupBy"
+        ],
+        "additionalProperties": false,
+        "description": "The saved graph. Identical to the config an ad-hoc `cost_graph` dashboard widget stores inline — a report is that config given a name and an id."
+      },
+      "CostReportPlacement": {
+        "type": "object",
+        "properties": {
+          "widgetId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "dashboardId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "dashboardName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "widgetId",
+          "dashboardId",
+          "dashboardName"
+        ],
+        "additionalProperties": false
+      },
+      "CostReport": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "config": {
+            "$ref": "#/components/schemas/CostGraphConfig"
+          },
+          "folderId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Reserved for report folders, which do not exist yet: the column is stored and round-tripped but nothing reads it, and there is no folders endpoint to obtain an id from."
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "placements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostReportPlacement"
+            },
+            "description": "The dashboards carrying a `cost_report` card for this report. Empty is normal — a report exists, and can be run, whether or not any dashboard shows it. Deleting the report removes these cards; removing a card leaves the report alone."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "config",
+          "folderId",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt",
+          "placements"
+        ],
+        "additionalProperties": false
+      },
+      "CostReportInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "config": {
+            "$ref": "#/components/schemas/CostGraphConfig"
+          },
+          "folderId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Reserved for report folders, which do not exist yet: the column is stored and round-tripped but nothing reads it, and there is no folders endpoint to obtain an id from."
+          }
+        },
+        "required": [
+          "name",
+          "config"
+        ],
+        "additionalProperties": false
+      },
+      "CostReportRunResult": {
+        "type": "object",
+        "properties": {
+          "reportId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-01"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-01"
+          },
+          "result": {
+            "$ref": "#/components/schemas/CostQueryResponse"
+          }
+        },
+        "required": [
+          "reportId",
+          "name",
+          "from",
+          "to",
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "CostExportFilter": {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "enum": [
+              "provider",
+              "account",
+              "service",
+              "region",
+              "resource",
+              "tag",
+              "charge_type",
+              "commitment"
+            ]
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "in",
+              "not_in"
+            ]
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "tagKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "dimension",
+          "op",
+          "values"
+        ],
+        "additionalProperties": false
+      },
+      "CostExportQuery": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "enum": [
+              1
+            ]
+          },
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "provider",
+                "account",
+                "service",
+                "region",
+                "resource",
+                "tag",
+                "charge_type",
+                "commitment"
+              ]
+            },
+            "description": "Row-identity columns kept in the output. Dropping one aggregates over it — an export grouped to provider + service is orders of magnitude smaller than a per-resource one."
+          },
+          "tagKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tag keys emitted as their own `tag_<key>` columns."
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostExportFilter"
+            }
+          },
+          "chargeTypes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "usage",
+                "commitment_fee",
+                "commitment_discount",
+                "credit",
+                "tax",
+                "refund",
+                "adjustment",
+                "support",
+                "other"
+              ]
+            }
+          },
+          "costBasis": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "amortized"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "dimensions",
+          "tagKeys",
+          "filters"
+        ],
+        "additionalProperties": false,
+        "description": "The rows a run selects. Reuses the same `CostFilter` and dimension vocabulary the dashboards, budgets and cost reports store, so a filter means the same thing everywhere."
+      },
+      "CostExportDestination": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "s3"
+                ]
+              },
+              "bucket": {
+                "type": "string"
+              },
+              "prefix": {
+                "type": "string",
+                "description": "Key prefix, no leading or trailing slash."
+              },
+              "region": {
+                "type": "string",
+                "description": "AWS-style region. Cloudflare R2 wants `auto`."
+              },
+              "endpoint": {
+                "type": "string",
+                "description": "S3 API origin. Empty means AWS S3 proper. Set it for R2, Spaces, Scaleway, B2 or MinIO."
+              },
+              "forcePathStyle": {
+                "type": "boolean",
+                "description": "Address the bucket as a path segment. MinIO needs this; AWS and R2 do not."
+              }
+            },
+            "required": [
+              "kind",
+              "bucket",
+              "prefix",
+              "region",
+              "endpoint",
+              "forcePathStyle"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "http"
+                ]
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "POST",
+                  "PUT"
+                ]
+              },
+              "urlHint": {
+                "type": "string",
+                "description": "Redacted marker for the stored URL. The URL itself is a bearer credential and is never returned."
+              }
+            },
+            "required": [
+              "kind",
+              "method",
+              "urlHint"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "CostExport": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "ndjson"
+            ]
+          },
+          "query": {
+            "$ref": "#/components/schemas/CostExportQuery"
+          },
+          "cadence": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly"
+            ]
+          },
+          "hour": {
+            "type": "integer"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "restatementDays": {
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/CostExportDestination"
+          },
+          "hasCredentials": {
+            "type": "boolean"
+          },
+          "credentialHint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Redacted marker, e.g. `AKIA…7F2Q`. No route ever returns the credential itself."
+          },
+          "lastRunAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "succeeded",
+              "failed"
+            ]
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the last run failed, verbatim from the destination where possible."
+          },
+          "lastObjectCount": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "lastRowCount": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "nextRunAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "format",
+          "query",
+          "cadence",
+          "hour",
+          "timezone",
+          "restatementDays",
+          "enabled",
+          "destination",
+          "hasCredentials",
+          "credentialHint",
+          "lastRunAt",
+          "lastStatus",
+          "lastError",
+          "lastObjectCount",
+          "lastRowCount",
+          "nextRunAt",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CostExportInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "ndjson"
+            ]
+          },
+          "query": {
+            "$ref": "#/components/schemas/CostExportQuery"
+          },
+          "cadence": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly"
+            ],
+            "description": "How often a run happens and — because a run writes one object per period — what a period is: a calendar day, an ISO week (Monday-start), or a calendar month."
+          },
+          "hour": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 23,
+            "description": "Local hour in `timezone` a run fires at."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA zone, e.g. `Europe/Berlin`. Validated against `Intl`."
+          },
+          "restatementDays": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 90,
+            "description": "Trailing days of already-written periods each run re-exports. Providers restate spend for days after the fact, so the object written for yesterday is not final; every period overlapping this window is rebuilt in full at its existing key, which overwrites rather than duplicates. 0 disables it and is only correct for an org whose providers never revise."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/CostExportDestination"
+          },
+          "accessKeyId": {
+            "type": "string",
+            "description": "S3 only. Write-only; omit on update to keep the stored credential."
+          },
+          "secretAccessKey": {
+            "type": "string",
+            "description": "S3 only. Write-only, never returned."
+          },
+          "url": {
+            "type": "string",
+            "description": "HTTPS destinations only. Write-only, never returned — a signed URL carries its own signature, so it is treated as a bearer credential."
+          }
+        },
+        "required": [
+          "name",
+          "format",
+          "query",
+          "cadence",
+          "hour",
+          "timezone",
+          "restatementDays",
+          "enabled",
+          "destination"
+        ],
+        "additionalProperties": false
+      },
+      "CostExportObject": {
+        "type": "object",
+        "properties": {
+          "periodStart": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "The period's first day, in the export's own timezone.",
+            "example": "2026-08-07"
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-08-07"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-08-07"
+          },
+          "key": {
+            "type": "string",
+            "description": "`{prefix}/cost-export/{exportId}/{cadence}/{periodStart}.{format}`. Deterministic, so re-exporting a restated period overwrites this object instead of adding a second copy."
+          },
+          "rowCount": {
+            "type": "integer"
+          },
+          "byteCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "periodStart",
+          "from",
+          "to",
+          "key",
+          "rowCount",
+          "byteCount"
+        ],
+        "additionalProperties": false
+      },
+      "CostExportRunResult": {
+        "type": "object",
+        "properties": {
+          "exportId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "succeeded",
+              "failed"
+            ]
+          },
+          "objects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostExportObject"
+            }
+          },
+          "rowCount": {
+            "type": "integer"
+          },
+          "collectionWatermark": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "The newest day every cost-reporting account in the org had data for when the run started. Stamped into every row as `collection_watermark`; rows dated after it are still arriving.",
+            "example": "2026-08-07"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "exportId",
+          "status",
+          "objects",
+          "rowCount",
+          "collectionWatermark",
+          "error"
         ],
         "additionalProperties": false
       },
@@ -3931,7 +4744,9 @@
               "service",
               "region",
               "resource",
-              "tag"
+              "tag",
+              "charge_type",
+              "commitment"
             ]
           },
           "op": {
@@ -3981,6 +4796,14 @@
         ],
         "additionalProperties": false
       },
+      "BudgetCostBasis": {
+        "type": "string",
+        "enum": [
+          "cash",
+          "amortized"
+        ],
+        "description": "The basis `actualCents` and `forecastCents` were measured on."
+      },
       "BudgetWithStatus": {
         "type": "object",
         "properties": {
@@ -4009,6 +4832,9 @@
             "items": {
               "$ref": "#/components/schemas/BudgetThreshold"
             }
+          },
+          "costBasis": {
+            "$ref": "#/components/schemas/BudgetCostBasis"
           },
           "month": {
             "type": "string",
@@ -4093,6 +4919,7 @@
           "currency",
           "filters",
           "thresholds",
+          "costBasis",
           "month",
           "actualCents",
           "forecastCents",
@@ -4135,6 +4962,16 @@
               "$ref": "#/components/schemas/BudgetThreshold"
             }
           },
+          "costBasis": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BudgetCostBasis"
+              },
+              {
+                "description": "Which number the budget tracks. Defaults to `cash` — what the provider charged, when it charged it. An organization holding reservations or savings plans usually wants `amortized`: a cash budget is blown the month a commitment is bought and then reads as under-spent for the rest of the term it paid for."
+              }
+            ]
+          },
           "createdByUserId": {
             "type": [
               "string",
@@ -4165,6 +5002,7 @@
           "currency",
           "filters",
           "thresholds",
+          "costBasis",
           "createdByUserId",
           "deletedAt",
           "createdAt",
@@ -4202,6 +5040,16 @@
             },
             "minItems": 1,
             "maxItems": 10
+          },
+          "costBasis": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BudgetCostBasis"
+              },
+              {
+                "description": "Which number the budget tracks. Defaults to `cash` — what the provider charged, when it charged it. An organization holding reservations or savings plans usually wants `amortized`: a cash budget is blown the month a commitment is bought and then reads as under-spent for the rest of the term it paid for."
+              }
+            ]
           }
         },
         "required": [
@@ -5065,6 +5913,139 @@
           "untaggedTotals",
           "byKey",
           "topUntagged"
+        ],
+        "additionalProperties": false
+      },
+      "ExchangeRate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "fromCurrency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "description": "ISO 4217 code, upper-case.",
+            "example": "USD"
+          },
+          "toCurrency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "description": "ISO 4217 code, upper-case.",
+            "example": "USD"
+          },
+          "rate": {
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d+)?$",
+            "description": "Multiply an amount in `fromCurrency` by this to get `toCurrency`. A decimal **string**, not a number: it is stored in a `numeric(20, 10)` column so the digits your finance system used survive the round trip exactly, and a JSON number could not promise that.",
+            "example": "1.0850000000"
+          },
+          "effectiveFrom": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Inclusive day this rate starts applying. A given day converts at the rate with the greatest `effectiveFrom` on or before it, so historical periods keep the rate that applied then. A day earlier than every stated rate has no rate.",
+            "example": "2026-07-01"
+          },
+          "createdBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "fromCurrency",
+          "toCurrency",
+          "rate",
+          "effectiveFrom",
+          "createdBy",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CurrencyConfig": {
+        "type": "object",
+        "properties": {
+          "displayCurrency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[A-Z]{3}$",
+            "description": "ISO 4217 code, upper-case.",
+            "example": "USD"
+          },
+          "rates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExchangeRate"
+            }
+          }
+        },
+        "required": [
+          "displayCurrency",
+          "rates"
+        ],
+        "additionalProperties": false
+      },
+      "CurrencySettings": {
+        "type": "object",
+        "properties": {
+          "displayCurrency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[A-Z]{3}$",
+            "description": "The currency converted amounts are expressed in, or `null` for no conversion at all. `null` is the default and the state of every organization that has not opted in: cost data is stored per currency and never merged unless you ask.",
+            "example": "USD"
+          }
+        },
+        "required": [
+          "displayCurrency"
+        ],
+        "additionalProperties": false
+      },
+      "ExchangeRateInput": {
+        "type": "object",
+        "properties": {
+          "fromCurrency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "description": "ISO 4217 code, upper-case.",
+            "example": "USD"
+          },
+          "toCurrency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "description": "ISO 4217 code, upper-case.",
+            "example": "USD"
+          },
+          "rate": {
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d+)?$",
+            "description": "Multiply an amount in `fromCurrency` by this to get `toCurrency`. A decimal **string**, not a number: it is stored in a `numeric(20, 10)` column so the digits your finance system used survive the round trip exactly, and a JSON number could not promise that.",
+            "example": "1.0850000000"
+          },
+          "effectiveFrom": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-01"
+          }
+        },
+        "required": [
+          "fromCurrency",
+          "toCurrency",
+          "rate",
+          "effectiveFrom"
         ],
         "additionalProperties": false
       },
@@ -7906,9 +8887,6 @@
               "$ref": "#/components/schemas/CredentialFormat"
             }
           },
-          "supportsTerraformExport": {
-            "type": "boolean"
-          },
           "hasManifestEditor": {
             "type": "boolean"
           },
@@ -8004,7 +8982,6 @@
           "canEdit",
           "editableFields",
           "credentialFormats",
-          "supportsTerraformExport",
           "hasManifestEditor",
           "hasSecretVersions",
           "resourceDisplayName",
@@ -8517,24 +9494,6 @@
           "resourceId",
           "accountId",
           "formatId"
-        ],
-        "additionalProperties": false
-      },
-      "ExportTerraformRequest": {
-        "type": "object",
-        "properties": {
-          "resourceId": {
-            "$ref": "#/components/schemas/ResourceId"
-          },
-          "accountId": {
-            "type": "string",
-            "format": "uuid",
-            "example": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        "required": [
-          "resourceId",
-          "accountId"
         ],
         "additionalProperties": false
       },
@@ -15822,6 +16781,8 @@
           "bastions:write",
           "chat:read",
           "chat:write",
+          "jira:read",
+          "jira:write",
           "pages:write",
           "org:settings:write"
         ],
@@ -18007,6 +18968,346 @@
         ],
         "additionalProperties": false
       },
+      "JiraIntegration": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "siteUrl": {
+            "type": "string",
+            "example": "https://acme.atlassian.net"
+          },
+          "accountEmail": {
+            "type": "string",
+            "example": "ops@acme.com"
+          },
+          "tokenHint": {
+            "type": "string",
+            "description": "Redacted marker for the stored API token, e.g. `…a7f2`. The token itself is never returned.",
+            "example": "…a7f2"
+          },
+          "defaultProjectKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "OPS"
+          },
+          "defaultIssueTypeId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "10004"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "siteUrl",
+          "accountEmail",
+          "tokenHint",
+          "defaultProjectKey",
+          "defaultIssueTypeId",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "JiraIntegrationInput": {
+        "type": "object",
+        "properties": {
+          "siteUrl": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "Jira Cloud site address. Must resolve to a .atlassian.net (or legacy .jira.com) host; a bare hostname and a pasted board or issue URL are both accepted and normalized.",
+            "example": "https://acme.atlassian.net"
+          },
+          "accountEmail": {
+            "type": "string",
+            "maxLength": 255,
+            "format": "email",
+            "description": "Atlassian account email — the username half of the basic-auth pair."
+          },
+          "apiToken": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "API token from id.atlassian.com. Omit to keep the stored token; required on first connect."
+          },
+          "defaultProjectKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64
+          },
+          "defaultIssueTypeId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "siteUrl",
+          "accountEmail"
+        ],
+        "additionalProperties": false
+      },
+      "JiraVerifyResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "emailAddress": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "accountId",
+          "displayName",
+          "emailAddress"
+        ],
+        "additionalProperties": false
+      },
+      "JiraVerifyInput": {
+        "type": "object",
+        "properties": {
+          "siteUrl": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "accountEmail": {
+            "type": "string",
+            "maxLength": 255,
+            "format": "email"
+          },
+          "apiToken": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "additionalProperties": false,
+        "description": "Supply all three to test credentials that have not been saved yet; send an empty object to re-test the stored ones."
+      },
+      "JiraProject": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "10000"
+          },
+          "key": {
+            "type": "string",
+            "example": "OPS"
+          },
+          "name": {
+            "type": "string",
+            "example": "Operations"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "JiraIssueType": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "10004"
+          },
+          "name": {
+            "type": "string",
+            "example": "Task"
+          },
+          "subtask": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "description": "Always false — subtasks need a parent issue, so they are filtered out."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "subtask",
+          "description"
+        ],
+        "additionalProperties": false
+      },
+      "JiraSourceKind": {
+        "type": "string",
+        "enum": [
+          "cost_anomaly",
+          "orphan",
+          "oversized",
+          "posture_finding",
+          "expiring",
+          "probe"
+        ],
+        "description": "Which detector produced the finding the issue was filed from."
+      },
+      "JiraIssueLink": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sourceKind": {
+            "$ref": "#/components/schemas/JiraSourceKind"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "issueKey": {
+            "type": "string",
+            "example": "OPS-412"
+          },
+          "issueUrl": {
+            "type": "string",
+            "example": "https://acme.atlassian.net/browse/OPS-412"
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "sourceKind",
+          "sourceId",
+          "issueKey",
+          "issueUrl",
+          "createdByUserId",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "CreateJiraIssueResult": {
+        "type": "object",
+        "properties": {
+          "issue": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "key": {
+                "type": "string",
+                "example": "OPS-412"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "key",
+              "url"
+            ],
+            "additionalProperties": false
+          },
+          "link": {
+            "$ref": "#/components/schemas/JiraIssueLink"
+          }
+        },
+        "required": [
+          "issue",
+          "link"
+        ],
+        "additionalProperties": false
+      },
+      "CreateJiraIssueInput": {
+        "type": "object",
+        "properties": {
+          "sourceKind": {
+            "$ref": "#/components/schemas/JiraSourceKind"
+          },
+          "sourceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "The finding's own id, as the detector reports it."
+          },
+          "projectKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "example": "OPS"
+          },
+          "issueTypeId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "example": "10004"
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 30000,
+            "description": "Plain text. Converted server-side to Atlassian Document Format, which is what the Jira REST v3 description field requires; blank lines become paragraphs."
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 255
+            },
+            "maxItems": 20,
+            "description": "Whitespace inside a label is replaced with '-', since Jira rejects it."
+          }
+        },
+        "required": [
+          "sourceKind",
+          "sourceId",
+          "projectKey",
+          "issueTypeId",
+          "summary"
+        ],
+        "additionalProperties": false
+      },
       "DigestSettings": {
         "type": "object",
         "properties": {
@@ -20163,62 +21464,6 @@
         "description": "_Requires permission: `resources:read`._"
       }
     },
-    "/api/org/{orgId}/accounts/{id}/export-terraform": {
-      "get": {
-        "tags": [
-          "Accounts"
-        ],
-        "summary": "Generate Terraform HCL for the account's stored inventory",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "description": "Organization id",
-              "example": "00000000-0000-0000-0000-000000000000"
-            },
-            "required": true,
-            "name": "orgId",
-            "in": "path"
-          },
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "example": "00000000-0000-0000-0000-000000000000"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Generated Terraform configuration",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TerraformExport"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "operationId": "getOrgOrgIdAccountsIdExportTerraform",
-        "x-required-permission": "resources:read",
-        "description": "_Requires permission: `resources:read`._"
-      }
-    },
     "/api/org/{orgId}/accounts/{id}/sync": {
       "post": {
         "tags": [
@@ -21489,7 +22734,7 @@
           "Costs"
         ],
         "summary": "Query aggregated cost series",
-        "description": "Aggregates collected provider spend into per-bucket, per-group series for cost graphs. Currencies are never merged; mixed-currency orgs get one series per currency. Optionally returns a previous-period comparison and a trend forecast.\n\n_Requires permission: `costs:read`._",
+        "description": "Aggregates collected provider spend into per-bucket, per-group series for cost graphs. Currencies are never merged; mixed-currency orgs get one series per currency. Optionally returns a previous-period comparison and a trend forecast.\n\n`costBasis` chooses between cash and amortized money, and `chargeTypes` narrows which kinds of charge count. Both the comparison period and the forecast are computed on the same basis and charge types as the series itself.\n\nThe filter can be sent structurally as `filters` or as text in the cost query language via `query` (`provider = 'aws' AND tag['env'] != 'dev'`). They are two spellings of one filter: sending both is a 400, and a query that does not parse is a 400 carrying the offset of the mistake.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -21545,7 +22790,7 @@
           "Costs"
         ],
         "summary": "List distinct values for a cost dimension",
-        "description": "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys; dimension=tag requires tagKey.\n\n_Requires permission: `costs:read`._",
+        "description": "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys; dimension=tag requires tagKey. `charge_type` answers from the fixed set of charge types rather than from the stored data, so the picker is populated before any provider has reported one.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -21568,6 +22813,8 @@
                 "region",
                 "resource",
                 "tag",
+                "charge_type",
+                "commitment",
                 "tag-keys"
               ]
             },
@@ -21815,6 +23062,682 @@
         },
         "operationId": "getOrgOrgIdCostsStatus",
         "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/cost-reports": {
+      "get": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "List saved cost reports",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reports",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CostReport"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostReports",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "post": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "Create a cost report",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostReportInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostReports",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
+      }
+    },
+    "/api/org/{orgId}/cost-reports/{id}": {
+      "get": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "Get a cost report",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostReport"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostReportsId",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "put": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "Update a cost report",
+        "description": "Replaces the report's name, description, config and folder. Every dashboard showing the report picks up the new config — that is what referencing a report by id buys.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostReportInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdCostReportsId",
+        "x-required-permission": "costs:write"
+      },
+      "delete": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "Delete a cost report",
+        "description": "Soft delete. Every dashboard card pointing at the report is removed with it — a card whose report is gone could only ever render as an unavailable tile.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCostReportsId",
+        "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/cost-reports/{id}/run": {
+      "post": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "Run a cost report",
+        "description": "Executes the report's saved config and returns the series, along with the inclusive window a relative preset resolved to. Takes no body: the report *is* the query, so a caller never has to reassemble its config to get the numbers.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostReportRunResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostReportsIdRun",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/cost-exports": {
+      "get": {
+        "tags": [
+          "Cost exports"
+        ],
+        "summary": "List scheduled cost exports",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exports, with destination credentials redacted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CostExport"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostExports",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "post": {
+        "tags": [
+          "Cost exports"
+        ],
+        "summary": "Create a cost export",
+        "description": "Credentials are required on create. They are encrypted at rest and no route ever returns them; responses carry a redacted `credentialHint` instead.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostExportInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostExport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostExports",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/cost-exports/{id}": {
+      "get": {
+        "tags": [
+          "Cost exports"
+        ],
+        "summary": "Get a cost export",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Export",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostExport"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostExportsId",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "put": {
+        "tags": [
+          "Cost exports"
+        ],
+        "summary": "Update a cost export",
+        "description": "Replaces everything but the credential. Omit `accessKeyId`/`secretAccessKey`/`url` to keep the stored credential; changing the destination type requires supplying a new one. Saving reschedules the export from now.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostExportInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostExport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdCostExportsId",
+        "x-required-permission": "org:settings:write"
+      },
+      "delete": {
+        "tags": [
+          "Cost exports"
+        ],
+        "summary": "Delete a cost export",
+        "description": "Soft delete. Objects already written to the destination are left alone.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCostExportsId",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/cost-exports/{id}/run": {
+      "post": {
+        "tags": [
+          "Cost exports"
+        ],
+        "summary": "Run a cost export now",
+        "description": "Runs the export immediately against the same code path the poller uses, writing every period in the restatement window. Answers 200 with `status: \"failed\"` and a message rather than an error status when the destination rejects the write — the caller wants the reason, and the same failure is recorded on the export.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostExportRunResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostExportsIdRun",
+        "x-required-permission": "org:settings:write"
       }
     },
     "/api/org/{orgId}/orphans": {
@@ -23198,6 +25121,19 @@
             "required": false,
             "name": "to",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cash",
+                "amortized"
+              ],
+              "description": "Which money to sum. `cash` (the default) is what the provider charged on the day it charged it; `amortized` spreads a commitment's up-front fee across the term it buys. Providers that report no amortized amount fall back to their cash amount."
+            },
+            "required": false,
+            "name": "basis",
+            "in": "query"
           }
         ],
         "responses": {
@@ -23224,6 +25160,215 @@
         },
         "operationId": "getOrgOrgIdCostsUntagged",
         "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/currency": {
+      "get": {
+        "tags": [
+          "Currency"
+        ],
+        "summary": "The org's display currency and exchange rate table",
+        "description": "Readable with `costs:read` rather than a settings permission: anyone who can see a converted total has to be able to see what it was converted at, or the number is unauditable.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Currency settings and rates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrencyConfig"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCurrency",
+        "x-required-permission": "costs:read"
+      },
+      "put": {
+        "tags": [
+          "Currency"
+        ],
+        "summary": "Set or clear the org's display currency",
+        "description": "Setting a currency opts the organization into converted totals; `null` turns conversion off everywhere and restores the per-currency view. Clearing does not delete the rate table, so conversion can be turned back on without re-stating anything. Only currencies with a configured rate are converted — Infrawrench never fetches live exchange rates.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CurrencySettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrencySettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdCurrency",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/currency/rates": {
+      "put": {
+        "tags": [
+          "Currency"
+        ],
+        "summary": "Create or replace one exchange rate",
+        "description": "Upserts on (`fromCurrency`, `toCurrency`, `effectiveFrom`) — one rate per pair per day, so correcting a rate replaces it rather than adding a second one whose precedence a reader would have to guess. Rates are stated to the display currency in one hop: nothing inverts a rate or chains two, because both produce a number you never stated.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExchangeRateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeRate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdCurrencyRates",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/currency/rates/{rateId}": {
+      "delete": {
+        "tags": [
+          "Currency"
+        ],
+        "summary": "Delete one exchange rate",
+        "description": "Removing a rate makes the days it covered fall back to the next-older rate, or to unconverted if none remains. Spend never disappears — it reverts to its own currency.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "rateId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCurrencyRatesRateId",
+        "x-required-permission": "org:settings:write"
       }
     },
     "/api/org/{orgId}/cost-centres": {
@@ -23790,6 +25935,19 @@
             },
             "required": false,
             "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cash",
+                "amortized"
+              ],
+              "description": "Which money to sum. `cash` (the default) is what the provider charged on the day it charged it; `amortized` spreads a commitment's up-front fee across the term it buys. Providers that report no amortized amount fall back to their cash amount."
+            },
+            "required": false,
+            "name": "basis",
             "in": "query"
           }
         ],
@@ -27198,88 +29356,6 @@
         "operationId": "postOrgOrgIdResourcesPluginIdTypeIdExportCredential",
         "x-required-permission": "secrets:read",
         "description": "_Requires permission: `secrets:read`._"
-      }
-    },
-    "/api/org/{orgId}/resources/{pluginId}/{typeId}/export-terraform": {
-      "post": {
-        "tags": [
-          "Resources"
-        ],
-        "summary": "Generate Terraform HCL for a resource (and its direct children) from stored state",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "description": "Organization id",
-              "example": "00000000-0000-0000-0000-000000000000"
-            },
-            "required": true,
-            "name": "orgId",
-            "in": "path"
-          },
-          {
-            "schema": {
-              "$ref": "#/components/schemas/PluginId"
-            },
-            "required": true,
-            "name": "pluginId",
-            "in": "path"
-          },
-          {
-            "schema": {
-              "$ref": "#/components/schemas/ResourceTypeId"
-            },
-            "required": true,
-            "name": "typeId",
-            "in": "path"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ExportTerraformRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Generated Terraform configuration",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TerraformExport"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "operationId": "postOrgOrgIdResourcesPluginIdTypeIdExportTerraform",
-        "x-required-permission": "resources:read",
-        "description": "_Requires permission: `resources:read`._"
       }
     },
     "/api/org/{orgId}/resources/create": {
@@ -37821,6 +39897,486 @@
           }
         },
         "operationId": "postOrgOrgIdMsteamsTest"
+      }
+    },
+    "/api/org/{orgId}/jira": {
+      "get": {
+        "tags": [
+          "Jira"
+        ],
+        "summary": "Get the org's Jira connection",
+        "description": "The stored API token is never returned; `tokenHint` stands in for it.\n\n_Requires permission: `jira:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The connection, or null when Jira has not been connected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "integration": {
+                      "$ref": "#/components/schemas/JiraIntegration"
+                    }
+                  },
+                  "required": [
+                    "integration"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdJira",
+        "x-required-permission": "jira:read"
+      },
+      "put": {
+        "tags": [
+          "Jira"
+        ],
+        "summary": "Connect Jira, or update the connection",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JiraIntegrationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/JiraIntegration"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdJira",
+        "x-required-permission": "jira:write",
+        "description": "_Requires permission: `jira:write`._"
+      },
+      "delete": {
+        "tags": [
+          "Jira"
+        ],
+        "summary": "Disconnect Jira",
+        "description": "Issue links already recorded are kept, so filed findings stay marked as filed.\n\n_Requires permission: `jira:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Disconnected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdJira",
+        "x-required-permission": "jira:write"
+      }
+    },
+    "/api/org/{orgId}/jira/verify": {
+      "post": {
+        "tags": [
+          "Jira"
+        ],
+        "summary": "Check Jira credentials",
+        "description": "Calls GET /rest/api/3/myself on the site, so a wrong email or a revoked token is reported on the settings form rather than on the first attempt to file an issue.\n\n_Requires permission: `jira:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JiraVerifyInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Credentials work; the account they belong to",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JiraVerifyResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Jira rejected the credentials or was unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdJiraVerify",
+        "x-required-permission": "jira:write"
+      }
+    },
+    "/api/org/{orgId}/jira/projects": {
+      "get": {
+        "tags": [
+          "Jira"
+        ],
+        "summary": "List Jira projects",
+        "description": "Backs the project picker, so nobody has to know a project key by hand.\n\n_Requires permission: `jira:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Projects visible to the stored account, key-sorted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JiraProject"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdJiraProjects",
+        "x-required-permission": "jira:read"
+      }
+    },
+    "/api/org/{orgId}/jira/projects/{key}/issue-types": {
+      "get": {
+        "tags": [
+          "Jira"
+        ],
+        "summary": "List issue types valid in a project",
+        "description": "Reads the project's own create metadata rather than the global issue-type list, so the picker cannot offer a type the project's scheme would reject. Subtasks are excluded.\n\n_Requires permission: `jira:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "example": "OPS"
+            },
+            "required": true,
+            "name": "key",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Issue types",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JiraIssueType"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdJiraProjectsKeyIssueTypes",
+        "x-required-permission": "jira:read"
+      }
+    },
+    "/api/org/{orgId}/jira/issues": {
+      "post": {
+        "tags": [
+          "Jira"
+        ],
+        "summary": "File a finding as a Jira issue",
+        "description": "Creates the issue, then records the link between it and the finding. The link is what lets a list view show \"already filed\" instead of offering the button again.\n\n_Requires permission: `jira:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateJiraIssueInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateJiraIssueResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Jira refused to create the issue, or was unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdJiraIssues",
+        "x-required-permission": "jira:write"
+      }
+    },
+    "/api/org/{orgId}/jira/links": {
+      "get": {
+        "tags": [
+          "Jira"
+        ],
+        "summary": "Look up filed issues for a set of findings",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/JiraSourceKind"
+            },
+            "required": false,
+            "name": "sourceKind",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 512
+              },
+              "maxItems": 500,
+              "description": "Repeat to narrow to specific findings. Omit to return every link of the kind — this is the batch lookup a list view makes once instead of one request per row."
+            },
+            "required": false,
+            "name": "sourceId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Links, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JiraIssueLink"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdJiraLinks",
+        "x-required-permission": "jira:read",
+        "description": "_Requires permission: `jira:read`._"
       }
     },
     "/api/org/{orgId}/digest": {

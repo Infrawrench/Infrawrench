@@ -167,41 +167,41 @@ export function PeerPaneView({
   const guidanceBlock = guidance ? (
     <div className={guidanceIsBanner ? "" : "py-12 px-6 max-w-2xl"}>
       <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-6 space-y-4">
-          <div className="flex items-start gap-3">
-            <div className="size-2 rounded-full bg-amber-400 flex-shrink-0 mt-1.5" />
-            <p className="text-sm font-medium text-on-surface leading-relaxed">{guidance.title}</p>
-          </div>
-          {guidance.suggestions.length > 0 && (
-            <ul className="space-y-2 ml-5 list-disc text-sm text-on-surface-secondary marker:text-on-surface-muted">
-              {guidance.suggestions.map((s, i) => (
-                <li key={i} className="leading-relaxed">
-                  {s}
-                </li>
-              ))}
-            </ul>
-          )}
-          {guidance.action && (
-            <button
-              type="button"
-              onClick={() =>
-                dispatchPromptNoSqlCommand({
-                  command: guidance.action!.command,
-                  fields: guidance.action!.fields,
-                  ...(guidance.action!.title ? { title: guidance.action!.title } : {}),
-                  ...(guidance.action!.description
-                    ? { description: guidance.action!.description }
-                    : {}),
-                  ...(guidance.action!.submitLabel
-                    ? { submitLabel: guidance.action!.submitLabel }
-                    : {}),
-                  resourceId: parentResourceId,
-                })
-              }
-              className="ml-5 px-4 py-2 text-sm font-medium text-white bg-accent-blue rounded-md hover:bg-accent-blue/90 transition-colors"
-            >
-              {guidance.action.label}
-            </button>
-          )}
+        <div className="flex items-start gap-3">
+          <div className="size-2 rounded-full bg-amber-400 flex-shrink-0 mt-1.5" />
+          <p className="text-sm font-medium text-on-surface leading-relaxed">{guidance.title}</p>
+        </div>
+        {guidance.suggestions.length > 0 && (
+          <ul className="space-y-2 ml-5 list-disc text-sm text-on-surface-secondary marker:text-on-surface-muted">
+            {guidance.suggestions.map((s, i) => (
+              <li key={i} className="leading-relaxed">
+                {s}
+              </li>
+            ))}
+          </ul>
+        )}
+        {guidance.action && (
+          <button
+            type="button"
+            onClick={() =>
+              dispatchPromptNoSqlCommand({
+                command: guidance.action!.command,
+                fields: guidance.action!.fields,
+                ...(guidance.action!.title ? { title: guidance.action!.title } : {}),
+                ...(guidance.action!.description
+                  ? { description: guidance.action!.description }
+                  : {}),
+                ...(guidance.action!.submitLabel
+                  ? { submitLabel: guidance.action!.submitLabel }
+                  : {}),
+                resourceId: parentResourceId,
+              })
+            }
+            className="ml-5 px-4 py-2 text-sm font-medium text-white bg-accent-blue rounded-md hover:bg-accent-blue/90 transition-colors"
+          >
+            {guidance.action.label}
+          </button>
+        )}
       </div>
     </div>
   ) : null;

@@ -231,7 +231,9 @@ export function parseJiraSiteUrl(raw: string): ParsedJiraSite {
   try {
     parsed = new URL(withScheme);
   } catch {
-    throw new JiraApiError("That doesn't look like a URL. Expected https://your-site.atlassian.net");
+    throw new JiraApiError(
+      "That doesn't look like a URL. Expected https://your-site.atlassian.net",
+    );
   }
 
   if (parsed.protocol !== "https:") {
@@ -436,9 +438,7 @@ function tokenHintFor(apiToken: string): string {
   return `…${apiToken.slice(-4)}`;
 }
 
-function toIntegrationRecord(
-  row: typeof jiraIntegrations.$inferSelect,
-): JiraIntegrationRecord {
+function toIntegrationRecord(row: typeof jiraIntegrations.$inferSelect): JiraIntegrationRecord {
   return {
     siteUrl: row.siteUrl,
     accountEmail: row.accountEmail,
@@ -621,9 +621,7 @@ export interface JiraVerifiedAccount {
  *
  * User-initiated: throws.
  */
-export async function verifyJiraCredentials(
-  creds: JiraCredentials,
-): Promise<JiraVerifiedAccount> {
+export async function verifyJiraCredentials(creds: JiraCredentials): Promise<JiraVerifiedAccount> {
   const { siteUrl } = parseJiraSiteUrl(creds.siteUrl);
   const me = await jiraFetch<{
     accountId?: string;
@@ -669,9 +667,7 @@ export async function listJiraProjects(organizationId: string): Promise<JiraProj
     `/rest/api/3/project/search?maxResults=${PICKER_PAGE_SIZE}&orderBy=key`,
   );
   return (res.values ?? [])
-    .filter((p): p is { id: string; key: string; name: string } =>
-      Boolean(p.id && p.key && p.name),
-    )
+    .filter((p): p is { id: string; key: string; name: string } => Boolean(p.id && p.key && p.name))
     .map((p) => ({ id: p.id, key: p.key, name: p.name }));
 }
 
@@ -819,9 +815,7 @@ export interface RecordJiraIssueLinkArgs {
  * believes was written but wasn't means the next page load offers to file a
  * duplicate.
  */
-export async function recordJiraIssueLink(
-  args: RecordJiraIssueLinkArgs,
-): Promise<JiraIssueLink> {
+export async function recordJiraIssueLink(args: RecordJiraIssueLinkArgs): Promise<JiraIssueLink> {
   const [row] = await db
     .insert(jiraIssueLinks)
     .values({

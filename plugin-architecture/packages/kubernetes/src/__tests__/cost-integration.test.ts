@@ -153,9 +153,7 @@ describe("parseNodeRates", () => {
   });
 
   it("drops negative and non-numeric rates instead of trusting them", () => {
-    const table = parseNodeRates(
-      JSON.stringify({ byInstanceType: { a: -1, b: "nope", c: 0.5 } }),
-    );
+    const table = parseNodeRates(JSON.stringify({ byInstanceType: { a: -1, b: "nope", c: 0.5 } }));
     expect(table.byInstanceType).toEqual({ c: 0.5 });
   });
 
@@ -278,8 +276,14 @@ describe("allocationToCostRows", () => {
   });
 
   it("reproduces identical dimension keys when a day is re-run", async () => {
-    const a = allocationToCostRows((await computeClusterCost(fakeCluster(), RATES)).allocation, range);
-    const b = allocationToCostRows((await computeClusterCost(fakeCluster(), RATES)).allocation, range);
+    const a = allocationToCostRows(
+      (await computeClusterCost(fakeCluster(), RATES)).allocation,
+      range,
+    );
+    const b = allocationToCostRows(
+      (await computeClusterCost(fakeCluster(), RATES)).allocation,
+      range,
+    );
     const key = (rows: typeof a) =>
       rows.map((r) => `${r.date}|${r.service}|${r.resourceId}|${JSON.stringify(r.tags)}`);
     expect(key(a)).toEqual(key(b));
@@ -301,10 +305,7 @@ describe("allocationToCostRows", () => {
 });
 
 describe("peer-pane surfacing", () => {
-  function ri(
-    typeId: string,
-    fields: Record<string, string | number | boolean>,
-  ): ResourceInstance {
+  function ri(typeId: string, fields: Record<string, string | number | boolean>): ResourceInstance {
     return {
       id: `acct:${typeId}:${fields["namespace"] ?? ""}:${fields["name"]}`,
       pluginId: "kubernetes",
@@ -366,10 +367,12 @@ describe("peer-pane surfacing", () => {
   });
 
   it("omits the money fragment entirely when there is no rate", () => {
-    expect(costSubtitleSuffix({ dailyCost: null, efficiency: { cpu: 0.5, memory: null } }, "USD"))
-      .toBe(" · 50% CPU");
-    expect(costSubtitleSuffix({ dailyCost: null, efficiency: { cpu: null, memory: null } }, "USD"))
-      .toBe("");
+    expect(
+      costSubtitleSuffix({ dailyCost: null, efficiency: { cpu: 0.5, memory: null } }, "USD"),
+    ).toBe(" · 50% CPU");
+    expect(
+      costSubtitleSuffix({ dailyCost: null, efficiency: { cpu: null, memory: null } }, "USD"),
+    ).toBe("");
   });
 
   describe("status flagging", () => {

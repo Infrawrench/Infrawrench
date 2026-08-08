@@ -18,4 +18,9 @@
  * which is a real change to the published surface — that counts.
  */
 // 1.4.0: UploadThing plugin + accountRoot / showInSidebar on ResourceTypeSummary.
-export const API_VERSION = "1.4.0";
+// 1.5.0: the cost and FinOps surface — cost reports and their folders, saved
+// cost filters, scheduled report delivery, cost exports, commitments, change
+// alerts, currency conversion, the cost query language, charge type and
+// amortized cost basis, and Jira filing, with their permissions and tab
+// targets. All additive.
+export const API_VERSION = "1.5.0";

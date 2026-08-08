@@ -36,13 +36,7 @@
  */
 
 import type { K8sPodSpec, K8sPodContainer } from "./types.js";
-import {
-  addPairs,
-  maxPairs,
-  parseResourceMap,
-  ZERO_PAIR,
-  type ResourcePair,
-} from "./quantity.js";
+import { addPairs, maxPairs, parseResourceMap, ZERO_PAIR, type ResourcePair } from "./quantity.js";
 
 /** A pod's effective request and limit, in cores and bytes. */
 export interface EffectivePodResources {
@@ -142,8 +136,7 @@ export function ownerWorkload(
   labels: Record<string, string> | undefined,
   fallbackName: string,
 ): { workload: string; workloadKind: string } {
-  const owner =
-    (ownerReferences ?? []).find((ref) => ref.controller) ?? (ownerReferences ?? [])[0];
+  const owner = (ownerReferences ?? []).find((ref) => ref.controller) ?? (ownerReferences ?? [])[0];
   if (!owner?.kind || !owner.name) {
     return { workload: fallbackName, workloadKind: "Pod" };
   }

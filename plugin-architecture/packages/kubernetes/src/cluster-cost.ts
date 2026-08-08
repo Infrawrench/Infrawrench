@@ -14,7 +14,11 @@ import type { K8sFetch } from "./shared.js";
 import type { K8sList, K8sNode, K8sPod } from "./types.js";
 import { parseQuantityOrZero, type ResourcePair } from "./quantity.js";
 import { effectivePodResources, ownerWorkload } from "./pod-resources.js";
-import { fetchClusterUtilization, podUtilizationKey, type ClusterUtilization } from "./metrics-api.js";
+import {
+  fetchClusterUtilization,
+  podUtilizationKey,
+  type ClusterUtilization,
+} from "./metrics-api.js";
 import {
   parseNodeRates,
   rateForNode,
@@ -67,7 +71,9 @@ export async function computeClusterCost(
   const nodes: CostModelNode[] = (nodeList.items ?? []).map((n) => {
     const labels = n.metadata.labels ?? {};
     const instanceType =
-      labels["node.kubernetes.io/instance-type"] ?? labels["beta.kubernetes.io/instance-type"] ?? "";
+      labels["node.kubernetes.io/instance-type"] ??
+      labels["beta.kubernetes.io/instance-type"] ??
+      "";
     const capacity = pairFrom(n.status?.capacity);
     const allocatableRaw = pairFrom(n.status?.allocatable);
     // A node that reports allocatable but no capacity (some virtual-kubelet

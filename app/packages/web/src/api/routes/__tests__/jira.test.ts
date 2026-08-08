@@ -186,7 +186,9 @@ describe("PUT /", () => {
 
   /** No status ⇒ we never reached Jira ⇒ the caller's input is at fault. */
   it("maps a local JiraApiError to 400 with its message", async () => {
-    mockSetIntegration.mockRejectedValue(new JiraApiError("evil.example.com is not a Jira Cloud site"));
+    mockSetIntegration.mockRejectedValue(
+      new JiraApiError("evil.example.com is not a Jira Cloud site"),
+    );
     const res = await writer().request("/", {
       ...json({ siteUrl: "https://evil.example.com", accountEmail: "ops@acme.com", apiToken: "t" }),
       method: "PUT",
@@ -210,9 +212,7 @@ describe("DELETE /", () => {
     mockDeleteIntegration.mockResolvedValue(true);
     const res = await writer().request("/", { method: "DELETE" });
     expect(res.status).toBe(200);
-    expect(mockLogAudit).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "jira.delete" }),
-    );
+    expect(mockLogAudit).toHaveBeenCalledWith(expect.objectContaining({ action: "jira.delete" }));
   });
 
   it("404s when there was nothing connected, and audits nothing", async () => {

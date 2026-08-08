@@ -115,9 +115,7 @@ export function rateForNode(
 }
 
 export function hasAnyRate(table: NodeRateTable): boolean {
-  return (
-    Object.keys(table.byNodeName).length > 0 || Object.keys(table.byInstanceType).length > 0
-  );
+  return Object.keys(table.byNodeName).length > 0 || Object.keys(table.byInstanceType).length > 0;
 }
 
 /** Human wording for where the money came from. Used in guidance and docs. */

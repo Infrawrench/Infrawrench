@@ -27,12 +27,16 @@ const JiraIntegration = strict({
 }).openapi("JiraIntegration");
 
 const JiraIntegrationInput = strict({
-  siteUrl: z.string().min(1).max(255).openapi({
-    description:
-      "Jira Cloud site address. Must resolve to a .atlassian.net (or legacy .jira.com) host; " +
-      "a bare hostname and a pasted board or issue URL are both accepted and normalized.",
-    example: "https://acme.atlassian.net",
-  }),
+  siteUrl: z
+    .string()
+    .min(1)
+    .max(255)
+    .openapi({
+      description:
+        "Jira Cloud site address. Must resolve to a .atlassian.net (or legacy .jira.com) host; " +
+        "a bare hostname and a pasted board or issue URL are both accepted and normalized.",
+      example: "https://acme.atlassian.net",
+    }),
   accountEmail: z.string().email().max(255).openapi({
     description: "Atlassian account email — the username half of the basic-auth pair.",
   }),
@@ -94,11 +98,15 @@ const CreateJiraIssueInput = strict({
   projectKey: z.string().min(1).max(64).openapi({ example: "OPS" }),
   issueTypeId: z.string().min(1).max(64).openapi({ example: "10004" }),
   summary: z.string().min(1).max(255),
-  description: z.string().max(30_000).optional().openapi({
-    description:
-      "Plain text. Converted server-side to Atlassian Document Format, which is what the " +
-      "Jira REST v3 description field requires; blank lines become paragraphs.",
-  }),
+  description: z
+    .string()
+    .max(30_000)
+    .optional()
+    .openapi({
+      description:
+        "Plain text. Converted server-side to Atlassian Document Format, which is what the " +
+        "Jira REST v3 description field requires; blank lines become paragraphs.",
+    }),
   labels: z.array(z.string().max(255)).max(20).optional().openapi({
     description: "Whitespace inside a label is replaced with '-', since Jira rejects it.",
   }),
@@ -115,11 +123,15 @@ const CreateJiraIssueResult = strict({
 
 const JiraLinksQuery = strict({
   sourceKind: JiraSourceKind.optional(),
-  sourceId: z.array(z.string().max(512)).max(500).optional().openapi({
-    description:
-      "Repeat to narrow to specific findings. Omit to return every link of the kind — this is " +
-      "the batch lookup a list view makes once instead of one request per row.",
-  }),
+  sourceId: z
+    .array(z.string().max(512))
+    .max(500)
+    .optional()
+    .openapi({
+      description:
+        "Repeat to narrow to specific findings. Omit to return every link of the kind — this is " +
+        "the batch lookup a list view makes once instead of one request per row.",
+    }),
 });
 
 export function registerJiraPaths(ctx: BuildContext) {

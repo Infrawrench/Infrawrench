@@ -117,8 +117,7 @@ export function JiraSection() {
     try {
       // Send the typed credentials when all three are present, so the user can
       // check a token before committing it; otherwise re-test the stored ones.
-      const body =
-        siteUrl && accountEmail && apiToken ? { siteUrl, accountEmail, apiToken } : {};
+      const body = siteUrl && accountEmail && apiToken ? { siteUrl, accountEmail, apiToken } : {};
       const res = await api.post<JiraVerifyResult>(`/api/org/${orgId}/jira/verify`, body);
       setNotice(`Connected to Jira as ${res.displayName || res.accountId}.`);
     } catch (e) {
@@ -316,7 +315,9 @@ export function JiraSection() {
           <section className="space-y-3">
             <h2 className="text-sm font-semibold">Filed issues</h2>
             {!integration ? (
-              <p className="text-sm text-on-surface-muted">Connect Jira to start filing findings.</p>
+              <p className="text-sm text-on-surface-muted">
+                Connect Jira to start filing findings.
+              </p>
             ) : links.length === 0 ? (
               <p className="text-sm text-on-surface-muted">
                 Nothing filed yet. The &ldquo;File a Jira issue&rdquo; button appears on cost

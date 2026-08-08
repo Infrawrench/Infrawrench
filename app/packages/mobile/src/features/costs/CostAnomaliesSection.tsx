@@ -121,10 +121,7 @@ function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
             the offer. Neither → nothing, rather than a control that can only
             fail. Same three states as the web button. */}
         {link ? (
-          <Pressable
-            accessibilityRole="link"
-            onPress={() => void Linking.openURL(link.issueUrl)}
-          >
+          <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(link.issueUrl)}>
             <Text style={styles.jiraLink}>{link.issueKey}</Text>
           </Pressable>
         ) : canFile ? (

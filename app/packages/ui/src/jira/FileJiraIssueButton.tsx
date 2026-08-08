@@ -51,8 +51,7 @@ export function FileJiraIssueButton({
         onClick={() => filing.openExternal(existing.issueUrl)}
         title={`Filed as ${existing.issueKey}`}
         className={
-          className ??
-          "text-xs font-medium text-blue-500 hover:text-blue-400 whitespace-nowrap"
+          className ?? "text-xs font-medium text-blue-500 hover:text-blue-400 whitespace-nowrap"
         }
       >
         {existing.issueKey}

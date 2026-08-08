@@ -403,7 +403,10 @@ describe("allocateClusterCost", () => {
   it("survives a zero-capacity node without producing NaN", () => {
     const result = allocateClusterCost({
       nodes: [
-        node({ capacity: { cpuCores: 0, memoryBytes: 0 }, allocatable: { cpuCores: 0, memoryBytes: 0 } }),
+        node({
+          capacity: { cpuCores: 0, memoryBytes: 0 },
+          allocatable: { cpuCores: 0, memoryBytes: 0 },
+        }),
       ],
       pods: [pod()],
     });

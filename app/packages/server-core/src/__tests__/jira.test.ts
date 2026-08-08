@@ -209,9 +209,7 @@ describe("buildCreateIssuePayload", () => {
         description: {
           type: "doc",
           version: 1,
-          content: [
-            { type: "paragraph", content: [{ type: "text", text: "Baseline: $12/day" }] },
-          ],
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Baseline: $12/day" }] }],
         },
         labels: ["infrawrench", "cost-anomaly"],
       },

@@ -83,10 +83,7 @@ describe("effectivePodResources", () => {
     // The 1-core init container runs while the 2-core sidecar is up, so the
     // init peak is 3 — higher than the 2.5 steady state.
     const spec: K8sPodSpec = {
-      initContainers: [
-        container("sidecar", "2", undefined, "Always"),
-        container("migrate", "1"),
-      ],
+      initContainers: [container("sidecar", "2", undefined, "Always"), container("migrate", "1")],
       containers: [container("a", "500m")],
     };
     expect(effectivePodResources(spec).requests.cpuCores).toBe(3);
@@ -96,10 +93,7 @@ describe("effectivePodResources", () => {
     // Ordering matters: `migrate` completes before `sidecar` exists, so it is
     // measured alone. The steady state (sidecar + app) wins at 2.5.
     const spec: K8sPodSpec = {
-      initContainers: [
-        container("migrate", "1"),
-        container("sidecar", "2", undefined, "Always"),
-      ],
+      initContainers: [container("migrate", "1"), container("sidecar", "2", undefined, "Always")],
       containers: [container("a", "500m")],
     };
     expect(effectivePodResources(spec).requests.cpuCores).toBe(2.5);
@@ -189,12 +183,15 @@ describe("ownerWorkload", () => {
   });
 
   it("reports StatefulSet, DaemonSet and Job owners directly", () => {
-    expect(ownerWorkload([{ kind: "StatefulSet", name: "db", controller: true }], {}, "db-0"))
-      .toEqual({ workload: "db", workloadKind: "StatefulSet" });
-    expect(ownerWorkload([{ kind: "DaemonSet", name: "agent", controller: true }], {}, "agent-x"))
-      .toEqual({ workload: "agent", workloadKind: "DaemonSet" });
-    expect(ownerWorkload([{ kind: "Job", name: "backup-123", controller: true }], {}, "p"))
-      .toEqual({ workload: "backup-123", workloadKind: "Job" });
+    expect(
+      ownerWorkload([{ kind: "StatefulSet", name: "db", controller: true }], {}, "db-0"),
+    ).toEqual({ workload: "db", workloadKind: "StatefulSet" });
+    expect(
+      ownerWorkload([{ kind: "DaemonSet", name: "agent", controller: true }], {}, "agent-x"),
+    ).toEqual({ workload: "agent", workloadKind: "DaemonSet" });
+    expect(ownerWorkload([{ kind: "Job", name: "backup-123", controller: true }], {}, "p")).toEqual(
+      { workload: "backup-123", workloadKind: "Job" },
+    );
   });
 
   it("prefers the controller owner over a non-controller reference", () => {

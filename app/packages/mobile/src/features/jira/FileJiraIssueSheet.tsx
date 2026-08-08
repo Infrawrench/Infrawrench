@@ -5,7 +5,12 @@ import {
   type JiraSourceKind,
 } from "@infrawrench/client-core";
 import { ChipSelect, FormError, Sheet, SheetActions, TextField } from "@/components/form";
-import { useFileJiraIssue, useJiraIntegration, useJiraIssueTypes, useJiraProjects } from "./useJira";
+import {
+  useFileJiraIssue,
+  useJiraIntegration,
+  useJiraIssueTypes,
+  useJiraProjects,
+} from "./useJira";
 
 /**
  * File a finding as a Jira issue — the native counterpart of web's
@@ -46,7 +51,9 @@ export function FileJiraIssueSheet({
   useEffect(() => {
     const rows = issueTypes.data;
     if (!rows) return;
-    setIssueTypeId((current) => (rows.some((t) => t.id === current) ? current : (rows[0]?.id ?? "")));
+    setIssueTypeId((current) =>
+      rows.some((t) => t.id === current) ? current : (rows[0]?.id ?? ""),
+    );
   }, [issueTypes.data]);
 
   async function submit() {
@@ -91,7 +98,10 @@ export function FileJiraIssueSheet({
       <ChipSelect
         label="Project"
         hint={projects.isLoading ? "Loading projects…" : undefined}
-        options={(projects.data ?? []).map((p) => ({ value: p.key, label: `${p.name} (${p.key})` }))}
+        options={(projects.data ?? []).map((p) => ({
+          value: p.key,
+          label: `${p.name} (${p.key})`,
+        }))}
         value={projectKey || null}
         onChange={(key) => {
           setProjectKey(key);

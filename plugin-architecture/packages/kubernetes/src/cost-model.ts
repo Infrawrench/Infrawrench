@@ -290,7 +290,8 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
 
   for (const node of input.nodes) {
     const pods = podsByNode.get(node.name) ?? [];
-    const rate = typeof node.hourlyRate === "number" && node.hourlyRate >= 0 ? node.hourlyRate : null;
+    const rate =
+      typeof node.hourlyRate === "number" && node.hourlyRate >= 0 ? node.hourlyRate : null;
     const cpuPool = rate == null ? null : rate * cpuCostShare;
     const memPool = rate == null ? null : rate * memCostShare;
 
@@ -323,8 +324,7 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
       };
       allocated = add(allocated, scaled);
 
-      const cpuShare =
-        node.capacity.cpuCores > 0 ? scaled.cpuCores / node.capacity.cpuCores : 0;
+      const cpuShare = node.capacity.cpuCores > 0 ? scaled.cpuCores / node.capacity.cpuCores : 0;
       const memoryShare =
         node.capacity.memoryBytes > 0 ? scaled.memoryBytes / node.capacity.memoryBytes : 0;
       const hourlyCost =
@@ -364,7 +364,8 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
 
     const poolCost = (pair: ResourcePair): number | null => {
       if (cpuPool == null || memPool == null) return null;
-      const cpu = node.capacity.cpuCores > 0 ? (pair.cpuCores / node.capacity.cpuCores) * cpuPool : 0;
+      const cpu =
+        node.capacity.cpuCores > 0 ? (pair.cpuCores / node.capacity.cpuCores) * cpuPool : 0;
       const mem =
         node.capacity.memoryBytes > 0
           ? (pair.memoryBytes / node.capacity.memoryBytes) * memPool
@@ -420,9 +421,7 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
 
   const hourlyAllocatedCost = sumCosts(nodeAllocations.map((n) => n.hourlyAllocatedCost));
   const hourlyIdleCost = sumCosts(nodeAllocations.map((n) => n.hourlyIdleCost));
-  const hourlySystemReservedCost = sumCosts(
-    nodeAllocations.map((n) => n.hourlySystemReservedCost),
-  );
+  const hourlySystemReservedCost = sumCosts(nodeAllocations.map((n) => n.hourlySystemReservedCost));
   const hourlyTotalCost = sumCosts(nodeAllocations.map((n) => n.hourlyRate));
 
   const clusterRequests = podAllocations.reduce((acc, p) => add(acc, p.requests), ZERO);
@@ -551,7 +550,9 @@ function rollUpNamespaces(pods: PodAllocation[]): NamespaceAllocation[] {
         efficiency: efficiencyOf(rest.usage, rest.requests),
       };
     })
-    .sort((a, b) => (b.dailyCost ?? -1) - (a.dailyCost ?? -1) || a.namespace.localeCompare(b.namespace));
+    .sort(
+      (a, b) => (b.dailyCost ?? -1) - (a.dailyCost ?? -1) || a.namespace.localeCompare(b.namespace),
+    );
 }
 
 function byDailyCostThenName(a: WorkloadAllocation, b: WorkloadAllocation): number {
