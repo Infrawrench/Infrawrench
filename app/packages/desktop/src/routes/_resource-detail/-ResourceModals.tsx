@@ -16,12 +16,14 @@ import {
   type PromptNoSqlCommandDetail,
   type ResourcePickerOption,
 } from "@infrawrench/ui";
+import { useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { SshTunnelModal } from "../../components/SshTunnelModal";
 import { DockerSetupModal } from "../../components/DockerSetupModal";
 import { SpotlightSearch } from "../../components/SpotlightSearch";
 import { CreateResourceModal } from "../../components/CreateResourceModal";
 import { exportCloudCredential } from "../../lib/cloud-api";
+import { makeResourceCostEstimator } from "../../lib/cost-estimate";
 import {
   accountTabTarget,
   navigateToWorkspaceTarget,
@@ -108,6 +110,19 @@ export function ResourceModals({
   onCloseCreateChild,
 }: ResourceModalsProps) {
   const navigate = useNavigate();
+  // Rebuilt whenever the resource changes; the modal debounces its own calls,
+  // so a stable identity here only matters for not restarting that debounce.
+  const loadCostEstimate = useMemo(
+    () =>
+      makeResourceCostEstimator({
+        resource,
+        accountId,
+        resourceId: decodedResourceId,
+        getLocalClient,
+        getCloudCtx,
+      }),
+    [resource, accountId, decodedResourceId, getLocalClient, getCloudCtx],
+  );
   return (
     <>
       {showExportCredential && resource && credentialFormats.length > 0 && (
@@ -161,6 +176,7 @@ export function ResourceModals({
           )}
           onClose={onCloseEditModal}
           onSubmit={onSubmitEdit}
+          {...(loadCostEstimate ? { loadCostEstimate } : {})}
         />
       )}
 

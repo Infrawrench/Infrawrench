@@ -479,7 +479,7 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /resources/create-config": "resources:write",
   "POST /resources/picker-resources": "resources:read",
   "POST /resources/create-pricing": "resources:read",
-  "POST /resources/create-cost-estimate": "resources:read",
+  "POST /resources/cost-estimate": "resources:read",
   "POST /resources/{pluginId}/{typeId}/peer-panes": "resources:read",
   "POST /resources/{pluginId}/{typeId}/metrics": "resources:read",
   // costs

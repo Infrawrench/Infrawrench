@@ -21,12 +21,14 @@ import type {
   ChatStreamEvent,
   PublishMessagePayload,
   PublishMessageResult,
+  CostEstimate,
+  CostEstimateLineItem,
   CostFetchRange,
   CostRow,
 } from "@infrawrench/plugin-base";
 import type { HostServices, PreflightResult } from "@infrawrench/plugin-base";
 import { runGcpPreflight } from "./preflight.js";
-import { streamOpenAiSseChat } from "@infrawrench/plugin-base";
+import { buildCostEstimate, streamOpenAiSseChat } from "@infrawrench/plugin-base";
 import {
   fetchAccessToken,
   invalidateAccessToken,
@@ -44,7 +46,28 @@ import {
   geoFromRegion,
   fetchPricingRatesForGeo,
   estimateMachineTypeMonthlyPrices,
+  HOURS_PER_MONTH,
 } from "./pricing.js";
+
+/**
+ * A `sizeGb × per-GB-month` disk line, or null when either half is unusable.
+ * Persistent disks are the one component every compute-shaped GCP type adds
+ * on top of its machine price, so all three estimates build it the same way.
+ */
+function gceDiskLine(
+  label: string,
+  sizeGb: number,
+  gbMonthUsd: number | null | undefined,
+): CostEstimateLineItem | null {
+  if (gbMonthUsd == null || !Number.isFinite(sizeGb) || sizeGb <= 0) return null;
+  return {
+    label,
+    monthlyAmount: sizeGb * gbMonthUsd,
+    detail: `${sizeGb} GB × $${Number(gbMonthUsd.toFixed(4))}/GB-month`,
+    quantity: sizeGb,
+    unit: "GB",
+  };
+}
 import type { ListerContext } from "./resource-listers.js";
 import * as listers from "./resource-listers.js";
 import type { FirestoreContext } from "./firestore-handlers.js";
@@ -632,110 +655,128 @@ export class GcpClient implements PluginClient {
     return this.estimateMachineTypeMonthlyPrices(request.sizes, zone);
   }
 
-  async getCreateCostEstimate(
-    typeId: string,
-    fields: Record<string, string>,
-  ): Promise<number | null> {
+  /**
+   * Monthly estimate with line items, priced from the Cloud Billing catalog
+   * for the resource's own zone.
+   *
+   * Machine specs come from `machineTypeSpecCache` (populated by
+   * `getCreateConfig`) so a field change re-estimates without a network round
+   * trip — which is what lets the cost badge track a storage slider as it
+   * moves rather than lagging a request behind it.
+   */
+  async estimateCost(typeId: string, fields: Record<string, string>): Promise<CostEstimate | null> {
     if (typeId === "gce-instance") {
-      const zone = fields["zone"] ?? "us-central1-a";
+      const zone = fields["zone"] || "us-central1-a";
       const machineType = fields["machineType"] ?? "";
       if (!machineType) return null;
 
-      // Use cached machine type specs (populated during getCreateConfig) to avoid
-      // a network roundtrip on every field change — this lets the cost badge update
-      // instantly when the storage slider moves.
-      let machineTypeData = this.machineTypeSpecCache.get(machineType);
-      if (!machineTypeData) {
-        const fetched = await this.get<{ guestCpus: number; memoryMb: number }>(
-          `https://compute.googleapis.com/compute/v1/projects/${this.project}/zones/${zone}/machineTypes/${machineType}`,
-        ).catch(() => null);
-        if (!fetched) return null;
-        this.machineTypeSpecCache.set(machineType, fetched);
-        machineTypeData = fetched;
-      }
+      const vmMonthly = await this.machineTypeMonthlyPrice(machineType, zone);
 
-      const vmMonthly =
-        (
-          await this.estimateMachineTypeMonthlyPrices(
-            [
-              {
-                id: machineType,
-                vcpus: machineTypeData.guestCpus,
-                memoryMb: machineTypeData.memoryMb,
-              },
-            ],
-            zone,
-          )
-        )[machineType] ?? 0;
-
-      let storageMonthly = 0;
-      const bootSource = fields["bootSource"] ?? "new-image";
+      // A VM created from an existing disk has no boot disk of its own to
+      // price; one created from an image gets a pd-balanced disk. An existing
+      // instance stores neither field, and its boot disk is a `gce-disk`
+      // resource with its own estimate, so it prices as compute alone.
+      const bootSource = fields["bootSource"] ?? (fields["diskGb"] ? "new-image" : "");
+      let disk: CostEstimateLineItem | null = null;
       if (bootSource === "new-image") {
         const diskGb = Number(fields["diskGb"] ?? 50);
-        // GCE instance create provisions a pd-balanced boot disk.
         const diskRate = await this.getDiskMonthlyRate(zone, "pd-balanced");
-        if (diskRate != null && Number.isFinite(diskGb) && diskGb > 0) {
-          storageMonthly = diskGb * diskRate;
-        }
+        disk = gceDiskLine("Boot disk (pd-balanced)", diskGb, diskRate);
       }
 
-      const total = vmMonthly + storageMonthly;
-      if (!Number.isFinite(total) || total <= 0) return null;
-      return Number(total.toFixed(2));
+      return buildCostEstimate(
+        [
+          vmMonthly == null
+            ? null
+            : {
+                label: `Machine type (${machineType})`,
+                monthlyAmount: vmMonthly,
+                detail: `${HOURS_PER_MONTH} h in ${regionFromZone(zone)}`,
+              },
+          disk,
+        ],
+        {
+          partial: vmMonthly == null,
+          notes: [
+            "On-demand rate — sustained-use discounts apply automatically and are not deducted here.",
+          ],
+        },
+      );
     }
 
     if (typeId === "gce-disk") {
-      const zone = fields["zone"] ?? "us-central1-a";
+      const zone = fields["zone"] || "us-central1-a";
       const sizeGb = Number(fields["sizeGb"] ?? 50);
-      if (!Number.isFinite(sizeGb) || sizeGb <= 0) return null;
-      const diskType = fields["type"] ?? "pd-balanced";
+      const diskType = fields["type"] || "pd-balanced";
       const diskRate = await this.getDiskMonthlyRate(zone, diskType);
-      if (diskRate == null) return null;
-      return Number((sizeGb * diskRate).toFixed(2));
+      return buildCostEstimate([gceDiskLine(`Disk (${diskType})`, sizeGb, diskRate)]);
     }
 
     if (typeId === "gke-cluster") {
-      const zone = fields["location"] ?? "us-central1-a";
+      const zone = fields["location"] || "us-central1-a";
       const machineType = fields["machineType"] ?? "";
-      const nodeCount = Math.max(1, Number(fields["nodeCount"] ?? 3));
+      const nodeCount = Math.max(1, Math.floor(Number(fields["nodeCount"] ?? 3)) || 1);
       if (!machineType) return null;
 
-      let machineTypeData = this.machineTypeSpecCache.get(machineType);
-      if (!machineTypeData) {
-        const fetched = await this.get<{ guestCpus: number; memoryMb: number }>(
-          `https://compute.googleapis.com/compute/v1/projects/${this.project}/zones/${zone}/machineTypes/${machineType}`,
-        ).catch(() => null);
-        if (!fetched) return null;
-        this.machineTypeSpecCache.set(machineType, fetched);
-        machineTypeData = fetched;
-      }
-
-      const perNodeVm =
-        (
-          await this.estimateMachineTypeMonthlyPrices(
-            [
-              {
-                id: machineType,
-                vcpus: machineTypeData.guestCpus,
-                memoryMb: machineTypeData.memoryMb,
-              },
-            ],
-            zone,
-          )
-        )[machineType] ?? 0;
-
+      const perNodeVm = await this.machineTypeMonthlyPrice(machineType, zone);
       const diskGb = Number(fields["diskSizeGb"] ?? 100);
       // GKE node pools provision pd-balanced boot disks by default.
       const diskRate = await this.getDiskMonthlyRate(zone, "pd-balanced");
-      const perNodeDisk =
-        diskRate != null && Number.isFinite(diskGb) && diskGb > 0 ? diskGb * diskRate : 0;
+      const perNodeDisk = gceDiskLine("", diskGb, diskRate)?.monthlyAmount ?? 0;
 
-      const total = (perNodeVm + perNodeDisk) * nodeCount;
-      if (!Number.isFinite(total) || total <= 0) return null;
-      return Number(total.toFixed(2));
+      return buildCostEstimate(
+        [
+          perNodeVm == null
+            ? null
+            : {
+                label: `Nodes (${nodeCount} × ${machineType})`,
+                monthlyAmount: perNodeVm * nodeCount,
+                detail: `${nodeCount} × $${Number(perNodeVm.toFixed(2))}/month`,
+                quantity: nodeCount,
+                unit: "nodes",
+              },
+          perNodeDisk === 0
+            ? null
+            : {
+                label: "Node boot disks (pd-balanced)",
+                monthlyAmount: perNodeDisk * nodeCount,
+                detail: `${nodeCount} × ${diskGb} GB`,
+                quantity: nodeCount * diskGb,
+                unit: "GB",
+              },
+        ],
+        {
+          partial: true,
+          notes: [
+            "Worker nodes only — the GKE cluster management fee is not included.",
+            "One zonal Autopilot-free cluster per billing account is exempt from that fee.",
+          ],
+        },
+      );
     }
 
     return null;
+  }
+
+  /**
+   * Monthly price for one machine type in a zone, using the spec cache when
+   * it is warm and falling back to a single machineTypes GET when it is not.
+   */
+  private async machineTypeMonthlyPrice(machineType: string, zone: string): Promise<number | null> {
+    let spec = this.machineTypeSpecCache.get(machineType);
+    if (!spec) {
+      const fetched = await this.get<{ guestCpus: number; memoryMb: number }>(
+        `https://compute.googleapis.com/compute/v1/projects/${this.project}/zones/${zone}/machineTypes/${machineType}`,
+      ).catch(() => null);
+      if (!fetched) return null;
+      this.machineTypeSpecCache.set(machineType, fetched);
+      spec = fetched;
+    }
+    const prices = await this.estimateMachineTypeMonthlyPrices(
+      [{ id: machineType, vcpus: spec.guestCpus, memoryMb: spec.memoryMb }],
+      zone,
+    );
+    return prices[machineType] ?? null;
   }
 
   async createResource(

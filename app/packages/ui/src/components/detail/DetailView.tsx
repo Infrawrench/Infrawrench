@@ -3,6 +3,7 @@ import type {
   ChatMessage,
   ChatStreamEvent,
   ChildGroupSchema,
+  CostEstimate,
   DashboardCardSchema,
   DetailViewSchema,
   KvListResult,
@@ -19,7 +20,9 @@ import type {
   TranscribeAudioPayload,
   TranscribeAudioResult,
 } from "@infrawrench/plugin-base";
+import { formatMonthlyEstimate } from "@infrawrench/client-core";
 import { MetricChart } from "../charts/MetricChart.js";
+import { CostEstimateChip } from "../CostEstimateChip.js";
 import { SchemaRenderer, StatusDotNodeRenderer } from "../renderer/SchemaRenderer.js";
 import { AssociationPicker } from "./AssociationPicker.js";
 import { ChildResourceTable } from "./ChildResourceTable.js";
@@ -111,6 +114,14 @@ interface DetailViewProps {
   ) => Promise<SecretVersion>;
   /** Open a console/exec terminal for the resource — when set, renders a "Console" button in the header */
   onOpenConsole?: () => void;
+  /**
+   * The resource's standing monthly cost estimate, from the plugin's
+   * `estimateCost`. Rendered as an expandable chip in the header — the same
+   * component and the same number the create form quotes, so what the user
+   * was promised at create time and what they see afterwards are one figure.
+   * Omit when the plugin cannot price this type.
+   */
+  costEstimate?: CostEstimate | null | undefined;
   /** Additional panes from peer plugins — rendered as extra tabs */
   peerPanes?: PeerPaneData[];
   renderPeerPane?: (pane: PeerPaneData, index: number) => React.ReactNode;
@@ -251,6 +262,7 @@ export function DetailView({
   onAddSecretVersion,
   onModifySecretVersion,
   onOpenConsole,
+  costEstimate,
   peerPanes = EMPTY_PEER_PANES,
   renderPeerPane,
   onPeerPaneOpen,
@@ -453,6 +465,12 @@ export function DetailView({
             )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 pt-1">
+            {costEstimate && (
+              <CostEstimateChip
+                label={formatMonthlyEstimate(costEstimate.monthlyAmount, costEstimate.currency)}
+                estimate={costEstimate}
+              />
+            )}
             {schema.status && <StatusDotNodeRenderer node={schema.status} />}
             {onOpenConsole && (
               <button

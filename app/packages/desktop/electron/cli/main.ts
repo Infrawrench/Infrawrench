@@ -13,6 +13,7 @@ import { setColorEnabled, printErr, println, c } from "./output";
 import { cmdLogin, cmdLogout, cmdWhoami } from "./commands/auth";
 import { cmdOrgs, cmdAccounts, cmdResources, cmdResource } from "./commands/listing";
 import { cmdMetrics } from "./commands/metrics";
+import { cmdEstimate } from "./commands/estimate";
 import { cmdCosts, cmdCostAnomalies } from "./commands/costs";
 import { cmdTags, cmdShowback } from "./commands/tags";
 import { cmdOrphans } from "./commands/orphans";
@@ -49,6 +50,8 @@ COMMANDS
   resources           list an account's resources   --account <id|name>
   resource <id>       show one resource's fields & outputs
   metrics <id>        metric charts for a resource   [--last 6h] [--series cpu] [--local]
+  estimate <id|name>  what a resource costs per month at list price, itemized (cloud only;
+                      full id, or a name/external-id with --account)
   costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource]
   costs --anomalies   days a provider or service spiked past its own baseline   [--days 30]
   costs push          push your own cost rows   --source <name> [--file rows.json | stdin]
@@ -262,6 +265,9 @@ export async function runCli(): Promise<void> {
         break;
       case "metrics":
         await cmdMetrics(ctx, rest[0] ?? "", parsed.range);
+        break;
+      case "estimate":
+        await cmdEstimate(ctx, rest[0] ?? "");
         break;
       case "costs":
         if (rest[0] === "push") {

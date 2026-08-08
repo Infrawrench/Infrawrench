@@ -577,22 +577,24 @@ describe("invokeAction", () => {
   });
 });
 
-describe("getCreateConfig / getCreateCostEstimate / exportCredential / manifests", () => {
+describe("getCreateConfig / estimateCost / exportCredential / manifests", () => {
   it("getCreateConfig delegates to doGetCreateConfig", async () => {
     installFetch(() => undefined);
     const config = await newClient().getCreateConfig("project");
     expect(config.fields.some((f) => f.key === "name")).toBe(true);
   });
 
-  it("getCreateCostEstimate multiplies db per-node price by node count", async () => {
+  it("estimateCost multiplies db per-node price by node count", async () => {
     const client = newClient();
-    const est = await client.getCreateCostEstimate("managed-database", {
+    const est = await client.estimateCost("managed-database", {
       size: "db-s-2vcpu-4gb",
       nodeCount: "3",
     });
-    expect(est).toBeCloseTo(4 * 15.2 * 3);
-    expect(await client.getCreateCostEstimate("doks-cluster", {})).toBeNull();
-    expect(await client.getCreateCostEstimate("droplet", {})).toBeNull();
+    expect(est?.monthlyAmount).toBeCloseTo(4 * 15.2 * 3);
+    expect(est?.lineItems).toHaveLength(1);
+    expect(est?.lineItems[0]).toMatchObject({ quantity: 3, unit: "nodes" });
+    expect(await client.estimateCost("doks-cluster", {})).toBeNull();
+    expect(await client.estimateCost("droplet", {})).toBeNull();
   });
 
   it("exportCredential mints a bucket-scoped Spaces key", async () => {

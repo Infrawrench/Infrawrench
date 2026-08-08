@@ -1,6 +1,9 @@
-import { useCallback, useId, useMemo, useState } from "react";
-import type { FieldDefinition } from "@infrawrench/plugin-base";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import type { CostEstimate, FieldDefinition } from "@infrawrench/plugin-base";
+import { costEstimateDelta } from "@infrawrench/plugin-base";
+import { describeMonthlyDelta } from "@infrawrench/client-core";
 import { Modal } from "./Modal.js";
+import { CostEstimateBreakdown } from "./CostEstimateChip.js";
 import { ErrorNotice } from "./ErrorNotice.js";
 
 export interface EditResourceModalProps {
@@ -20,7 +23,25 @@ export interface EditResourceModalProps {
    */
   onSubmit: (changedFields: Record<string, string>) => Promise<void>;
   onClose: () => void;
+  /**
+   * Price a proposed set of field values. Receives only the changed keys —
+   * the host merges them over the resource's stored fields — and is called on
+   * a debounce, so a host that goes over the network makes one request per
+   * pause rather than one per keystroke.
+   *
+   * When supplied, the modal shows what the pending change does to the
+   * monthly bill before the user commits to it. Omit it and the modal behaves
+   * exactly as it did before.
+   */
+  loadCostEstimate?: (changedFields: Record<string, string>) => Promise<CostEstimate | null>;
 }
+
+/**
+ * How long the form must be still before the modal prices it. Long enough
+ * that typing through a numeric field doesn't fire a request per digit, short
+ * enough that the figure feels like it belongs to what is on screen.
+ */
+const ESTIMATE_DEBOUNCE_MS = 300;
 
 function isFieldEditable(field: FieldDefinition): boolean {
   if (field.editable === false) return false;
@@ -34,6 +55,7 @@ export function EditResourceModal({
   initialValues,
   onSubmit,
   onClose,
+  loadCostEstimate,
 }: EditResourceModalProps) {
   const editableFields = useMemo(() => fields.filter(isFieldEditable), [fields]);
   const [values, setValues] = useState<Record<string, string>>(() => {
@@ -66,6 +88,59 @@ export function EditResourceModal({
   const setField = useCallback((key: string, value: string) => {
     setValues((prev) => ({ ...prev, [key]: value }));
   }, []);
+
+  // What the resource costs now, and what it would cost after the pending
+  // change. Both come from the same `estimateCost` call the create form uses,
+  // so the number quoted here and the one quoted on the resource's detail
+  // page cannot disagree.
+  const [baseline, setBaseline] = useState<CostEstimate | null>(null);
+  const [projected, setProjected] = useState<CostEstimate | null>(null);
+
+  useEffect(() => {
+    if (!loadCostEstimate) return;
+    let cancelled = false;
+    void loadCostEstimate({})
+      .then((estimate) => {
+        if (!cancelled) setBaseline(estimate);
+      })
+      .catch(() => {
+        if (!cancelled) setBaseline(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadCostEstimate]);
+
+  // `changed` is a fresh object on every render, so the effect keys off its
+  // serialization rather than its identity — otherwise every keystroke's
+  // re-render would restart the debounce even when nothing actually changed.
+  const changedKey = JSON.stringify(changed);
+  useEffect(() => {
+    if (!loadCostEstimate) return;
+    if (!hasChanges) {
+      setProjected(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void loadCostEstimate(JSON.parse(changedKey) as Record<string, string>)
+        .then((estimate) => {
+          if (!cancelled) setProjected(estimate);
+        })
+        .catch(() => {
+          if (!cancelled) setProjected(null);
+        });
+    }, ESTIMATE_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [changedKey, hasChanges, loadCostEstimate]);
+
+  const deltaLabel = useMemo(
+    () => describeMonthlyDelta(costEstimateDelta(baseline, projected), projected?.currency),
+    [baseline, projected],
+  );
 
   const handleSubmit = useCallback(async () => {
     if (!hasChanges || !isValid || saving) return;
@@ -112,6 +187,16 @@ export function EditResourceModal({
         </div>
 
         <div className="px-6 py-4 border-t border-border flex-shrink-0">
+          {deltaLabel && projected && (
+            <details className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
+              <summary className="cursor-pointer text-xs font-medium text-emerald-700 dark:text-emerald-200">
+                {deltaLabel}
+              </summary>
+              <div className="mt-2 border-t border-emerald-500/20 pt-2 text-xs">
+                <CostEstimateBreakdown estimate={projected} />
+              </div>
+            </details>
+          )}
           {error && (
             <ErrorNotice
               message={error}

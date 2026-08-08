@@ -31,7 +31,7 @@ export interface PricingCacheEntry extends PricingRates {
 export type GeoRegion = "Americas" | "EMEA" | "APAC";
 
 const COMPUTE_BILLING_SERVICE_ID = "6F81-5844-456A";
-const HOURS_PER_MONTH = 730;
+export const HOURS_PER_MONTH = 730;
 
 export function regionFromZone(zone: string): string {
   return zone.replace(/-[a-z]$/, "");

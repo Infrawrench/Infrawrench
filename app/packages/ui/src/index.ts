@@ -378,6 +378,11 @@ export { GraphIcon } from "./components/graph/GraphIcon.js";
 export { CreateResourceModal } from "./components/CreateResourceModal.js";
 export type { CreateResourceModalProps } from "./components/CreateResourceModal.js";
 
+export { CostEstimateBreakdown, CostEstimateChip } from "./components/CostEstimateChip.js";
+export type {
+  CostEstimateBreakdownProps,
+  CostEstimateChipProps,
+} from "./components/CostEstimateChip.js";
 export { EditResourceModal } from "./components/EditResourceModal.js";
 export type { EditResourceModalProps } from "./components/EditResourceModal.js";
 export { TunnelSshAttachModal } from "./components/detail/TunnelSshAttachModal.js";

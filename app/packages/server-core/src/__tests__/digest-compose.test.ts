@@ -393,6 +393,67 @@ describe("formatting", () => {
     expect(without).not.toContain("Expiring soon");
   });
 
+  it("projects the run-rate the week's churn leaves behind", () => {
+    const body = formatDigestSlackBody(
+      composeWeeklyDigest(
+        input({
+          resourcesAdded: 4,
+          resourcesRemoved: 1,
+          projection: {
+            currency: "USD",
+            addedMonthly: 520,
+            removedMonthly: 180,
+            unpricedCount: 0,
+            truncated: false,
+          },
+        }),
+      ),
+    );
+    // The net is the headline; both sides are shown so a churn-heavy week
+    // that nets out flat still reads as churn rather than as nothing.
+    expect(body).toContain(
+      "*Projected spend*: +$340.00/month from last week's changes ($520.00/mo added, $180.00/mo removed)",
+    );
+  });
+
+  it("qualifies a projection that could not price everything", () => {
+    const body = formatDigestSlackBody(
+      composeWeeklyDigest(
+        input({
+          projection: {
+            currency: "USD",
+            addedMonthly: 100,
+            removedMonthly: 0,
+            unpricedCount: 3,
+            truncated: true,
+          },
+        }),
+      ),
+    );
+    expect(body).toContain("at least; 3 resources could not be priced");
+  });
+
+  it("omits the projection line rather than claiming a week changed nothing", () => {
+    // Every changed resource was unpriceable, so both sides are zero. Saying
+    // "no change" there would assert knowledge the estimates do not have.
+    const allUnpriced = formatDigestSlackBody(
+      composeWeeklyDigest(
+        input({
+          resourcesAdded: 9,
+          projection: {
+            currency: "USD",
+            addedMonthly: 0,
+            removedMonthly: 0,
+            unpricedCount: 9,
+            truncated: false,
+          },
+        }),
+      ),
+    );
+    expect(allUnpriced).not.toContain("Projected spend");
+    expect(formatDigestSlackBody(composeWeeklyDigest(input()))).not.toContain("Projected spend");
+  });
+
   it("labels currencies when an org spends in more than one", () => {
     const digest = composeWeeklyDigest(
       input({ byProvider: [group("aws", "USD", 1, 2), group("hetzner", "EUR", 1, 2)] }),

@@ -37,6 +37,7 @@ The add-account form (and **Check credentials** on the account page) probes what
 - **Resource inventory** — read-only Describe/List access, checked via a representative sample: `ec2:DescribeInstances`, `s3:ListAllMyBuckets`, `rds:DescribeDBInstances`, `lambda:ListFunctions`, `dynamodb:ListTables`.
 - **Metrics & dashboards** — `cloudwatch:GetMetricStatistics`, `cloudwatch:GetMetricData`, `cloudwatch:ListMetrics`.
 - **Cost reporting** — `ce:GetCostAndUsage`. This is **not** part of `ReadOnlyAccess`-style infra policies, so it's the check that most often comes back ✗.
+- **[Cost estimates](../features/cost-estimates.md)** — `pricing:GetProducts`, for the live per-region prices behind the create form's estimate, the size picker's price chips and the resource page's monthly figure. Also outside typical read-only policies. Without it nothing breaks; AWS resources simply quote no estimate.
 
 The probe resolves the caller with `sts:GetCallerIdentity` (needs no permission) and asks `iam:SimulatePrincipalPolicy` for an exact per-permission verdict; when the key isn't allowed to call the simulator it falls back to one cheap sample read per capability. The generator produces an IAM policy JSON document scoped to the capabilities you tick — attach it as an inline policy on the IAM user whose keys you pasted. It also grants `iam:SimulatePrincipalPolicy` so later preflights stay exact.
 

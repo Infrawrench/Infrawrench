@@ -22,8 +22,15 @@ export type {
   RateLimitDeclaration,
 } from "./manifest.js";
 
-export type { CostCapabilityDeclaration, CostFetchRange, CostHelpLink, CostRow } from "./cost.js";
-export { CostSetupError } from "./cost.js";
+export type {
+  CostCapabilityDeclaration,
+  CostEstimate,
+  CostEstimateLineItem,
+  CostFetchRange,
+  CostHelpLink,
+  CostRow,
+} from "./cost.js";
+export { buildCostEstimate, costEstimateDelta, CostSetupError } from "./cost.js";
 
 export type {
   PolicyTemplate,

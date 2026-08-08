@@ -45,6 +45,7 @@
     "./clickhouse/cost-writers": "./src/clickhouse/cost-writers.ts",
     "./cost/collect": "./src/cost/collect.ts",
     "./cost/dates": "./src/cost/dates.ts",
+    "./cost/estimate": "./src/cost/estimate.ts",
     "./cost/forecast": "./src/cost/forecast.ts",
     "./cost/budget-eval": "./src/cost/budget-eval.ts",
     "./cost/anomaly-detect": "./src/cost/anomaly-detect.ts",

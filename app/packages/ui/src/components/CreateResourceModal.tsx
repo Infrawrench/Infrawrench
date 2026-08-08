@@ -4,6 +4,7 @@ import type { CreateFieldConfig } from "@infrawrench/plugin-base";
 import type { RequiredTag } from "@infrawrench/client-core";
 import type { CreateResourceFormState } from "../hooks/useCreateResourceForm.js";
 import { Modal } from "./Modal.js";
+import { CostEstimateChip } from "./CostEstimateChip.js";
 import { ErrorNotice } from "./ErrorNotice.js";
 
 export interface CreateResourceModalProps {
@@ -81,14 +82,10 @@ export function CreateResourceModal({
           <h2 className="text-base font-semibold text-on-surface">Create {displayName}</h2>
           <div className="flex items-center gap-3">
             {form.estimatedMonthlyPriceLabel && (
-              <div className="text-right px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10">
-                <p className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-300/80">
-                  Estimated cost
-                </p>
-                <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-200">
-                  {form.estimatedMonthlyPriceLabel}/mo
-                </p>
-              </div>
+              <CostEstimateChip
+                label={form.estimatedMonthlyPriceLabel}
+                estimate={form.costEstimate}
+              />
             )}
             <button
               type="button"

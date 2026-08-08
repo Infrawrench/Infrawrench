@@ -178,6 +178,13 @@ export {
   type CostQueryResponse,
 } from "./costs";
 export {
+  describeMonthlyDelta,
+  fetchResourceCostEstimate,
+  formatMonthlyDelta,
+  formatMonthlyEstimate,
+  partialEstimatePrefix,
+} from "./cost-estimate";
+export {
   buildPreflightChecklist,
   summarizePreflight,
   defaultTemplateCapabilityIds,

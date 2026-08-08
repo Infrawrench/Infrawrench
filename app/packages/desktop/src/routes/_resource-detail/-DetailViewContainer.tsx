@@ -9,6 +9,7 @@ import type {
   LogsFetchResult,
   ArtifactEntry,
   KvListResult,
+  CostEstimate,
   QueryCostEstimate,
   SecretVersion,
   SecretVersionMutation,
@@ -83,6 +84,13 @@ interface DetailViewContainerProps {
     action: SecretVersionMutation,
   ) => Promise<SecretVersion>;
   onOpenConsole: () => void;
+  /**
+   * Price this resource's current configuration. Supplied by the route, which
+   * is the only place that holds both the local plugin client and the cloud
+   * context. Omitted when there is no resource loaded yet.
+   */
+  loadCostEstimate?:
+    ((changedFields: Record<string, string>) => Promise<CostEstimate | null>) | null;
   onNoSqlCommand: (command: string, args: (string | number)[]) => Promise<unknown>;
   onChatStream: (
     messages: ChatMessage[],
@@ -132,6 +140,7 @@ export function DetailViewContainer({
   activeCloudOrgId,
   cloudParentResourceId,
   accountPluginId,
+  loadCostEstimate,
   onPeerPaneOpen,
   onRunQuery,
   onExecute,
@@ -229,12 +238,31 @@ export function DetailViewContainer({
     );
   };
 
+  // The resource's standing monthly estimate, refreshed whenever the resource
+  // does. Most plugins can't price their types, so this is null far more
+  // often than not and the header chip simply doesn't render.
+  const [costEstimate, setCostEstimate] = useState<CostEstimate | null>(null);
+  useEffect(() => {
+    if (!loadCostEstimate) {
+      setCostEstimate(null);
+      return;
+    }
+    let cancelled = false;
+    void loadCostEstimate({}).then((estimate) => {
+      if (!cancelled) setCostEstimate(estimate);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadCostEstimate]);
+
   return (
     <div className="flex-1 overflow-hidden min-h-0">
       <DetailView
         schema={schema}
         resourceId={decodedResourceId}
         pluginLogoSvg={logoSvg}
+        costEstimate={costEstimate}
         {...(onReroll ? { onReroll } : {})}
         peerPanes={peerPanes}
         renderPeerPane={(pane) => (

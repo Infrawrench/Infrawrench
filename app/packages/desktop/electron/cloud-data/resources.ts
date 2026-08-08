@@ -175,7 +175,7 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
-  "cloud_get_create_cost_estimate",
+  "cloud_get_cost_estimate",
   async (
     _e,
     {
@@ -183,23 +183,26 @@ ipcMain.handle(
       accountId,
       resourceTypeId,
       fields,
+      resourceId,
       pluginId,
       parentResourceId,
     }: {
       orgId: string;
       accountId: string;
       resourceTypeId: string;
-      fields: Record<string, string>;
+      fields?: Record<string, string>;
+      resourceId?: string;
       pluginId?: string;
       parentResourceId?: string;
     },
   ) => {
-    return cloudFetch<{ estimate: unknown }>(orgId, `/resources/create-cost-estimate`, {
+    return cloudFetch<{ estimate: unknown }>(orgId, `/resources/cost-estimate`, {
       method: "POST",
       body: JSON.stringify({
         accountId,
         resourceTypeId,
-        fields,
+        ...(fields ? { fields } : {}),
+        ...(resourceId ? { resourceId } : {}),
         ...(pluginId ? { pluginId } : {}),
         ...(parentResourceId ? { parentResourceId } : {}),
       }),

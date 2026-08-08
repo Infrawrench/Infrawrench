@@ -6,7 +6,11 @@ import {
   type SshKeyEntry,
   type ResourcePickerOption,
 } from "@infrawrench/ui";
-import type { CreateResourceConfig, AssociationSource } from "@infrawrench/plugin-base";
+import type {
+  CostEstimate,
+  CreateResourceConfig,
+  AssociationSource,
+} from "@infrawrench/plugin-base";
 import type { RequiredTag, TagPolicy } from "@infrawrench/client-core";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
@@ -98,7 +102,7 @@ export function CreateResourceModal({
           sizes: request.sizes,
         }),
       loadCostEstimate: (fields: Record<string, string>) =>
-        apiPost<{ estimate: number | null }>(`/api/org/${orgId}/resources/create-cost-estimate`, {
+        apiPost<{ estimate: CostEstimate | null }>(`/api/org/${orgId}/resources/cost-estimate`, {
           accountId,
           resourceTypeId,
           pluginId,
