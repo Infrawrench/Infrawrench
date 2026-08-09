@@ -24,7 +24,7 @@ Deepgram has a single key type but **three scopes**, and the scope decides how m
 
 The secret is shown once at creation and cannot be retrieved afterwards, so if you no longer have it, create a replacement rather than hunting for the old one.
 
-<insert [Deepgram Add-account form with the API key field and its scope explanation] here>
+![Deepgram Add-account form with the API key field and its scope explanation](https://agent-assets.infrawrench.com/docs/screenshots/plugins/deepgram-add-account.png)
 
 ## The Speech tab
 
@@ -35,7 +35,7 @@ Open a project for a **Speech** tab with both halves. See [Speech testing](../fe
 
 If the key cannot read the project's model catalogue, the tab explains that a member-scope key or better is needed instead of failing silently.
 
-<insert [Deepgram Speech tab on a project, with the Aura voice picker open and a diarised transcript with speaker labels below] here>
+![Deepgram Speech tab on a project, with the Aura voice picker open and a diarised transcript with speaker labels below](https://agent-assets.infrawrench.com/docs/screenshots/plugins/deepgram-speech.png)
 
 ## Metrics
 

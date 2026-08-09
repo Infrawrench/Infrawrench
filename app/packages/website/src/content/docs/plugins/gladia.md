@@ -15,7 +15,7 @@ One field. Gladia dashboard at [app.gladia.io](https://app.gladia.io/) → **Acc
 
 The key is sent as the `x-gladia-key` header — Gladia does not use Bearer auth. A single key covers uploads, pre-recorded transcription and the job history; there is no separate admin or usage key.
 
-<insert [Gladia Add-account form with the single API key field] here>
+![Gladia Add-account form with the single API key field](https://agent-assets.infrawrench.com/docs/screenshots/plugins/gladia-add-account.png)
 
 ## The Speech tab
 
@@ -23,7 +23,7 @@ Open the workspace for a **Speech** tab. It is transcription only. See [Speech t
 
 Gladia is asynchronous, so one press uploads the clip, creates a job, and polls it for up to two minutes. Diarization is on, so speaker labels appear in the word table. Two models are offered: **Solaria-1** (the default, 100+ languages) and **Solaria-3** (latest generation, pre-recorded only).
 
-<insert [Gladia Speech tab on the workspace, showing the Solaria model picker and a diarised transcript with speaker labels] here>
+![Gladia Speech tab on the workspace, showing the Solaria model picker and a diarised transcript with speaker labels](https://agent-assets.infrawrench.com/docs/screenshots/plugins/gladia-speech.png)
 
 ## Tips & limits
 

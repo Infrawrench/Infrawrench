@@ -22,7 +22,7 @@ Create a service principal (Azure Portal → Microsoft Entra ID → App registra
 - **Client secret**
 - **Subscription ID**
 
-<insert [Azure Add-account form with tenant / client / secret / subscription fields] here>
+![Azure Add-account form with tenant / client / secret / subscription fields](https://agent-assets.infrawrench.com/docs/screenshots/plugins/azure-add-account.png)
 
 ## Notable flows
 
@@ -42,7 +42,7 @@ Web apps and function apps link to the plan they run on in the [dependency graph
 
 A **Metrics** tab reports the plan-wide CPU and memory percentage, disk and HTTP queue length, and data in/out — these are the numbers to scale on, since an individual app's metrics don't show plan-level saturation.
 
-<insert [Azure App Service Plan detail page showing the SKU/tier/instances fields and the dependency graph with two web apps pointing at the plan] here>
+![Azure App Service Plan detail page showing the SKU/tier/instances fields and the dependency graph with two web apps pointing at the plan](https://agent-assets.infrawrench.com/docs/screenshots/plugins/azure-app-service-plan.png)
 
 ## Tips & limits
 

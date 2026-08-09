@@ -12,7 +12,7 @@ The dashboard is the first thing you see after sign-in. It is a grid of pinned r
 2. Click the **Pin** icon in the top-right.
 3. It shows up on the dashboard immediately.
 
-<insert [Resource detail page with pin icon highlighted] here>
+![Resource detail page with pin icon highlighted](https://agent-assets.infrawrench.com/docs/screenshots/features/dashboard-pin-icon.png)
 
 ## Arrange cards
 
@@ -22,7 +22,7 @@ The dashboard is the first thing you see after sign-in. It is a grid of pinned r
 
 Every kind of card is draggable and they all share one order, so a cost graph or budget can sit between two resource cards rather than being stuck at the end of the grid. New cards are added at the end. The order is per dashboard and shared with everyone in the org.
 
-<insert [Dashboard with a Droplet card, an EKS cluster card, and a Postgres database card] here>
+![Dashboard with a Droplet card, an EKS cluster card, and a Postgres database card](https://agent-assets.infrawrench.com/docs/screenshots/features/dashboard-pins.png)
 
 ## What cards show
 
@@ -38,7 +38,7 @@ Only **pinned** resources accumulate history. Unpin a resource and its history s
 
 Unpinned resources still get a chart: when a resource has no accumulated history, the Metrics tab fetches the series live from the provider on demand. Pinning is what buys you the long ranges and retention — the live fetch only covers whatever window the provider itself serves.
 
-<insert [Resource Metrics tab with a 7-day range selector showing CPU/memory series] here>
+![Resource Metrics tab with a 7-day range selector showing CPU/memory series](https://agent-assets.infrawrench.com/docs/screenshots/features/metrics-tab.png)
 
 ## Cost graphs and budgets
 
@@ -46,7 +46,7 @@ The **+** tile on a dashboard is a menu: pin a resource, add a **Cost graph**, c
 
 Budget cards are views onto a budget, not the budget itself: removing one leaves the budget tracking and alerting, and the [**Costs** panel](./cloud-costs.md#the-costs-panel) lists every budget whether or not a dashboard shows it.
 
-<insert [Dashboard "+" tile menu open showing Pin a resource, Cost graph, New budget, Existing budget, and Custom graph entries] here>
+![Dashboard "+" tile menu open showing Pin a resource, Cost graph, New budget, Existing budget, and Custom graph entries](https://agent-assets.infrawrench.com/docs/screenshots/features/dashboard-add-menu.png)
 
 ## Multiple dashboards
 

@@ -25,7 +25,7 @@ Generate API credentials at the [OVH API token page](https://www.ovh.com/auth/ap
 - **API Endpoint** — region: `eu` (Europe), `ca` (Canada), or `us` (United States).
 - **Public Cloud Project ID** — the project to manage.
 
-<insert [OVH Add-account form with application key / secret / consumer key / endpoint / project fields] here>
+![OVH Add-account form with application key / secret / consumer key / endpoint / project fields](https://agent-assets.infrawrench.com/docs/screenshots/plugins/ovh-add-account.png)
 
 ## Notable flows
 

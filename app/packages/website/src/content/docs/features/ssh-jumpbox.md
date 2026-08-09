@@ -22,7 +22,7 @@ The chain has a hard cap of 8 hops and cycles are detected and rejected, so misc
 
 When adding a new SSH account (sidebar → **Add account** → **SSH**), the credential form includes a **Connect through** dropdown listing your other SSH accounts. Pick one and save — the new account will now dial through it on every terminal/SFTP open.
 
-<insert [AddAccountModal showing the SSH credential form with the "Connect through" dropdown expanded to show another SSH account] here>
+![AddAccountModal showing the SSH credential form with the "Connect through" dropdown expanded to show another SSH account](https://agent-assets.infrawrench.com/docs/screenshots/features/jumpbox-add.png)
 
 ### From a cloud VM's detail page
 
@@ -34,7 +34,7 @@ Any cloud VM with an SSH endpoint (EC2 instance, GCE instance, Droplet, Hetzner 
 
 On confirm, it opens the standard SSH-plugin **Add account** form pre-filled with host (the chosen IP), port, username, and the selected jumpbox. Add the private key, save, and a new SSH-target resource appears in the sidebar — already wired to dial through the chosen jumpbox.
 
-<insert [EC2 instance detail page with the "Connect through jumpbox…" button highlighted, and the two-step picker dialog open over it] here>
+![EC2 instance detail page with the "Connect through jumpbox…" button highlighted, and the two-step picker dialog open over it](https://agent-assets.infrawrench.com/docs/screenshots/features/jumpbox-ec2.png)
 
 ## Public vs private address
 

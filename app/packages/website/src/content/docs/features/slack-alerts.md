@@ -14,7 +14,7 @@ Slack is also the one two-way transport: approval requests arrive with working *
 
 Go to **Settings → Notifications** and press **Add to Slack**. That opens Slack's own approval screen, where you choose the workspace and confirm the permissions. When you approve, Slack sends you back to Infrawrench and the workspace shows as connected.
 
-<insert [Settings → Notifications page showing the Slack section before connecting, with the Add to Slack button visible] here>
+![Settings → Notifications page showing the Slack section before connecting, with the Add to Slack button visible](https://agent-assets.infrawrench.com/docs/screenshots/features/slack-before.png)
 
 Infrawrench asks for five scopes and nothing else:
 
@@ -40,7 +40,7 @@ Until you write a rule, an organization routes **everything except resource drif
 
 Unlike the mobile push toggles, which each member sets for themselves, routing is org-wide — it takes the **Organization settings** permission to change.
 
-<insert [Settings → Notifications Slack section with a workspace connected and two channels listed, above the Alert routing card that decides what reaches them] here>
+![Settings → Notifications Slack section with a workspace connected and two channels listed, above the Alert routing card that decides what reaches them](https://agent-assets.infrawrench.com/docs/screenshots/features/slack-after.png)
 
 **Private channels need an invite.** `chat:write.public` covers public channels, but Slack won't let any app post into a private channel it isn't a member of. Invite the Infrawrench app to the channel first (`/invite @Infrawrench` in Slack), then add it here. If you skip that step, delivery fails with `not_in_channel` — the **Send test message** button surfaces that error verbatim so you can tell it apart from a genuine outage.
 

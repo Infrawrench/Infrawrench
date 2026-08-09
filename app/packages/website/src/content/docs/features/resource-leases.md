@@ -15,17 +15,17 @@ Leases come in two strengths:
 
 Every resource's detail page has a **Lease** tab (web, and desktop when signed into Infrawrench Cloud). Pick a quick preset — 1 day, 3 days, 1 week, 30 days — or a custom date and time, add a note ("Q3 launch load test, ask Dana"), and optionally tick auto-delete. One lease per resource; edit or cancel it from the same tab at any time. Leases reach at most 365 days out.
 
-<insert [The Lease tab on a resource detail page showing the editor with the duration presets, the note field and the auto-delete checkbox with its warning copy] here>
+![The Lease tab on a resource detail page showing the editor with the duration presets, the note field and the auto-delete checkbox with its warning copy](https://agent-assets.infrawrench.com/docs/screenshots/features/lease-editor.png)
 
 An active lease shows how long is left, its note, warning progress for auto-delete leases, and an **auto-delete** badge where it applies.
 
-<insert [The Lease tab showing an active auto-delete lease: "Expires in 3d", the note, the red auto-delete badge and "First auto-delete warning sent"] here>
+![The Lease tab showing an active auto-delete lease: "Expires in 3d", the note, the red auto-delete badge and "First auto-delete warning sent"](https://agent-assets.infrawrench.com/docs/screenshots/features/lease-active.png)
 
 ## The nag
 
 Active leases appear on the **Expiring** screen (web, desktop, mobile) under their own **Leases** group, sorted into the same severity buckets as everything else, with auto-delete leases badged distinctly. They ride the daily expiry alert to Slack, Microsoft Teams and mobile push, and they show up in the weekly digest's "Expiring soon" line — everything the [expiry radar](./expiry-radar.md) does, leases inherit.
 
-<insert [The Expiring screen with a "Leases" group showing two leases, one carrying the red auto-delete badge] here>
+![The Expiring screen with a "Leases" group showing two leases, one carrying the red auto-delete badge](https://agent-assets.infrawrench.com/docs/screenshots/features/expiring-leases.png)
 
 ## Auto-delete: announced twice, then executed
 

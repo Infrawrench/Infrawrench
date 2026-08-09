@@ -14,15 +14,15 @@ Status feeds are public: no credentials are involved, nothing counts against you
 
 **A banner across the app.** When an active incident overlaps your resources, a banner appears at the top of the web app, the desktop app, and the mobile app. It names the provider, the affected regions or services, and how many of your resources sit in the blast radius, with a link to the provider's own status page. Dismiss it and it stays gone for that session; it never appears when nothing overlaps you.
 
-<insert [Web app with the provider incident banner visible at the top: "DigitalOcean nyc3 degraded — 12 of your resources there", with the "Provider status" link on the right] here>
+![Web app with the provider incident banner visible at the top: "DigitalOcean nyc3 degraded — 12 of your resources there", with the "Provider status" link on the right](https://agent-assets.infrawrench.com/docs/screenshots/features/provider-status-banner.png)
 
 **The Changes page.** Provider incidents (active, or resolved within the last day) render above the change timeline, each annotated with how many recorded changes happened during the incident's window — so when the drift feed shows a burst of resources flapping, you can see at a glance that it coincided with an upstream incident rather than something you did.
 
-<insert [Changes page showing the "Is it you, or is it them?" section above the drift feed, with an incident row reading "5 changes during this incident"] here>
+![Changes page showing the "Is it you, or is it them?" section above the drift feed, with an incident row reading "5 changes during this incident"](https://agent-assets.infrawrench.com/docs/screenshots/features/provider-status-changes.png)
 
-**Notifications.** A new **Provider incidents** trigger fans out over the same transports as the other alerts — Slack channels, Microsoft Teams webhooks, and mobile push. It's on by default and can be toggled per channel and per user in **Settings → Notifications** (and on the mobile notifications screen). One notification per incident per organization — no repeats as the incident evolves. Provider incidents deliberately never page SMS or voice: an upstream outage isn't something your on-call can fix.
+**Notifications.** A **Provider incidents** trigger fans out over the same transports as the other alerts — Slack channels, Microsoft Teams webhooks, and mobile push. It's included in the default alert-routing rules and can be narrowed with a dedicated rule in **Settings → Notifications → Alert routing** (and muted per user on the mobile notifications screen). One notification per incident per organization — no repeats as the incident evolves. Provider incidents deliberately never page SMS or voice: an upstream outage isn't something your on-call can fix.
 
-<insert [Notification settings page showing the "Provider incidents" toggle among the alert triggers for a Slack channel] here>
+![Alert routing on Notifications with a rule whose trigger condition includes Provider incidents, sending to Slack #incidents](https://agent-assets.infrawrench.com/docs/screenshots/features/provider-status-alert-routing.png)
 
 **The weekly digest** gains a "Provider incidents" line counting the upstream incidents that overlapped your providers during the reported week.
 

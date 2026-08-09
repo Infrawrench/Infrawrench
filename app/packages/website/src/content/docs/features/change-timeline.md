@@ -17,7 +17,7 @@ It works for every provider automatically: the diff runs on the generic resource
 
 Click **Changes** in the sidebar (next to Costs) to open the feed for the whole organization, newest first. It is the same page on the web app and in the desktop app when signed in. Each row shows when the change was seen, what kind it was, the resource (click through to its detail page), its type, and the account it came from. Updates carry a one-line summary of the changed fields — expand **Show diff** to see the before → after values.
 
-<insert [The org-level Changes feed page with a mix of Appeared/Changed/Disappeared rows, one row expanded to show a field diff] here>
+![The org-level Changes feed page with a mix of Appeared/Changed/Disappeared rows, one row expanded to show a field diff](https://agent-assets.infrawrench.com/docs/screenshots/features/changes-feed.png)
 
 Filter the feed by change kind or by account; results are paginated.
 
@@ -33,7 +33,7 @@ Tap any event to open it: the full per-field before → after list, the resource
 
 Every resource detail page has a **Changes** tab showing that resource's own slice of the timeline — handy for answering "when did this instance's IP change?" or "when did this DNS record show up?". On mobile it is a **Changes** section on the resource's page rather than a tab; tapping a change there expands the same diff.
 
-<insert [A resource detail page with the Changes tab active, showing an update event with a before → after field diff] here>
+![A resource detail page with the Changes tab active, showing an update event with a before → after field diff](https://agent-assets.infrawrench.com/docs/screenshots/features/resource-changes-tab.png)
 
 ## From the CLI
 
@@ -88,7 +88,7 @@ So drift alerting works like a digest:
 | **Minimum changes**        | 1          | Skip windows smaller than this                                                                                                                    |
 | **Accounts to watch**      | all        | Leave every box unchecked to watch everything, or tick the accounts worth being woken up for                                                      |
 
-<insert [Settings → Notifications page showing the Resource drift alerts card: the three change-kind checkboxes with Field changes unchecked, the cooldown and minimum-changes fields, and the account checkboxes] here>
+![Settings → Notifications page showing the Resource drift alerts card: the three change-kind checkboxes with Field changes unchecked, the cooldown and minimum-changes fields, and the account checkboxes](https://agent-assets.infrawrench.com/docs/screenshots/settings/drift-alerts.png)
 
 Only the background poller raises drift alerts. A manual refresh from the UI still records events in the feed but never notifies — the same rule sync-failure incidents follow, and for the same reason: you are already looking at the result.
 

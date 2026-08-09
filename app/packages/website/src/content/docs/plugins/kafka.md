@@ -46,7 +46,7 @@ URL-encode special characters in `user` and `password` (e.g. `@` → `%40`).
 
 If you've added a managed-Kafka resource elsewhere (Aiven, Confluent Cloud, MSK), reference its connection-string output instead of pasting a URL.
 
-<insert [Kafka Add-account form with the kafka:// URL field filled in] here>
+![Kafka Add-account form with the kafka:// URL field filled in](https://agent-assets.infrawrench.com/docs/screenshots/plugins/kafka-add-account.png)
 
 ## Notable flows
 
@@ -56,7 +56,7 @@ If you've added a managed-Kafka resource elsewhere (Aiven, Confluent Cloud, MSK)
 - **Delete topic / group** from the resource's own detail view.
 - **Produce a test record** on any topic from the **Produce** tab on its detail page — see [Send test messages](../features/send-test-message.md). The connection's credentials need produce ACLs on the topic.
 
-<insert [Cluster detail view showing brokers, topics, and consumer groups] here>
+![Cluster detail view showing brokers, topics, and consumer groups](https://agent-assets.infrawrench.com/docs/screenshots/plugins/kafka-cluster.png)
 
 ## Tips & limits
 

@@ -38,7 +38,7 @@ Then, in Infrawrench, go to **Settings → Notifications**, find the **Microsoft
 
 Press **Add channel**. Add as many channels as you like; each gets its own row.
 
-<insert [Settings → Notifications Microsoft Teams section with two channels listed, each showing its label and webhook hint, and the note pointing at alert routing rules for what each channel receives] here>
+![Settings → Notifications Microsoft Teams section with two channels listed, each showing its label and webhook hint, and the note pointing at alert routing rules for what each channel receives](https://agent-assets.infrawrench.com/docs/screenshots/features/teams-channels.png)
 
 ### The URL is a credential
 

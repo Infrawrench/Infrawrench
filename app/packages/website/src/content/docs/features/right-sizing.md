@@ -12,7 +12,7 @@ No new metric collection and no guesswork tables: the percentiles come from the 
 
 Open **Costs** in the sidebar and scroll to **Oversized**, just below Potential savings. Each row shows the machine, its current and recommended size, the p95 CPU and memory figures backing the call, and the estimated monthly saving.
 
-<insert [Costs page scrolled to the Oversized section, showing a flagged server row with current → recommended size, p95 CPU/memory figures, a monthly saving on the right, and the Apply resize button] here>
+![Costs page scrolled to the Oversized section, showing a flagged server row with current → recommended size, p95 CPU/memory figures, a monthly saving on the right, and the Apply resize button](https://agent-assets.infrawrench.com/docs/screenshots/features/oversized.png)
 
 The same list is on the mobile app's Costs tab (read-only — apply from web or desktop), in the `infrawrench oversized` CLI subcommand (`--json` for scripts), and as the `list_oversized_resources` [MCP tool](./mcp.md).
 
@@ -46,7 +46,7 @@ Right-sizing is declared by each provider plugin, never hard-coded. It ships for
 - DigitalOcean powers the Droplet off for the resize automatically and boots it afterwards.
 - Azure resizes a running VM but **restarts** it during the change.
 
-<insert [Apply resize confirm dialog quoting the change — current and recommended size with vCPU/RAM, p95 figures, monthly saving, and the provider note that the server must be powered off first] here>
+![Apply resize confirm dialog quoting the change — current and recommended size with vCPU/RAM, p95 figures, monthly saving, and the provider note that the server must be powered off first](https://agent-assets.infrawrench.com/docs/screenshots/features/rightsize-apply-confirm.png)
 
 Applying goes through the same update path as the resource's Edit form, so it plays by the same rules as every other change: an active [change freeze](../team-and-billing/change-freeze.md) blocks it with the freeze's own message, and every applied resize lands in the [audit log](../team-and-billing/audit-log.md). Disk is never touched — where the provider distinguishes, Infrawrench always requests the CPU/RAM-only resize, which is the reversible one.
 

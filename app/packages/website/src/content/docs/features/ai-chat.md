@@ -8,9 +8,9 @@ sidebar_order: 12
 
 Infrawrench ships an in-app **AI chat**, running on Google Gemini or Anthropic Claude — your pick per conversation. The model has access to the same tools your UI uses — listing resources, inspecting outputs, running SQL queries, executing Docker commands, rotating secrets, attaching disks, applying manifests — and routes every destructive action through a UI approval step.
 
-<insert [Chat page with a streamed assistant reply and a pending-approval card for a delete-resource tool use] here>
+![Chat page with a streamed assistant reply and a pending-approval card for a delete-resource tool use](https://agent-assets.infrawrench.com/docs/screenshots/features/chat-pending.png)
 
-<insert [Sidebar Chat section showing several recent chat sessions with the + new-chat button] here>
+![Sidebar Chat section showing several recent chat sessions with the + new-chat button](https://agent-assets.infrawrench.com/docs/screenshots/features/chat-sidebar.png)
 
 <insert [Desktop app with a chat conversation open as a workspace tab, cloud org selected in the org switcher] here>
 
@@ -65,7 +65,7 @@ Searches cost a small amount per query on top of tokens, and show up in your [ch
 
 If the deployment has no search backend or no egress proxy configured, the matching tool simply isn't offered and the agent will tell you what it would have looked up. Self-hosters: see `INFRAWRENCH_CHAT_SEARCH_BACKEND` and `WORKFLOW_FETCH_PROXY_URL` in `.env.example`.
 
-<insert [A chat turn where the agent used web_search: the tool card, and the reply below it citing linked sources] here>
+![A chat turn where the agent used web_search: the tool card, and the reply below it citing linked sources](https://agent-assets.infrawrench.com/docs/screenshots/features/chat-web-search.png)
 
 ## Destructive-action approval
 
@@ -81,7 +81,7 @@ The chat agent has a `sleep` tool (chat-only — the [MCP server](./mcp.md) does
 
 API clients see pending actions in the conversation fetch response and POST `{action: "approve" | "reject"}` to `/api/org/{orgId}/chat/conversations/{id}/pending/{pendingId}` to drive the same flow.
 
-<insert [Pending-action card with Approve/Reject buttons and the JSON tool input expanded] here>
+![Pending-action card with Approve/Reject buttons and the JSON tool input expanded](https://agent-assets.infrawrench.com/docs/screenshots/features/chat-pending-expanded.png)
 
 ## Audit
 

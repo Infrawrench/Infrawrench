@@ -6,7 +6,7 @@ sidebar_order: 4
 
 Infrawrench ships an in-app SQL console so you do not need to juggle psql, mysql, and vendor consoles for quick lookups.
 
-<insert [SQL editor with an autocomplete dropdown and a result table below] here>
+![SQL editor with an autocomplete dropdown and a result table below](https://agent-assets.infrawrench.com/docs/screenshots/features/sql-editor.png)
 
 ## Where to open it
 

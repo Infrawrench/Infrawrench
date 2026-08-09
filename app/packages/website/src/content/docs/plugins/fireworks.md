@@ -27,7 +27,7 @@ Two fields, both required.
 
 The account id is required because **Fireworks has no whoami endpoint**. Every control-plane path is `/v1/accounts/{account_id}/…`, so without it nothing lists at all. You can read it off any of your model strings: `accounts/my-team/models/my-model` → `my-team`. It is also shown at the top of app.fireworks.ai.
 
-<insert [The Fireworks AI Add-account form showing the API key and Account ID fields] here>
+![The Fireworks AI Add-account form showing the API key and Account ID fields](https://agent-assets.infrawrench.com/docs/screenshots/plugins/fireworks-add-account.png)
 
 ## Two planes, one key
 
@@ -47,7 +47,7 @@ Two caveats:
 - **Account-wide costs need an account-administrator key.** With a plain member key the plugin falls back to that principal's own usage rather than reporting nothing, and says so if even that is refused.
 - **Subtotals exclude fixed fees, invoice-level discounts, minimums, credits and taxes.** They are usage priced at your subscription rates, not an invoice.
 
-<insert [The cost view filtered to a Fireworks account, showing daily spend broken down by model] here>
+![The cost view filtered to a Fireworks account, showing daily spend broken down by model](https://agent-assets.infrawrench.com/docs/screenshots/plugins/fireworks-costs.png)
 
 ## Metrics
 
