@@ -76,7 +76,12 @@ import {
 } from "../../db/schema";
 import { requirePaidPlan } from "../entitlements";
 import { OrgConfigError, type ParsedOrgConfigDocument } from "./schema";
-import { loadOrgConfigState, type OrgConfigEntity, type OrgConfigState } from "./state";
+import {
+  loadOrgConfigState,
+  orgConfigResourceKey,
+  type OrgConfigEntity,
+  type OrgConfigState,
+} from "./state";
 
 export { OrgConfigError, orgConfigDocumentSections, parseOrgConfigDocument } from "./schema";
 
@@ -906,6 +911,22 @@ function resolveCards(
         );
         continue;
       }
+      // Account alone is not enough: writeCards would silently skip a pin whose
+      // inventory row has not been synced yet, and the plan would keep proposing
+      // the same ineffective create/update. Resolve against live resources here
+      // so the miss is visible and the card is not claimed as written.
+      if (
+        !args.state.resourceKeys.has(
+          orgConfigResourceKey(accountId, card.pluginId, card.resourceTypeId, card.externalId),
+        )
+      ) {
+        plan.miss(
+          "dashboards",
+          dashboard.key,
+          `resource card pins ${card.pluginId}/${card.resourceTypeId} "${card.externalId}" on account "${card.account}", which is not in this organization's inventory yet — sync the account and re-apply`,
+        );
+        continue;
+      }
       rows.push({
         kind: "resource",
         accountId,
@@ -1027,8 +1048,9 @@ async function writeCards(
           ),
         )
         .limit(1);
-      // Not an error: the resource may simply not have been synced yet. The
-      // card is skipped and the next apply (after a sync) picks it up.
+      // Defensive only: planning already drops pins that are not in
+      // `state.resourceKeys`. A resource deleted between plan and apply would
+      // otherwise leave a dangling pin id; skip rather than fail the whole tx.
       if (!resource) continue;
       await tx
         .insert(dashboardPins)
@@ -1074,7 +1096,8 @@ function resolveAllocationRules(
   rules: Array<{ priority: number; match: Record<string, string | undefined> }>,
   state: OrgConfigState,
 ): ResolvedAllocationRule[] {
-  return rules.map((rule) => {
+  const resolved: ResolvedAllocationRule[] = [];
+  for (const rule of rules) {
     const match: Record<string, string> = {};
     if (rule.match.tagKey?.trim()) match["tagKey"] = rule.match.tagKey.trim();
     if (match["tagKey"] && rule.match.tagValue?.trim()) {
@@ -1085,19 +1108,22 @@ function resolveAllocationRules(
       if (accountId) {
         match["accountId"] = accountId;
       } else {
-        // Dropping the clause would widen the rule — it would start claiming
-        // spend it was never meant to. Say so instead.
+        // Dropping only the account clause would widen the rule (an account-only
+        // rule becomes an empty catch-all; a tag+account rule starts claiming
+        // that tag across every account). Drop the whole rule instead.
         plan.miss(
           "costCentres",
           centreKey,
-          `allocation rule names account "${rule.match.account}", which this organization has not connected — the rule's account clause is dropped`,
+          `allocation rule names account "${rule.match.account}", which this organization has not connected — the rule is dropped rather than applied without its account clause`,
         );
+        continue;
       }
     }
     if (rule.match.pluginId?.trim()) match["pluginId"] = rule.match.pluginId.trim();
     if (rule.match.service?.trim()) match["service"] = rule.match.service.trim();
-    return { priority: rule.priority, match };
-  });
+    resolved.push({ priority: rule.priority, match });
+  }
+  return resolved;
 }
 
 async function writeAllocationRules(

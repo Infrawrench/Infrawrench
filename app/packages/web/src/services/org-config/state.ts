@@ -66,11 +66,31 @@ export interface OrgConfigEntity<T> {
   config: T;
 }
 
+/**
+ * Stable identity for a live resource pin, used both to decide at plan time
+ * whether a dashboard resource card can resolve and (defensively) at write time.
+ * `externalId` is the empty string when the inventory row has none.
+ */
+export function orgConfigResourceKey(
+  accountId: string,
+  pluginId: string,
+  resourceTypeId: string,
+  externalId: string,
+): string {
+  return `${accountId}\0${pluginId}\0${resourceTypeId}\0${externalId}`;
+}
+
 export interface OrgConfigState {
   /** Account id → display name, for rendering ids the document must not carry. */
   accountNameById: Map<string, string>;
   /** Lower-cased display name → account id. First match wins on a duplicate name. */
   accountIdByName: Map<string, string>;
+  /**
+   * Live (non-deleted) resources keyed by {@link orgConfigResourceKey}. Planning
+   * uses this so a resource pin that has not been synced yet is reported as
+   * unresolved instead of accepted and then silently skipped on apply.
+   */
+  resourceKeys: Set<string>;
   budgets: OrgConfigEntity<OrgConfigBudget>[];
   customGraphs: OrgConfigEntity<OrgConfigCustomGraph>[];
   workflows: OrgConfigEntity<OrgConfigWorkflow>[];
@@ -112,6 +132,7 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
     probeRows,
     centreRows,
     allocationRows,
+    resourceRows,
   ] = await Promise.all([
     db
       .select({ id: accounts.id, displayName: accounts.displayName })
@@ -163,6 +184,18 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
       .from(costAllocationRules)
       .where(eq(costAllocationRules.organizationId, organizationId))
       .orderBy(asc(costAllocationRules.priority), asc(costAllocationRules.id)),
+    // Identity columns only — used to resolve dashboard resource pins at plan
+    // time so apply never reports a card as written when the inventory has not
+    // synced it yet.
+    db
+      .select({
+        accountId: resources.accountId,
+        pluginId: resources.pluginId,
+        resourceTypeId: resources.resourceTypeId,
+        externalId: resources.externalId,
+      })
+      .from(resources)
+      .where(and(eq(resources.organizationId, organizationId), isNull(resources.deletedAt))),
   ]);
 
   const accountNameById = new Map(accountRows.map((a) => [a.id, a.displayName]));
@@ -171,6 +204,12 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
     const lower = account.displayName.toLowerCase();
     if (!accountIdByName.has(lower)) accountIdByName.set(lower, account.id);
   }
+
+  const resourceKeys = new Set(
+    resourceRows.map((r) =>
+      orgConfigResourceKey(r.accountId, r.pluginId, r.resourceTypeId, r.externalId ?? ""),
+    ),
+  );
 
   const budgetEntities = withKeys(
     budgetRows,
@@ -311,6 +350,7 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
   return {
     accountNameById,
     accountIdByName,
+    resourceKeys,
     budgets: budgetEntities,
     customGraphs: graphEntities,
     workflows: workflowEntities,

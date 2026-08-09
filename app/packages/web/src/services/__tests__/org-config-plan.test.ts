@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = {
   accountNameById: new Map<string, string>(),
   accountIdByName: new Map<string, string>(),
+  resourceKeys: new Set<string>(),
   budgets: [] as unknown[],
   customGraphs: [] as unknown[],
   workflows: [] as unknown[],
@@ -46,6 +47,14 @@ const state = {
 
 vi.mock("../org-config/state", () => ({
   loadOrgConfigState: () => Promise.resolve(state),
+  // Same encoding as the real helper — kept local so the mock does not pull in
+  // the full state module (and its db import) at suite load time.
+  orgConfigResourceKey: (
+    accountId: string,
+    pluginId: string,
+    resourceTypeId: string,
+    externalId: string,
+  ) => `${accountId}\0${pluginId}\0${resourceTypeId}\0${externalId}`,
 }));
 
 vi.mock("../../db/client", () => ({
@@ -97,6 +106,7 @@ function budget(key: string, name: string, amountCents = 10_000) {
 function reset() {
   state.accountNameById = new Map([["acct-1", "Production"]]);
   state.accountIdByName = new Map([["production", "acct-1"]]);
+  state.resourceKeys = new Set();
   state.budgets = [];
   state.customGraphs = [];
   state.workflows = [];
@@ -264,6 +274,78 @@ describe("cross-section references", () => {
       ],
     });
     expect(result.unresolved[0]?.detail).toMatch(/Some Other Org/);
+  });
+
+  it("drops a resource pin whose inventory row has not been synced yet", async () => {
+    // Account exists, but the resource itself is not in `resourceKeys` — the
+    // old path accepted the card at plan time and silently skipped it on write.
+    const result = await plan({
+      dashboards: [
+        {
+          key: "home",
+          name: "Home",
+          cards: [
+            {
+              kind: "resource",
+              pluginId: "gcp",
+              resourceTypeId: "gce-instance",
+              externalId: "projects/p/instances/missing",
+              account: "Production",
+            },
+          ],
+        },
+      ],
+    });
+    expect(result.unresolved[0]?.detail).toMatch(/not in this organization's inventory/);
+    // The dashboard is still created, but without claiming a pin that was not written.
+    expect(result.counts.create).toBe(1);
+  });
+
+  it("keeps a resource pin when the account and inventory row both resolve", async () => {
+    state.resourceKeys.add(`acct-1\0gcp\0gce-instance\0projects/p/instances/i`);
+    const result = await plan({
+      dashboards: [
+        {
+          key: "home",
+          name: "Home",
+          cards: [
+            {
+              kind: "resource",
+              pluginId: "gcp",
+              resourceTypeId: "gce-instance",
+              externalId: "projects/p/instances/i",
+              account: "Production",
+            },
+          ],
+        },
+      ],
+    });
+    expect(result.unresolved).toEqual([]);
+    expect(result.counts.create).toBe(1);
+  });
+
+  it("drops an allocation rule whose account is not connected, rather than widening it", async () => {
+    // An account-only rule with a dropped account clause becomes an empty
+    // catch-all; a tag+account rule would start claiming that tag everywhere.
+    const result = await plan({
+      costCentres: [
+        {
+          key: "platform",
+          name: "Platform",
+          rules: [
+            {
+              priority: 10,
+              match: { account: "Ghost Account", tagKey: "team", tagValue: "platform" },
+            },
+            { priority: 20, match: { tagKey: "env", tagValue: "prod" } },
+          ],
+        },
+      ],
+    });
+    expect(result.unresolved[0]).toMatchObject({ section: "costCentres", key: "platform" });
+    expect(result.unresolved[0]?.detail).toMatch(/rule is dropped/);
+    // The centre is still created; only the bad rule is dropped.
+    expect(result.counts.create).toBe(1);
   });
 
   it("rejects a widget config the hand-editing route would have rejected", async () => {
