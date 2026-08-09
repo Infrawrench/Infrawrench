@@ -1,3 +1,28 @@
 packages:
   - "plugin-architecture/packages/*"
   - "app/packages/*"
+
+overrides:
+  yaml: ">=2.8.3"
+  "@esbuild-kit/core-utils>esbuild": ">=0.25.0"
+
+# TODO: change this before merging tomorrow, this is just bc I bumped things yesterday
+minimumReleaseAge: 20
+
+allowBuilds:
+  "@google/genai": true
+  better-sqlite3: true
+  cpu-features: true
+  electron: true
+  electron-winstaller: true
+  msgpackr-extract: true
+  node-pty: true
+  protobufjs: true
+  ssh2: true
+  workerd: true
+  # Do NOT allow esbuild's postinstall: it replaces bin/esbuild (a JS
+  # shim) with a hardlink to the native binary. pnpm's .bin wrappers
+  # always `exec node <target>`, so a native binary at that path blows
+  # up with "SyntaxError: Invalid or unexpected token". The JS shim +
+  # optional @esbuild/* platform packages work fine without postinstall.
+  esbuild: false

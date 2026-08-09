@@ -25,11 +25,5 @@
     "node": ">=20",
     "pnpm": ">=9"
   },
-  "packageManager": "pnpm@9.15.4",
-  "pnpm": {
-    "overrides": {
-      "yaml": ">=2.8.3",
-      "@esbuild-kit/core-utils>esbuild": ">=0.25.0"
-    }
-  }
+  "packageManager": "pnpm@11.20.0"
 }
