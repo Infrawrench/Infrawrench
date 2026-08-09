@@ -6,9 +6,6 @@ overrides:
   yaml: ">=2.8.3"
   "@esbuild-kit/core-utils>esbuild": ">=0.25.0"
 
-# TODO: change this before merging tomorrow, this is just bc I bumped things yesterday
-minimumReleaseAge: 20
-
 allowBuilds:
   "@google/genai": true
   better-sqlite3: true
