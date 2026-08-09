@@ -296,13 +296,7 @@ jobs:
       - run: corepack enable
       - name: Skip workerd build (unsupported on Windows ARM64)
         if: matrix.platform == 'windows-11-arm'
-        run: |
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.pnpm = { ...pkg.pnpm, neverBuiltDependencies: ['workerd'] };
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
-          "
+        run: 'sed -i "s/workerd: true/workerd: false/" pnpm-workspace.yaml'
       - run: pnpm install --frozen-lockfile
       - name: Copy env.production.ts to env.ts for desktop package
         run: cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
