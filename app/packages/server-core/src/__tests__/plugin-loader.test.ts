@@ -1,13 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 let loader: typeof import("../plugin-loader");
 
-// The first import transforms all 31 plugin packages; under a fully parallel
-// `turbo test` run that can exceed the default 10s hook timeout.
-beforeEach(async () => {
-  vi.resetModules();
+// One import for the whole file. Transforming every plugin package is expensive,
+// and doing it in `beforeEach` (with `resetModules`) paid that cost per test —
+// under a saturated `turbo test` that routinely blew past a 60s hook timeout.
+// None of these cases mutate the loader cache, so a single load is enough; the
+// caching assertion still exercises two `loadPlugins()` calls on that instance.
+beforeAll(async () => {
   loader = await import("../plugin-loader");
-}, 60_000);
+}, 120_000);
 
 describe("loadPlugins", () => {
   it("loads a non-empty set of plugins", async () => {

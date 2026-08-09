@@ -223,7 +223,9 @@ describe("fetch in the isolate", () => {
     // 300ms of 50ms calls is ~6 requests; anything near 235 means the loop ran
     // to the interrupt handler's instruction count instead.
     expect(calls).toBeLessThan(20);
-    expect(Date.now() - started).toBeLessThan(3_000);
+    // Wall clock stretches under a loaded turbo run; the unfixed loop took ~12s,
+    // so 8s still catches that regression without flaking on a 3.3s host pause.
+    expect(Date.now() - started).toBeLessThan(8_000);
   });
 });
 

@@ -50,8 +50,7 @@ export class CostExportInputError extends Error {
 
 /** The decrypted credential bundle. Never leaves the server process. */
 export type CostExportCredentials =
-  | { kind: "s3"; accessKeyId: string; secretAccessKey: string }
-  | { kind: "http"; url: string };
+  { kind: "s3"; accessKeyId: string; secretAccessKey: string } | { kind: "http"; url: string };
 
 /** Most exports an org may keep. Each one is scheduled work the poller runs. */
 export const MAX_COST_EXPORTS_PER_ORG = 25;

@@ -8,6 +8,12 @@ const safeParse = vi.fn();
 vi.mock("@infrawrench/plugin-base", () => ({
   pluginManifestSchema: { safeParse: (m: unknown) => safeParse(m) },
   validatePreflightContract: () => null,
+  // Real plugins imported when a mock is missing reach for these builders;
+  // stub them so an unfinished mock list fails loudly on the allowlist check
+  // instead of hanging the suite on a missing-export TypeError.
+  f: (x: unknown) => x,
+  o: (x: unknown) => x,
+  rt: (x: unknown) => x,
 }));
 
 let disabled: string[] = [];
@@ -82,6 +88,7 @@ vi.mock("@infrawrench/plugin-cohere", () => stub("cohere"));
 vi.mock("@infrawrench/plugin-cartesia", () => stub("cartesia"));
 vi.mock("@infrawrench/plugin-assemblyai", () => stub("assemblyai"));
 vi.mock("@infrawrench/plugin-anthropic", () => stub("anthropic"));
+vi.mock("@infrawrench/plugin-workos", () => stub("workos"));
 
 beforeEach(() => {
   disabled = [];

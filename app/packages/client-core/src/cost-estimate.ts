@@ -25,14 +25,18 @@ function currencyFormatter(currency: string, fractionDigits: number): Intl.Numbe
   let fmt = formatterCache.get(key);
   if (!fmt) {
     try {
-      fmt = new Intl.NumberFormat(undefined, {
+      // Pin en-US so USD reads as `$30.37` rather than the locale-dependent
+      // `US$30.37` (en-GB) / `USD 30.37` (en-AU). The surrounding copy is
+      // English ("This change adds $340/month"), so a matching symbol is the
+      // stable choice across CI hosts and user locales.
+      fmt = new Intl.NumberFormat("en-US", {
         style: "currency",
         currency: currency || "USD",
         minimumFractionDigits: fractionDigits,
         maximumFractionDigits: fractionDigits,
       });
     } catch {
-      fmt = new Intl.NumberFormat(undefined, {
+      fmt = new Intl.NumberFormat("en-US", {
         minimumFractionDigits: fractionDigits,
         maximumFractionDigits: fractionDigits,
       });

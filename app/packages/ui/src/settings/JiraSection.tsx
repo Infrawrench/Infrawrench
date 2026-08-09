@@ -80,9 +80,9 @@ export function JiraSection() {
       return;
     }
     api
-      .get<
-        JiraIssueType[]
-      >(`/api/org/${orgId}/jira/projects/${encodeURIComponent(defaultProjectKey)}/issue-types`)
+      .get<JiraIssueType[]>(
+        `/api/org/${orgId}/jira/projects/${encodeURIComponent(defaultProjectKey)}/issue-types`,
+      )
       .then(setIssueTypes, () => setIssueTypes([]));
   }, [api, orgId, integration, defaultProjectKey]);
 

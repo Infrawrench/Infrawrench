@@ -195,6 +195,16 @@ export {
   partialEstimatePrefix,
 } from "./cost-estimate";
 export {
+  parseCostQuery,
+  formatCostQuery,
+  isValidCostQuery,
+  CostQueryParseError,
+  CostQueryFormatError,
+  COST_QUERY_GRAMMAR,
+  COST_QUERY_LANGUAGE_SUMMARY,
+  COST_QUERY_MAX_LENGTH,
+} from "./cost-query-language";
+export {
   CURRENCY_CODE_PATTERN,
   EXCHANGE_RATE_LIMITS,
   normalizeCurrencyCode,
