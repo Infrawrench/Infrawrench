@@ -508,7 +508,7 @@ The registry is the static-import `PLUGINS` array in `app/packages/server-core/s
 
 - `SidebarAccounts.tsx` — grouped by plugin, lazy-loaded per account on expand, auto-refresh every 30s, right-click SSH context menu
 - `SidebarDashboards.tsx` — dashboard list + create, under the org tile grid (Agents, Workflows, Deploy, Costs, Alerts, Changes, Graph, Expiring, Posture, Env diff, Probes, Fan-out, Logs — each one a workspace-tab kind); dashboard sidebar pill/drop/drag visuals are canonicalized in shared `@infrawrench/ui` `DroppableDashboardItem` so desktop and web stay in sync
-- The tile grid itself is shared: `@infrawrench/ui` `SidebarNavGrid` (was a private `SidebarNavTile` in `WebSidebar.tsx`). Icons are a mix of text glyphs and SVGs, so each gets a fixed `w-3.5` slot or the labels don't line up. Desktop drops the Costs tile in local mode (spend is collected server-side), which is why the grid spans the last tile across both columns when the count is odd
+- The tile grid itself is shared: `@infrawrench/ui` `SidebarNavGrid` (was a private `SidebarNavTile` in `WebSidebar.tsx`). Icon-only tiles with Floating UI tooltips; column count is balanced up to 7 per row so a wrap never leaves a near-empty second row. Desktop drops cloud-only tiles (Costs, Alerts, Changes, Probes) in local mode, so the tile count differs between modes
 - `LocalDeploymentsPanel.tsx` — the Deploy tab in local mode: history of `infrawrench deploy` runs on this machine (cloud mode renders the shared `DeploymentsPanel` instead)
 - `DashboardView.tsx` — pinned resource cards, drag-and-drop pin, auto-connect & refresh stats every 30s
 - `CreateResourceModal.tsx` — calls `getCreateConfig` on mount, renders region/size/image/disk/ssh-key pickers, navigates to new resource on success

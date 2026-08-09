@@ -20,8 +20,8 @@ import {
  *
  * Shared by web and desktop, and the tile list is not a fixed length —
  * desktop hides the cloud-only tiles in local mode — so the column count is
- * computed: at most 6 tiles per row, split evenly so a wrap never leaves a
- * near-empty second row (10 → 5+5, 8 → 4+4, 7 → 4+3, 6 → one row).
+ * computed: at most 7 tiles per row, split evenly so a wrap never leaves a
+ * near-empty second row (14 → 7+7, 10 → 5+5, 8 → 4+4, 7 → one row).
  */
 export interface SidebarNavTileDef {
   key: string;
@@ -30,7 +30,7 @@ export interface SidebarNavTileDef {
   onClick: () => void;
 }
 
-const MAX_TILES_PER_ROW = 6;
+const MAX_TILES_PER_ROW = 7;
 
 export function SidebarNavGrid({ tiles }: { tiles: SidebarNavTileDef[] }) {
   if (tiles.length === 0) return null;
