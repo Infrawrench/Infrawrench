@@ -911,10 +911,10 @@ function resolveCards(
         );
         continue;
       }
-      // Account alone is not enough: writeCards would silently skip a pin whose
-      // inventory row has not been synced yet, and the plan would keep proposing
-      // the same ineffective create/update. Resolve against live resources here
-      // so the miss is visible and the card is not claimed as written.
+      // Account alone is not enough: a pin whose inventory row has not been
+      // synced yet must not be planned as writable. Resolve against live
+      // resources here so the miss is visible; write time fails the transaction
+      // if the row disappears between plan and apply.
       if (
         !args.state.resourceKeys.has(
           orgConfigResourceKey(accountId, card.pluginId, card.resourceTypeId, card.externalId),
@@ -1048,10 +1048,14 @@ async function writeCards(
           ),
         )
         .limit(1);
-      // Defensive only: planning already drops pins that are not in
-      // `state.resourceKeys`. A resource deleted between plan and apply would
-      // otherwise leave a dangling pin id; skip rather than fail the whole tx.
-      if (!resource) continue;
+      // Planning already required this row to exist. If it is gone now (soft-
+      // deleted between plan and write), fail the transaction rather than
+      // commit after clearCards with the pin missing — apply is all-or-nothing.
+      if (!resource) {
+        throw new OrgConfigError(
+          `Resource pin ${row.pluginId}/${row.resourceTypeId} "${row.externalId}" disappeared between plan and apply. Re-run plan after the inventory settles, then apply again.`,
+        );
+      }
       await tx
         .insert(dashboardPins)
         .values({
