@@ -20,7 +20,7 @@ postgresql://user:password@host:5432/dbname
 
 Or use an output reference from a DigitalOcean managed database or a Neon branch.
 
-![Postgres Add-account form with connection string and output-ref toggle](https://agent-assets.infrawrench.com/docs/screenshots/plugins/postgres-add-account.png)
+<insert [Postgres Add-account form with connection string and output-ref toggle] here>
 
 ## Notable flows
 

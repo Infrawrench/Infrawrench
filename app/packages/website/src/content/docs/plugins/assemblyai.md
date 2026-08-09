@@ -17,7 +17,7 @@ AssemblyAI's v2 API is async-only and deliberately narrow: `GET /v2/transcript` 
 
 **API Region** (optional, defaults to North America) — which host to talk to. The **EU** option (`api.eu.assemblyai.com`) keeps audio and transcripts inside the European Union.
 
-![AssemblyAI Add-account form showing the API key field and the region picker with the Default and EU options](https://agent-assets.infrawrench.com/docs/screenshots/plugins/assemblyai-add-account.png)
+<insert [AssemblyAI Add-account form showing the API key field and the region picker with the Default and EU options] here>
 
 ## The Speech tab
 
@@ -32,7 +32,7 @@ Two models are offered, which are the only two the v2 API still accepts:
 - **Universal-3.5 Pro** — highest accuracy, 18 languages, keyterm prompts up to 1,000 terms. The first entry of AssemblyAI's own default model list.
 - **Universal-2** — the broadest coverage at 99 languages, and what AssemblyAI falls back to when Universal-3.5 Pro cannot serve a request.
 
-![AssemblyAI Speech tab on the Account resource, with the model picker set to Universal-3.5 Pro and a completed transcript showing speaker labels](https://agent-assets.infrawrench.com/docs/screenshots/plugins/assemblyai-speech.png)
+<insert [AssemblyAI Speech tab on the Account resource, with the model picker set to Universal-3.5 Pro and a completed transcript showing speaker labels] here>
 
 ## Tips & limits
 

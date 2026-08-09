@@ -27,7 +27,7 @@ Open **Domains** from the sidebar on web or desktop, or run `infrawrench dns`.
 
 Clicking any row opens the underlying resource, which is where the edit or delete actually happens.
 
-![Domains screen showing the zones roll-up above the records table, with one record marked Dangling and its explanation visible](https://agent-assets.infrawrench.com/docs/screenshots/features/domains.png)
+<insert [Domains screen showing the zones roll-up above the records table, with one record marked Dangling and its explanation visible] here>
 
 ## Which providers
 

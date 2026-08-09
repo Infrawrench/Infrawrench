@@ -22,7 +22,7 @@ resources:*:read           # read any resource type
 
 The `Settings → Roles` page lists the full catalogue grouped by category (Accounts, Resources, Team, Billing, etc.). The same permission strings are accepted as **API key scopes** — a key with `resources:read` can hit every read-only resource endpoint.
 
-![Settings → Roles page showing the three system roles plus one custom role](https://agent-assets.infrawrench.com/docs/screenshots/settings/roles.png)
+<insert [Settings → Roles page showing the three system roles plus one custom role] here>
 
 ## System roles
 
@@ -49,7 +49,7 @@ If someone needs a permission only occasionally, consider [break-glass access](.
 
 Owners and anyone with `team:role:write` can define their own roles in **Settings → Roles → New role**. Pick permissions from the categorised list, or paste wildcard patterns (e.g. `resources:postgres:*`) into the advanced field.
 
-![Custom-role edit form with permissions grouped by category, wildcard input visible](https://agent-assets.infrawrench.com/docs/screenshots/settings/roles-edit.png)
+<insert [Custom-role edit form with permissions grouped by category, wildcard input visible] here>
 
 A custom role cannot be deleted while any member or pending invitation still references it. Reassign or revoke first.
 
@@ -57,7 +57,7 @@ A custom role cannot be deleted while any member or pending invitation still ref
 
 Use **Settings → Team → (member) → Role picker** to change a member's role. The owner role cannot be reassigned through this picker — use the existing owner to promote someone first.
 
-![Team page member row with the new role picker dropdown open](https://agent-assets.infrawrench.com/docs/screenshots/settings/team-role-picker.png)
+<insert [Team page member row with the new role picker dropdown open] here>
 
 You cannot hand out more authority than you hold. Two rules enforce that:
 

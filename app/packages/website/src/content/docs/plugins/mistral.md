@@ -24,7 +24,7 @@ The **Admin API key** field is optional and separate. Mistral's Admin API lives 
 
 Everything else — models, voices, files, jobs, transcription, synthesis — works on the workspace key alone.
 
-![Mistral Add-account form showing the required API key field and the optional Admin API key field with its Enterprise-only description](https://agent-assets.infrawrench.com/docs/screenshots/plugins/mistral-add-account.png)
+<insert [Mistral Add-account form showing the required API key field and the optional Admin API key field with its Enterprise-only description] here>
 
 ## The Speech tab
 
@@ -33,7 +33,7 @@ Open a voice (or any model) for a **Speech** tab:
 - **Synthesize** posts JSON to `/v1/audio/speech` and asks for mp3. Mistral returns base64 audio inside a JSON envelope rather than raw bytes; the app decodes it for you. The voice picker is populated live from `GET /v1/audio/voices`, so workspace clones show up alongside the presets with their gender, languages, and description.
 - **Transcribe** posts multipart to `/v1/audio/transcriptions` with **speaker diarisation enabled**, so the word table under the transcript carries speaker labels and the summary tells you how many speakers were detected.
 
-![Mistral Speech tab on a voice, showing the transcript with a per-speaker word table below](https://agent-assets.infrawrench.com/docs/screenshots/plugins/mistral-speech.png)
+<insert [Mistral Speech tab on a voice, showing the transcript with a per-speaker word table below] here>
 
 ## Costs
 

@@ -32,7 +32,7 @@ OpenAI needs **two keys** to cover its whole surface, and they are not interchan
 - the **usage charts** on models and projects,
 - **cost collection**, which is otherwise disabled with a message saying why.
 
-![OpenAI Add-account form showing the required API Key field and the optional Admin API Key field, with the description explaining what the admin key unlocks](https://agent-assets.infrawrench.com/docs/screenshots/plugins/openai-add-account.png)
+<insert [OpenAI Add-account form showing the required API Key field and the optional Admin API Key field, with the description explaining what the admin key unlocks] here>
 
 ## The Speech tab
 
@@ -43,7 +43,7 @@ Every model gets a **Speech** tab, with both halves driven by one shared model p
 
 If you open a model that cannot do audio at all and hit Synthesize, the plugin falls back to `gpt-4o-mini-tts` rather than sending a request OpenAI will reject; the same happens in reverse for transcription.
 
-![OpenAI Speech tab on a model, with the voice picker open showing the ten built-in voices and a synthesized clip in the player below](https://agent-assets.infrawrench.com/docs/screenshots/plugins/openai-speech.png)
+<insert [OpenAI Speech tab on a model, with the voice picker open showing the ten built-in voices and a synthesized clip in the player below] here>
 
 ## Costs and metrics
 

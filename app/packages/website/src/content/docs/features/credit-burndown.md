@@ -8,7 +8,7 @@ Most providers bill in arrears. They send an invoice, you argue with it, life go
 
 That makes an empty credit balance an **outage**, not a bill. And a balance on its own is not actionable: "you have $42" tells you nothing. "$42, six days left at your current burn" is a decision.
 
-![The Credit burndown section on the Costs panel showing three balances: one red at "4d", one amber at "3w", and one grey at "5mo", each with its remaining amount and burn per day](https://agent-assets.infrawrench.com/docs/screenshots/features/credit-burndown.png)
+<insert [The Credit burndown section on the Costs panel showing three balances: one red at "4d", one amber at "3w", and one grey at "5mo", each with its remaining amount and burn per day] here>
 
 Find it on the **Costs** panel, above the savings sections — those are about spending less, this is about not stopping.
 

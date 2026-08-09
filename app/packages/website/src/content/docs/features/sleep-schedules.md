@@ -29,7 +29,7 @@ Note that a stopped resource isn't always a free resource: DigitalOcean and Hetz
 
 Open an eligible resource and switch to its **Schedule** tab. Pick the working days, the off time, the on time, and the IANA timezone — the editor previews the next few transitions so you can sanity-check the zone, and quotes the projected monthly saving computed from the resource's trailing 30-day spend and the fraction of the week it would be off.
 
-![Screenshot of the Schedule tab on an EC2 instance's detail page showing the editor modal with Mon–Fri selected, off 19:00 / on 08:00, Europe/London, and the projected monthly saving quote](https://agent-assets.infrawrench.com/docs/screenshots/features/sleep-schedule-editor.png)
+<insert [Screenshot of the Schedule tab on an EC2 instance's detail page showing the editor modal with Mon–Fri selected, off 19:00 / on 08:00, Europe/London, and the projected monthly saving quote] here>
 
 One schedule per resource. Times are wall-clock in the chosen zone and stay correct across daylight-saving transitions.
 
@@ -37,7 +37,7 @@ One schedule per resource. Times are wall-clock in the chosen zone and stay corr
 
 The **Sleep schedules** section of the Costs panel lists every schedule in the org — the window, the next transition, the last run's outcome, and the projected saving — with pause/resume, edit, and delete controls.
 
-![Screenshot of the Sleep schedules section on the Costs panel with several schedules listed, one paused and one showing a "Skipped: freeze" badge](https://agent-assets.infrawrench.com/docs/screenshots/features/sleep-schedules.png)
+<insert [Screenshot of the Sleep schedules section on the Costs panel with several schedules listed, one paused and one showing a "Skipped: freeze" badge] here>
 
 Creating, editing, and deleting a schedule are recorded in the [audit log](../team-and-billing/audit-log.md).
 

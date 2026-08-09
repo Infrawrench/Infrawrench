@@ -26,7 +26,7 @@ Generate an access key pair in the AWS console (**IAM → Users → Security cre
 - **Secret access key**
 - **Default region**
 
-![AWS Add-account form with access key / secret / region fields](https://agent-assets.infrawrench.com/docs/screenshots/plugins/aws-add-account.png)
+<insert [AWS Add-account form with access key / secret / region fields] here>
 
 Use least-privilege policies. For read-only browsing, the `ReadOnlyAccess` managed policy is usually enough; for creating resources, you need the matching write permissions.
 
@@ -54,9 +54,9 @@ The probe resolves the caller with `sts:GetCallerIdentity` (needs no permission)
 - **Bedrock playground** on Bedrock foundation models — the list shows on-demand, text-output models in your account's region; open one and use the **Playground** tab to chat with it through the Converse API. Replies arrive as a single whole message (non-streaming), and the full conversation history is sent on each turn. Models that require an inference profile or provisioned throughput are filtered out, since they can't be called by bare model ID.
 - **Read-only manifest view** for most resources.
 
-![DynamoDB detail page showing the Schema & indexes tab with a primary key section, an attribute definitions table, and a GSI pill with status / keys / projection / throughput stats](https://agent-assets.infrawrench.com/docs/screenshots/plugins/aws-dynamodb-schema.png)
+<insert [DynamoDB detail page showing the Schema & indexes tab with a primary key section, an attribute definitions table, and a GSI pill with status / keys / projection / throughput stats] here>
 
-![DynamoDB Create resource form with the optional "Secondary indexes (optional)" textarea expanded showing an example JSON value](https://agent-assets.infrawrench.com/docs/screenshots/plugins/aws-dynamodb-create.png)
+<insert [DynamoDB Create resource form with the optional "Secondary indexes (optional)" textarea expanded showing an example JSON value] here>
 
 ## Tips & limits
 
@@ -78,4 +78,4 @@ The VPC wiring is declared, so the [dependency graph](../features/dependency-gra
 
 **DB subnet groups** are listed as their own resource so database clusters reach the network. AWS reports a cluster's placement as nothing but the subnet group's name, so Aurora, DocumentDB and Neptune clusters link to their **DB subnet group**, and the group in turn links to its **VPC** and each **subnet** it spans. Opening the group shows every database sharing that placement.
 
-![Dependency graph showing an Aurora cluster linked to a DB subnet group, which fans out to a VPC and two subnets](https://agent-assets.infrawrench.com/docs/screenshots/plugins/aws-aurora-dependency-graph.png)
+<insert [Dependency graph showing an Aurora cluster linked to a DB subnet group, which fans out to a VPC and two subnets] here>

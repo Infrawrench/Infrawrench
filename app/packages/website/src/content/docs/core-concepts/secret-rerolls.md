@@ -17,7 +17,7 @@ A reroll reassigns a field that was pointing at one output to point at a differe
 3. Choose **Change source**.
 4. Pick a new output reference, or switch to a literal value.
 
-![Secret field showing the "Change source" option in a dropdown](https://agent-assets.infrawrench.com/docs/screenshots/core-concepts/secret-reroll-change-source.png)
+<insert [Secret field showing the "Change source" option in a dropdown] here>
 
 Infrawrench will resolve the new source on the next connection. Existing connections are not forcibly dropped.
 

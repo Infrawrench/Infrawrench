@@ -6,7 +6,7 @@ sidebar_order: 8
 
 For resources where the provider’s canonical shape is a document (Kubernetes manifests, Cloudflare zone/worker settings), infrawrench exposes the full document in a Monaco editor on the resource detail page.
 
-![Manifest editor showing a Kubernetes Deployment YAML with a Save button](https://agent-assets.infrawrench.com/docs/screenshots/features/manifest-editor.png)
+<insert [Manifest editor showing a Kubernetes Deployment YAML with a Save button] here>
 
 ## Where you get it
 

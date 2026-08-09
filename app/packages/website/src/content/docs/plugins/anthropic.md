@@ -24,13 +24,13 @@ Anthropic splits its API across two credentials that share a prefix but nothing 
 
 The Admin API does not exist on individual (non-organization) accounts, so there is nothing to add on a personal plan.
 
-![Anthropic Add-account form showing the required API Key field and the optional Admin API Key field with its admin-only description](https://agent-assets.infrawrench.com/docs/screenshots/plugins/anthropic-add-account.png)
+<insert [Anthropic Add-account form showing the required API Key field and the optional Admin API Key field with its admin-only description] here>
 
 ## Costs
 
 With an admin key attached, spend is collected from `GET /v1/organizations/cost_report`. That endpoint is **daily-granularity only** — there is no hourly cost — and can be grouped by description and by workspace, so cost views attribute Claude spend per service and per workspace. Up to a year of history is available, with the last three days re-fetched each sync because Anthropic restates them.
 
-![Cost view filtered to an Anthropic account, showing daily spend broken down by workspace](https://agent-assets.infrawrench.com/docs/screenshots/plugins/anthropic-costs.png)
+<insert [Cost view filtered to an Anthropic account, showing daily spend broken down by workspace] here>
 
 ## Tips & limits
 

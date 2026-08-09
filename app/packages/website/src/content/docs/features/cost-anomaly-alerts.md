@@ -94,7 +94,7 @@ thresholds or the SMS setting: they are organization-wide settings that change w
 alerts look like, and the control you actually want on a phone — turning the notifications off
 for yourself — is the "Cost anomalies" toggle in the app's notification settings.
 
-![Costs panel Anomalies section with the tuning panel expanded, showing the Sensitivity, Spike floor, and New-source floor inputs with their default values, and the "Text the on-call list" dropdown set to Never](https://agent-assets.infrawrench.com/docs/screenshots/features/anomalies-tuning.png)
+<insert [Costs panel Anomalies section with the tuning panel expanded, showing the Sensitivity, Spike floor, and New-source floor inputs with their default values, and the "Text the on-call list" dropdown set to Never] here>
 
 ## Deduplication and cooldown
 
@@ -140,7 +140,7 @@ They are hints, not verdicts: the queries find correlation in time, scoped to yo
 provider where possible), and an empty list just means nothing notable was recorded in that
 window.
 
-![Costs panel Anomalies list showing a spike row with two root-cause hints beneath it — a "12 gce-instance resources appeared" line and a workflow-run line with the actor's name](https://agent-assets.infrawrench.com/docs/screenshots/features/anomalies-hints.png)
+<insert [Costs panel Anomalies list showing a spike row with two root-cause hints beneath it — a "12 gce-instance resources appeared" line and a workflow-run line with the actor's name] here>
 
 <insert [Slack anomaly alert message whose body ends with an "Around then:" line listing the same root-cause hints] here>
 
@@ -151,7 +151,7 @@ the day, what spiked, the actual spend, the baseline it was measured against, an
 percentage change. New spend sources carry a **New source** badge, and show `none` for the
 baseline and `new` for the change — a key with no prior spend has no percentage to be up by.
 
-![Costs panel showing the Anomalies section with a mix of rows — a spike with a red percentage change, and a new spend source with its New source badge, "none" baseline, and "new" change](https://agent-assets.infrawrench.com/docs/screenshots/features/anomalies-mix.png)
+<insert [Costs panel showing the Anomalies section with a mix of rows — a spike with a red percentage change, and a new spend source with its New source badge, "none" baseline, and "new" change] here>
 
 The **mobile app** shows the same list on its **Costs** tab, under the month-to-date chart and
 your budgets, with the same distinction between the two kinds. Tapping a cost anomaly push
@@ -190,7 +190,7 @@ own opt-in toggle everywhere those channels are configured:
 - **[Microsoft Teams](./teams-alerts.md)** — per-webhook "Anomalies" toggle on each routed
   channel.
 
-![Web settings Alerting & paging page with the "Cost anomalies" push toggle and a Slack channel row showing the Anomalies trigger checkbox](https://agent-assets.infrawrench.com/docs/screenshots/features/anomalies-settings.png)
+<insert [Web settings Alerting & paging page with the "Cost anomalies" push toggle and a Slack channel row showing the Anomalies trigger checkbox] here>
 
 All toggles default to on. Slack and Teams messages carry a "View in Infrawrench" button that
 opens the Costs panel.
@@ -231,7 +231,7 @@ Texts need paging enabled for the organization with Twilio credentials and a fro
 **Settings → Notifications**, and at least one recipient opted into SMS. If none of that is set
 up, the tuning panel says so rather than accepting the setting and silently delivering nothing.
 
-![Tuning panel with "Text the on-call list" set to "Every anomaly" on an org with no Twilio credentials, showing the amber warning that the organization can't receive SMS yet](https://agent-assets.infrawrench.com/docs/screenshots/features/anomalies-sms-warn.png)
+<insert [Tuning panel with "Text the on-call list" set to "Every anomaly" on an org with no Twilio credentials, showing the amber warning that the organization can't receive SMS yet] here>
 
 ## API
 

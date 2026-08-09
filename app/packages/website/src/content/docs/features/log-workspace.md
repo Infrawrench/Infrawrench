@@ -12,7 +12,7 @@ Click **Logs** in the sidebar (web and desktop). Add resources with the picker �
 
 The picker also reaches _inside_ managed clusters: a GKE, DOKS, or other managed Kubernetes cluster's pods and workloads are listed live through the cluster's Kubernetes integration — the same connection its Kubernetes tab uses — and appear labelled with the cluster they belong to (`api-0 · prod-cluster · My GCP`). You don't need to connect the cluster as a separate Kubernetes account. Because these entries are listed from the provider on the spot, a cluster that is unreachable at that moment simply contributes no entries until the picker is reopened.
 
-![Screenshot of the Log workspace with three streams added (two Kubernetes pods and a Cloud Run service), interleaved view, showing colour-coded resource labels on each line](https://agent-assets.infrawrench.com/docs/screenshots/features/log-workspace.png)
+<insert [Screenshot of the Log workspace with three streams added (two Kubernetes pods and a Cloud Run service), interleaved view, showing colour-coded resource labels on each line] here>
 
 Each stream is tailed through the same per-resource log machinery as the resource's own Logs tab, refreshed every few seconds. Per stream you can pick the container (when the resource has more than one) or remove it; workspace-wide you get:
 
@@ -36,7 +36,7 @@ The same expression is evaluated by the server-side alert pass, so what matches 
 
 Give the workspace a name and click **Save query** — the name, the set of streams (including chosen containers) and the search expression are stored per organization, so anyone with resource access can reopen the workspace from the dropdown. Saving, editing, and deleting are recorded in the [audit log](../team-and-billing/audit-log.md).
 
-![Screenshot of the saved-query bar with the dropdown open showing several saved queries, one marked (alert), and the name field + Save button](https://agent-assets.infrawrench.com/docs/screenshots/features/log-workspace-saved.png)
+<insert [Screenshot of the saved-query bar with the dropdown open showing several saved queries, one marked (alert), and the name field + Save button] here>
 
 Saved queries live in the cloud: on desktop they appear when signed into an org. Local-only desktop mode still gets the full multi-resource tail pane — resources are discovered from the local workspace and tailed directly — just without saved queries or alerting.
 

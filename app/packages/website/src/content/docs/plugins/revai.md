@@ -16,7 +16,7 @@ sidebar_order: 47
 
 **Deployment** (required, defaults to US) — `us` (the default host) or `eu` (Frankfurt). This is not cosmetic: see below.
 
-![Rev AI Add-account form showing the access token field and the US / EU deployment picker](https://agent-assets.infrawrench.com/docs/screenshots/plugins/revai-add-account.png)
+<insert [Rev AI Add-account form showing the access token field and the US / EU deployment picker] here>
 
 ## The Speech tab
 
@@ -31,7 +31,7 @@ The clip is posted to `/jobs` as multipart, then polled for up to two minutes an
 
 "Reverb", "Reverb Turbo" and "Whisper" are marketing names for the engines behind these, not valid API values, so they are deliberately absent from the picker — sending one is a rejected job.
 
-![Rev AI Speech tab on the account, with the transcriber picker open showing Machine, Low cost, Fusion and Human](https://agent-assets.infrawrench.com/docs/screenshots/plugins/revai-speech.png)
+<insert [Rev AI Speech tab on the account, with the transcriber picker open showing Machine, Low cost, Fusion and Human] here>
 
 ## Tips & limits
 

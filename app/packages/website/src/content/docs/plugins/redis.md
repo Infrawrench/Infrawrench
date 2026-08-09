@@ -20,7 +20,7 @@ rediss://:password@host:6380/0
 
 Or reference an output from a managed Redis resource (DigitalOcean, ElastiCache, Upstash).
 
-![Redis Add-account form with URL field](https://agent-assets.infrawrench.com/docs/screenshots/plugins/redis-add-account.png)
+<insert [Redis Add-account form with URL field] here>
 
 ## Notable flows
 

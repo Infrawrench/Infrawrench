@@ -11,7 +11,7 @@ edge network **outside** your clusters and clouds, records the latency and statu
 same metric store your resource charts read from, and pages you (push, Slack, Microsoft
 Teams) when the endpoint fails enough checks in a row.
 
-![The Probes tab showing a list of probes — one down (red dot with the failure reason), several up with uptime percentages and last latencies — with one row expanded into its 24-hour latency chart](https://agent-assets.infrawrench.com/docs/screenshots/features/probes-list.png)
+<insert [The Probes tab showing a list of probes — one down (red dot with the failure reason), several up with uptime percentages and last latencies — with one row expanded into its 24-hour latency chart] here>
 
 Find it under **Probes** in the sidebar on both the web app and the desktop app (cloud mode
 — the checks run server-side). The mobile app has a read-only Probes screen for answering
@@ -27,7 +27,7 @@ Choose one and the URL and name fill themselves in, and the probe remembers whic
 (and which output) it came from. There is a custom-URL option for anything Infrawrench
 doesn't know about; bare hostnames are normalized to `https://`.
 
-![The probe editor modal with the endpoint dropdown open, listing suggested URLs labelled with their resource names, and the Custom URL option at the bottom](https://agent-assets.infrawrench.com/docs/screenshots/features/probes-editor.png)
+<insert [The probe editor modal with the endpoint dropdown open, listing suggested URLs labelled with their resource names, and the Custom URL option at the bottom] here>
 
 A probe's settings:
 

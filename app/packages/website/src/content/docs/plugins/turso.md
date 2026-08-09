@@ -21,7 +21,7 @@ Turso dashboard → **Settings → API Tokens → Create Token**. You also need 
 - **API Token** — the token from the Turso dashboard.
 - **Organization** — your Turso organization slug (shown in your dashboard URL).
 
-![Turso Add-account form with API token and organization fields](https://agent-assets.infrawrench.com/docs/screenshots/plugins/turso-add-account.png)
+<insert [Turso Add-account form with API token and organization fields] here>
 
 ## Notable flows
 

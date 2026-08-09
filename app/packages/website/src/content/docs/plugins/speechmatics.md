@@ -21,7 +21,7 @@ Three fields, because Speechmatics splits its API across two hosts and three reg
 
 **Management Token** (optional) — Portal → **Manage workspace › Management tokens**. A **different credential on a different host**: the Management API is served from `https://mp.api.speechmatics.com/v1`, not the regional ASR endpoint. Without it the **Projects** and **API Keys** lists stay empty; transcription jobs, metrics and the Speech tab are entirely unaffected.
 
-![Speechmatics Add-account form showing the API key, the region picker with eu1/us1/au1, and the optional Management Token field](https://agent-assets.infrawrench.com/docs/screenshots/plugins/speechmatics-add-account.png)
+<insert [Speechmatics Add-account form showing the API key, the region picker with eu1/us1/au1, and the optional Management Token field] here>
 
 ## The Speech tab
 
@@ -33,7 +33,7 @@ The happy path is a single request: the clip is submitted as a batch job with `?
 
 Language packs and models are read live from `GET /v1/discovery/features` on your region — which is unauthenticated, so the pickers are populated even before the key is validated. The default model is **enhanced**.
 
-![Speechmatics Speech tab on the Account resource, with the language-pack picker populated from discovery and a completed transcript](https://agent-assets.infrawrench.com/docs/screenshots/plugins/speechmatics-speech.png)
+<insert [Speechmatics Speech tab on the Account resource, with the language-pack picker populated from discovery and a completed transcript] here>
 
 ## Metrics
 

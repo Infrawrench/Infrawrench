@@ -25,7 +25,7 @@ Every finding lands in a severity bucket: **critical**, **high**, **medium** or 
 
 Web, desktop and mobile all get a **Posture** screen: severity totals up top, then the findings grouped by severity, category or account, each row naming the resource, the check that matched, and the plugin's reason. Click through to the resource itself to fix it.
 
-![Web Posture screen showing the severity summary chips (critical / high / medium / low counts) and findings grouped by severity, with a publicly accessible Redshift cluster at the top marked critical](https://agent-assets.infrawrench.com/docs/screenshots/features/posture-main.png)
+<insert [Web Posture screen showing the severity summary chips (critical / high / medium / low counts) and findings grouped by severity, with a publicly accessible Redshift cluster at the top marked critical] here>
 
 On desktop the screen works in both modes: signed into Infrawrench Cloud it shows the organization-wide findings; in local-only mode it computes the same findings from the workspace on your machine.
 
@@ -35,7 +35,7 @@ On desktop the screen works in both modes: signed into Infrawrench Cloud it show
 
 Some findings are true and deliberate. The bucket really is a public static site; the key really is rotated by a process Infrawrench can't see. Hit **Dismiss** on the row, optionally say why, and the finding leaves the list and stops feeding the alerts.
 
-![Web Posture screen with the Dismiss reason box open on a "Bucket allows public access" row, showing the optional "Why is this acceptable?" input with Confirm and Cancel](https://agent-assets.infrawrench.com/docs/screenshots/features/posture-dismiss.png)
+<insert [Web Posture screen with the Dismiss reason box open on a "Bucket allows public access" row, showing the optional "Why is this acceptable?" input with Confirm and Cancel] here>
 
 It is a suppression, not a delete, and everything about it is deliberately visible:
 
@@ -44,7 +44,7 @@ It is a suppression, not a delete, and everything about it is deliberately visib
 - The severity chips gain a **Dismissed** count, so "clean" is never mistaken for "quiet because somebody silenced it".
 - Dismissing and restoring are both written to the [audit log](../team-and-billing/audit-log.md) (`posture.finding.dismissed` / `posture.finding.restored`).
 
-![Web Posture screen with the "Dismissed (2)" section expanded, showing two accepted risks with their author, date and reason, each with a Restore button](https://agent-assets.infrawrench.com/docs/screenshots/features/posture-dismissed.png)
+<insert [Web Posture screen with the "Dismissed (2)" section expanded, showing two accepted risks with their author, date and reason, each with a Restore button] here>
 
 Dismissing needs the `resources:write` permission — owners and admins by default. Members can read the Posture screen but not silence it, and the buttons simply aren't shown to them.
 

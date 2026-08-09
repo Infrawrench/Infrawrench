@@ -19,7 +19,7 @@ Cloudinary console → **Settings → Access Keys**. Paste:
 - **API key**
 - **API secret**
 
-![Cloudinary Add-account form with cloud name / key / secret fields](https://agent-assets.infrawrench.com/docs/screenshots/plugins/cloudinary-add-account.png)
+<insert [Cloudinary Add-account form with cloud name / key / secret fields] here>
 
 ## Notable flows
 

@@ -20,7 +20,7 @@ mysql://user:password@host:3306/dbname
 
 Or reference an output from a PlanetScale branch or a managed MySQL resource.
 
-![MySQL Add-account form with connection string field](https://agent-assets.infrawrench.com/docs/screenshots/plugins/mysql-add-account.png)
+<insert [MySQL Add-account form with connection string field] here>
 
 ## Notable flows
 

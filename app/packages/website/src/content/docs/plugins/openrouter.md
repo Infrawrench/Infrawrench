@@ -19,13 +19,13 @@ OpenRouter needs **two keys**, because neither one can do the other's job.
 
 **Inference API Key** (optional) — [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys). A normal `sk-or-v1-…` key. Management keys are explicitly rejected by the completion endpoints, so the **Speech tab** needs one of these. Without it every list still works and the Speech tab renders with an explanation instead of failing.
 
-![OpenRouter Add-account form showing the required Management Key field and the optional Inference API Key field, with the description explaining why both exist](https://agent-assets.infrawrench.com/docs/screenshots/plugins/openrouter-add-account.png)
+<insert [OpenRouter Add-account form showing the required Management Key field and the optional Inference API Key field, with the description explaining why both exist] here>
 
 ## Comparing providers for a model
 
 Open any model and scroll to **Provider endpoints**. Every provider serving that model is listed with its prompt and completion price per million tokens, context window, 1-day uptime, p50 and p99 latency, and p50 throughput — the whole routing decision on one line each.
 
-![OpenRouter model detail page with the Provider endpoints table showing several providers, their prices, uptime and latency percentiles side by side](https://agent-assets.infrawrench.com/docs/screenshots/plugins/openrouter-endpoints.png)
+<insert [OpenRouter model detail page with the Provider endpoints table showing several providers, their prices, uptime and latency percentiles side by side] here>
 
 The top-level **Model Endpoints** list is capped to the most popular models, because listing endpoints for the entire catalogue would be one API call per model. A model's own page always shows all of its endpoints regardless.
 

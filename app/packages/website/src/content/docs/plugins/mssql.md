@@ -17,7 +17,7 @@ A single **Connection String** field — a SQL Server connection URI:
 mssql://user:password@host:1433/dbname?encrypt=true&trustServerCertificate=false
 ```
 
-![SQL Server Add-account form with the connection string field](https://agent-assets.infrawrench.com/docs/screenshots/plugins/mssql-add-account.png)
+<insert [SQL Server Add-account form with the connection string field] here>
 
 ## Notable flows
 

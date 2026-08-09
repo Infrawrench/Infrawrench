@@ -17,7 +17,7 @@ sidebar_order: 21
 
 Netlify → **User settings → Applications → Personal access tokens → New access token**.
 
-![Netlify Add-account form with PAT field](https://agent-assets.infrawrench.com/docs/screenshots/plugins/netlify-add-account.png)
+<insert [Netlify Add-account form with PAT field] here>
 
 ## Notable flows
 

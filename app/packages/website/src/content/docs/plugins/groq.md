@@ -17,7 +17,7 @@ Groq console → **API Keys** → **Create API Key**. Paste the `gsk_…` value.
 
 Groq has a single key type. There is no separate admin or management key, so one field is all this plugin asks for.
 
-![Groq Add-account form with the single API key field and the "Create an API key" help link](https://agent-assets.infrawrench.com/docs/screenshots/plugins/groq-add-account.png)
+<insert [Groq Add-account form with the single API key field and the "Create an API key" help link] here>
 
 ## The Speech tab
 
@@ -26,7 +26,7 @@ Open any model and you get a **Speech** tab with both halves wired up:
 - **Synthesize** posts to `/openai/v1/audio/speech` using Canopy Labs Orpheus — `canopylabs/orpheus-v1-english` and `canopylabs/orpheus-arabic-saudi`. Twelve voices are offered (Autumn, Diana, Hannah, Austin, Daniel, Troy in English; Abdullah, Fahad, Sultan, Lulwa, Noura, Aisha in Arabic). Picking an Arabic voice switches the model for you.
 - **Transcribe** posts to `/openai/v1/audio/transcriptions` using `whisper-large-v3-turbo` or `whisper-large-v3`, with segment and word timings, and returns a confidence figure derived from Whisper's per-segment log-probabilities.
 
-![Groq Speech tab showing the voice picker open with the Orpheus voice list, and a transcript with word timings below](https://agent-assets.infrawrench.com/docs/screenshots/plugins/groq-speech.png)
+<insert [Groq Speech tab showing the voice picker open with the Orpheus voice list, and a transcript with word timings below] here>
 
 ## Tips & limits
 

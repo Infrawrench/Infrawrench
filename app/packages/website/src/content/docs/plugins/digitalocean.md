@@ -27,7 +27,7 @@ The most approachable cloud plugin — a single API token is all you need.
 - **DNS** — domains and records.
 - **Projects** — list, create, edit (name / description / purpose / environment) and delete. Use the **Edit Project…** button at the bottom of the project detail page to rename or repurpose without leaving Infrawrench.
 
-![DigitalOcean Project detail page with the Edit Project button at the bottom highlighted](https://agent-assets.infrawrench.com/docs/screenshots/plugins/do-project.png)
+<insert [DigitalOcean Project detail page with the Edit Project button at the bottom highlighted] here>
 
 ## Droplet detail page
 
@@ -38,9 +38,9 @@ The droplet detail page adds:
 - A **Metrics tab** charting every metric the DO Monitoring API exposes for droplets: CPU, load (1/5/15 min), memory (total / available / free / cached), disk read/write, filesystem size/free, and bandwidth on both public and private interfaces in both directions. Memory/disk/load/filesystem series only render when the [DO Metrics Agent](https://docs.digitalocean.com/products/monitoring/how-to/install-metrics-agent/) is installed on the droplet.
 - **Backups / Snapshots / Volumes** tabs listing IDs DO has recorded for this droplet, with quick links into the matching detail page where applicable.
 
-![DigitalOcean droplet detail page with the Actions tab open showing Power, Snapshot & Image, Configuration, and Backups sections](https://agent-assets.infrawrench.com/docs/screenshots/plugins/do-droplet-actions.png)
+<insert [DigitalOcean droplet detail page with the Actions tab open showing Power, Snapshot & Image, Configuration, and Backups sections] here>
 
-![DigitalOcean droplet Metrics tab with CPU, load, memory, bandwidth, and filesystem charts](https://agent-assets.infrawrench.com/docs/screenshots/plugins/do-droplet-metrics.png)
+<insert [DigitalOcean droplet Metrics tab with CPU, load, memory, bandwidth, and filesystem charts] here>
 
 ## Managed databases
 
@@ -59,9 +59,9 @@ You can also mint users from the **DB Users** section on the detail page; the "M
 
 DO doesn't expose process-level logs over the API. The Logs tab surfaces the cluster's **event stream** (`/v2/databases/{id}/events`) — creates, scale events, maintenance, power cycles. Useful as a "what's been happening to this cluster" feed, not a query log.
 
-![DigitalOcean managed-database detail page with the DB Users section expanded showing a freshly-minted user](https://agent-assets.infrawrench.com/docs/screenshots/plugins/do-managed-db-users.png)
+<insert [DigitalOcean managed-database detail page with the DB Users section expanded showing a freshly-minted user] here>
 
-![DigitalOcean managed-database Logs tab showing the cluster event stream](https://agent-assets.infrawrench.com/docs/screenshots/plugins/do-managed-db-logs.png)
+<insert [DigitalOcean managed-database Logs tab showing the cluster event stream] here>
 
 ## NFS shares
 
@@ -74,7 +74,7 @@ Create a share from any project's NFS sidebar group:
 
 After creation, the share's detail page renders the mount target and a copy-paste `sudo mount -t nfs -o nfsvers=4.1 …` command sized for the share.
 
-![DigitalOcean NFS share detail page showing the mount target and mount command](https://agent-assets.infrawrench.com/docs/screenshots/plugins/do-nfs.png)
+<insert [DigitalOcean NFS share detail page showing the mount target and mount command] here>
 
 ## Reserved IPs
 
@@ -93,7 +93,7 @@ While DigitalOcean has an action in flight the address reports as **locked**: th
 
 Deleting a reserved IP releases the address back to DigitalOcean's pool — you will not get the same one back. Delete is only accepted once the address is unassigned.
 
-![DigitalOcean Reserved IP detail page for an unassigned address, showing the Assignment section with the "Billed while unassigned" row and the Assign to Droplet button in the header](https://agent-assets.infrawrench.com/docs/screenshots/plugins/do-reserved-ip.png)
+<insert [DigitalOcean Reserved IP detail page for an unassigned address, showing the Assignment section with the "Billed while unassigned" row and the Assign to Droplet button in the header] here>
 
 ## VPCs
 
@@ -103,7 +103,7 @@ Because of that, the [dependency graph](../features/dependency-graph.md) draws a
 
 Creating one takes a name and a region; leave **IP Range** blank and DigitalOcean assigns a free `/20` that won't collide with your other networks, or set your own between `/28` and `/16` from the RFC1918 space. Deleting is only possible once the VPC is empty and is not the region's default.
 
-![DigitalOcean VPC detail page showing region, IP range and the default flag](https://agent-assets.infrawrench.com/docs/screenshots/plugins/do-vpc.png)
+<insert [DigitalOcean VPC detail page showing region, IP range and the default flag] here>
 
 ## Gradient AI Platform & Inference Engine
 
@@ -142,7 +142,7 @@ The agent detail page covers everything the DO console's Overview, Observability
 
 After creation the agent's deployment URL is exposed as the `deploymentUrl` output and the `agentEndpoint` alias — the latter matches the OpenAI-compatible base URL, so you can paste it straight into any OpenAI SDK that takes a `baseURL`.
 
-![DigitalOcean Agent detail page with deployment URL and attached knowledge bases visible](https://agent-assets.infrawrench.com/docs/screenshots/plugins/digitalocean-agent.png)
+<insert [DigitalOcean Agent detail page with deployment URL and attached knowledge bases visible] here>
 
 ### Knowledge Bases
 
@@ -166,7 +166,7 @@ Adding a source automatically kicks off indexing, so you usually don't need **Re
 
 File uploads and Dropbox / Google Drive OAuth sources still require the DO console — those need presigned-upload and OAuth flows Infrawrench doesn't model yet.
 
-![DigitalOcean Knowledge Base detail page showing the data sources table, indexing jobs, and the add-source header actions](https://agent-assets.infrawrench.com/docs/screenshots/plugins/digitalocean-knowledge-base.png)
+<insert [DigitalOcean Knowledge Base detail page showing the data sources table, indexing jobs, and the add-source header actions] here>
 
 ### Inference Router
 
@@ -198,7 +198,7 @@ Dedicated Inference is the always-on, GPU-backed sibling of serverless inference
 
 Once provisioning completes, the `publicEndpointUrl` and `privateEndpointUrl` outputs are populated.
 
-![DigitalOcean Dedicated Inference create form showing the GPU size picker with prices](https://agent-assets.infrawrench.com/docs/screenshots/plugins/digitalocean-dedicated-inference-create.png)
+<insert [DigitalOcean Dedicated Inference create form showing the GPU size picker with prices] here>
 
 ### Batch Inference
 
@@ -210,7 +210,7 @@ These are the keys used to authenticate against `https://inference.do-ai.run/v1/
 
 For account-wide API access (`/v2/...`) keep using the personal access token you added when you set up the plugin.
 
-![DigitalOcean Model API Key detail page with the reveal-once secret value chip](https://agent-assets.infrawrench.com/docs/screenshots/plugins/do-model-api-key.png)
+<insert [DigitalOcean Model API Key detail page with the reveal-once secret value chip] here>
 
 ### Vector Databases (Weaviate / OpenSearch / PostgreSQL)
 
@@ -227,7 +227,7 @@ The connection string and CA certificate outputs flow the same way as the other 
 1. DigitalOcean → **API → Tokens → Generate new token**. Read + write scope.
 2. Paste into the add-account form.
 
-![DigitalOcean Add-account form with API token field](https://agent-assets.infrawrench.com/docs/screenshots/plugins/digitalocean-add-account.png)
+<insert [DigitalOcean Add-account form with API token field] here>
 
 ## Notable flows
 

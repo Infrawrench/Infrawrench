@@ -21,7 +21,7 @@ PlanetScale dashboard → **Settings → Service tokens → New service token**.
 - **Service Token Secret** — the secret value (shown once at creation).
 - **Organization** — your PlanetScale org slug.
 
-![PlanetScale Add-account form with service token ID, secret, and organization fields](https://agent-assets.infrawrench.com/docs/screenshots/plugins/planetscale-add-account.png)
+<insert [PlanetScale Add-account form with service token ID, secret, and organization fields] here>
 
 ## Notable flows
 

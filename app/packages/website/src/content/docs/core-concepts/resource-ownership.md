@@ -16,7 +16,7 @@ Ownership fixes the missing half. Any resource can carry three fields:
 
 Set them on a resource's **Ownership** tab, on the web and desktop apps.
 
-![The Ownership tab on a resource detail view — the owner picker showing an org member selected, a free-text team field, a purpose textarea reading "Staging load tests for the checkout rewrite", and a ticket URL](https://agent-assets.infrawrench.com/docs/screenshots/core/ownership-tab.png)
+<insert [The Ownership tab on a resource detail view — the owner picker showing an org member selected, a free-text team field, a purpose textarea reading "Staging load tests for the checkout rewrite", and a ticket URL] here>
 
 ## Owner is a person, or a team, or both
 

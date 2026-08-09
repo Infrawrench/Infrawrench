@@ -21,7 +21,7 @@ sidebar_order: 12
 
 Neon console → **Account → API keys → New API key**.
 
-![Neon Add-account form with API key field](https://agent-assets.infrawrench.com/docs/screenshots/plugins/neon-add-account.png)
+<insert [Neon Add-account form with API key field] here>
 
 ## Notable flows
 
@@ -54,7 +54,7 @@ lists it with its size, source branch, and expiry.
 so you can inspect the restored data before moving any computes onto it. Finalizing is a
 separate step in the Neon console.
 
-![Neon snapshot detail view with the Restore button visible](https://agent-assets.infrawrench.com/docs/screenshots/plugins/neon-snapshot-restore.png)
+<insert [Neon snapshot detail view with the Restore button visible] here>
 
 ## Object storage
 
@@ -66,7 +66,7 @@ infrawrench's control plane. Neon's S3 endpoint requires **path-style addressing
 point an S3 SDK at it yourself, set `ForcePathStyle` (or your SDK's equivalent) to true, or
 requests will fail.
 
-![Neon bucket detail view showing the file browser with a few objects](https://agent-assets.infrawrench.com/docs/screenshots/plugins/neon-bucket-files.png)
+<insert [Neon bucket detail view showing the file browser with a few objects] here>
 
 ## Service credentials
 
@@ -116,7 +116,7 @@ example, from Postgres row-level-security policies).
 Neon's API can create, delete, and set roles on auth users, but it has **no endpoint to list
 them** — so infrawrench doesn't show a user list. Manage users from the Neon console.
 
-![Neon Auth detail view showing the JWKS URL and child OAuth providers](https://agent-assets.infrawrench.com/docs/screenshots/plugins/neon-auth.png)
+<insert [Neon Auth detail view showing the JWKS URL and child OAuth providers] here>
 
 ## Tips & limits
 

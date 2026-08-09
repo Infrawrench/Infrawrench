@@ -6,7 +6,7 @@ sidebar_order: 5
 
 The KV console is the key-value counterpart to the [SQL editor](./sql-editor.md). It gives you a command-line style interface against Redis and Memcached instances you have connected.
 
-![KV console with a few SET / GET commands and their replies](https://agent-assets.infrawrench.com/docs/screenshots/features/kv-console.png)
+<insert [KV console with a few SET / GET commands and their replies] here>
 
 ## Where to open it
 

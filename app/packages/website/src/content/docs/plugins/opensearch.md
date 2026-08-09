@@ -20,7 +20,7 @@ For provider-managed OpenSearch (DigitalOcean, AWS, OVH), you don't normally add
 - **Snapshot repositories** — register an S3 repository, take snapshots on demand, restore, delete
 - **Dashboard stats + metrics** — cluster status, total nodes/indices/docs, store size, JVM heap %, disk used %
 
-![OpenSearch cluster detail page showing Cluster, Health, Nodes, and Indices sections with per-row action buttons](https://agent-assets.infrawrench.com/docs/screenshots/plugins/opensearch-cluster.png)
+<insert [OpenSearch cluster detail page showing Cluster, Health, Nodes, and Indices sections with per-row action buttons] here>
 
 ## Credentials
 
@@ -52,7 +52,7 @@ For IAM-controlled Amazon OpenSearch domains, set:
 
 The plugin signs every request with SigV4 using the same `@smithy/signature-v4` signer the AWS SDK uses, so any IAM policy attached to the user/role flows through unchanged.
 
-![OpenSearch Add-account form with Auth Mode dropdown and the credential fields that appear for the selected mode](https://agent-assets.infrawrench.com/docs/screenshots/plugins/opensearch-add-account.png)
+<insert [OpenSearch Add-account form with Auth Mode dropdown and the credential fields that appear for the selected mode] here>
 
 ## Notable flows
 

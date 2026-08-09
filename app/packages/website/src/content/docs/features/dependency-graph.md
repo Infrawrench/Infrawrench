@@ -8,7 +8,7 @@ The **dependency graph** draws your infrastructure's wiring across every provide
 
 Open it from the **Graph** tile in the sidebar, on web or desktop.
 
-![The Graph page showing a small cross-provider topology — e.g. a DigitalOcean droplet feeding a Cloudflare DNS record and a Postgres account — with arrows pointing from consumers to providers](https://agent-assets.infrawrench.com/docs/screenshots/features/dependency-graph.png)
+<insert [The Graph page showing a small cross-provider topology — e.g. a DigitalOcean droplet feeding a Cloudflare DNS record and a Postgres account — with arrows pointing from consumers to providers] here>
 
 ## Reading the graph
 
@@ -29,13 +29,13 @@ The graph merges them into a single tile marked **×12**, drawn as a small stack
 
 Select a grouped tile and choose **Show all** to break it open; **Regroup** in the header puts everything back. The **Group identical** checkbox turns the behavior off entirely.
 
-![Close-up of the graph header showing the line-style legend (Output reference / Belongs to / Named in a field) and the "From cloud data" checkbox with its link count](https://agent-assets.infrawrench.com/docs/screenshots/features/dependency-graph-legend.png)
+<insert [Close-up of the graph header showing the line-style legend (Output reference / Belongs to / Named in a field) and the "From cloud data" checkbox with its link count] here>
 
 ## Blast radius
 
 Click a node to see its **blast radius**: the resource itself plus everything that transitively depends on it. The dependents stay highlighted while the rest of the graph dims — if the selected resource breaks or rotates its outputs, the highlighted set is what's affected.
 
-![The Graph page with a database node selected — the node and its transitive dependents highlighted in the accent color, everything else dimmed, and the header reading "Blast radius: N dependent resources highlighted"](https://agent-assets.infrawrench.com/docs/screenshots/features/dependency-graph-blast.png)
+<insert [The Graph page with a database node selected — the node and its transitive dependents highlighted in the accent color, everything else dimmed, and the header reading "Blast radius: N dependent resources highlighted"] here>
 
 Click the selected node again (or the **Open resource** button in the header) to jump to its detail page.
 
@@ -50,7 +50,7 @@ Resource detail pages get a **Dependencies** tab whenever the resource participa
 
 Each entry links to the neighbor's detail page.
 
-![A resource detail page with the Dependencies tab open, showing a "Depends on" list and a "Depended on by" list with field ← output captions on each row](https://agent-assets.infrawrench.com/docs/screenshots/features/resource-dependencies.png)
+<insert [A resource detail page with the Dependencies tab open, showing a "Depends on" list and a "Depended on by" list with field ← output captions on each row] here>
 
 ## On your phone
 

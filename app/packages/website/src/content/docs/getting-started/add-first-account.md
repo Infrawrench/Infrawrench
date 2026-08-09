@@ -21,7 +21,7 @@ This walkthrough uses DigitalOcean because it has the simplest credential: a sin
 4. Paste the API token.
 5. Click **Save**.
 
-![Add-account modal with provider picker and DigitalOcean form](https://agent-assets.infrawrench.com/docs/screenshots/getting-started/add-digitalocean.png)
+<insert [Add-account modal with provider picker and DigitalOcean form] here>
 
 For some providers (AWS, Google Cloud, Cloudflare) the form also offers a **Check credentials** button that verifies, per capability, what the pasted credential can actually do — and a generator for the exact least-privilege policy to grant. See [Credential preflight](../core-concepts/credential-preflight.md).
 
@@ -29,7 +29,7 @@ For some providers (AWS, Google Cloud, Cloudflare) the form also offers a **Chec
 
 Within a few seconds the sidebar populates with your Droplets, Kubernetes clusters, databases, Spaces, and domains. Click any resource to see its detail page.
 
-![Sidebar populated with DigitalOcean resources grouped by type](https://agent-assets.infrawrench.com/docs/screenshots/getting-started/sidebar-digitalocean.png)
+<insert [Sidebar populated with DigitalOcean resources grouped by type] here>
 
 ## What next
 

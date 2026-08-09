@@ -70,7 +70,7 @@ curl -X DELETE "https://app.infrawrench.com/api/org/$ORG/pages?source=checkout-a
   -H "Authorization: Bearer $INFRAWRENCH_API_KEY"
 ```
 
-![Settings → Notifications with the Pages trigger enabled on a Slack channel and a mobile device, so a reader can see where a pushed page lands](https://agent-assets.infrawrench.com/docs/screenshots/features/server-push-pages.png)
+<insert [Settings → Notifications with the Pages trigger enabled on a Slack channel and a mobile device, so a reader can see where a pushed page lands] here>
 
 ## Cost rows
 

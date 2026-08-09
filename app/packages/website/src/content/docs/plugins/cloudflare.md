@@ -25,14 +25,14 @@ Most Cloudflare resources show an **Edit** button on their detail page that open
 
 - **Turnstile widgets** — create, edit, and delete Cloudflare Turnstile (CAPTCHA alternative) widgets. Each widget exposes its public **Site Key** and a sensitive **Secret Key** as output references, plus a one-click credentials export (`TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY`) for your client embed and server-side `siteverify` call. The create form takes a name, allowed domains, and a widget mode (Managed / Non-interactive / Invisible). The widget detail page also gives you **ready-to-paste embed code**: a copyable HTML snippet (the `api.js` script + `cf-turnstile` div wired into a form) to drop into your site, and a copyable server-side verification snippet that posts the token to `siteverify` using your `TURNSTILE_SECRET_KEY` (the secret itself never appears in the snippet). Needs the **Turnstile:Edit** permission.
 
-![Cloudflare Turnstile widget detail page showing the "Add the widget to your site" section with the copyable HTML embed snippet and the server-side verification snippet below it](https://agent-assets.infrawrench.com/docs/screenshots/plugins/cloudflare-turnstile.png)
+<insert [Cloudflare Turnstile widget detail page showing the "Add the widget to your site" section with the copyable HTML embed snippet and the server-side verification snippet below it] here>
 
 - **Health checks** — standalone active origin monitors (independent of load-balancer pools). Create an HTTP/HTTPS/TCP check against an address; the detail page shows status, consecutive fails/successes, and interval/timeout/retries (all editable). Needs the **Health Checks:Edit** permission.
 - **Notification policies** — account-level alerting policies. Pick an alert type (SSL events, health-check status, origin/edge error rates, DDoS, billing, expiring tokens, failing Logpush, …) and a comma-separated list of recipient emails; toggle enabled/disabled and edit recipients later. Needs the **Notifications:Edit** permission.
 - **Vectorize indexes** — create and delete Cloudflare Vectorize vector-database indexes for Workers AI / RAG. The create form takes a name, vector dimensionality (must match your embedding model), and a distance metric (cosine / euclidean / dot product). The index name is exposed as an output reference and a Worker-binding credentials export. Needs the **Vectorize:Edit** permission.
 - **AI Gateway** — create, edit, and delete AI Gateways, the proxy that adds caching, rate limiting, logging, and analytics in front of your model providers (Workers AI, OpenAI, Anthropic, …). The create form takes a gateway id (the slug used in the gateway URL) plus toggles for log collection, a cache TTL, a rate limit (requests + window + fixed/sliding technique), authenticated-gateway enforcement, and Logpush. The gateway id is exposed as an output reference and an `AI_GATEWAY_ID` credentials export. The detail page mirrors the Cloudflare dashboard: the copyable **gateway endpoint URL** (the OpenAI-SDK `/compat` base URL), a copyable **code example**, a **Metrics** tab (requests, tokens in/out, cost, errors, cache hits via the `aiGatewayRequestsAdaptiveGroups` analytics dataset), and a **Playground** tab. The Playground streams a chat with any Workers AI text-generation model **through this gateway** — it authenticates with your Cloudflare token (no provider keys needed) and the traffic shows up in the gateway's own logs and analytics. Pick the model from the dropdown at the top of the chat. Needs the **AI Gateway:Edit** permission, plus **Workers AI:Read** to run the Playground (without it the model list and chat both return an authentication error). If the gateway has **Authenticated Gateway** enabled, the Playground is disabled — it can't supply the gateway token — so turn that off to chat here or call it from your own code with a `cf-aig-authorization` header.
 
-![Cloudflare AI Gateway detail page showing the gateway endpoint URL, the code example, and the Metrics tab, with the Playground tab and its model dropdown visible](https://agent-assets.infrawrench.com/docs/screenshots/plugins/cloudflare-ai-gateway.png)
+<insert [Cloudflare AI Gateway detail page showing the gateway endpoint URL, the code example, and the Metrics tab, with the Playground tab and its model dropdown visible] here>
 
 - **AI Search** — list and delete AI Search (formerly AutoRAG) instances — managed retrieval-augmented-generation pipelines over an R2 bucket or web-crawler source. The detail page shows the source type, generation and embedding models, backing Vectorize index, status, paused state, and last activity. Creation is a multi-step pipeline (pick a source, embedding model, and chunking, then run the first index sync), so new instances are set up in the Cloudflare dashboard wizard; Infrawrench lists and removes them. Needs the **AI Search:Read** permission to list (and write access to delete).
 - **Durable Object namespaces** — a read-only listing of the Durable Object namespaces your deployed Workers declare (name, exported class, owning script, SQLite-storage flag). You create or remove them by redeploying the Worker, so there's no create/edit/delete here. The detail page also includes an **Instances** browser — the live objects in the namespace and whether each holds stored data — and a Metrics tab. Cloudflare exposes **no public API to read or edit a Durable Object's storage from outside a Worker**, so storage contents aren't editable here; use the Cloudflare dashboard's Data Studio (for SQLite-backed objects) to inspect them. Uses the **Workers Scripts:Read** permission.
@@ -45,7 +45,7 @@ The API token field in the **Add account** and **Update credentials** forms show
 
 If you'd rather scope a token by hand, go to the Cloudflare dashboard → **My Profile → API Tokens → Create Token** and grant the permissions matching the resources you plan to manage.
 
-![Cloudflare Add-account form with the API token field and the "Create a token with these scopes" link highlighted](https://agent-assets.infrawrench.com/docs/screenshots/plugins/cloudflare-add-account.png)
+<insert [Cloudflare Add-account form with the API token field and the "Create a token with these scopes" link highlighted] here>
 
 ### Credential preflight & token template
 
@@ -70,15 +70,15 @@ An expired or disabled token is flagged across every row. The generator produces
 - **Purge cache** — a zone's detail header has a **Purge Everything** button that clears all of Cloudflare's cached content for the zone. See [Cache](#cache) below.
 - **Expose a service over a tunnel** — drag a Tunnel onto a server (any account/provider) to expose HTTP, HTTPS, SSH, or TCP through Cloudflare's edge: infrawrench sets the tunnel ingress + DNS and installs `cloudflared` on the host. See [Expose a service over a Cloudflare Tunnel](../features/cloudflare-tunnel-ssh.md).
 
-![Cloudflare KV namespace detail page with the Keys tab open, showing a list of keys with the value of a selected key displayed](https://agent-assets.infrawrench.com/docs/screenshots/plugins/cloudflare-kv-keys.png)
+<insert [Cloudflare KV namespace detail page with the Keys tab open, showing a list of keys with the value of a selected key displayed] here>
 
 - **Workers AI Playground** — open any model under **Workers AI Models** and use the **Playground** tab to chat with it. Responses stream token-by-token through Cloudflare's OpenAI-compatible chat endpoint (`/ai/v1/chat/completions`), authorized with the account's API token. The whole conversation history is sent on each turn, and per-turn token usage is shown under each assistant reply when Cloudflare returns it. The token needs the **Workers AI:Read** permission to list models and run completions.
 
-![Cloudflare Workers AI model detail page with the Playground tab open, showing a streamed assistant reply](https://agent-assets.infrawrench.com/docs/screenshots/plugins/cloudflare-workers-ai-playground.png)
+<insert [Cloudflare Workers AI model detail page with the Playground tab open, showing a streamed assistant reply] here>
 
 - **Queue detail page** — opens with the queue's settings (delivery delay, retention period, pause state) inline, a **Consumers** tab listing every bound Worker or pull consumer with its batch size, retry policy, and dead-letter queue, and a **Publish** tab for pushing a one-off test message into the queue. Backed by the Cloudflare Queues HTTP API (`GET /queues/{id}`, `GET /queues/{id}/consumers`, `POST /queues/{id}/messages`). The token needs the **Queues:Edit** permission to publish.
 
-![Cloudflare Queue detail page with the Consumers tab open, showing a table of Worker consumers and their retry settings](https://agent-assets.infrawrench.com/docs/screenshots/plugins/cloudflare-queue-consumers.png)
+<insert [Cloudflare Queue detail page with the Consumers tab open, showing a table of Worker consumers and their retry settings] here>
 
 ## Worker settings
 
@@ -94,7 +94,7 @@ Open a Worker and switch to the **Settings** tab for a labeled form — no raw J
 
 Editable rows are saved per setting and routed to the right Cloudflare endpoint — the worker script settings (`logpush`, observability, tags), the `workers.dev` subdomain, or the cron-trigger schedule. The read-only rows surface deploy-time configuration that Cloudflare doesn't expose to a simple settings patch. Editing needs the **Workers Scripts:Edit** permission.
 
-![Cloudflare Worker detail view with the Settings tab open, showing the General and Observability groups populated for a real Worker](https://agent-assets.infrawrench.com/docs/screenshots/plugins/cloudflare-worker-settings.png)
+<insert [Cloudflare Worker detail view with the Settings tab open, showing the General and Observability groups populated for a real Worker] here>
 
 ## Cache
 
@@ -112,7 +112,7 @@ A zone's **Rules & WAF** tab lists every rule type Cloudflare's modern rules eng
 
 Each rule renders its expression, action, and status on its own detail page, and can be created and deleted in place. WAF and rate limiting rules need the **WAF** permission; cache rules need **Cache Settings**; redirect rules need **Transform Rules**; IP access rules use the existing **Firewall Services** permission. The "Create a token with these scopes" link now requests the WAF, Cache Settings, and Transform Rules permissions alongside the originals.
 
-![Cloudflare zone Rules & WAF tab showing WAF custom, rate limiting, redirect, and cache rules](https://agent-assets.infrawrench.com/docs/screenshots/plugins/cloudflare-zone-rules-waf.png)
+<insert [Cloudflare zone Rules & WAF tab showing WAF custom, rate limiting, redirect, and cache rules] here>
 
 ## DNSSEC
 

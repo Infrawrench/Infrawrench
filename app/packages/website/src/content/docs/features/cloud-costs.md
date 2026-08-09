@@ -18,9 +18,9 @@ The **Costs** panel in the sidebar is where your budgets live. Dashboards show c
 2. Choose **Cost graph**.
 3. Pick a chart type, date range, and grouping, then **Save**.
 
-![Dashboard "+" tile open with the add menu showing Pin a resource / Cost graph / New budget / Existing budget](https://agent-assets.infrawrench.com/docs/screenshots/features/dashboard-add-menu.png)
+<insert [Dashboard "+" tile open with the add menu showing Pin a resource / Cost graph / New budget / Existing budget] here>
 
-![Cost graph config modal with chart type, binning, date range, group-by, and a provider filter row](https://agent-assets.infrawrench.com/docs/screenshots/features/cost-graph-config.png)
+<insert [Cost graph config modal with chart type, binning, date range, group-by, and a provider filter row] here>
 
 Cost and budget cards drag around the grid like pinned resources, and share the same order — see [Arrange cards](./dashboard.md#arrange-cards).
 
@@ -37,7 +37,7 @@ Cost and budget cards drag around the grid like pinned resources, and share the 
 | Compare    | Overlay the previous period as a dashed line, with a % change badge                        |
 | Forecast   | Project the recent trend forward as a dashed continuation                                  |
 
-![A stacked-bar cost graph grouped by service with a forecast dashed line and previous-period comparison](https://agent-assets.infrawrench.com/docs/screenshots/features/cost-graph-service.png)
+<insert [A stacked-bar cost graph grouped by service with a forecast dashed line and previous-period comparison] here>
 
 Currencies are never merged: if your accounts bill in more than one currency the graph shows one series per currency and says so under the title.
 
@@ -52,7 +52,7 @@ Each budget has one or more thresholds:
 
 Every threshold fires at most once per calendar month. Alerts show up as a badge on the budget card, as a [mobile push notification](./mobile-push-notifications.md) to org members who have the app installed and budget alerts enabled in their per-org notification preferences, in any [Slack](./slack-alerts.md) or [Microsoft Teams](./teams-alerts.md) channel opted into budget alerts, and — if your org has Twilio configured on the **Settings → Notifications** page — as an SMS to your on-call recipients.
 
-![Budget card showing a progress bar at 72% with threshold ticks, a forecast marker, and an alert badge](https://agent-assets.infrawrench.com/docs/screenshots/features/budget-card.png)
+<insert [Budget card showing a progress bar at 72% with threshold ticks, a forecast marker, and an alert badge] here>
 
 Budgets alert on totals you chose. For spend you didn't see coming — a provider or service suddenly billing far above its own baseline, or one that had never billed at all — see [cost anomaly alerts](./cost-anomaly-alerts.md), which work with no configuration and can be [tuned](./cost-anomaly-alerts.md#tuning-detection) if the defaults are too loud or too quiet. Anomalies can text the same on-call recipients as a budget crossing, but unlike budgets they [do not until you ask them to](./cost-anomaly-alerts.md#paging-by-sms).
 
@@ -88,7 +88,7 @@ A dashboard's **+** tile offers both halves:
 
 The same budget can appear on as many dashboards as you like — one budget, many views of it.
 
-![Costs panel showing the month-to-date spend chart at the top and two budget cards below, one labelled "On no dashboard"](https://agent-assets.infrawrench.com/docs/screenshots/features/costs-mtd-budgets.png)
+<insert [Costs panel showing the month-to-date spend chart at the top and two budget cards below, one labelled "On no dashboard"] here>
 
 ### Potential savings
 
@@ -131,7 +131,7 @@ Either way, re-reporting a day restates it rather than adding to it, and neither
 
 Collection runs unattended and retries with a growing backoff, so a provider that needs setup would otherwise just look like an account with no spend. Instead, the last failure is kept against the account and shown as a banner above the cost widgets on the dashboard — on web, desktop, and mobile alike:
 
-![Dashboard with an amber "Cost collection is failing for Infrawrench GCP" banner above the cost widgets, showing the billing-export message and its link](https://agent-assets.infrawrench.com/docs/screenshots/features/dashboard-cost-fail.png)
+<insert [Dashboard with an amber "Cost collection is failing for Infrawrench GCP" banner above the cost widgets, showing the billing-export message and its link] here>
 
 Where the plugin can tell exactly what is missing, the banner carries a link straight to the provider page that fixes it — for example GCP's Cloud Billing export settings for the account's project. Fix the cause and the next collection backfills the days that were missed; the banner clears itself on the first success.
 
@@ -143,7 +143,7 @@ Collection can also succeed and come back with nothing. This is normal for a fre
 
 Because nothing failed, there is no error to report — so the account gets its own, calmer banner instead of a blank graph with no explanation:
 
-![Dashboard showing the neutral "No spend data yet for Infrawrench GCP" banner above an empty cost widget](https://agent-assets.infrawrench.com/docs/screenshots/features/dashboard-no-spend.png)
+<insert [Dashboard showing the neutral "No spend data yet for Infrawrench GCP" banner above an empty cost widget] here>
 
 It clears itself the moment the first row lands. If it persists for more than a couple of days, the export is usually configured but not actually delivering — check it at the provider rather than in Infrawrench.
 

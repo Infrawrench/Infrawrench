@@ -18,7 +18,7 @@ This is the artifact an auditor asks for and almost nobody has.
 
 **Settings → Session Recordings**, on both web and desktop. Recording is off until you turn it on — a terminal capture is a wiretap on your own staff, and that is a decision an organization makes deliberately rather than one we make for you.
 
-![The Session Recordings settings page with the recording policy card: the "Record SSH sessions" toggle on, the keystroke toggle off, the retention field set to 90, and the storage summary line beneath](https://agent-assets.infrawrench.com/docs/screenshots/settings/session-recordings.png)
+<insert [The Session Recordings settings page with the recording policy card: the "Record SSH sessions" toggle on, the keystroke toggle off, the retention field set to 90, and the storage summary line beneath] here>
 
 Three settings:
 
@@ -32,7 +32,7 @@ The card also shows what the organization currently stores: how many recordings,
 
 The **Sessions** list shows every recording newest first, with who opened it, the target, when, how long it ran, and its size. Press **Watch** to replay it inline.
 
-![The Sessions list with several recordings, one expanded to show the player mid-playback with the scrubber, the clock reading "2:14 / 6:03" and the speed buttons](https://agent-assets.infrawrench.com/docs/screenshots/features/session-recording-player.png)
+<insert [The Sessions list with several recordings, one expanded to show the player mid-playback with the scrubber, the clock reading "2:14 / 6:03" and the speed buttons] here>
 
 The player has play/pause, a scrubber, and 0.5×/1×/2×/4× speed. Scrubbing is instant no matter how far back you drag: a terminal's screen at any moment is the product of every byte before it, so seeking replays the output up to that point with the delays removed rather than trying to jump to a keyframe that does not exist.
 

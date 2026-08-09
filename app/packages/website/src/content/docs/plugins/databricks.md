@@ -20,7 +20,7 @@ sidebar_order: 18
 
 Databricks workspace → **User Settings → Developer → Access tokens → Generate new token**. You will need the workspace URL too.
 
-![Databricks Add-account form with workspace URL and PAT fields](https://agent-assets.infrawrench.com/docs/screenshots/plugins/databricks-add-account.png)
+<insert [Databricks Add-account form with workspace URL and PAT fields] here>
 
 ## Notable flows
 
@@ -41,7 +41,7 @@ Open a Model Serving endpoint and switch to the **Playground** tab to chat with 
 
 The Playground is disabled until the endpoint is `READY` — wait for it to come online and reload the tab.
 
-![Databricks Model Serving endpoint detail page with the Playground tab open, showing a streamed assistant reply](https://agent-assets.infrawrench.com/docs/screenshots/plugins/databricks-playground.png)
+<insert [Databricks Model Serving endpoint detail page with the Playground tab open, showing a streamed assistant reply] here>
 
 ## Tips & limits
 

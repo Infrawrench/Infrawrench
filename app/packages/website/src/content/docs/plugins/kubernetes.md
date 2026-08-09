@@ -29,7 +29,7 @@ Cluster-scoped:
 
 Paste a kubeconfig YAML, or an output reference from an EKS / AKS / GKE / DOKS / Kapsule cluster resource.
 
-![Kubernetes Add-account form with kubeconfig textarea and output-ref picker](https://agent-assets.infrawrench.com/docs/screenshots/plugins/kubernetes-add-account.png)
+<insert [Kubernetes Add-account form with kubeconfig textarea and output-ref picker] here>
 
 ## Notable flows
 

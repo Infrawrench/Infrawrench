@@ -8,7 +8,7 @@ sidebar_order: 25
 
 Infrawrench's job here ends at a working, linked server. It does not embed or proxy T3 Code — you drive the server from T3 Code's desktop, web, or mobile app, the same as any other machine you have linked.
 
-![Agents configuration menu with Tool set to Claude Code and Interface set to T3 Code, showing the explanatory note underneath](https://agent-assets.infrawrench.com/docs/screenshots/features/t3-code-menu.png)
+<insert [Agents configuration menu with Tool set to Claude Code and Interface set to T3 Code, showing the explanatory note underneath] here>
 
 ## T3 Code is not an agent
 
@@ -61,7 +61,7 @@ tail -n 200 ~/.t3/userdata/logs/boot-service.log
 
 Each step can be skipped with `Ctrl-C` and rerun later; the terminal drops you at a shell when it finishes.
 
-![Authorization terminal on the T3 Code tab showing the numbered steps with the t3 connect out-of-band URL prompt](https://agent-assets.infrawrench.com/docs/screenshots/features/t3-code-authorization.png)
+<insert [Authorization terminal on the T3 Code tab showing the numbered steps with the t3 connect out-of-band URL prompt] here>
 
 ## Using the server
 

@@ -22,7 +22,7 @@ One field. WorkOS dashboard → **API Keys**.
 - `sk_test_…` keys manage the **sandbox** environment, `sk_live_…` keys manage **production**. An account maps to one environment — add two accounts to see both.
 - This is unrelated to the WorkOS credentials Infrawrench itself signs in with. The plugin manages **your** WorkOS environment with your key.
 
-![WorkOS Add-account form with the API key field and the dashboard help link](https://agent-assets.infrawrench.com/docs/screenshots/plugins/workos-add-account.png)
+<insert [WorkOS Add-account form with the API key field and the dashboard help link] here>
 
 ## Pickers everywhere
 
@@ -31,7 +31,7 @@ You never type an `org_…` or `user_…` id:
 - Membership and invitation creation offer an **organization picker** (skipped when you create from an organization's page), a **user picker** over your synced users, and a **role picker** fed live from the Authorization API — org-scoped roles when the organization is known, environment roles otherwise.
 - Leaving the role unset uses the organization's default role.
 
-![Create-invitation form opened from an organization, showing the role dropdown populated with live role names](https://agent-assets.infrawrench.com/docs/screenshots/plugins/workos-create-invitation.png)
+<insert [Create-invitation form opened from an organization, showing the role dropdown populated with live role names] here>
 
 ## Tips & limits
 

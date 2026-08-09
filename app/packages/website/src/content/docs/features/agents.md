@@ -15,7 +15,7 @@ On the desktop app, Agents follows the org switcher, the same way [Workflows](./
 
 The two sets are separate and nothing is copied between them. If an account only exists in the organization — a GCP project added on the web, say — select that organization to use it as an agent target; it will not appear in local-only mode.
 
-![Agents panel showing the header configuration menu, repo input, and a setting-up agent session with its VM id](https://agent-assets.infrawrench.com/docs/screenshots/features/agents-panel.png)
+<insert [Agents panel showing the header configuration menu, repo input, and a setting-up agent session with its VM id] here>
 
 ## Defaults
 
@@ -31,7 +31,7 @@ Agent VMs use a dedicated Infrawrench-managed SSH key named `infrawrench-agent`.
 
 On the cloud, the session form shows a repository picker fed by the same [GitHub App integration](./workflows.md#connecting-github) that powers workflow git triggers. Once GitHub is connected, pick any repository the installation can access — private repos are marked in the list — or choose **Custom Git URL…** to type a clone URL for a repository hosted anywhere else. **+ repos** (or **Connect GitHub** when nothing is connected yet) opens the GitHub App install flow to add repositories.
 
-![Agents session form on the web app with the GitHub repository picker open, showing a private repo entry, the Custom Git URL option, and the + repos button](https://agent-assets.infrawrench.com/docs/screenshots/features/agents-repo-picker.png)
+<insert [Agents session form on the web app with the GitHub repository picker open, showing a private repo entry, the Custom Git URL option, and the + repos button] here>
 
 Private GitHub repositories picked this way clone cleanly on the VM: setup mints a short-lived GitHub App installation token for the clone and resets the workspace's `origin` remote to the plain repository URL afterwards, so no credential persists on the VM. To push the agent branch from the VM you still authenticate as usual (the setup token is not left behind).
 

@@ -16,7 +16,7 @@ The policy lives in **Settings → Tag Policy**. Anyone with `org:settings:write
 - **Allowed values** (optional, per key) — e.g. `env` must be one of `prod`, `staging`, `dev`. Values are compared exactly.
 - **Enforce at create time** — off by default; see [enforcement](#enforcement-at-create-time).
 
-![Settings → Tag Policy page with two required tags (owner with no allowed values, env with prod/staging/dev), the "Enforce at create time" checkbox ticked, and the per-account compliance table below](https://agent-assets.infrawrench.com/docs/screenshots/settings/tag-policy.png)
+<insert [Settings → Tag Policy page with two required tags (owner with no allowed values, env with prod/staging/dev), the "Enforce at create time" checkbox ticked, and the per-account compliance table below] here>
 
 ## How a resource "carries" a tag
 
@@ -42,13 +42,13 @@ x-tag-policy-override: true
 
 Every block and every override is recorded in the [audit log](../team-and-billing/audit-log.md) as `tag_policy.block` / `tag_policy.override`.
 
-![Resource create modal showing the amber "Org policy requires tags: owner, env (prod | staging | dev)" notice above the form fields, with the tags field pre-filled with "owner=, env="](https://agent-assets.infrawrench.com/docs/screenshots/features/tag-policy-create.png)
+<insert [Resource create modal showing the amber "Org policy requires tags: owner, env (prod | staging | dev)" notice above the form fields, with the tags field pre-filled with "owner=, env="] here>
 
 ## Untagged spend
 
 The payoff for the policy is on the money side: the **Tags & allocation** section of the Costs panel reports how much of the org's spend (from provider billing data) sits on rows missing at least one required tag key — overall, per key, and as a top list of the (account, service) buckets responsible. That's the spend nobody can allocate; the top list is the shortest path to fixing it.
 
-![Costs panel "Tags & allocation" section showing the untagged spend card with "$1,234 of $9,876 missing a required tag", the per-account compliance bars, and the showback list below](https://agent-assets.infrawrench.com/docs/screenshots/features/tags-allocation.png)
+<insert [Costs panel "Tags & allocation" section showing the untagged spend card with "$1,234 of $9,876 missing a required tag", the per-account compliance bars, and the showback list below] here>
 
 ## Cost centres & showback
 
