@@ -31,12 +31,42 @@ interface PagingSettings {
   credentialsConfigured: boolean;
 }
 
+type ConnectionId = "slack" | "teams" | "mobile" | "sms";
+
+const CONNECTIONS: Array<{
+  id: ConnectionId;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "slack",
+    label: "Slack",
+    description: "Workspace channels via OAuth",
+  },
+  {
+    id: "teams",
+    label: "Microsoft Teams",
+    description: "Channel webhooks",
+  },
+  {
+    id: "mobile",
+    label: "Mobile app",
+    description: "Push to your devices",
+  },
+  {
+    id: "sms",
+    label: "SMS & voice",
+    description: "Twilio paging",
+  },
+];
+
 export function NotificationsSection() {
   const { orgId, api } = useSettingsHost();
   const [settings, setSettings] = useState<PagingSettings | null>(null);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectedConnection, setSelectedConnection] = useState<ConnectionId>("slack");
 
   async function load() {
     setLoading(true);
@@ -68,10 +98,10 @@ export function NotificationsSection() {
   }
 
   return (
-    <div className="space-y-8 max-w-2xl">
+    <div className="space-y-8 max-w-6xl">
       <div>
         <h1 className="text-xl font-semibold">Notifications</h1>
-        <p className="text-sm text-on-surface-muted mt-1">
+        <p className="text-sm text-on-surface-muted mt-1 max-w-3xl">
           Alert your team when a resource type fails to sync repeatedly, a budget threshold is
           crossed, your infrastructure drifts, or a workflow calls <code>infra.page()</code> or{" "}
           <code>infra.waitForApproval()</code>. Incidents are triggered by the background poller;
@@ -81,50 +111,119 @@ export function NotificationsSection() {
         </p>
       </div>
 
+      {/*
+        Master–detail for delivery channels: the left rail is always the same four
+        connection kinds; the right pane is only the setup for the selected one.
+        Alert routing and the batch filters below need the full width, so they
+        stay outside this split.
+      */}
+      <section className="border border-border rounded-xl overflow-hidden">
+        <div className="border-b border-border px-5 py-4">
+          <h2 className="text-sm font-semibold text-on-surface-secondary">Connections</h2>
+          <p className="text-xs text-on-surface-muted mt-1">
+            Add Slack, Teams, mobile push, or phone numbers — then route alerts to them with the
+            rules below.
+          </p>
+        </div>
+        <div className="flex min-h-[32rem] flex-col md:flex-row">
+          <nav
+            aria-label="Notification connections"
+            className="w-full shrink-0 border-b border-border md:w-60 md:border-b-0 md:border-r md:overflow-y-auto"
+          >
+            <ul className="flex gap-1 overflow-x-auto p-2 md:flex-col md:overflow-x-visible">
+              {CONNECTIONS.map((c) => {
+                const selected = selectedConnection === c.id;
+                return (
+                  <li key={c.id} className="min-w-[9.5rem] md:min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedConnection(c.id)}
+                      aria-current={selected ? "true" : undefined}
+                      className={`w-full rounded-lg px-3 py-2.5 text-left transition-colors ${
+                        selected
+                          ? "bg-surface-overlay text-on-surface-secondary"
+                          : "text-on-surface-muted hover:bg-surface-overlay/60 hover:text-on-surface-secondary"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2 text-sm font-medium">
+                        {c.id === "slack" && <SlackMark className="h-3.5 w-3.5 shrink-0" />}
+                        {c.id === "teams" && <TeamsMark className="h-3.5 w-3.5 shrink-0" />}
+                        {c.label}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-on-surface-tertiary">
+                        {c.description}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+
+          <div className="min-w-0 flex-1 p-5 md:overflow-y-auto">
+            {/*
+              Keep every pane mounted so in-progress forms (Twilio creds, Teams
+              webhook paste, etc.) survive switching the left rail. Hidden panes
+              stay out of the accessibility tree via `hidden`.
+            */}
+            <div hidden={selectedConnection !== "slack"}>
+              <SlackSection orgId={orgId} embedded />
+            </div>
+            <div hidden={selectedConnection !== "teams"}>
+              <MsTeamsSection orgId={orgId} embedded />
+            </div>
+            <div hidden={selectedConnection !== "mobile"} className="space-y-6">
+              <PushPreferencesSection orgId={orgId} embedded />
+              <PushRosterSection orgId={orgId} embedded />
+            </div>
+            <div hidden={selectedConnection !== "sms"}>
+              <TwilioSection
+                orgId={orgId}
+                settings={settings}
+                recipients={recipients}
+                onChanged={() => void load()}
+                embedded
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
       <AlertRoutingSection orgId={orgId} />
 
-      <SlackSection orgId={orgId} />
-
-      <MsTeamsSection orgId={orgId} />
-
-      <DriftAlertsSection orgId={orgId} />
-
-      <ExpiryAlertsSection />
-
-      <WeeklyDigestSection />
-
-      <PushPreferencesSection orgId={orgId} />
-
-      <PushRosterSection orgId={orgId} />
-
-      <TwilioSection
-        orgId={orgId}
-        settings={settings}
-        recipients={recipients}
-        onChanged={() => void load()}
-      />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <DriftAlertsSection orgId={orgId} />
+        <ExpiryAlertsSection />
+        <div className="lg:col-span-2">
+          <WeeklyDigestSection />
+        </div>
+      </div>
     </div>
   );
 }
 
 /**
- * Everything SMS/voice in one card: the Twilio credentials, the recipients they
+ * Everything SMS/voice in one place: the Twilio credentials, the recipients they
  * page, and the test send that exercises both. They are one setup — splitting
  * them across cards made the page read as three unrelated features.
+ *
+ * When `embedded`, this sits in the Connections detail pane (no outer card).
  */
 function TwilioSection({
   orgId,
   settings,
   recipients,
   onChanged,
+  embedded = false,
 }: {
   orgId: string;
   settings: PagingSettings;
   recipients: Recipient[];
   onChanged: () => void;
+  embedded?: boolean;
 }) {
-  return (
-    <section className="border border-border rounded-xl p-5 space-y-5">
+  const body = (
+    <>
       <div>
         <h2 className="text-sm font-semibold text-on-surface-secondary">SMS &amp; voice</h2>
         <p className="text-xs text-on-surface-muted mt-1">
@@ -138,8 +237,13 @@ function TwilioSection({
       <RecipientsPanel orgId={orgId} recipients={recipients} onChanged={onChanged} />
 
       <TestPanel orgId={orgId} settings={settings} recipientCount={recipients.length} />
-    </section>
+    </>
   );
+
+  if (embedded) {
+    return <div className="space-y-5">{body}</div>;
+  }
+  return <section className="border border-border rounded-xl p-5 space-y-5">{body}</section>;
 }
 
 function SettingsForm({
@@ -629,7 +733,7 @@ function TeamsMark({ className }: { className?: string }) {
  * the channel. That makes this section a paste-a-URL form rather than a picker,
  * and the disclosure below carries the steps to get one.
  */
-function MsTeamsSection({ orgId }: { orgId: string }) {
+function MsTeamsSection({ orgId, embedded = false }: { orgId: string; embedded?: boolean }) {
   const { api } = useSettingsHost();
   const [webhooks, setWebhooks] = useState<MsTeamsWebhook[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -675,21 +779,29 @@ function MsTeamsSection({ orgId }: { orgId: string }) {
     }
   }
 
+  const shell = (children: React.ReactNode, className = "space-y-4") =>
+    embedded ? (
+      <div className={className}>{children}</div>
+    ) : (
+      <section className={`border border-border rounded-xl p-5 ${className}`}>{children}</section>
+    );
+
   if (!webhooks) {
-    return (
-      <section className="border border-border rounded-xl p-5 space-y-2">
+    return shell(
+      <>
         <h2 className="text-sm font-semibold text-on-surface-secondary">Microsoft Teams</h2>
         {error ? (
           <p className="text-xs text-red-400">{error}</p>
         ) : (
           <p className="text-sm text-on-surface-faint">Loading…</p>
         )}
-      </section>
+      </>,
+      "space-y-2",
     );
   }
 
-  return (
-    <section className="border border-border rounded-xl p-5 space-y-4">
+  return shell(
+    <>
       <div className="flex items-center gap-2">
         <TeamsMark className="w-4 h-4" />
         <h2 className="text-sm font-semibold text-on-surface-secondary">Microsoft Teams</h2>
@@ -764,7 +876,7 @@ function MsTeamsSection({ orgId }: { orgId: string }) {
           {busy ? "Posting…" : "Send test message"}
         </button>
       </div>
-    </section>
+    </>,
   );
 }
 
@@ -857,7 +969,7 @@ function SlackMark({ className }: { className?: string }) {
  * "Add to Slack" OAuth round-trip; the callback lands back on this page with
  * `?slack=connected`, which the banner below reports.
  */
-function SlackSection({ orgId }: { orgId: string }) {
+function SlackSection({ orgId, embedded = false }: { orgId: string; embedded?: boolean }) {
   const { api, openExternal } = useSettingsHost();
   const [status, setStatus] = useState<SlackStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -936,23 +1048,31 @@ function SlackSection({ orgId }: { orgId: string }) {
     }
   }
 
+  const shell = (children: React.ReactNode, className = "space-y-4") =>
+    embedded ? (
+      <div className={className}>{children}</div>
+    ) : (
+      <section className={`border border-border rounded-xl p-5 ${className}`}>{children}</section>
+    );
+
   if (!status) {
-    return (
-      <section className="border border-border rounded-xl p-5 space-y-2">
+    return shell(
+      <>
         <h2 className="text-sm font-semibold text-on-surface-secondary">Slack</h2>
         {error ? (
           <p className="text-xs text-red-400">{error}</p>
         ) : (
           <p className="text-sm text-on-surface-faint">Loading…</p>
         )}
-      </section>
+      </>,
+      "space-y-2",
     );
   }
 
   const install = status.installations[0] ?? null;
 
-  return (
-    <section className="border border-border rounded-xl p-5 space-y-4">
+  return shell(
+    <>
       <div className="flex items-center gap-2">
         <SlackMark className="w-4 h-4" />
         <h2 className="text-sm font-semibold text-on-surface-secondary">Slack</h2>
@@ -1080,7 +1200,7 @@ function SlackSection({ orgId }: { orgId: string }) {
           </div>
         </>
       )}
-    </section>
+    </>,
   );
 }
 
@@ -1263,7 +1383,13 @@ function TestPanel({
  * devices, and a test send. Devices are enrolled by signing in on the mobile
  * app — there is nothing to add here, only to review and remove.
  */
-function PushPreferencesSection({ orgId }: { orgId: string }) {
+function PushPreferencesSection({
+  orgId,
+  embedded = false,
+}: {
+  orgId: string;
+  embedded?: boolean;
+}) {
   const { api } = useSettingsHost();
   const [prefs, setPrefs] = useState<PushPreferences | null>(null);
   const [devices, setDevices] = useState<PushDeviceSummary[]>([]);
@@ -1336,20 +1462,28 @@ function PushPreferencesSection({ orgId }: { orgId: string }) {
     }
   }
 
+  const shell = (children: React.ReactNode, className = "space-y-4") =>
+    embedded ? (
+      <div className={className}>{children}</div>
+    ) : (
+      <section className={`border border-border rounded-xl p-5 ${className}`}>{children}</section>
+    );
+
   if (error) {
-    return (
-      <section className="border border-border rounded-xl p-5">
+    return shell(
+      <>
         <h2 className="text-sm font-semibold text-on-surface-secondary">
           Your mobile notifications
         </h2>
         <p className="text-xs text-red-400 mt-2">{error}</p>
-      </section>
+      </>,
+      "",
     );
   }
   if (!prefs) return null;
 
-  return (
-    <section className="border border-border rounded-xl p-5 space-y-4">
+  return shell(
+    <>
       <h2 className="text-sm font-semibold text-on-surface-secondary">Your mobile notifications</h2>
       <p className="text-xs text-on-surface-muted">
         Push notifications go to the Infrawrench mobile app. Sign in on your phone to register a
@@ -1421,7 +1555,7 @@ function PushPreferencesSection({ orgId }: { orgId: string }) {
           {testBusy ? "Sending..." : "Send test push"}
         </button>
       </div>
-    </section>
+    </>,
   );
 }
 
@@ -1435,7 +1569,7 @@ interface PushRecipientRow {
 }
 
 /** Read-only admin roster of members with at least one active push device. */
-function PushRosterSection({ orgId }: { orgId: string }) {
+function PushRosterSection({ orgId, embedded = false }: { orgId: string; embedded?: boolean }) {
   const { api } = useSettingsHost();
   const [rows, setRows] = useState<PushRecipientRow[] | null>(null);
   const [forbidden, setForbidden] = useState(false);
@@ -1450,8 +1584,8 @@ function PushRosterSection({ orgId }: { orgId: string }) {
 
   if (forbidden || rows === null) return null;
 
-  return (
-    <section className="border border-border rounded-xl p-5 space-y-3">
+  const body = (
+    <>
       <h2 className="text-sm font-semibold text-on-surface-secondary">Members receiving push</h2>
       {rows.length === 0 ? (
         <p className="text-sm text-on-surface-muted">
@@ -1477,8 +1611,13 @@ function PushRosterSection({ orgId }: { orgId: string }) {
           ))}
         </ul>
       )}
-    </section>
+    </>
   );
+
+  if (embedded) {
+    return <div className="space-y-3 border-t border-border/50 pt-5">{body}</div>;
+  }
+  return <section className="border border-border rounded-xl p-5 space-y-3">{body}</section>;
 }
 
 const inputClass =
