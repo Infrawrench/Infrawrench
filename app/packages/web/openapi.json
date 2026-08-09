@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -5519,6 +5519,1073 @@
           }
         },
         "additionalProperties": false
+      },
+      "OrgConfigCostFilter": {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string"
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "in",
+              "not_in"
+            ]
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "tagKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "dimension",
+          "op",
+          "values"
+        ],
+        "additionalProperties": false
+      },
+      "OrgConfigBudget": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "description": "Stable slug identifying this entity across organizations. Derived from the name on export; it is what an apply matches on, so renaming an entity while keeping its key is a rename rather than a delete-and-create.",
+            "example": "monthly-cloud-spend"
+          },
+          "name": {
+            "type": "string"
+          },
+          "amountCents": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "currency": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 3,
+            "default": "USD"
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgConfigCostFilter"
+            },
+            "default": []
+          },
+          "thresholds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "actual",
+                    "forecast"
+                  ]
+                },
+                "percent": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000
+                }
+              },
+              "required": [
+                "type",
+                "percent"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 10
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "amountCents",
+          "thresholds"
+        ],
+        "additionalProperties": false
+      },
+      "OrgConfigCustomGraph": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "description": "Stable slug identifying this entity across organizations. Derived from the name on export; it is what an apply matches on, so renaming an entity while keeping its key is a rename rather than a delete-and-create.",
+            "example": "monthly-cloud-spend"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "description": "The graph's TypeScript source."
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "OrgConfigWorkflowTrigger": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "manual"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "cron"
+                ]
+              },
+              "expression": {
+                "type": "string"
+              },
+              "timezone": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "expression"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "git"
+                ]
+              },
+              "provider": {
+                "type": "string"
+              },
+              "repo": {
+                "type": "string"
+              },
+              "branch": {
+                "type": "string"
+              },
+              "events": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "installationId": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "budget"
+                ]
+              },
+              "budgetKey": {
+                "type": "string",
+                "maxLength": 80,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+                "description": "`key` of an entry in this document's `budgets` (never a row id).",
+                "example": "monthly-cloud-spend"
+              },
+              "percent": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "metric": {
+                "type": "string",
+                "enum": [
+                  "actual",
+                  "forecast"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "budgetKey"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "default": {
+          "kind": "manual"
+        }
+      },
+      "OrgConfigWorkflow": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "description": "Stable slug identifying this entity across organizations. Derived from the name on export; it is what an apply matches on, so renaming an entity while keeping its key is a rename rather than a delete-and-create.",
+            "example": "monthly-cloud-spend"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "description": "The workflow's TypeScript source."
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/OrgConfigWorkflowTrigger"
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "label"
+              ],
+              "additionalProperties": false
+            },
+            "default": []
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "source"
+        ],
+        "additionalProperties": false,
+        "description": "A workflow. The git-webhook signing secret is deliberately absent — it is write-only, so a document can neither leak nor set one."
+      },
+      "OrgConfigDashboardCard": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "widget"
+                ]
+              },
+              "widgetKind": {
+                "type": "string",
+                "enum": [
+                  "cost_graph",
+                  "budget",
+                  "custom_graph"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "default": ""
+              },
+              "config": {
+                "$ref": "#/components/schemas/JsonObject"
+              },
+              "budgetKey": {
+                "type": "string",
+                "maxLength": 80,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+                "description": "Stable slug identifying this entity across organizations. Derived from the name on export; it is what an apply matches on, so renaming an entity while keeping its key is a rename rather than a delete-and-create.",
+                "example": "monthly-cloud-spend"
+              },
+              "graphKey": {
+                "type": "string",
+                "maxLength": 80,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+                "description": "Stable slug identifying this entity across organizations. Derived from the name on export; it is what an apply matches on, so renaming an entity while keeping its key is a rename rather than a delete-and-create.",
+                "example": "monthly-cloud-spend"
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 12
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 12
+              }
+            },
+            "required": [
+              "kind",
+              "widgetKind"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "workflow"
+                ]
+              },
+              "workflowKey": {
+                "type": "string",
+                "maxLength": 80,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+                "description": "Stable slug identifying this entity across organizations. Derived from the name on export; it is what an apply matches on, so renaming an entity while keeping its key is a rename rather than a delete-and-create.",
+                "example": "monthly-cloud-spend"
+              }
+            },
+            "required": [
+              "kind",
+              "workflowKey"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "resource"
+                ]
+              },
+              "pluginId": {
+                "type": "string"
+              },
+              "resourceTypeId": {
+                "type": "string"
+              },
+              "externalId": {
+                "type": "string"
+              },
+              "account": {
+                "type": "string",
+                "description": "Display name of the owning account."
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 12
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 12
+              }
+            },
+            "required": [
+              "kind",
+              "pluginId",
+              "resourceTypeId",
+              "externalId",
+              "account"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "One card. Position is the index in the dashboard's `cards` array — the grid order all three card kinds share."
+      },
+      "OrgConfigDashboard": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "description": "Stable slug identifying this entity across organizations. Derived from the name on export; it is what an apply matches on, so renaming an entity while keeping its key is a rename rather than a delete-and-create.",
+            "example": "monthly-cloud-spend"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isDefault": {
+            "type": "boolean",
+            "default": false
+          },
+          "cards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgConfigDashboardCard"
+            },
+            "default": []
+          }
+        },
+        "required": [
+          "key",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "OrgConfigMetricAlert": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "description": "Stable slug identifying this entity across organizations. Derived from the name on export; it is what an apply matches on, so renaming an entity while keeping its key is a rename rather than a delete-and-create.",
+            "example": "monthly-cloud-spend"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "resourceTypeId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "tagKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "tagValue": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "metricKey": {
+            "type": "string"
+          },
+          "comparator": {
+            "type": "string",
+            "enum": [
+              ">",
+              ">=",
+              "<",
+              "<="
+            ]
+          },
+          "threshold": {
+            "type": "number"
+          },
+          "forMinutes": {
+            "type": "integer",
+            "default": 15
+          },
+          "cooldownMinutes": {
+            "type": "integer",
+            "default": 60
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "metricKey",
+          "comparator",
+          "threshold"
+        ],
+        "additionalProperties": false
+      },
+      "OrgConfigProbe": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "description": "Stable slug identifying this entity across organizations. Derived from the name on export; it is what an apply matches on, so renaming an entity while keeping its key is a rename rather than a delete-and-create.",
+            "example": "monthly-cloud-spend"
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string",
+            "default": "GET"
+          },
+          "intervalSeconds": {
+            "type": "integer",
+            "default": 60
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "default": 10000
+          },
+          "failureThreshold": {
+            "type": "integer",
+            "default": 3
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "url"
+        ],
+        "additionalProperties": false
+      },
+      "OrgConfigCostCentre": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "description": "Stable slug identifying this entity across organizations. Derived from the name on export; it is what an apply matches on, so renaming an entity while keeping its key is a rename rather than a delete-and-create.",
+            "example": "monthly-cloud-spend"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "priority": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "match": {
+                  "type": "object",
+                  "properties": {
+                    "tagKey": {
+                      "type": "string"
+                    },
+                    "tagValue": {
+                      "type": "string"
+                    },
+                    "account": {
+                      "type": "string",
+                      "description": "Account display name."
+                    },
+                    "pluginId": {
+                      "type": "string"
+                    },
+                    "service": {
+                      "type": "string"
+                    }
+                  },
+                  "default": {},
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "priority"
+              ],
+              "additionalProperties": false
+            },
+            "default": []
+          }
+        },
+        "required": [
+          "key",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "OrgConfigAlertSettings": {
+        "type": "object",
+        "properties": {
+          "costAnomaly": {
+            "type": "object",
+            "properties": {
+              "sigmas": {
+                "type": "number"
+              },
+              "minDeltaCents": {
+                "type": "integer"
+              },
+              "newSourceMinCents": {
+                "type": "integer"
+              },
+              "smsAlerts": {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "new_source",
+                  "all"
+                ]
+              }
+            },
+            "required": [
+              "sigmas",
+              "minDeltaCents",
+              "newSourceMinCents",
+              "smsAlerts"
+            ],
+            "additionalProperties": false
+          },
+          "drift": {
+            "type": "object",
+            "properties": {
+              "notifyCreated": {
+                "type": "boolean"
+              },
+              "notifyUpdated": {
+                "type": "boolean"
+              },
+              "notifyDeleted": {
+                "type": "boolean"
+              },
+              "cooldownMinutes": {
+                "type": "integer"
+              },
+              "minChanges": {
+                "type": "integer"
+              },
+              "accounts": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Account display names; empty means every account."
+              }
+            },
+            "required": [
+              "notifyCreated",
+              "notifyUpdated",
+              "notifyDeleted",
+              "cooldownMinutes",
+              "minChanges",
+              "accounts"
+            ],
+            "additionalProperties": false
+          },
+          "expiry": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "leadDays": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "enabled",
+              "leadDays"
+            ],
+            "additionalProperties": false
+          },
+          "posture": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "enabled"
+            ],
+            "additionalProperties": false
+          },
+          "digest": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "timezone": {
+                "type": "string"
+              },
+              "sendDay": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 7
+              },
+              "sendHour": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 23
+              },
+              "narrativeEnabled": {
+                "type": "boolean"
+              },
+              "recipients": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "enabled",
+              "timezone",
+              "sendDay",
+              "sendHour",
+              "narrativeEnabled",
+              "recipients"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "description": "Org-wide notification tuning. Cooldown claims (`lastNotifiedAt`, `lastSentWeekStart`) are deliberately absent: they are poller state, and resetting one from an apply would re-open a quiet period and page people twice."
+      },
+      "OrgConfigDocument": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "exportedAt": {
+            "type": "string"
+          },
+          "exportedFrom": {
+            "type": "object",
+            "properties": {
+              "organizationId": {
+                "type": "string"
+              },
+              "organizationName": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "organizationId",
+              "organizationName"
+            ],
+            "additionalProperties": false
+          },
+          "budgets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgConfigBudget"
+            }
+          },
+          "customGraphs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgConfigCustomGraph"
+            }
+          },
+          "workflows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgConfigWorkflow"
+            }
+          },
+          "dashboards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgConfigDashboard"
+            }
+          },
+          "metricAlerts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgConfigMetricAlert"
+            }
+          },
+          "probes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgConfigProbe"
+            }
+          },
+          "costCentres": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgConfigCostCentre"
+            }
+          },
+          "tagPolicy": {
+            "type": "object",
+            "properties": {
+              "requiredTags": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "allowedValues": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "key"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "enforceOnCreate": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "requiredTags",
+              "enforceOnCreate"
+            ],
+            "additionalProperties": false
+          },
+          "alertSettings": {
+            "$ref": "#/components/schemas/OrgConfigAlertSettings"
+          }
+        },
+        "additionalProperties": false,
+        "description": "An organization's configuration. Every section is optional — a document that omits one leaves it entirely alone, in both apply modes."
+      },
+      "OrgConfigSection": {
+        "type": "string",
+        "enum": [
+          "budgets",
+          "customGraphs",
+          "workflows",
+          "dashboards",
+          "metricAlerts",
+          "probes",
+          "costCentres",
+          "tagPolicy",
+          "alertSettings"
+        ]
+      },
+      "OrgConfigChange": {
+        "type": "object",
+        "properties": {
+          "section": {
+            "$ref": "#/components/schemas/OrgConfigSection"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "update",
+              "delete",
+              "unchanged"
+            ]
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Fields that differ, on an update."
+          }
+        },
+        "required": [
+          "section",
+          "key",
+          "name",
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "OrgConfigUnresolved": {
+        "type": "object",
+        "properties": {
+          "section": {
+            "$ref": "#/components/schemas/OrgConfigSection"
+          },
+          "key": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "section",
+          "key",
+          "detail"
+        ],
+        "additionalProperties": false,
+        "description": "Something the document asked for that this organization could not satisfy — a pin for a resource nobody has synced, an account name that does not exist here. Not fatal: the affected card, clause or deletion is dropped and the rest of the document still applies."
+      },
+      "OrgConfigPlan": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "merge",
+              "replace"
+            ]
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgConfigChange"
+            }
+          },
+          "unresolved": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgConfigUnresolved"
+            }
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "create": {
+                "type": "integer"
+              },
+              "update": {
+                "type": "integer"
+              },
+              "delete": {
+                "type": "integer"
+              },
+              "unchanged": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "create",
+              "update",
+              "delete",
+              "unchanged"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "mode",
+          "changes",
+          "unresolved",
+          "counts"
+        ],
+        "additionalProperties": false
+      },
+      "OrgConfigRequest": {
+        "type": "object",
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/OrgConfigDocument"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "merge",
+              "replace"
+            ],
+            "default": "merge",
+            "description": "`merge` creates and updates what the document names and leaves everything else alone. `replace` additionally deletes entities the document does not name, within the sections it carries."
+          }
+        },
+        "required": [
+          "document"
+        ],
+        "additionalProperties": false
+      },
+      "OrgConfigApplyResult": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/OrgConfigPlan"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "applied": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "applied"
+            ],
+            "additionalProperties": false
+          }
+        ]
       },
       "WorkflowApprovalStatus": {
         "type": "string",
@@ -14623,6 +15690,8 @@
           "freezes:write",
           "freezes:override",
           "tag-policy:override",
+          "config:read",
+          "config:write",
           "audit:read",
           "access:read",
           "access:request",
@@ -23057,6 +24126,214 @@
         "operationId": "postOrgOrgIdCustomGraphsIdRender",
         "x-required-permission": "dashboards:read",
         "description": "_Requires permission: `dashboards:read`._"
+      }
+    },
+    "/api/org/{orgId}/config/export": {
+      "get": {
+        "tags": [
+          "Config as Code"
+        ],
+        "summary": "Export the organization's configuration as one document",
+        "description": "Dashboards, workflows, custom graphs, budgets, metric alerts, synthetic probes, cost centres, the tag policy and the org-wide alert settings, addressed by stable keys rather than row ids so the result applies to any organization.\n\nCredentials, accounts, resources and workflow signing secrets are never included. Ordering is stable, so re-exporting an unchanged organization produces the same bytes — commit it to git and the diff is the change.\n\nRequires the read permission of every section exported; it refuses rather than silently omitting one, because a partial document applied in `replace` mode would delete what the exporter could not see.\n\n_Requires permission: `config:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated subset of sections to export. Defaults to all of: budgets, customGraphs, workflows, dashboards, metricAlerts, probes, costCentres, tagPolicy, alertSettings.",
+              "example": "budgets,workflows"
+            },
+            "required": false,
+            "name": "sections",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The configuration document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgConfigDocument"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdConfigExport",
+        "x-required-permission": "config:read"
+      }
+    },
+    "/api/org/{orgId}/config/plan": {
+      "post": {
+        "tags": [
+          "Config as Code"
+        ],
+        "summary": "Preview what applying a document would do",
+        "description": "The dry run: validates the document, resolves its cross-references against this organization, and returns the create/update/delete/unchanged plan without writing anything. Read-only, so a reviewer with read access can run it on a pull request.\n\n_Requires permission: `config:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrgConfigRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgConfigPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdConfigPlan",
+        "x-required-permission": "config:read"
+      }
+    },
+    "/api/org/{orgId}/config/apply": {
+      "post": {
+        "tags": [
+          "Config as Code"
+        ],
+        "summary": "Apply a configuration document",
+        "description": "Applies the document in a single transaction and returns the plan that was executed — all or nothing, so a failure never leaves the organization halfway between two configurations.\n\nRequires the write permission of every section the document carries, so this cannot be used to reach past a role that withholds one.\n\n_Requires permission: `config:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrgConfigRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Applied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgConfigApplyResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required — the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdConfigApply",
+        "x-required-permission": "config:write"
       }
     },
     "/api/org/{orgId}/workflow-approvals": {

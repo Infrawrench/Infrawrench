@@ -49,6 +49,15 @@ export const EXPIRY_WARNING_DAYS = 30;
 export const DEFAULT_EXPIRY_LEAD_DAYS = 60;
 
 /**
+ * Bounds the API enforces on the org's expiry alert settings. Lives here, with
+ * the rest of the expiry contract, so the settings form, the config-as-code
+ * schema and the server's own clamp all read one definition.
+ */
+export const EXPIRY_ALERT_LIMITS = {
+  leadDays: { min: 1, max: 365 },
+} as const;
+
+/**
  * Default age budgets for `from: "created"` rules, per kind, in days. A rule
  * may override with `maxAgeDays`; kinds that only ever appear as absolute
  * expiries still get an entry so a declaration is never silently dropped.

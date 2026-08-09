@@ -18,6 +18,7 @@ export { ApiKeysSection } from "./ApiKeysSection.js";
 export { CredentialHygieneSection } from "./CredentialHygieneSection.js";
 export { FreezesSection } from "./FreezesSection.js";
 export { TagPolicySection } from "./TagPolicySection.js";
+export { ConfigAsCodeSection } from "./ConfigAsCodeSection.js";
 export { ApprovalsSection } from "./ApprovalsSection.js";
 export { NotificationsSection } from "./NotificationsSection.js";
 export { ExpiryAlertsSection } from "./ExpiryAlertsSection.js";

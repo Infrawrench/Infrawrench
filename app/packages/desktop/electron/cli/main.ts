@@ -41,6 +41,7 @@ import { cmdPage, cmdCostsPush } from "./commands/push";
 import { cmdCli } from "./commands/cli-install";
 import { cmdDeploy } from "./commands/deploy";
 import { cmdSshFanout } from "./commands/ssh-fanout";
+import { cmdConfig } from "./commands/config";
 import { runTui } from "./tui";
 
 const HELP = `infrawrench — manage your infrastructure from the terminal
@@ -113,6 +114,10 @@ COMMANDS
                       (put -- before a remote command with flags of its own:
                       infrawrench ssh-fanout -y -- uptime -p)
   ssh-fanout snippets the organization's saved fan-out commands
+  config export       the org's dashboards, workflows, budgets, graphs, alert rules & policies
+                      as one JSON document   [--out file] [--sections a,b]  (stdout when no --out)
+  config plan         what applying a document would change, without changing it   [-f file] [--prune]
+  config apply        apply a document   [-f file] [--prune] [--sections a,b] [-y]
   page <message>      alert the org's on-call transports   --source <name> [--key k] [--voice]
   page clear          drop a page key's cooldown after a recovery   --source <name> [--key k]
   deploy              build & ship this project via its Infrafile   [-e <env>] [--plan]
@@ -143,7 +148,10 @@ FLAGS
   --reason <text>     posture dismiss: why the finding is an accepted risk
   --source <name>     who is pushing (required by page and costs push)
   --key <k>           page throttle key   --title <t>   --cooldown <min>   --voice
-  -f, --file <path>   JSON rows for costs push (stdin when omitted)
+  -f, --file <path>   JSON rows for costs push / config document (stdin when omitted)
+  --out <path>        config export: write the document here instead of stdout
+  --sections <a,b>    config: limit to these sections (budgets, workflows, dashboards, …)
+  --prune             config apply: also delete what the document doesn't name
   -e, --env <name>    environment to deploy (optional when the Infrafile has one)
   --plan              deploy: show the plan and Dockerfile, build nothing
   --set <key=value>   deploy: answer a select() without prompting (repeatable)
@@ -157,7 +165,7 @@ FLAGS
   --key <id|name>     ssh-fanout: org SSH key for VM hosts (also: page throttle key)
   --user <name>       ssh-fanout: username override for VM hosts
   --snippet <name>    ssh-fanout: run a saved command instead of a literal one
-  -y, --yes           ssh-fanout: skip the "Run on N hosts?" confirmation
+  -y, --yes           skip the confirmation (ssh-fanout's "Run on N hosts?", config apply's plan)
   --concurrency <n>   ssh-fanout: simultaneous connections (default 8, max 16)
   --no-color          disable ANSI colors
   -v, --version       app version
@@ -401,6 +409,9 @@ export async function runCli(): Promise<void> {
         break;
       case "ssh-fanout":
         await cmdSshFanout(ctx, rest, parsed.fanout);
+        break;
+      case "config":
+        await cmdConfig(ctx, rest[0], parsed.config);
         break;
       case "cli":
         await cmdCli(ctx, rest[0]);

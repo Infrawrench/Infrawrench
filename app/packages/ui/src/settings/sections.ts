@@ -27,6 +27,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { key: "credential-hygiene", label: "Credential Hygiene", requiresPermission: "audit:read" },
   { key: "freezes", label: "Change Freezes" },
   { key: "tag-policy", label: "Tag Policy" },
+  { key: "config", label: "Config as Code", requiresPermission: "config:read" },
   { key: "approvals", label: "Approvals", requiresPermission: "workflows:read" },
   { key: "paging", label: "Notifications" },
   { key: "billing", label: "Billing" },
