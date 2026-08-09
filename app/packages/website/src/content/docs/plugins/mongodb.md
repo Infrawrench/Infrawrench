@@ -20,7 +20,7 @@ mongodb+srv://user:password@cluster.mongodb.net/?retryWrites=true&w=majority
 mongodb://user:password@host:27017/dbname
 ```
 
-<insert [MongoDB Add-account form with connection string field] here>
+![MongoDB Add-account form with connection string field](https://agent-assets.infrawrench.com/docs/screenshots/plugins/mongodb-add-account.png)
 
 ## Notable flows
 

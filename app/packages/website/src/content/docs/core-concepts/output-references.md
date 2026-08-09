@@ -24,7 +24,7 @@ You have a DigitalOcean managed Postgres database. You want to add a Postgres pl
 3. Pick **DigitalOcean → my-database → connectionString**.
 4. Save.
 
-<insert [Field with a "link" icon showing the output-ref picker open] here>
+![Field with a "link" icon showing the output-ref picker open](https://agent-assets.infrawrench.com/docs/screenshots/core-concepts/output-ref-picker.png)
 
 The Postgres account now follows whatever DigitalOcean returns.
 

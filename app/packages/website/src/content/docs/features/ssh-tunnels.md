@@ -6,7 +6,7 @@ sidebar_order: 10
 
 Many production databases are not reachable from the public internet. Open an SSH tunnel and infrawrench forwards a local port through a bastion host, so the [SQL editor](./sql-editor.md), [KV console](./kv-console.md), or your own tools can connect.
 
-<insert [SSH tunnel config form with bastion, target host, target port, and local port fields] here>
+![SSH tunnel config form with bastion, target host, target port, and local port fields](https://agent-assets.infrawrench.com/docs/screenshots/features/ssh-tunnel-config.png)
 
 ## Creating a tunnel
 

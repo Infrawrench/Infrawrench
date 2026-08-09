@@ -35,9 +35,9 @@ Free orgs (no payment method on file) can use the [AI chat](../features/ai-chat.
 
 You are also offered the choice right after creating an organization — the onboarding flow shows the Free and Pro plans side by side. Picking **Continue with Free** costs nothing and you can upgrade later from Settings; picking **Upgrade to Pro** takes you straight to checkout.
 
-<insert [Onboarding plan-choice step showing the Free and Pro cards side by side after creating an organization] here>
+![Onboarding plan-choice step showing the Free and Pro cards side by side after creating an organization](https://agent-assets.infrawrench.com/docs/screenshots/onboarding/plan-choice.png)
 
-<insert [Billing page with plan cards and a seat count selector] here>
+![Billing page with plan cards and a seat count selector](https://agent-assets.infrawrench.com/docs/screenshots/settings/billing-plan.png)
 
 ## Seats
 
@@ -62,7 +62,7 @@ Worth knowing:
 - **When you are full on slots alone**, the invite prompt cannot offer "add a seat for $20/month" — there is no subscription to grow. It sends you to Billing to buy another slot (or to start a monthly subscription) instead.
 - **Refunds take the seats back.** A refunded purchase stops granting capacity immediately, and stays in the purchase history.
 
-<insert [Billing page Prepaid capacity card showing the slot quantity selector, the buy button, and a purchase history list with one active slot and its expiry date] here>
+![Billing page Prepaid capacity card showing the slot quantity selector, the buy button, and a purchase history list with one active slot and its expiry date](https://agent-assets.infrawrench.com/docs/screenshots/settings/billing-prepaid.png)
 
 Self-hosted deployments only see this option when `STRIPE_CAPACITY_SLOT_PRICE_ID` is configured; without it the card is hidden and only the monthly plan is offered.
 

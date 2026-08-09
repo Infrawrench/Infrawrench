@@ -27,11 +27,11 @@ Freeze windows live in **Settings → Change Freezes**. Anyone with `freezes:wri
 - **Starts** — defaults to now; set a future time to schedule the freeze.
 - **Ends** — optional. Leave it empty for an open-ended freeze that holds until someone ends it.
 
-<insert [Settings → Change Freezes page showing one freeze "In effect" with an amber badge, one "Ended", and the "Declare freeze" form open with name/reason/start/end fields] here>
+![Settings → Change Freezes page showing one freeze "In effect" with an amber badge, one "Ended", and the "Declare freeze" form open with name/reason/start/end fields](https://agent-assets.infrawrench.com/docs/screenshots/settings/change-freezes.png)
 
 While a freeze is in effect, a banner appears across the top of the app for every member, with the freeze name, its end time, and a link to the management page.
 
-<insert [App shell with the amber change-freeze banner visible above the sidebar and workspace tabs, reading "Change freeze: Holiday freeze — Destructive actions are blocked until Jan 2, 9:00 AM"] here>
+![App shell with the amber change-freeze banner visible above the sidebar and workspace tabs, reading "Change freeze: Holiday freeze — Destructive actions are blocked until Jan 2, 9:00 AM"](https://agent-assets.infrawrench.com/docs/screenshots/shell/change-freeze-banner.png)
 
 A freeze can be ended early from the same page (**End now**), which deactivates it immediately and records `change_freeze.end` in the audit log.
 

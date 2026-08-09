@@ -8,7 +8,7 @@ sidebar_order: 4
 
 The audit log records every state-changing action in the organization — resource created, account added, SSH session opened, secret exported, member invited, role changed, API key issued. Read-only views (listing a sidebar, opening a dashboard) are not recorded.
 
-<insert [Audit log table with action, actor, target, time columns] here>
+![Audit log table with action, actor, target, time columns](https://agent-assets.infrawrench.com/docs/screenshots/settings/audit-log.png)
 
 ## What is captured
 

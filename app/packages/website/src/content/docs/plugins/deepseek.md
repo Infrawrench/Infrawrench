@@ -17,7 +17,7 @@ One field. [platform.deepseek.com](https://platform.deepseek.com/api_keys) → *
 
 There is no separate admin or management key, and no API for creating or revoking keys, so rotation happens in the DeepSeek console.
 
-<insert [DeepSeek Add-account form with the single API key field] here>
+![DeepSeek Add-account form with the single API key field](https://agent-assets.infrawrench.com/docs/screenshots/plugins/deepseek-add-account.png)
 
 ## Tips & limits
 

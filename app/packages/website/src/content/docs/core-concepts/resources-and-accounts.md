@@ -20,7 +20,7 @@ You can have many accounts per provider (for example, two DigitalOcean accounts:
 
 When you regenerate a token upstream (rotation schedule, scope upgrade, leaked secret), open the account detail page and click **Update credentials**. The form prefills non-sensitive fields and leaves sensitive ones blank with a "leave blank to keep current value" placeholder so you only have to retype the bits you're changing. Synced resources, pins, dashboards, and SSH-tunnel bindings stay intact.
 
-<insert [Account detail page header showing the Rename / Update credentials / Remove buttons] here>
+![Account detail page header showing the Rename / Update credentials / Delete buttons](https://agent-assets.infrawrench.com/docs/screenshots/core/account-header.png)
 
 ## Resource
 
@@ -45,7 +45,7 @@ Providers
         └── ...
 ```
 
-<insert [Sidebar showing two DigitalOcean accounts and one AWS account expanded] here>
+![Sidebar showing two DigitalOcean accounts and one AWS account expanded](https://agent-assets.infrawrench.com/docs/screenshots/core/sidebar-accounts.png)
 
 The sidebar auto-refreshes every 30 seconds. You can manually refresh an account or resource group from its context menu.
 
@@ -61,7 +61,7 @@ The search box narrows that same set of tabs. It matches a type's name as well a
 
 The [mobile app](../features/mobile-app.md) shows the same sections and the same search, stacked as scrollable cards instead of tabs.
 
-<insert [A DigitalOcean account page with the full tab bar visible and one tab selected, then the same page with a search query typed showing the narrowed tabs] here>
+![A DigitalOcean account page with the full tab bar visible and one tab selected, then the same page with a search query typed showing the narrowed tabs](https://agent-assets.infrawrench.com/docs/screenshots/core/do-account-tabs.png)
 
 ## Resource detail pages
 

@@ -19,7 +19,7 @@ One field. ElevenLabs dashboard → profile menu (bottom-left avatar) → **API 
 
 Scope it with read access to **Voices**, **Models**, **History** and **User** (the last one drives the quota gauge), plus **Text to Speech** and **Speech to Text** if you want the Speech tab. Workspace keys and personal keys both work.
 
-<insert [ElevenLabs Add-account form with the API key field and its scope guidance] here>
+![ElevenLabs Add-account form with the API key field and its scope guidance](https://agent-assets.infrawrench.com/docs/screenshots/plugins/elevenlabs-add-account.png)
 
 ## The Speech tab
 
@@ -30,7 +30,7 @@ Open a voice for a **Speech** tab with both halves. See [Speech testing](../feat
 
 One shared model picker drives both halves. Leave a Scribe model selected and press Synthesize and the plugin falls back to the TTS default rather than sending a transcription model to the synthesis endpoint.
 
-<insert [ElevenLabs Speech tab on a voice, showing the character quota in the subtitle and a synthesized clip in the player] here>
+![ElevenLabs Speech tab on a voice, showing the character quota in the subtitle and a synthesized clip in the player](https://agent-assets.infrawrench.com/docs/screenshots/plugins/elevenlabs-speech.png)
 
 ## Tips & limits
 

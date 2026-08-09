@@ -195,7 +195,7 @@ Other options: `workdir` (defaults to `/workspace`), `mountSource: false` for an
 image that already carries everything, and `image` to run something other than
 the one just built.
 
-<insert [A deploy run in the web app mid-build, showing the stage indicator on "build" and Docker build output streaming into the live log panel] here>
+![A deploy run in the web app mid-build, showing the stage indicator on "build" and Docker build output streaming into the live log panel](https://agent-assets.infrawrench.com/docs/screenshots/features/infrafile-web-deploy-mid-build.png)
 
 ## Deploying from the CLI
 
@@ -311,7 +311,7 @@ Set `buildOn` to a resource if you'd rather build somewhere specific — a machi
 with a warm layer cache, or one inside a private network. It's an override, not
 a requirement.
 
-<insert [The Deploy screen mid-build with the stage indicator on "build", showing hosted build output streaming into the live log panel] here>
+![The Deploy screen mid-build with the stage indicator on "build", showing hosted build output streaming into the live log panel](https://agent-assets.infrawrench.com/docs/screenshots/features/infrafile-web-deploy-mid-build.png)
 
 ## Deploy on push
 

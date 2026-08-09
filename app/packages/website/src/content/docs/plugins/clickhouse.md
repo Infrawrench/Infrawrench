@@ -23,7 +23,7 @@ ClickHouse accounts hold two complementary credential sets in a single record â€
 - **Service Hostname (for SQL)** â€” the HTTPS host of the ClickHouse service. Leave blank to skip SQL and use the account for service management only.
 - **SQL Username** and **SQL Password**.
 
-<insert [ClickHouse Add-account form showing the Cloud API and SQL connection field groups] here>
+![ClickHouse Add-account form showing the Cloud API and SQL connection field groups](https://agent-assets.infrawrench.com/docs/screenshots/plugins/clickhouse-add-account.png)
 
 ## Notable flows
 

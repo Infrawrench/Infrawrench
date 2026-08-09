@@ -6,7 +6,7 @@ sidebar_order: 6
 
 Speech providers are hard to evaluate from a dashboard. You want to hear the voice, not read its description — and you want to know your key works before you wire it into anything. The **Speech** tab does both against your own account, with your own credentials.
 
-<insert [The Speech tab on an ElevenLabs voice, showing the text box, voice picker and an audio player with a synthesized clip] here>
+![The Speech tab on an ElevenLabs voice, showing the text box, voice picker and an audio player with a synthesized clip](https://agent-assets.infrawrench.com/docs/screenshots/features/speech-elevenlabs.png)
 
 ## Where to find it
 
@@ -36,7 +36,7 @@ Either way you can play the clip back before sending it, then press **Transcribe
 
 The transcript appears below, with the detected language, clip duration, and confidence where the provider reports them. If the provider returns word-level timings, **Show word timings** expands a table of every word with its start, end, and speaker label.
 
-<insert [The speech-to-text half after a recording, showing the transcript and the expanded word-timings table with speaker labels] here>
+![The speech-to-text half after a recording, showing the transcript and the expanded word-timings table with speaker labels](https://agent-assets.infrawrench.com/docs/screenshots/features/speech-testing-stt.png)
 
 ## On the phone
 

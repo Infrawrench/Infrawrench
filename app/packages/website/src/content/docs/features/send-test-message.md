@@ -12,7 +12,7 @@ This is the same wire call your producers make, so it's useful for:
 - Reproducing a bug by replaying a known-bad payload.
 - Verifying that IAM/RBAC actually permits publishing from the account you're using.
 
-<insert [Cloudflare Queue detail page with the Publish tab active, JSON body editor populated, and a "Recent sends" entry below showing a successful push] here>
+![Cloudflare Queue detail page with the Publish tab active, JSON body editor populated, and a "Recent sends" entry below showing a successful push](https://agent-assets.infrawrench.com/docs/screenshots/features/cf-queue-publish.png)
 
 ## What you get per provider
 

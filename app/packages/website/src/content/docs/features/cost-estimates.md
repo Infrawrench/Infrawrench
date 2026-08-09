@@ -12,13 +12,13 @@ The figure updates live. Change the size, the region, the disk, or the node coun
 
 **In the create form.** A green **Estimated cost** badge sits in the header of every create dialog whose provider can price the type. Click it to see what the total is made of.
 
-<insert [Create form for an EC2 instance with the Estimated cost badge expanded, showing the instance line, the root volume line, and the total] here>
+![Create form for an EC2 instance with the Estimated cost badge expanded, showing the instance line, the root volume line, and the total](https://agent-assets.infrawrench.com/docs/screenshots/features/cost-estimate-create.png)
 
 **On the resource afterwards.** The same badge appears in the header of the resource's detail page, so the number you were quoted at create time is the number you can check later. On the mobile app it is a card lower down the resource screen, with the line items already open.
 
 **Before you save an edit.** Change a machine's size in the **Edit** dialog and a line appears above the buttons: _This change adds $340/month_. Expand it for the new breakdown. Nothing is charged until you save — this is the preview.
 
-<insert [Edit dialog for a VM with the size changed, showing the "This change adds $340/month" line expanded to reveal the new cost breakdown] here>
+![Edit dialog for a VM with the size changed, showing the "This change adds $340/month" line expanded to reveal the new cost breakdown](https://agent-assets.infrawrench.com/docs/screenshots/features/cost-estimate-edit.png)
 
 **In the weekly digest.** The [weekly digest](./weekly-digest.md) carries a **Projected spend** line: what last week's creates and deletes do to your monthly run-rate, separate from what was actually billed during the week. A cluster spun up last Sunday barely registers in last week's spend and is most of next month's — this is the line that says so.
 

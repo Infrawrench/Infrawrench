@@ -6,7 +6,7 @@ sidebar_order: 9
 
 The **Bucket Policy** tab is shown on AWS S3, DigitalOcean Spaces, and Scaleway Object Storage buckets. It edits the same AWS-flavoured policy JSON underneath, but gives you a structured view instead of dropping you into raw JSON.
 
-<insert [Bucket policy editor showing the visual statement list with a Plain English side panel] here>
+![Bucket policy editor showing the visual statement list with a Plain English side panel](https://agent-assets.infrawrench.com/docs/screenshots/features/bucket-policy-editor.png)
 
 ## Layout
 
