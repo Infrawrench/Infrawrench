@@ -1,18 +1,35 @@
 import { useUIStore } from "@infrawrench/ui";
 import type { CostsPanelDashboard } from "@infrawrench/ui/cost";
 import type { CostReportsClient } from "@infrawrench/ui/cost-reports";
-import type { CostReportInput } from "@infrawrench/client-core";
+import type {
+  CostReportFolderInput,
+  CostReportInput,
+  ReportNotificationInput,
+  SavedCostFilterInput,
+} from "@infrawrench/client-core";
 import {
   createCloudCostReport,
+  createCloudCostReportFolder,
+  createCloudReportNotification,
   createCloudWidget,
   deleteCloudCostReport,
+  deleteCloudCostReportFolder,
+  deleteCloudReportNotification,
   deleteCloudWidget,
   getCloudCostReport,
+  listCloudCostReportFolders,
   listCloudCostReports,
+  listCloudReportNotifications,
   loadCloudCostDimensionValues,
   loadCloudCostStatus,
+  loadCloudReportDeliveryTargets,
   queryCloudCosts,
+  sendCloudReportNotificationNow,
   updateCloudCostReport,
+  updateCloudCostReportFolder,
+  updateCloudReportNotification,
+  createCloudSavedCostFilter,
+  listCloudSavedCostFilters,
 } from "./cloud-costs";
 import { listCloudDashboards } from "./cloud-dashboards";
 
@@ -71,5 +88,22 @@ export function createDesktopCostReportsClient(): CostReportsClient {
       });
     },
     removeReportPlacement: (widgetId: string) => deleteCloudWidget(requireOrgId(), widgetId),
+    // Delivery schedules — same server permissions as web (reads costs:read,
+    // writes org:settings:write); a 403 surfaces as the action's error.
+    listReportNotifications: (reportId: string) =>
+      listCloudReportNotifications(requireOrgId(), reportId),
+    listReportDeliveryTargets: (reportId: string) =>
+      loadCloudReportDeliveryTargets(requireOrgId(), reportId),
+    createReportNotification: (reportId: string, input: ReportNotificationInput) =>
+      createCloudReportNotification(requireOrgId(), reportId, input),
+    updateReportNotification: (
+      reportId: string,
+      notificationId: string,
+      input: ReportNotificationInput,
+    ) => updateCloudReportNotification(requireOrgId(), reportId, notificationId, input),
+    deleteReportNotification: (reportId: string, notificationId: string) =>
+      deleteCloudReportNotification(requireOrgId(), reportId, notificationId),
+    sendReportNotificationNow: (reportId: string, notificationId: string) =>
+      sendCloudReportNotificationNow(requireOrgId(), reportId, notificationId),
   };
 }

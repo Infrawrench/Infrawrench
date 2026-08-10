@@ -10,7 +10,13 @@
 // this file's build instead of its output. The import is type-only, so the CLI
 // still ships zero new runtime dependencies.
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
-import type { CostReport, CostReportRunResult } from "@infrawrench/client-core" with {
+import type {
+  CostReport,
+  CostReportFolder,
+  CostReportRunResult,
+  ReportNotification,
+  ReportNotificationSendResult,
+} from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
 import { matchCostReport } from "../format";
@@ -149,11 +155,109 @@ export async function cmdReports(ctx: CliContext): Promise<void> {
       value: (r) => (r.placements.length === 0 ? c.dim("—") : String(r.placements.length)),
       align: "right",
     },
+    {
+      header: "delivery",
+      // Scheduled sends to Slack/Teams/email, with failures called out —
+      // a schedule that quietly stopped delivering is the failure mode this
+      // column exists to surface.
+      value: (r) => deliverySummary(schedulesByReport.get(r.id) ?? []),
+    },
     { header: "id", value: (r) => c.dim(r.id) },
   ]);
 
   println();
-  println(c.dim("Run one with `infrawrench reports <name|id>`."));
+  println(
+    c.dim(
+      "Run one with `infrawrench reports <name|id>`; `infrawrench reports send <name|id>` delivers it to its schedules now.",
+    ),
+  );
+}
+
+/** Resolve a name/id query to exactly one report, or throw a helpful error. */
+async function resolveReport(orgId: string, query: string): Promise<CostReport> {
+  const reports = await orgFetch<CostReport[]>(orgId, "/cost-reports");
+  const found = matchCostReport(reports, query);
+  if (found.match) return found.match;
+  if (found.candidates.length === 0) {
+    throw new CliError(
+      `No cost report matches "${query}". Run \`infrawrench reports\` to see the saved ones.`,
+    );
+  }
+  throw new CliError(
+    `"${query}" matches ${found.candidates.length} reports: ${found.candidates
+      .map((r) => r.name)
+      .join(", ")}. Use the full name or the id.`,
+  );
+}
+
+/**
+ * `infrawrench reports send <name|id>` — run the report and deliver it to
+ * every one of its schedules right now. Behind an explicit verb like
+ * `exports run`: this posts into somebody's channel and inbox, so it should
+ * never happen because a positional was mistyped.
+ */
+export async function cmdSendReport(ctx: CliContext, query: string): Promise<void> {
+  requireCloud(ctx);
+  if (!query.trim()) {
+    throw new CliError("Which report? `infrawrench reports send <name|id>`.");
+  }
+  const org = await resolveOrg(ctx);
+  const report = await resolveReport(org.id, query.trim());
+
+  const schedules = await orgFetch<ReportNotification[]>(
+    org.id,
+    `/cost-reports/${encodeURIComponent(report.id)}/notifications`,
+  );
+  if (schedules.length === 0) {
+    throw new CliError(
+      `"${report.name}" has no delivery schedules. Add one on the report's page (web or desktop) first.`,
+    );
+  }
+
+  // Sequential, not parallel: each send re-runs the report server-side, and a
+  // schedule-by-schedule transcript reads better than an interleaved one.
+  const results: Array<{ notification: ReportNotification; result: ReportNotificationSendResult }> =
+    [];
+  const failures: Array<{ notification: ReportNotification; error: string }> = [];
+  for (const notification of schedules) {
+    try {
+      const result = await orgFetch<ReportNotificationSendResult>(
+        org.id,
+        `/cost-reports/${encodeURIComponent(report.id)}/notifications/${encodeURIComponent(notification.id)}/send`,
+        { method: "POST" },
+      );
+      results.push({ notification, result });
+    } catch (e) {
+      failures.push({ notification, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  if (ctx.flags.output === "json") {
+    printJson({
+      org: org.id,
+      report: { id: report.id, name: report.name },
+      sent: results.map((r) => ({ notificationId: r.notification.id, ...r.result })),
+      failed: failures.map((f) => ({ notificationId: f.notification.id, error: f.error })),
+    });
+    if (failures.length > 0 && results.length === 0) throw new CliError("Every send failed.");
+    return;
+  }
+
+  println(`${c.bold(report.name)} ${c.dim("· send now")}`);
+  println();
+  for (const { notification, result } of results) {
+    println(
+      `  ${c.green("✓")} ${describeSchedule(notification)} ${c.dim(
+        `— delivered to ${result.succeeded}/${result.attempted} destination(s)`,
+      )}`,
+    );
+  }
+  for (const { notification, error } of failures) {
+    println(`  ${c.red("✗")} ${describeSchedule(notification)} ${c.dim(`— ${error}`)}`);
+  }
+  if (failures.length > 0 && results.length === 0) {
+    throw new CliError("Every send failed. See the errors above.");
+  }
 }
 
 /** `infrawrench reports <name|id>` — run a saved report and chart it. */

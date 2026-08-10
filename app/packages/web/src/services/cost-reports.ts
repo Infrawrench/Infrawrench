@@ -20,8 +20,10 @@ import type {
   CostReportRunResult,
 } from "@infrawrench/client-core";
 
+import { disableReportNotificationsForReport } from "@infrawrench/server-core/report-delivery/store";
 import { db } from "../db/client";
 import { costReports, dashboardWidgets, dashboards } from "../db/schema";
+import { assertCostReportFolderInOrg } from "./cost-report-folders";
 import { runCostQuery } from "./cost-query";
 
 type CostReportRow = typeof costReports.$inferSelect;
@@ -230,6 +232,12 @@ export async function softDeleteCostReport(
         eq(sql`${dashboardWidgets.config} ->> 'reportId'`, reportId),
       ),
     );
+
+  // Delivery schedules go quiet with the report. The FK cascade only covers a
+  // hard delete; disabling here is the soft-delete half of "a deleted report
+  // takes its schedules with it" (see `report_notifications` in the schema),
+  // and the poller pass parks any row this ever misses.
+  await disableReportNotificationsForReport(organizationId, reportId, now);
   return true;
 }
 

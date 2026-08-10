@@ -3156,6 +3156,110 @@ export const costExports = pgTable(
   }),
 );
 
+/**
+ * Scheduled delivery of a saved cost report to Slack, Teams and email — one row
+ * per schedule, several schedules per report.
+ *
+ * This is the **digest pattern, not the alert-routing one**: a report delivery
+ * is a scheduled, composed summary sent to destinations someone picked when
+ * they created the schedule, exactly like `org_digest_settings` — it is not an
+ * alert, has no severity, and deliberately does not go through
+ * `alerts/route.ts`'s routing rules. Do not "fix" it onto the routing table:
+ * a routing rule answers "where do alerts of this kind go", while a schedule
+ * here answers "who asked for this report, when" — per-report, per-schedule
+ * state that a shared rule set cannot express.
+ *
+ * `cost_report_id` cascades: **a deleted report takes its schedules with it —
+ * that cascade IS the design.** A schedule is meaningless without the report
+ * it delivers, and a surviving row would be a claim the poller keeps trying to
+ * honour against a report that no longer exists. (Soft deletes don't fire the
+ * FK, so `softDeleteCostReport` disables the schedules explicitly and the
+ * poller pass double-checks the report is still live.)
+ *
+ * Scheduling is modelled on `org_digest_settings` (cadence + local hour + IANA
+ * zone) but claimed like `cost_exports`: `next_send_at` is both the due time
+ * and the claim lease — null while disabled, pushed a lease ahead by the
+ * claim, replaced with the true next fire (or a bounded retry backoff) when
+ * the run records its outcome.
+ */
+export const reportNotifications = pgTable(
+  "report_notifications",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** See the table comment: the cascade is the design. */
+    costReportId: text("cost_report_id")
+      .notNull()
+      .references(() => costReports.id, { onDelete: "cascade" }),
+    /** `daily` | `weekly` | `monthly`. */
+    cadence: text("cadence").notNull().default("weekly"),
+    /** ISO day of week (1 = Monday … 7 = Sunday); read only when `cadence` is weekly. */
+    sendDay: integer("send_day").notNull().default(1),
+    /**
+     * Day of month (1–31); read only when `cadence` is monthly. A day the
+     * month doesn't have clamps to its last day — "the 31st" means "month end"
+     * in April, which is what someone scheduling a month-end report meant.
+     */
+    sendDayOfMonth: integer("send_day_of_month").notNull().default(1),
+    /** Local hour (0–23) in {@link timezone} the delivery fires at. */
+    hour: integer("hour").notNull().default(8),
+    /** IANA zone, validated server-side against `Intl` like the digest's. */
+    timezone: text("timezone").notNull().default("UTC"),
+    /**
+     * Opted-in `slack_channels` row ids. Row ids rather than raw channel ids,
+     * matching `alert_rules` destinations: the row carries the install, and a
+     * disconnected install silently drops out at send time.
+     */
+    slackChannelIds: jsonb("slack_channel_ids").$type<string[]>().notNull().default([]),
+    /** Opted-in `msteams_webhooks` row ids. */
+    teamsWebhookIds: jsonb("teams_webhook_ids").$type<string[]>().notNull().default([]),
+    /**
+     * Plain addresses, stored lowercased — the digest's recipient model: an
+     * address list reaches a finance alias with no Infrawrench login, which a
+     * member opt-in never could.
+     */
+    emailRecipients: jsonb("email_recipients").$type<string[]>().notNull().default([]),
+    enabled: boolean("enabled").notNull().default(true),
+    /**
+     * Due time AND claim lease (see the table comment). Null while disabled,
+     * so "has a due time" and "should run" are the same statement, exactly as
+     * `cost_exports.next_run_at` works.
+     */
+    nextSendAt: timestamp("next_send_at"),
+    /** When a delivery last actually reached someone. Null while only failures. */
+    lastSentAt: timestamp("last_sent_at"),
+    /** Attempts made for the current occurrence; reset on success or give-up. */
+    attemptCount: integer("attempt_count").notNull().default(0),
+    /** When the last attempt (successful or not) ran. */
+    lastAttemptAt: timestamp("last_attempt_at"),
+    /** `pending` | `succeeded` | `partial` | `failed` | `no_targets`. */
+    lastStatus: text("last_status"),
+    /** Human-readable reason for the last non-success, for the report page. */
+    lastError: text("last_error"),
+    createdByUserId: text("created_by_user_id"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("report_notifications_org_idx").on(t.organizationId),
+    /** The report page lists one report's schedules. */
+    reportIdx: index("report_notifications_report_idx").on(t.costReportId),
+    /** The poller's due scan. */
+    dueIdx: index("report_notifications_due_idx").on(t.nextSendAt),
+    hourRange: check("report_notifications_hour_range", sql`${t.hour} >= 0 AND ${t.hour} <= 23`),
+    sendDayRange: check(
+      "report_notifications_send_day_range",
+      sql`${t.sendDay} >= 1 AND ${t.sendDay} <= 7`,
+    ),
+    dayOfMonthRange: check(
+      "report_notifications_day_of_month_range",
+      sql`${t.sendDayOfMonth} >= 1 AND ${t.sendDayOfMonth} <= 31`,
+    ),
+  }),
+);
+
 export * from "./core-schema.js";
 export * from "./workflow-schema.js";
 export * from "./ssh-recording-schema.js";

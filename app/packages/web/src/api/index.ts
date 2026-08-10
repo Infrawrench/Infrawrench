@@ -33,7 +33,14 @@ import { adminRoutes } from "./routes/admin";
 import { dashboardRoutes } from "./routes/dashboards";
 import { costRoutes } from "./routes/costs";
 import { costReportRoutes } from "./routes/cost-reports";
+import {
+  costReportNotificationRoutes,
+  orgReportNotificationRoutes,
+} from "./routes/cost-report-notifications";
+import { costReportFolderRoutes } from "./routes/cost-report-folders";
 import { costExportRoutes } from "./routes/cost-exports";
+import { costAlertRoutes } from "./routes/cost-alerts";
+import { savedFilterRoutes } from "./routes/saved-filters";
 import { orphanRoutes } from "./routes/orphans";
 import { environmentDiffRoutes } from "./routes/environment-diff";
 import { rightsizingRoutes } from "./routes/rightsizing";
@@ -257,7 +264,15 @@ orgScoped.use("*", permissionsMiddleware);
 orgScoped.route("/dashboards", dashboardRoutes);
 orgScoped.route("/costs", costRoutes);
 orgScoped.route("/cost-reports", costReportRoutes);
+// Delivery schedules share the /cost-reports prefix (their paths are all
+// /:id/notifications…); the org-wide list lives on its own prefix so it can
+// never collide with /cost-reports/:id.
+orgScoped.route("/cost-reports", costReportNotificationRoutes);
+orgScoped.route("/cost-report-notifications", orgReportNotificationRoutes);
+orgScoped.route("/cost-report-folders", costReportFolderRoutes);
 orgScoped.route("/cost-exports", costExportRoutes);
+orgScoped.route("/cost-alerts", costAlertRoutes);
+orgScoped.route("/saved-cost-filters", savedFilterRoutes);
 orgScoped.route("/orphans", orphanRoutes);
 orgScoped.route("/rightsizing", rightsizingRoutes);
 orgScoped.route("/budgets", budgetRoutes);

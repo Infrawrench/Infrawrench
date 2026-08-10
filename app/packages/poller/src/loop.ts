@@ -15,6 +15,7 @@ import { runMetricAlertPass } from "@infrawrench/server-core/metric-alerts/pass"
 import { runProbePass } from "@infrawrench/server-core/probes/pass";
 import { pruneAlertDeliveries, runAlertFollowUpPass } from "@infrawrench/server-core/alerts/pass";
 import { runCostExportPass } from "@infrawrench/server-core/cost-exports/pass";
+import { runReportDeliveryPass } from "@infrawrench/server-core/report-delivery/pass";
 import {
   pruneResourceChanges,
   CHANGE_RETENTION_INTERVAL_MS,
@@ -195,6 +196,16 @@ export class PollerLoop extends TickLoop {
     // success/failure on the row, so a broken destination shows up in Settings
     // instead of going quiet. Defensive like the others.
     await this.tickCostExports();
+
+    // Fourteenth pass: scheduled cost-report deliveries. Claims due schedules
+    // with the accounts lease protocol (`report_notifications.next_send_at`
+    // doubles as the lease), runs each schedule's saved report server-side
+    // and posts the composed summary to the schedule's own Slack channels,
+    // Teams webhooks and email list — the digest pattern, not alert routing.
+    // Each run records its own success/failure on the row, so a broken
+    // schedule shows up on the report page instead of going quiet. Defensive
+    // like the others.
+    await this.tickReportDeliveries();
   }
 
   private async runOne(row: PollAccountRow): Promise<void> {
@@ -331,6 +342,15 @@ export class PollerLoop extends TickLoop {
       await runCostExportPass({ limit: 2 });
     } catch (e) {
       console.error("[cost-export] export tick failed:", e);
+    }
+  }
+
+  /** Send any scheduled cost-report deliveries that have come due. */
+  private async tickReportDeliveries(): Promise<void> {
+    try {
+      await runReportDeliveryPass({ limit: 4 });
+    } catch (e) {
+      console.error("[report-delivery] delivery tick failed:", e);
     }
   }
 

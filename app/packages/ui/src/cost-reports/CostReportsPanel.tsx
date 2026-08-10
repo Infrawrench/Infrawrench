@@ -755,6 +755,10 @@ function ReportDetail({
       <div className="text-xs text-on-surface-faint">
         <PlacementList report={report} onOpenDashboard={onOpenDashboard} />
       </div>
+
+      {/* Scheduled sends to Slack/Teams/email; renders nothing when the host
+          provides no notifications client (e.g. a surface without them). */}
+      <ReportDeliverySection reportId={report.id} client={client} />
     </section>
   );
 }

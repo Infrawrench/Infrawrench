@@ -1,8 +1,14 @@
 import { Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import {
+  describeReportSchedule,
+  describeReportTargets,
+  type ReportNotification,
+} from "@infrawrench/client-core";
 import { Card, ErrorView, LoadingView, Row, Screen, SectionTitle } from "@/components/ui";
 import { CostGraphCard } from "@/features/dashboard/CostGraphCard";
 import { useCostReports } from "@/features/cost-reports/useCostReports";
+import { useReportNotifications } from "@/features/cost-reports/useReportNotifications";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { colors, spacing } from "@/lib/theme";
 
@@ -17,13 +23,15 @@ import { colors, spacing } from "@/lib/theme";
  * Editing is deliberately absent on mobile (see the list screen): choosing a
  * chart type, binning, group-by and filter set is a desktop job, and a
  * half-editor here would be the fastest way to change a report five dashboards
- * depend on by accident.
+ * depend on by accident. Delivery schedules follow the same rule: shown with
+ * their last-send status, created and edited on web/desktop only.
  */
 export default function CostReportDetailRoute() {
   const router = useRouter();
   const { orgId } = useOrgApi();
   const { reportId } = useLocalSearchParams<{ reportId: string }>();
   const reports = useCostReports();
+  const notifications = useReportNotifications(reportId);
 
   if (reports.isLoading) return <LoadingView />;
   if (reports.isError) {
@@ -73,6 +81,62 @@ export default function CostReportDetailRoute() {
           ))}
         </Card>
       )}
+
+      <SectionTitle>Delivery</SectionTitle>
+      {notifications.isLoading ? (
+        <Text style={{ color: colors.textMuted, fontSize: 13 }}>Loading schedules…</Text>
+      ) : notifications.isError ? (
+        <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+          Couldn&rsquo;t load delivery schedules.
+        </Text>
+      ) : (notifications.data ?? []).length === 0 ? (
+        <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+          No scheduled delivery. Schedules are managed on web or desktop.
+        </Text>
+      ) : (
+        <Card list>
+          {(notifications.data ?? []).map((n) => (
+            <NotificationRow key={n.id} notification={n} />
+          ))}
+        </Card>
+      )}
     </Screen>
+  );
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  pending: "Sending…",
+  succeeded: "Delivered",
+  partial: "Partially delivered",
+  failed: "Failed",
+  no_targets: "No live destinations",
+};
+
+/** One schedule, read-only: when it fires, where it goes, how the last send went. */
+function NotificationRow({ notification: n }: { notification: ReportNotification }) {
+  const failed =
+    n.lastStatus === "failed" || n.lastStatus === "partial" || n.lastStatus === "no_targets";
+  const status = n.lastStatus ? (STATUS_LABELS[n.lastStatus] ?? n.lastStatus) : "Not sent yet";
+  const lastSent = n.lastSentAt
+    ? new Date(n.lastSentAt).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      })
+    : null;
+  return (
+    <View style={{ paddingVertical: spacing.xs, gap: 2 }}>
+      <Text style={{ color: colors.text, fontSize: 14 }}>
+        {describeReportSchedule(n)}
+        {n.enabled ? "" : " · paused"}
+      </Text>
+      <Text style={{ color: colors.textMuted, fontSize: 12 }}>To {describeReportTargets(n)}</Text>
+      <Text style={{ color: failed ? colors.danger : colors.textMuted, fontSize: 12 }}>
+        {status}
+        {lastSent && !failed ? ` · last sent ${lastSent}` : ""}
+      </Text>
+      {n.lastError ? (
+        <Text style={{ color: colors.danger, fontSize: 12 }}>{n.lastError}</Text>
+      ) : null}
+    </View>
   );
 }

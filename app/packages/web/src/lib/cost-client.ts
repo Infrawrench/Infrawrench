@@ -14,13 +14,26 @@ import type {
   CostQueryResponse,
   CostsClient,
   CostsPanelDashboard,
+  SavedCostFilter,
+  SavedCostFilterInput,
+  SavedCostFilterReferent,
+  CommitmentsFeed,
   CreditBurndown,
   ShowbackReport,
   TagComplianceReport,
   UntaggedSpendReport,
 } from "@infrawrench/ui/cost";
 import type { CostReportsClient } from "@infrawrench/ui/cost-reports";
-import type { CostReport, CostReportInput } from "@infrawrench/client-core";
+import type {
+  CostReport,
+  CostReportFolder,
+  CostReportFolderInput,
+  CostReportInput,
+  ReportDeliveryTargets,
+  ReportNotification,
+  ReportNotificationInput,
+  ReportNotificationSendResult,
+} from "@infrawrench/client-core";
 import { apiDelete, apiGet, apiPost, apiPut } from "./api";
 
 /**
@@ -182,6 +195,37 @@ export function createWebCostReportsClient(orgId: string): CostReportsClient {
     removeReportPlacement: async (widgetId: string) => {
       await apiDelete(`/api/org/${orgId}/dashboards/widgets/${widgetId}`);
     },
+    // Delivery schedules. The mutating half is org:settings:write server-side;
+    // included unconditionally so a 403 surfaces as the action's error rather
+    // than the buttons silently missing.
+    listReportNotifications: (reportId: string) =>
+      apiGet<ReportNotification[]>(`/api/org/${orgId}/cost-reports/${reportId}/notifications`),
+    listReportDeliveryTargets: (reportId: string) =>
+      apiGet<ReportDeliveryTargets>(
+        `/api/org/${orgId}/cost-reports/${reportId}/notifications/targets`,
+      ),
+    createReportNotification: (reportId: string, input: ReportNotificationInput) =>
+      apiPost<ReportNotification>(
+        `/api/org/${orgId}/cost-reports/${reportId}/notifications`,
+        input,
+      ),
+    updateReportNotification: (
+      reportId: string,
+      notificationId: string,
+      input: ReportNotificationInput,
+    ) =>
+      apiPut<ReportNotification>(
+        `/api/org/${orgId}/cost-reports/${reportId}/notifications/${notificationId}`,
+        input,
+      ),
+    deleteReportNotification: async (reportId: string, notificationId: string) => {
+      await apiDelete(`/api/org/${orgId}/cost-reports/${reportId}/notifications/${notificationId}`);
+    },
+    sendReportNotificationNow: (reportId: string, notificationId: string) =>
+      apiPost<ReportNotificationSendResult>(
+        `/api/org/${orgId}/cost-reports/${reportId}/notifications/${notificationId}/send`,
+        {},
+      ),
   };
 }
 
