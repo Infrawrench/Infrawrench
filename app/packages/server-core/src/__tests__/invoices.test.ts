@@ -274,6 +274,13 @@ function customer(overrides: Row = {}): Row {
 function draftRow(overrides: Row = {}): Row {
   return {
     id: "inv-1",
+    deliveryStatus: null,
+    deliveryRecipients: null,
+    deliveryDelivered: null,
+    deliveryAttemptedAt: null,
+    deliveredAt: null,
+    deliveryAttemptCount: 0,
+    deliveryError: null,
     organizationId: ORG,
     managedAccountId: "cust-1",
     managedAccountName: "Northwind Trading",

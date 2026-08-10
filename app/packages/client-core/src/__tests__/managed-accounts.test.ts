@@ -5,12 +5,28 @@ import {
   formatManagedInvoiceNumber,
   managedAccountScopeConflicts,
   managedInvoiceBlocker,
+  managedInvoiceDeliveryLanded,
+  managedInvoiceDeliveryRetryable,
   managedInvoiceIsFrozen,
   managedInvoiceReconciles,
   parseManagedInvoiceNumber,
   sumManagedInvoiceLines,
+  type ManagedInvoiceDelivery,
   type ManagedInvoiceLine,
 } from "../managed-accounts";
+
+function delivery(over: Partial<ManagedInvoiceDelivery> = {}): ManagedInvoiceDelivery {
+  return {
+    status: "succeeded",
+    recipients: ["ap@northwind.example"],
+    delivered: 1,
+    attemptedAt: "2026-02-01T10:00:00.000Z",
+    deliveredAt: "2026-02-01T10:00:00.000Z",
+    attempts: 1,
+    error: null,
+    ...over,
+  };
+}
 
 function line(over: Partial<ManagedInvoiceLine> = {}): ManagedInvoiceLine {
   return {
@@ -58,6 +74,54 @@ describe("managedInvoiceBlocker", () => {
     expect(managedInvoiceBlocker(sent, "send")).toMatch(/already been marked as sent/);
     expect(managedInvoiceBlocker(sent, "edit")).toMatch(/sent to the customer/);
     expect(managedInvoiceBlocker(sent, "delete")).toMatch(/sent to the customer/);
+  });
+
+  /**
+   * Sending twice is the one repeat this state machine allows, and the line is
+   * drawn on whether anything landed — not on the status, and not on whether
+   * the transport reported an error. The mail provider has no idempotency key,
+   * so "some of them got it" and "none of them did" are genuinely different
+   * situations for the customer's inbox.
+   */
+  describe("sending an invoice that has already been sent", () => {
+    it("retries freely when nothing reached anyone", () => {
+      for (const status of ["failed", "no_targets"] as const) {
+        const sent = { status: "sent" as const, delivery: delivery({ status, delivered: 0 }) };
+        expect(managedInvoiceBlocker(sent, "send")).toBeNull();
+        expect(managedInvoiceDeliveryRetryable(sent.delivery)).toBe(true);
+        expect(managedInvoiceDeliveryLanded(sent.delivery)).toBe(false);
+      }
+    });
+
+    it("refuses a second copy when something landed, unless it is asked for", () => {
+      for (const status of ["succeeded", "partial"] as const) {
+        const sent = { status: "sent" as const, delivery: delivery({ status }) };
+        expect(managedInvoiceBlocker(sent, "send")).toMatch(/second copy/);
+        expect(managedInvoiceBlocker(sent, "send", { resend: true })).toBeNull();
+        expect(managedInvoiceDeliveryLanded(sent.delivery)).toBe(true);
+      }
+    });
+
+    it("treats an interrupted attempt as unknown, not as a failure", () => {
+      // The mail may well have gone. Auto-retrying would be the double-send
+      // this whole rule exists to prevent, so a person has to decide.
+      const sent = { status: "sent" as const, delivery: delivery({ status: "pending" }) };
+      expect(managedInvoiceBlocker(sent, "send")).toMatch(/interrupted/);
+      expect(managedInvoiceDeliveryRetryable(sent.delivery)).toBe(false);
+      expect(managedInvoiceBlocker(sent, "send", { resend: true })).toBeNull();
+    });
+
+    it("never lets a void invoice be sent, flag or no flag", () => {
+      const dead = { status: "void" as const, delivery: delivery({ status: "failed" }) };
+      expect(managedInvoiceBlocker(dead, "send")).toMatch(/historical record/);
+      expect(managedInvoiceBlocker(dead, "send", { resend: true })).toMatch(/historical record/);
+    });
+
+    it("does not let the flag skip approval", () => {
+      expect(managedInvoiceBlocker({ status: "draft" }, "send", { resend: true })).toMatch(
+        /Approve this invoice before sending/,
+      );
+    });
   });
 
   it("makes a void invoice terminal", () => {

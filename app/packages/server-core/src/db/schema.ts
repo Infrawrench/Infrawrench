@@ -1010,6 +1010,32 @@ export const managedInvoices = pgTable(
     }),
     sentAt: timestamp("sent_at"),
     sentByUserId: text("sent_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    /**
+     * Delivery — where the frozen document went, kept strictly apart from what
+     * it says. Nothing in this group can restate a figure; `cost/invoices.ts`
+     * writes them from the send path and from nowhere else.
+     *
+     * Null on an invoice nobody has tried to email, including one marked sent
+     * on a deployment with no mail provider: "a person said this went out" and
+     * "we delivered it" are different claims, and only the second is recorded
+     * here.
+     */
+    deliveryStatus: text("delivery_status").$type<
+      "pending" | "succeeded" | "partial" | "failed" | "no_targets"
+    >(),
+    /** The addresses the last attempt was made to, as they were then. */
+    deliveryRecipients: jsonb("delivery_recipients").$type<string[]>(),
+    /** How many of them the transport accepted on the last attempt. */
+    deliveryDelivered: integer("delivery_delivered"),
+    deliveryAttemptedAt: timestamp("delivery_attempted_at"),
+    /**
+     * The last attempt that reached at least one address. This is the column
+     * that decides whether sending again is a retry or a second copy in the
+     * customer's inbox, so it is never cleared by a later failure.
+     */
+    deliveredAt: timestamp("delivered_at"),
+    deliveryAttemptCount: integer("delivery_attempt_count").notNull().default(0),
+    deliveryError: text("delivery_error"),
     voidedAt: timestamp("voided_at"),
     voidedByUserId: text("voided_by_user_id").references(() => users.id, { onDelete: "set null" }),
     voidReason: text("void_reason"),

@@ -113,11 +113,14 @@ app_env = {
   # (commands error, approval messages carry buttons that don't work).
   SLACK_SIGNING_SECRET = "..."
 
-  # Optional: transactional email via Mailgun, used only by the weekly digest's
-  # email recipients. The first three are required together — with any missing,
-  # email delivery is a logged no-op and the digest still reaches Slack and
-  # Teams. There is no other email in the product; WorkOS sends its own
-  # verification and invitation mail.
+  # Optional: transactional email via Mailgun — the weekly digest's email
+  # recipients, scheduled report deliveries, and sending a managed account's
+  # invoice to the customer with its CSV attached. The first three are required
+  # together — with any missing, email delivery is a logged no-op: the digest
+  # still reaches Slack and Teams, and sending an invoice still records who
+  # released it but reports a failed delivery rather than claiming the customer
+  # received it. Beyond these, WorkOS sends its own verification and invitation
+  # mail.
   #
   # Mailgun rather than something Google-native because there is nothing
   # Google-native to use: GCP has no first-party transactional mail service,

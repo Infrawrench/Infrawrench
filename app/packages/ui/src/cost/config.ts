@@ -998,6 +998,21 @@ export const managedInvoiceVoidSchema = z.object({
 });
 
 /**
+ * Sending. The body exists for one flag, and the flag exists because the two
+ * reasons to press Send twice are not the same act:
+ *
+ * - a **retry** after a delivery that reached nobody needs no confirmation, and
+ *   the server allows it without this flag;
+ * - a **second copy** of an invoice that already landed does need one, because
+ *   the customer's inbox is the thing being written to.
+ *
+ * `resend` is the caller saying, in as many words, that they mean the second.
+ */
+export const managedInvoiceSendSchema = z.object({
+  resend: z.boolean().default(false),
+});
+
+/**
  * Compile-time proof that the invoice schemas still parse to exactly the wire
  * types in client-core. Same trick as the cost contract above.
  */

@@ -200,6 +200,39 @@ describe("error mapping", () => {
     expect(body.conflicts).toHaveLength(1);
   });
 
+  it("passes the resend flag through, and defaults it off for a bodyless send", async () => {
+    const app = buildTestApp(invoiceRoutes);
+    invoices.sendInvoice.mockResolvedValue({ ...INVOICE, status: "sent", delivery: null });
+
+    // The ordinary first send: no body at all.
+    await app.request("/inv-1/send", { method: "POST" });
+    expect(invoices.sendInvoice).toHaveBeenLastCalledWith("org-1", "inv-1", "user-1", {
+      resend: false,
+    });
+
+    // The deliberate second copy has to be asked for in as many words.
+    await app.request("/inv-1/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resend: true }),
+    });
+    expect(invoices.sendInvoice).toHaveBeenLastCalledWith("org-1", "inv-1", "user-1", {
+      resend: true,
+    });
+  });
+
+  it("surfaces the refusal to double-send as a 409 the user can read", async () => {
+    const app = buildTestApp(invoiceRoutes);
+    invoices.sendInvoice.mockRejectedValue(
+      new InvoiceError("This invoice already reached 1 of 1 recipient on 2026-02-01.", 409),
+    );
+    const res = await app.request("/inv-1/send", { method: "POST" });
+    expect(res.status).toBe(409);
+    expect((await res.json()) as { error: string }).toEqual({
+      error: "This invoice already reached 1 of 1 recipient on 2026-02-01.",
+    });
+  });
+
   it("rejects a void with no reason before reaching the service", async () => {
     const app = buildTestApp(invoiceRoutes);
     const res = await app.request("/inv-1/void", {
@@ -227,6 +260,36 @@ describe("audit", () => {
           number: "INV-2026-0001",
           billed: { GBP: 1104 },
           rateDate: "2026-01-31",
+        }),
+      }),
+    );
+  });
+
+  it("records what became of the delivery, not merely that Send was pressed", async () => {
+    const app = buildTestApp(invoiceRoutes);
+    invoices.sendInvoice.mockResolvedValue({
+      ...INVOICE,
+      status: "sent",
+      delivery: {
+        status: "partial",
+        recipients: ["ap@northwind.example", "finance@northwind.example"],
+        delivered: 1,
+        attemptedAt: "2026-02-01T10:00:00.000Z",
+        deliveredAt: "2026-02-01T10:00:00.000Z",
+        attempts: 1,
+        error: "Delivered to 1 of 2 recipients",
+      },
+    });
+    const res = await app.request("/inv-1/send", { method: "POST" });
+    expect(res.status).toBe(200);
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "invoice.send",
+        metadata: expect.objectContaining({
+          resend: false,
+          deliveryStatus: "partial",
+          delivered: 1,
+          recipients: ["ap@northwind.example", "finance@northwind.example"],
         }),
       }),
     );

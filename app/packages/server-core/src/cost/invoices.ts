@@ -71,6 +71,8 @@ import {
   type CostBasis,
   type ManagedInvoice,
   type ManagedInvoiceAction,
+  type ManagedInvoiceDelivery,
+  type ManagedInvoiceDeliveryStatus,
   type ManagedInvoiceDerivation,
   type ManagedInvoiceInput,
   type ManagedInvoiceLine,
@@ -81,13 +83,14 @@ import {
   type ManagedInvoiceUpdate,
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
-import { accounts, managedAccounts, managedInvoices } from "../db/schema";
+import { accounts, managedAccounts, managedInvoices, organizations } from "../db/schema";
 import { getShowbackSpend, type ShowbackRule } from "../clickhouse/cost-readers";
 import { csvCell } from "../cost-exports/serialize";
 import { listAllocationRules, listCostCentres } from "./allocation";
 import { resolveBillingAdjustments } from "./billing-rules";
 import { rateForDay, parseRate } from "./currency-convert";
 import { listOrgExchangeRates } from "./currency-settings";
+import { deliverInvoiceEmail } from "./invoice-delivery";
 import { getManagedAccountRow } from "./managed-accounts";
 
 export type { ManagedInvoice, ManagedInvoiceSummary };
@@ -410,6 +413,36 @@ function billingAdjustmentsAreEmptyLocal(
  * ------------------------------------------------------------------ */
 
 type InvoiceRow = typeof managedInvoices.$inferSelect;
+
+/**
+ * The delivery record, or null when no attempt has ever been made.
+ *
+ * Null is the honest answer for an invoice marked sent by a deployment with no
+ * mail provider, or before this feature existed: "a person said it went out"
+ * and "we delivered it" are different claims, and only the second is stored
+ * here.
+ */
+function toDelivery(row: InvoiceRow): ManagedInvoiceDelivery | null {
+  if (!row.deliveryStatus || !row.deliveryAttemptedAt) return null;
+  return {
+    status: row.deliveryStatus as ManagedInvoiceDeliveryStatus,
+    recipients: Array.isArray(row.deliveryRecipients) ? row.deliveryRecipients : [],
+    delivered: row.deliveryDelivered ?? 0,
+    attemptedAt: row.deliveryAttemptedAt.toISOString(),
+    deliveredAt: row.deliveredAt?.toISOString() ?? null,
+    attempts: row.deliveryAttemptCount,
+    error: row.deliveryError,
+  };
+}
+
+/** The stored figures of a frozen invoice, read back verbatim. */
+function frozenFigures(row: InvoiceRow): InvoiceFigures {
+  return {
+    lines: (row.lines as ManagedInvoiceLine[] | null) ?? [],
+    totals: (row.totals as ManagedInvoiceTotals | null) ?? sumManagedInvoiceLines([], row.currency),
+    derivation: row.derivation as ManagedInvoiceDerivation,
+  };
+}
 
 function toSummary(row: InvoiceRow): ManagedInvoiceSummary {
   return {
@@ -1018,29 +1051,142 @@ export async function approveInvoice(
 }
 
 /**
- * Mark an approved invoice as sent. Changes no figure — it records that the
- * document left, and who let it, which is the fact an audit actually needs.
+ * Send an approved invoice to the customer, and record that it went.
  *
- * This deployment does not deliver invoices itself; see the module docs on
- * `api/routes/invoices.ts` for what "sent" therefore means.
+ * ## Two facts, kept apart
+ *
+ * `status`, `sentAt` and `sentByUserId` are the **release**: a person with
+ * `invoices:issue` decided this document may go to the customer. They are
+ * written once, on the first send, and no retry or second copy overwrites them
+ * — the audit question is "who let this out", and it has one answer.
+ *
+ * The delivery columns are the **transport**: which addresses were tried, how
+ * many the mail provider took, when, and what went wrong. A failed delivery
+ * therefore does not un-release the invoice; it shows up as a released invoice
+ * whose delivery failed, which is exactly what happened and is re-sendable.
+ * Neither group can touch a figure: the document was frozen at approval.
+ *
+ * ## Retry versus send again
+ *
+ * The claim below is what makes that distinction enforceable rather than
+ * advisory. One conditional `UPDATE` on `(status, delivery_attempt_count)`
+ * moves the counter forward and marks the attempt `pending`; only the caller
+ * whose update returned a row runs the transport. Two people pressing Send at
+ * the same instant therefore produce one email and one 409, not two emails —
+ * Mailgun has no idempotency key that could have undone the second.
+ *
+ * {@link managedInvoiceBlocker} then decides whether a *later* send needs the
+ * `resend` flag, on the only sound criterion: whether the last attempt reached
+ * anybody. Nothing reached anybody → a retry, no ceremony. Something did, or we
+ * cannot tell → a deliberate second copy, and the caller has to say so.
  */
 export async function sendInvoice(
   organizationId: string,
   id: string,
   userId: string | null,
+  options: { resend?: boolean | undefined } = {},
 ): Promise<ManagedInvoice> {
   const row = await getInvoiceRow(organizationId, id);
   if (!row) throw new InvoiceError("Invoice not found", 404);
-  assertAllowed(row, "send");
+
+  const blocker = managedInvoiceBlocker(
+    { status: row.status as ManagedInvoiceStatus, delivery: toDelivery(row) },
+    "send",
+    { resend: options.resend },
+  );
+  if (blocker) throw new InvoiceError(blocker, 409);
 
   const now = new Date();
-  const [updated] = await db
+  const firstRelease = row.status === "approved";
+  const attempt = row.deliveryAttemptCount + 1;
+
+  // The claim. `delivery_attempt_count` doubles as the optimistic-concurrency
+  // token, so a racing second request finds the count already moved and is
+  // refused instead of mailing the customer twice.
+  const [claimed] = await db
     .update(managedInvoices)
-    .set({ status: "sent", sentAt: now, sentByUserId: userId, updatedAt: now })
-    .where(and(eq(managedInvoices.id, id), eq(managedInvoices.status, "approved")))
+    .set({
+      status: "sent",
+      ...(firstRelease ? { sentAt: now, sentByUserId: userId } : {}),
+      deliveryAttemptCount: attempt,
+      deliveryAttemptedAt: now,
+      // `pending` until the outcome is written. A process that dies here leaves
+      // an attempt whose result nobody knows, which is a different thing from a
+      // failure and must not be auto-retried into a duplicate.
+      deliveryStatus: "pending",
+      deliveryRecipients: null,
+      deliveryDelivered: null,
+      deliveryError: null,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(managedInvoices.id, id),
+        eq(managedInvoices.organizationId, organizationId),
+        eq(managedInvoices.status, row.status),
+        eq(managedInvoices.deliveryAttemptCount, row.deliveryAttemptCount),
+      ),
+    )
     .returning();
-  if (!updated) throw new InvoiceError("This invoice is no longer awaiting sending", 409);
-  return (await getInvoice(organizationId, id))!;
+  if (!claimed) {
+    throw new InvoiceError(
+      "This invoice is no longer awaiting sending — it was voided, or another send is already " +
+        "in flight. Reload it to see where it stands.",
+      409,
+    );
+  }
+
+  const invoice = toWire(claimed, frozenFigures(claimed), false);
+  const [account, org] = await Promise.all([
+    getManagedAccountRow(organizationId, claimed.managedAccountId),
+    db
+      .select({ displayName: organizations.displayName })
+      .from(organizations)
+      .where(eq(organizations.id, organizationId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+  ]);
+
+  const outcome = account
+    ? await deliverInvoiceEmail(organizationId, invoice, {
+        contactEmail: account.contactEmail,
+        orgName: org?.displayName ?? null,
+        csv: renderInvoiceCsv(invoice),
+        attempt,
+      })
+    : {
+        status: "no_targets" as const,
+        recipients: [],
+        delivered: 0,
+        error:
+          "The customer this invoice bills has been retired, so it has no contact address to " +
+          "send to. The invoice is still recorded as issued.",
+      };
+
+  const recordedAt = new Date();
+  const [recorded] = await db
+    .update(managedInvoices)
+    .set({
+      deliveryStatus: outcome.status,
+      deliveryRecipients: outcome.recipients,
+      deliveryDelivered: outcome.delivered,
+      deliveryError: outcome.error,
+      // Never cleared by a later failure: "this invoice has reached the
+      // customer at least once" is a fact about the past.
+      ...(outcome.delivered > 0 ? { deliveredAt: recordedAt } : {}),
+      updatedAt: recordedAt,
+    })
+    .where(eq(managedInvoices.id, id))
+    .returning();
+
+  const line = `[invoice-delivery] ${invoice.number ?? id} attempt ${attempt}: ${outcome.status} — ${outcome.delivered}/${outcome.recipients.length} recipient(s)`;
+  if (outcome.status === "succeeded") console.log(line);
+  else console.warn(`${line}${outcome.error ? ` — ${outcome.error}` : ""}`);
+
+  // The response carries the outcome rather than throwing on a failed delivery:
+  // the release happened and is recorded either way, and a caller that got a
+  // 500 would have no idea which. `delivery.status` says what became of it.
+  return recorded ? toWire(recorded, frozenFigures(recorded), false) : invoice;
 }
 
 /**

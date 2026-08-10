@@ -125,6 +125,34 @@ describe("sendEmails — the Mailgun request", () => {
     });
   });
 
+  it("hangs attachments off the same multipart form, with their filenames", async () => {
+    // What an invoice ships as: the document travels with the message rather
+    // than as a link that has to keep resolving years later.
+    await sendEmails(
+      [
+        {
+          ...message(),
+          attachments: [
+            {
+              filename: "INV-2026-0001.csv",
+              content: "invoice_number\nINV-2026-0001\n",
+              contentType: "text/csv; charset=utf-8",
+            },
+          ],
+        },
+      ],
+      "test",
+    );
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const files = (init.body as FormData).getAll("attachment");
+    expect(files).toHaveLength(1);
+    const file = files[0] as File;
+    // The name the recipient's mail client shows; without it Mailgun says `blob`.
+    expect(file.name).toBe("INV-2026-0001.csv");
+    expect(file.type).toBe("text/csv; charset=utf-8");
+    expect(await file.text()).toContain("INV-2026-0001");
+  });
+
   it("omits html entirely for a text-only message", async () => {
     await sendEmails([{ to: "a@example.com", subject: "s", text: "t" }], "test");
     const { fields } = await lastRequest();

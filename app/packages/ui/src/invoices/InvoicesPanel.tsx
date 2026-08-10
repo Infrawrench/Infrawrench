@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
+  MANAGED_INVOICE_DELIVERY_STATUS_LABELS,
   MANAGED_INVOICE_STATUS_LABELS,
   costCentrePaths,
   describeManagedInvoiceTotal,
   managedInvoiceBlocker,
+  managedInvoiceDeliveryRetryable,
   type CostCentre,
   type ManagedAccount,
   type ManagedAccountInput,
   type ManagedInvoice,
+  type ManagedInvoiceDelivery,
   type ManagedInvoiceStatus,
   type ManagedInvoiceSummary,
 } from "@infrawrench/client-core";
@@ -31,6 +34,47 @@ function StatusChip({ status }: { status: ManagedInvoiceStatus }) {
     <span className={`text-xs uppercase tracking-wide ${STATUS_CLASS[status]}`}>
       {MANAGED_INVOICE_STATUS_LABELS[status]}
     </span>
+  );
+}
+
+/**
+ * The delivery record, stated in full.
+ *
+ * A "Sent" chip on an invoice nobody received is the failure mode this feature
+ * would otherwise introduce, so the outcome is printed next to the status
+ * rather than hidden behind a tooltip: which addresses, how many took it, and
+ * the transport's own error when it did not.
+ */
+function DeliveryNote({ delivery }: { delivery: ManagedInvoiceDelivery | null }) {
+  if (!delivery) {
+    return (
+      <p className="text-xs text-on-surface-faint">
+        No delivery has been attempted from here. Sending emails the invoice to the customer's
+        contact addresses with the CSV attached.
+      </p>
+    );
+  }
+  const tone =
+    delivery.status === "succeeded"
+      ? "text-green-500"
+      : delivery.status === "partial"
+        ? "text-yellow-500"
+        : delivery.status === "pending"
+          ? "text-yellow-500"
+          : "text-red-500";
+  return (
+    <div className="flex flex-col gap-1">
+      <p className={`text-xs ${tone}`}>
+        {MANAGED_INVOICE_DELIVERY_STATUS_LABELS[delivery.status]} — {delivery.delivered} of{" "}
+        {delivery.recipients.length} recipient
+        {delivery.recipients.length === 1 ? "" : "s"} on{" "}
+        {new Date(delivery.attemptedAt).toLocaleString()} (attempt {delivery.attempts})
+      </p>
+      {delivery.recipients.length > 0 && (
+        <p className="text-xs text-on-surface-faint">{delivery.recipients.join(", ")}</p>
+      )}
+      {delivery.error !== null && <p className="text-xs text-on-surface-faint">{delivery.error}</p>}
+    </div>
   );
 }
 
@@ -665,7 +709,17 @@ function InvoiceList({
                   ? describeManagedInvoiceTotal(invoice.totals, invoice.currency)
                   : "—"}
               </span>
-              <StatusChip status={invoice.status} />
+              <span className="flex w-28 shrink-0 items-center justify-end gap-2">
+                {/* A failed delivery has to be visible from the list: an
+                    invoice that says "Sent" and never reached anyone is the
+                    one thing nobody would think to go looking for. */}
+                {invoice.delivery && managedInvoiceDeliveryRetryable(invoice.delivery) && (
+                  <span className="text-xs uppercase tracking-wide text-red-500">
+                    {MANAGED_INVOICE_DELIVERY_STATUS_LABELS[invoice.delivery.status]}
+                  </span>
+                )}
+                <StatusChip status={invoice.status} />
+              </span>
             </button>
           ))}
         </div>
@@ -748,6 +802,14 @@ function InvoiceDetail({
   // always say the same sentence.
   const approveBlocker = managedInvoiceBlocker(invoice, "approve");
   const sendBlocker = managedInvoiceBlocker(invoice, "send");
+  // The server allows a second copy with `resend`, so the button is offered
+  // whenever only that flag stands in the way — with a confirmation, because
+  // the thing being written to is a customer's inbox. A void invoice is refused
+  // either way, and this asks the same function the server does.
+  const resendBlocker = managedInvoiceBlocker(invoice, "send", { resend: true });
+  const needsResendConfirm = sendBlocker !== null && resendBlocker === null;
+  const isRetry = invoice.status === "sent" && managedInvoiceDeliveryRetryable(invoice.delivery);
+  const sendLabel = needsResendConfirm ? "Send again" : isRetry ? "Retry delivery" : "Send";
   const voidBlocker = managedInvoiceBlocker(invoice, "void");
   const deleteBlocker = managedInvoiceBlocker(invoice, "delete");
   const exportUrl = client.invoiceExportUrl?.(invoice.id);
@@ -778,6 +840,7 @@ function InvoiceDetail({
         {invoice.status === "void" && invoice.voidReason && (
           <p className="text-xs text-red-500">Voided — {invoice.voidReason}</p>
         )}
+        {invoice.status !== "draft" && <DeliveryNote delivery={invoice.delivery} />}
         {invoice.supersededByInvoiceId && (
           <button
             type="button"
@@ -819,11 +882,23 @@ function InvoiceDetail({
             <button
               type="button"
               className={BTN}
-              disabled={busy || sendBlocker !== null}
-              title={sendBlocker ?? "Record that the customer has this invoice"}
-              onClick={() => void run(() => client.sendInvoice!(invoice.id))}
+              disabled={busy || resendBlocker !== null}
+              title={
+                resendBlocker ??
+                (needsResendConfirm
+                  ? sendBlocker!
+                  : isRetry
+                    ? "Nothing reached the customer last time, so this retries the delivery"
+                    : "Email this invoice to the customer, with the CSV attached")
+              }
+              onClick={() => {
+                if (needsResendConfirm && !window.confirm(`${sendBlocker}\n\nSend another copy?`)) {
+                  return;
+                }
+                void run(() => client.sendInvoice!(invoice.id, needsResendConfirm));
+              }}
             >
-              Mark as sent
+              {sendLabel}
             </button>
             <button
               type="button"

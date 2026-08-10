@@ -208,6 +208,36 @@ const InvoiceDerivation = strict({
     "cannot reconcile is an invoice a customer does not pay.",
 });
 
+const InvoiceDelivery = strict({
+  status: z.enum(["pending", "succeeded", "partial", "failed", "no_targets"]).openapi({
+    description:
+      "`pending` means an attempt was claimed and its outcome never recorded — the process " +
+      "died mid-send, so whether the customer received it is unknown. It is not a failure and " +
+      "is never retried automatically.",
+  }),
+  recipients: z.array(z.string()).openapi({
+    description: "The addresses this attempt was made to, as the customer record had them then.",
+  }),
+  delivered: z.number().int().openapi({ description: "How many the mail provider accepted." }),
+  attemptedAt: IsoDateTime,
+  deliveredAt: IsoDateTime.nullable().openapi({
+    description:
+      "The last attempt that reached at least one address, or null when none ever has. Never " +
+      "cleared by a later failure — it is a fact about the past, and it is what decides whether " +
+      "sending again is a retry or a second copy.",
+  }),
+  attempts: z.number().int(),
+  error: z.string().nullable(),
+}).openapi("InvoiceDelivery", {
+  description:
+    "What became of the last attempt to email this invoice to its customer. Separate from the " +
+    "figures in every sense: delivery records where a frozen document went and cannot restate " +
+    "what it says.\n\n" +
+    "**A partial delivery is terminal.** The mail provider has no idempotency key, so retrying " +
+    "after some addresses succeeded would put a second copy of the same bill in inboxes that " +
+    "already have it.",
+});
+
 const InvoiceSummary = strict({
   id: Uuid,
   managedAccountId: Uuid,
@@ -232,6 +262,12 @@ const InvoiceSummary = strict({
   }),
   issuedAt: IsoDateTime.nullable(),
   sentAt: IsoDateTime.nullable(),
+  delivery: InvoiceDelivery.nullable().openapi({
+    description:
+      "The last delivery attempt, or null when none has been made — including on an invoice " +
+      "marked sent by a deployment with no mail provider. “A person released this” and “we " +
+      "delivered it” are different claims, and this field is only ever the second.",
+  }),
   voidedAt: IsoDateTime.nullable(),
   voidReason: z.string().nullable(),
   supersedesInvoiceId: Uuid.nullable(),
@@ -279,6 +315,19 @@ const InvoiceUpdate = strict({
   periodTo: IsoDay,
   notes: z.string().max(4000).nullish(),
 }).openapi("InvoiceUpdate");
+
+const InvoiceSendRequest = strict({
+  resend: z
+    .boolean()
+    .default(false)
+    .openapi({
+      description:
+        "Send another copy of an invoice that has already reached somebody. Required only in " +
+        "that case: retrying a delivery that reached nobody (`failed`, `no_targets`) needs no " +
+        "flag, because there is no inbox to duplicate into. Refused with 409 without it when the " +
+        "last attempt landed, or when its outcome is unknown (`pending`).",
+    }),
+}).openapi("InvoiceSendRequest");
 
 const InvoiceVoidRequest = strict({
   reason: z.string().min(1).max(1000).openapi({
@@ -533,7 +582,11 @@ export function registerInvoicePaths(ctx: BuildContext) {
       "A distinct act from generation, on a distinct permission (`invoices:issue`), with its own " +
       "audit entry recording who approved what.\n\n" +
       "Refused with 409 when a currency in the invoice has no stated exchange rate: an approved " +
-      "invoice has to be quotable as one number in the customer's currency.",
+      "invoice has to be quotable as one number in the customer's currency.\n\n" +
+      "Refused with 409, too, when the draft or its customer changed while the figures were " +
+      "being computed — a different period, scope, currency, cost basis or billing-rules " +
+      "setting. Nothing is approved in that case: freezing figures that describe a different " +
+      "question would be worse than making the caller look again.",
     request: { params: invoiceIdParam },
     responses: {
       200: { description: "Approved", content: { "application/json": { schema: Invoice } } },
@@ -546,16 +599,27 @@ export function registerInvoicePaths(ctx: BuildContext) {
     method: "post",
     path: "/api/org/{orgId}/invoices/{id}/send",
     tags: ["Invoices"],
-    summary: "Mark an approved invoice as sent",
+    summary: "Send an invoice to its customer",
     description:
-      "Changes no figure. It records that the document left the building and who let it.\n\n" +
-      "This deployment does not deliver invoices itself — `GET /invoices/{id}/export` produces " +
-      "the artifact a human attaches to their own mail. The state transition and its audit trail " +
-      "are the part that has to be right; a delivery channel can be added later without changing " +
-      "a single stored figure.",
-    request: { params: invoiceIdParam },
+      "Changes no figure — the document was frozen at approval. It records the **release** " +
+      "(this may go to the customer, and this person said so), then emails the invoice to the " +
+      "customer's contact addresses with the CSV attached.\n\n" +
+      "**200 even when delivery failed.** The release happened and is recorded either way; " +
+      "`delivery` says what became of the transport. An error status would leave the caller " +
+      "unable to tell which of the two failed. A failed delivery is visible, and re-sending " +
+      "retries it.\n\n" +
+      "Sending again needs `resend: true` only when the last attempt reached somebody — see " +
+      "`InvoiceSendRequest`. The body may be omitted entirely for a first send.",
+    request: {
+      params: invoiceIdParam,
+      body: { content: { "application/json": { schema: InvoiceSendRequest } }, required: false },
+    },
     responses: {
-      200: { description: "Sent", content: { "application/json": { schema: Invoice } } },
+      200: {
+        description: "Released, with the delivery outcome",
+        content: { "application/json": { schema: Invoice } },
+      },
+      400: ErrorResponses[400],
       404: ErrorResponses[404],
       409: ErrorResponses[409],
     },

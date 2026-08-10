@@ -62,13 +62,15 @@ From then on, nothing recomputes. A provider revising January's bill in March, a
 | Status       | Figures                      | What you can do                     |
 | ------------ | ---------------------------- | ----------------------------------- |
 | **Draft**    | Recomputed on every read     | Edit the period, delete it, approve |
-| **Approved** | Frozen                       | Mark as sent, void                  |
-| **Sent**     | Frozen                       | Void                                |
+| **Approved** | Frozen                       | Send, void                          |
+| **Sent**     | Frozen                       | Send again, void                    |
 | **Void**     | Frozen, and kept as a record | Nothing — raise a correction        |
 
 Approval, sending and voiding are each **separate acts with separate audit entries** naming who did them. Approving is not generating, and sending is not approving.
 
 Approval is refused if the invoice holds spend in a currency you have not stated an exchange rate for. An approved invoice has to be quotable as one number in the customer's currency, and freezing a total that is partly in some other currency would be exactly the figure nobody can explain. Add the rate under [Settings → Currency](./cloud-costs.md#currency) and approve again.
+
+It is also refused — with nothing approved — if the draft or its customer **changed while the figures were being computed**: a different period, a different scope, a different billing currency, cost basis or billing-rules setting. Computing the numbers takes a moment, and in that moment somebody else can edit the draft. Rather than freeze figures that describe a different question, Infrawrench refuses and asks you to look again. Re-open the draft, check what it now says, and approve.
 
 ## Void, never delete
 
@@ -76,7 +78,9 @@ An issued invoice is never edited and never deleted. If it turns out wrong, you 
 
 That is not a UI convention — the server refuses an edit or a delete on an issued invoice regardless of how the request arrives. "We billed you this, it was wrong, here is the corrected one" is a story a customer can follow. "We changed the invoice" is not.
 
-Ticking **Raise a corrective draft** when you void does both in one step, so a correction cannot be left half-made by a failed second request.
+Ticking **Raise a corrective draft** when you void does both in one step, and the two are written **together or not at all** — the void, the corrective draft, and the link between them in both directions. Void is irreversible and a void invoice refuses every action that could produce a correction, so an invoice left void with no draft would strand you. If anything goes wrong mid-way, nothing is applied and the invoice is still issued.
+
+One void gets one correction. If a corrective invoice already exists, raising a second is refused: two corrections for one void would leave the link pointing at only one of them, and the customer holding two bills for the same period.
 
 <insert [The Void modal with a reason typed in and "Raise a corrective draft for the same period" ticked] here>
 
@@ -100,9 +104,38 @@ An invoice a customer cannot reconcile is an invoice a customer does not pay, so
 
 **Download CSV** gives you the derivation as a file — every column above, plus the totals in the same file so nobody has to sum it themselves. It uses the same RFC 4180 quoting as [scheduled cost exports](./cost-exports.md), so a customer who already ingests those needs no second parser.
 
-> **Infrawrench does not send the invoice.** There is no email step: marking an invoice as **sent** records that the document left your building and who let it go. The CSV is what you attach to your own mail or feed into your accounting system. The state transitions and their audit trail are the part that has to be right; delivery can be added later without changing a single stored figure.
->
 > The download button is web-only. The desktop app talks to the cloud with a bearer token that a plain download link cannot carry.
+
+## Sending it to the customer
+
+**Send** on an approved invoice does two things, and they are recorded separately because they are different facts:
+
+- it records the **release** — this document may go to the customer, and this person said so;
+- it **emails the invoice** to the customer's contact addresses, with the CSV attached.
+
+The CSV is attached to the message rather than linked. An invoice has to still open when somebody queries it eleven months later, and a link is a thing that stops resolving.
+
+The contact email on the customer may hold **several addresses**, separated by commas or semicolons — an AP mailbox and a named contact, say. Each gets its own copy, so nobody sees anybody else's address.
+
+Sending needs a mail provider configured on the deployment (`MAILGUN_API_KEY`, `MAILGUN_DOMAIN`, `EMAIL_FROM`). Without one, sending still records the release and shows a failed delivery saying exactly that, rather than quietly doing nothing.
+
+### When delivery fails
+
+The invoice's delivery is shown next to its status: which addresses were tried, how many the mail provider took, and the error when it did not. A failed send is **visible and re-sendable** — it does not silently sit there reading "Sent".
+
+The rule for sending again is drawn on **whether anything landed**:
+
+| Last attempt                            | Sending again is…                        |
+| --------------------------------------- | ---------------------------------------- |
+| Reached nobody (failed, no recipients)  | a **retry** — one click, no confirmation |
+| Reached somebody (delivered, or partly) | **Send again** — a confirmation first    |
+| Interrupted, outcome unknown            | **Send again** — a confirmation first    |
+
+A partial delivery is never retried automatically, and that is deliberate: the mail provider cannot collapse a duplicate, so a retry would put a second copy of the same bill in the inboxes that already have it. Fix the failing address and use **Send again** if the customer needs another copy.
+
+Sending again never rewrites who released the invoice, and never touches a figure. The document was frozen at approval; delivery only records where it went.
+
+<insert [A sent invoice's detail view showing a red "Delivery failed" line with the recipient addresses and the transport's error, and a "Retry delivery" button] here>
 
 ## Permissions
 
@@ -112,9 +145,9 @@ Invoices have their own permission family rather than riding `costs:*`. Every ot
 | ---------------- | ------------------------------------------------------------ |
 | `invoices:read`  | Customers, invoices, line items, the CSV                     |
 | `invoices:write` | Add a customer, raise a draft, edit a period, delete a draft |
-| `invoices:issue` | Approve, mark as sent, void                                  |
+| `invoices:issue` | Approve, send, void                                          |
 
-The split between the last two is the one worth using. `invoices:write` is entirely revisable; `invoices:issue` is not — approving freezes what a customer will be sent. A billing clerk can hold `read` and `write` and prepare the month while only the finance lead holds `issue`.
+The split between the last two is the one worth using. `invoices:write` is entirely revisable; `invoices:issue` is not — approving freezes what a customer will be sent, and sending puts it in their mailbox, which no API call takes back. A billing clerk can hold `read` and `write` and prepare the month while only the finance lead holds `issue`.
 
 Members get none of the three by default. Admins and owners get all three; grant a custom role the first two if you want somebody preparing invoices without being able to issue them. See [Roles & permissions](../team-and-billing/roles-and-permissions.md).
 
@@ -127,7 +160,7 @@ infrawrench invoices INV-2026-0004        # one invoice, with its full derivatio
 infrawrench invoices northwind --json     # by customer name, as JSON
 ```
 
-Read-only. Approving and sending carry an audit entry naming a person, which is not something to make one flag away in a shell. What the terminal is good for is the other half — printing an invoice's derivation next to `infrawrench showback` for the same period, in a reconciliation script.
+Read-only. Approving and sending carry an audit entry naming a person — and sending now actually emails a customer — which is not something to make one flag away in a shell. `infrawrench invoices INV-2026-0004` does print the delivery outcome, so a reconciliation script can tell "we released it" from "it arrived". What the terminal is good for is the other half — printing an invoice's derivation next to `infrawrench showback` for the same period, in a reconciliation script.
 
 Note that the list does **not** compute a draft's total (it shows `not computed`, never `0.00`): a draft's figures are recomputed on read, and the list does not recompute. Ask for the invoice by name or number to get them.
 
@@ -146,5 +179,7 @@ The [MCP server and AI chat](./mcp.md) expose `list_managed_accounts`, `get_mana
 - `GET /invoices`, `GET /invoices/{id}`, `GET /invoices/{id}/export` (`invoices:read`)
 - `POST /invoices`, `PUT /invoices/{id}`, `DELETE /invoices/{id}` (`invoices:write`)
 - `POST /invoices/{id}/approve`, `POST /invoices/{id}/send`, `POST /invoices/{id}/void` (`invoices:issue`)
+
+`POST /invoices/{id}/send` answers **200 even when the email failed** — the release happened either way, and the `delivery` object in the response says what became of the transport. Pass `{"resend": true}` to send a second copy of an invoice that already reached somebody; a retry after a delivery that reached nobody needs no flag.
 
 See the [OpenAPI reference](../team-and-billing/openapi.md).

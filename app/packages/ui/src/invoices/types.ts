@@ -51,7 +51,15 @@ export interface InvoicesClient {
   deleteInvoice?(invoiceId: string): Promise<void>;
 
   approveInvoice?(invoiceId: string): Promise<ManagedInvoice>;
-  sendInvoice?(invoiceId: string): Promise<ManagedInvoice>;
+  /**
+   * Release the invoice and email it to the customer.
+   *
+   * `resend` is the deliberate second copy: the server allows a plain retry of
+   * a delivery that reached nobody without it, and refuses one that already
+   * landed with it absent. The panel asks before setting it, because the thing
+   * being written to is a customer's inbox.
+   */
+  sendInvoice?(invoiceId: string, resend?: boolean): Promise<ManagedInvoice>;
   voidInvoice?(
     invoiceId: string,
     reason: string,

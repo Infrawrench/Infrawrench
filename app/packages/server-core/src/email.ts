@@ -59,6 +59,23 @@ function messagesUrl(): string {
   return `${base}/v3/${encodeURIComponent(process.env["MAILGUN_DOMAIN"] ?? "")}/messages`;
 }
 
+/**
+ * A file to hang off a message.
+ *
+ * Mailgun takes attachments as extra `attachment` parts of the same multipart
+ * form the message already is, so this costs no second request, no object
+ * store and no expiring link — which is why the invoice CSV is attached rather
+ * than linked. A link would need a public URL for a document that names a
+ * customer's spend, and a bill nobody can open six months later is not a bill.
+ */
+export interface EmailAttachment {
+  filename: string;
+  /** The bytes, as text or binary. Text is encoded UTF-8. */
+  content: string | Uint8Array;
+  /** MIME type, e.g. `text/csv`. */
+  contentType: string;
+}
+
 export interface EmailMessage {
   to: string;
   subject: string;
@@ -66,6 +83,8 @@ export interface EmailMessage {
   text: string;
   /** HTML part. Optional; omitted messages are text-only. */
   html?: string;
+  /** Files to attach. Sent inline in the same multipart request. */
+  attachments?: EmailAttachment[];
   /**
    * Optional correlation breadcrumb, sent as the Mailgun custom variable
    * `v:infrawrench-key` so it comes back on the message's log entries and
@@ -95,6 +114,21 @@ async function sendOne(message: EmailMessage): Promise<void> {
   form.set("subject", message.subject);
   form.set("text", message.text);
   if (message.html) form.set("html", message.html);
+  // `append`, not `set`: several files share the one `attachment` field name,
+  // which is how Mailgun's multipart API takes more than one.
+  for (const file of message.attachments ?? []) {
+    // Copied into a plain `Uint8Array` rather than passed through: a view over
+    // a `SharedArrayBuffer` is not a `BlobPart`, and the copy costs nothing at
+    // the size of a document anyone emails.
+    const part = typeof file.content === "string" ? file.content : new Uint8Array(file.content);
+    form.append(
+      "attachment",
+      new Blob([part], { type: file.contentType }),
+      // The third argument is the part's filename, which is the name the
+      // recipient's mail client shows — without it Mailgun invents `blob`.
+      file.filename,
+    );
+  }
   // `v:` prefixed fields are Mailgun custom variables: echoed back on log
   // entries and webhooks, invisible in the delivered message.
   if (message.traceKey) form.set("v:infrawrench-key", message.traceKey.slice(0, 256));

@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   managedAccountInputSchema,
   managedInvoiceInputSchema,
+  managedInvoiceSendSchema,
   managedInvoiceUpdateSchema,
   managedInvoiceVoidSchema,
 } from "@infrawrench/ui/cost/config";
@@ -74,12 +75,20 @@ declare module "hono" {
  *
  * ## What "sent" means here
  *
- * Delivery is out of scope for this pass: nothing in this deployment emails an
- * invoice. `POST /send` records that the document left the building and who let
- * it, and `GET /export` produces the artifact a human attaches to their own
- * mail. That is deliberate — the state transition and its audit trail are the
- * part that has to be right, and a delivery channel can be added later without
- * changing a single stored figure.
+ * Two facts, recorded separately and never conflated. `POST /send` records the
+ * **release** — the document may go to the customer, and this person said so —
+ * and then emails it to the customer's contact addresses with the CSV attached.
+ * The release is written once; the delivery outcome is written per attempt, and
+ * neither can touch a figure frozen at approval.
+ *
+ * The response is a 200 with the outcome in `delivery`, including when the mail
+ * failed. A 500 would tell the caller nothing about whether the release stuck,
+ * and the release did stick: it is the transport that failed, the invoice is
+ * visibly "sent, delivery failed", and sending again retries it.
+ *
+ * Sending again is `resend: true` **only when the last attempt reached
+ * somebody**. Retrying a delivery that reached nobody needs no flag; putting a
+ * second copy of a bill in a customer's inbox does.
  */
 const accountsApp = new Hono();
 const app = new Hono();
@@ -424,15 +433,31 @@ app.post("/:id/approve", async (c) => {
   return c.json(invoice);
 });
 
-/** POST /api/org/:orgId/invoices/:id/send — record that the customer has it. */
+/**
+ * POST /api/org/:orgId/invoices/:id/send — release it, and email it.
+ *
+ * Still `invoices:issue`, and deliberately so. Sending is irreversible in the
+ * way that matters: the customer's mail server has the document and no API call
+ * takes it back. That is the same class of act as approving and voiding, and it
+ * belongs on the same grant — a billing clerk who may prepare invoices should
+ * not be able to put one in front of a customer.
+ */
 app.post("/:id/send", async (c) => {
   requirePermission(c, "invoices:issue");
   const organizationId = c.get("organizationId");
   const session = c.get("session");
 
+  // Body optional: `POST /send` with no body is the ordinary first send.
+  const parsed = managedInvoiceSendSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ error: "Invalid send request", issues: parsed.error.issues }, 400);
+  }
+
   let invoice;
   try {
-    invoice = await sendInvoice(organizationId, c.req.param("id"), session.userId);
+    invoice = await sendInvoice(organizationId, c.req.param("id"), session.userId, {
+      resend: parsed.data.resend,
+    });
   } catch (e) {
     return invoiceError(c, e);
   }
@@ -442,7 +467,17 @@ app.post("/:id/send", async (c) => {
     action: "invoice.send",
     entityType: "invoice",
     entityId: invoice.id,
-    metadata: { number: invoice.number, managedAccountName: invoice.managedAccountName },
+    metadata: {
+      number: invoice.number,
+      managedAccountName: invoice.managedAccountName,
+      resend: parsed.data.resend,
+      // The delivery outcome rides in the audit entry: "we sent it" is not the
+      // same claim as "it arrived", and only one of them is checkable later.
+      deliveryStatus: invoice.delivery?.status ?? null,
+      recipients: invoice.delivery?.recipients ?? [],
+      delivered: invoice.delivery?.delivered ?? 0,
+      deliveryError: invoice.delivery?.error ?? null,
+    },
   });
   return c.json(invoice);
 });

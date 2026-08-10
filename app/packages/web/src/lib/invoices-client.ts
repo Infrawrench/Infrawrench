@@ -51,8 +51,8 @@ export function createWebInvoicesClient(orgId: string): InvoicesClient {
 
     approveInvoice: (invoiceId: string) =>
       apiPost<ManagedInvoice>(`${base}/invoices/${invoiceId}/approve`, {}),
-    sendInvoice: (invoiceId: string) =>
-      apiPost<ManagedInvoice>(`${base}/invoices/${invoiceId}/send`, {}),
+    sendInvoice: (invoiceId: string, resend = false) =>
+      apiPost<ManagedInvoice>(`${base}/invoices/${invoiceId}/send`, { resend }),
     voidInvoice: (invoiceId: string, reason: string, supersede: boolean) =>
       apiPost<{ invoice: ManagedInvoice; replacement: ManagedInvoice | null }>(
         `${base}/invoices/${invoiceId}/void`,

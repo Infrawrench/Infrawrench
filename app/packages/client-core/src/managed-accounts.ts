@@ -139,6 +139,96 @@ export const MANAGED_INVOICE_LIMITS = {
   maxPeriodDays: 366,
 } as const;
 
+/* ------------------------------------------------------------------ *
+ * Delivery
+ * ------------------------------------------------------------------ */
+
+/**
+ * What the last attempt to email an invoice to its customer did.
+ *
+ * The same four words the scheduled report deliveries use, and for the same
+ * reason: "it went to some of them" is a distinct outcome from both success and
+ * failure, and collapsing it into either one is how a customer ends up with
+ * either no invoice or two.
+ */
+export const MANAGED_INVOICE_DELIVERY_STATUSES = [
+  "pending",
+  "succeeded",
+  "partial",
+  "failed",
+  "no_targets",
+] as const;
+export type ManagedInvoiceDeliveryStatus = (typeof MANAGED_INVOICE_DELIVERY_STATUSES)[number];
+
+export const MANAGED_INVOICE_DELIVERY_STATUS_LABELS: Record<ManagedInvoiceDeliveryStatus, string> =
+  {
+    pending: "Send interrupted",
+    succeeded: "Delivered",
+    partial: "Partly delivered",
+    failed: "Delivery failed",
+    no_targets: "No recipients",
+  };
+
+/**
+ * The record of one send attempt. Written by the server, never by a client, and
+ * **separate from the invoice's figures** — delivery records where a frozen
+ * document went, and cannot restate what it says.
+ */
+export interface ManagedInvoiceDelivery {
+  /**
+   * `pending` means an attempt was claimed and its outcome never written —
+   * the process died mid-send. It is deliberately *not* treated as a failure:
+   * the mail may well have gone, and only a person can decide to risk a second
+   * copy.
+   */
+  status: ManagedInvoiceDeliveryStatus;
+  /** The addresses the attempt was made to, as they were at that moment. */
+  recipients: string[];
+  /** How many of them the mail transport accepted. */
+  delivered: number;
+  /** When the attempt ran. */
+  attemptedAt: string;
+  /**
+   * The last attempt that reached at least one address, or null when none ever
+   * has. This is the field that decides whether sending again is a retry or a
+   * second copy in the customer's inbox.
+   */
+  deliveredAt: string | null;
+  /** How many send attempts this invoice has had, including this one. */
+  attempts: number;
+  /** Why it failed, in the words the transport used. Null on success. */
+  error: string | null;
+}
+
+/**
+ * Whether an attempt put the invoice in front of at least one recipient.
+ *
+ * The one question that separates "retry" from "send another copy". A partial
+ * delivery counts as landed — some customer contact has the invoice, and
+ * re-sending would give them a duplicate.
+ */
+export function managedInvoiceDeliveryLanded(
+  delivery: ManagedInvoiceDelivery | null | undefined,
+): boolean {
+  if (!delivery) return false;
+  return delivery.status === "succeeded" || delivery.status === "partial";
+}
+
+/**
+ * Whether sending again is a plain retry rather than a second copy.
+ *
+ * An allow-list, not the negation of {@link managedInvoiceDeliveryLanded}, and
+ * the difference is the whole point: only the two outcomes that *prove* nothing
+ * reached anyone qualify. A `pending` attempt — claimed, outcome never recorded
+ * — proves nothing either way, so it needs a person to decide.
+ */
+export function managedInvoiceDeliveryRetryable(
+  delivery: ManagedInvoiceDelivery | null | undefined,
+): boolean {
+  if (!delivery) return false;
+  return delivery.status === "failed" || delivery.status === "no_targets";
+}
+
 /** What produced one line of an invoice. */
 export type ManagedInvoiceLineKind = "cost_centre" | "account" | "fixed";
 
@@ -284,6 +374,13 @@ export interface ManagedInvoice {
   approvedByUserId: string | null;
   sentAt: string | null;
   sentByUserId: string | null;
+  /**
+   * The last attempt to email this invoice to the customer, or null when none
+   * has been made. Null on an invoice marked sent by a deployment with no mail
+   * provider, too — "someone said this went out" and "we delivered it" are
+   * different claims, and this field is only ever the second one.
+   */
+  delivery: ManagedInvoiceDelivery | null;
   voidedAt: string | null;
   voidedByUserId: string | null;
   voidReason: string | null;
@@ -317,6 +414,8 @@ export interface ManagedInvoiceSummary {
   totals: ManagedInvoiceTotals | null;
   issuedAt: string | null;
   sentAt: string | null;
+  /** The last delivery attempt, so the list can show a failed send. */
+  delivery: ManagedInvoiceDelivery | null;
   voidedAt: string | null;
   voidReason: string | null;
   supersedesInvoiceId: string | null;
@@ -370,12 +469,31 @@ export type ManagedInvoiceAction = "edit" | "delete" | "approve" | "send" | "voi
  * amount in a currency the org has stated no rate for cannot be expressed as
  * one number in the customer's currency, and approving it would freeze a total
  * nobody can quote.
+ *
+ * ## Sending twice
+ *
+ * `send` is the one action that can legitimately repeat, and the rule is drawn
+ * on **whether anything landed**, not on the status:
+ *
+ * - nothing reached anyone (`failed`, `no_targets`) — sending again is a
+ *   **retry**, allowed with no ceremony, because there is no inbox to duplicate
+ *   into;
+ * - something reached someone (`succeeded`, `partial`) — sending again is a
+ *   **second copy**, refused unless the caller passes `resend`, because a
+ *   customer receiving the same invoice twice is a support ticket at best and a
+ *   double payment at worst.
+ *
+ * A `sent` invoice with no delivery record at all — marked sent by hand, or on
+ * a deployment with no mail provider — is treated as the second case: we do not
+ * know what the person who pressed the button did outside this system.
  */
 export function managedInvoiceBlocker(
   invoice: Pick<ManagedInvoice, "status"> & {
     derivation?: Pick<ManagedInvoiceDerivation, "unconverted"> | undefined;
+    delivery?: ManagedInvoiceDelivery | null | undefined;
   },
   action: ManagedInvoiceAction,
+  options: { resend?: boolean | undefined } = {},
 ): string | null {
   const { status } = invoice;
 
@@ -411,12 +529,41 @@ export function managedInvoiceBlocker(
       return null;
     }
 
-    case "send":
+    case "send": {
       if (status === "draft") {
         return "Approve this invoice before sending it — the figures are not frozen yet.";
       }
-      if (status === "sent") return "This invoice has already been marked as sent.";
-      return null;
+      if (status !== "sent") return null;
+      // Deliberate: the caller has said, in as many words, "send another copy".
+      if (options.resend) return null;
+      const delivery = invoice.delivery ?? null;
+      if (managedInvoiceDeliveryRetryable(delivery)) {
+        // Nothing reached anyone, so there is nothing to duplicate. Retrying is
+        // the recovery, and it must not need a confirmation nobody would read.
+        return null;
+      }
+      if (delivery?.status === "pending") {
+        return (
+          "A previous send was interrupted before its outcome could be recorded, so there is no " +
+          "way to tell from here whether the customer received it. Use “Send again” to send " +
+          "another copy deliberately."
+        );
+      }
+      if (!delivery) {
+        return (
+          "This invoice has already been marked as sent, and this deployment holds no record of " +
+          "delivering it — whoever released it may have sent it themselves. Use “Send again” if " +
+          "you mean to email the customer another copy."
+        );
+      }
+      const when = delivery.deliveredAt ?? delivery.attemptedAt;
+      return (
+        `This invoice already reached ${delivery.delivered} of ${delivery.recipients.length} ` +
+        `recipient${delivery.recipients.length === 1 ? "" : "s"} on ` +
+        `${when.slice(0, 10)}. Sending it again puts a second copy of the same bill in the ` +
+        "customer's inbox. Use “Send again” if that is what you mean to do."
+      );
+    }
 
     case "void":
       if (status === "draft") {

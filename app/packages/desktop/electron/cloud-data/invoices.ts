@@ -92,10 +92,15 @@ ipcMain.handle(
 
 ipcMain.handle(
   "cloud_send_invoice",
-  async (_e, { orgId, invoiceId }: { orgId: string; invoiceId: string }) => {
+  async (
+    _e,
+    { orgId, invoiceId, resend }: { orgId: string; invoiceId: string; resend?: boolean },
+  ) => {
     return cloudFetch(orgId, `/invoices/${encodeURIComponent(invoiceId)}/send`, {
       method: "POST",
-      body: "{}",
+      // `resend` is the deliberate second copy; the server refuses one without
+      // it once a delivery has landed.
+      body: JSON.stringify({ resend: resend === true }),
     });
   },
 );

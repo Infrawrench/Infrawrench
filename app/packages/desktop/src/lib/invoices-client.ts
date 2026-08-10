@@ -69,8 +69,8 @@ export function createDesktopInvoicesClient(): InvoicesClient {
 
     approveInvoice: (invoiceId: string) =>
       invoke<ManagedInvoice>("cloud_approve_invoice", { orgId: requireOrgId(), invoiceId }),
-    sendInvoice: (invoiceId: string) =>
-      invoke<ManagedInvoice>("cloud_send_invoice", { orgId: requireOrgId(), invoiceId }),
+    sendInvoice: (invoiceId: string, resend = false) =>
+      invoke<ManagedInvoice>("cloud_send_invoice", { orgId: requireOrgId(), invoiceId, resend }),
     voidInvoice: (invoiceId: string, reason: string, supersede: boolean) =>
       invoke<{ invoice: ManagedInvoice; replacement: ManagedInvoice | null }>(
         "cloud_void_invoice",
