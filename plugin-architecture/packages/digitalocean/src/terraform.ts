@@ -6,6 +6,19 @@ import type {
 import { fieldNumber, fieldString, tf } from "@infrawrench/plugin-base";
 
 /**
+ * The DigitalOcean lister persists `fields.name` as a fully-qualified display
+ * name (`www.example.com`, or the bare domain for `@`). Terraform's
+ * `digitalocean_record.name` wants the domain-relative form (`www` / `@`).
+ */
+export function relativeDnsRecordName(storedName: string, domain: string): string {
+  if (storedName === domain) return "@";
+  if (domain && storedName.endsWith(`.${domain}`)) {
+    return storedName.slice(0, -(domain.length + 1));
+  }
+  return storedName;
+}
+
+/**
  * Terraform mapping for DigitalOcean — provider `digitalocean/digitalocean`.
  * Attribute names verified against the provider docs
  * (registry.terraform.io/providers/digitalocean/digitalocean):
@@ -102,9 +115,10 @@ export const digitaloceanTerraformExport: TerraformExportCapability = {
         const [domainFromId, recordId] = (resource.externalId ?? "").split("/");
         const domain = fieldString(resource, "domainName") || domainFromId || "";
         const type = fieldString(resource, "type");
-        const name = fieldString(resource, "name");
+        const storedName = fieldString(resource, "name");
+        const name = relativeDnsRecordName(storedName, domain);
         const value = fieldString(resource, "data");
-        if (!domain || !type || !name || !value) return null;
+        if (!domain || !type || !storedName || !value) return null;
         const attributes: Record<string, TerraformValue> = {
           domain: tf.str(domain),
           type: tf.str(type),
