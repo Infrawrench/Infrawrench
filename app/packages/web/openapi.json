@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -243,6 +243,10 @@
     {
       "name": "Jira",
       "description": "Jira Cloud connection, project and issue-type pickers, and filing a finding (cost anomaly, orphan, oversized resource, posture finding, expiring credential, failed probe) as a tracked issue."
+    },
+    {
+      "name": "Linear",
+      "description": "Linear workspace connection, team picker, and filing a finding (cost anomaly, orphan, oversized resource, posture finding, expiring credential, failed probe) as a tracked issue."
     }
   ],
   "components": {
@@ -18244,6 +18248,8 @@
           "chat:write",
           "jira:read",
           "jira:write",
+          "linear:read",
+          "linear:write",
           "pages:write",
           "org:settings:write"
         ],
@@ -20767,6 +20773,261 @@
           "projectKey",
           "issueTypeId",
           "summary"
+        ],
+        "additionalProperties": false
+      },
+      "LinearIntegration": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "keyHint": {
+            "type": "string",
+            "description": "Redacted marker for the stored personal API key, e.g. `…a7f2`. The key itself is never returned.",
+            "example": "…a7f2"
+          },
+          "defaultTeamId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Team the file-issue window preselects. A Linear team id, not a team key."
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "keyHint",
+          "defaultTeamId",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "LinearIntegrationInput": {
+        "type": "object",
+        "properties": {
+          "apiKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "Personal API key from Linear → Settings → Security & access. Omit to keep the stored key; required on first connect."
+          },
+          "defaultTeamId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64
+          }
+        },
+        "additionalProperties": false
+      },
+      "LinearVerifyResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "id",
+          "name",
+          "email"
+        ],
+        "additionalProperties": false,
+        "description": "The Linear user behind the API key, from the `viewer` query."
+      },
+      "LinearVerifyInput": {
+        "type": "object",
+        "properties": {
+          "apiKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "additionalProperties": false,
+        "description": "Supply a key to test one that has not been saved yet; send an empty object to re-test the stored one."
+      },
+      "LinearTeam": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Team id (UUID) — what issueCreate wants."
+          },
+          "key": {
+            "type": "string",
+            "description": "Short prefix issue identifiers are built from.",
+            "example": "ENG"
+          },
+          "name": {
+            "type": "string",
+            "example": "Engineering"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "LinearSourceKind": {
+        "type": "string",
+        "enum": [
+          "cost_anomaly",
+          "orphan",
+          "oversized",
+          "posture_finding",
+          "expiring",
+          "probe"
+        ],
+        "description": "Which detector produced the finding the issue was filed from."
+      },
+      "LinearIssueLink": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sourceKind": {
+            "$ref": "#/components/schemas/LinearSourceKind"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "issueIdentifier": {
+            "type": "string",
+            "example": "ENG-123"
+          },
+          "issueUrl": {
+            "type": "string",
+            "example": "https://linear.app/acme/issue/ENG-123"
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "sourceKind",
+          "sourceId",
+          "issueIdentifier",
+          "issueUrl",
+          "createdByUserId",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "CreateLinearIssueResult": {
+        "type": "object",
+        "properties": {
+          "issue": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "identifier": {
+                "type": "string",
+                "example": "ENG-123"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "identifier",
+              "url"
+            ],
+            "additionalProperties": false
+          },
+          "link": {
+            "$ref": "#/components/schemas/LinearIssueLink"
+          }
+        },
+        "required": [
+          "issue",
+          "link"
+        ],
+        "additionalProperties": false
+      },
+      "CreateLinearIssueInput": {
+        "type": "object",
+        "properties": {
+          "sourceKind": {
+            "$ref": "#/components/schemas/LinearSourceKind"
+          },
+          "sourceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "The finding's own id, as the detector reports it."
+          },
+          "teamId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Team to file into. Every Linear issue belongs to exactly one team."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 30000,
+            "description": "Markdown, passed to Linear as-is — unlike Jira, where the server converts plain text to Atlassian Document Format."
+          },
+          "labelIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "maxItems": 20,
+            "description": "Ids of existing labels in the workspace. Linear cannot create labels here."
+          },
+          "projectId": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Optional project to attach the issue to."
+          }
+        },
+        "required": [
+          "sourceKind",
+          "sourceId",
+          "teamId",
+          "title"
         ],
         "additionalProperties": false
       },
@@ -43325,6 +43586,426 @@
         "operationId": "getOrgOrgIdJiraLinks",
         "x-required-permission": "jira:read",
         "description": "_Requires permission: `jira:read`._"
+      }
+    },
+    "/api/org/{orgId}/linear": {
+      "get": {
+        "tags": [
+          "Linear"
+        ],
+        "summary": "Get the org's Linear connection",
+        "description": "The stored API key is never returned; `keyHint` stands in for it.\n\n_Requires permission: `linear:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The connection, or null when Linear has not been connected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "integration": {
+                      "$ref": "#/components/schemas/LinearIntegration"
+                    }
+                  },
+                  "required": [
+                    "integration"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdLinear",
+        "x-required-permission": "linear:read"
+      },
+      "put": {
+        "tags": [
+          "Linear"
+        ],
+        "summary": "Connect Linear, or update the connection",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinearIntegrationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/LinearIntegration"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdLinear",
+        "x-required-permission": "linear:write",
+        "description": "_Requires permission: `linear:write`._"
+      },
+      "delete": {
+        "tags": [
+          "Linear"
+        ],
+        "summary": "Disconnect Linear",
+        "description": "Issue links already recorded are kept, so filed findings stay marked as filed.\n\n_Requires permission: `linear:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Disconnected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdLinear",
+        "x-required-permission": "linear:write"
+      }
+    },
+    "/api/org/{orgId}/linear/verify": {
+      "post": {
+        "tags": [
+          "Linear"
+        ],
+        "summary": "Check Linear credentials",
+        "description": "Runs the `viewer` query against the Linear GraphQL API, so a mistyped or revoked key is reported on the settings form rather than on the first attempt to file an issue.\n\n_Requires permission: `linear:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinearVerifyInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The key works; the Linear user it belongs to",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinearVerifyResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Linear rejected the key or was unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdLinearVerify",
+        "x-required-permission": "linear:write"
+      }
+    },
+    "/api/org/{orgId}/linear/teams": {
+      "get": {
+        "tags": [
+          "Linear"
+        ],
+        "summary": "List Linear teams",
+        "description": "Backs the team picker, so nobody has to know a team id by hand — issueCreate requires one, and every issue belongs to exactly one team.\n\n_Requires permission: `linear:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Teams visible to the stored API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LinearTeam"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdLinearTeams",
+        "x-required-permission": "linear:read"
+      }
+    },
+    "/api/org/{orgId}/linear/issues": {
+      "post": {
+        "tags": [
+          "Linear"
+        ],
+        "summary": "File a finding as a Linear issue",
+        "description": "Creates the issue via the issueCreate mutation, then records the link between it and the finding. The link is what lets a list view show \"already filed\" instead of offering the button again.\n\n_Requires permission: `linear:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLinearIssueInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateLinearIssueResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Linear refused to create the issue, or was unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdLinearIssues",
+        "x-required-permission": "linear:write"
+      }
+    },
+    "/api/org/{orgId}/linear/links": {
+      "get": {
+        "tags": [
+          "Linear"
+        ],
+        "summary": "Look up filed issues for a set of findings",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/LinearSourceKind"
+            },
+            "required": false,
+            "name": "sourceKind",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 512
+              },
+              "maxItems": 500,
+              "description": "Repeat to narrow to specific findings. Omit to return every link of the kind — this is the batch lookup a list view makes once instead of one request per row."
+            },
+            "required": false,
+            "name": "sourceId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Links, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LinearIssueLink"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdLinearLinks",
+        "x-required-permission": "linear:read",
+        "description": "_Requires permission: `linear:read`._"
       }
     },
     "/api/org/{orgId}/digest": {

@@ -17,10 +17,6 @@
  * Adding or removing a plugin changes the `pluginId` / `resourceTypeId` enums,
  * which is a real change to the published surface — that counts.
  */
-// 1.4.0: UploadThing plugin + accountRoot / showInSidebar on ResourceTypeSummary.
-// 1.5.0: the cost and FinOps surface — cost reports and their folders, saved
-// cost filters, scheduled report delivery, cost exports, commitments, change
-// alerts, currency conversion, the cost query language, charge type and
-// amortized cost basis, and Jira filing, with their permissions and tab
-// targets. All additive.
+// 1.6.0: Linear issue filing alongside Jira (new routes and permissions).
+export const API_VERSION = "1.6.0";
 export const API_VERSION = "1.5.0";
