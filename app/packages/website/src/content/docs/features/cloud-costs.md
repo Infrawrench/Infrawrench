@@ -10,6 +10,8 @@ The **Costs** panel in the sidebar is where your budgets live. Dashboards show c
 
 A graph you want to keep, name, and reuse is a **cost report** — the same graph as an org object, with its own page and its own id, referenced by any number of dashboards. See [Cost reports](./cost-reports.md).
 
+If what you want is not spend but **cost per unit of the thing your business does** — per customer, per request, per GB — declare a [business metric](./unit-costs.md) and any cost graph will divide by it. Same page covers margin.
+
 If what you want is the rows rather than a graph — a recurring dump into a warehouse or a finance system — that is a **cost export**: CSV or NDJSON, on a schedule, to an S3-compatible bucket or an HTTPS endpoint, with the restatement handling that makes the numbers reconcile. See [Scheduled cost exports](./cost-exports.md).
 
 > **Cloud only.** Cost collection runs on Infrawrench Cloud's background pollers and time-series store. On the desktop app the widgets appear when you are signed into a cloud org; local-only mode does not collect cost data.
@@ -47,6 +49,10 @@ Cost and budget cards drag around the grid like pinned resources, and share the 
 <insert [A stacked-bar cost graph grouped by service with a forecast dashed line and previous-period comparison] here>
 
 Currencies are never merged: if your accounts bill in more than one currency the graph shows one series per currency and says so under the title.
+
+### Annotations
+
+Every cost chart — this card included — draws the org's **annotations**: dated notes explaining what happened, marked on whichever bucket holds their day. Click a bar to write one, or read the ones already there from the numbered strip under the chart. A card on a dashboard belongs to no report, so it shows the org-wide notes; a [cost report](./cost-reports.md#annotations) also shows its own. Annotations are an overlay and never change a series, a total, or an axis.
 
 ## Filters as text
 
@@ -325,6 +331,10 @@ The same budget can appear on as many dashboards as you like — one budget, man
 
 <insert [Costs panel showing the month-to-date spend chart at the top and two budget cards below, one labelled "On no dashboard"] here>
 
+### Unit costs
+
+Under the saved filters, **Unit costs** lists the org's business metrics — the denominators a cost graph can divide by — with how many days each one actually has values for. A metric nobody is reporting draws a chart made entirely of gaps, and this is the only place that failure is visible, so a metric with no values says so in amber. See [Unit costs & margin](./unit-costs.md).
+
 ### Potential savings
 
 Below the budgets, **Potential savings** lists resources that look orphaned or idle — volumes attached to nothing, IPs assigned to nothing — with the trailing 30-day spend where the provider reports cost per resource. It reads the state your accounts last synced, so it costs no provider API calls. The section also appears in local-only desktop mode, scanning this machine's workspace without a cost column. See [Orphan & idle resource finder](./orphan-finder.md) for what each provider flags.
@@ -392,7 +402,21 @@ Kubernetes clusters have no billing API of their own, so their per-namespace and
 
 Forecasts are a least-squares fit over the trailing 30 days of daily totals, projected forward. They are a trend estimate, not a billing prediction — one-off purchases, reserved-instance charges, and tier changes will not be anticipated.
 
+The things a trend cannot see are exactly what a **scenario model** is for: known future cost, written down once and overlaid on the projection _beside_ the trend rather than instead of it. See [Scenario models](./scenario-models.md).
+
 The fit follows the graph's [cost basis](#cash-and-amortized), which matters more than it sounds: fitting a trend through a cash series containing one enormous commitment purchase projects a month-end total that cannot happen. On an amortized basis that purchase is already spread, and the forecast is fit on the shape of your actual consumption.
+
+## What you report internally
+
+Collected spend is what the provider charged. What an organization reports internally is often different — a platform team's markup to recover shared overhead, a discount negotiated outside the provider's pricing, a shared cluster charged back to the teams that use it.
+
+**Billing rules** express that, and they are applied when a report is run rather than written into your cost data — so collected spend stays exactly what the provider reported and still reconciles against the invoice, while an adjusted figure is always shown beside the collected one and names the rules that moved it. See [Billing rules](./billing-rules.md).
+
+Budgets, anomaly detection, change alerts, the digest and cost exports all keep measuring collected spend; a budget can opt in per budget. That page states every one of those decisions.
+
+## What you bill somebody else
+
+If you run infrastructure on other people's behalf, the last step is a document. A **managed account** is a customer — contact details, a billing currency, and the cost centres whose spend is theirs — and an **invoice** is what you send them: line items derived from exactly the same allocation the showback report uses, the adjustments applied, and a total that freezes the moment you approve it so it cannot restate underneath a customer who already has it. See [Managed accounts & invoices](./managed-accounts.md).
 
 ## Prepaid credit
 
@@ -401,3 +425,9 @@ Cost graphs answer "what did we spend". For providers that work off a prepaid po
 ## Commitments
 
 The other question a spend graph can't answer is "are the reservations and savings plans we bought actually paying for themselves". See [Commitments](./commitments.md) — the holdings, how much of the usage bill they cover, their utilization, and a planner that sizes what to buy next — also on the Costs panel.
+
+## Budgets and cost policy in Terraform
+
+Everything on this page that is configuration rather than data — budgets, saved filters, cost centres and their allocation rules, [reports](./cost-reports.md), [change alerts](./cost-change-alerts.md), [scenario models](./scenario-models.md), [billing rules](./billing-rules.md) and [exports](./cost-exports.md) — can be managed from Terraform instead of the UI, one object at a time, with plans and `terraform import`. See the [Terraform provider](./terraform-provider.md).
+
+It is a different feature from [Terraform export](./terraform-export.md), which writes your _cloud resources_ out as HCL, and from [config as code](./config-as-code.md), which moves a whole organization's configuration as one document.

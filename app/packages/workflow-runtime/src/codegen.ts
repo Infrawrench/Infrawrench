@@ -516,6 +516,38 @@ interface InfraCosts {
 }`;
 
 /**
+ * `infra.businessMetrics` — the denominator half of a unit cost. `infra.costs`
+ * reports what was spent; this reports how many of the thing the business does
+ * happened, so a cost graph can divide one by the other.
+ *
+ * Named `businessMetrics` rather than `metrics` because `infra.metrics` is
+ * already this workflow's declared key/value metrics — see the note on
+ * `WorkflowBusinessMetricValue` in types.ts.
+ */
+const BUSINESS_METRICS_INTERFACE = `interface BusinessMetricValueInput {
+  /** UTC day the value belongs to, \`YYYY-MM-DD\`. */
+  date: string;
+  /** The day's value — customers, requests, GB. */
+  value: number;
+}
+
+interface InfraBusinessMetrics {
+  /**
+   * Report daily values for a business metric, addressed by its key (the slug
+   * on the Costs panel, e.g. \`"active-customers"\`).
+   *
+   * Re-reporting a day **replaces** it rather than adding to it, so a cron that
+   * re-reports a trailing window is safe to run repeatedly. A day you never
+   * report is a gap, not a zero: the unit-cost chart draws a hole there rather
+   * than claiming the period was free.
+   */
+  write(
+    metric: string,
+    values: BusinessMetricValueInput | BusinessMetricValueInput[],
+  ): Promise<{ written: number }>;
+}`;
+
+/**
  * `infra.page` — raising an alert to the humans who own the workflow. The
  * cooldown is enforced by the host and keyed, so a cron that keeps finding the
  * same problem pages once instead of once per run. Mirrors `PageSpec` /
@@ -909,6 +941,10 @@ export function generateInfraDtsParts(input: GenerateInfraDtsInput): InfraDtsPar
     input.costs === false
       ? `  /** Unavailable here — cost reporting needs the cloud's cost store. */\n  costs: never;`
       : `  /** Report spend from a source Infrawrench has no plugin for. */\n  readonly costs: InfraCosts;`;
+  const businessMetricsDecl =
+    input.costs === false
+      ? `  /** Unavailable here — business metrics need the cloud's cost store. */\n  businessMetrics: never;`
+      : `  /** Report the daily numbers unit costs divide spend by. */\n  readonly businessMetrics: InfraBusinessMetrics;`;
   const aiOff = readOnly || input.ai === false;
   const aiDecl = aiOff
     ? `  /** Unavailable here — AI calls are made by the cloud and metered like chat. */\n  ai: never;`
@@ -935,6 +971,8 @@ ${renderEventType(input.triggerKind ?? "manual")}
 
 ${input.costs === false ? "" : COSTS_INTERFACE}
 
+${input.costs === false ? "" : BUSINESS_METRICS_INTERFACE}
+
 ${approvalsOff ? "" : APPROVAL_INTERFACES}
 
 ${aiOff ? "" : AI_INTERFACES}
@@ -960,6 +998,7 @@ ${promptDecl}
   /** What started this run. Frozen. */
   readonly event: WorkflowEvent;
 ${costsDecl}
+${businessMetricsDecl}
 ${pageDecl}
 ${aiDecl}
 ${approvalsDecl}

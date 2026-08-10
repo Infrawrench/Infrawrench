@@ -191,6 +191,7 @@ const TabTarget = strict({
     // reject that client's whole tab list rather than the one dead tab.
     "savings",
     "cost-reports",
+    "invoices",
     "graph",
     "logs",
     "changes",
@@ -217,6 +218,12 @@ const TabTarget = strict({
    * report just lands on the list.
    */
   reportId: Uuid.optional(),
+  /**
+   * Which invoice the Invoices tab was last on. Omitted for the list view.
+   * Never used to invalidate the tab — the tab is the page, and a voided or
+   * deleted invoice just lands on the list.
+   */
+  invoiceId: Uuid.optional(),
 }).openapi("TabTarget");
 
 const ValidateTabsRequest = strict({

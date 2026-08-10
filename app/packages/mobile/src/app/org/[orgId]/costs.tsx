@@ -17,6 +17,7 @@ import { CommitmentsSection } from "@/features/costs/CommitmentsSection";
 import { CostAnomaliesSection } from "@/features/costs/CostAnomaliesSection";
 import { CostChangeAlertsSection } from "@/features/costs/CostChangeAlertsSection";
 import { TagGovernanceSection } from "@/features/costs/TagGovernanceSection";
+import { UnitCostsSection } from "@/features/costs/UnitCostsSection";
 import { BudgetCard } from "@/features/dashboard/BudgetCard";
 import { CostGraphCard } from "@/features/dashboard/CostGraphCard";
 import { useBudgets } from "@/features/dashboard/useBudgets";
@@ -74,6 +75,8 @@ export default function CostsScreen() {
         void queryClient.invalidateQueries({ queryKey: ["cost-alert-events"] });
         void queryClient.invalidateQueries({ queryKey: ["commitments"] });
         void queryClient.invalidateQueries({ queryKey: ["tag-compliance"] });
+        void queryClient.invalidateQueries({ queryKey: ["business-metrics"] });
+        void queryClient.invalidateQueries({ queryKey: ["unit-costs"] });
         void queryClient.invalidateQueries({ queryKey: ["untagged-spend"] });
         void queryClient.invalidateQueries({ queryKey: ["orphans"] });
         void queryClient.invalidateQueries({ queryKey: ["rightsizing"] });
@@ -111,6 +114,10 @@ export default function CostsScreen() {
       ) : (
         rows.map((b) => <BudgetCard key={b.id} budget={b} />)
       )}
+
+      {/* Above tag governance, mirroring the web panel's order: "what does a
+          customer cost" is the question a phone is most likely opened for. */}
+      <UnitCostsSection />
 
       <TagGovernanceSection />
 

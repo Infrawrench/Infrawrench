@@ -13,13 +13,14 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as ChangesRouteImport } from './routes/changes'
 import { Route as ChatRouteImport } from './routes/chat'
-import { Route as CostsRouteImport } from './routes/costs'
 import { Route as CostReportsRouteImport } from './routes/cost-reports'
+import { Route as CostsRouteImport } from './routes/costs'
 import { Route as DeploymentsRouteImport } from './routes/deployments'
 import { Route as DnsRouteImport } from './routes/dns'
 import { Route as EnvironmentDiffRouteImport } from './routes/environment-diff'
 import { Route as ExpiringRouteImport } from './routes/expiring'
 import { Route as GraphRouteImport } from './routes/graph'
+import { Route as InvoicesRouteImport } from './routes/invoices'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as MetricAlertsRouteImport } from './routes/metric-alerts'
 import { Route as MomentRouteImport } from './routes/moment'
@@ -53,14 +54,14 @@ const ChatRoute = ChatRouteImport.update({
   path: '/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
-const CostsRoute = CostsRouteImport.update({
-  id: '/costs',
-  path: '/costs',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const CostReportsRoute = CostReportsRouteImport.update({
   id: '/cost-reports',
   path: '/cost-reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CostsRoute = CostsRouteImport.update({
+  id: '/costs',
+  path: '/costs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DeploymentsRoute = DeploymentsRouteImport.update({
@@ -86,6 +87,11 @@ const ExpiringRoute = ExpiringRouteImport.update({
 const GraphRoute = GraphRouteImport.update({
   id: '/graph',
   path: '/graph',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InvoicesRoute = InvoicesRouteImport.update({
+  id: '/invoices',
+  path: '/invoices',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LogsRoute = LogsRouteImport.update({
@@ -155,13 +161,14 @@ export interface FileRoutesByFullPath {
   '/agents': typeof AgentsRoute
   '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
-  '/costs': typeof CostsRoute
   '/cost-reports': typeof CostReportsRoute
+  '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
   '/dns': typeof DnsRoute
   '/environment-diff': typeof EnvironmentDiffRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
+  '/invoices': typeof InvoicesRoute
   '/logs': typeof LogsRoute
   '/metric-alerts': typeof MetricAlertsRoute
   '/moment': typeof MomentRoute
@@ -180,13 +187,14 @@ export interface FileRoutesByTo {
   '/agents': typeof AgentsRoute
   '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
-  '/costs': typeof CostsRoute
   '/cost-reports': typeof CostReportsRoute
+  '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
   '/dns': typeof DnsRoute
   '/environment-diff': typeof EnvironmentDiffRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
+  '/invoices': typeof InvoicesRoute
   '/logs': typeof LogsRoute
   '/metric-alerts': typeof MetricAlertsRoute
   '/moment': typeof MomentRoute
@@ -206,13 +214,14 @@ export interface FileRoutesById {
   '/agents': typeof AgentsRoute
   '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
-  '/costs': typeof CostsRoute
   '/cost-reports': typeof CostReportsRoute
+  '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
   '/dns': typeof DnsRoute
   '/environment-diff': typeof EnvironmentDiffRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
+  '/invoices': typeof InvoicesRoute
   '/logs': typeof LogsRoute
   '/metric-alerts': typeof MetricAlertsRoute
   '/moment': typeof MomentRoute
@@ -233,13 +242,14 @@ export interface FileRouteTypes {
     | '/agents'
     | '/changes'
     | '/chat'
-    | '/costs'
     | '/cost-reports'
+    | '/costs'
     | '/deployments'
     | '/dns'
     | '/environment-diff'
     | '/expiring'
     | '/graph'
+    | '/invoices'
     | '/logs'
     | '/metric-alerts'
     | '/moment'
@@ -258,13 +268,14 @@ export interface FileRouteTypes {
     | '/agents'
     | '/changes'
     | '/chat'
-    | '/costs'
     | '/cost-reports'
+    | '/costs'
     | '/deployments'
     | '/dns'
     | '/environment-diff'
     | '/expiring'
     | '/graph'
+    | '/invoices'
     | '/logs'
     | '/metric-alerts'
     | '/moment'
@@ -283,13 +294,14 @@ export interface FileRouteTypes {
     | '/agents'
     | '/changes'
     | '/chat'
-    | '/costs'
     | '/cost-reports'
+    | '/costs'
     | '/deployments'
     | '/dns'
     | '/environment-diff'
     | '/expiring'
     | '/graph'
+    | '/invoices'
     | '/logs'
     | '/metric-alerts'
     | '/moment'
@@ -309,13 +321,14 @@ export interface RootRouteChildren {
   AgentsRoute: typeof AgentsRoute
   ChangesRoute: typeof ChangesRoute
   ChatRoute: typeof ChatRoute
-  CostsRoute: typeof CostsRoute
   CostReportsRoute: typeof CostReportsRoute
+  CostsRoute: typeof CostsRoute
   DeploymentsRoute: typeof DeploymentsRoute
   DnsRoute: typeof DnsRoute
   EnvironmentDiffRoute: typeof EnvironmentDiffRoute
   ExpiringRoute: typeof ExpiringRoute
   GraphRoute: typeof GraphRoute
+  InvoicesRoute: typeof InvoicesRoute
   LogsRoute: typeof LogsRoute
   MetricAlertsRoute: typeof MetricAlertsRoute
   MomentRoute: typeof MomentRoute
@@ -360,18 +373,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/costs': {
-      id: '/costs'
-      path: '/costs'
-      fullPath: '/costs'
-      preLoaderRoute: typeof CostsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/cost-reports': {
       id: '/cost-reports'
       path: '/cost-reports'
       fullPath: '/cost-reports'
       preLoaderRoute: typeof CostReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/costs': {
+      id: '/costs'
+      path: '/costs'
+      fullPath: '/costs'
+      preLoaderRoute: typeof CostsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/deployments': {
@@ -407,6 +420,13 @@ declare module '@tanstack/react-router' {
       path: '/graph'
       fullPath: '/graph'
       preLoaderRoute: typeof GraphRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invoices': {
+      id: '/invoices'
+      path: '/invoices'
+      fullPath: '/invoices'
+      preLoaderRoute: typeof InvoicesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/logs': {
@@ -501,13 +521,14 @@ const rootRouteChildren: RootRouteChildren = {
   AgentsRoute: AgentsRoute,
   ChangesRoute: ChangesRoute,
   ChatRoute: ChatRoute,
-  CostsRoute: CostsRoute,
   CostReportsRoute: CostReportsRoute,
+  CostsRoute: CostsRoute,
   DeploymentsRoute: DeploymentsRoute,
   DnsRoute: DnsRoute,
   EnvironmentDiffRoute: EnvironmentDiffRoute,
   ExpiringRoute: ExpiringRoute,
   GraphRoute: GraphRoute,
+  InvoicesRoute: InvoicesRoute,
   LogsRoute: LogsRoute,
   MetricAlertsRoute: MetricAlertsRoute,
   MomentRoute: MomentRoute,

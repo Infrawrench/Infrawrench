@@ -101,6 +101,14 @@ A restore is never held hostage by one dangling reference. Anything the target o
 
 Two things are refused outright rather than reported, because guessing would be worse than failing: a drift alert scope that resolves to no accounts at all (an empty scope means _every_ account, so dropping unknown names would widen alerting), and a probe or widget whose settings the normal editor would also have rejected.
 
+## Or manage objects one at a time, with Terraform
+
+A document moves a whole organization at once, which is what makes it right for cloning, seeding a staging org, or a restore. It is the wrong shape for "this one budget lives in the platform team's git repo and changes go through review": the document addresses entities by name rather than by id, applies in one transaction, and in `--prune` mode deletes anything it doesn't name.
+
+For that, use the [Terraform provider](./terraform-provider.md) instead. It manages individual Infrawrench objects — budgets, cost centres, allocation rules, tag policy, saved filters, reports, cost alerts, scenario models, billing rules and exports — as Terraform resources, with per-object plans, drift detection and `terraform import`. It also reaches objects this document has no section for.
+
+The two coexist: seed an organization with a document, then adopt the pieces you want under continuous review into Terraform.
+
 ## Permissions
 
 Exporting needs `config:read`; importing needs `config:write`. Owners and admins have both.

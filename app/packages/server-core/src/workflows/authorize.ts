@@ -107,6 +107,10 @@ export const WORKFLOW_OPERATION_PERMISSIONS: Readonly<Record<string, string | nu
 
   // --- cost data ---------------------------------------------------------
   "costs.write": "costs:write",
+  // Reporting a business metric is the same class of act as reporting spend —
+  // it writes a number the organization's unit costs and margins are computed
+  // from — so it rides the same permission rather than earning its own.
+  "businessMetrics.write": "costs:write",
 
   // --- Infrafile deploy stages -------------------------------------------
   // Unreachable through `runOrgWorkflow` today — deployments build their own

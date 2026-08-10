@@ -22,6 +22,8 @@ import { WebDeploymentsPanel } from "./WebDeploymentsPanel";
 import { type AgentClient } from "@infrawrench/ui/agents";
 import { createWebWorkflowClient } from "@/lib/workflow-client";
 import { createWebCostReportsClient, createWebCostsClient } from "@/lib/cost-client";
+import { createWebInvoicesClient } from "@/lib/invoices-client";
+import { InvoicesPanel, type InvoicesClient } from "@infrawrench/ui/invoices";
 import { createWebAgentClient } from "@/lib/agent-client";
 import { WebWorkflowsPanel } from "./WebWorkflowsPanel";
 import { WebAgentsPanel } from "./WebAgentsPanel";
@@ -29,7 +31,7 @@ import { WebChatPanel } from "./WebChatPanel";
 import { WebGraphPanel } from "./WebGraphPanel";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
 import { CostReportsPanel, type CostReportsClient } from "@infrawrench/ui/cost-reports";
-import { costReportsTabTarget } from "@/lib/workspace-tabs";
+import { costReportsTabTarget, invoicesTabTarget } from "@/lib/workspace-tabs";
 import {
   environmentDiffTabTarget,
   resourceTabTarget,
@@ -154,6 +156,16 @@ function getCostReportsClient(orgId: string): CostReportsClient {
   if (!client) {
     client = createWebCostReportsClient(orgId);
     costReportsClients.set(orgId, client);
+  }
+  return client;
+}
+
+const invoicesClients = new Map<string, InvoicesClient>();
+function getInvoicesClient(orgId: string): InvoicesClient {
+  let client = invoicesClients.get(orgId);
+  if (!client) {
+    client = createWebInvoicesClient(orgId);
+    invoicesClients.set(orgId, client);
   }
   return client;
 }
@@ -293,6 +305,21 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           }
           onOpenDashboard={(dashboardId) =>
             void navigate(getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId }))
+          }
+        />
+      );
+    case "invoices":
+      return (
+        <InvoicesPanel
+          // Keyed by org so switching org remounts and refetches rather than
+          // showing the previous org's customers.
+          key={orgId}
+          client={getInvoicesClient(orgId)}
+          invoiceId={t.invoiceId}
+          // The URL owns which invoice is open — navigating is what records it
+          // on the tab, so a reload or a tab switch comes back to it.
+          onSelectInvoice={(invoiceId) =>
+            void navigate(getWorkspaceNavigateArgs(invoicesTabTarget(invoiceId)))
           }
         />
       );

@@ -15,6 +15,7 @@ import {
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
 import { CostReportsIcon } from "@infrawrench/ui/cost-reports";
+import { InvoicesIcon } from "@infrawrench/ui/invoices";
 import {
   DeployIcon,
   ChangesIcon,
@@ -488,6 +489,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <CostReportsIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/cost-reports", params: { orgId: orgId! } }),
+              },
+              {
+                key: "invoices",
+                label: "Invoices",
+                icon: <InvoicesIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/invoices", params: { orgId: orgId! } }),
               },
               {
                 key: "metric-alerts",

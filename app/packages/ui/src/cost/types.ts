@@ -16,11 +16,23 @@ import type {
 } from "@infrawrench/client-core";
 import type {
   BudgetInput,
+  BusinessMetric,
+  BusinessMetricInput,
+  BusinessMetricValue,
+  BusinessMetricValueInput,
+  BusinessMetricWriteResult,
+  CostAnnotation,
+  CostAnnotationInput,
   CostQueryRequest,
   CostQueryResponse,
+  UnitCostQueryRequest,
+  UnitCostQueryResponse,
   SavedCostFilter,
   SavedCostFilterInput,
   SavedCostFilterReferent,
+  CostScenarioModel,
+  CostScenarioModelInput,
+  CostScenarioReferent,
 } from "./config.js";
 
 /**
@@ -163,4 +175,38 @@ export interface CostsClient extends CostApi {
   deleteSavedFilter?(savedFilterId: string): Promise<void>;
   /** Everything referencing a saved filter (budgets, reports, dashboard graphs). */
   getSavedFilterReferents?(savedFilterId: string): Promise<SavedCostFilterReferent[]>;
+  /**
+   * Scenario-model management, for the Scenario models section of the Costs
+   * panel. The read half (`listScenarioModels`) lives on {@link CostApi}
+   * because the graph editor needs it too; these are the management-only calls,
+   * all optional on the usual rule — omitted, the section renders read-only.
+   */
+  createScenarioModel?(input: CostScenarioModelInput): Promise<CostScenarioModel>;
+  updateScenarioModel?(modelId: string, input: CostScenarioModelInput): Promise<CostScenarioModel>;
+  /**
+   * Rejects while the model is referenced — the server answers 409 with the
+   * referents, and the thrown error's message names them.
+   */
+  deleteScenarioModel?(modelId: string): Promise<void>;
+  /** Everything referencing a model (budgets first — they page people). */
+  getScenarioModelReferents?(modelId: string): Promise<CostScenarioReferent[]>;
+  /**
+   * Business-metric management, for the Unit costs section of the Costs panel.
+   * The read half (`listBusinessMetrics`) lives on {@link CostApi} because the
+   * graph editor needs it too; these are the management-only calls. All
+   * optional on the usual rule: omitted, the section renders read-only.
+   */
+  createBusinessMetric?(input: BusinessMetricInput): Promise<BusinessMetric>;
+  updateBusinessMetric?(metricId: string, input: BusinessMetricInput): Promise<BusinessMetric>;
+  deleteBusinessMetric?(metricId: string): Promise<void>;
+  /** A metric's reported days, newest first — the "is this being fed?" answer. */
+  listBusinessMetricValues?(metricId: string, limit?: number): Promise<BusinessMetricValue[]>;
+  /**
+   * Report days by hand. Re-reporting a day restates it rather than adding to
+   * it, the same guarantee the API and `infra.businessMetrics.write` give.
+   */
+  writeBusinessMetricValues?(
+    metricId: string,
+    values: BusinessMetricValueInput[],
+  ): Promise<BusinessMetricWriteResult>;
 }

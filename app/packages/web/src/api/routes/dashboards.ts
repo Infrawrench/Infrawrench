@@ -680,6 +680,10 @@ app.post("/validate-tabs", async (c) => {
       // The Cost reports tab is the list page; `reportId` only remembers which
       // report was open, so a deleted report must not invalidate the tab.
       target.kind === "cost-reports" ||
+      // Same as Cost reports: the Invoices tab is the list page, and
+      // `invoiceId` only remembers which invoice was open. A voided or deleted
+      // invoice must not invalidate the tab.
+      target.kind === "invoices" ||
       target.kind === "graph" ||
       target.kind === "logs" ||
       target.kind === "changes" ||

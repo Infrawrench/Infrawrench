@@ -199,8 +199,19 @@ function printType(ref: TypeRef, names: NameTable, indent: string): string {
       return joinMembers(parts, "|", indent);
     }
     case "intersection":
+      // Flattened for the same reason unions are, above: a nested intersection
+      // whose own print went multiline embeds line breaks inside this one's,
+      // emitting an empty `&` member. Seen on an allOf whose branch was itself
+      // an allOf — `A & & B`, which is a syntax error rather than a wrong type,
+      // so it fails the generator's compile gate instead of shipping.
       return joinMembers(
-        ref.members.map((m) => parenthesize(m, printType(m, names, indent), "intersection")),
+        ref.members.flatMap((m) =>
+          m.kind === "intersection"
+            ? m.members.map((inner) =>
+                parenthesize(inner, printType(inner, names, indent), "intersection"),
+              )
+            : [parenthesize(m, printType(m, names, indent), "intersection")],
+        ),
         "&",
         indent,
       );

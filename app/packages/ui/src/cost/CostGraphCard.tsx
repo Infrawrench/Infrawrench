@@ -26,13 +26,16 @@ import {
   alignComparison,
   COMPARISON_KEY,
   FORECAST_KEY,
+  SCENARIO_KEY,
   formatBucketLabel,
   formatMoney,
   pivotSeries,
   spliceForecast,
+  spliceScenario,
   type PivotedChart,
 } from "./transform.js";
 import type { CostApi } from "./types.js";
+import { UnitCostCard } from "./UnitCostCard.js";
 
 /**
  * Categorical series colors — the app-wide chart theme order, assigned in
@@ -62,7 +65,12 @@ interface LoadedState {
   pivot: PivotedChart;
 }
 
-export function CostGraphCard({
+/**
+ * The spend chart — what a cost card has always drawn. Not exported: callers go
+ * through {@link CostGraphCard}, which picks between this and the unit-cost
+ * chart from the config.
+ */
+function SpendGraphCard({
   title,
   config,
   api,

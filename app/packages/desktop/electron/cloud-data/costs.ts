@@ -434,3 +434,127 @@ ipcMain.handle(
     return cloudFetch(orgId, `/saved-cost-filters/${encodeURIComponent(savedFilterId)}/referents`);
   },
 );
+
+/* ------------------------------------------------------------------ *
+ * Scenario models — named sets of known future cost overlaid on a
+ * forecast. Cloud-mode only like everything above; the model is resolved
+ * server-side at query time, so nothing here holds a copy.
+ * ------------------------------------------------------------------ */
+
+ipcMain.handle("cloud_list_cost_scenarios", async (_e, { orgId }: { orgId: string }) => {
+  const res = await cloudFetch<{ models: unknown[] }>(orgId, "/cost-scenarios");
+  return res?.models ?? [];
+});
+
+ipcMain.handle(
+  "cloud_create_cost_scenario",
+  async (_e, { orgId, input }: { orgId: string; input: unknown }) => {
+    return cloudFetch(orgId, "/cost-scenarios", { method: "POST", body: JSON.stringify(input) });
+  },
+);
+
+ipcMain.handle(
+  "cloud_update_cost_scenario",
+  async (_e, { orgId, modelId, input }: { orgId: string; modelId: string; input: unknown }) => {
+    return cloudFetch(orgId, `/cost-scenarios/${encodeURIComponent(modelId)}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+// A 409 passes through as an error whose message lists the referents — the
+// server's refusal to delete a still-referenced model is the feature, and the
+// renderer shows it verbatim.
+ipcMain.handle(
+  "cloud_delete_cost_scenario",
+  async (_e, { orgId, modelId }: { orgId: string; modelId: string }) => {
+    return cloudFetch(orgId, `/cost-scenarios/${encodeURIComponent(modelId)}`, {
+      method: "DELETE",
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_cost_scenario_referents",
+  async (_e, { orgId, modelId }: { orgId: string; modelId: string }) => {
+    return cloudFetch(orgId, `/cost-scenarios/${encodeURIComponent(modelId)}/referents`);
+  },
+);
+
+/* ------------------------------------------------------------------ *
+ * Business metrics — the denominators unit costs divide by, plus the
+ * unit-cost query itself. Cloud-mode only like everything above: the
+ * numerator lives in the cloud's cost store.
+ * ------------------------------------------------------------------ */
+
+ipcMain.handle("cloud_list_business_metrics", async (_e, { orgId }: { orgId: string }) => {
+  const res = await cloudFetch<{ metrics: unknown[] }>(orgId, "/business-metrics");
+  return res?.metrics ?? [];
+});
+
+ipcMain.handle(
+  "cloud_create_business_metric",
+  async (_e, { orgId, input }: { orgId: string; input: unknown }) => {
+    return cloudFetch(orgId, "/business-metrics", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_update_business_metric",
+  async (_e, { orgId, metricId, input }: { orgId: string; metricId: string; input: unknown }) => {
+    return cloudFetch(orgId, `/business-metrics/${encodeURIComponent(metricId)}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_delete_business_metric",
+  async (_e, { orgId, metricId }: { orgId: string; metricId: string }) => {
+    return cloudFetch(orgId, `/business-metrics/${encodeURIComponent(metricId)}`, {
+      method: "DELETE",
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_list_business_metric_values",
+  async (_e, { orgId, metricId, limit }: { orgId: string; metricId: string; limit?: number }) => {
+    const res = await cloudFetch<{ values: unknown[] }>(
+      orgId,
+      `/business-metrics/${encodeURIComponent(metricId)}/values?limit=${limit ?? 90}`,
+    );
+    return res?.values ?? [];
+  },
+);
+
+// Re-reporting a day restates it rather than accumulating — the server's
+// guarantee, repeated here only because it is what makes this handler safe to
+// call twice from a retrying renderer.
+ipcMain.handle(
+  "cloud_write_business_metric_values",
+  async (_e, { orgId, metricId, values }: { orgId: string; metricId: string; values: unknown }) => {
+    return cloudFetch(orgId, `/business-metrics/${encodeURIComponent(metricId)}/values`, {
+      method: "POST",
+      body: JSON.stringify({ values }),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_query_unit_costs",
+  async (
+    _e,
+    { orgId, metricId, request }: { orgId: string; metricId: string; request: unknown },
+  ) => {
+    return cloudFetch(orgId, `/business-metrics/${encodeURIComponent(metricId)}/unit-costs`, {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  },
+);

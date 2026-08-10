@@ -321,6 +321,7 @@ export {
   agentsTabTarget,
   costsTabTarget,
   costReportsTabTarget,
+  invoicesTabTarget,
   graphTabTarget,
   logsTabTarget,
   changesTabTarget,
@@ -747,6 +748,7 @@ export * from "./cost/index.js";
 // `cost/` because the panel is its own org-level page, but it renders the very
 // same CostGraphCard/CostGraphConfigModal a dashboard cost card uses.
 export * from "./cost-reports/index.js";
+export * from "./invoices/index.js";
 
 // Org/user settings — shared sections rendered by the web settings routes and
 // the desktop cloud-mode settings tab (see settings/host.tsx for the contract).

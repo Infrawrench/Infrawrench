@@ -33,8 +33,20 @@ import {
   createCloudSavedCostFilter,
   deleteCloudSavedCostFilter,
   listCloudSavedCostFilterReferents,
+  listCloudCostScenarioModels,
+  createCloudCostScenarioModel,
+  updateCloudCostScenarioModel,
+  deleteCloudCostScenarioModel,
+  listCloudCostScenarioReferents,
   listCloudSavedCostFilters,
   updateCloudSavedCostFilter,
+  createCloudBusinessMetric,
+  deleteCloudBusinessMetric,
+  listCloudBusinessMetricValues,
+  listCloudBusinessMetrics,
+  queryCloudUnitCosts,
+  updateCloudBusinessMetric,
+  writeCloudBusinessMetricValues,
 } from "./cloud-costs";
 import { listCloudDashboards } from "./cloud-dashboards";
 
@@ -75,6 +87,39 @@ export function createDesktopCostsClient(): CostsClient {
       deleteCloudSavedCostFilter(requireOrgId(), savedFilterId),
     getSavedFilterReferents: (savedFilterId: string) =>
       listCloudSavedCostFilterReferents(requireOrgId(), savedFilterId),
+    // Scenario models get the full editor on desktop, like saved filters: the
+    // Costs panel is the same shared component in both hosts, and a model is
+    // org-level cloud state either way.
+    listScenarioModels: () => {
+      const orgId = useUIStore.getState().activeCloudOrgId;
+      if (!orgId) return Promise.resolve([]);
+      return listCloudCostScenarioModels(orgId);
+    },
+    createScenarioModel: (input: CostScenarioModelInput) =>
+      createCloudCostScenarioModel(requireOrgId(), input),
+    updateScenarioModel: (modelId: string, input: CostScenarioModelInput) =>
+      updateCloudCostScenarioModel(requireOrgId(), modelId, input),
+    deleteScenarioModel: (modelId: string) => deleteCloudCostScenarioModel(requireOrgId(), modelId),
+    getScenarioModelReferents: (modelId: string) =>
+      listCloudCostScenarioReferents(requireOrgId(), modelId),
+    // Business metrics get the full editor on desktop, like saved filters and
+    // anomaly tuning: the Costs panel is the same shared component in both
+    // hosts, and a metric is org-level cloud state either way.
+    listBusinessMetrics: () => {
+      const orgId = useUIStore.getState().activeCloudOrgId;
+      if (!orgId) return Promise.resolve([]);
+      return listCloudBusinessMetrics(orgId);
+    },
+    queryUnitCosts: (metricId, request) => queryCloudUnitCosts(requireOrgId(), metricId, request),
+    createBusinessMetric: (input: BusinessMetricInput) =>
+      createCloudBusinessMetric(requireOrgId(), input),
+    updateBusinessMetric: (metricId: string, input: BusinessMetricInput) =>
+      updateCloudBusinessMetric(requireOrgId(), metricId, input),
+    deleteBusinessMetric: (metricId: string) => deleteCloudBusinessMetric(requireOrgId(), metricId),
+    listBusinessMetricValues: (metricId: string, limit?: number) =>
+      listCloudBusinessMetricValues(requireOrgId(), metricId, limit),
+    writeBusinessMetricValues: (metricId: string, values: BusinessMetricValueInput[]) =>
+      writeCloudBusinessMetricValues(requireOrgId(), metricId, values),
     listBudgets: () => listCloudBudgets(requireOrgId()),
     listAnomalies: (days?: number) => listCloudCostAnomalies(requireOrgId(), days),
     // Desktop gets the tuning editor too: the Costs panel is the same

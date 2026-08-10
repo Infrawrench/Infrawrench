@@ -93,3 +93,31 @@ describe("resolveDayWindow", () => {
     expect(() => resolveDayWindow({ days: 120 }, 30, 90)).toThrow(/at most 90 days/);
   });
 });
+
+describe("unit-costs flags", () => {
+  it("defaults --margin off so a request never carries the mode it didn't ask for", () => {
+    expect(parseCliArgs(["unit-costs", "active-customers"]).margin).toBe(false);
+  });
+
+  it("parses --margin", () => {
+    const parsed = parseCliArgs(["unit-costs", "active-customers", "--margin"]);
+    expect(parsed.margin).toBe(true);
+    expect(parsed.positionals).toEqual(["unit-costs", "active-customers"]);
+  });
+
+  it("leaves the shared range flags available to the command", () => {
+    const parsed = parseCliArgs([
+      "unit-costs",
+      "active-customers",
+      "--last",
+      "90d",
+      "--group-by",
+      "weekly",
+      "--basis",
+      "amortized",
+    ]);
+    expect(parsed.range.last).toBe("90d");
+    expect(parsed.range.groupBy).toBe("weekly");
+    expect(parsed.range.basis).toBe("amortized");
+  });
+});

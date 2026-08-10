@@ -5750,6 +5750,997 @@
         ],
         "additionalProperties": false
       },
+      "BusinessMetricCoverage": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "firstDay": {
+            "type": "string",
+            "description": "Earliest reported day, YYYY-MM-DD."
+          },
+          "lastDay": {
+            "type": "string"
+          },
+          "reportedDays": {
+            "type": "integer",
+            "description": "Days carrying a value — compare against the span to spot a sparse series."
+          }
+        },
+        "required": [
+          "firstDay",
+          "lastDay",
+          "reportedDays"
+        ],
+        "additionalProperties": false,
+        "description": "Null when the metric has no values at all — not an error, but every unit-cost chart drawn from it is one continuous gap."
+      },
+      "BusinessMetric": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/BusinessMetricKind"
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "costScope": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BusinessMetricScopeTerm"
+            }
+          },
+          "savedFilterId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A saved cost filter (see /saved-cost-filters) applied by reference and AND-composed with `filters` when the budget is evaluated. Updates are full replaces, so omitting it on PUT clears it. A reference that fails to resolve errors the budget's evaluation rather than silently measuring all spend."
+          },
+          "thresholds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BudgetThreshold"
+            }
+          },
+          "costBasis": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BudgetCostBasis"
+              },
+              {
+                "description": "Which number the budget tracks. Defaults to `cash` — what the provider charged, when it charged it. An organization holding reservations or savings plans usually wants `amortized`: a cash budget is blown the month a commitment is bought and then reads as under-spent for the rest of the term it paid for."
+              }
+            ]
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deletedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/BusinessMetricCoverage"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "name",
+          "unit",
+          "description",
+          "kind",
+          "currency",
+          "costScope",
+          "savedFilterId",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt",
+          "coverage"
+        ],
+        "additionalProperties": false
+      },
+      "BusinessMetricInput": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Stable lowercase slug (letters, digits, `_ . -`) that workflows and the CLI address the metric by. Unique per organization among live metrics, and independent of `name` so a rename never breaks a running job.",
+            "example": "active-customers"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32,
+            "description": "Singular unit label used for display — the noun in \"USD per customer\".",
+            "example": "customer"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "kind": {
+            "$ref": "#/components/schemas/BusinessMetricKind"
+          },
+          "currency": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 3,
+            "description": "ISO-4217 code. **Required when `kind` is `currency`, and rejected otherwise** — a revenue metric with no currency cannot have margin computed against it, and a count metric carrying one would suggest its numbers are money when they are requests."
+          },
+          "costScope": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BusinessMetricScopeTerm"
+            },
+            "maxItems": 50,
+            "description": "The spend this metric divides, in the same filter vocabulary cost graphs and budgets use. Empty (the default) is all of the organization's spend. A unit-cost query may narrow this further but can never widen it: the scope is part of what the metric means, and a caller who could drop it would be answering a different question under the same name."
+          },
+          "savedFilterId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "A saved cost filter AND-composed with `costScope`, resolved server-side at query time. A reference that fails to resolve errors the unit-cost query rather than silently widening the numerator to all spend.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "unit",
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "BusinessMetricValue": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "description": "UTC day, YYYY-MM-DD."
+          },
+          "value": {
+            "type": "number"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "api",
+              "workflow"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "day",
+          "value",
+          "source",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "BusinessMetricValuesInput": {
+        "type": "object",
+        "properties": {
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "date",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 5000,
+            "description": "Days to report. **Re-reporting a day restates it rather than adding to it**, so an unattended nightly job is safe to retry — an accumulating write would double every number the first time the job re-ran. A batch naming the same day twice keeps the last value, applying the same rule within a batch that restatement applies between them."
+          }
+        },
+        "required": [
+          "values"
+        ],
+        "additionalProperties": false
+      },
+      "UnitCostPoint": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "description": "Bucket start date, YYYY-MM-DD."
+          },
+          "value": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "The ratio, or **null for a gap**. Never 0 and never infinite: a bucket with no reported metric value is unknown, not free, and rendering it as 0 would say the opposite of the truth. A zero numerator over a positive denominator is a real 0 and is returned as one."
+          },
+          "cost": {
+            "type": "number",
+            "description": "Spend summed over the bucket, in the series' currency."
+          },
+          "metricValue": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Metric value summed over the bucket, or null when nothing was reported."
+          },
+          "gap": {
+            "type": "string",
+            "enum": [
+              "no_metric_value",
+              "non_positive_metric_value",
+              "unconvertible_currency"
+            ],
+            "description": "Set exactly when `value` is null."
+          },
+          "reportedDays": {
+            "type": "integer",
+            "description": "Days in the bucket carrying a reported value, out of `bucketDays`. When it is smaller, the denominator covers only part of the bucket and the ratio there reads high."
+          },
+          "bucketDays": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bucket",
+          "value",
+          "cost",
+          "metricValue",
+          "reportedDays",
+          "bucketDays"
+        ],
+        "additionalProperties": false
+      },
+      "UnitCostSeries": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UnitCostPoint"
+            }
+          },
+          "overallValue": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "The period ratio: **summed numerator ÷ summed denominator**, not the mean of the per-bucket ratios — the mean weights a quiet Sunday exactly as heavily as a peak Monday. Only buckets that produced a ratio contribute, on both sides."
+          },
+          "overallCost": {
+            "type": "number"
+          },
+          "overallMetricValue": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "currency",
+          "points",
+          "overallValue",
+          "overallCost",
+          "overallMetricValue"
+        ],
+        "additionalProperties": false
+      },
+      "UnitCostQueryResponse": {
+        "type": "object",
+        "properties": {
+          "metric": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "example": "00000000-0000-0000-0000-000000000000"
+              },
+              "key": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              },
+              "kind": {
+                "$ref": "#/components/schemas/BusinessMetricKind"
+              },
+              "currency": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "key",
+              "name",
+              "unit",
+              "kind",
+              "currency"
+            ],
+            "additionalProperties": false
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "unit_cost",
+              "margin"
+            ]
+          },
+          "binning": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly",
+              "cumulative"
+            ]
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UnitCostSeries"
+            },
+            "description": "One series per currency the numerator ended up in — usually one. More than one means the organization has spend in a currency it holds no rate for; rather than dropping that spend (understating every unit cost) or adding it to another currency (inventing a number), each currency divides the same denominator on its own."
+          },
+          "conversion": {
+            "type": "object",
+            "properties": {
+              "displayCurrency": {
+                "type": "string"
+              },
+              "converted": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "currency": {
+                      "type": "string"
+                    },
+                    "rates": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "effectiveFrom": {
+                            "type": "string"
+                          },
+                          "rate": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "effectiveFrom",
+                          "rate"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "currency",
+                    "rates"
+                  ]
+                }
+              },
+              "unconverted": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "displayCurrency",
+              "converted",
+              "unconverted"
+            ],
+            "description": "Set only when spend currencies were folded together; absent means untouched."
+          },
+          "gapBuckets": {
+            "type": "integer",
+            "description": "Buckets on the axis that produced no ratio at all."
+          },
+          "partialBuckets": {
+            "type": "integer",
+            "description": "Buckets whose denominator covers only part of the bucket."
+          }
+        },
+        "required": [
+          "metric",
+          "mode",
+          "binning",
+          "series",
+          "gapBuckets",
+          "partialBuckets"
+        ],
+        "additionalProperties": false
+      },
+      "UnitCostQueryRequest": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "Inclusive, YYYY-MM-DD."
+          },
+          "to": {
+            "type": "string"
+          },
+          "binning": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly",
+              "cumulative"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "unit_cost",
+              "margin"
+            ],
+            "description": "Absent is `unit_cost` (spend ÷ metric value). `margin` is `(revenue − spend) ÷ revenue` as a fraction, and is a 400 for a metric whose `kind` is not `currency`."
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BusinessMetricScopeTerm"
+            },
+            "description": "Narrowing on top of the metric's own `costScope` — AND-composed, never a replacement."
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 4000,
+            "description": "The same narrowing as cost-query-language text."
+          },
+          "savedFilterId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "costBasis": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "amortized"
+            ]
+          },
+          "chargeTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "displayCurrency": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 3,
+            "description": "Fold spend currencies the organization holds a rate for into this one before dividing. Ignored for `margin`, which always converts to the metric's own currency."
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "binning"
+        ],
+        "additionalProperties": false
+      },
+      "OrphanCostAnnotation": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "amount": {
+            "type": "number",
+            "description": "Spend over the trailing cost window."
+          },
+          "currency": {
+            "type": "string",
+            "example": "USD"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "additionalProperties": false,
+        "description": "Best-effort trailing spend matched from collected per-resource cost rows; null when the provider reports no per-resource cost. The flag itself never depends on billing data."
+      },
+      "ResourceOwnerAnnotation": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "userId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Set when a routable org member owns it.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "The member's name, or the free-text owner."
+          },
+          "isLabel": {
+            "type": "boolean",
+            "description": "True when the owner is free text — nothing can be routed to it."
+          },
+          "ticketUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "userId",
+          "displayName",
+          "isLabel",
+          "ticketUrl",
+          "purpose"
+        ],
+        "additionalProperties": false,
+        "description": "Who owns this resource, or null when nobody has claimed it. Present only when the owner can be named: a resource carrying a purpose but no owner reads as null, because the question this answers is who to tell."
+      },
+      "OrphanedResource": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Infrawrench resource id."
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string",
+            "example": "EBS Volume"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider-native id, when known."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Plugin-authored explanation of why this resource looks wasted.",
+            "example": "Volume is not attached to any Droplet"
+          },
+          "cost": {
+            "$ref": "#/components/schemas/OrphanCostAnnotation"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/ResourceOwnerAnnotation"
+          },
+          "lastSyncedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "pluginId",
+          "resourceTypeId",
+          "resourceTypeName",
+          "displayName",
+          "externalId",
+          "reason",
+          "cost",
+          "owner",
+          "lastSyncedAt"
+        ],
+        "additionalProperties": false
+      },
+      "OrphanAccountGroup": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string",
+            "example": "DigitalOcean"
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrphanedResource"
+            }
+          }
+        },
+        "required": [
+          "accountId",
+          "accountName",
+          "pluginId",
+          "pluginName",
+          "resources"
+        ],
+        "additionalProperties": false
+      },
+      "OrphanListResponse": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrphanAccountGroup"
+            },
+            "description": "Groups sorted by account name."
+          },
+          "totalCount": {
+            "type": "integer"
+          },
+          "unownedCount": {
+            "type": "integer",
+            "description": "Flagged resources with no recorded owner — the 'nobody to ask' count."
+          },
+          "costWindowDays": {
+            "type": "integer",
+            "description": "Days of trailing spend the annotations cover."
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "accounts",
+          "totalCount",
+          "unownedCount",
+          "costWindowDays",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "OversizedSizeSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "cx32"
+          },
+          "label": {
+            "type": "string"
+          },
+          "vcpus": {
+            "type": "integer"
+          },
+          "memoryMb": {
+            "type": "integer"
+          },
+          "priceMonthly": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Monthly catalog price in `currency`; null when unpriced."
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "vcpus",
+          "memoryMb",
+          "priceMonthly"
+        ],
+        "additionalProperties": false
+      },
+      "OversizedResource": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Infrawrench resource id."
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string",
+            "example": "Server"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider-native id, when known."
+          },
+          "sizeFieldKey": {
+            "type": "string",
+            "description": "Field to submit through the resource-update endpoint to apply the recommended size.",
+            "example": "serverType"
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider region/zone/location the resource lives in."
+          },
+          "currentSize": {
+            "$ref": "#/components/schemas/OversizedSizeSummary"
+          },
+          "recommendedSize": {
+            "$ref": "#/components/schemas/OversizedSizeSummary"
+          },
+          "cpuP95": {
+            "type": "number",
+            "description": "p95 CPU utilisation over the window, percent of the current size."
+          },
+          "memoryP95": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "p95 memory utilisation, percent of the current size; null when unmeasured."
+          },
+          "memoryMeasured": {
+            "type": "boolean",
+            "description": "False when the provider stores no memory series for this resource."
+          },
+          "projectedCpuP95": {
+            "type": "number",
+            "description": "Projected p95 CPU on the recommended size, for the confirm dialog."
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 code the size prices are quoted in.",
+            "example": "USD"
+          },
+          "monthlySaving": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Current minus recommended monthly price; null when either side is unpriced."
+          },
+          "resizeNote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Plugin-authored caveat (e.g. the provider requires the machine stopped)."
+          },
+          "lastSyncedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "pluginId",
+          "resourceTypeId",
+          "resourceTypeName",
+          "displayName",
+          "externalId",
+          "sizeFieldKey",
+          "region",
+          "currentSize",
+          "recommendedSize",
+          "cpuP95",
+          "memoryP95",
+          "memoryMeasured",
+          "projectedCpuP95",
+          "currency",
+          "monthlySaving",
+          "resizeNote",
+          "lastSyncedAt"
+        ],
+        "additionalProperties": false
+      },
+      "OversizedAccountGroup": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string",
+            "example": "Hetzner"
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OversizedResource"
+            }
+          }
+        },
+        "required": [
+          "accountId",
+          "accountName",
+          "pluginId",
+          "pluginName",
+          "resources"
+        ],
+        "additionalProperties": false
+      },
+      "RightsizingListResponse": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OversizedAccountGroup"
+            },
+            "description": "Groups sorted by account name."
+          },
+          "totalCount": {
+            "type": "integer"
+          },
+          "windowDays": {
+            "type": "integer",
+            "description": "Days of stored metrics the percentiles cover."
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "accounts",
+          "totalCount",
+          "windowDays",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "BudgetCostFilter": {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "enum": [
+              "provider",
+              "account",
+              "service",
+              "region",
+              "resource",
+              "tag",
+              "charge_type",
+              "commitment"
+            ]
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "in",
+              "not_in"
+            ]
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "tagKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "dimension",
+          "op",
+          "values"
+        ],
+        "additionalProperties": false
+      },
       "BudgetThreshold": {
         "type": "object",
         "properties": {
@@ -5819,6 +6810,31 @@
             ],
             "description": "A saved cost filter (see /saved-cost-filters) applied by reference and AND-composed with `filters` when the budget is evaluated. Updates are full replaces, so omitting it on PUT clears it. A reference that fails to resolve errors the budget's evaluation rather than silently measuring all spend."
           },
+          "scenarioModelId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A scenario model (see /cost-scenarios) this budget's **forecast** thresholds are measured against. Null — the default, and the value for every budget nobody deliberately opts in — keeps them on the bare trend. Opting in is per-budget on purpose: a hypothesis somebody typed into a form must not silently change when real people get paged. `actual` thresholds are never affected; they measure money already spent. Updates are full replaces, so omitting it on PUT clears the opt-in."
+          },
+          "scenarioModelName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The opted-into model's name, so a card can say whose assumptions are in the number."
+          },
+          "useAdjustedSpend": {
+            "type": "boolean",
+            "description": "Measure this budget against billing-rule-adjusted spend — the internal figure — instead of what the providers charged. False by default, and for every budget nobody opted in. The default is a deliberate refusal: a markup is organisation policy and a budget threshold pages a real person, so adding one settings row must not be able to move every on-call rota at once. Unlike a scenario this affects `actual` thresholds too — an opted-in budget is measuring the internal number, and month-to-date internal spend is as marked up as the forecast is. The alert body says the figure is adjusted and names the collected one. Updates are full replaces, so omitting it on PUT clears the opt-in."
+          },
+          "rawActualCents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Month-to-date **collected** spend, non-null only for a budget measuring adjusted spend. Null on an unadjusted budget rather than a copy of `actualCents`: \"there is no separate collected figure because this one is it\" and \"the collected figure happens to equal the adjusted one\" are different facts, and captioning every budget in the organisation would make the adjusted ones invisible."
+          },
           "month": {
             "type": "string",
             "pattern": "^\\d{4}-\\d{2}$",
@@ -5831,7 +6847,15 @@
             "type": [
               "integer",
               "null"
-            ]
+            ],
+            "description": "The **unadjusted trend** forecast, whether or not a scenario is applied — so both numbers are always comparable."
+          },
+          "scenarioForecastCents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The scenario-adjusted month forecast, set only for a budget that opted into a model, and the number its forecast thresholds are judged against. Null means the thresholds used `forecastCents`."
           },
           "currentMonthEvents": {
             "type": "array",
@@ -5904,9 +6928,14 @@
           "thresholds",
           "costBasis",
           "savedFilterId",
+          "scenarioModelId",
+          "scenarioModelName",
+          "useAdjustedSpend",
+          "rawActualCents",
           "month",
           "actualCents",
           "forecastCents",
+          "scenarioForecastCents",
           "currentMonthEvents",
           "placements"
         ],
@@ -5947,6 +6976,13 @@
             ],
             "description": "A saved cost filter (see /saved-cost-filters) applied by reference and AND-composed with `filters` when the budget is evaluated. Updates are full replaces, so omitting it on PUT clears it. A reference that fails to resolve errors the budget's evaluation rather than silently measuring all spend."
           },
+          "scenarioModelId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A scenario model (see /cost-scenarios) this budget's **forecast** thresholds are measured against. Null — the default, and the value for every budget nobody deliberately opts in — keeps them on the bare trend. Opting in is per-budget on purpose: a hypothesis somebody typed into a form must not silently change when real people get paged. `actual` thresholds are never affected; they measure money already spent. Updates are full replaces, so omitting it on PUT clears the opt-in."
+          },
           "thresholds": {
             "type": "array",
             "items": {
@@ -5962,6 +6998,10 @@
                 "description": "Which number the budget tracks. Defaults to `cash` — what the provider charged, when it charged it. An organization holding reservations or savings plans usually wants `amortized`: a cash budget is blown the month a commitment is bought and then reads as under-spent for the rest of the term it paid for."
               }
             ]
+          },
+          "useAdjustedSpend": {
+            "type": "boolean",
+            "description": "Measure this budget against billing-rule-adjusted spend — the internal figure — instead of what the providers charged. False by default, and for every budget nobody opted in. The default is a deliberate refusal: a markup is organisation policy and a budget threshold pages a real person, so adding one settings row must not be able to move every on-call rota at once. Unlike a scenario this affects `actual` thresholds too — an opted-in budget is measuring the internal number, and month-to-date internal spend is as marked up as the forecast is. The alert body says the figure is adjusted and names the collected one. Updates are full replaces, so omitting it on PUT clears the opt-in."
           },
           "createdByUserId": {
             "type": [
@@ -5993,8 +7033,10 @@
           "currency",
           "filters",
           "savedFilterId",
+          "scenarioModelId",
           "thresholds",
           "costBasis",
+          "useAdjustedSpend",
           "createdByUserId",
           "deletedAt",
           "createdAt",
@@ -6029,6 +7071,10 @@
             "type": "string",
             "description": "A saved cost filter (see /saved-cost-filters) applied by reference and AND-composed with `filters` when the budget is evaluated. Updates are full replaces, so omitting it on PUT clears it. A reference that fails to resolve errors the budget's evaluation rather than silently measuring all spend."
           },
+          "scenarioModelId": {
+            "type": "string",
+            "description": "A scenario model (see /cost-scenarios) this budget's **forecast** thresholds are measured against. Null — the default, and the value for every budget nobody deliberately opts in — keeps them on the bare trend. Opting in is per-budget on purpose: a hypothesis somebody typed into a form must not silently change when real people get paged. `actual` thresholds are never affected; they measure money already spent. Updates are full replaces, so omitting it on PUT clears the opt-in."
+          },
           "thresholds": {
             "type": "array",
             "items": {
@@ -6046,6 +7092,10 @@
                 "description": "Which number the budget tracks. Defaults to `cash` — what the provider charged, when it charged it. An organization holding reservations or savings plans usually wants `amortized`: a cash budget is blown the month a commitment is bought and then reads as under-spent for the rest of the term it paid for."
               }
             ]
+          },
+          "useAdjustedSpend": {
+            "type": "boolean",
+            "description": "Measure this budget against billing-rule-adjusted spend — the internal figure — instead of what the providers charged. False by default, and for every budget nobody opted in. The default is a deliberate refusal: a markup is organisation policy and a budget threshold pages a real person, so adding one settings row must not be able to move every on-call rota at once. Unlike a scenario this affects `actual` thresholds too — an opted-in budget is measuring the internal number, and month-to-date internal spend is as marked up as the forecast is. The alert body says the figure is adjusted and names the collected one. Updates are full replaces, so omitting it on PUT clears the opt-in."
           }
         },
         "required": [
@@ -6056,996 +7106,6 @@
         "additionalProperties": false
       },
       "BudgetAlertEvent": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "example": "00000000-0000-0000-0000-000000000000"
-          },
-          "month": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}$",
-            "example": "2026-07"
-          },
-          "thresholdType": {
-            "type": "string",
-            "enum": [
-              "actual",
-              "forecast"
-            ]
-          },
-          "thresholdPercent": {
-            "type": "integer"
-          },
-          "actualAmountCents": {
-            "type": "integer"
-          },
-          "forecastAmountCents": {
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "triggeredAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "id",
-          "month",
-          "thresholdType",
-          "thresholdPercent",
-          "actualAmountCents",
-          "forecastAmountCents",
-          "triggeredAt"
-        ],
-        "additionalProperties": false
-      },
-      "MetricAlertRuleWithStatus": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120
-          },
-          "pluginId": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "minLength": 1,
-            "maxLength": 100,
-            "description": "Selector: plugin the resource must belong to. Null matches any plugin."
-          },
-          "resourceTypeId": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "minLength": 1,
-            "maxLength": 100,
-            "description": "Selector: resource type within the plugin. Null matches any type."
-          },
-          "tagKey": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "minLength": 1,
-            "maxLength": 200,
-            "description": "Selector: tag key the resource must carry (matched case-insensitively). Null applies no tag filter. Resources are always selected by this query, never by id, so rules cover resources created later."
-          },
-          "tagValue": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "minLength": 1,
-            "maxLength": 200,
-            "description": "Selector: exact value tagKey must have. Null matches any value."
-          },
-          "metricKey": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200,
-            "description": "The metric series label as the resource's charts report it (see /metric-alerts/metric-keys).",
-            "example": "CPU %"
-          },
-          "comparator": {
-            "type": "string",
-            "enum": [
-              ">",
-              ">=",
-              "<",
-              "<="
-            ],
-            "example": ">"
-          },
-          "threshold": {
-            "type": "number"
-          },
-          "forMinutes": {
-            "type": "integer",
-            "minimum": 5,
-            "maximum": 1440,
-            "description": "Trailing window (minutes) the condition must hold for before firing."
-          },
-          "cooldownMinutes": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 10080,
-            "description": "Least minutes between notified firings for one (rule, resource)."
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "example": "00000000-0000-0000-0000-000000000000"
-          },
-          "lastEvalAt": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "firingCount": {
-            "type": "integer",
-            "description": "Resources currently in breach of this rule."
-          },
-          "matchingResourceCount": {
-            "type": "integer",
-            "description": "Resources the selector matches right now."
-          }
-        },
-        "required": [
-          "name",
-          "pluginId",
-          "resourceTypeId",
-          "tagKey",
-          "tagValue",
-          "metricKey",
-          "comparator",
-          "threshold",
-          "forMinutes",
-          "cooldownMinutes",
-          "enabled",
-          "id",
-          "lastEvalAt",
-          "createdAt",
-          "updatedAt",
-          "firingCount",
-          "matchingResourceCount"
-        ],
-        "additionalProperties": false
-      },
-      "MetricAlertRule": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120
-          },
-          "pluginId": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "minLength": 1,
-            "maxLength": 100,
-            "description": "Selector: plugin the resource must belong to. Null matches any plugin."
-          },
-          "resourceTypeId": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "minLength": 1,
-            "maxLength": 100,
-            "description": "Selector: resource type within the plugin. Null matches any type."
-          },
-          "tagKey": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "minLength": 1,
-            "maxLength": 200,
-            "description": "Selector: tag key the resource must carry (matched case-insensitively). Null applies no tag filter. Resources are always selected by this query, never by id, so rules cover resources created later."
-          },
-          "tagValue": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "minLength": 1,
-            "maxLength": 200,
-            "description": "Selector: exact value tagKey must have. Null matches any value."
-          },
-          "metricKey": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200,
-            "description": "The metric series label as the resource's charts report it (see /metric-alerts/metric-keys).",
-            "example": "CPU %"
-          },
-          "comparator": {
-            "type": "string",
-            "enum": [
-              ">",
-              ">=",
-              "<",
-              "<="
-            ],
-            "example": ">"
-          },
-          "threshold": {
-            "type": "number"
-          },
-          "forMinutes": {
-            "type": "integer",
-            "minimum": 5,
-            "maximum": 1440,
-            "description": "Trailing window (minutes) the condition must hold for before firing."
-          },
-          "cooldownMinutes": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 10080,
-            "description": "Least minutes between notified firings for one (rule, resource)."
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "example": "00000000-0000-0000-0000-000000000000"
-          },
-          "lastEvalAt": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "name",
-          "pluginId",
-          "resourceTypeId",
-          "tagKey",
-          "tagValue",
-          "metricKey",
-          "comparator",
-          "threshold",
-          "forMinutes",
-          "cooldownMinutes",
-          "enabled",
-          "id",
-          "lastEvalAt",
-          "createdAt",
-          "updatedAt"
-        ],
-        "additionalProperties": false
-      },
-      "MetricAlertRuleInput": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120
-          },
-          "pluginId": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "minLength": 1,
-            "maxLength": 100,
-            "description": "Selector: plugin the resource must belong to. Null matches any plugin."
-          },
-          "resourceTypeId": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "minLength": 1,
-            "maxLength": 100,
-            "description": "Selector: resource type within the plugin. Null matches any type."
-          },
-          "tagKey": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "minLength": 1,
-            "maxLength": 200,
-            "description": "Selector: tag key the resource must carry (matched case-insensitively). Null applies no tag filter. Resources are always selected by this query, never by id, so rules cover resources created later."
-          },
-          "tagValue": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "minLength": 1,
-            "maxLength": 200,
-            "description": "Selector: exact value tagKey must have. Null matches any value."
-          },
-          "metricKey": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200,
-            "description": "The metric series label as the resource's charts report it (see /metric-alerts/metric-keys).",
-            "example": "CPU %"
-          },
-          "comparator": {
-            "type": "string",
-            "enum": [
-              ">",
-              ">=",
-              "<",
-              "<="
-            ],
-            "example": ">"
-          },
-          "threshold": {
-            "type": "number"
-          },
-          "forMinutes": {
-            "type": "integer",
-            "minimum": 5,
-            "maximum": 1440,
-            "description": "Trailing window (minutes) the condition must hold for before firing."
-          },
-          "cooldownMinutes": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 10080,
-            "description": "Least minutes between notified firings for one (rule, resource)."
-          },
-          "enabled": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "name",
-          "pluginId",
-          "resourceTypeId",
-          "tagKey",
-          "tagValue",
-          "metricKey",
-          "comparator",
-          "threshold",
-          "forMinutes",
-          "cooldownMinutes",
-          "enabled"
-        ],
-        "additionalProperties": false
-      },
-      "MetricSeriesKey": {
-        "type": "object",
-        "properties": {
-          "label": {
-            "type": "string"
-          },
-          "unit": {
-            "type": "string"
-          },
-          "resourceCount": {
-            "type": "integer",
-            "description": "Distinct resources that reported this series in the last 7 days."
-          }
-        },
-        "required": [
-          "label",
-          "unit",
-          "resourceCount"
-        ],
-        "additionalProperties": false
-      },
-      "MetricAlertSelectorOptions": {
-        "type": "object",
-        "properties": {
-          "plugins": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "pluginId": {
-                  "type": "string"
-                },
-                "resourceTypeIds": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              },
-              "required": [
-                "pluginId",
-                "resourceTypeIds"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "tagKeys": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "plugins",
-          "tagKeys"
-        ],
-        "additionalProperties": false
-      },
-      "MetricAlertSelectorPreview": {
-        "type": "object",
-        "properties": {
-          "matchingResourceCount": {
-            "type": "integer"
-          },
-          "sampleResourceNames": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Up to 10 matching display names, for a live form preview."
-          }
-        },
-        "required": [
-          "matchingResourceCount",
-          "sampleResourceNames"
-        ],
-        "additionalProperties": false
-      },
-      "MetricAlertEvent": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "example": "00000000-0000-0000-0000-000000000000"
-          },
-          "ruleId": {
-            "type": "string",
-            "format": "uuid",
-            "example": "00000000-0000-0000-0000-000000000000"
-          },
-          "ruleName": {
-            "type": "string"
-          },
-          "resourceId": {
-            "type": "string"
-          },
-          "resourceName": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "firing",
-              "resolved"
-            ]
-          },
-          "observedValue": {
-            "type": "number",
-            "description": "Worst sample observed in the breaching window, in the metric's unit."
-          },
-          "firedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "resolvedAt": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "id",
-          "ruleId",
-          "ruleName",
-          "resourceId",
-          "resourceName",
-          "status",
-          "observedValue",
-          "firedAt",
-          "resolvedAt"
-        ],
-        "additionalProperties": false
-      },
-      "ChangeFreeze": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "example": "00000000-0000-0000-0000-000000000000"
-          },
-          "name": {
-            "type": "string"
-          },
-          "reason": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "startsAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "endsAt": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
-          "active": {
-            "type": "boolean"
-          },
-          "createdByUserId": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "endedByUserId": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "reason",
-          "startsAt",
-          "endsAt",
-          "active",
-          "createdByUserId",
-          "endedByUserId",
-          "createdAt",
-          "updatedAt"
-        ],
-        "additionalProperties": false
-      },
-      "ChangeFreezeStatus": {
-        "type": "object",
-        "properties": {
-          "freeze": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/ChangeFreeze"
-              },
-              {
-                "type": [
-                  "object",
-                  "null"
-                ],
-                "description": "The freeze currently in effect, or null when changes are allowed."
-              }
-            ]
-          }
-        },
-        "required": [
-          "freeze"
-        ],
-        "additionalProperties": false
-      },
-      "ChangeFreezeInput": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120
-          },
-          "reason": {
-            "type": "string",
-            "maxLength": 2000
-          },
-          "startsAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "endsAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "additionalProperties": false
-      },
-      "RequiredTag": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128,
-            "example": "owner"
-          },
-          "allowedValues": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 256
-            },
-            "maxItems": 64,
-            "description": "When set, the tag's value must be one of these (compared exactly)."
-          }
-        },
-        "required": [
-          "key"
-        ],
-        "additionalProperties": false
-      },
-      "TagPolicy": {
-        "type": "object",
-        "properties": {
-          "requiredTags": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RequiredTag"
-            },
-            "maxItems": 32
-          },
-          "enforceOnCreate": {
-            "type": "boolean",
-            "description": "When true, resource creation is rejected with a 422 (`tag_policy_unmet`) if the submitted fields carry a tag map missing a required tag. Types whose create form has no `tags`/`labels` field are exempt."
-          }
-        },
-        "required": [
-          "requiredTags",
-          "enforceOnCreate"
-        ],
-        "additionalProperties": false
-      },
-      "AccountTagCompliance": {
-        "type": "object",
-        "properties": {
-          "accountId": {
-            "type": "string"
-          },
-          "pluginId": {
-            "type": "string"
-          },
-          "displayName": {
-            "type": "string"
-          },
-          "totalResources": {
-            "type": "integer"
-          },
-          "evaluated": {
-            "type": "integer",
-            "description": "Resources whose stored record exposes a tag map (the scoreable set)."
-          },
-          "compliant": {
-            "type": "integer"
-          },
-          "score": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "minimum": 0,
-            "maximum": 100,
-            "description": "Percent of evaluated resources carrying every required tag; null when none."
-          }
-        },
-        "required": [
-          "accountId",
-          "pluginId",
-          "displayName",
-          "totalResources",
-          "evaluated",
-          "compliant",
-          "score"
-        ],
-        "additionalProperties": false
-      },
-      "TagComplianceReport": {
-        "type": "object",
-        "properties": {
-          "policy": {
-            "$ref": "#/components/schemas/TagPolicy"
-          },
-          "accounts": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AccountTagCompliance"
-            }
-          }
-        },
-        "required": [
-          "policy",
-          "accounts"
-        ],
-        "additionalProperties": false
-      },
-      "UntaggedSpendReport": {
-        "type": "object",
-        "properties": {
-          "from": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-            "example": "2026-07-01"
-          },
-          "to": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-            "example": "2026-07-01"
-          },
-          "requiredKeys": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "currencies": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "totals": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "number"
-            },
-            "description": "Currency code → amount in the currency's major unit."
-          },
-          "untaggedTotals": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "number"
-            },
-            "description": "Spend on rows missing at least one required tag key, per currency."
-          },
-          "byKey": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "key": {
-                  "type": "string"
-                },
-                "untagged": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": "number"
-                  },
-                  "description": "Currency code → amount in the currency's major unit."
-                }
-              },
-              "required": [
-                "key",
-                "untagged"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "topUntagged": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "accountId": {
-                  "type": "string"
-                },
-                "accountLabel": {
-                  "type": "string"
-                },
-                "service": {
-                  "type": "string"
-                },
-                "currency": {
-                  "type": "string"
-                },
-                "amount": {
-                  "type": "number"
-                }
-              },
-              "required": [
-                "accountId",
-                "accountLabel",
-                "service",
-                "currency",
-                "amount"
-              ],
-              "additionalProperties": false
-            }
-          }
-        },
-        "required": [
-          "from",
-          "to",
-          "requiredKeys",
-          "currencies",
-          "totals",
-          "untaggedTotals",
-          "byKey",
-          "topUntagged"
-        ],
-        "additionalProperties": false
-      },
-      "ExchangeRate": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "fromCurrency": {
-            "type": "string",
-            "pattern": "^[A-Z]{3}$",
-            "description": "ISO 4217 code, upper-case.",
-            "example": "USD"
-          },
-          "toCurrency": {
-            "type": "string",
-            "pattern": "^[A-Z]{3}$",
-            "description": "ISO 4217 code, upper-case.",
-            "example": "USD"
-          },
-          "rate": {
-            "type": "string",
-            "pattern": "^\\d+(\\.\\d+)?$",
-            "description": "Multiply an amount in `fromCurrency` by this to get `toCurrency`. A decimal **string**, not a number: it is stored in a `numeric(20, 10)` column so the digits your finance system used survive the round trip exactly, and a JSON number could not promise that.",
-            "example": "1.0850000000"
-          },
-          "effectiveFrom": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-            "description": "Inclusive day this rate starts applying. A given day converts at the rate with the greatest `effectiveFrom` on or before it, so historical periods keep the rate that applied then. A day earlier than every stated rate has no rate.",
-            "example": "2026-07-01"
-          },
-          "createdBy": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "fromCurrency",
-          "toCurrency",
-          "rate",
-          "effectiveFrom",
-          "createdBy",
-          "createdAt",
-          "updatedAt"
-        ],
-        "additionalProperties": false
-      },
-      "CurrencyConfig": {
-        "type": "object",
-        "properties": {
-          "displayCurrency": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "pattern": "^[A-Z]{3}$",
-            "description": "ISO 4217 code, upper-case.",
-            "example": "USD"
-          },
-          "rates": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ExchangeRate"
-            }
-          }
-        },
-        "required": [
-          "displayCurrency",
-          "rates"
-        ],
-        "additionalProperties": false
-      },
-      "CurrencySettings": {
-        "type": "object",
-        "properties": {
-          "displayCurrency": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "pattern": "^[A-Z]{3}$",
-            "description": "The currency converted amounts are expressed in, or `null` for no conversion at all. `null` is the default and the state of every organization that has not opted in: cost data is stored per currency and never merged unless you ask.",
-            "example": "USD"
-          }
-        },
-        "required": [
-          "displayCurrency"
-        ],
-        "additionalProperties": false
-      },
-      "ExchangeRateInput": {
-        "type": "object",
-        "properties": {
-          "fromCurrency": {
-            "type": "string",
-            "pattern": "^[A-Z]{3}$",
-            "description": "ISO 4217 code, upper-case.",
-            "example": "USD"
-          },
-          "toCurrency": {
-            "type": "string",
-            "pattern": "^[A-Z]{3}$",
-            "description": "ISO 4217 code, upper-case.",
-            "example": "USD"
-          },
-          "rate": {
-            "type": "string",
-            "pattern": "^\\d+(\\.\\d+)?$",
-            "description": "Multiply an amount in `fromCurrency` by this to get `toCurrency`. A decimal **string**, not a number: it is stored in a `numeric(20, 10)` column so the digits your finance system used survive the round trip exactly, and a JSON number could not promise that.",
-            "example": "1.0850000000"
-          },
-          "effectiveFrom": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-            "example": "2026-07-01"
-          }
-        },
-        "required": [
-          "fromCurrency",
-          "toCurrency",
-          "rate",
-          "effectiveFrom"
-        ],
-        "additionalProperties": false
-      },
-      "CostCentre": {
         "type": "object",
         "properties": {
           "id": {
@@ -25276,53 +25336,41 @@
             "required": true,
             "name": "orgId",
             "in": "path"
-          },
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "example": "00000000-0000-0000-0000-000000000000"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
           }
         ],
         "responses": {
           "200": {
-            "description": "Schedules",
+            "description": "Metrics, by key",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ReportNotification"
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "type": "object",
+                  "properties": {
+                    "metrics": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/BusinessMetric"
+                      }
+                    }
+                  },
+                  "required": [
+                    "metrics"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
           }
         },
-        "operationId": "getOrgOrgIdCostReportsIdNotifications",
-        "x-required-permission": "costs:read",
-        "description": "_Requires permission: `costs:read`._"
+        "operationId": "getOrgOrgIdBusinessMetrics",
+        "x-required-permission": "costs:read"
       },
       "post": {
         "tags": [
-          "Cost reports"
+          "Business metrics"
         ],
-        "summary": "Create a delivery schedule",
-        "description": "On its cadence the server runs the report and sends a composed text summary — period total (converted to the org's display currency where configured, with the conversion caveat), change vs the previous period, top groups, and a deep link. No chart images. An empty result still sends, saying so.\n\n_Requires permission: `org:settings:write`._",
+        "summary": "Create a business metric",
+        "description": "Keys must be unique per organization among live metrics — they are how workflows and the CLI address the metric. A key collision is a 409.\n\n_Requires permission: `costs:write`._",
         "parameters": [
           {
             "schema": {
@@ -25351,7 +25399,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ReportNotificationInput"
+                "$ref": "#/components/schemas/BusinessMetricInput"
               }
             }
           }
@@ -25362,7 +25410,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReportNotification"
+                  "$ref": "#/components/schemas/BusinessMetric"
                 }
               }
             }
@@ -25377,28 +25425,37 @@
               }
             }
           },
-          "404": {
-            "description": "Not found",
+          "409": {
+            "description": "A live metric already uses this key.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
           }
         },
-        "operationId": "postOrgOrgIdCostReportsIdNotifications",
-        "x-required-permission": "org:settings:write"
+        "operationId": "postOrgOrgIdBusinessMetrics",
+        "x-required-permission": "costs:write"
       }
     },
-    "/api/org/{orgId}/cost-reports/{id}/notifications/targets": {
+    "/api/org/{orgId}/business-metrics/{id}": {
       "get": {
         "tags": [
-          "Cost reports"
+          "Business metrics"
         ],
-        "summary": "List the destinations a schedule can deliver to",
-        "description": "The org's live Slack channels and Teams webhooks, and whether this deployment can send mail. Destinations are picked from here — a schedule can only point at surfaces the org already connected.\n\n_Requires permission: `org:settings:write`._",
+        "summary": "Get a business metric",
+        "description": "`id` accepts either the metric's id or its key.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -25424,26 +25481,35 @@
         ],
         "responses": {
           "200": {
-            "description": "Targets",
+            "description": "Metric",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReportDeliveryTargets"
+                  "$ref": "#/components/schemas/BusinessMetric"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
           }
         },
-        "operationId": "getOrgOrgIdCostReportsIdNotificationsTargets",
-        "x-required-permission": "org:settings:write"
-      }
-    },
-    "/api/org/{orgId}/cost-reports/{id}/notifications/{notificationId}": {
+        "operationId": "getOrgOrgIdBusinessMetricsId",
+        "x-required-permission": "costs:read"
+      },
       "put": {
         "tags": [
-          "Cost reports"
+          "Business metrics"
         ],
-        "summary": "Update a delivery schedule",
+        "summary": "Update a business metric",
+        "description": "Replaces the whole definition. Changing `key` never orphans history — values are keyed on the metric's id — but it does break a workflow still writing to the old key, which is why the key is separate from the display name in the first place.\n\n_Requires permission: `costs:write`._",
         "parameters": [
           {
             "schema": {
@@ -25482,7 +25548,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ReportNotificationInput"
+                "$ref": "#/components/schemas/BusinessMetricInput"
               }
             }
           }
@@ -25493,7 +25559,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReportNotification"
+                  "$ref": "#/components/schemas/BusinessMetric"
                 }
               }
             }
@@ -25517,17 +25583,36 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "A live metric already uses this key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
           }
         },
-        "operationId": "putOrgOrgIdCostReportsIdNotificationsNotificationId",
-        "x-required-permission": "org:settings:write",
-        "description": "_Requires permission: `org:settings:write`._"
+        "operationId": "putOrgOrgIdBusinessMetricsId",
+        "x-required-permission": "costs:write"
       },
       "delete": {
         "tags": [
-          "Cost reports"
+          "Business metrics"
         ],
-        "summary": "Delete a delivery schedule",
+        "summary": "Delete a business metric",
+        "description": "Soft delete. Not refused when a dashboard card references the metric, unlike a saved cost filter: a unit-cost card whose metric is gone fails its query and says so, whereas a card that quietly reverted to plain spend would be a chart claiming to be something it is not.\n\n_Requires permission: `costs:write`._",
         "parameters": [
           {
             "schema": {
@@ -25583,18 +25668,17 @@
             }
           }
         },
-        "operationId": "deleteOrgOrgIdCostReportsIdNotificationsNotificationId",
-        "x-required-permission": "org:settings:write",
-        "description": "_Requires permission: `org:settings:write`._"
+        "operationId": "deleteOrgOrgIdBusinessMetricsId",
+        "x-required-permission": "costs:write"
       }
     },
-    "/api/org/{orgId}/cost-reports/{id}/notifications/{notificationId}/send": {
-      "post": {
+    "/api/org/{orgId}/business-metrics/{id}/values": {
+      "get": {
         "tags": [
-          "Cost reports"
+          "Business metrics"
         ],
-        "summary": "Send a schedule's report now",
-        "description": "Runs the report and delivers it to this schedule's destinations immediately, ignoring the schedule and its enabled flag. Fails with a 400 naming the reason when nothing could be delivered. A successful manual send clears a parked failure — it is the documented recovery for a partial delivery.\n\n_Requires permission: `org:settings:write`._",
+        "summary": "List a metric's reported values",
+        "description": "Newest day first.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -25619,22 +25703,35 @@
           },
           {
             "schema": {
-              "type": "string",
-              "format": "uuid",
-              "example": "00000000-0000-0000-0000-000000000000"
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "description": "Default 90."
             },
-            "required": true,
-            "name": "notificationId",
-            "in": "path"
+            "required": false,
+            "name": "limit",
+            "in": "query"
           }
         ],
         "responses": {
           "200": {
-            "description": "Delivery outcome",
+            "description": "Values, newest first",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReportNotificationSendResult"
+                  "type": "object",
+                  "properties": {
+                    "values": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/BusinessMetricValue"
+                      }
+                    }
+                  },
+                  "required": [
+                    "values"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -25660,56 +25757,15 @@
             }
           }
         },
-        "operationId": "postOrgOrgIdCostReportsIdNotificationsNotificationIdSend",
-        "x-required-permission": "org:settings:write"
-      }
-    },
-    "/api/org/{orgId}/cost-report-notifications": {
-      "get": {
-        "tags": [
-          "Cost reports"
-        ],
-        "summary": "List every delivery schedule in the organization",
-        "description": "All reports' schedules in one call — what the CLI's schedules column reads. Schedules of deleted reports are excluded.\n\n_Requires permission: `costs:read`._",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "description": "Organization id",
-              "example": "00000000-0000-0000-0000-000000000000"
-            },
-            "required": true,
-            "name": "orgId",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Schedules",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ReportNotification"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "operationId": "getOrgOrgIdCostReportNotifications",
+        "operationId": "getOrgOrgIdBusinessMetricsIdValues",
         "x-required-permission": "costs:read"
-      }
-    },
-    "/api/org/{orgId}/cost-report-folders": {
-      "get": {
+      },
+      "post": {
         "tags": [
-          "Cost reports"
+          "Business metrics"
         ],
-        "summary": "List cost-report folders",
-        "description": "The org's report folders as a flat list — build the tree from `parentFolderId`. Folders organize the Reports list and nothing else; a report's id, URL and dashboard cards are unchanged by where it is filed.\n\n_Requires permission: `costs:read`._",
+        "summary": "Report metric values",
+        "description": "Write a batch of days. **Re-reporting a day restates it rather than accumulating**, which is what makes a nightly job safe to retry. Nothing lands unless the whole batch validates, so a bad row is a 400 rather than half a month restated. The same guarantees back `infra.businessMetrics.write(...)` in a workflow — both go through one validator.\n\n_Requires permission: `costs:write`._",
         "parameters": [
           {
             "schema": {
@@ -25764,18 +25820,28 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CostReportFolderInput"
+                "$ref": "#/components/schemas/BusinessMetricValuesInput"
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Created",
+            "description": "Written",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CostReportFolder"
+                  "type": "object",
+                  "properties": {
+                    "written": {
+                      "type": "integer",
+                      "description": "Days written, counting restatements."
+                    }
+                  },
+                  "required": [
+                    "written"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -25789,20 +25855,29 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
-        "operationId": "postOrgOrgIdCostReportFolders",
-        "x-required-permission": "costs:write",
-        "description": "_Requires permission: `costs:write`._"
+        "operationId": "postOrgOrgIdBusinessMetricsIdValues",
+        "x-required-permission": "costs:write"
       }
     },
-    "/api/org/{orgId}/cost-report-folders/{id}": {
-      "put": {
+    "/api/org/{orgId}/business-metrics/{id}/unit-costs": {
+      "post": {
         "tags": [
-          "Cost reports"
+          "Business metrics"
         ],
-        "summary": "Update a cost-report folder",
-        "description": "Rename and/or reparent. Filing a *report* is not here — that is `PUT /cost-reports/{id}` with a different `folderId`. Reparenting past the 3-level depth limit, or under the folder's own subtree, is a 400.\n\n_Requires permission: `costs:write`._",
+        "summary": "Query unit costs or margin",
+        "description": "Divide spend by the metric, bucketed as asked. Three properties of the answer are worth knowing before reading it:\n\n- **The ratio is computed at the requested bucket**, from a summed numerator and a summed denominator — never a mean of daily ratios, which weights a quiet day as heavily as a peak one. The same holds for `overallValue`.\n- **A missing or non-positive denominator is a gap** (`value: null` with a `gap` reason), never 0 and never infinite.\n- **Currencies are never merged.** Spend in a currency with no stated rate keeps its own series rather than being dropped or added to another.\n\nThere is no `groupBy`: a per-group ratio would need a per-group denominator, and dividing each service's spend by the whole customer count produces numbers that do not sum to the real one.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -25831,18 +25906,18 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CostReportFolderInput"
+                "$ref": "#/components/schemas/UnitCostQueryRequest"
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Updated",
+            "description": "Unit-cost series",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CostReportFolder"
+                  "$ref": "#/components/schemas/UnitCostQueryResponse"
                 }
               }
             }
@@ -25868,15 +25943,17 @@
             }
           }
         },
-        "operationId": "putOrgOrgIdCostReportFoldersId",
-        "x-required-permission": "costs:write"
-      },
-      "delete": {
+        "operationId": "postOrgOrgIdBusinessMetricsIdUnitCosts",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/orphans": {
+      "get": {
         "tags": [
-          "Cost reports"
+          "Orphans"
         ],
-        "summary": "Delete a cost-report folder",
-        "description": "Never blocked by contents and never destructive to them: the folder's reports and immediate subfolders fall back to the top level. Deleting a folder cannot delete a report.\n\n_Requires permission: `costs:write`._",
+        "summary": "List likely-orphaned and idle resources",
+        "description": "Scans the organization's already-synced resources against each plugin's declarative orphan heuristics — unattached volumes, unassigned floating/elastic IPs, reserved-but-unused static IPs — and returns the matches grouped by account, each with the plugin's reason. Purely a read over stored state: no provider API calls are made, so results reflect the last sync. Where the org's collected cost data has per-resource rows, matches are annotated with trailing spend.\n\n_Requires permission: `resources:read`._",
         "parameters": [
           {
             "schema": {

@@ -34,6 +34,9 @@ export {
   type CostChangeAlertConfigModalProps,
 } from "./CostChangeAlertsSection.js";
 export { SavedFiltersSection } from "./SavedFiltersSection.js";
+export { ScenarioModelsSection } from "./ScenarioModelsSection.js";
+export { UnitCostsSection } from "./UnitCostsSection.js";
+export { UnitCostCard, type UnitCostCardProps } from "./UnitCostCard.js";
 export { CostsIcon } from "./CostsIcon.js";
 export { BudgetPickerModal, type BudgetPickerModalProps } from "./BudgetPickerModal.js";
 export { CreditBurndownSection } from "./CreditBurndownSection.js";

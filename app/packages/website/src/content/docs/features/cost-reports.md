@@ -100,6 +100,47 @@ Two behaviours worth knowing:
 
 Viewing a report's schedules needs `costs:read`; creating, editing, deleting, and **Send now** need `org:settings:write` — the same step up [cost exports](./cost-exports.md) take, because a schedule is standing authorisation to send org spend to addresses its creator picked. Every change and manual send lands in the [audit log](../team-and-billing/audit-log.md).
 
+## Annotations
+
+A step change in a spend chart explains itself for about a fortnight. After that nobody remembers whether it was a migration, a launch, or a price change — and the answer, if it exists anywhere, is in a Slack thread.
+
+An **annotation** is a dated note drawn over the chart, so the explanation lives next to the number.
+
+<insert [A cost report chart with two numbered annotation markers on it — one a dashed vertical line labelled 1, one a shaded band across four bars labelled 2 — and the annotation chips reading "Jul 4 · Migrated the API fleet to Graviton" and "Jul 18 – Jul 22 · Datacentre migration" underneath the chart] here>
+
+### Writing one
+
+Click any bar on the chart and write what happened, or use **Add annotation** in the **Annotations** list below it. Either way you get:
+
+- **A date** — the day the thing happened.
+- **Spans several days**, optionally — a deploy is a moment, a migration is a week. A span shades the buckets it covers instead of marking one.
+- **The note itself** — up to 500 characters.
+- **Where it shows** — **every cost chart** (the default) or **only this report**.
+
+Org-wide is the default on purpose. "We changed instance types" is not a fact about one report, and filing it under one leaves every other chart showing the same step with no explanation. Scope a note to one report when it is genuinely about that report's slice of spend.
+
+### How markers land on the chart
+
+A note is dated to a day, but a chart bins by day, week, month, or cumulatively. The marker lands on **whichever bucket holds that day** at the binning the chart is using — the same bucketing the spend itself went through, so a marker is never one bar away from the money it explains. Switch a chart from daily to monthly and a note dated the 14th moves onto that month's bar.
+
+Three consequences follow:
+
+- **Several notes on one bucket become one marker.** Three things that happened in July are one flag on a monthly chart, numbered once; the list underneath shows all three. Markers never overprint each other.
+- **A note outside the chart's window is not drawn at all** — and never widens the axis to make room for itself.
+- **A span that starts before the window** still marks it, clamped to the first bar shown, because a migration that ended inside this window is information about this window.
+
+Annotations never change the numbers. The series, the totals, the forecast and the axis are identical whether a chart carries ten notes or none — an annotation is an overlay on the picture, never a row in the data.
+
+### Reading them without a mouse
+
+Every marker is also a button in the strip under the chart, showing its number, its date and its text. Tab to one and press Enter to expand every note on that bucket, with **Edit** on each. Nothing about annotations is hover-only, which is also what makes them work on a phone.
+
+### Managing them
+
+The **Annotations** list on a report's page shows every note the report's chart draws — its own and the org-wide ones, each labelled with which it is. That is where you go to fix a date you can no longer see, reword a note, move one between org-wide and this report, or delete it.
+
+Reading annotations needs `costs:read`; writing them needs `costs:write`. Every create, update and delete lands in the [audit log](../team-and-billing/audit-log.md).
+
 ## From the command line
 
 ```
@@ -124,6 +165,8 @@ Reads need `costs:read` and writes need `costs:write`; see [roles & permissions]
 The [mobile app](./mobile-app.md) lists your saved reports — grouped under the same [folders](#folders) you keep on web and desktop, with each section titled by the folder's full path — and opens any one of them read-only: the chart, the description, the dashboards it feeds with a tap through to each, and its [delivery schedules](#scheduled-delivery) with each one's last-send status and error. Report cards on a dashboard render there too.
 
 Creating or editing a delivery schedule stays on web and desktop, deliberately: a schedule names Slack channels, Teams webhooks and email addresses — org-egress decisions that belong next to the pickers that make them safe.
+
+Annotation markers are drawn on the phone's charts too, with the note text a tap away. Writing one stays on web and desktop with everything else: a note's scope choice can change what every chart in the org shows, and that is not a decision to make on a bus.
 
 Creating and editing a report stays on web and desktop, and so does managing folders — the phone reads the filing, it doesn't refile. Choosing choosing a chart type, a binning, a group-by and a filter set is a desktop job, and a half-editor on a phone is the fastest way to change a report that five dashboards depend on by accident.
 

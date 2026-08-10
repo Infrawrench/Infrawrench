@@ -19,4 +19,8 @@
  */
 // 1.7.0: new `commitment_covered_usage` member on the CostChargeType enum
 // (additive enum widening, on cost queries and cost exports).
-export const API_VERSION = "1.7.0";
+// 1.8.0: the cost and FinOps completion pass — business metrics and unit
+// costs, report annotations, nested cost centres, scenario models, billing
+// rules, managed accounts and invoicing; plus API-key authentication across
+// the org route tree and audit entries that name the key. All additive.
+export const API_VERSION = "1.8.0";

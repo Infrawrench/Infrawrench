@@ -68,6 +68,22 @@ The `Permission` enum component lists every recognised scope. Granted scopes can
 
 A key's scopes are a ceiling, not a grant: the server intersects them with the current role of the user who created the key, so `x-required-permission` must be satisfied by **both**. See [API keys](./api-keys.md#keys-are-bounded-by-their-owner).
 
+### What a key can reach
+
+Every operation under `/api/org/{orgId}/` accepts an API key, with five exceptions listed below. A key is pinned to the organization it was minted in — presenting it against another org's `{orgId}` is a `403`, whatever the key holds — and it is checked against exactly the same `x-required-permission` a signed-in user is. Widening authentication to keys did not widen authorization: an operation a Member cannot perform in the browser is one a `*`-scoped key held by that Member cannot perform either.
+
+These operations are **closed to API keys** and answer `403` with an explanatory `error`, even for a key scoped `*` held by an Owner:
+
+| Operations                                          | Why                                                                                                                                                                   |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| All of `/api/org/{orgId}/api-keys`                  | A key that can mint keys can mint a longer-lived one, so revoking it would not end the access. Reads go with it — enumerating an org's credentials is reconnaissance. |
+| All of `/api/org/{orgId}/billing`                   | Subscription and payment changes. Every response is a Stripe URL meant for a browser.                                                                                 |
+| All of `/api/org/{orgId}/push`                      | Device registration and per-device notification preferences describe a person's phone.                                                                                |
+| `POST`/`PUT`/`PATCH`/`DELETE` on `/team`            | Invites, role assignment and member removal manufacture or destroy durable authority for other people. `GET` still works, so automation can inventory members.        |
+| `POST`/`PUT`/`PATCH`/`DELETE` on `/access-requests` | Break-glass exists to put a human in the loop. `GET` still works, so a monitor can watch the queue.                                                                   |
+
+Three more surfaces are unreachable because they are not org-scoped at all and never accepted bearer credentials: `/api/profile/*` (password, MFA, email change, session revocation), `/api/orgs` (creating and deleting organizations), and `/api/admin/*`. The account-security operations under `/api/profile` additionally require a recent interactive sign-in, which no bearer principal can satisfy.
+
 ### The one unauthenticated route
 
 `GET /api/status/{slug}` takes no credentials at all. It serves a

@@ -195,6 +195,11 @@ app.get("/untagged", async (c) => {
  * configured that display currency) the report is per-currency exactly as
  * before; present, the response carries a `conversion` block naming the rates
  * used and any currency that had none.
+ *
+ * `?adjusted=true` is the other opt-in: the org's billing rules applied, with
+ * the collected totals returned beside them in `adjustment`. Off by default,
+ * like every adjusted surface — a chargeback report that silently showed
+ * marked-up numbers is one the receiving team could not reconcile.
  */
 app.get("/showback", async (c) => {
   requirePermission(c, "costs:read");
@@ -202,7 +207,14 @@ app.get("/showback", async (c) => {
   if (!range) return c.json({ error: "from/to must be YYYY-MM-DD with from <= to" }, 400);
   const currency = c.req.query("currency");
   return c.json(
-    await getShowbackReport(c.get("organizationId"), range.from, range.to, parseBasis(c), currency),
+    await getShowbackReport(
+      c.get("organizationId"),
+      range.from,
+      range.to,
+      parseBasis(c),
+      currency,
+      c.req.query("adjusted") === "true",
+    ),
   );
 });
 

@@ -6,6 +6,7 @@ import {
   agentsTabTarget,
   costsTabTarget,
   costReportsTabTarget,
+  invoicesTabTarget,
   graphTabTarget,
   logsTabTarget,
   changesTabTarget,
@@ -33,6 +34,7 @@ export {
   accountTabTarget,
   chatTabTarget,
   costReportsTabTarget,
+  invoicesTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -104,6 +106,20 @@ export function getWorkspaceNavigateArgs(
           }
         : {
             to: "/org/$orgId/cost-reports",
+            params: { orgId },
+            ...(replace ? { replace: true } : {}),
+          };
+    // Same shape as Cost reports: web addresses one invoice by path segment,
+    // desktop by ?invoice=. Both map to the single Invoices tab.
+    case "invoices":
+      return target.invoiceId
+        ? {
+            to: "/org/$orgId/invoices/$invoiceId",
+            params: { orgId, invoiceId: target.invoiceId },
+            ...(replace ? { replace: true } : {}),
+          }
+        : {
+            to: "/org/$orgId/invoices",
             params: { orgId },
             ...(replace ? { replace: true } : {}),
           };
@@ -290,6 +306,11 @@ export function syncWorkspaceRouteFromPath(
     // /cost-reports is the list; /cost-reports/{id} is one report. Both are the
     // same tab — the id is remembered state, not a second tab.
     return costReportsTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
+  }
+  if (s[0] === "invoices") {
+    // /invoices is the list; /invoices/{id} is one invoice. Both are the same
+    // tab — the id is remembered state, not a second tab.
+    return invoicesTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
   }
   if (s[0] === "graph") {
     return graphTabTarget();

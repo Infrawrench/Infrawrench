@@ -32,6 +32,8 @@ import type {
   PromptSpec,
   WorkflowAiResult,
   WorkflowAiSpec,
+  WorkflowBusinessMetricValue,
+  WorkflowBusinessMetricWriteResult,
   WorkflowCostRow,
   WorkflowCostWriteResult,
   WorkflowFetchRequest,
@@ -95,6 +97,12 @@ export interface ClientHostDeps {
 
   /** Write daily spend into the org's cost store (cloud-only). */
   writeCosts?(rows: WorkflowCostRow[]): Promise<WorkflowCostWriteResult>;
+
+  /** Report daily business metric values (cloud-only, like `writeCosts`). */
+  writeBusinessMetricValues?(
+    metricKey: string,
+    values: WorkflowBusinessMetricValue[],
+  ): Promise<WorkflowBusinessMetricWriteResult>;
 
   /**
    * Perform one outbound HTTP request for the workflow (powers the global
@@ -376,6 +384,9 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
     ...(deps.sftpMkdir ? { sftpMkdir: deps.sftpMkdir } : {}),
     ...(deps.sftpDelete ? { sftpDelete: deps.sftpDelete } : {}),
     ...(deps.writeCosts ? { writeCosts: deps.writeCosts } : {}),
+    ...(deps.writeBusinessMetricValues
+      ? { writeBusinessMetricValues: deps.writeBusinessMetricValues }
+      : {}),
     ...(deps.fetch ? { fetch: deps.fetch } : {}),
     ...(deps.ai ? { ai: deps.ai } : {}),
     ...(deps.page ? { page: deps.page } : {}),

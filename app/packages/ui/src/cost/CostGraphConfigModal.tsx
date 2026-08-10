@@ -626,6 +626,29 @@ export function CostGraphConfigModal({
    */
   const [filterError, setFilterError] = useState<string | null>(null);
   const basis = useCostBasisChoice(api, initialConfig.costBasis === "amortized");
+  /**
+   * The org's business metrics, for the unit-cost picker. `null` while loading
+   * or when the host hasn't wired the endpoint — in both cases the picker is
+   * left out rather than offered empty, which would read as "you have none".
+   */
+  const [metrics, setMetrics] = useState<BusinessMetric[] | null>(null);
+  const loadMetrics = api.listBusinessMetrics;
+  useEffect(() => {
+    if (!loadMetrics) return;
+    let cancelled = false;
+    loadMetrics()
+      .then((next) => {
+        if (!cancelled) setMetrics(next);
+      })
+      .catch(() => {
+        if (!cancelled) setMetrics([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadMetrics]);
+
+  const unitCostMetric = metrics?.find((m) => m.id === config.unitCostMetricId) ?? null;
 
   useEffect(() => {
     if (config.groupBy === "tag" && tagKeys.length === 0) {
@@ -786,6 +809,83 @@ export function CostGraphConfigModal({
               hint={COST_BASIS_UNAVAILABLE_HINT}
             />
           </div>
+
+          {/*
+            Unit costs are a *mode* of this graph, not a second chart type: the
+            date range, binning, filters and cost basis above all still describe
+            the numerator. Only the four options that presuppose a stack of
+            series stop applying, and the note below says so rather than leaving
+            a user to wonder why Group by did nothing.
+          */}
+          {metrics !== null && metrics.length > 0 && (
+            <div className="rounded-lg border border-border p-3">
+              <label htmlFor={`${uid}-unit-metric`} className={labelClass}>
+                Divide by a business metric
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <select
+                  id={`${uid}-unit-metric`}
+                  className={selectClass}
+                  value={config.unitCostMetricId ?? ""}
+                  onChange={(e) =>
+                    set(
+                      e.target.value
+                        ? { unitCostMetricId: e.target.value }
+                        : // Clear the mode with the metric: a stored `margin`
+                          // with no metric would be meaningless, and would come
+                          // back the moment a metric was picked again.
+                          { unitCostMetricId: undefined, unitCostMode: undefined },
+                    )
+                  }
+                >
+                  <option value="">No — show spend</option>
+                  {metrics.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} (per {m.unit})
+                    </option>
+                  ))}
+                </select>
+                {config.unitCostMetricId && (
+                  <select
+                    className={selectClass}
+                    aria-label="Unit cost mode"
+                    value={config.unitCostMode ?? "unit_cost"}
+                    onChange={(e) =>
+                      set({ unitCostMode: e.target.value as CostGraphConfig["unitCostMode"] })
+                    }
+                  >
+                    {UNIT_COST_MODES.map((mode) => (
+                      <option
+                        key={mode}
+                        value={mode}
+                        // Margin subtracts money from money. Offering it for a
+                        // count metric would produce a plausible-looking number
+                        // that means nothing, so the option is disabled here and
+                        // refused by the server as well.
+                        disabled={mode === "margin" && unitCostMetric?.kind !== "currency"}
+                      >
+                        {UNIT_COST_MODE_LABELS[mode]}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              {config.unitCostMetricId && (
+                <p className="mt-2 text-[11px] text-on-surface-faint">
+                  The chart shows{" "}
+                  {config.unitCostMode === "margin"
+                    ? "margin against this metric"
+                    : `cost per ${unitCostMetric?.unit ?? "unit"}`}
+                  . Group by, top groups, comparison and forecast don&rsquo;t apply — a per-group
+                  ratio would need a per-group metric, and a period with no reported value is drawn
+                  as a gap rather than as zero.
+                  {unitCostMetric && unitCostMetric.kind !== "currency" && (
+                    <> Margin needs a revenue metric, so it is unavailable for this one.</>
+                  )}
+                </p>
+              )}
+            </div>
+          )}
 
           {config.dateRange.kind === "absolute" && (
             <div className="grid grid-cols-2 gap-3">

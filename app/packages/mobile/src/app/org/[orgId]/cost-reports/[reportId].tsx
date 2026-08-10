@@ -24,7 +24,10 @@ import { colors, spacing } from "@/lib/theme";
  * chart type, binning, group-by and filter set is a desktop job, and a
  * half-editor here would be the fastest way to change a report five dashboards
  * depend on by accident. Delivery schedules follow the same rule: shown with
- * their last-send status, created and edited on web/desktop only.
+ * their last-send status, created and edited on web/desktop only. Annotations
+ * likewise: the chart draws this report's notes and the org-wide ones, and the
+ * text is a tap away, but writing one — which can change what every chart in
+ * the org shows — stays on web and desktop.
  */
 export default function CostReportDetailRoute() {
   const router = useRouter();
@@ -62,7 +65,7 @@ export default function CostReportDetailRoute() {
         ) : null}
       </View>
 
-      <CostGraphCard title={report.name} config={report.config} />
+      <CostGraphCard title={report.name} config={report.config} annotationReportId={report.id} />
 
       <SectionTitle>On dashboards</SectionTitle>
       {report.placements.length === 0 ? (

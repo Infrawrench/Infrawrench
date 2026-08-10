@@ -26,10 +26,12 @@ import {
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
 import { CostReportsIcon } from "@infrawrench/ui/cost-reports";
+import { InvoicesIcon } from "@infrawrench/ui/invoices";
 import {
   agentsTabTarget,
   costsTabTarget,
   costReportsTabTarget,
+  invoicesTabTarget,
   graphTabTarget,
   logsTabTarget,
   chatTabTarget,
@@ -227,6 +229,18 @@ export function SidebarDashboards() {
             onClick: () =>
               void navigateToWorkspaceTarget(navigate, costReportsTabTarget(), {
                 label: "Reports",
+              }),
+          },
+          // Cloud-only for the same reason as Costs: an invoice bills for
+          // spend collected server-side, so local mode has neither the
+          // customers nor the data. A workspace tab, like Costs and Reports.
+          {
+            key: "invoices",
+            label: "Invoices",
+            icon: <InvoicesIcon />,
+            onClick: () =>
+              void navigateToWorkspaceTarget(navigate, invoicesTabTarget(), {
+                label: "Invoices",
               }),
           },
           // Cloud-only for the same reason as Costs: rules are evaluated by

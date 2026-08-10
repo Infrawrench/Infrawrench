@@ -44,6 +44,8 @@ import type {
   WorkflowAiModel,
   WorkflowAiResult,
   WorkflowAiSpec,
+  WorkflowBusinessMetricValue,
+  WorkflowBusinessMetricWriteResult,
   WorkflowCostRow,
   WorkflowCostWriteResult,
   WorkflowFetchRequest,
@@ -322,6 +324,16 @@ export interface WorkflowHost {
    * {@link WorkflowCapabilityError}, since cost data lives in ClickHouse.
    */
   writeCosts?(rows: WorkflowCostRow[]): Promise<WorkflowCostWriteResult>;
+
+  /**
+   * Report daily business metric values (powers `infra.businessMetrics.write`).
+   * Cloud-only for the same reason `writeCosts` is: the values are only useful
+   * next to the spend they divide, and that lives in the cloud's cost store.
+   */
+  writeBusinessMetricValues?(
+    metricKey: string,
+    values: WorkflowBusinessMetricValue[],
+  ): Promise<WorkflowBusinessMetricWriteResult>;
 
   /**
    * Raise an alert to the humans who own this workflow (powers `infra.page`).
@@ -1380,6 +1392,13 @@ export async function dispatch(
       return requireMethod(host.writeCosts, "writeCosts").call(
         host,
         (args["rows"] as WorkflowCostRow[]) ?? [],
+      );
+
+    case "businessMetrics.write":
+      return requireMethod(host.writeBusinessMetricValues, "writeBusinessMetricValues").call(
+        host,
+        String(args["metric"] ?? ""),
+        (args["values"] as WorkflowBusinessMetricValue[]) ?? [],
       );
 
     case "fetch":

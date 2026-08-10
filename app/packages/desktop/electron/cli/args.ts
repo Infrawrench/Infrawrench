@@ -134,6 +134,12 @@ export interface ParsedCli {
   anomalies: boolean;
   /** `costs --alerts` — the change-alert list + recent firings instead of the chart. */
   alerts: boolean;
+  /**
+   * `unit-costs <metric> --margin` — draw margin instead of cost per unit.
+   * Only meaningful for a metric declared revenue-shaped; the server refuses it
+   * for a count metric rather than returning a plausible wrong number.
+   */
+  margin: boolean;
 }
 
 export function parseCliArgs(argv: string[]): ParsedCli {
@@ -179,6 +185,8 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         anomalies: { type: "boolean", default: false },
         // `costs --alerts` — the third cost question: configured change alerts.
         alerts: { type: "boolean", default: false },
+        // `unit-costs <metric> --margin` — the ratio's other form.
+        margin: { type: "boolean", default: false },
         // `posture dismiss` — why the finding is an accepted risk.
         reason: { type: "string" },
         // Push-up flags (`page`, `costs push`).
@@ -342,6 +350,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     version: values.version === true,
     anomalies: values.anomalies === true,
     alerts: values.alerts === true,
+    margin: values.margin === true,
   };
 }
 

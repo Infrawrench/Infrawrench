@@ -216,6 +216,37 @@ export interface WorkflowCostWriteResult {
 }
 
 /**
+ * One reported day of a business metric, written via
+ * `infra.businessMetrics.write(...)`.
+ *
+ * The denominator half of a unit cost: `infra.costs.write` reports what was
+ * spent, this reports how many of the thing the business does happened. The two
+ * are deliberately separate calls — spend has dimensions (service, region,
+ * tags) and a currency, a business metric has one number a day.
+ *
+ * **Named `businessMetrics`, not `metrics`, and that is not a style choice.**
+ * `infra.metrics` is already the workflow's own declared key/value metrics, and
+ * it is a Proxy whose `get` returns `null` for unknown keys — so
+ * `infra.metrics.write` would silently be `null` rather than a function, and a
+ * workflow calling it would fail with "not a function" pointing at nothing.
+ */
+export interface WorkflowBusinessMetricValue {
+  /** UTC day the value belongs to, `YYYY-MM-DD`. */
+  date: string;
+  /**
+   * The day's value. Re-reporting a day **replaces** it rather than adding to
+   * it, so a cron that re-reports a trailing window is safe to run repeatedly.
+   */
+  value: number;
+}
+
+/** Outcome of an `infra.businessMetrics.write(...)` call. */
+export interface WorkflowBusinessMetricWriteResult {
+  /** How many days were written, counting restatements. */
+  written: number;
+}
+
+/**
  * Default throttle window for `infra.page(...)`. A monitoring cron that finds
  * the same problem every run should page once and then stay quiet, so repeat
  * pages under the same key are suppressed for an hour unless the author says

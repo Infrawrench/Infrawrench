@@ -4,13 +4,23 @@
  * store), so these are never called when activeCloudOrgId is unset.
  */
 import type {
+  BillingRule,
   BudgetInput,
   BudgetWithStatus,
+  BusinessMetric,
+  BusinessMetricInput,
+  BusinessMetricValue,
+  BusinessMetricValueInput,
+  BusinessMetricWriteResult,
+  UnitCostQueryRequest,
+  UnitCostQueryResponse,
   CostAccountStatus,
   CostAlert,
   CostAlertEvent,
   CostAlertInput,
   CostAnomaly,
+  CostAnnotation,
+  CostAnnotationInput,
   CostAnomalySettings,
   CostAnomalySettingsView,
   CostDimensionOption,
@@ -355,4 +365,103 @@ export async function listCloudSavedCostFilterReferents(
     { orgId, savedFilterId },
   );
   return res?.referents ?? [];
+}
+
+/* ------------------------------------------------------------------ *
+ * Scenario models — named sets of known future cost overlaid on a forecast.
+ * Cloud-mode only, and resolved server-side at query time like saved filters.
+ * ------------------------------------------------------------------ */
+
+export async function listCloudCostScenarioModels(orgId: string): Promise<CostScenarioModel[]> {
+  return (await invoke<CostScenarioModel[]>("cloud_list_cost_scenarios", { orgId })) ?? [];
+}
+
+export async function createCloudCostScenarioModel(
+  orgId: string,
+  input: CostScenarioModelInput,
+): Promise<CostScenarioModel> {
+  return invoke("cloud_create_cost_scenario", { orgId, input });
+}
+
+export async function updateCloudCostScenarioModel(
+  orgId: string,
+  modelId: string,
+  input: CostScenarioModelInput,
+): Promise<CostScenarioModel> {
+  return invoke("cloud_update_cost_scenario", { orgId, modelId, input });
+}
+
+/** Rejects with the server's 409 message (naming referents) while referenced. */
+export async function deleteCloudCostScenarioModel(orgId: string, modelId: string): Promise<void> {
+  await invoke("cloud_delete_cost_scenario", { orgId, modelId });
+}
+
+export async function listCloudCostScenarioReferents(
+  orgId: string,
+  modelId: string,
+): Promise<CostScenarioReferent[]> {
+  const res = await invoke<{ referents: CostScenarioReferent[] }>("cloud_cost_scenario_referents", {
+    orgId,
+    modelId,
+  });
+  return res?.referents ?? [];
+}
+
+/* ------------------------------------------------------------------ *
+ * Business metrics and unit costs. Cloud-mode only like the rest of this
+ * module — the numerator lives in the cloud's cost store, so there is no
+ * local-SQLite equivalent to fall back to.
+ * ------------------------------------------------------------------ */
+
+export async function listCloudBusinessMetrics(orgId: string): Promise<BusinessMetric[]> {
+  return (await invoke<BusinessMetric[]>("cloud_list_business_metrics", { orgId })) ?? [];
+}
+
+export async function createCloudBusinessMetric(
+  orgId: string,
+  input: BusinessMetricInput,
+): Promise<BusinessMetric> {
+  return invoke("cloud_create_business_metric", { orgId, input });
+}
+
+export async function updateCloudBusinessMetric(
+  orgId: string,
+  metricId: string,
+  input: BusinessMetricInput,
+): Promise<BusinessMetric> {
+  return invoke("cloud_update_business_metric", { orgId, metricId, input });
+}
+
+export async function deleteCloudBusinessMetric(orgId: string, metricId: string): Promise<void> {
+  await invoke("cloud_delete_business_metric", { orgId, metricId });
+}
+
+export async function listCloudBusinessMetricValues(
+  orgId: string,
+  metricId: string,
+  limit?: number,
+): Promise<BusinessMetricValue[]> {
+  return (
+    (await invoke<BusinessMetricValue[]>("cloud_list_business_metric_values", {
+      orgId,
+      metricId,
+      limit,
+    })) ?? []
+  );
+}
+
+export async function writeCloudBusinessMetricValues(
+  orgId: string,
+  metricId: string,
+  values: BusinessMetricValueInput[],
+): Promise<BusinessMetricWriteResult> {
+  return invoke("cloud_write_business_metric_values", { orgId, metricId, values });
+}
+
+export async function queryCloudUnitCosts(
+  orgId: string,
+  metricId: string,
+  request: UnitCostQueryRequest,
+): Promise<UnitCostQueryResponse> {
+  return invoke("cloud_query_unit_costs", { orgId, metricId, request });
 }

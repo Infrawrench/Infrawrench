@@ -25,6 +25,7 @@ import {
   resourceSshTabTarget,
   resourceSftpTabTarget,
   costReportsTabTarget,
+  invoicesTabTarget,
   getWorkspaceNavigateArgs,
   navigateToWorkspaceTarget,
   syncWorkspaceRouteFromPath,
@@ -326,6 +327,14 @@ describe("syncWorkspaceRouteFromPath", () => {
     });
   });
 
+  it("parses invoice paths into the single Invoices tab", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/invoices")).toEqual({ kind: "invoices" });
+    expect(syncWorkspaceRouteFromPath("/org/myorg/invoices/inv-1")).toEqual({
+      kind: "invoices",
+      invoiceId: "inv-1",
+    });
+  });
+
   it("parses settings paths into the single settings tab", () => {
     expect(syncWorkspaceRouteFromPath("/org/myorg/settings")).toEqual({ kind: "settings" });
     expect(syncWorkspaceRouteFromPath("/org/myorg/settings/team")).toEqual({
@@ -437,6 +446,36 @@ describe("cost reports tab", () => {
       const path = args.to
         .replace("$orgId", args.params!["orgId"]!)
         .replace("$reportId", args.params!["reportId"] ?? "");
+      expect(syncWorkspaceRouteFromPath(path)).toEqual(target);
+    }
+  });
+});
+
+describe("invoices tab", () => {
+  it("invoicesTabTarget omits invoiceId for the list view", () => {
+    expect(invoicesTabTarget()).toEqual({ kind: "invoices" });
+    expect(invoicesTabTarget("i1")).toEqual({ kind: "invoices", invoiceId: "i1" });
+  });
+
+  it("navigates to the list path without an invoice and the detail path with one", () => {
+    expect(getWorkspaceNavigateArgs(invoicesTabTarget())).toEqual({
+      to: "/org/$orgId/invoices",
+      params: { orgId: "test-org" },
+    });
+    expect(getWorkspaceNavigateArgs(invoicesTabTarget("i1"))).toEqual({
+      to: "/org/$orgId/invoices/$invoiceId",
+      params: { orgId: "test-org", invoiceId: "i1" },
+    });
+  });
+
+  it("round-trips through the route sync", () => {
+    // The URL is what records the open invoice on the tab, so a target that
+    // does not survive this round trip loses the invoice on reload.
+    for (const target of [invoicesTabTarget(), invoicesTabTarget("i1")]) {
+      const args = getWorkspaceNavigateArgs(target);
+      const path = args.to
+        .replace("$orgId", args.params!["orgId"]!)
+        .replace("$invoiceId", args.params!["invoiceId"] ?? "");
       expect(syncWorkspaceRouteFromPath(path)).toEqual(target);
     }
   });

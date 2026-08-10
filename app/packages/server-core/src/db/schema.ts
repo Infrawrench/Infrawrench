@@ -3363,6 +3363,139 @@ export const reportNotifications = pgTable(
   }),
 );
 
+/**
+ * Business metric definitions — the denominators unit costs divide by.
+ *
+ * "Cost per customer" needs two halves: the spend (already in `cost_daily`) and
+ * a count of customers, which only the org knows. This row is the declaration
+ * of that second half: what it is called, what one of it is called, whether it
+ * is a quantity or money, and — through `cost_scope` — which slice of spend it
+ * is the denominator *of*.
+ *
+ * `kind` is what makes margin safe. `(revenue − cost) ÷ revenue` is only
+ * defined when the denominator is money in a stated currency; a `count` metric
+ * can never be asked for it, and a `currency` metric must carry a currency code
+ * (the check constraint below enforces both directions of that). Modelling it
+ * as a property of the metric rather than a flag on the query means the rule is
+ * declared once, at definition time, instead of re-derived by every caller.
+ */
+export const businessMetrics = pgTable(
+  "business_metrics",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /**
+     * Stable lowercase slug. Workflows, the CLI and the values endpoint address
+     * the metric by this, so it is unique per org among live rows and survives a
+     * rename of `name` — which is the whole reason both columns exist.
+     */
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    /** Singular unit label for display: "customer", "request", "GB". */
+    unit: text("unit").notNull(),
+    description: text("description"),
+    /** "count" | "currency" — see the table comment. */
+    kind: text("kind").notNull().default("count"),
+    /** ISO-4217 code; set exactly when `kind = 'currency'`. */
+    currency: text("currency"),
+    /** `CostFilter[]` — the spend this metric divides. Empty is all spend. */
+    costScope: jsonb("cost_scope").notNull().default([]),
+    /**
+     * A `saved_cost_filters` row AND-composed with `cost_scope`, resolved at
+     * query time; null is none. No foreign key, for the same reason
+     * `budgets.saved_filter_id` has none: saved filters are soft-deleted and
+     * deletion is refused while anything references them, so integrity is
+     * enforced above the database and a dangling reference errors the query
+     * rather than silently widening the numerator to all spend.
+     */
+    savedFilterId: text("saved_filter_id"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /** Soft delete, matching budgets and saved filters — set, never cleared. */
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("business_metrics_org_idx").on(t.organizationId),
+    /**
+     * Among *live* rows only: a soft-deleted "active-customers" must not squat
+     * on the key a workflow is still writing to forever.
+     */
+    orgKeyUnique: uniqueIndex("business_metrics_org_key_unique")
+      .on(t.organizationId, t.key)
+      .where(sql`deleted_at IS NULL`),
+    /**
+     * Both directions. A `currency` metric with no currency cannot have margin
+     * computed against it, and a `count` metric carrying one would suggest its
+     * numbers are money when they are requests — either way the row would be a
+     * trap for a later reader rather than a rejected write.
+     */
+    currencyMatchesKind: check(
+      "business_metrics_currency_matches_kind",
+      sql`(${t.kind} = 'currency') = (${t.currency} IS NOT NULL)`,
+    ),
+  }),
+);
+
+/**
+ * One reported day of one business metric.
+ *
+ * **Postgres, not ClickHouse, and not because it is small.** These values are
+ * joined against ClickHouse spend on every unit-cost query, and a cross-store
+ * join *per point* would indeed be the thing to avoid — but that is not the
+ * join this feature performs. Both sides are aggregated to the query's buckets
+ * first (ClickHouse sums the numerator, this table sums the denominator), and
+ * the two are combined once, in application code, at the bucket level — at most
+ * a few hundred numbers meeting a few hundred numbers, exactly the way
+ * `cost/currency-convert.ts` folds stated rates into an already-aggregated
+ * series.
+ *
+ * With the per-point join gone, Postgres wins on everything else: the
+ * `(metric, day)` unique index makes restatement a single `ON CONFLICT DO
+ * UPDATE` with no ReplacingMergeTree `FINAL` and no "which version won"
+ * question; the metric definition is a Postgres row already, so keeping its
+ * values here means one store owns the object rather than half of it; and
+ * `updated_by_user_id` gives a surprising number an author, which a columnar
+ * append-only table would not.
+ */
+export const businessMetricValues = pgTable(
+  "business_metric_values",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    metricId: text("metric_id")
+      .notNull()
+      .references(() => businessMetrics.id, { onDelete: "cascade" }),
+    /** The UTC day this value belongs to. Daily, to match `cost_daily`. */
+    day: date("day").notNull(),
+    value: doublePrecision("value").notNull(),
+    /** "api" | "workflow" — who wrote it, for reading a surprising point. */
+    source: text("source").notNull().default("api"),
+    updatedByUserId: text("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    /**
+     * The restatement key. Re-reporting a day updates it in place rather than
+     * appending, which is what makes a nightly job safe to retry — an ingest
+     * that accumulated would double every number the first time it re-ran.
+     */
+    metricDayUnique: uniqueIndex("business_metric_values_metric_day_unique").on(t.metricId, t.day),
+    /** The read: one metric's values across a date range, in day order. */
+    metricDayIdx: index("business_metric_values_metric_day_idx").on(t.metricId, t.day),
+    orgIdx: index("business_metric_values_org_idx").on(t.organizationId),
+  }),
+);
+
 export * from "./core-schema.js";
 export * from "./workflow-schema.js";
 export * from "./ssh-recording-schema.js";

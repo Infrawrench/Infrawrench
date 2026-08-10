@@ -95,6 +95,15 @@ export function costReportsTabTarget(reportId?: string): WorkspaceTabTarget {
   return { kind: "cost-reports", ...(reportId ? { reportId } : {}) };
 }
 
+/**
+ * The Invoices page — managed accounts and the invoices raised against them.
+ * With an `invoiceId` it opens that invoice; without one it opens the list.
+ * One tab either way, like Cost reports.
+ */
+export function invoicesTabTarget(invoiceId?: string): WorkspaceTabTarget {
+  return { kind: "invoices", ...(invoiceId ? { invoiceId } : {}) };
+}
+
 export function graphTabTarget(): WorkspaceTabTarget {
   return { kind: "graph" };
 }

@@ -34,6 +34,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts, workflowMetrics, workflowRuns, workflows } from "../db/schema";
 import { writeWorkflowCostRows } from "../cost/workflow-costs";
+import { writeWorkflowMetricValues } from "../cost/workflow-metrics";
 import { getPlugin, loadPlugins } from "../plugin-loader";
 import { getOrgAccountClient } from "../org-accounts";
 import { getClientForResource } from "../peer-clients";
@@ -305,6 +306,7 @@ export function buildOrgWorkflowHost(
   // Per-run row budget for infra.costs.write, closed over so the cap applies
   // across every call the workflow makes rather than per call.
   let costRowsWritten = 0;
+  let metricValuesWritten = 0;
   return buildWorkflowHost({
     listPlugins: () => listOrgPlugins(organizationId),
     getClient: (accountId: string, sidecar?: SidecarRef) =>
@@ -333,6 +335,16 @@ export function buildOrgWorkflowHost(
         writtenSoFar: costRowsWritten,
       });
       costRowsWritten += result.written;
+      return result;
+    },
+    writeBusinessMetricValues: async (metricKey, values) => {
+      const result = await writeWorkflowMetricValues({
+        organizationId,
+        metricKey,
+        values,
+        writtenSoFar: metricValuesWritten,
+      });
+      metricValuesWritten += result.written;
       return result;
     },
     // Outbound HTTP leaves through the egress proxy, never from the pod the

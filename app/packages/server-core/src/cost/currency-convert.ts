@@ -54,6 +54,16 @@ export type { CostConversion, CostConvertedCurrency, CostConversionRate };
 export interface ConvertibleGroup {
   currency: string;
   points: Array<{ bucket: string; amount: number }>;
+  /**
+   * The same buckets before the org's billing rules were applied, when the
+   * query asked to be adjusted.
+   *
+   * Converted through exactly the same rates as `points`, on the same days,
+   * because the two are compared against each other on screen: converting the
+   * collected figure at the range-end rate while the adjusted one converted per
+   * day would make a mid-range rate movement look like a markup.
+   */
+  rawPoints?: Array<{ bucket: string; amount: number }> | undefined;
 }
 
 /**
@@ -171,14 +181,18 @@ export function convertGroups<T extends ConvertibleGroup>(
     const applied = convertible.get(group.currency);
     if (!applied) return group;
     const rateList = table.get(group.currency) ?? [];
-    return {
-      ...group,
-      currency: displayCurrency,
-      points: group.points.map((point) => {
+    const convertPoints = (points: Array<{ bucket: string; amount: number }>) =>
+      points.map((point) => {
         // `applied` was built from these same points, so a rate exists.
         const rate = rateForDay(rateList, point.bucket)!;
         return { ...point, amount: roundAmount(point.amount * parseRate(rate.rate)!) };
-      }),
+      });
+    return {
+      ...group,
+      currency: displayCurrency,
+      points: convertPoints(group.points),
+      // Same rates, same days — see `ConvertibleGroup.rawPoints`.
+      ...(group.rawPoints ? { rawPoints: convertPoints(group.rawPoints) } : {}),
     };
   });
 
@@ -231,21 +245,36 @@ export function mergeConvertedGroups<T extends ConvertibleGroup & { key: string 
 ): T[] {
   const byKey = new Map<string, T>();
   const order: string[] = [];
+  const mergePoints = (
+    into: Array<{ bucket: string; amount: number }>,
+    from: Array<{ bucket: string; amount: number }>,
+  ) => {
+    const buckets = new Map(into.map((p) => [p.bucket, p.amount]));
+    for (const point of from) {
+      buckets.set(point.bucket, roundAmount((buckets.get(point.bucket) ?? 0) + point.amount));
+    }
+    return [...buckets.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([bucket, amount]) => ({ bucket, amount }));
+  };
   for (const group of groups) {
     const id = `${group.key} ${group.currency}`;
     const existing = byKey.get(id);
     if (!existing) {
-      byKey.set(id, { ...group, points: [...group.points] });
+      byKey.set(id, {
+        ...group,
+        points: [...group.points],
+        ...(group.rawPoints ? { rawPoints: [...group.rawPoints] } : {}),
+      });
       order.push(id);
       continue;
     }
-    const buckets = new Map(existing.points.map((p) => [p.bucket, p.amount]));
-    for (const point of group.points) {
-      buckets.set(point.bucket, roundAmount((buckets.get(point.bucket) ?? 0) + point.amount));
+    existing.points = mergePoints(existing.points, group.points);
+    // Merged the same way, or the collected total stops being the sum of the
+    // collected series the moment two currencies fold into one.
+    if (group.rawPoints) {
+      existing.rawPoints = mergePoints(existing.rawPoints ?? [], group.rawPoints);
     }
-    existing.points = [...buckets.entries()]
-      .sort(([a], [b]) => (a < b ? -1 : 1))
-      .map(([bucket, amount]) => ({ bucket, amount }));
   }
   return order.map((id) => byKey.get(id)!);
 }

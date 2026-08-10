@@ -246,12 +246,68 @@ export interface CostGraphConfig {
   comparePreviousPeriod: boolean;
   showForecast: boolean;
   /**
+   * Overlay a scenario model (`cost-scenarios.ts`) on the forecast: known
+   * future cost the trend cannot see, drawn as a second dashed line **beside**
+   * the trend rather than instead of it.
+   *
+   * Only meaningful alongside `showForecast`, and `costQueryForConfig` drops it
+   * when the forecast is off — a scenario with nothing to adjust is not a
+   * silent no-op, it is a request the server refuses.
+   *
+   * Absent on every config written before scenarios existed, which is exactly
+   * the graph those configs have always drawn.
+   */
+  scenarioModelId?: string | undefined;
+  /**
    * Which number to sum. Absent is `cash` — the basis every graph authored
    * before amortization existed was drawn on, so an old widget keeps showing
    * exactly what it showed.
    */
   costBasis?: CostBasis | undefined;
+  /**
+   * Draw **cost per unit of a business metric** instead of cost, by dividing
+   * this graph's spend by the metric's daily values. Absent — and it is absent
+   * on every config written before unit costs existed — the graph is exactly
+   * the spend graph it has always been.
+   *
+   * A mode on the existing config rather than a second widget kind, because
+   * everything above still means what it meant: the date range, the binning,
+   * the filters and the cost basis all describe the numerator. Only the four
+   * options that presuppose a *stack of series* stop applying, and the card
+   * ignores them rather than pretending otherwise: `groupBy` and `topN` (a
+   * per-group ratio would need a per-group denominator the org has not
+   * declared), `comparePreviousPeriod`, and `showForecast` (projecting a ratio
+   * means projecting two independent series and dividing, which is not the
+   * same thing as projecting one).
+   *
+   * The value is a metric **id**, not a key: a key can be renamed and the
+   * stored card must not silently start dividing by a different metric.
+   */
+  unitCostMetricId?: string | undefined;
+  /**
+   * `unit_cost` (the default when a metric is set) or `margin`. Only meaningful
+   * alongside `unitCostMetricId`, and margin is refused server-side for a
+   * metric that is not revenue-shaped.
+   */
+  unitCostMode?: UnitCostGraphMode | undefined;
+  /**
+   * Draw the org's billing rules applied — markups, discounts, reallocations.
+   *
+   * Absent (and it is absent on every config written before billing rules
+   * existed) draws collected spend, which is what those cards have always
+   * drawn. When set, the card is required to label itself: the response carries
+   * `adjustment` with the collected totals beside the adjusted ones, and
+   * `CostGraphCard` renders that caption unconditionally.
+   */
+  adjusted?: boolean | undefined;
 }
+
+/**
+ * The two ratios a unit-cost graph can draw. Spelled out here rather than
+ * imported from `business-metrics.ts` so `CostGraphConfig` stays free of a
+ * circular import; `UNIT_COST_MODES` there is asserted against it.
+ */
+export type UnitCostGraphMode = "unit_cost" | "margin";
 
 /** A budget widget is a dashboard view onto a budgets row — alerts outlive it. */
 export interface BudgetWidgetConfig {
@@ -1095,6 +1151,30 @@ export function totalPerBucket(series: CostQuerySeries[]): CostSeriesPoint[] {
   return [...totals.entries()]
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .map(([bucket, amount]) => ({ bucket, amount }));
+}
+
+/**
+ * The bucket a UTC day falls into, for a given binning.
+ *
+ * Must agree exactly with `bucketExpr` in `server-core/clickhouse/cost-readers`
+ * — weekly is Monday-start to match `toStartOfWeek(day, 1)`, monthly is the
+ * first of the month. Anything that has to line a client-side series up against
+ * a server-aggregated one (the forecast splice, the unit-cost denominator)
+ * calls this rather than re-deriving it, because a client that bucketed Sundays
+ * differently would divide one week's spend by another week's volume and the
+ * quotient would look entirely plausible.
+ *
+ * `cumulative` shares daily buckets: it is a running sum over them.
+ */
+export function costBucketStart(day: string, binning: CostBinningId): string {
+  if (binning === "monthly") return `${day.slice(0, 7)}-01`;
+  if (binning === "weekly") {
+    const d = new Date(`${day}T00:00:00.000Z`);
+    const dow = (d.getUTCDay() + 6) % 7;
+    d.setUTCDate(d.getUTCDate() - dow);
+    return d.toISOString().slice(0, 10);
+  }
+  return day;
 }
 
 /** Bucket daily forecast points to match the chart binning. */

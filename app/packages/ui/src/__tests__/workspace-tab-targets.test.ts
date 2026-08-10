@@ -3,6 +3,7 @@ import {
   dashboardTabTarget,
   accountTabTarget,
   costReportsTabTarget,
+  invoicesTabTarget,
   postureTabTarget,
   environmentDiffTabTarget,
   probesTabTarget,
@@ -47,6 +48,11 @@ describe("tab target factories", () => {
   it("costReportsTabTarget omits reportId for the list view", () => {
     expect(costReportsTabTarget()).toEqual({ kind: "cost-reports" });
     expect(costReportsTabTarget("r1")).toEqual({ kind: "cost-reports", reportId: "r1" });
+  });
+
+  it("invoicesTabTarget omits invoiceId for the list view", () => {
+    expect(invoicesTabTarget()).toEqual({ kind: "invoices" });
+    expect(invoicesTabTarget("inv-1")).toEqual({ kind: "invoices", invoiceId: "inv-1" });
   });
 
   it("resourceTabTarget normalizes id and defaults to details view", () => {
@@ -195,5 +201,26 @@ describe("cost-reports tab identity", () => {
 
   it("is never equal to another kind", () => {
     expect(workspaceTabTargetsEqual(costReportsTabTarget(), { kind: "costs" })).toBe(false);
+  });
+});
+
+describe("invoices tab identity", () => {
+  it("uses one tab id whatever invoice is open", () => {
+    expect(getWorkspaceTabId(invoicesTabTarget())).toBe("invoices");
+    expect(getWorkspaceTabId(invoicesTabTarget("inv-1"))).toBe("invoices");
+  });
+
+  it("has a fallback title matching both sidebars' label", () => {
+    expect(getWorkspaceTabFallbackTitle(invoicesTabTarget())).toBe("Invoices");
+  });
+
+  it("compares the invoice so the route sync retargets the open tab", () => {
+    expect(workspaceTabTargetsEqual(invoicesTabTarget("i1"), invoicesTabTarget("i1"))).toBe(true);
+    expect(workspaceTabTargetsEqual(invoicesTabTarget("i1"), invoicesTabTarget("i2"))).toBe(false);
+    expect(workspaceTabTargetsEqual(invoicesTabTarget(), invoicesTabTarget("i1"))).toBe(false);
+  });
+
+  it("is never equal to another kind", () => {
+    expect(workspaceTabTargetsEqual(invoicesTabTarget(), { kind: "cost-reports" })).toBe(false);
   });
 });

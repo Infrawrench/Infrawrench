@@ -380,6 +380,25 @@ export const PRELUDE = String.raw`
     },
   };
 
+  // Report the denominator of a unit cost: how many customers / requests / GB
+  // there were on a day. Deliberately NOT infra.metrics.write — that name is
+  // taken by the declared-metrics proxy above, whose get trap returns null for
+  // unknown keys, so write there would be null rather than a function.
+  const businessMetrics = {
+    write: async (metric, values) => {
+      const all = Array.isArray(values) ? values : [values];
+      let written = 0;
+      for (let i = 0; i < all.length; i += COST_CHUNK) {
+        const res = await rpc("businessMetrics.write", {
+          metric,
+          values: all.slice(i, i + COST_CHUNK),
+        });
+        written += (res && res.written) || 0;
+      }
+      return { written };
+    },
+  };
+
   ${GUEST_FETCH}
 
   // Raise an alert to whoever owns this workflow. Accepts either
@@ -423,6 +442,7 @@ export const PRELUDE = String.raw`
     metrics,
     event,
     costs,
+    businessMetrics,
     page,
     ai,
     waitForApproval,

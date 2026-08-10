@@ -24,10 +24,31 @@ The token is shown once. Copy it now; you cannot see it again.
 Send it as a bearer token:
 
 ```
-Authorization: Bearer ik_live_...
+Authorization: Bearer iwk_...
 ```
 
-See the [API reference](./openapi.md) for endpoints. Everything the UI does, the API does.
+```sh
+curl https://app.infrawrench.com/api/org/$ORG_ID/accounts \
+  -H "Authorization: Bearer $INFRAWRENCH_API_KEY"
+```
+
+A key works against every endpoint under `/api/org/<orgId>/` — accounts, resources, costs, dashboards, workflows, deployments, schedules, the audit log, org config — subject to the scope rules below and to the five exceptions in [what a key cannot reach](#what-a-key-cannot-reach). See the [API reference](./openapi.md) for the full list.
+
+## Keys are pinned to one organization
+
+A key belongs to the organization it was created in. Presenting it against a different `<orgId>` is a `403`, not an empty result — there is no such thing as a cross-org key. If you automate against several organizations, mint a key in each.
+
+## What a key cannot reach
+
+Some endpoints are acts a person performs, where "held the permission" is not the whole control. They answer `403` to any key, including one scoped `*` held by an Owner:
+
+- **Minting and revoking API keys.** A key that could mint keys could mint a longer-lived one, and revoking the first would not end the access. Listing keys is closed too.
+- **Billing.** Plan changes, payment methods and the customer portal.
+- **Push devices and notification preferences.** These describe someone's phone.
+- **Changing team membership** — invites, role assignment, custom roles, removals. Reading the team is allowed.
+- **Requesting, approving, denying or revoking [break-glass access](./break-glass-access.md).** Reading the queue is allowed.
+
+Your own account settings (password, two-factor, email address, active sessions), creating and deleting organizations, and the platform-admin surface are not org-scoped and have never accepted a key. They require a browser sign-in — and the account-security ones require a _recent_ one.
 
 ## Revoke
 
@@ -66,7 +87,11 @@ For automation that must survive staff changes, create the key under an account 
 
 ## Audit
 
-Every API call is attributed to the key in the [audit log](./audit-log.md), including the key’s name.
+Every state-changing call is attributed to the key in the [audit log](./audit-log.md), not just to the person who issued it — the entry carries the key's id, name and prefix alongside the owner. That is the difference between "Alice deleted the database" and "the `ci-deploy` key Alice issued deleted the database", which is the question you actually need answered when a token leaks.
+
+Filter the audit log to a single key with `?apiKeyId=<id>` on `GET /api/org/<orgId>/audit-logs`. Filtering by user is not a substitute: a person and every key they ever minted share one user id.
+
+<insert [Audit log filtered to one API key, showing the key name and prefix in the actor column next to the owner's name] here>
 
 ## Finding keys nobody uses
 

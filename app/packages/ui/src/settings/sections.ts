@@ -27,6 +27,12 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { key: "credential-hygiene", label: "Credential Hygiene", requiresPermission: "audit:read" },
   { key: "freezes", label: "Change Freezes" },
   { key: "tag-policy", label: "Tag Policy" },
+  { key: "cost-centres", label: "Cost Centres", requiresPermission: "costs:read" },
+  // Next to Cost Centres and Currency, the two other pages where one person's
+  // edit restates numbers everybody else reads. Visible on `costs:read` (a
+  // rule is part of the explanation for a figure); editing needs
+  // `org:settings:write`.
+  { key: "billing-rules", label: "Billing Rules", requiresPermission: "costs:read" },
   { key: "config", label: "Config as Code", requiresPermission: "config:read" },
   { key: "currency", label: "Currency" },
   { key: "cost-exports", label: "Cost Exports", requiresPermission: "costs:read" },

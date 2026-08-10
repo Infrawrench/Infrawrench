@@ -34,6 +34,7 @@ export interface PivotedChart {
 
 export const COMPARISON_KEY = "__previous__";
 export const FORECAST_KEY = "__forecast__";
+export const SCENARIO_KEY = "__scenario__";
 
 /**
  * Pivot per-group series into recharts rows keyed by bucket. Series order is
@@ -113,5 +114,57 @@ export function spliceForecast(
     } else {
       pivot.rows.push({ bucket: p.bucket, [FORECAST_KEY]: p.amount });
     }
+  }
+}
+
+/**
+ * Append the scenario-adjusted projection as a **second** overlay series,
+ * alongside the trend rather than in place of it.
+ *
+ * Deliberately a separate function and a separate data key from
+ * {@link spliceForecast}, because that separation is the feature's central
+ * rule: a reader must always be able to see what the trend said before
+ * somebody's assumptions touched it. Two lines on one chart is the whole point.
+ *
+ * Called after `spliceForecast`, so the rows the scenario needs already exist;
+ * it only ever writes {@link SCENARIO_KEY}, never a series value, so the stacks
+ * and the totals are identical whether or not a scenario is applied. Buckets
+ * outside the drawn range are ignored rather than appended — the scenario
+ * covers exactly the forecast's days, so this can only fire on a mismatch, and
+ * quietly widening the axis would be the wrong repair.
+ */
+export function spliceScenario(
+  pivot: PivotedChart,
+  response: CostQueryResponse,
+  binning: CostBinningId,
+): void {
+  const scenario = response.scenario;
+  if (!scenario || scenario.points.length === 0 || pivot.rows.length === 0) return;
+
+  const actualTotals = totalPerBucket(response.series);
+  const lastActual = actualTotals[actualTotals.length - 1];
+  const binned = binForecast(
+    scenario.points,
+    binning,
+    binning === "cumulative" ? lastActual?.amount : undefined,
+  );
+
+  // Anchor on the last observed bucket so the dashed line leaves the actuals
+  // from the same point the trend line does, rather than floating.
+  const lastRow = pivot.rows[pivot.rows.length - 1];
+  const anchorBucket = String(lastRow?.["bucket"] ?? "");
+
+  for (const p of binned) {
+    const existing = pivot.rows.find((r) => r["bucket"] === p.bucket);
+    if (existing) {
+      existing[SCENARIO_KEY] = ((existing[SCENARIO_KEY] as number) ?? 0) + p.amount;
+    } else {
+      pivot.rows.push({ bucket: p.bucket, [SCENARIO_KEY]: p.amount });
+    }
+  }
+
+  const anchor = pivot.rows.find((r) => r["bucket"] === anchorBucket);
+  if (anchor && lastActual && anchor[SCENARIO_KEY] === undefined) {
+    anchor[SCENARIO_KEY] = lastActual.amount;
   }
 }

@@ -1,7 +1,17 @@
 import type {
+  BillingRule,
   BudgetInput,
   BudgetWithStatus,
+  BusinessMetric,
+  BusinessMetricInput,
+  BusinessMetricValue,
+  BusinessMetricValueInput,
+  BusinessMetricWriteResult,
+  UnitCostQueryRequest,
+  UnitCostQueryResponse,
   CostAccountStatus,
+  CostAnnotation,
+  CostAnnotationInput,
   CostAlert,
   CostAlertEvent,
   CostAlertInput,
@@ -149,6 +159,31 @@ export function createWebCostsClient(orgId: string): CostsClient {
       apiGet<UntaggedSpendReport>(`/api/org/${orgId}/costs/untagged${rangeQuery(from, to)}`),
     getShowback: (from?: string, to?: string) =>
       apiGet<ShowbackReport>(`/api/org/${orgId}/costs/showback${rangeQuery(from, to)}`),
+    // Read-only: the panel only needs to know whether any rule is in force, so
+    // it can decide whether an "Apply billing rules" toggle means anything.
+    // Management is Settings → Billing Rules, behind `org:settings:write`.
+    listBillingRules: () => apiGet<BillingRule[]>(`/api/org/${orgId}/billing-rules`),
+    createBusinessMetric: (input: BusinessMetricInput) =>
+      apiPost<BusinessMetric>(`/api/org/${orgId}/business-metrics`, input),
+    updateBusinessMetric: (metricId: string, input: BusinessMetricInput) =>
+      apiPut<BusinessMetric>(
+        `/api/org/${orgId}/business-metrics/${encodeURIComponent(metricId)}`,
+        input,
+      ),
+    deleteBusinessMetric: async (metricId: string) => {
+      await apiDelete(`/api/org/${orgId}/business-metrics/${encodeURIComponent(metricId)}`);
+    },
+    listBusinessMetricValues: async (metricId: string, limit = 90) => {
+      const res = await apiGet<{ values: BusinessMetricValue[] }>(
+        `/api/org/${orgId}/business-metrics/${encodeURIComponent(metricId)}/values?limit=${limit}`,
+      );
+      return res.values;
+    },
+    writeBusinessMetricValues: (metricId: string, values: BusinessMetricValueInput[]) =>
+      apiPost<BusinessMetricWriteResult>(
+        `/api/org/${orgId}/business-metrics/${encodeURIComponent(metricId)}/values`,
+        { values },
+      ),
     getCreditBurndown: () => apiGet<CreditBurndown>(`/api/org/${orgId}/credits`),
     getCommitments: () => apiGet<CommitmentsFeed>(`/api/org/${orgId}/commitments`),
   };

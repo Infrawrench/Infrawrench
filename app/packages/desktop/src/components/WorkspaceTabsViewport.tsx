@@ -7,6 +7,7 @@ import {
   dashboardTabTarget,
   environmentDiffTabTarget,
   costReportsTabTarget,
+  invoicesTabTarget,
   resourceTabTarget,
   DeploymentsPanel,
   IssueFilingProvider,
@@ -27,9 +28,11 @@ import {
 } from "@/lib/workspace-tabs";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
 import { CostReportsPanel, type CostReportsClient } from "@infrawrench/ui/cost-reports";
+import { InvoicesPanel, type InvoicesClient } from "@infrawrench/ui/invoices";
 import { type OrphansClient, type RightsizingClient, type SchedulesClient } from "@infrawrench/ui";
 import { createDesktopCostsClient } from "@/lib/costs-client";
 import { createDesktopCostReportsClient } from "@/lib/cost-reports-client";
+import { createDesktopInvoicesClient } from "@/lib/invoices-client";
 import { createDesktopSchedulesClient } from "@/lib/schedules-client";
 import { createDesktopOrphansClient } from "@/lib/orphans-client";
 import { createDesktopRightsizingClient } from "@/lib/rightsizing-client";
@@ -69,6 +72,12 @@ let costReportsClient: CostReportsClient | null = null;
 function getCostReportsClient(): CostReportsClient {
   if (!costReportsClient) costReportsClient = createDesktopCostReportsClient();
   return costReportsClient;
+}
+
+let invoicesClient: InvoicesClient | null = null;
+function getInvoicesClient(): InvoicesClient {
+  if (!invoicesClient) invoicesClient = createDesktopInvoicesClient();
+  return invoicesClient;
 }
 
 let orphansClient: OrphansClient | null = null;
@@ -299,6 +308,29 @@ function renderPanel(
       ) : (
         <div className="h-full flex items-center justify-center px-8 text-center text-sm text-on-surface-faint">
           Cost reports live in Infrawrench Cloud — sign in and pick an organization to see them.
+        </div>
+      );
+    case "invoices":
+      // Cloud-only, like Costs and Cost reports: an invoice bills for spend
+      // collected server-side, so local mode has neither the customers nor the
+      // data. The tile is hidden without an org; this guard covers a restored
+      // tab.
+      return activeCloudOrgId ? (
+        <InvoicesPanel
+          // Keyed by org so switching org remounts and refetches rather than
+          // showing the previous org's customers.
+          key={activeCloudOrgId}
+          client={getInvoicesClient()}
+          invoiceId={t.invoiceId}
+          // The URL owns which invoice is open, so navigating is what records it
+          // on the tab and brings it back on reactivation.
+          onSelectInvoice={(invoiceId) =>
+            void navigate(getWorkspaceNavigateArgs(invoicesTabTarget(invoiceId)))
+          }
+        />
+      ) : (
+        <div className="h-full flex items-center justify-center px-8 text-center text-sm text-on-surface-faint">
+          Invoices live in Infrawrench Cloud — sign in and pick an organization to see them.
         </div>
       );
     case "graph":

@@ -15,7 +15,7 @@ The audit log records every state-changing action in the organization — resour
 For each entry:
 
 - **Action** — verb + object (e.g. “created Droplet”, “started SSH session”).
-- **Actor** — the user (or API key) that did it.
+- **Actor** — the user that did it, and — when the call came in on an [API key](./api-keys.md) — which key. Both, not one or the other: a key acts as its owner, so the owner alone cannot tell you whether a person or a token was at the other end.
 - **Target** — the resource or account affected, with a link.
 - **Time** — wall-clock in your timezone; hover for UTC.
 - **Source** — web UI, API, or automated (sync, refresh).
@@ -23,6 +23,8 @@ For each entry:
 ## Filtering
 
 Filter by actor, action type, target type, time range, or text. Combine filters.
+
+Over the API, `GET /api/org/<orgId>/audit-logs` also takes `apiKeyId` — everything one credential did, which is the first thing to pull when a token leaks. `userId` cannot answer that question on its own, because a person and every key they minted share one user id.
 
 ## Export
 

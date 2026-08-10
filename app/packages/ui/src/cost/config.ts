@@ -182,6 +182,89 @@ export {
   type SavedCostFilterInput,
   type SavedCostFilterReferent,
   type SavedCostFilterReferentKind,
+  // Scenario models — known future cost overlaid on a forecast. The arithmetic
+  // (`applyCostScenario`) is shared with the server, which is what keeps a
+  // chart's scenario line and a budget's adjusted threshold in agreement.
+  COST_SCENARIO_ADJUSTMENT_KINDS,
+  COST_SCENARIO_ADJUSTMENT_KIND_LABELS,
+  COST_SCENARIO_ADJUSTMENT_KIND_DESCRIPTIONS,
+  COST_SCENARIO_PERIODS,
+  COST_SCENARIO_PERIOD_LABELS,
+  COST_SCENARIO_LIMITS,
+  DEFAULT_COST_SCENARIO_MODEL_INPUT,
+  costScenarioModelInputError,
+  applyCostScenario,
+  describeCostScenarioAdjustment,
+  describeCostScenarioModel,
+  describeCostScenarioReferents,
+  type CostScenarioAdjustment,
+  type CostScenarioAdjustmentKind,
+  type CostScenarioContribution,
+  type CostScenarioModel,
+  type CostScenarioModelInput,
+  type CostScenarioPeriod,
+  type CostScenarioProjection,
+  type CostScenarioReferent,
+  type CostScenarioReferentKind,
+  // Billing rules — the org's own adjustments to collected spend. The
+  // arithmetic and the ordering model are shared with the server, which is what
+  // keeps an adjusted chart and an adjusted budget in agreement.
+  BILLING_RULE_KINDS,
+  BILLING_RULE_KIND_LABELS,
+  BILLING_RULE_KIND_DESCRIPTIONS,
+  BILLING_RULE_FIXED_PERIODS,
+  BILLING_RULE_TARGET_KINDS,
+  BILLING_RULE_LIMITS,
+  DEFAULT_BILLING_RULE_INPUT,
+  billingRuleInputError,
+  normalizeBillingRuleInput,
+  orderBillingRules,
+  describeBillingRule,
+  describeBillingRuleMatch,
+  describeBillingRuleAdjustment,
+  fixedRuleAmountForRange,
+  type BillingRule,
+  type BillingRuleAdjustment,
+  type BillingRuleFixedPeriod,
+  type BillingRuleInput,
+  type BillingRuleKind,
+  type BillingRuleMatch,
+  type BillingRuleTargetKind,
+  type CostAdjustmentRule,
+  type CostAdjustmentSummary,
+  // Business metrics — the denominators unit costs divide by. Re-exported here
+  // so cost components keep importing one module.
+  BUSINESS_METRIC_KINDS,
+  BUSINESS_METRIC_KIND_LABELS,
+  BUSINESS_METRIC_KIND_DESCRIPTIONS,
+  BUSINESS_METRIC_LIMITS,
+  BUSINESS_METRIC_KEY_PATTERN,
+  BUSINESS_METRIC_KEY_HELP,
+  DEFAULT_BUSINESS_METRIC_INPUT,
+  normalizeBusinessMetricKey,
+  unitCostQueryForConfig,
+  UNIT_COST_MODES,
+  UNIT_COST_MODE_LABELS,
+  UNIT_COST_GAP_REASONS,
+  UNIT_COST_GAP_REASON_LABELS,
+  isPartialUnitCostPoint,
+  unitCostUnitLabel,
+  formatUnitCostValue,
+  describeUnitCostCaveats,
+  type BusinessMetric,
+  type BusinessMetricCoverage,
+  type BusinessMetricInput,
+  type BusinessMetricKind,
+  type BusinessMetricValue,
+  type BusinessMetricValueInput,
+  type BusinessMetricValueSource,
+  type BusinessMetricWriteResult,
+  type UnitCostGapReason,
+  type UnitCostMode,
+  type UnitCostPoint,
+  type UnitCostQueryRequest,
+  type UnitCostQueryResponse,
+  type UnitCostSeries,
 } from "@infrawrench/client-core";
 
 export const costFilterSchema = z.object({
@@ -219,11 +302,31 @@ export const costGraphConfigSchema = z.object({
   comparePreviousPeriod: z.boolean().default(false),
   showForecast: z.boolean().default(false),
   /**
+   * Overlay a scenario model on the forecast. Optional, never defaulted:
+   * absent means the graph draws the bare trend, which is what every config
+   * written before scenarios existed does.
+   */
+  scenarioModelId: z.string().min(1).optional(),
+  /**
    * Optional rather than defaulted: an absent basis is "cash", and defaulting
    * it here would rewrite every stored widget config the first time it is
    * re-saved, for no change in what it draws.
    */
   costBasis: z.enum(COST_BASES).optional(),
+  /**
+   * Divide this graph's spend by a business metric and draw cost per unit.
+   * Optional for the same reason `costBasis` is: absent means "a spend graph",
+   * which is what every config written before unit costs existed is.
+   */
+  unitCostMetricId: z.string().min(1).optional(),
+  unitCostMode: z.enum(UNIT_COST_MODES).optional(),
+  /**
+   * Draw the org's billing rules applied. Optional, never defaulted: absent
+   * means collected spend, which is what every card written before billing
+   * rules existed draws — and the card labels itself from the response's
+   * `adjustment` field whenever this is on.
+   */
+  adjusted: z.boolean().optional(),
 });
 
 /** A budget widget is a dashboard view onto a budgets row — alerts outlive it. */
@@ -557,4 +660,167 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof currencySettingsSchema>, OrgCurrencySettings>,
   Exact<z.infer<typeof exchangeRateInputSchema>, ExchangeRateInput>,
   Exact<z.infer<typeof savedCostFilterInputSchema>, SavedCostFilterInput>,
+  Exact<z.infer<typeof costScenarioAdjustmentSchema>, CostScenarioAdjustment>,
+  Exact<z.infer<typeof costScenarioModelInputSchema>, CostScenarioModelInput>,
+  Exact<z.infer<typeof billingRuleMatchSchema>, BillingRuleMatch>,
+  Exact<z.infer<typeof billingRuleAdjustmentSchema>, BillingRuleAdjustment>,
+  Exact<z.infer<typeof billingRuleInputSchema>, BillingRuleInput>,
+];
+
+/* ------------------------------------------------------------------ *
+ * Business metrics and unit costs — POST/PUT /business-metrics,
+ * POST /business-metrics/{id}/values, POST /business-metrics/{id}/unit-costs.
+ * ------------------------------------------------------------------ */
+
+const businessMetricKey = z
+  .string()
+  .transform((v) => v.trim().toLowerCase())
+  .pipe(
+    z
+      .string()
+      .min(1)
+      .max(BUSINESS_METRIC_LIMITS.maxKeyLength)
+      .regex(BUSINESS_METRIC_KEY_PATTERN, "expected a lowercase slug, e.g. active-customers"),
+  );
+
+/**
+ * Create/update body for a business metric.
+ *
+ * Shape-only for the currency rule, deliberately: "a revenue metric must state
+ * a currency, and a count metric must not" is enforced in
+ * `services/business-metrics.ts` (and by a database check constraint) so the
+ * message is one sentence explaining *why* rather than a zod union's rendering
+ * of two failed branches.
+ */
+export const businessMetricInputSchema = z.object({
+  key: businessMetricKey,
+  name: z.string().min(1).max(BUSINESS_METRIC_LIMITS.maxNameLength),
+  /** Singular unit label — "customer", "request", "GB". Purely display. */
+  unit: z.string().min(1).max(BUSINESS_METRIC_LIMITS.maxUnitLength),
+  description: z.string().max(BUSINESS_METRIC_LIMITS.maxDescriptionLength).optional(),
+  kind: z.enum(BUSINESS_METRIC_KINDS),
+  /** Required when `kind` is "currency", rejected otherwise. */
+  currency: z.string().regex(CURRENCY_CODE_PATTERN).optional(),
+  costScope: z.array(costFilterSchema).max(BUSINESS_METRIC_LIMITS.maxScopeFilters).optional(),
+  savedFilterId: z.string().min(1).optional(),
+});
+
+/**
+ * One reported day. Re-reporting a day restates it rather than accumulating —
+ * see `server-core/cost/metric-ingest.ts` for why that is the only ingest
+ * semantics an unattended nightly job can safely retry.
+ */
+export const businessMetricValueInputSchema = z.object({
+  date: isoDate,
+  value: z.number().finite(),
+});
+
+/** The batch envelope for `POST /business-metrics/{id}/values`. */
+export const businessMetricValuesBodySchema = z.object({
+  values: z.array(businessMetricValueInputSchema).max(BUSINESS_METRIC_LIMITS.maxValuesPerCall),
+});
+
+/**
+ * The unit-cost query.
+ *
+ * There is no `groupBy` and no `topN`, and their absence is the contract: a
+ * per-group ratio needs a per-group denominator, and the org has declared one
+ * series of values. Offering the field would let a caller divide each service's
+ * spend by the *whole* customer count and get numbers that do not sum to the
+ * real one.
+ */
+export const unitCostQueryRequestSchema = z.object({
+  from: isoDate,
+  to: isoDate,
+  binning: z.enum(COST_BINNINGS),
+  /** Absent is "unit_cost". */
+  mode: z.enum(UNIT_COST_MODES).optional(),
+  /** Narrowing on top of the metric's own scope — never a replacement for it. */
+  filters: z.array(costFilterSchema).optional(),
+  query: z.string().max(COST_QUERY_MAX_LENGTH).optional(),
+  savedFilterId: z.string().min(1).optional(),
+  costBasis: z.enum(COST_BASES).optional(),
+  chargeTypes: z.array(z.enum(COST_CHARGE_TYPES)).optional(),
+  /** Ignored for `margin`, which always converts to the metric's currency. */
+  displayCurrency: z.string().regex(CURRENCY_CODE_PATTERN).optional(),
+});
+
+/** Same compile-time proof as above, for the unit-cost half of the contract. */
+export type SchemasMatchBusinessMetricContract = [
+  Exact<z.infer<typeof businessMetricInputSchema>, BusinessMetricInput>,
+  Exact<z.infer<typeof businessMetricValueInputSchema>, BusinessMetricValueInput>,
+  Exact<z.infer<typeof unitCostQueryRequestSchema>, UnitCostQueryRequest>,
+];
+
+/* ------------------------------------------------------------------ *
+ * Managed accounts and invoices — POST/PUT /managed-accounts,
+ * POST/PUT /invoices, POST /invoices/{id}/void.
+ * ------------------------------------------------------------------ */
+
+/**
+ * A managed account is a customer. Note what is *not* in this schema: no tag
+ * match, no priority, no rule of any kind. Which spend belongs to a customer is
+ * already answered by cost centres and their allocation rules, and a second
+ * vocabulary over the same columns would eventually give the organisation two
+ * answers to one question.
+ *
+ * The semantic rules — the scope ids existing, and belonging to no other
+ * customer — live in `server-core/src/cost/managed-accounts.ts`, because they
+ * are questions about other rows that no schema can answer.
+ */
+export const managedAccountInputSchema = z.object({
+  name: z.string().min(1).max(MANAGED_ACCOUNT_LIMITS.maxNameLength),
+  contactName: z.string().max(MANAGED_ACCOUNT_LIMITS.maxContactNameLength).nullish(),
+  contactEmail: z.string().max(MANAGED_ACCOUNT_LIMITS.maxContactEmailLength).nullish(),
+  billingAddress: z.string().max(MANAGED_ACCOUNT_LIMITS.maxAddressLength).nullish(),
+  billingCurrency: z.string().regex(CURRENCY_CODE_PATTERN),
+  costBasis: z.enum(COST_BASES).optional(),
+  applyBillingRules: z.boolean().optional(),
+  notes: z.string().max(MANAGED_ACCOUNT_LIMITS.maxNotesLength).nullish(),
+  costCentreIds: z.array(z.string().min(1)).max(MANAGED_ACCOUNT_LIMITS.maxCostCentres).default([]),
+  accountIds: z.array(z.string().min(1)).max(MANAGED_ACCOUNT_LIMITS.maxAccounts).default([]),
+});
+
+/**
+ * Raising an invoice. No status field: a new invoice is always a draft, because
+ * generating and issuing are two acts and letting one call do both would mean a
+ * mistyped period could reach a customer with nobody having read the numbers.
+ *
+ * No currency or scope either — both come from the customer, so an invoice
+ * cannot be raised over a scope its customer does not own.
+ */
+export const managedInvoiceInputSchema = z.object({
+  managedAccountId: z.string().min(1),
+  periodFrom: isoDate,
+  periodTo: isoDate,
+  notes: z.string().max(MANAGED_INVOICE_LIMITS.maxNotesLength).nullish(),
+  supersedesInvoiceId: z.string().min(1).nullish(),
+});
+
+/** Editing a draft. Accepted only while the invoice is a draft; see the service. */
+export const managedInvoiceUpdateSchema = z.object({
+  periodFrom: isoDate,
+  periodTo: isoDate,
+  notes: z.string().max(MANAGED_INVOICE_LIMITS.maxNotesLength).nullish(),
+});
+
+/**
+ * Voiding. `reason` is required and non-empty: it is the only record of why a
+ * customer was sent an invoice that was then withdrawn.
+ *
+ * `supersede` raises the corrective draft in the same act, linked both ways to
+ * the original — the common case, and doing it in one call is what keeps the
+ * pair from being left half-made by a failed second request.
+ */
+export const managedInvoiceVoidSchema = z.object({
+  reason: z.string().min(1).max(MANAGED_INVOICE_LIMITS.maxVoidReasonLength),
+  supersede: z.boolean().default(false),
+});
+
+/**
+ * Compile-time proof that the invoice schemas still parse to exactly the wire
+ * types in client-core. Same trick as the cost contract above.
+ */
+export type SchemasMatchManagedAccountContract = [
+  Exact<z.infer<typeof managedInvoiceUpdateSchema>, ManagedInvoiceUpdate>,
 ];

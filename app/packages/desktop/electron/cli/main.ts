@@ -16,9 +16,13 @@ import { cmdMetrics } from "./commands/metrics";
 import { cmdExport } from "./commands/export";
 import { cmdEstimate } from "./commands/estimate";
 import { cmdCosts, cmdCostAnomalies, cmdCostAlerts } from "./commands/costs";
+import { cmdBusinessMetrics, cmdUnitCosts } from "./commands/unit-costs";
+import { cmdScenarios, cmdApplyScenario } from "./commands/scenarios";
 import { cmdReports, cmdRunReport, cmdSendReport } from "./commands/reports";
 import { cmdExports, cmdRunExport } from "./commands/exports";
 import { cmdTags, cmdShowback } from "./commands/tags";
+import { cmdBillingRules, cmdBillingRule } from "./commands/billing-rules";
+import { cmdInvoice, cmdInvoiceCustomers, cmdInvoices } from "./commands/invoices";
 import { cmdOrphans } from "./commands/orphans";
 import { cmdOversized } from "./commands/oversized";
 import { cmdAlerts, cmdAlertEvents } from "./commands/alerts";
@@ -82,7 +86,27 @@ COMMANDS
                       last run's status and error
   exports run <n|id>  run one export now and list the objects it wrote
   tags                org tag policy, per-account compliance & untagged spend   [--last 30d]
-  showback            spend by cost centre via the org's allocation rules   [--last 30d]
+  showback            spend by cost centre via the org's allocation rules, as an indented
+                      tree — a parent's bar is its subtree total   [--last 30d]
+  billing-rules       the org's own adjustments to collected spend (markups, discounts, fixed
+                      charges, reallocations) — why a report may not match the invoice
+  billing-rules <n>   one rule in full, by name or id
+  invoices            invoices raised against managed accounts (customers), newest first — a
+                      draft's total is not computed in the list, an issued one is frozen
+  invoices customers  the managed accounts themselves: billing currency, cost basis and the
+                      cost centres whose spend is theirs
+  invoices <n|id>     one invoice in full, by number, id or customer — lines, the adjustments
+                      applied, the rate used and the day it was read
+  unit-costs          the org's business metrics (the denominators unit costs divide by) and
+                      how well each one is being reported
+  scenarios           scenario models — known future cost the trend can't see (a purchase, a
+                      new team, a migration)
+  scenarios <name>    apply one to the forecast; prints the unadjusted trend alongside, always
+                      [--last 30d]
+  unit-costs <key>    cost per unit of a business metric over time — a period with no reported
+                      value prints as "—", never as 0   [--last 30d]
+                      [--group-by daily|weekly|monthly|cumulative] [--basis cash|amortized]
+                      [--currency USD] [--where "…"] [--margin  revenue metrics only]
   orphans             likely-wasted resources (unattached volumes, idle IPs) with reasons + cost
                       (--local scans this machine's workspace; no cost column without the cloud)
   oversized           machines whose 14-day p95 utilisation sits well under their size, with the
@@ -174,6 +198,9 @@ FLAGS
   --filter <name|id>  costs: apply a saved cost filter by reference — resolved on the server
                       at query time, so it always means what it means everywhere else; combines
                       with --where by AND
+  --margin            unit-costs: draw (revenue − cost) ÷ revenue instead of cost per unit.
+                      Only for a metric declared revenue-shaped — the server refuses it for a
+                      count metric rather than returning a plausible wrong number
   --source <name>     who is pushing (required by page and costs push)
   --key <k>           page throttle key   --title <t>   --cooldown <min>   --voice
   -f, --file <path>   JSON rows for costs push / config document (stdin when omitted)
@@ -382,6 +409,53 @@ export async function runCli(): Promise<void> {
         break;
       case "showback":
         await cmdShowback(ctx, parsed.range);
+        break;
+      // Read-only on purpose. Writing a markup changes every figure the org
+      // reports about itself and rides `org:settings:write`; that is a
+      // considered act with a form and an audit entry behind it, not something
+      // to make one flag away in a shell.
+      case "billing-rules":
+        if (rest.length > 0) {
+          await cmdBillingRule(ctx, rest.join(" "));
+          break;
+        }
+        await cmdBillingRules(ctx);
+        break;
+      // Read-only on purpose. Approving an invoice freezes the figures a
+      // customer will be sent and sending one states that they have them;
+      // both ride `invoices:issue` and carry an audit entry naming a person,
+      // which is not a thing to make one flag away in a shell.
+      case "invoices":
+        if (rest[0] === "customers") {
+          await cmdInvoiceCustomers(ctx);
+          break;
+        }
+        if (rest.length > 0) {
+          await cmdInvoice(ctx, rest.join(" "));
+          break;
+        }
+        await cmdInvoices(ctx);
+        break;
+      // Not `metrics` — that verb already charts a resource's provider metrics,
+      // and taking it would break a shipped command. With no argument this
+      // lists the org's business metrics; with a key it draws the ratio.
+      case "unit-costs":
+        if (rest[0]) {
+          await cmdUnitCosts(ctx, rest.join(" "), parsed.range, parsed.margin);
+          break;
+        }
+        await cmdBusinessMetrics(ctx);
+        break;
+      // Bare `scenarios` lists the org's models; with a name or id it applies
+      // one to the forecast and prints the trend beside it. There is no verb
+      // for the apply because there is nothing destructive to guard — and the
+      // trend is always printed, so the read is never ambiguous.
+      case "scenarios":
+        if (rest.length > 0) {
+          await cmdApplyScenario(ctx, rest.join(" "), parsed.range);
+          break;
+        }
+        await cmdScenarios(ctx);
         break;
       case "orphans":
         await cmdOrphans(ctx);
