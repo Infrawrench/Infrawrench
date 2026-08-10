@@ -31,6 +31,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     supportsTablet: true,
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
+      ITSAppUsesNonExemptEncryption: false,
     },
     // Everything we push is an alert, so the server sends every notification at
     // `interruptionLevel: "time-sensitive"` (see server-core `push/dispatch.ts`).
