@@ -29,6 +29,11 @@ function page(p: Page) {
 /**
  * A context whose `post` answers each successive query from `responses`,
  * recording the bodies so the grouping/filter shape can be asserted.
+ *
+ * A query a test does not declare answers `{}` — what the HTTP helper hands
+ * back for Azure's 204 No Content, i.e. "no spend in this window". A test that
+ * says nothing about a pass is therefore a test about a subscription that pass
+ * finds nothing for, rather than a crash.
  */
 function ctxFor(responses: Array<unknown | Error>) {
   const bodies: Array<Record<string, never>> = [];
@@ -37,7 +42,7 @@ function ctxFor(responses: Array<unknown | Error>) {
     bodies.push(body as Record<string, never>);
     const next = responses[call++];
     if (next instanceof Error) throw next;
-    return next;
+    return next ?? {};
   });
   const ctx = {
     get: vi.fn(),
@@ -100,15 +105,16 @@ describe("mapAzureChargeType", () => {
 });
 
 describe("fetchAzureCostData query shape", () => {
-  it("splits into two consumption passes and an attribution pass, inside Azure's 2-grouping limit", async () => {
+  it("splits into two consumption passes and two attribution passes, inside Azure's 2-grouping limit", async () => {
     const { ctx, bodies } = ctxFor([
       page({ columns: USAGE_COLUMNS, rows: [] }),
       page({ columns: USAGE_COLUMNS, rows: [] }),
       page({ columns: ATTRIBUTION_COLUMNS, rows: [] }),
+      page({ columns: ATTRIBUTION_COLUMNS, rows: [] }),
     ]);
     await fetchAzureCostData(ctx, RANGE);
 
-    expect(bodies).toHaveLength(3);
+    expect(bodies).toHaveLength(4);
     for (const body of bodies) {
       // "Query can have up to 2 group by clauses" — Microsoft.CostManagement.
       expect(groupingOf(body).length).toBeLessThanOrEqual(2);
@@ -134,6 +140,20 @@ describe("fetchAzureCostData query shape", () => {
     // Deliberately unfiltered: QueryOperatorType has only `In`, so a filtered
     // complement would drop money under any charge type Azure adds later.
     expect(filterOf(bodies[2])).toBeUndefined();
+
+    // Unused commitment hours exist only on the amortized dataset, so they are
+    // unreachable from any of the three queries above. Naming the two charge
+    // types is safe here where a complement would not be: anything Azure adds
+    // later is still collected whole by the unfiltered pass.
+    expect(groupingOf(bodies[3])).toEqual(["ChargeType", "BenefitId"]);
+    expect(typeOf(bodies[3])).toBe("AmortizedCost");
+    expect(filterOf(bodies[3])).toEqual({
+      dimensions: {
+        name: "ChargeType",
+        operator: "In",
+        values: ["UnusedReservation", "UnusedSavingsPlan"],
+      },
+    });
   });
 
   it("follows nextLink within a pass", async () => {
@@ -498,6 +518,197 @@ describe("fetchAzureCostData row mapping", () => {
       page({ columns: ["Something", "Else"], rows: [[1, 2]] }),
     ]);
     await expect(fetchAzureCostData(broken.ctx, RANGE)).rejects.toThrow(/unexpected column set/);
+  });
+});
+
+describe("fetchAzureCostData unused commitment hours", () => {
+  /** Cash usage 4 / amortized usage 10, i.e. 6 of covered spend in the cell. */
+  const COVERED_CELL = () => [
+    page({ columns: USAGE_COLUMNS, rows: [[4, 20260701, "Virtual Machines", "eastus", "USD"]] }),
+    page({ columns: USAGE_COLUMNS, rows: [[10, 20260701, "Virtual Machines", "eastus", "USD"]] }),
+  ];
+
+  const UNUSED_PAGE = () =>
+    page({
+      columns: ATTRIBUTION_COLUMNS,
+      rows: [
+        [80, 20260701, "UnusedReservation", RESERVATION_ARM_ID, "USD"],
+        [15, 20260701, "UnusedSavingsPlan", SAVINGS_PLAN_ARM_ID, "USD"],
+      ],
+    });
+
+  it("collects them as amortized-only commitment fees attributed to the benefit", async () => {
+    const { ctx } = ctxFor([
+      ...COVERED_CELL(),
+      page({ columns: ATTRIBUTION_COLUMNS, rows: [] }),
+      UNUSED_PAGE(),
+    ]);
+    const { rows } = await fetchAzureCostData(ctx, RANGE);
+
+    const fees = rows.filter((r) => r.chargeType === "commitment_fee");
+    expect(fees).toEqual([
+      {
+        date: "2026-07-01",
+        service: "",
+        region: "",
+        currency: "USD",
+        // Amortized-only: the money left the account when the commitment was
+        // bought, and this row is what it bought and nobody used.
+        amount: 0,
+        amortizedAmount: 80,
+        chargeType: "commitment_fee",
+        commitmentId: "/providers/microsoft.capacity/reservationorders/ord-1/reservations/res-1",
+      },
+      {
+        date: "2026-07-01",
+        service: "",
+        region: "",
+        currency: "USD",
+        amount: 0,
+        amortizedAmount: 15,
+        chargeType: "commitment_fee",
+        commitmentId:
+          "/providers/microsoft.billingbenefits/savingsplanorders/sp-1/savingsplans/sp-a",
+      },
+    ]);
+  });
+
+  it("moves no cash whatsoever", async () => {
+    // The whole safety property of this pass: `UnusedReservation` and
+    // `UnusedSavingsPlan` exist only on the amortized dataset, so an amortized
+    // total gains the wasted money and every cash total is byte-identical.
+    const withUnused = ctxFor([
+      ...COVERED_CELL(),
+      page({ columns: ATTRIBUTION_COLUMNS, rows: [[7, 20260701, "Tax", "", "USD"]] }),
+      UNUSED_PAGE(),
+    ]);
+    const without = ctxFor([
+      ...COVERED_CELL(),
+      page({ columns: ATTRIBUTION_COLUMNS, rows: [[7, 20260701, "Tax", "", "USD"]] }),
+      page({ columns: ATTRIBUTION_COLUMNS, rows: [] }),
+    ]);
+
+    const a = await fetchAzureCostData(withUnused.ctx, RANGE);
+    const b = await fetchAzureCostData(without.ctx, RANGE);
+
+    const cash = (rows: typeof a.rows) => rows.reduce((n, r) => n + r.amount, 0);
+    expect(cash(a.rows)).toBe(cash(b.rows));
+    expect(cash(a.rows)).toBe(11); // 4 of on-demand usage + 7 of tax
+    // The amortized side is the one that gains: 4 on-demand + 6 covered + 7 tax
+    // + 95 of committed hours nobody used.
+    const amortized = (rows: typeof a.rows) =>
+      rows.reduce((n, r) => n + (r.amortizedAmount ?? 0), 0);
+    expect(amortized(b.rows)).toBe(17);
+    expect(amortized(a.rows)).toBe(112);
+  });
+
+  it("never enters the covered-usage decomposition", async () => {
+    // `covered = amortized − cash` is computed from the two `ChargeType In
+    // ("Usage")` queries, and an unused row is not a Usage row on either
+    // dataset. Feeding one in would double-count the same committed money as
+    // delivered *and* as wasted — here, 86 of "coverage" instead of 6.
+    const { ctx, bodies } = ctxFor([
+      ...COVERED_CELL(),
+      page({ columns: ATTRIBUTION_COLUMNS, rows: [] }),
+      UNUSED_PAGE(),
+    ]);
+    const { rows } = await fetchAzureCostData(ctx, RANGE);
+
+    const covered = rows.filter((r) => r.chargeType === "commitment_covered_usage");
+    expect(covered).toHaveLength(1);
+    expect(covered[0]!.amortizedAmount).toBe(6);
+    // The filter is what makes that structural rather than incidental: the
+    // amortized *consumption* query cannot return an unused row at all.
+    expect(filterOf(bodies[1])).toEqual({
+      dimensions: { name: "ChargeType", operator: "In", values: ["Usage"] },
+    });
+  });
+
+  it("merges an unused row with the purchase it shares a host key with", async () => {
+    // Same day, same benefit, both `commitment_fee`, and the attribution rows
+    // carry no service or region — so these two provider rows are one row as
+    // far as `cost_daily`'s sort key is concerned. Pushed separately they would
+    // be two versions of one ReplacingMergeTree row and `FINAL` would keep
+    // whichever landed last, silently dropping the other basis.
+    const { ctx } = ctxFor([
+      ...COVERED_CELL(),
+      page({
+        columns: ATTRIBUTION_COLUMNS,
+        rows: [[1200, 20260701, "Purchase", RESERVATION_ARM_ID, "USD"]],
+      }),
+      page({
+        columns: ATTRIBUTION_COLUMNS,
+        rows: [[80, 20260701, "UnusedReservation", RESERVATION_ARM_ID, "USD"]],
+      }),
+    ]);
+    const { rows } = await fetchAzureCostData(ctx, RANGE);
+
+    const fees = rows.filter((r) => r.chargeType === "commitment_fee");
+    expect(fees).toHaveLength(1);
+    expect(fees[0]).toMatchObject({
+      // Cash from the purchase; amortized is what the term wasted, the
+      // purchase itself having been redistributed into the covered rows.
+      amount: 1200,
+      amortizedAmount: 80,
+      commitmentId: "/providers/microsoft.capacity/reservationorders/ord-1/reservations/res-1",
+    });
+  });
+
+  it("states a purchase's amortized zero on the strength of unused hours alone", async () => {
+    // A commitment covering nothing produces no amortized *consumption* rows at
+    // all, so the old "did the amortized pass return anything" test would read
+    // as "no amortized data" and leave the purchase at full cash on both bases
+    // — double-counting it against the unused hours that hold the same money.
+    const { ctx } = ctxFor([
+      page({ columns: USAGE_COLUMNS, rows: [] }),
+      NO_AMORTIZED(),
+      page({
+        columns: ATTRIBUTION_COLUMNS,
+        rows: [[1200, 20260701, "Purchase", RESERVATION_ARM_ID, "USD"]],
+      }),
+      page({
+        columns: ATTRIBUTION_COLUMNS,
+        rows: [[300, 20260701, "UnusedReservation", RESERVATION_ARM_ID, "USD"]],
+      }),
+    ]);
+    const { rows } = await fetchAzureCostData(ctx, RANGE);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ amount: 1200, amortizedAmount: 300 });
+  });
+
+  it("does not ask for them when the subscription refuses the amortized dataset", async () => {
+    // Pay-as-you-go: `AmortizedCost` is refused outright, so a second query
+    // against it would spend a QPU learning the same refusal twice.
+    const { ctx, bodies } = ctxFor([
+      page({ columns: USAGE_COLUMNS, rows: [[12, 20260701, "Virtual Machines", "eastus", "USD"]] }),
+      new Error("Azure API POST 400: AmortizedCost is not supported for this subscription"),
+      page({ columns: ATTRIBUTION_COLUMNS, rows: [] }),
+    ]);
+    const result = await fetchAzureCostData(ctx, RANGE);
+
+    expect(bodies).toHaveLength(3);
+    expect(result.degraded).toBeFalsy();
+    expect(result.rows).toHaveLength(1);
+  });
+
+  it("survives a refusal of the unused pass alone", async () => {
+    // Same posture as the amortized consumption pass: the wasted-commitment
+    // figure is lost, nothing else is, and the collection must not be flagged
+    // degraded — that flag suppresses the host's reconciliation.
+    const { ctx } = ctxFor([
+      ...COVERED_CELL(),
+      page({ columns: ATTRIBUTION_COLUMNS, rows: [[7, 20260701, "Tax", "", "USD"]] }),
+      new Error("Azure API POST 429: Too many requests"),
+    ]);
+    const result = await fetchAzureCostData(ctx, RANGE);
+
+    expect(result.degraded).toBeFalsy();
+    expect(result.rows.map((r) => r.chargeType)).toEqual([
+      "usage",
+      "commitment_covered_usage",
+      "tax",
+    ]);
   });
 });
 

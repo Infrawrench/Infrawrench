@@ -65,6 +65,7 @@ Cost rows are split by **charge type**, so a month with a reservation purchase i
 | Usage, covered by a reservation or savings plan       | Commitment-covered usage |
 | Purchase, when a reservation or savings plan backs it | Commitment fee           |
 | Purchase, otherwise (Marketplace, support)            | Other                    |
+| UnusedReservation, UnusedSavingsPlan                  | Commitment fee           |
 | Refund                                                | Refund                   |
 | Credit                                                | Credit                   |
 | Tax                                                   | Tax                      |
@@ -87,8 +88,10 @@ This is what makes the [Commitments](../features/commitments.md) coverage figure
 
 Two things follow from it:
 
-- **A reservation purchase is worth zero on the amortized basis**, deliberately. Its money has been redistributed to the covered hours, and counting it again on its purchase day would show the purchase at full price alongside every amortized slice of it.
-- **Amortized totals exclude unused commitment hours.** Azure reports those as their own charge types in the amortized dataset only, and this pass does not collect them. Cash totals and coverage are unaffected; an amortized grand total is short by exactly the money a reservation wasted.
+- **A reservation purchase is worth zero on the amortized basis**, deliberately. Its money has been redistributed to the covered hours and to the unused ones below, and counting it again on its purchase day would show the purchase at full price alongside every amortized slice of it.
+- **Unused commitment hours are collected too.** Azure reports what a reservation or savings plan wasted as `UnusedReservation` and `UnusedSavingsPlan`, and only in the amortized dataset. Infrawrench collects them as **commitment fees worth nothing in cash and their real value on the amortized basis**, attributed to the reservation or savings plan that went unused. So an amortized grand total now includes the money a commitment wasted — and no cash total moves, because these rows have no cash side at all.
+
+  They are deliberately **not** counted as covered usage: coverage and utilization measure what a commitment _delivered_, and idle hours are the opposite of that. An underused reservation therefore shows up as spend without lifting either figure, which is exactly the shape that says "this commitment is too big".
 
 **If your subscription doesn't serve amortized data, nothing breaks.** Cost Analysis "doesn't support viewing amortized reservation costs for a pay-as-you-go subscription", and Microsoft Online Services Agreement accounts have no commitment purchases at all. Where the pass is refused, each cell is recorded as one undifferentiated usage row with no amortized figure, and the amortized view falls back to cash for it.
 

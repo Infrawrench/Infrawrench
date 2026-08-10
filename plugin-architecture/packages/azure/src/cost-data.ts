@@ -46,22 +46,29 @@
  *   show as **No service name** or **unassigned**" and "Purchases and
  *   Marketplace usage may be shown as unassigned, or **No resource location**"
  *   (https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/group-filter).
+ * - {@link ATTRIBUTION_GROUPING} over `AmortizedCost`, filtered to
+ *   {@link UNUSED_COMMITMENT_FILTER} — the committed hours nothing consumed.
+ *   See "Unused commitment hours" below.
  *
  * The attribution query is deliberately *unfiltered* rather than filtered to a
  * hard-coded list of non-usage charge types: `QueryOperatorType` only has `In`
  * (no `NotIn`), so a filtered complement would silently drop money under any
  * charge type Azure adds later. Unfiltered, the `Usage` rows are discarded
  * here and anything unrecognised lands in `"other"` — see
- * {@link mapAzureChargeType}.
+ * {@link mapAzureChargeType}. (The unused-commitment query *is* filtered, and
+ * safely so: it asks for two named charge types rather than for a complement,
+ * so a charge type Azure adds later is still caught by the unfiltered pass.)
  *
- * Three queries per month-chunk instead of one. Azure prices this API in query
+ * Four queries per month-chunk instead of one. Azure prices this API in query
  * processing units, "one QPU is deducted for one month of data queried", with
  * per-*tenant* quotas of 12 QPU/10s, 60 QPU/min and 600 QPU/hour
  * (https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/manage-automation).
- * A daily incremental collection goes from 1 request to 3; a 395-day backfill
- * from 13 to 39. Both are well inside the hourly quota for a single account;
- * a tenant with dozens of subscriptions backfilling at once was already past
- * the per-minute quota before this change and relies on the host's backoff.
+ * A daily incremental collection goes from 1 request to 4 — 3 on a subscription
+ * that refuses the amortized dataset, which skips both amortized passes; a
+ * 395-day backfill from 13 to 52. Both are well inside the hourly quota for a
+ * single account; a tenant with dozens of subscriptions backfilling at once was
+ * already past the per-minute quota before this change and relies on the host's
+ * backoff.
  *
  * ─── The amortized pass, and why coverage needs it ───────────────────────
  *
@@ -109,23 +116,56 @@
  * with no `amortizedAmount` — absent, meaning "no opinion", so the host uses
  * the cash figure — and nothing else about collection changes.
  *
- * Two consequences worth stating plainly:
+ * One consequence worth stating plainly:
  *
  * - **Purchase rows are stamped `amortizedAmount: 0`, and only when the
  *   amortized pass ran.** The `AmortizedCost` dataset contains no `Purchase`
- *   row; that money *is* the covered-usage rows. Zero is therefore the honest
- *   amortized value of a purchase on its purchase day, and stating it (rather
- *   than omitting it, which means "no opinion" and falls back to cash) is what
- *   keeps the amortized view from showing the purchase at full price *and*
- *   every amortized slice of it. This is only representable because the host
- *   stores "reported" separately from the value — see the `amortized_reported`
- *   column in `server-core/src/clickhouse/migrate.ts`.
- * - **Unused commitment hours are not collected.** `AmortizedCost` reports them
- *   as `UnusedReservation` / `UnusedSavingsPlan`, charge types this pass filters
- *   out along with everything else that is not `Usage`. The amortized total for
- *   a subscription therefore covers the *utilized* value of its commitments and
- *   not the idle remainder. Coverage and the cash total are unaffected; only an
- *   amortized grand total is short, by exactly the money a reservation wasted.
+ *   row; that money *is* the covered-usage rows (and, below, the unused ones).
+ *   Zero is therefore the honest amortized value of a purchase on its purchase
+ *   day, and stating it (rather than omitting it, which means "no opinion" and
+ *   falls back to cash) is what keeps the amortized view from showing the
+ *   purchase at full price *and* every amortized slice of it. This is only
+ *   representable because the host stores "reported" separately from the value
+ *   — see the `amortized_reported` column in
+ *   `server-core/src/clickhouse/migrate.ts`.
+ *
+ * ─── Unused commitment hours ──────────────────────────────────────────────
+ *
+ * The consumption passes above filter to `ChargeType In ("Usage")`, so they see
+ * only the value a commitment *delivered*. What a commitment wasted arrives as
+ * `UnusedReservation` / `UnusedSavingsPlan`, charge types that exist **only in
+ * the amortized dataset** — Cost Analysis lists them among the amortized-only
+ * values
+ * (https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/group-filter) —
+ * and are therefore invisible to the `ActualCost` attribution pass as well.
+ * Without them an amortized grand total is short by exactly the money a
+ * reservation wasted, which is the single number a commitments feature exists
+ * to expose. Pass 2b collects them, and three properties keep the rest of the
+ * picture intact:
+ *
+ * - **Cash is untouched.** These rows are amortized-only by construction, so
+ *   they are emitted with `amount: 0` and their value on `amortizedAmount`
+ *   alone. No cash total anywhere moves.
+ * - **They cannot enter the covered-usage decomposition.** That subtraction is
+ *   computed from the two `ChargeType In ("Usage")` queries; an unused row is
+ *   not a `Usage` row on either dataset and so is in neither map. Feeding it in
+ *   would be a straight double count: the same committed money would appear
+ *   once as delivered and once as wasted.
+ * - **They are `commitment_fee`, not covered usage**, per the mapping table in
+ *   {@link mapAzureChargeType} — obligation the provider billed and nothing
+ *   claimed. The host counts only `usage` and `commitment_covered_usage` toward
+ *   coverage and toward a commitment's delivered total
+ *   (`CONSUMPTION_SQL` in `server-core/src/clickhouse/commitment-readers.ts`),
+ *   so an unused row raises neither ratio — which is the point: unused hours
+ *   are obligation *not* delivered, and utilization must fall when they appear,
+ *   never rise.
+ *
+ * An unused row shares its whole host key — `(day, "", "", currency,
+ * commitment_fee, benefitId)` — with the `Purchase` row of the same commitment
+ * on a day that carries both. They are therefore merged rather than pushed
+ * separately: cash from the purchase, amortized from the unused hours. Two rows
+ * would be two versions of one ReplacingMergeTree row and `FINAL` would keep
+ * whichever landed last.
  *
  * ─── Re-collecting over already-stored rows ──────────────────────────────
  *
@@ -258,11 +298,11 @@ interface QueryGrouping {
  * **`UnusedReservation` / `UnusedSavingsPlan` cannot appear in `ActualCost`**
  * — they exist only in the amortized dataset
  * (https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/group-filter) —
- * so these two rows are unreachable today. They are mapped anyway because the
- * mapping has to be right the day an amortized pass is added, and because
- * mapping them to `usage` (which is what FOCUS does) would be actively wrong
- * for us: the host counts commitment-stamped `usage` rows as spend *delivered*
- * against the commitment, and unused hours are the precise opposite of that.
+ * so they reach this function only from the amortized unused-commitment pass,
+ * never from the unfiltered `ActualCost` attribution pass. Mapping them to
+ * `usage` (which is what FOCUS does) would be actively wrong for us: the host
+ * counts commitment-stamped `usage` rows as spend *delivered* against the
+ * commitment, and unused hours are the precise opposite of that.
  */
 export function mapAzureChargeType(chargeType: string, commitmentId: string): CostChargeType {
   switch (chargeType) {
@@ -440,6 +480,25 @@ const CONSUMPTION_FILTER = {
   dimensions: { name: "ChargeType", operator: "In", values: ["Usage"] },
 };
 
+/**
+ * Committed hours nothing consumed. Both values exist only on `AmortizedCost`,
+ * so this filter is meaningless against `ActualCost` and is only ever paired
+ * with it.
+ *
+ * Naming the two charge types is safe where naming a complement would not be
+ * (see the header): a charge type Azure adds later is still collected whole by
+ * the unfiltered attribution pass, and would only be missing from *this*
+ * pass's specialism — unused commitment value — which is a gap that shows up
+ * as a smaller number rather than as vanished money.
+ */
+const UNUSED_COMMITMENT_FILTER = {
+  dimensions: {
+    name: "ChargeType",
+    operator: "In",
+    values: ["UnusedReservation", "UnusedSavingsPlan"],
+  },
+};
+
 /** One `(day, service, region, currency)` consumption cell. */
 interface ConsumptionCell {
   date: string;
@@ -461,7 +520,16 @@ interface AttributionCell {
   currency: string;
   chargeType: CostChargeType;
   commitmentId: string;
+  /** Cash, from the `ActualCost` pass. Zero for a cell only pass 2b saw. */
   amount: number;
+  /**
+   * Amortized-only money for the same key: `UnusedReservation` /
+   * `UnusedSavingsPlan`. Kept apart from {@link AttributionCell.amount} because
+   * the two are different bases — summing them would put amortized money into a
+   * cash total — and because a `commitment_fee` cell can legitimately hold both
+   * (a purchase in cash, its wasted hours in amortized) on the same day.
+   */
+  unusedAmortized: number;
 }
 
 /**
@@ -482,7 +550,7 @@ interface AttributionCell {
  * silently dropping the other's money. Summing here is the discipline AWS's
  * `Buckets` applies for exactly the same reason (`aws/src/cost-data.ts`).
  */
-function attributionKey(c: Omit<AttributionCell, "amount">): string {
+function attributionKey(c: Omit<AttributionCell, "amount" | "unusedAmortized">): string {
   return [c.date, c.service, c.region, c.currency, c.chargeType, c.commitmentId].join("\u0000");
 }
 
@@ -627,11 +695,6 @@ async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Pr
     }
   }
 
-  // A purchase's amortized value is only claimable as zero when the amortized
-  // pass actually produced the consumption rows that value was redistributed
-  // into. An empty amortized result is not evidence of redistribution.
-  const amortizationLanded = (amortized?.size ?? 0) > 0;
-
   // Pass 2 — everything that is not consumption, attributed to its benefit.
   // Unfiltered so an unrecognised charge type still lands (as `other`) rather
   // than being silently dropped; the `Usage` rows it also returns are pass 1's
@@ -666,34 +729,98 @@ async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Pr
       const key = attributionKey(dims);
       const existing = attribution.get(key);
       if (existing) existing.amount += amount;
-      else attribution.set(key, { ...dims, amount });
+      else attribution.set(key, { ...dims, amount, unusedAmortized: 0 });
     }
   });
 
+  // Pass 2b — committed hours nothing consumed. Amortized-only by nature, so
+  // it is skipped entirely when the subscription refused that dataset above
+  // (no point spending a QPU learning the same refusal twice), and its own
+  // failure is survivable for the same reason pass 1b's is: the rest of the
+  // collection is unaffected and only the wasted-commitment figure is lost.
+  //
+  // These land in the *same* map as pass 2 because they share a host key with
+  // the purchase rows above, and they contribute to `unusedAmortized` rather
+  // than to `amount` because they are not cash — see the header.
+  let unusedFound = false;
+  if (amortized) {
+    try {
+      await runQuery(
+        ctx,
+        range,
+        ATTRIBUTION_GROUPING,
+        UNUSED_COMMITMENT_FILTER,
+        (page, idx) => {
+          assertCoreColumns(idx);
+          for (const row of page) {
+            const amount = Number(row[idx.cost] ?? 0);
+            if (amount === 0 || Number.isNaN(amount)) continue;
+            const date = formatUsageDate(row[idx.date]);
+            if (!date) continue;
+            const commitmentId = normalizeBenefitId(cell(row, idx.benefit));
+            const dims = {
+              date,
+              service: "",
+              region: "",
+              currency: cell(row, idx.currency) || "USD",
+              // Both values map to `commitment_fee`; the raw charge type is
+              // read anyway so a response that ignored the filter cannot
+              // smuggle something else in under this pass's assumptions.
+              chargeType: mapAzureChargeType(cell(row, idx.chargeType), commitmentId),
+              commitmentId,
+            };
+            if (dims.chargeType !== "commitment_fee") continue;
+            unusedFound = true;
+            const key = attributionKey(dims);
+            const existing = attribution.get(key);
+            if (existing) existing.unusedAmortized += amount;
+            else attribution.set(key, { ...dims, amount: 0, unusedAmortized: amount });
+          }
+        },
+        "AmortizedCost",
+      );
+    } catch {
+      // Same posture as pass 1b: a refusal is a state, not a failure.
+    }
+  }
+
+  // A purchase's amortized value is only claimable as zero when the amortized
+  // dataset actually produced the rows that value was redistributed into —
+  // covered consumption, unused hours, or both. An empty amortized result is
+  // not evidence of redistribution.
+  const amortizationLanded = (amortized?.size ?? 0) > 0 || unusedFound;
+
   for (const c of attribution.values()) {
+    // A cell only pass 2b saw, whose unused figure was then discarded for want
+    // of an amortized basis to state it on, carries no money at all.
+    if (c.amount === 0 && !(amortizationLanded && c.unusedAmortized !== 0)) continue;
     rows.push({
       date: c.date,
       service: c.service,
       region: c.region,
       currency: c.currency,
+      // Cash, and cash only. Unused commitment hours never reach this: they
+      // exist on the amortized dataset alone and no cash total may move
+      // because they were collected.
       amount: c.amount,
       chargeType: c.chargeType,
       // A commitment purchase's honest amortized value on its purchase day
-      // is **zero**: the AmortizedCost dataset contains no `Purchase` row at
-      // all, because that money has been redistributed to the covered-usage
-      // rows above. Stating the zero (rather than omitting it, which means
-      // "no opinion" and falls back to cash) is what keeps the amortized view
-      // from showing the purchase at full price alongside every slice of it.
+      // is **zero plus whatever it wasted**: the AmortizedCost dataset contains
+      // no `Purchase` row at all, because that money has been redistributed to
+      // the covered-usage rows above and to the unused hours pass 2b collected.
+      // Stating that (rather than omitting it, which means "no opinion" and
+      // falls back to cash) is what keeps the amortized view from showing the
+      // purchase at full price alongside every slice of it.
       //
-      // Only claimable when the amortized pass actually landed — without it
-      // there are no covered rows holding the redistributed value, and
-      // zeroing the purchase would delete it from amortized views entirely.
+      // Only claimable when the amortized dataset actually landed — without it
+      // there are no rows holding the redistributed value, and zeroing the
+      // purchase would delete it from amortized views entirely.
       //
       // Everything else here (tax, credits, refunds, Marketplace purchases)
       // is priced identically on both datasets, so it states its cash amount
       // rather than leaving readers to infer it.
       ...(amortizationLanded
-        ? { amortizedAmount: c.chargeType === "commitment_fee" ? 0 : c.amount }
+        ? { amortizedAmount: c.chargeType === "commitment_fee" ? c.unusedAmortized : c.amount }
         : {}),
       ...(c.commitmentId ? { commitmentId: c.commitmentId } : {}),
     });
