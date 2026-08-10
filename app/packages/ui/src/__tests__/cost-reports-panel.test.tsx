@@ -1,13 +1,30 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+
+beforeAll(() => {
+  // jsdom doesn't implement <dialog> showModal/close — stub them, the way
+  // modal.test.tsx does. The move-to-folder modal renders through Modal.
+  if (!HTMLDialogElement.prototype.showModal) {
+    HTMLDialogElement.prototype.showModal = function () {
+      this.open = true;
+    };
+  }
+  if (!HTMLDialogElement.prototype.close) {
+    HTMLDialogElement.prototype.close = function () {
+      this.open = false;
+    };
+  }
+});
 import { CostReportsPanel } from "../cost-reports/CostReportsPanel.js";
 import type { CostReportsClient } from "../cost-reports/types.js";
 import {
   DEFAULT_COST_GRAPH_CONFIG,
+  costReportFolderInputSchema,
   costReportInputSchema,
   costReportWidgetConfigSchema,
   widgetConfigSchemaFor,
   type CostReport,
+  type CostReportFolder,
 } from "../cost/config.js";
 
 function report(overrides: Partial<CostReport> = {}): CostReport {
@@ -25,9 +42,21 @@ function report(overrides: Partial<CostReport> = {}): CostReport {
   };
 }
 
+function folder(overrides: Partial<CostReportFolder> = {}): CostReportFolder {
+  return {
+    id: "f1",
+    name: "Finance",
+    parentFolderId: null,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
 function makeClient(
   rows: CostReport[],
   overrides: Partial<CostReportsClient> = {},
+  folders: CostReportFolder[] = [],
 ): CostReportsClient {
   return {
     queryCosts: vi.fn(async () => ({ series: [], currencies: [], totals: {} })),
@@ -35,6 +64,7 @@ function makeClient(
     loadCostStatus: vi.fn(async () => []),
     listReports: vi.fn(async () => rows),
     getReport: vi.fn(async () => rows[0]!),
+    listFolders: vi.fn(async () => folders),
     ...overrides,
   } as unknown as CostReportsClient;
 }
@@ -181,5 +211,93 @@ describe("CostReportsPanel", () => {
     });
     render(<CostReportsPanel client={client} />);
     expect(await screen.findByRole("alert")).toBeTruthy();
+  });
+
+  it("groups reports under their folder heading", async () => {
+    render(
+      <CostReportsPanel
+        client={makeClient(
+          [report(), report({ id: "r2", name: "Filed spend", folderId: "f1" })],
+          {},
+          [folder()],
+        )}
+      />,
+    );
+    expect(await screen.findByText("Finance")).toBeTruthy();
+    expect(screen.getByText("Filed spend")).toBeTruthy();
+    expect(screen.getByText("Monthly spend")).toBeTruthy();
+  });
+
+  it("files a report at the top level when its folder is unknown", async () => {
+    // A stale folderId must degrade to "unfiled", never to a hidden report.
+    render(
+      <CostReportsPanel client={makeClient([report({ folderId: "gone" })], {}, [folder()])} />,
+    );
+    expect(await screen.findByText("Monthly spend")).toBeTruthy();
+  });
+
+  it("hides folder management when the host can't manage folders", async () => {
+    render(<CostReportsPanel client={makeClient([report()], {}, [folder()])} />);
+    await screen.findByText("Finance");
+    expect(screen.queryByText("New folder")).toBeNull();
+    expect(screen.queryByText("New subfolder")).toBeNull();
+  });
+
+  it("moves a report into a folder via the move menu", async () => {
+    const updateReport = vi.fn(async () => report({ folderId: "f1" }));
+    render(
+      <CostReportsPanel
+        client={makeClient(
+          [report()],
+          { createReport: vi.fn(), updateReport, deleteReport: vi.fn() },
+          [folder()],
+        )}
+      />,
+    );
+    await screen.findByText("Monthly spend");
+    fireEvent.click(screen.getByText("Move"));
+    // The modal offers the top level (disabled — already there) and the folder.
+    fireEvent.click(await screen.findByRole("button", { name: "Finance" }));
+    await waitFor(() =>
+      expect(updateReport).toHaveBeenCalledWith("r1", expect.objectContaining({ folderId: "f1" })),
+    );
+  });
+
+  it("says folder contents fall to the top level before deleting one", async () => {
+    const deleteFolder = vi.fn(async () => {});
+    render(
+      <CostReportsPanel
+        client={makeClient(
+          [report({ folderId: "f1" })],
+          {
+            createReport: vi.fn(),
+            updateReport: vi.fn(),
+            deleteReport: vi.fn(),
+            createFolder: vi.fn(),
+            updateFolder: vi.fn(),
+            deleteFolder,
+          },
+          [folder(), folder({ id: "f2", name: "Sub", parentFolderId: "f1" })],
+        )}
+      />,
+    );
+    await screen.findByText("Finance");
+    fireEvent.click(screen.getAllByText("Delete")[0]!);
+    await waitFor(() => expect(deleteFolder).toHaveBeenCalledWith("f1"));
+    const message = vi.mocked(window.confirm).mock.calls[0]?.[0] ?? "";
+    expect(message).toContain("No reports are deleted");
+    expect(message).toContain("top of the list");
+  });
+});
+
+describe("cost report folder schema", () => {
+  it("accepts a null parent so a folder can be a top-level one", () => {
+    expect(
+      costReportFolderInputSchema.safeParse({ name: "Finance", parentFolderId: null }).success,
+    ).toBe(true);
+  });
+
+  it("rejects a blank name", () => {
+    expect(costReportFolderInputSchema.safeParse({ name: "" }).success).toBe(false);
   });
 });

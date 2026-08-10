@@ -1,6 +1,7 @@
 import {
   pgTable,
   text,
+  type AnyPgColumn,
   boolean,
   integer,
   doublePrecision,
@@ -360,6 +361,46 @@ export const budgets = pgTable(
  * a card whose target is gone renders as a permanent "unavailable" tile that no
  * amount of dashboard editing explains.
  */
+/**
+ * Folders for the Reports list — organization only, never meaning.
+ *
+ * A report's identity, URL, dashboard cards and run-by-id behaviour are
+ * unchanged by where it is filed, which is why both foreign keys pointing here
+ * are ON DELETE SET NULL: deleting a folder drops its reports and subfolders
+ * back to the top level and destroys nothing. Hard-deleted (no `deletedAt`)
+ * for the same reason — a folder carries no config worth resurrecting, and the
+ * valuable objects inside it are never at risk.
+ *
+ * Nesting is bounded at COST_REPORT_FOLDER_LIMITS.maxDepth (3) — enforced in
+ * services/cost-report-folders.ts, not here, because "how deep is this folder"
+ * is a walk up `parentFolderId` the database cannot cheaply constrain. The
+ * same service rejects reparenting a folder under its own descendant, the only
+ * write that could ever make this column cyclic.
+ */
+export const costReportFolders = pgTable(
+  "cost_report_folders",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /**
+     * Self-reference for nesting; null is a top-level folder. SET NULL so
+     * deleting a parent promotes its children to the top level rather than
+     * cascading a subtree away.
+     */
+    parentFolderId: text("parent_folder_id").references((): AnyPgColumn => costReportFolders.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("cost_report_folders_org_idx").on(t.organizationId),
+  }),
+);
+
 export const costReports = pgTable(
   "cost_reports",
   {
@@ -377,13 +418,13 @@ export const costReports = pgTable(
      */
     config: jsonb("config").notNull(),
     /**
-     * Reserved for report folders, which do not exist yet: there is no folders
-     * table and therefore no foreign key. It is added now so reports written
-     * before folders ship can be filed without a data migration — a later
-     * change adds the table and points this column at it. Until then nothing
-     * reads it and the API only ever round-trips what it was given.
+     * The folder the report is filed under; null is the top level of the
+     * Reports list. SET NULL, deliberately: deleting a folder must never
+     * delete a report — its contents fall back to the top level instead.
      */
-    folderId: text("folder_id"),
+    folderId: text("folder_id").references(() => costReportFolders.id, {
+      onDelete: "set null",
+    }),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),

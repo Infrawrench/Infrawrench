@@ -119,6 +119,14 @@ export function createWebCostReportsClient(orgId: string): CostReportsClient {
     deleteReport: async (reportId: string) => {
       await apiDelete(`/api/org/${orgId}/cost-reports/${reportId}`);
     },
+    listFolders: () => apiGet<CostReportFolder[]>(`/api/org/${orgId}/cost-report-folders`),
+    createFolder: (input: CostReportFolderInput) =>
+      apiPost<CostReportFolder>(`/api/org/${orgId}/cost-report-folders`, input),
+    updateFolder: (folderId: string, input: CostReportFolderInput) =>
+      apiPut<CostReportFolder>(`/api/org/${orgId}/cost-report-folders/${folderId}`, input),
+    deleteFolder: async (folderId: string) => {
+      await apiDelete(`/api/org/${orgId}/cost-report-folders/${folderId}`);
+    },
     listDashboards: () => apiGet<CostsPanelDashboard[]>(`/api/org/${orgId}/dashboards`),
     addReportToDashboard: async (dashboardId: string, reportId: string, title: string) => {
       await apiPost(`/api/org/${orgId}/dashboards/widgets`, {

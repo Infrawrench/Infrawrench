@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { CostReport } from "@infrawrench/client-core";
+import type { CostReport, CostReportFolder } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 
 /**
@@ -16,6 +16,22 @@ export function useCostReports(enabled = true) {
     queryKey: ["cost-reports", orgId],
     enabled,
     queryFn: async () => (await api.org<CostReport[]>(orgId, "/cost-reports")) ?? [],
+  });
+}
+
+/**
+ * The org's report folders, for grouping the list the way web and desktop do.
+ *
+ * Read-only on purpose, like the reports themselves: creating, renaming,
+ * nesting and deleting folders is Reports-page furniture that stays on web and
+ * desktop — a phone reads the filing, it doesn't refile.
+ */
+export function useCostReportFolders(enabled = true) {
+  const { api, orgId } = useOrgApi();
+  return useQuery({
+    queryKey: ["cost-report-folders", orgId],
+    enabled,
+    queryFn: async () => (await api.org<CostReportFolder[]>(orgId, "/cost-report-folders")) ?? [],
   });
 }
 

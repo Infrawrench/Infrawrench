@@ -19,6 +19,8 @@ import {
   COST_QUERY_MAX_LENGTH,
   COST_RANGE_PRESETS,
   COST_REPORT_LIMITS,
+  COST_REPORT_FOLDER_LIMITS,
+  type CostReportFolderInput,
   CURRENCY_CODE_PATTERN,
   EXCHANGE_RATE_LIMITS,
   type ExchangeRateInput,
@@ -95,10 +97,17 @@ export {
   type BudgetWidgetConfig,
   type BudgetThreshold,
   COST_REPORT_LIMITS,
+  COST_REPORT_FOLDER_LIMITS,
   normalizeCostReportName,
   duplicateCostReportName,
+  flattenCostReportFolderTree,
+  costReportFolderPaths,
+  costReportFolderMoveBlocker,
   type CostReport,
   type CostReportInput,
+  type CostReportFolder,
+  type CostReportFolderInput,
+  type CostReportFolderTreeRow,
   type CostReportPlacement,
   type CostReportRunResult,
   type CostReportWidgetConfig,
@@ -194,16 +203,27 @@ export const costReportWidgetConfigSchema = z.object({
 /**
  * Create/update body for a report (POST/PUT /cost-reports).
  *
- * `folderId` is accepted and stored now so a client can round-trip it; the
- * folders table it will reference does not exist yet, so nothing else reads it.
- * Nullable rather than merely optional because "move this out of its folder"
- * has to be expressible.
+ * `folderId` files the report in a cost-report folder; the server verifies the
+ * folder belongs to the org. Nullable rather than merely optional because
+ * "move this out of its folder" has to be expressible.
  */
 export const costReportInputSchema = z.object({
   name: z.string().min(1).max(COST_REPORT_LIMITS.maxNameLength),
   description: z.string().max(COST_REPORT_LIMITS.maxDescriptionLength).optional(),
   config: costGraphConfigSchema,
   folderId: z.string().min(1).nullable().optional(),
+});
+
+/**
+ * Create/update body for a report folder (POST/PUT /cost-report-folders).
+ *
+ * Shape-only validation: whether `parentFolderId` exists, stays inside the org,
+ * respects the nesting depth limit and never forms a cycle is the server's job
+ * (`costReportFolderMoveBlocker`), because only the server sees the whole tree.
+ */
+export const costReportFolderInputSchema = z.object({
+  name: z.string().min(1).max(COST_REPORT_FOLDER_LIMITS.maxNameLength),
+  parentFolderId: z.string().min(1).nullable().optional(),
 });
 
 export const budgetThresholdSchema = z.object({

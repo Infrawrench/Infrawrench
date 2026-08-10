@@ -200,3 +200,180 @@ ipcMain.handle(
     });
   },
 );
+
+/* ------------------------------------------------------------------ *
+ * Cost-report folders — the tree the Reports list groups by.
+ * ------------------------------------------------------------------ */
+
+ipcMain.handle("cloud_list_cost_report_folders", async (_e, { orgId }: { orgId: string }) => {
+  return (await cloudFetch(orgId, "/cost-report-folders")) ?? [];
+});
+
+ipcMain.handle(
+  "cloud_create_cost_report_folder",
+  async (_e, { orgId, input }: { orgId: string; input: unknown }) => {
+    return cloudFetch(orgId, "/cost-report-folders", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_update_cost_report_folder",
+  async (_e, { orgId, folderId, input }: { orgId: string; folderId: string; input: unknown }) => {
+    return cloudFetch(orgId, `/cost-report-folders/${encodeURIComponent(folderId)}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_delete_cost_report_folder",
+  async (_e, { orgId, folderId }: { orgId: string; folderId: string }) => {
+    return cloudFetch(orgId, `/cost-report-folders/${encodeURIComponent(folderId)}`, {
+      method: "DELETE",
+    });
+  },
+);
+
+/* ------------------------------------------------------------------ *
+ * Report delivery schedules — scheduled sends of a saved report to
+ * Slack/Teams/email. Same thin proxy pattern as everything above; the
+ * server owns validation and permissions (reads costs:read, writes
+ * org:settings:write).
+ * ------------------------------------------------------------------ */
+
+ipcMain.handle(
+  "cloud_list_report_notifications",
+  async (_e, { orgId, reportId }: { orgId: string; reportId: string }) => {
+    return (
+      (await cloudFetch(orgId, `/cost-reports/${encodeURIComponent(reportId)}/notifications`)) ?? []
+    );
+  },
+);
+
+ipcMain.handle(
+  "cloud_report_delivery_targets",
+  async (_e, { orgId, reportId }: { orgId: string; reportId: string }) => {
+    return cloudFetch(orgId, `/cost-reports/${encodeURIComponent(reportId)}/notifications/targets`);
+  },
+);
+
+ipcMain.handle(
+  "cloud_create_report_notification",
+  async (_e, { orgId, reportId, input }: { orgId: string; reportId: string; input: unknown }) => {
+    return cloudFetch(orgId, `/cost-reports/${encodeURIComponent(reportId)}/notifications`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_update_report_notification",
+  async (
+    _e,
+    {
+      orgId,
+      reportId,
+      notificationId,
+      input,
+    }: { orgId: string; reportId: string; notificationId: string; input: unknown },
+  ) => {
+    return cloudFetch(
+      orgId,
+      `/cost-reports/${encodeURIComponent(reportId)}/notifications/${encodeURIComponent(notificationId)}`,
+      { method: "PUT", body: JSON.stringify(input) },
+    );
+  },
+);
+
+ipcMain.handle(
+  "cloud_delete_report_notification",
+  async (
+    _e,
+    {
+      orgId,
+      reportId,
+      notificationId,
+    }: { orgId: string; reportId: string; notificationId: string },
+  ) => {
+    return cloudFetch(
+      orgId,
+      `/cost-reports/${encodeURIComponent(reportId)}/notifications/${encodeURIComponent(notificationId)}`,
+      { method: "DELETE" },
+    );
+  },
+);
+
+ipcMain.handle(
+  "cloud_send_report_notification",
+  async (
+    _e,
+    {
+      orgId,
+      reportId,
+      notificationId,
+    }: { orgId: string; reportId: string; notificationId: string },
+  ) => {
+    return cloudFetch(
+      orgId,
+      `/cost-reports/${encodeURIComponent(reportId)}/notifications/${encodeURIComponent(notificationId)}/send`,
+      { method: "POST" },
+    );
+  },
+);
+
+/* ------------------------------------------------------------------ *
+ * Saved cost filters — named `CostFilter[]` sets that graphs, reports and
+ * budgets apply by reference; the server resolves the id at query time.
+ * Cloud-mode only like everything above.
+ * ------------------------------------------------------------------ */
+
+ipcMain.handle("cloud_list_saved_cost_filters", async (_e, { orgId }: { orgId: string }) => {
+  return (await cloudFetch(orgId, "/saved-cost-filters")) ?? [];
+});
+
+ipcMain.handle(
+  "cloud_create_saved_cost_filter",
+  async (_e, { orgId, input }: { orgId: string; input: unknown }) => {
+    return cloudFetch(orgId, "/saved-cost-filters", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_update_saved_cost_filter",
+  async (
+    _e,
+    { orgId, savedFilterId, input }: { orgId: string; savedFilterId: string; input: unknown },
+  ) => {
+    return cloudFetch(orgId, `/saved-cost-filters/${encodeURIComponent(savedFilterId)}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+// A 409 passes through as an error whose message lists the referents — the
+// server's refusal to delete a still-referenced filter is the feature, and the
+// renderer shows it verbatim.
+ipcMain.handle(
+  "cloud_delete_saved_cost_filter",
+  async (_e, { orgId, savedFilterId }: { orgId: string; savedFilterId: string }) => {
+    return cloudFetch(orgId, `/saved-cost-filters/${encodeURIComponent(savedFilterId)}`, {
+      method: "DELETE",
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_saved_cost_filter_referents",
+  async (_e, { orgId, savedFilterId }: { orgId: string; savedFilterId: string }) => {
+    return cloudFetch(orgId, `/saved-cost-filters/${encodeURIComponent(savedFilterId)}/referents`);
+  },
+);

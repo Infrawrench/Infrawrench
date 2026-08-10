@@ -2,16 +2,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   DEFAULT_COST_GRAPH_CONFIG,
+  costReportFolderMoveBlocker,
   duplicateCostReportName,
+  flattenCostReportFolderTree,
   normalizeCostReportName,
   type CostGraphConfig,
   type CostReport,
+  type CostReportFolder,
   type CostReportInput,
 } from "../cost/config.js";
 import { CostGraphCard } from "../cost/CostGraphCard.js";
 import { CostGraphConfigModal } from "../cost/CostGraphConfigModal.js";
 import { Modal } from "../components/Modal.js";
 import type { CostsPanelDashboard } from "../cost/types.js";
+import { ReportDeliverySection } from "./ReportDeliverySection.js";
 import type { CostReportsClient } from "./types.js";
 
 function toInput(report: CostReport): CostReportInput {
@@ -29,6 +33,18 @@ function placementSummary(report: CostReport): string {
   if (count === 1) return `On ${report.placements[0]!.dashboardName}`;
   return `On ${count} dashboards`;
 }
+
+/** What a move modal offers: the top level, then every folder as a tree row. */
+interface MoveTarget {
+  folderId: string | null;
+  label: string;
+  depth: number;
+  /** Why this target can't be picked (shown as the tooltip), or undefined. */
+  blocked?: string | undefined;
+}
+
+/** Who the move modal is moving. */
+type Moving = { kind: "report"; report: CostReport } | { kind: "folder"; folder: CostReportFolder };
 
 export interface CostReportsPanelProps {
   client: CostReportsClient;
@@ -53,6 +69,11 @@ export interface CostReportsPanelProps {
  * else, so there was no report to fold into a folder, annotate, schedule, or
  * link a colleague to.
  *
+ * The list groups reports into folders — pure organization, rendered as an
+ * indented tree inside the existing card list. Filing a report changes nothing
+ * but where it appears here; deleting a folder drops its contents back to the
+ * top level, never deletes a report, and the confirm says so.
+ *
  * The chart and the editor are the exact components a dashboard cost card
  * uses ({@link CostGraphCard}, {@link CostGraphConfigModal}); a report is the
  * same config under a name, and forking them would guarantee the two drift.
@@ -64,20 +85,30 @@ export function CostReportsPanel({
   onOpenDashboard,
 }: CostReportsPanelProps) {
   const [reports, setReports] = useState<CostReport[] | null>(null);
+  const [folders, setFolders] = useState<CostReportFolder[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ report: CostReport | null } | null>(null);
   const [placing, setPlacing] = useState<CostReport | null>(null);
+  const [moving, setMoving] = useState<Moving | null>(null);
 
   const canWrite = Boolean(client.createReport && client.updateReport && client.deleteReport);
   const canPlace = Boolean(
     client.listDashboards && client.addReportToDashboard && client.removeReportPlacement,
+  );
+  const canManageFolders = Boolean(
+    client.createFolder && client.updateFolder && client.deleteFolder,
   );
 
   const refresh = useCallback(async () => {
     // A failure has to be visible: an empty list and a broken list look
     // identical, and one of them means reports you saved are not being shown.
     try {
-      setReports(await client.listReports());
+      const [reportRows, folderRows] = await Promise.all([
+        client.listReports(),
+        client.listFolders(),
+      ]);
+      setReports(reportRows);
+      setFolders(folderRows);
       setError(null);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -91,6 +122,12 @@ export function CostReportsPanel({
   const selected = useMemo(
     () => (reportId ? (reports?.find((r) => r.id === reportId) ?? null) : null),
     [reports, reportId],
+  );
+
+  const folderTree = useMemo(() => flattenCostReportFolderTree(folders), [folders]);
+  const folderPathById = useMemo(
+    () => new Map(folderTree.map((row) => [row.folder.id, row.path])),
+    [folderTree],
   );
 
   async function saveReport(name: string, config: CostGraphConfig) {
@@ -146,6 +183,103 @@ export function CostReportsPanel({
     await refresh();
   }
 
+  async function createFolder(parent: CostReportFolder | null) {
+    const raw = window.prompt(
+      parent ? `New folder inside "${parent.name}"` : "New folder name",
+      "",
+    );
+    if (raw === null) return;
+    const name = raw.trim();
+    if (!name) return;
+    await client.createFolder?.({ name, parentFolderId: parent?.id ?? null });
+    await refresh();
+  }
+
+  async function renameFolder(folder: CostReportFolder) {
+    const raw = window.prompt("Rename folder", folder.name);
+    if (raw === null) return;
+    const name = raw.trim();
+    if (!name) return;
+    await client.updateFolder?.(folder.id, { name, parentFolderId: folder.parentFolderId });
+    await refresh();
+  }
+
+  async function deleteFolder(folder: CostReportFolder) {
+    // The confirm has to say what actually happens: nothing inside is deleted
+    // — reports and subfolders drop back to the top level of the list.
+    const reportCount = (reports ?? []).filter((r) => r.folderId === folder.id).length;
+    const subfolderCount = folders.filter((f) => f.parentFolderId === folder.id).length;
+    const consequences: string[] = [];
+    if (reportCount > 0) {
+      consequences.push(
+        reportCount === 1
+          ? "its report moves to the top of the list"
+          : `its ${reportCount} reports move to the top of the list`,
+      );
+    }
+    if (subfolderCount > 0) {
+      consequences.push(
+        subfolderCount === 1
+          ? "its subfolder becomes a top-level folder"
+          : `its ${subfolderCount} subfolders become top-level folders`,
+      );
+    }
+    const joined = consequences.join(", and ");
+    const detail = joined
+      ? `\n\n${joined[0]!.toUpperCase()}${joined.slice(1)}. No reports are deleted.`
+      : "";
+    if (!window.confirm(`Delete the folder "${folder.name}"?${detail}`)) return;
+    await client.deleteFolder?.(folder.id);
+    await refresh();
+  }
+
+  async function applyMove(target: string | null) {
+    if (!moving) return;
+    if (moving.kind === "report") {
+      await client.updateReport?.(moving.report.id, {
+        ...toInput(moving.report),
+        folderId: target,
+      });
+    } else {
+      await client.updateFolder?.(moving.folder.id, {
+        name: moving.folder.name,
+        parentFolderId: target,
+      });
+    }
+    setMoving(null);
+    await refresh();
+  }
+
+  const moveTargets = useMemo<MoveTarget[]>(() => {
+    if (!moving) return [];
+    const subjectFolderId = moving.kind === "folder" ? moving.folder.id : null;
+    const currentParent =
+      moving.kind === "report" ? moving.report.folderId : moving.folder.parentFolderId;
+    const targets: MoveTarget[] = [
+      {
+        folderId: null,
+        label: "Top level (no folder)",
+        depth: 0,
+        blocked: currentParent === null ? "Already here" : undefined,
+      },
+    ];
+    for (const row of folderTree) {
+      // A report can go in any folder; a folder move obeys the same rule the
+      // server enforces, so nothing pickable here can come back as a 400.
+      const blocked =
+        moving.kind === "folder"
+          ? (costReportFolderMoveBlocker(folders, subjectFolderId, row.folder.id) ?? undefined)
+          : undefined;
+      targets.push({
+        folderId: row.folder.id,
+        label: row.folder.name,
+        depth: row.depth + 1,
+        blocked: row.folder.id === currentParent ? "Already here" : blocked,
+      });
+    }
+    return targets;
+  }, [moving, folderTree, folders]);
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl px-6 py-6 flex flex-col gap-6">
@@ -161,12 +295,14 @@ export function CostReportsPanel({
         {selected ? (
           <ReportDetail
             report={selected}
+            folderPath={selected.folderId ? (folderPathById.get(selected.folderId) ?? null) : null}
             client={client}
             canWrite={canWrite}
             canPlace={canPlace}
             onBack={() => onSelectReport?.(undefined)}
             onEdit={() => setEditing({ report: selected })}
             onRename={() => void renameReport(selected)}
+            onMove={() => setMoving({ kind: "report", report: selected })}
             onDuplicate={() => void duplicateReport(selected)}
             onDelete={() => void deleteReport(selected)}
             onPlace={() => setPlacing(selected)}
@@ -175,15 +311,22 @@ export function CostReportsPanel({
         ) : (
           <ReportList
             reports={reports}
+            folders={folders}
             error={error}
             canWrite={canWrite}
             canPlace={canPlace}
+            canManageFolders={canManageFolders}
             onNew={() => setEditing({ report: null })}
+            onNewFolder={(parent) => void createFolder(parent)}
             onOpen={(r) => onSelectReport?.(r.id)}
             onRename={(r) => void renameReport(r)}
+            onMove={(r) => setMoving({ kind: "report", report: r })}
             onDuplicate={(r) => void duplicateReport(r)}
             onDelete={(r) => void deleteReport(r)}
             onPlace={setPlacing}
+            onRenameFolder={(f) => void renameFolder(f)}
+            onMoveFolder={(f) => setMoving({ kind: "folder", folder: f })}
+            onDeleteFolder={(f) => void deleteFolder(f)}
             onOpenDashboard={onOpenDashboard}
           />
         )}
@@ -209,35 +352,84 @@ export function CostReportsPanel({
           onChanged={refresh}
         />
       )}
+
+      {moving && (
+        <MoveToFolderModal
+          subjectName={moving.kind === "report" ? moving.report.name : moving.folder.name}
+          targets={moveTargets}
+          onPick={applyMove}
+          onClose={() => setMoving(null)}
+        />
+      )}
     </div>
   );
 }
 
 function ReportList({
   reports,
+  folders,
   error,
   canWrite,
   canPlace,
+  canManageFolders,
   onNew,
+  onNewFolder,
   onOpen,
   onRename,
+  onMove,
   onDuplicate,
   onDelete,
   onPlace,
+  onRenameFolder,
+  onMoveFolder,
+  onDeleteFolder,
   onOpenDashboard,
 }: {
   reports: CostReport[] | null;
+  folders: CostReportFolder[];
   error: string | null;
   canWrite: boolean;
   canPlace: boolean;
+  canManageFolders: boolean;
   onNew: () => void;
+  onNewFolder: (parent: CostReportFolder | null) => void;
   onOpen: (report: CostReport) => void;
   onRename: (report: CostReport) => void;
+  onMove: (report: CostReport) => void;
   onDuplicate: (report: CostReport) => void;
   onDelete: (report: CostReport) => void;
   onPlace: (report: CostReport) => void;
+  onRenameFolder: (folder: CostReportFolder) => void;
+  onMoveFolder: (folder: CostReportFolder) => void;
+  onDeleteFolder: (folder: CostReportFolder) => void;
   onOpenDashboard?: ((dashboardId: string) => void) | undefined;
 }) {
+  const tree = useMemo(() => flattenCostReportFolderTree(folders), [folders]);
+  const byFolder = useMemo(() => {
+    const known = new Set(folders.map((f) => f.id));
+    const map = new Map<string | null, CostReport[]>();
+    for (const r of reports ?? []) {
+      // A report pointing at a folder this list can't see files at the top
+      // level rather than vanishing.
+      const key = r.folderId !== null && known.has(r.folderId) ? r.folderId : null;
+      const list = map.get(key) ?? [];
+      list.push(r);
+      map.set(key, list);
+    }
+    return map;
+  }, [reports, folders]);
+
+  const reportProps = {
+    canWrite,
+    canPlace,
+    onOpen,
+    onRename,
+    onMove,
+    onDuplicate,
+    onDelete,
+    onPlace,
+  };
+
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
@@ -248,15 +440,26 @@ function ReportList({
             — editing the report updates all of them.
           </p>
         </div>
-        {canWrite && (
-          <button
-            type="button"
-            onClick={onNew}
-            className="shrink-0 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
-          >
-            New report
-          </button>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {canManageFolders && (
+            <button
+              type="button"
+              onClick={() => onNewFolder(null)}
+              className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
+            >
+              New folder
+            </button>
+          )}
+          {canWrite && (
+            <button
+              type="button"
+              onClick={onNew}
+              className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
+            >
+              New report
+            </button>
+          )}
+        </div>
       </div>
 
       {reports === null && error === null && (
@@ -265,7 +468,7 @@ function ReportList({
         </p>
       )}
 
-      {reports?.length === 0 && (
+      {reports?.length === 0 && folders.length === 0 && (
         <p className="text-sm text-on-surface-faint">
           No reports yet. A one-off chart can still go straight onto a dashboard — a report is for
           the ones you want to keep, name, and share.
@@ -273,94 +476,201 @@ function ReportList({
       )}
 
       <ul className="flex flex-col gap-2">
-        {(reports ?? []).map((report) => (
-          <li
+        {(byFolder.get(null) ?? []).map((report) => (
+          <ReportRow
             key={report.id}
-            className="rounded-xl border border-border bg-surface-raised px-4 py-3 hover:border-border-strong transition-colors"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <button
-                type="button"
-                onClick={() => onOpen(report)}
-                className="min-w-0 text-left"
-                title={`Open ${report.name}`}
-              >
-                <span className="block truncate text-sm font-medium text-on-surface">
-                  {report.name}
-                </span>
-                {report.description && (
-                  <span className="block truncate text-xs text-on-surface-faint mt-0.5">
-                    {report.description}
-                  </span>
-                )}
-              </button>
-              <div className="flex shrink-0 items-center gap-2 text-xs text-on-surface-faint">
-                {canPlace && (
-                  <button
-                    type="button"
-                    onClick={() => onPlace(report)}
-                    className="hover:text-on-surface-secondary underline"
-                  >
-                    Dashboards
-                  </button>
-                )}
-                {canWrite && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => onRename(report)}
-                      className="hover:text-on-surface-secondary underline"
-                    >
-                      Rename
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onDuplicate(report)}
-                      className="hover:text-on-surface-secondary underline"
-                    >
-                      Duplicate
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onDelete(report)}
-                      className="hover:text-red-500 underline"
-                    >
-                      Delete
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-            <div className="mt-1 text-xs text-on-surface-faint">
-              <PlacementList report={report} onOpenDashboard={onOpenDashboard} />
-            </div>
-          </li>
+            report={report}
+            onOpenDashboard={onOpenDashboard}
+            {...reportProps}
+          />
         ))}
       </ul>
+
+      {tree.map(({ folder, depth }) => {
+        const contents = byFolder.get(folder.id) ?? [];
+        // The depth rule the server enforces decides whether "New subfolder"
+        // is even offered — an offer that 400s is worse than no offer.
+        const canNest =
+          canManageFolders && costReportFolderMoveBlocker(folders, null, folder.id) === null;
+        return (
+          <div key={folder.id} className="flex flex-col gap-2" style={{ marginLeft: depth * 20 }}>
+            <div className="flex items-center justify-between gap-3 mt-1">
+              <h3 className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide text-on-surface-secondary">
+                <span>{folder.name}</span>
+                <span className="ml-2 font-normal normal-case tracking-normal text-on-surface-faint">
+                  {contents.length === 0
+                    ? "empty"
+                    : `${contents.length} report${contents.length === 1 ? "" : "s"}`}
+                </span>
+              </h3>
+              {canManageFolders && (
+                <div className="flex shrink-0 items-center gap-2 text-xs text-on-surface-faint">
+                  {canNest && (
+                    <button
+                      type="button"
+                      onClick={() => onNewFolder(folder)}
+                      className="hover:text-on-surface-secondary underline"
+                    >
+                      New subfolder
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onRenameFolder(folder)}
+                    className="hover:text-on-surface-secondary underline"
+                  >
+                    Rename
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onMoveFolder(folder)}
+                    className="hover:text-on-surface-secondary underline"
+                  >
+                    Move
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDeleteFolder(folder)}
+                    className="hover:text-red-500 underline"
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
+            {contents.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {contents.map((report) => (
+                  <ReportRow
+                    key={report.id}
+                    report={report}
+                    onOpenDashboard={onOpenDashboard}
+                    {...reportProps}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
     </section>
   );
 }
 
-function ReportDetail({
+function ReportRow({
   report,
-  client,
   canWrite,
   canPlace,
-  onBack,
-  onEdit,
+  onOpen,
   onRename,
+  onMove,
   onDuplicate,
   onDelete,
   onPlace,
   onOpenDashboard,
 }: {
   report: CostReport;
+  canWrite: boolean;
+  canPlace: boolean;
+  onOpen: (report: CostReport) => void;
+  onRename: (report: CostReport) => void;
+  onMove: (report: CostReport) => void;
+  onDuplicate: (report: CostReport) => void;
+  onDelete: (report: CostReport) => void;
+  onPlace: (report: CostReport) => void;
+  onOpenDashboard?: ((dashboardId: string) => void) | undefined;
+}) {
+  return (
+    <li className="rounded-xl border border-border bg-surface-raised px-4 py-3 hover:border-border-strong transition-colors">
+      <div className="flex items-start justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => onOpen(report)}
+          className="min-w-0 text-left"
+          title={`Open ${report.name}`}
+        >
+          <span className="block truncate text-sm font-medium text-on-surface">{report.name}</span>
+          {report.description && (
+            <span className="block truncate text-xs text-on-surface-faint mt-0.5">
+              {report.description}
+            </span>
+          )}
+        </button>
+        <div className="flex shrink-0 items-center gap-2 text-xs text-on-surface-faint">
+          {canPlace && (
+            <button
+              type="button"
+              onClick={() => onPlace(report)}
+              className="hover:text-on-surface-secondary underline"
+            >
+              Dashboards
+            </button>
+          )}
+          {canWrite && (
+            <>
+              <button
+                type="button"
+                onClick={() => onRename(report)}
+                className="hover:text-on-surface-secondary underline"
+              >
+                Rename
+              </button>
+              <button
+                type="button"
+                onClick={() => onMove(report)}
+                className="hover:text-on-surface-secondary underline"
+              >
+                Move
+              </button>
+              <button
+                type="button"
+                onClick={() => onDuplicate(report)}
+                className="hover:text-on-surface-secondary underline"
+              >
+                Duplicate
+              </button>
+              <button
+                type="button"
+                onClick={() => onDelete(report)}
+                className="hover:text-red-500 underline"
+              >
+                Delete
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="mt-1 text-xs text-on-surface-faint">
+        <PlacementList report={report} onOpenDashboard={onOpenDashboard} />
+      </div>
+    </li>
+  );
+}
+
+function ReportDetail({
+  report,
+  folderPath,
+  client,
+  canWrite,
+  canPlace,
+  onBack,
+  onEdit,
+  onRename,
+  onMove,
+  onDuplicate,
+  onDelete,
+  onPlace,
+  onOpenDashboard,
+}: {
+  report: CostReport;
+  folderPath: string | null;
   client: CostReportsClient;
   canWrite: boolean;
   canPlace: boolean;
   onBack: () => void;
   onEdit: () => void;
   onRename: () => void;
+  onMove: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
   onPlace: () => void;
@@ -377,6 +687,11 @@ function ReportDetail({
           >
             ← All reports
           </button>
+          {folderPath && (
+            <span className="ml-2 text-xs text-on-surface-faint" title="Folder">
+              {folderPath}
+            </span>
+          )}
           <h2 className="mt-1 truncate text-sm font-semibold text-on-surface">{report.name}</h2>
           {report.description && (
             <p className="truncate text-xs text-on-surface-faint mt-0.5">{report.description}</p>
@@ -400,6 +715,13 @@ function ReportDetail({
                 className="hover:text-on-surface-secondary underline"
               >
                 Rename
+              </button>
+              <button
+                type="button"
+                onClick={onMove}
+                className="hover:text-on-surface-secondary underline"
+              >
+                Move
               </button>
               <button
                 type="button"
@@ -458,6 +780,86 @@ function PlacementList({
     );
   }
   return <span className="truncate">{placementSummary(report)}</span>;
+}
+
+/**
+ * Pick a folder for a report or a folder — the "drag" of this list, as a menu.
+ *
+ * Targets a move can never succeed at (the current location, a folder inside
+ * the thing being moved, a parent past the depth limit) are shown disabled
+ * with the reason, using the exact rule the server enforces — so nothing
+ * pickable here comes back as a 400.
+ */
+function MoveToFolderModal({
+  subjectName,
+  targets,
+  onPick,
+  onClose,
+}: {
+  subjectName: string;
+  targets: MoveTarget[];
+  onPick: (folderId: string | null) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function pick(folderId: string | null) {
+    setBusy(true);
+    setError(null);
+    try {
+      await onPick(folderId);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal onClose={onClose} ariaLabel={`Move ${subjectName}`}>
+      <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[420px] p-6">
+        <h2 className="text-base font-semibold text-on-surface mb-1">
+          Move &ldquo;{subjectName}&rdquo;
+        </h2>
+        <p className="text-xs text-on-surface-faint mb-4">
+          Folders only organize this list — moving changes nothing about the report itself.
+        </p>
+
+        {error !== null && (
+          <div role="alert" className="mb-3 text-sm text-red-500">
+            {error}
+          </div>
+        )}
+
+        <ul className="flex flex-col gap-1 max-h-72 overflow-y-auto">
+          {targets.map((target) => (
+            <li key={target.folderId ?? "__root__"}>
+              <button
+                type="button"
+                disabled={busy || target.blocked !== undefined}
+                onClick={() => void pick(target.folderId)}
+                title={target.blocked}
+                className="w-full truncate rounded-lg px-2 py-1.5 text-left text-sm text-on-surface hover:bg-surface disabled:opacity-40"
+                style={target.depth > 0 ? { paddingLeft: 8 + target.depth * 16 } : undefined}
+              >
+                {target.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        <div className="mt-5 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
 }
 
 /**

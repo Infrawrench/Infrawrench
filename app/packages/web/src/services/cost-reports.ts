@@ -137,6 +137,9 @@ export async function createCostReport(
   input: CostReportInput,
   createdByUserId: string | null,
 ): Promise<CostReport> {
+  // A cross-org or stale folder id is a CostReportFolderError (a 400 at the
+  // API), caught here rather than left to surface as an FK violation.
+  if (input.folderId) await assertCostReportFolderInOrg(organizationId, input.folderId);
   const [created] = await db
     .insert(costReports)
     .values({
@@ -165,6 +168,7 @@ export async function updateCostReport(
   reportId: string,
   input: CostReportInput,
 ): Promise<CostReport | null> {
+  if (input.folderId) await assertCostReportFolderInOrg(organizationId, input.folderId);
   const [updated] = await db
     .update(costReports)
     .set({

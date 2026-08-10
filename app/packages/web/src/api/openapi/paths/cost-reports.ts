@@ -71,8 +71,10 @@ const FolderId = z
   .string()
   .nullable()
   .describe(
-    "Reserved for report folders, which do not exist yet: the column is stored and round-tripped " +
-      "but nothing reads it, and there is no folders endpoint to obtain an id from.",
+    "Folder the report is filed under (see /cost-report-folders); null is the top level of the " +
+      "Reports list. Moving a report is this same PUT with a different folderId; an id from " +
+      "another org is a 400. Deleting a folder never deletes its reports — they fall back to " +
+      "the top level.",
   );
 
 const CostReportInput = strict({

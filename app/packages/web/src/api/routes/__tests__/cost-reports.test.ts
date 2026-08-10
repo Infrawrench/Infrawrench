@@ -29,6 +29,13 @@ vi.mock("../../../services/cost-query", () => ({
   CostQueryError: FakeCostQueryError,
 }));
 
+// Same reason as cost-query: the routes import the folder error class for
+// their 400 mapping, and the real module reaches the Drizzle client.
+class FakeCostReportFolderError extends Error {}
+vi.mock("../../../services/cost-report-folders", () => ({
+  CostReportFolderError: FakeCostReportFolderError,
+}));
+
 const mockLogAudit = vi.fn();
 vi.mock("../../../services/audit", () => ({
   logAudit: (...args: unknown[]) => mockLogAudit(...args),

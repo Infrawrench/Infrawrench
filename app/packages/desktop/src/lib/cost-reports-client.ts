@@ -41,12 +41,23 @@ export function createDesktopCostReportsClient(): CostReportsClient {
       if (!orgId) return Promise.resolve([]);
       return loadCloudCostStatus(orgId);
     },
+    // The report editor is the shared CostGraphConfigModal, so it offers the
+    // saved-filter picker; management lives on the Costs panel.
+    listSavedFilters: () => listCloudSavedCostFilters(requireOrgId()),
+    createSavedFilter: (input: SavedCostFilterInput) =>
+      createCloudSavedCostFilter(requireOrgId(), input),
     listReports: () => listCloudCostReports(requireOrgId()),
     getReport: (reportId: string) => getCloudCostReport(requireOrgId(), reportId),
     createReport: (input: CostReportInput) => createCloudCostReport(requireOrgId(), input),
     updateReport: (reportId: string, input: CostReportInput) =>
       updateCloudCostReport(requireOrgId(), reportId, input),
     deleteReport: (reportId: string) => deleteCloudCostReport(requireOrgId(), reportId),
+    listFolders: () => listCloudCostReportFolders(requireOrgId()),
+    createFolder: (input: CostReportFolderInput) =>
+      createCloudCostReportFolder(requireOrgId(), input),
+    updateFolder: (folderId: string, input: CostReportFolderInput) =>
+      updateCloudCostReportFolder(requireOrgId(), folderId, input),
+    deleteFolder: (folderId: string) => deleteCloudCostReportFolder(requireOrgId(), folderId),
     listDashboards: async (): Promise<CostsPanelDashboard[]> => {
       const rows = await listCloudDashboards(requireOrgId());
       return rows.map((d) => ({ id: d.id, name: d.name }));

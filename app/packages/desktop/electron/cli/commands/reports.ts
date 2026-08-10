@@ -25,6 +25,62 @@ function requireCloud(ctx: CliContext): void {
   }
 }
 
+/**
+ * `"Finance / Monthly"` for each folder id — the ancestry joined the way the
+ * Reports page shows it. A tiny local re-derivation of client-core's
+ * `costReportFolderPaths` rather than an import, because the CLI keeps its
+ * client-core imports type-only (zero runtime dependencies). Defensive on the
+ * same points: a missing parent truncates the walk, a cycle can't loop.
+ */
+function folderPathsById(folders: CostReportFolder[]): Map<string, string> {
+  const byId = new Map(folders.map((f) => [f.id, f]));
+  const paths = new Map<string, string>();
+  for (const folder of folders) {
+    const parts: string[] = [];
+    const seen = new Set<string>();
+    for (
+      let cursor: CostReportFolder | undefined = folder;
+      cursor && !seen.has(cursor.id);
+      cursor = cursor.parentFolderId ? byId.get(cursor.parentFolderId) : undefined
+    ) {
+      seen.add(cursor.id);
+      parts.unshift(cursor.name);
+    }
+    paths.set(folder.id, parts.join(" / "));
+  }
+  return paths;
+}
+
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/**
+ * `"weekly Mon 08:00 UTC"` — one delivery schedule, compactly. A local
+ * re-derivation of client-core's `describeReportSchedule` for the same reason
+ * `folderPathsById` re-derives paths: the CLI keeps its client-core imports
+ * type-only (zero runtime dependencies).
+ */
+function describeSchedule(n: ReportNotification): string {
+  const hour = `${String(n.hour).padStart(2, "0")}:00`;
+  const when =
+    n.cadence === "weekly"
+      ? `${WEEKDAYS[n.sendDay - 1] ?? "Mon"} ${hour}`
+      : n.cadence === "monthly"
+        ? `day ${n.sendDayOfMonth} ${hour}`
+        : hour;
+  return `${n.cadence} ${when} ${n.timezone}`;
+}
+
+/** The "delivery" column: schedule count, with failures called out. */
+function deliverySummary(schedules: ReportNotification[]): string {
+  if (schedules.length === 0) return c.dim("—");
+  const failing = schedules.filter(
+    (n) => n.lastStatus === "failed" || n.lastStatus === "partial" || n.lastStatus === "no_targets",
+  ).length;
+  const base =
+    schedules.length === 1 ? describeSchedule(schedules[0]!) : `${schedules.length} schedules`;
+  return failing > 0 ? `${base} ${c.red(`(${failing} failing)`)}` : base;
+}
+
 /** `"stacked bar · by service · last 30 days"` — how a saved report reads. */
 function describeReport(report: CostReport): string {
   const { config } = report;
@@ -40,10 +96,25 @@ function describeReport(report: CostReport): string {
 export async function cmdReports(ctx: CliContext): Promise<void> {
   requireCloud(ctx);
   const org = await resolveOrg(ctx);
-  const reports = await orgFetch<CostReport[]>(org.id, "/cost-reports");
+  const [reports, folders, notifications] = await Promise.all([
+    orgFetch<CostReport[]>(org.id, "/cost-reports"),
+    orgFetch<CostReportFolder[]>(org.id, "/cost-report-folders"),
+    // One org-wide call rather than one per report — the endpoint exists for
+    // exactly this column. Defensive: a failure costs the column, not the list.
+    orgFetch<ReportNotification[]>(org.id, "/cost-report-notifications").catch(
+      () => [] as ReportNotification[],
+    ),
+  ]);
+  const folderPaths = folderPathsById(folders);
+  const schedulesByReport = new Map<string, ReportNotification[]>();
+  for (const n of notifications) {
+    const list = schedulesByReport.get(n.costReportId) ?? [];
+    list.push(n);
+    schedulesByReport.set(n.costReportId, list);
+  }
 
   if (ctx.flags.output === "json") {
-    printJson({ org: org.id, reports });
+    printJson({ org: org.id, reports, folders, notifications });
     return;
   }
 
@@ -61,6 +132,15 @@ export async function cmdReports(ctx: CliContext): Promise<void> {
 
   printTable(reports, [
     { header: "name", value: (r) => c.bold(r.name) },
+    {
+      header: "folder",
+      // The full path, so two "Monthly" folders under different parents stay
+      // distinguishable; a dash is the top level of the Reports list.
+      value: (r) =>
+        r.folderId && folderPaths.has(r.folderId)
+          ? c.dim(folderPaths.get(r.folderId)!)
+          : c.dim("—"),
+    },
     { header: "shape", value: (r) => c.dim(describeReport(r)) },
     {
       header: "dashboards",

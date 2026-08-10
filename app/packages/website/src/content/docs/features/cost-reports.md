@@ -38,6 +38,19 @@ The report's page draws the chart full width, with the report's name, its descri
 
 <insert [A cost report's detail page showing the full-width chart, the report name, and a "On Production" dashboard link underneath] here>
 
+## Folders
+
+Once the list grows past a screenful, group it. **New folder** on the Reports page creates one; every report and folder has a **Move** action that files it wherever you like, and each folder offers **New subfolder**, **Rename**, **Move**, and **Delete**. Folders nest up to **three levels** deep — enough for "team / area / month" without turning the list into an expedition.
+
+<insert [Reports page with reports grouped under a "Finance" folder and its "Monthly" subfolder, with the Move menu open on one report showing the folder targets] here>
+
+Folders organize the list and change nothing else. A report keeps its id, its URL, its dashboard cards, and its name-based matching in the [CLI](#from-the-command-line) and chat no matter where it is filed. Two things follow from that:
+
+- **Deleting a folder never deletes a report.** The folder's reports move to the top of the list and its subfolders become top-level folders — the confirmation says exactly that before anything happens.
+- **Moving is always safe.** The one thing the server refuses is a move that could not mean anything: a folder cannot be placed inside itself or one of its own subfolders, and nothing can nest past the three-level limit. The move menu greys those targets out.
+
+On the command line, `infrawrench reports` shows each report's folder path (`Finance / Monthly`) in its own column, and `--json` includes the folder list. The [mobile app](#on-your-phone) groups its read-only list the same way. In chat and MCP, `list_cost_reports` reports each item's `folderPath` and `move_cost_report` files a report by folder path, name, or id.
+
 ## Show a report on a dashboard
 
 A dashboard's **+** tile offers both kinds of cost chart:
@@ -62,29 +75,57 @@ The two directions are deliberately not symmetrical, the same way they are for [
 | Remove a report card from a dashboard   | The card goes. The report stays, and every other dashboard keeps its card.  |
 | Delete the report from the Reports page | The report goes, and every card pointing at it is removed at the same time. |
 
-A card whose report no longer exists could only ever render as an unavailable tile that no amount of dashboard editing explains — so deleting a report takes its cards with it. The confirmation names the dashboards that will lose a card before anything happens.
+A card whose report no longer exists could only ever render as an unavailable tile that no amount of dashboard editing explains — so deleting a report takes its cards with it. The confirmation names the dashboards that will lose a card before anything happens. Deleting a report also removes its [delivery schedules](#scheduled-delivery) — a schedule is meaningless without the report it delivers.
+
+## Scheduled delivery
+
+The **Delivery** section on a report's page sends it on a schedule to **Slack channels**, **Microsoft Teams webhooks**, and **email addresses** — the digest model: each schedule owns its own destinations, chosen when it is created.
+
+<insert [A report's detail page with the Delivery section showing two schedules — one "Weekly · Monday 08:00 Europe/Berlin" delivering to a Slack channel with status "Delivered", one monthly schedule to two email addresses with a red "Failed" status and its error text underneath] here>
+
+Each schedule has:
+
+- **A cadence** — daily, weekly (pick the weekday), or monthly (pick the day of month). A day the month doesn't have clamps to its last day, so "the 31st" means month end in April too.
+- **A local hour and time zone** — 08:00 in `Europe/Berlin` stays 08:00 through daylight-saving changes.
+- **Destinations** — any mix of the org's connected Slack channels, its Teams webhooks, and a list of email addresses (which can reach a finance alias with no Infrawrench login). A schedule can only point at Slack and Teams surfaces the org already connected.
+
+What arrives is a composed text summary: the report's total for its window (converted to your [display currency](./cloud-costs.md) where one is configured, with the conversion caveat spelled out), the change against the previous period, the top groups, and a link to the live report. **No chart images** — that is a deliberate scope line, not an omission: the message carries the numbers, and the link carries the picture; an image-rendering pipeline is a feature of its own.
+
+Two behaviours worth knowing:
+
+- **An empty result still sends**, saying so. A quiet period and a broken schedule look identical from the receiving end, so the delivery says out loud that it ran and found nothing.
+- **Failures are visible where you configured them.** Each schedule shows its last attempt's status and error on the report page. A total failure retries with a short backoff (up to three attempts); a _partial_ delivery — Slack took it, Teams didn't — is never retried automatically, because a retry would post the report twice where it already landed. **Send now** is the recovery once the failing destination is fixed.
+
+<insert [The "New delivery schedule" modal with a weekly cadence, hour and timezone fields, Slack channel checkboxes, a Teams webhook checkbox, and an email recipients box filled in] here>
+
+Viewing a report's schedules needs `costs:read`; creating, editing, deleting, and **Send now** need `org:settings:write` — the same step up [cost exports](./cost-exports.md) take, because a schedule is standing authorisation to send org spend to addresses its creator picked. Every change and manual send lands in the [audit log](../team-and-billing/audit-log.md).
 
 ## From the command line
 
 ```
-infrawrench reports                     # every saved report, with its shape and dashboard count
+infrawrench reports                     # every saved report, with its folder, shape, dashboards and delivery schedules
 infrawrench reports "Monthly spend"     # run it and chart it in the terminal
 infrawrench reports "Monthly spend" --json
+infrawrench reports send "Monthly spend"  # deliver it to its schedules right now
 ```
+
+The `delivery` column shows each report's schedules and calls out failing ones; `reports send` is behind an explicit verb because it posts into channels and inboxes.
 
 The name is matched exactly first, then as a substring; an ambiguous query lists the candidates rather than picking one, because running the wrong cost report produces a wrong answer that looks right. An id works anywhere a name does. See [the CLI](./cli.md).
 
 ## From chat and MCP
 
-Reports are exposed to the [MCP server](./mcp.md) and the [AI chat](./ai-chat.md) as `list_cost_reports`, `get_cost_report`, `run_cost_report`, `create_cost_report`, `update_cost_report`, and `delete_cost_report` — so "run the monthly spend report" works without restating a filter set. `run_cost_report` takes only the report's id and returns the series along with the window a relative range resolved to.
+Reports are exposed to the [MCP server](./mcp.md) and the [AI chat](./ai-chat.md) as `list_cost_reports`, `get_cost_report`, `run_cost_report`, `create_cost_report`, `update_cost_report`, `move_cost_report`, and `delete_cost_report` — so "run the monthly spend report" works without restating a filter set. `run_cost_report` takes only the report's id and returns the series along with the window a relative range resolved to. `move_cost_report` files a report in a [folder](#folders) by path, name, or id — or back at the top level with `null`.
 
 Reads need `costs:read` and writes need `costs:write`; see [roles & permissions](../team-and-billing/roles-and-permissions.md). Every create, update and delete lands in the [audit log](../team-and-billing/audit-log.md).
 
 ## On your phone
 
-The [mobile app](./mobile-app.md) lists your saved reports and opens any one of them read-only — the chart, the description, and the dashboards it feeds, with a tap through to each. Report cards on a dashboard render there too.
+The [mobile app](./mobile-app.md) lists your saved reports — grouped under the same [folders](#folders) you keep on web and desktop, with each section titled by the folder's full path — and opens any one of them read-only: the chart, the description, the dashboards it feeds with a tap through to each, and its [delivery schedules](#scheduled-delivery) with each one's last-send status and error. Report cards on a dashboard render there too.
 
-Creating and editing a report stays on web and desktop: choosing a chart type, a binning, a group-by and a filter set is a desktop job, and a half-editor on a phone is the fastest way to change a report that five dashboards depend on by accident.
+Creating or editing a delivery schedule stays on web and desktop, deliberately: a schedule names Slack channels, Teams webhooks and email addresses — org-egress decisions that belong next to the pickers that make them safe.
+
+Creating and editing a report stays on web and desktop, and so does managing folders — the phone reads the filing, it doesn't refile. Choosing choosing a chart type, a binning, a group-by and a filter set is a desktop job, and a half-editor on a phone is the fastest way to change a report that five dashboards depend on by accident.
 
 ## When a report is worth making
 

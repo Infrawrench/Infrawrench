@@ -24,6 +24,7 @@ import {
   updateCostReport,
 } from "../../services/cost-reports";
 import { CostQueryError } from "../../services/cost-query";
+import { CostReportFolderError } from "../../services/cost-report-folders";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
 import { requirePermission } from "../../auth/permissions";
@@ -53,16 +54,22 @@ app.post("/", async (c) => {
     return c.json({ error: "Invalid cost report", issues: parsed.error.issues }, 400);
   }
 
-  const created = await createCostReport(organizationId, parsed.data, session.userId ?? null);
-  void logAudit({
-    organizationId,
-    userId: session.userId,
-    action: "cost_report.create",
-    entityType: "cost_report",
-    entityId: created.id,
-    metadata: { name: created.name },
-  });
-  return c.json(created);
+  try {
+    const created = await createCostReport(organizationId, parsed.data, session.userId ?? null);
+    void logAudit({
+      organizationId,
+      userId: session.userId,
+      action: "cost_report.create",
+      entityType: "cost_report",
+      entityId: created.id,
+      metadata: { name: created.name },
+    });
+    return c.json(created);
+  } catch (e) {
+    // A folderId outside the org (or stale) is a bad request, not a server bug.
+    if (e instanceof CostReportFolderError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
 });
 
 /** GET /api/org/:orgId/cost-reports/:id */
@@ -84,17 +91,22 @@ app.put("/:id", async (c) => {
     return c.json({ error: "Invalid cost report", issues: parsed.error.issues }, 400);
   }
 
-  const updated = await updateCostReport(organizationId, c.req.param("id"), parsed.data);
-  if (!updated) return c.json({ error: "Not found" }, 404);
-  void logAudit({
-    organizationId,
-    userId: session.userId,
-    action: "cost_report.update",
-    entityType: "cost_report",
-    entityId: updated.id,
-    metadata: { name: updated.name },
-  });
-  return c.json(updated);
+  try {
+    const updated = await updateCostReport(organizationId, c.req.param("id"), parsed.data);
+    if (!updated) return c.json({ error: "Not found" }, 404);
+    void logAudit({
+      organizationId,
+      userId: session.userId,
+      action: "cost_report.update",
+      entityType: "cost_report",
+      entityId: updated.id,
+      metadata: { name: updated.name },
+    });
+    return c.json(updated);
+  } catch (e) {
+    if (e instanceof CostReportFolderError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
 });
 
 /**
