@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -57,8 +57,20 @@
       "description": "Script-defined dashboard charts run in a server-side sandbox."
     },
     {
+      "name": "Costs",
+      "description": "Actual spend, collected from provider billing APIs into daily rows and queried by dimension, plus pushed rows for systems without a plugin. Totals are net — credits, refunds and tax included — unless a charge-type filter narrows them."
+    },
+    {
+      "name": "Commitments",
+      "description": "Reserved instances, savings plans and committed-use discounts: the inventory of what was purchased, how much of the usage bill it covers (reported as a range — there is no single honest denominator), utilization measured only over days with collected cost data, and a planner that recommends commitment sizes at the p10 floor of uncovered spend. Read-only: nothing here ever purchases."
+    },
+    {
       "name": "Cost reports",
       "description": "Named, addressable saved cost graphs. A report owns its config as an org object, so dashboards can reference it by id (the `cost_report` widget kind) and it can be run by id without the caller reassembling the query."
+    },
+    {
+      "name": "Cost alerts",
+      "description": "Change-based cost alerts: fire when spend on a chosen scope moves more than a configured percent and/or amount versus the prior period, on a daily, weekly or monthly cadence. The third alert family — budgets watch an absolute monthly total, anomaly detection watches statistical outliers against a learned baseline, and these watch a configured relative change."
     },
     {
       "name": "Cost exports",
@@ -3160,6 +3172,10 @@
             "description": "The same filter written as text, in the cost query language — an alternative to `filters`, compiled server-side into exactly that structure.\n\nGrammar: a conjunction of equality terms joined by `AND`. A term is `dimension = 'value'`, `dimension != 'value'`, `dimension IN ('a','b')` or `dimension NOT IN ('a','b')`; the tag dimension takes its key in brackets, `tag['owner'] = 'platform'`. Keywords are case-insensitive, strings may be single- or double-quoted, and a quote inside a value is escaped by doubling it (`'it''s'`) or with a backslash (`'it\\'s'`).\n\n`OR` is deliberately not supported: the stored filter is a conjunction, so several values of one dimension go in an `IN` list and unrelated alternatives need separate queries. Anything the structured filter cannot express is a parse error rather than a second execution path.\n\nSending both `query` and a non-empty `filters` is a 400, not a precedence rule. A parse failure is a 400 whose body carries `queryError` with the character `offset`, the `length` of the offending span, and the `expected` alternatives there.",
             "example": "provider = 'aws' AND tag['env'] != 'dev'"
           },
+          "savedFilterId": {
+            "type": "string",
+            "description": "A saved cost filter (see /saved-cost-filters) applied by reference. Resolved server-side at query time and AND-composed with whichever of `filters`/`query` is present — unlike those two it is a composition, not an alternative. An id that does not resolve to a live filter is a 400; the query is never silently run unfiltered."
+          },
           "topN": {
             "type": "integer",
             "minimum": 1,
@@ -3662,6 +3678,10 @@
               "$ref": "#/components/schemas/CostReportFilter"
             }
           },
+          "savedFilterId": {
+            "type": "string",
+            "description": "A saved cost filter (see /saved-cost-filters) applied by reference and AND-composed with `filters` at query time, server-side. Editing the saved filter changes every graph, report and budget referencing it; a reference that fails to resolve makes the query error rather than silently run unfiltered."
+          },
           "topN": {
             "type": "integer",
             "minimum": 1,
@@ -3740,7 +3760,7 @@
               "string",
               "null"
             ],
-            "description": "Reserved for report folders, which do not exist yet: the column is stored and round-tripped but nothing reads it, and there is no folders endpoint to obtain an id from."
+            "description": "Folder the report is filed under (see /cost-report-folders); null is the top level of the Reports list. Moving a report is this same PUT with a different folderId; an id from another org is a 400. Deleting a folder never deletes its reports — they fall back to the top level."
           },
           "createdByUserId": {
             "type": [
@@ -3797,7 +3817,7 @@
               "string",
               "null"
             ],
-            "description": "Reserved for report folders, which do not exist yet: the column is stored and round-tripped but nothing reads it, and there is no folders endpoint to obtain an id from."
+            "description": "Folder the report is filed under (see /cost-report-folders); null is the top level of the Reports list. Moving a report is this same PUT with a different folderId; an id from another org is a 400. Deleting a folder never deletes its reports — they fall back to the top level."
           }
         },
         "required": [
@@ -3837,6 +3857,374 @@
           "from",
           "to",
           "result"
+        ],
+        "additionalProperties": false
+      },
+      "ReportNotification": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "costReportId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "cadence": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly"
+            ],
+            "description": "How often the schedule fires. The report itself decides what window it charts."
+          },
+          "sendDay": {
+            "type": "integer"
+          },
+          "sendDayOfMonth": {
+            "type": "integer"
+          },
+          "hour": {
+            "type": "integer"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "slackChannelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "teamsWebhookIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "emailRecipients": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "nextSendAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the next scheduled send is due; null while disabled."
+          },
+          "lastSentAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a delivery last actually reached at least one destination."
+          },
+          "lastStatus": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "pending",
+              "succeeded",
+              "partial",
+              "failed",
+              "no_targets"
+            ],
+            "description": "What the last attempt did. `partial` means some destinations took it and some failed — never retried automatically, because a retry would double-post where it landed."
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "costReportId",
+          "cadence",
+          "sendDay",
+          "sendDayOfMonth",
+          "hour",
+          "timezone",
+          "slackChannelIds",
+          "teamsWebhookIds",
+          "emailRecipients",
+          "enabled",
+          "nextSendAt",
+          "lastSentAt",
+          "lastStatus",
+          "lastError",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ReportDeliveryTargetOption": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The stored row id — what the schedule input carries."
+          },
+          "label": {
+            "type": "string",
+            "description": "Display label: `#channel` for Slack, the saved label for Teams."
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "additionalProperties": false
+      },
+      "ReportDeliveryTargets": {
+        "type": "object",
+        "properties": {
+          "slackChannels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportDeliveryTargetOption"
+            }
+          },
+          "teamsWebhooks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportDeliveryTargetOption"
+            }
+          },
+          "emailAvailable": {
+            "type": "boolean",
+            "description": "Whether this deployment can send mail at all. Addresses can be saved regardless, but they deliver nowhere until a mail provider is configured."
+          }
+        },
+        "required": [
+          "slackChannels",
+          "teamsWebhooks",
+          "emailAvailable"
+        ],
+        "additionalProperties": false
+      },
+      "ReportNotificationInput": {
+        "type": "object",
+        "properties": {
+          "cadence": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly"
+            ],
+            "description": "How often the schedule fires. The report itself decides what window it charts."
+          },
+          "sendDay": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7,
+            "description": "ISO day of week (1 = Monday … 7 = Sunday); read only when cadence is weekly."
+          },
+          "sendDayOfMonth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31,
+            "description": "Day of month; read only when cadence is monthly. A day the month doesn't have clamps to its last day, so 31 means month end everywhere."
+          },
+          "hour": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 23,
+            "description": "Local hour in `timezone` the delivery fires at."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA zone, e.g. `Europe/Berlin`. Validated server-side."
+          },
+          "slackChannelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Stored Slack channel row ids (from the targets endpoint) to post to."
+          },
+          "teamsWebhookIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Stored Teams webhook row ids (from the targets endpoint) to post to."
+          },
+          "emailRecipients": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Email addresses; normalized (lowercased) server-side. At most 20."
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "cadence",
+          "hour",
+          "timezone",
+          "slackChannelIds",
+          "teamsWebhookIds",
+          "emailRecipients",
+          "enabled"
+        ],
+        "additionalProperties": false,
+        "description": "A full replace, like a report's own PUT. At least one destination is required — a schedule with nowhere to deliver would only ever record failures."
+      },
+      "ReportNotificationSendResult": {
+        "type": "object",
+        "properties": {
+          "attempted": {
+            "type": "integer"
+          },
+          "succeeded": {
+            "type": "integer"
+          },
+          "slack": {
+            "type": "object",
+            "properties": {
+              "attempted": {
+                "type": "integer"
+              },
+              "succeeded": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "attempted",
+              "succeeded"
+            ],
+            "additionalProperties": false
+          },
+          "teams": {
+            "type": "object",
+            "properties": {
+              "attempted": {
+                "type": "integer"
+              },
+              "succeeded": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "attempted",
+              "succeeded"
+            ],
+            "additionalProperties": false
+          },
+          "email": {
+            "type": "object",
+            "properties": {
+              "attempted": {
+                "type": "integer"
+              },
+              "succeeded": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "attempted",
+              "succeeded"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "attempted",
+          "succeeded",
+          "slack",
+          "teams",
+          "email"
+        ],
+        "additionalProperties": false
+      },
+      "CostReportFolder": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parentFolderId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Parent folder for nesting; null is a top-level folder. Nesting is capped at 3 levels, and moving a folder inside itself or one of its own subfolders is rejected — both are 400s."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "parentFolderId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CostReportFolderInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "parentFolderId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Parent folder for nesting; null is a top-level folder. Nesting is capped at 3 levels, and moving a folder inside itself or one of its own subfolders is rejected — both are 400s."
+          }
+        },
+        "required": [
+          "name"
         ],
         "additionalProperties": false
       },
@@ -4323,6 +4711,500 @@
           "rowCount",
           "collectionWatermark",
           "error"
+        ],
+        "additionalProperties": false
+      },
+      "CostAlertFilter": {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "enum": [
+              "provider",
+              "account",
+              "service",
+              "region",
+              "resource",
+              "tag",
+              "charge_type",
+              "commitment"
+            ]
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "in",
+              "not_in"
+            ]
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "tagKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "dimension",
+          "op",
+          "values"
+        ],
+        "additionalProperties": false
+      },
+      "CostChangeCadence": {
+        "type": "string",
+        "enum": [
+          "daily",
+          "weekly",
+          "monthly"
+        ],
+        "description": "Which window is compared to which, in complete UTC days (the accruing current day never counts). daily: one complete day vs the same weekday one week earlier. weekly: the last 7 complete days vs the 7 before them. monthly: month-to-date vs the same number of days at the start of the prior month — never MTD vs the full prior month."
+      },
+      "CostChangeDirection": {
+        "type": "string",
+        "enum": [
+          "increase",
+          "decrease",
+          "both"
+        ]
+      },
+      "CostAlert": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostAlertFilter"
+            }
+          },
+          "groupBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "provider",
+              "account",
+              "service",
+              "region",
+              "resource",
+              "tag",
+              "charge_type",
+              "commitment"
+            ],
+            "description": "Per-group fan-out. Null watches the scope's one total; a dimension watches each group against its own prior window, and each offending group fires its own event."
+          },
+          "groupByTagKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cadence": {
+            "$ref": "#/components/schemas/CostChangeCadence"
+          },
+          "thresholdPercent": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "thresholdAmountCents": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "direction": {
+            "$ref": "#/components/schemas/CostChangeDirection"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "lastEvaluatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastFiredAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "filters",
+          "groupBy",
+          "groupByTagKey",
+          "cadence",
+          "thresholdPercent",
+          "thresholdAmountCents",
+          "direction",
+          "enabled",
+          "lastEvaluatedAt",
+          "lastFiredAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false,
+        "description": "A change-based cost alert: fires when spend on its scope moves more than the configured threshold versus the prior period. The third alert family alongside budgets (absolute monthly total) and anomaly detection (statistical outliers against a learned baseline)."
+      },
+      "CostAlertEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "alertId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "alertName": {
+            "type": "string"
+          },
+          "periodKey": {
+            "type": "string",
+            "description": "The cadence period the firing belongs to — a day, an ISO week (2026-W32) or a month (2026-08). One period fires at most once per group and currency."
+          },
+          "windowFrom": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-08-09"
+          },
+          "windowTo": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-08-09"
+          },
+          "previousFrom": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-08-09"
+          },
+          "previousTo": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-08-09"
+          },
+          "groupKey": {
+            "type": "string",
+            "description": "The offending group; empty when the alert watches one total."
+          },
+          "currency": {
+            "type": "string"
+          },
+          "previousAmountCents": {
+            "type": "integer"
+          },
+          "currentAmountCents": {
+            "type": "integer"
+          },
+          "changePercent": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Signed percent change. Null when the prior window had no spend at all (new spend — the change is infinite); -100 when the group vanished."
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "increase",
+              "decrease"
+            ]
+          },
+          "firedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "notifiedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "alertId",
+          "alertName",
+          "periodKey",
+          "windowFrom",
+          "windowTo",
+          "previousFrom",
+          "previousTo",
+          "groupKey",
+          "currency",
+          "previousAmountCents",
+          "currentAmountCents",
+          "changePercent",
+          "direction",
+          "firedAt",
+          "notifiedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CostAlertInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostAlertFilter"
+            }
+          },
+          "groupBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "provider",
+              "account",
+              "service",
+              "region",
+              "resource",
+              "tag",
+              "charge_type",
+              "commitment"
+            ],
+            "description": "Per-group fan-out. Null watches the scope's one total; a dimension watches each group against its own prior window, and each offending group fires its own event."
+          },
+          "groupByTagKey": {
+            "type": "string",
+            "description": "Required when groupBy is tag."
+          },
+          "cadence": {
+            "$ref": "#/components/schemas/CostChangeCadence"
+          },
+          "thresholdPercent": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 10000,
+            "description": "Percent of the prior window's spend the change must reach. At least one of the two thresholds must be set; when both are, BOTH must hold before the alert fires."
+          },
+          "thresholdAmountCents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "description": "Cents the change must reach."
+          },
+          "direction": {
+            "$ref": "#/components/schemas/CostChangeDirection"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "cadence",
+          "direction"
+        ],
+        "additionalProperties": false
+      },
+      "SavedCostFilterTerm": {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "enum": [
+              "provider",
+              "account",
+              "service",
+              "region",
+              "resource",
+              "tag",
+              "charge_type",
+              "commitment"
+            ]
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "in",
+              "not_in"
+            ]
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "tagKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "dimension",
+          "op",
+          "values"
+        ],
+        "additionalProperties": false
+      },
+      "SavedCostFilter": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SavedCostFilterTerm"
+            }
+          },
+          "query": {
+            "type": "string",
+            "description": "The canonical cost-query-language rendering of `filters`, derived server-side."
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "filters",
+          "query",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "SavedCostFilterInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SavedCostFilterTerm"
+            },
+            "maxItems": 50,
+            "description": "The structured filter. May be omitted only when `query` is sent instead."
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 4000,
+            "description": "The same filter written in the cost query language — an alternative spelling of `filters`, compiled server-side into exactly that structure. Sending both a query and a non-empty `filters` is a 400, not a precedence rule. Whichever spelling is used, the result must be non-empty (an empty saved filter matches everything, which is the same as no filter wearing a name) and every tag term must carry its key.",
+            "example": "tag['env'] = 'prod'"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "SavedCostFilterReferent": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "budget",
+              "cost_report",
+              "cost_graph_widget"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Budget id, report id, or dashboard-widget id.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string",
+            "description": "Budget name, report name, or the widget's title."
+          },
+          "dashboardId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Set for `cost_graph_widget` referents.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "dashboardName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name"
         ],
         "additionalProperties": false
       },
@@ -4836,6 +5718,13 @@
           "costBasis": {
             "$ref": "#/components/schemas/BudgetCostBasis"
           },
+          "savedFilterId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A saved cost filter (see /saved-cost-filters) applied by reference and AND-composed with `filters` when the budget is evaluated. Updates are full replaces, so omitting it on PUT clears it. A reference that fails to resolve errors the budget's evaluation rather than silently measuring all spend."
+          },
           "month": {
             "type": "string",
             "pattern": "^\\d{4}-\\d{2}$",
@@ -4920,6 +5809,7 @@
           "filters",
           "thresholds",
           "costBasis",
+          "savedFilterId",
           "month",
           "actualCents",
           "forecastCents",
@@ -4955,6 +5845,13 @@
             "items": {
               "$ref": "#/components/schemas/BudgetCostFilter"
             }
+          },
+          "savedFilterId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A saved cost filter (see /saved-cost-filters) applied by reference and AND-composed with `filters` when the budget is evaluated. Updates are full replaces, so omitting it on PUT clears it. A reference that fails to resolve errors the budget's evaluation rather than silently measuring all spend."
           },
           "thresholds": {
             "type": "array",
@@ -5001,6 +5898,7 @@
           "amountCents",
           "currency",
           "filters",
+          "savedFilterId",
           "thresholds",
           "costBasis",
           "createdByUserId",
@@ -5032,6 +5930,10 @@
             "items": {
               "$ref": "#/components/schemas/BudgetCostFilter"
             }
+          },
+          "savedFilterId": {
+            "type": "string",
+            "description": "A saved cost filter (see /saved-cost-filters) applied by reference and AND-composed with `filters` when the budget is evaluated. Updates are full replaces, so omitting it on PUT clears it. A reference that fails to resolve errors the budget's evaluation rather than silently measuring all spend."
           },
           "thresholds": {
             "type": "array",
@@ -6911,6 +7813,7 @@
                 "type": "string",
                 "enum": [
                   "cost_graph",
+                  "cost_report",
                   "budget",
                   "custom_graph"
                 ]
@@ -13565,6 +14468,564 @@
         ],
         "additionalProperties": false
       },
+      "CommitmentUnitAmount": {
+        "type": "object",
+        "properties": {
+          "unit": {
+            "type": "string",
+            "description": "Provider-native unit label, untranslated — \"VCPU\", \"MEMORY_MB\", \"LOCAL_SSD_GB\"."
+          },
+          "amount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "unit",
+          "amount"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentProviderUtilization": {
+        "type": "object",
+        "properties": {
+          "grainDays": {
+            "type": "integer",
+            "description": "Trailing window the aggregate covers (1, 7, 30)."
+          },
+          "percentage": {
+            "type": "number",
+            "description": "Utilization percentage 0–100, exactly as the provider reports it."
+          }
+        },
+        "required": [
+          "grainDays",
+          "percentage"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentUtilization": {
+        "type": "object",
+        "properties": {
+          "utilization": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "delivered ÷ obligation, unclamped (values above 1 mean spend past the commitment). **Null means not measurable** — never 0, which would read as 'unused'; the reason field says why."
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "unit_denominated",
+              "no_active_days",
+              "no_data_days",
+              "unattributed_rows"
+            ],
+            "description": "Why utilization is null: `unit_denominated` — the commitment is in resource units (GCP CUDs) and cost rows cannot say how many ran; `no_active_days` — the term does not intersect the window; `no_data_days` — no cost data was collected on any active day; `unattributed_rows` — the account's plugin does not stamp commitment ids onto cost rows, so delivered spend would falsely read as zero."
+          },
+          "obligationAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "hourlyCommitmentAmount × 24 × measuredDays, in the commitment's currency."
+          },
+          "deliveredAmount": {
+            "type": "number"
+          },
+          "activeDays": {
+            "type": "integer",
+            "description": "Days of the window the commitment was active."
+          },
+          "measuredDays": {
+            "type": "integer",
+            "description": "Active days with cost data — the only days in the obligation. Counting a day the collection never ran would make a fully-used plan read as under-utilized."
+          },
+          "missingDays": {
+            "type": "integer",
+            "description": "Active days without cost data, reported rather than silently counted."
+          },
+          "windowDays": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "utilization",
+          "obligationAmount",
+          "deliveredAmount",
+          "activeDays",
+          "measuredDays",
+          "missingDays",
+          "windowDays"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentHolding": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "commitmentId": {
+            "type": "string",
+            "description": "Provider-native id — the join key against cost rows' commitment dimension (an ARN where billing data carries ARNs, the bare id where it does not)."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "reservation",
+              "savings_plan",
+              "committed_use"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "scope": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider scope qualifier — an AZ, an instance family, 'Shared'."
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Null means the commitment applies across regions (an AWS Compute Savings Plan) — a real state, rendered as 'All regions', not missing data."
+          },
+          "startDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "endDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "termDays": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Provider-reported term length — never derived from the dates, which stop spanning the term once a commitment is split or merged."
+          },
+          "paymentOption": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "all_upfront",
+              "partial_upfront",
+              "no_upfront",
+              "monthly"
+            ]
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Null when the provider reports no money at all for this record."
+          },
+          "upfrontAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Null means the provider did not report a price (Azure's list API reports none) — 'not reported', never rendered as 'free'."
+          },
+          "recurringAmount": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "recurringPeriod": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "hour",
+              "month"
+            ],
+            "description": "Atomic with recurringAmount: an amount without a period is a 730× ambiguity."
+          },
+          "hourlyCommitmentAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Committed spend per hour — what utilization is measured against."
+          },
+          "unitCommitments": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/CommitmentUnitAmount"
+            },
+            "description": "Committed resource quantities for unit-denominated commitments (GCP CUDs). A record has either this or hourlyCommitmentAmount — the split decides which utilization question is even askable."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "expired",
+              "queued"
+            ]
+          },
+          "providerUtilization": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/CommitmentProviderUtilization"
+            },
+            "description": "The provider's own utilization aggregates (Azure reservations only), verbatim — never blended with the derived utilization below."
+          },
+          "lastSeenAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "utilization": {
+            "$ref": "#/components/schemas/CommitmentUtilization"
+          }
+        },
+        "required": [
+          "accountId",
+          "accountName",
+          "pluginId",
+          "commitmentId",
+          "kind",
+          "description",
+          "scope",
+          "region",
+          "startDate",
+          "endDate",
+          "termDays",
+          "paymentOption",
+          "currency",
+          "upfrontAmount",
+          "recurringAmount",
+          "recurringPeriod",
+          "hourlyCommitmentAmount",
+          "unitCommitments",
+          "state",
+          "providerUtilization",
+          "lastSeenAt",
+          "utilization"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentCoverageCurrency": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "coveredAmount": {
+            "type": "number",
+            "description": "Usage spend on rows stamped with a commitment id."
+          },
+          "uncoveredAmount": {
+            "type": "number"
+          },
+          "uncoveredEligibleAmount": {
+            "type": "number",
+            "description": "Uncovered usage in cells where a commitment landed in the window — provider evidence of committability, not a hand-maintained service table."
+          },
+          "broadRatio": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Lower bound: covered ÷ (covered + all uncovered usage)."
+          },
+          "narrowRatio": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Upper bound: covered ÷ (covered + uncovered usage in eligible cells)."
+          }
+        },
+        "required": [
+          "currency",
+          "coveredAmount",
+          "uncoveredAmount",
+          "uncoveredEligibleAmount",
+          "broadRatio",
+          "narrowRatio"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentCoverage": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "False when every in-scope account was excluded — 'we cannot tell' reported as unavailable, never as 0%."
+          },
+          "currencies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentCoverageCurrency"
+            }
+          },
+          "excludedAccountIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "description": "Accounts whose plugin cannot tell usage from other charge types; their rows would drag coverage down for reasons unrelated to purchasing."
+          }
+        },
+        "required": [
+          "available",
+          "currencies",
+          "excludedAccountIds"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentRecommendation": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "service": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "recommendedDailyCommitment": {
+            "type": "number",
+            "description": "p10 of daily uncovered usage spend, nearest-rank — the floor, not the average."
+          },
+          "recommendedHourlyCommitment": {
+            "type": "number"
+          },
+          "annualCommitment": {
+            "type": "number"
+          },
+          "p50DailySpend": {
+            "type": "number"
+          },
+          "savingBasis": {
+            "type": "string",
+            "enum": [
+              "range",
+              "upper_bound"
+            ],
+            "description": "Published discounts are \"up to\" figures. `range` renders \"$X–$Y\"; `upper_bound` renders \"up to $Y\" — never a bare \"$Y\"."
+          },
+          "discountRateMin": {
+            "type": "number"
+          },
+          "discountRateMax": {
+            "type": "number"
+          },
+          "estimatedAnnualSavingMin": {
+            "type": "number"
+          },
+          "estimatedAnnualSavingMax": {
+            "type": "number"
+          },
+          "breakEvenUtilization": {
+            "type": "number",
+            "description": "1 − discount: below this utilization the commitment loses to on-demand. Equivalently, the workload can shrink by the discount before committing was a mistake."
+          },
+          "annualLossIfUsageHalves": {
+            "type": "number",
+            "description": "max(0, annualCommitment × (0.5 − discount)) at the shallow end of the published discount — a ceiling on regret where no floor rate is published."
+          }
+        },
+        "required": [
+          "pluginId",
+          "service",
+          "region",
+          "currency",
+          "recommendedDailyCommitment",
+          "recommendedHourlyCommitment",
+          "annualCommitment",
+          "p50DailySpend",
+          "savingBasis",
+          "discountRateMax",
+          "estimatedAnnualSavingMax",
+          "breakEvenUtilization",
+          "annualLossIfUsageHalves"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentRejectedCell": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "service": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "gate": {
+            "type": "string",
+            "enum": [
+              "presence",
+              "not_in_decline",
+              "floor",
+              "materiality"
+            ],
+            "description": "First gate the cell failed, in evaluation order — the most actionable objection."
+          }
+        },
+        "required": [
+          "pluginId",
+          "service",
+          "region",
+          "currency",
+          "gate"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentPlanner": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "False when the data window is under the 60-day minimum."
+          },
+          "windowDayCount": {
+            "type": "integer"
+          },
+          "recommendations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentRecommendation"
+            }
+          },
+          "rejected": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentRejectedCell"
+            }
+          }
+        },
+        "required": [
+          "available",
+          "windowDayCount",
+          "recommendations",
+          "rejected"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentPollFailure": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "message": {
+            "type": "string"
+          },
+          "failureCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accountId",
+          "accountName",
+          "pluginId",
+          "message",
+          "failureCount"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentsFeed": {
+        "type": "object",
+        "properties": {
+          "holdings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentHolding"
+            }
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/CommitmentCoverage"
+          },
+          "planner": {
+            "$ref": "#/components/schemas/CommitmentPlanner"
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentPollFailure"
+            }
+          },
+          "pendingAccountIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "description": "Commitment-capable accounts never yet collected — named rather than omitted."
+          },
+          "utilizationWindowDays": {
+            "type": "integer"
+          },
+          "plannerWindowDays": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "holdings",
+          "coverage",
+          "planner",
+          "failures",
+          "pendingAccountIds",
+          "utilizationWindowDays",
+          "plannerWindowDays"
+        ],
+        "additionalProperties": false
+      },
       "SyntheticProbe": {
         "type": "object",
         "properties": {
@@ -18011,6 +19472,7 @@
           "syncIncidents",
           "budgetAlerts",
           "anomalyAlerts",
+          "costChangeAlerts",
           "metricAlerts",
           "resourceDrift",
           "workflowPages",
@@ -23407,6 +24869,673 @@
         "x-required-permission": "costs:read"
       }
     },
+    "/api/org/{orgId}/cost-reports/{id}/notifications": {
+      "get": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "List a report's delivery schedules",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReportNotification"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostReportsIdNotifications",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "post": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "Create a delivery schedule",
+        "description": "On its cadence the server runs the report and sends a composed text summary — period total (converted to the org's display currency where configured, with the conversion caveat), change vs the previous period, top groups, and a deep link. No chart images. An empty result still sends, saying so.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportNotificationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportNotification"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostReportsIdNotifications",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/cost-reports/{id}/notifications/targets": {
+      "get": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "List the destinations a schedule can deliver to",
+        "description": "The org's live Slack channels and Teams webhooks, and whether this deployment can send mail. Destinations are picked from here — a schedule can only point at surfaces the org already connected.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Targets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportDeliveryTargets"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostReportsIdNotificationsTargets",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/cost-reports/{id}/notifications/{notificationId}": {
+      "put": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "Update a delivery schedule",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "notificationId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportNotificationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportNotification"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdCostReportsIdNotificationsNotificationId",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      },
+      "delete": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "Delete a delivery schedule",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "notificationId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCostReportsIdNotificationsNotificationId",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
+    "/api/org/{orgId}/cost-reports/{id}/notifications/{notificationId}/send": {
+      "post": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "Send a schedule's report now",
+        "description": "Runs the report and delivers it to this schedule's destinations immediately, ignoring the schedule and its enabled flag. Fails with a 400 naming the reason when nothing could be delivered. A successful manual send clears a parked failure — it is the documented recovery for a partial delivery.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "notificationId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Delivery outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportNotificationSendResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostReportsIdNotificationsNotificationIdSend",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/cost-report-notifications": {
+      "get": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "List every delivery schedule in the organization",
+        "description": "All reports' schedules in one call — what the CLI's schedules column reads. Schedules of deleted reports are excluded.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReportNotification"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostReportNotifications",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/cost-report-folders": {
+      "get": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "List cost-report folders",
+        "description": "The org's report folders as a flat list — build the tree from `parentFolderId`. Folders organize the Reports list and nothing else; a report's id, URL and dashboard cards are unchanged by where it is filed.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Folders",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CostReportFolder"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostReportFolders",
+        "x-required-permission": "costs:read"
+      },
+      "post": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "Create a cost-report folder",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostReportFolderInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostReportFolder"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostReportFolders",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
+      }
+    },
+    "/api/org/{orgId}/cost-report-folders/{id}": {
+      "put": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "Update a cost-report folder",
+        "description": "Rename and/or reparent. Filing a *report* is not here — that is `PUT /cost-reports/{id}` with a different `folderId`. Reparenting past the 3-level depth limit, or under the folder's own subtree, is a 400.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostReportFolderInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostReportFolder"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdCostReportFoldersId",
+        "x-required-permission": "costs:write"
+      },
+      "delete": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "Delete a cost-report folder",
+        "description": "Never blocked by contents and never destructive to them: the folder's reports and immediate subfolders fall back to the top level. Deleting a folder cannot delete a report.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCostReportFoldersId",
+        "x-required-permission": "costs:write"
+      }
+    },
     "/api/org/{orgId}/cost-exports": {
       "get": {
         "tags": [
@@ -23738,6 +25867,789 @@
         },
         "operationId": "postOrgOrgIdCostExportsIdRun",
         "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/cost-alerts": {
+      "get": {
+        "tags": [
+          "Cost alerts"
+        ],
+        "summary": "List change-based cost alerts",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Alerts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "alerts": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CostAlert"
+                      }
+                    }
+                  },
+                  "required": [
+                    "alerts"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostAlerts",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "post": {
+        "tags": [
+          "Cost alerts"
+        ],
+        "summary": "Create a change-based cost alert",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostAlertInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostAlert"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostAlerts",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
+      }
+    },
+    "/api/org/{orgId}/cost-alerts/events": {
+      "get": {
+        "tags": [
+          "Cost alerts"
+        ],
+        "summary": "List recently fired cost-alert events",
+        "description": "Newest first. Optionally scoped to one alert with ?alertId=; an unknown alertId is a 404, distinct from an alert that simply has no events yet.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": false,
+            "name": "alertId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CostAlertEvent"
+                      }
+                    }
+                  },
+                  "required": [
+                    "events"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostAlertsEvents",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/cost-alerts/{id}": {
+      "get": {
+        "tags": [
+          "Cost alerts"
+        ],
+        "summary": "Get a cost alert",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Alert",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostAlert"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostAlertsId",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "put": {
+        "tags": [
+          "Cost alerts"
+        ],
+        "summary": "Update a cost alert",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostAlertInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostAlert"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdCostAlertsId",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
+      },
+      "delete": {
+        "tags": [
+          "Cost alerts"
+        ],
+        "summary": "Delete a cost alert",
+        "description": "Soft delete. Fired events disappear from the org-wide event feed with it.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCostAlertsId",
+        "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/saved-cost-filters": {
+      "get": {
+        "tags": [
+          "Saved cost filters"
+        ],
+        "summary": "List saved cost filters",
+        "description": "Named, reusable cost filter sets. Graphs, reports and budgets reference one **by id** (`savedFilterId` in their configs and in `POST /costs/query`), and the server resolves the reference at query time — so editing a saved filter changes every referent at once, and nothing ever holds a copy.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved filters, alphabetically",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SavedCostFilter"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSavedCostFilters",
+        "x-required-permission": "costs:read"
+      },
+      "post": {
+        "tags": [
+          "Saved cost filters"
+        ],
+        "summary": "Create a saved cost filter",
+        "description": "Names must be unique per organization (case-insensitively) — they are how the CLI's `--filter <name>` and humans address the filter. A name collision is a 409.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedCostFilterInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedCostFilter"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A live saved filter already uses this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSavedCostFilters",
+        "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/saved-cost-filters/{id}": {
+      "get": {
+        "tags": [
+          "Saved cost filters"
+        ],
+        "summary": "Get a saved cost filter",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved filter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedCostFilter"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSavedCostFiltersId",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "put": {
+        "tags": [
+          "Saved cost filters"
+        ],
+        "summary": "Update a saved cost filter",
+        "description": "Replaces the filter's name, description and terms. This is the high-leverage write: every graph, report and budget referencing the filter runs the new terms on its next query — re-scoping a referenced budget can change which alerts fire. `GET /{id}/referents` names what a change will touch.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedCostFilterInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedCostFilter"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A live saved filter already uses this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdSavedCostFiltersId",
+        "x-required-permission": "costs:write"
+      },
+      "delete": {
+        "tags": [
+          "Saved cost filters"
+        ],
+        "summary": "Delete a saved cost filter",
+        "description": "Soft delete — **refused with a 409 while anything references the filter**, with the referents in the body. Deleting a referenced filter would silently widen every referent's scope to all spend; for a budget that can fire or suppress alerts, so detaching the referents is a deliberate step, never a side effect of deletion.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Still referenced — the body lists every referent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "referents": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SavedCostFilterReferent"
+                      }
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "referents"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdSavedCostFiltersId",
+        "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/saved-cost-filters/{id}/referents": {
+      "get": {
+        "tags": [
+          "Saved cost filters"
+        ],
+        "summary": "List a saved filter's referents",
+        "description": "Every budget, cost report and dashboard cost graph referencing this filter — what an edit will re-scope, and what a delete would be refused over.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Referents (empty when nothing references the filter)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "referents": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SavedCostFilterReferent"
+                      }
+                    }
+                  },
+                  "required": [
+                    "referents"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSavedCostFiltersIdReferents",
+        "x-required-permission": "costs:read"
       }
     },
     "/api/org/{orgId}/orphans": {
@@ -32470,6 +35382,42 @@
           }
         },
         "operationId": "getOrgOrgIdCredits",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/commitments": {
+      "get": {
+        "tags": [
+          "Commitments"
+        ],
+        "summary": "Reservations, savings plans and committed-use discounts",
+        "description": "The organization's purchased commitments — reserved instances, savings plans, committed-use discounts — with three derived readings.\n\n**Coverage** is a range, not a number: the broad ratio counts every uncovered usage dollar in the denominator (a lower bound — egress and per-request charges can never be committed against), the narrow ratio only uncovered usage in cells where a commitment demonstrably landed (an upper bound). Accounts whose plugin cannot distinguish charge types are excluded and listed; a scope where every account is excluded reports unavailable, not 0%.\n\n**Utilization** is measured only over days cost data was actually collected — a collection gap is reported as missing days, never counted as idle commitment. Unit-denominated commitments (GCP) report null with a reason, never 0%. Azure's own reported utilization rides on each holding separately and is never blended with the derived figure.\n\n**The planner** recommends committing at the p10 floor of daily uncovered spend, gated on presence, trend, floor and materiality. Savings are quoted against published \"up to\" discount rates and marked as such. Nothing is ever purchased automatically.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The organization's commitments, coverage, utilization and recommendations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentsFeed"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCommitments",
         "x-required-permission": "costs:read"
       }
     },

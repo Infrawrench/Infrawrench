@@ -178,12 +178,26 @@ function printType(ref: TypeRef, names: NameTable, indent: string): string {
       return "unknown";
     case "array":
       return `Array<${printType(ref.items, names, indent)}>`;
-    case "union":
-      return joinMembers(
-        ref.members.map((m) => parenthesize(m, printType(m, names, indent), "union")),
-        "|",
-        indent,
-      );
+    case "union": {
+      // Inline enum members and nested unions into this union's own part list.
+      // A string-with-enum prints as a union itself, and past ~90 chars that
+      // print is multiline — embedding it verbatim as a single member would
+      // nest a line-broken union inside another union's line breaks, emitting
+      // an empty `|` alternative (first seen on `type: ["string","null"]` +
+      // enum, where the members are [enum-string, null]).
+      const parts: string[] = [];
+      const push = (m: TypeRef): void => {
+        if (m.kind === "union") {
+          m.members.forEach(push);
+        } else if (m.kind === "string" && m.enum) {
+          parts.push(...m.enum.map((value) => JSON.stringify(value)));
+        } else {
+          parts.push(parenthesize(m, printType(m, names, indent), "union"));
+        }
+      };
+      ref.members.forEach(push);
+      return joinMembers(parts, "|", indent);
+    }
     case "intersection":
       return joinMembers(
         ref.members.map((m) => parenthesize(m, printType(m, names, indent), "intersection")),
