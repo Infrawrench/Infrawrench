@@ -15,7 +15,11 @@ import { registerAccountPaths } from "./paths/accounts";
 import { registerDashboardPaths } from "./paths/dashboards";
 import { registerCostPaths } from "./paths/costs";
 import { registerCostReportPaths } from "./paths/cost-reports";
+import { registerCostReportNotificationPaths } from "./paths/cost-report-notifications";
+import { registerCostReportFolderPaths } from "./paths/cost-report-folders";
 import { registerCostExportPaths } from "./paths/cost-exports";
+import { registerCostAlertPaths } from "./paths/cost-alerts";
+import { registerSavedFilterPaths } from "./paths/saved-filters";
 import { registerOrphanPaths } from "./paths/orphans";
 import { registerEnvironmentDiffPaths } from "./paths/environment-diff";
 import { registerRightsizingPaths } from "./paths/rightsizing";
@@ -122,7 +126,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerDashboardPaths(ctx);
   registerCostPaths(ctx);
   registerCostReportPaths(ctx);
+  registerCostReportNotificationPaths(ctx);
+  registerCostReportFolderPaths(ctx);
   registerCostExportPaths(ctx);
+  registerCostAlertPaths(ctx);
+  registerSavedFilterPaths(ctx);
   registerOrphanPaths(ctx);
   registerRightsizingPaths(ctx);
   registerBudgetPaths(ctx);
@@ -216,6 +224,15 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
           "Named, addressable saved cost graphs. A report owns its config as an org object, so " +
           "dashboards can reference it by id (the `cost_report` widget kind) and it can be run " +
           "by id without the caller reassembling the query.",
+      },
+      {
+        name: "Cost alerts",
+        description:
+          "Change-based cost alerts: fire when spend on a chosen scope moves more than a " +
+          "configured percent and/or amount versus the prior period, on a daily, weekly or " +
+          "monthly cadence. The third alert family — budgets watch an absolute monthly total, " +
+          "anomaly detection watches statistical outliers against a learned baseline, and these " +
+          "watch a configured relative change.",
       },
       {
         name: "Cost exports",
@@ -670,6 +687,43 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /cost-reports/{id}": "costs:write",
   "DELETE /cost-reports/{id}": "costs:write",
   "POST /cost-reports/{id}/run": "costs:read",
+  // report delivery schedules — reads ride costs:read (mobile shows them
+  // read-only), but writes and "send now" are org:settings:write, the
+  // cost-exports reasoning: a schedule is standing authorisation to ship org
+  // spend to destinations the creator picks, and its email list is
+  // arbitrary-address egress. One permission for all writes rather than one
+  // per transport, so adding an email address can never be a silent
+  // escalation of a costs:write schedule.
+  "GET /cost-reports/{id}/notifications": "costs:read",
+  "GET /cost-reports/{id}/notifications/targets": "org:settings:write",
+  "POST /cost-reports/{id}/notifications": "org:settings:write",
+  "PUT /cost-reports/{id}/notifications/{notificationId}": "org:settings:write",
+  "DELETE /cost-reports/{id}/notifications/{notificationId}": "org:settings:write",
+  "POST /cost-reports/{id}/notifications/{notificationId}/send": "org:settings:write",
+  "GET /cost-report-notifications": "costs:read",
+  // change-based cost alerts — a cost-scoped alert config, so it rides the
+  // cost scopes the way reports do.
+  "GET /cost-alerts": "costs:read",
+  "POST /cost-alerts": "costs:write",
+  "GET /cost-alerts/events": "costs:read",
+  "GET /cost-alerts/{id}": "costs:read",
+  "PUT /cost-alerts/{id}": "costs:write",
+  "DELETE /cost-alerts/{id}": "costs:write",
+  // saved cost filters — a named filter is a statement about cost data, so it
+  // rides the cost scopes exactly as reports do. DELETE additionally answers
+  // 409 while the filter is referenced; that is policy, not permission.
+  "GET /saved-cost-filters": "costs:read",
+  "POST /saved-cost-filters": "costs:write",
+  "GET /saved-cost-filters/{id}": "costs:read",
+  "PUT /saved-cost-filters/{id}": "costs:write",
+  "DELETE /saved-cost-filters/{id}": "costs:write",
+  "GET /saved-cost-filters/{id}/referents": "costs:read",
+  // cost-report folders organize the Reports list and nothing else, so they
+  // ride the same scopes the reports do.
+  "GET /cost-report-folders": "costs:read",
+  "POST /cost-report-folders": "costs:write",
+  "PUT /cost-report-folders/{id}": "costs:write",
+  "DELETE /cost-report-folders/{id}": "costs:write",
   // cost exports — reads ride costs:read like every other cost surface, but
   // writes are org:settings:write rather than costs:write. Creating an export
   // is standing authorisation to ship the org's whole billing history to a

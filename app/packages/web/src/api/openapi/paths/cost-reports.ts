@@ -56,6 +56,15 @@ const CostGraphConfig = strict({
   ]),
   groupByTagKey: z.string().optional(),
   filters: z.array(ReportCostFilter).optional(),
+  savedFilterId: z
+    .string()
+    .optional()
+    .describe(
+      "A saved cost filter (see /saved-cost-filters) applied by reference and AND-composed " +
+        "with `filters` at query time, server-side. Editing the saved filter changes every " +
+        "graph, report and budget referencing it; a reference that fails to resolve makes " +
+        "the query error rather than silently run unfiltered.",
+    ),
   topN: z.number().int().min(1).max(15).optional(),
   comparePreviousPeriod: z.boolean().optional(),
   showForecast: z.boolean().optional(),

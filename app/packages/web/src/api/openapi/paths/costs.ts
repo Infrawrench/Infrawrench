@@ -92,6 +92,15 @@ const CostQueryRequest = strict({
         "the `length` of the offending span, and the `expected` alternatives there.",
     )
     .openapi({ example: "provider = 'aws' AND tag['env'] != 'dev'" }),
+  savedFilterId: z
+    .string()
+    .optional()
+    .describe(
+      "A saved cost filter (see /saved-cost-filters) applied by reference. Resolved " +
+        "server-side at query time and AND-composed with whichever of `filters`/`query` is " +
+        "present — unlike those two it is a composition, not an alternative. An id that does " +
+        "not resolve to a live filter is a 400; the query is never silently run unfiltered.",
+    ),
   topN: z.number().int().min(1).max(15).optional(),
   comparePreviousPeriod: z.boolean().optional(),
   forecast: z.boolean().optional(),

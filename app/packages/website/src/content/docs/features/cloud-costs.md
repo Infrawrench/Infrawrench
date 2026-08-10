@@ -123,6 +123,41 @@ The filter is compiled before the request goes out, so a typo fails immediately,
 
 `POST /costs/query` accepts the same text as an optional `query` field, as an alternative to the structured `filters` array — see the [HTTP API](../team-and-billing/openapi.md). Sending both is an error rather than a precedence rule, and a query that doesn't parse comes back as a 400 carrying the offset. The `query_costs` [MCP tool](./mcp.md) takes it too, which is usually how the model writes a filter.
 
+## Saved filters
+
+The same filter — "prod only", "team platform's accounts" — tends to get rebuilt by hand in every graph, report and budget. A **saved filter** makes it a named object instead: build the rows once, give them a name, and apply the name everywhere.
+
+The important part is that applying a saved filter is a **reference, not a copy**. A graph, report or budget stores the filter's id, and the server looks the rows up every time the query runs. Edit "prod only" once — add the new production account — and every graph, report and budget using it changes on its next refresh. Nothing ever holds a stale copy.
+
+<insert [The cost graph editor's Filters section with a "Prod only" saved-filter chip applied above the filter rows, and the "Apply saved filter…" picker visible] here>
+
+### Applying and creating one
+
+Every filter editor — the cost graph editor, the report editor, and the budget scope — has an **Apply saved filter…** picker. The applied filter appears as a chip; inline rows underneath stay available and are combined with the saved filter by AND, so "the saved prod scope, further narrowed to this one service" is one chip plus one row.
+
+Going the other way, once you have built rows worth keeping, **Save these rows as a filter…** names them and swaps the rows for the chip.
+
+Saved filters are managed on the **Costs** panel, in the **Saved filters** section under your budgets — that is where the objects they scope live. Each row shows the filter as query text; editing one warns you what it will re-scope by naming every graph, report and budget that references it.
+
+<insert [The Costs panel's Saved filters section listing two filters with their query text, with the edit modal open showing the "Saving changes budget ..." referent warning] here>
+
+### Deleting one is refused while it is in use
+
+Deleting a saved filter that a budget still references would silently widen that budget to _all spend_ — which could fire alerts that shouldn't fire, or worse, keep quiet ones that should. So deletion is refused while anything references the filter: the error names every referent (budgets, reports, dashboard graphs), and you detach them deliberately first. For the same reason, a reference that fails to resolve at query time — a race, corrupt data — makes the query **error rather than silently run unfiltered**.
+
+### From the CLI, the API and the model
+
+```
+infrawrench costs --filter "prod only" --last 30d --group-by service
+infrawrench costs --filter "prod only" --where "provider = 'aws'"   # AND-composed
+```
+
+`--filter` takes the saved filter's name or id and sends the _id_ — the rows are resolved on the server at query time, exactly as for a graph or budget, so the flag always means what the name means everywhere else. `--json` echoes the id, name, and the rows it resolved to.
+
+On the API, `POST /costs/query` takes an optional `savedFilterId` alongside `filters` or `query` (it composes with them, unlike those two with each other), and `/saved-cost-filters` offers CRUD plus `GET /:id/referents`. The model reaches the same thing through the `list_saved_cost_filters` MCP tool and `query_costs`' `savedFilterId`.
+
+On your phone, graph and budget sheets show an applied saved filter read-only, with the query text it currently resolves to; creating and editing saved filters stays on web and desktop.
+
 ## Charge types, and cash vs amortized
 
 A bill is not all one thing. Alongside the usage you consumed, providers charge you for commitments you bought, refund you, credit you, and tax you — and if all of that lands in one number, a month where usage doubled can look flat because a credit absorbed it.

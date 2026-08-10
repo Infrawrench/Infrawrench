@@ -3,7 +3,7 @@ import { budgetInputSchema, type BudgetInput, type CostFilter } from "./config.j
 import {
   COST_BASIS_UNAVAILABLE_HINT,
   CostBasisField,
-  CostFilterRows,
+  CostFilterEditor,
   useCostBasisChoice,
 } from "./CostGraphConfigModal.js";
 import type { CostApi } from "./types.js";
@@ -28,12 +28,23 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
   const [amountText, setAmountText] = useState((initialInput.amountCents / 100).toString());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * A scope query the text editor could not compile. Saving is blocked while
+   * set, for the same reason the graph modal blocks: the input still holds the
+   * last filter that parsed, and saving now would scope the budget differently
+   * from what is on screen — for a budget, an alert-firing difference.
+   */
+  const [filterError, setFilterError] = useState<string | null>(null);
   const basis = useCostBasisChoice(api, initialInput.costBasis === "amortized");
 
   const set = (patch: Partial<BudgetInput>) =>
     setInput((prev) => ({ ...prev, ...patch }) as BudgetInput);
 
   const save = async () => {
+    if (filterError) {
+      setError("Fix the scope query before saving.");
+      return;
+    }
     const amount = Number(amountText);
     if (!Number.isFinite(amount) || amount <= 0) {
       setError("Enter a budget amount greater than zero");
@@ -130,10 +141,13 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
             <span id={`${uid}-scope-label`} className={labelClass}>
               Scope (all spend when empty)
             </span>
-            <CostFilterRows
+            <CostFilterEditor
               filters={input.filters as CostFilter[]}
               onChange={(filters) => set({ filters })}
               api={api}
+              onErrorChange={setFilterError}
+              savedFilterId={input.savedFilterId}
+              onSavedFilterChange={(savedFilterId) => set({ savedFilterId })}
             />
           </div>
 
@@ -222,7 +236,7 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
             <button
               type="button"
               onClick={() => void save()}
-              disabled={saving}
+              disabled={saving || filterError !== null}
               className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors"
             >
               {saving ? "Saving…" : "Save"}

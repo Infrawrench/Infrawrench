@@ -32,6 +32,10 @@ import {
   mergeConvertedGroups,
 } from "@infrawrench/server-core/cost/currency-convert";
 import { loadConversionContext } from "@infrawrench/server-core/cost/currency-settings";
+import {
+  SavedCostFilterResolutionError,
+  resolveSavedCostFilters,
+} from "@infrawrench/server-core/cost/saved-filters";
 // The db-free id module, not the writer — importing the writer here would drag
 // its db/ClickHouse imports into every cost read path (and its tests).
 import {
@@ -242,7 +246,28 @@ export async function runCostQuery(
   // Text queries are compiled to the structured filter here and nowhere else.
   // Everything below — and everything in `cost-readers.ts` — sees only
   // `CostFilter[]`, whose values are bound as ClickHouse parameters.
-  const filters = resolveQueryFilters(q);
+  //
+  // A saved filter is different from the query/filters pair: those are two
+  // spellings of one filter (alternatives), while `savedFilterId` composes —
+  // its resolved terms are ANDed with whichever inline spelling was sent.
+  // Resolving here, in the shared service rather than the HTTP route, is what
+  // gives MCP, chat and the CLI identical behaviour. A reference that fails to
+  // resolve is an error, never a fall-through to unfiltered: unfiltered spend
+  // quietly standing in for "prod only" is the failure this feature must never
+  // produce.
+  const inlineFilters = resolveQueryFilters(q);
+  let filters = inlineFilters;
+  if (q.savedFilterId) {
+    try {
+      filters = [
+        ...(await resolveSavedCostFilters(organizationId, q.savedFilterId)),
+        ...inlineFilters,
+      ];
+    } catch (e) {
+      if (e instanceof SavedCostFilterResolutionError) throw new CostQueryError(e.message);
+      throw e;
+    }
+  }
 
   const baseQuery = {
     from: q.from,
@@ -316,7 +341,10 @@ export async function runCostQuery(
       to: q.to,
       binning: "daily",
       groupBy: "none",
-      filters: q.filters,
+      // The *resolved* filters, not `q.filters`: a request filtered through a
+      // text query or a saved filter must fit its forecast on the same slice
+      // it is drawing, or the projection trends spend the chart excludes.
+      filters,
       // Fit on the basis being drawn: projecting a cash series that contains a
       // one-off commitment purchase forecasts a month-end total that cannot
       // happen, which is the whole reason the amortized basis exists.

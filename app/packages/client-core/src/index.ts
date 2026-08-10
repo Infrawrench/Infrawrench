@@ -280,14 +280,32 @@ export {
 } from "./custom-graphs";
 export {
   COST_REPORT_LIMITS,
+  COST_REPORT_FOLDER_LIMITS,
   normalizeCostReportName,
   duplicateCostReportName,
+  flattenCostReportFolderTree,
+  costReportFolderPaths,
+  costReportFolderMoveBlocker,
   type CostReport,
   type CostReportInput,
+  type CostReportFolder,
+  type CostReportFolderInput,
+  type CostReportFolderTreeRow,
   type CostReportPlacement,
   type CostReportRunResult,
   type CostReportWidgetConfig,
 } from "./cost-reports";
+export {
+  SAVED_COST_FILTER_LIMITS,
+  resolveSavedCostFilterInput,
+  describeSavedCostFilterReferents,
+  listSavedCostFilters,
+  getSavedCostFilter,
+  type SavedCostFilter,
+  type SavedCostFilterInput,
+  type SavedCostFilterReferent,
+  type SavedCostFilterReferentKind,
+} from "./saved-cost-filters";
 export { niceAxis, type AxisScale } from "./chart-axis";
 export {
   dashboardCardId,

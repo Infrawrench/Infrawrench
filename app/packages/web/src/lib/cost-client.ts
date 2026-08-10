@@ -42,6 +42,12 @@ export function createWebCostApi(orgId: string): CostApi {
       const res = await apiGet<{ accounts: CostAccountStatus[] }>(`/api/org/${orgId}/costs/status`);
       return res.accounts;
     },
+    // Saved filters ride on the base CostApi because every surface that can
+    // author a filter (graph modal, budget modal, report editor) offers the
+    // picker and "Save these rows as a filter…".
+    listSavedFilters: () => apiGet<SavedCostFilter[]>(`/api/org/${orgId}/saved-cost-filters`),
+    createSavedFilter: (input: SavedCostFilterInput) =>
+      apiPost<SavedCostFilter>(`/api/org/${orgId}/saved-cost-filters`, input),
   };
 }
 

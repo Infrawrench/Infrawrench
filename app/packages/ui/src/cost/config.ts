@@ -41,6 +41,8 @@ import {
   type AllocationRuleMatch,
   type RequiredTag,
   type TagPolicy,
+  SAVED_COST_FILTER_LIMITS,
+  type SavedCostFilterInput,
 } from "@infrawrench/client-core";
 
 export {
@@ -146,6 +148,14 @@ export {
   type UntaggedSpendReport,
   type ShowbackReportCentre,
   type ShowbackReport,
+  // Saved cost filters — the named, referenced-by-id form of `CostFilter[]`.
+  SAVED_COST_FILTER_LIMITS,
+  resolveSavedCostFilterInput,
+  describeSavedCostFilterReferents,
+  type SavedCostFilter,
+  type SavedCostFilterInput,
+  type SavedCostFilterReferent,
+  type SavedCostFilterReferentKind,
 } from "@infrawrench/client-core";
 
 export const costFilterSchema = z.object({
@@ -172,6 +182,12 @@ export const costGraphConfigSchema = z.object({
   /** Required when groupBy === "tag". */
   groupByTagKey: z.string().optional(),
   filters: z.array(costFilterSchema).default([]),
+  /**
+   * A saved cost filter applied by reference (resolved server-side at query
+   * time) and AND-composed with `filters`. Optional, never defaulted: absent
+   * means none, and every config written before this existed stays byte-stable.
+   */
+  savedFilterId: z.string().min(1).optional(),
   /** Groups beyond the top N fold into an "Other" series. */
   topN: z.number().int().min(1).max(15).default(5),
   comparePreviousPeriod: z.boolean().default(false),
@@ -356,6 +372,13 @@ export const costQueryRequestSchema = z.object({
    * about.
    */
   query: z.string().max(COST_QUERY_MAX_LENGTH).optional(),
+  /**
+   * A saved cost filter resolved server-side and AND-composed with whichever
+   * inline spelling is present — unlike `query`/`filters` it is a composition,
+   * not an alternative. An id that does not resolve is a 400, never a silent
+   * fall-through to unfiltered spend.
+   */
+  savedFilterId: z.string().min(1).optional(),
   topN: z.number().int().min(1).max(15).default(5),
   comparePreviousPeriod: z.boolean().default(false),
   forecast: z.boolean().default(false),
@@ -401,6 +424,24 @@ export const currencySettingsSchema = z.object({
  * survive, and parsing it to a float at the API edge would throw that away
  * before it ever reached the database.
  */
+/**
+ * Create/update body for a saved cost filter (POST/PUT /saved-cost-filters).
+ *
+ * Shape-only, deliberately: the semantic rules — `filters` XOR `query`, the
+ * result non-empty, every tag term carrying its key so the filter is always
+ * expressible in query text — live in `resolveSavedCostFilterInput`
+ * (client-core), which the service runs on every write. Keeping them out of
+ * the schema means the editors and the API share one implementation of the
+ * rules and one set of messages.
+ */
+export const savedCostFilterInputSchema = z.object({
+  name: z.string().min(1).max(SAVED_COST_FILTER_LIMITS.maxNameLength),
+  description: z.string().max(SAVED_COST_FILTER_LIMITS.maxDescriptionLength).optional(),
+  filters: z.array(costFilterSchema).max(SAVED_COST_FILTER_LIMITS.maxFilters).default([]),
+  /** The same filter as query text — an alternative spelling of `filters`. */
+  query: z.string().max(COST_QUERY_MAX_LENGTH).optional(),
+});
+
 export const exchangeRateInputSchema = z.object({
   fromCurrency: currencyCode,
   toCurrency: currencyCode,
@@ -438,4 +479,5 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof allocationRuleInputSchema>, AllocationRuleInput>,
   Exact<z.infer<typeof currencySettingsSchema>, OrgCurrencySettings>,
   Exact<z.infer<typeof exchangeRateInputSchema>, ExchangeRateInput>,
+  Exact<z.infer<typeof savedCostFilterInputSchema>, SavedCostFilterInput>,
 ];

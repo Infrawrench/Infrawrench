@@ -337,6 +337,9 @@ function ConfigureBudget({
         // Round-tripped, or editing a budget's amount would quietly move it
         // back to the cash basis it was deliberately taken off.
         ...(budget.costBasis ? { costBasis: budget.costBasis } : {}),
+        // Same rule for the saved filter scoping the budget: mobile renders it
+        // read-only, but dropping it on save would silently widen the budget.
+        ...(budget.savedFilterId ? { savedFilterId: budget.savedFilterId } : {}),
       }}
       onClose={onClose}
       onSave={(input) => onSave(budgetId, input)}

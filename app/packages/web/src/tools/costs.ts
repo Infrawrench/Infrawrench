@@ -26,10 +26,12 @@ import {
   softDeleteBudget,
   updateBudget,
 } from "../services/budgets";
+import { listSavedCostFilters as listSavedCostFiltersForOrg } from "../services/saved-cost-filters";
 import { logAudit } from "../services/audit";
 import { getAccountTagCompliance, getUntaggedSpendReport } from "../services/tag-policy";
 import { getShowbackReport } from "../services/showback";
 import { getOrgTagPolicy } from "@infrawrench/server-core/cost/tag-policy";
+import { getCommitmentsFeed } from "@infrawrench/server-core/commitments/feed";
 import { denyUnlessPermitted } from "./permissions";
 import { ok, err, type ToolDefinition } from "./types";
 
@@ -71,7 +73,13 @@ export function costTools(): ToolDefinition[] {
         COST_QUERY_LANGUAGE_SUMMARY +
         " Send `query` or `filters`, never both — both is an error, not a precedence rule. A " +
         "query that does not parse comes back with the character offset of the mistake and the " +
-        "valid alternatives there; use list_cost_dimension_values to discover real values first.",
+        "valid alternatives there; use list_cost_dimension_values to discover real values first." +
+        "\n\n`savedFilterId` applies one of the organization's saved cost filters (see " +
+        "list_saved_cost_filters) by reference: it is resolved server-side at query time and " +
+        "AND-composed with whichever of `filters`/`query` is present. Prefer it when the user " +
+        "names a scope they have saved ('prod only') — it is guaranteed to mean exactly what " +
+        "that name means in their graphs, reports and budgets. An id that no longer resolves " +
+        "is an error, never an unfiltered result.",
       inputSchema: costQueryRequestSchema.shape,
       risk: "read",
       permission: "costs:read",
@@ -86,6 +94,25 @@ export function costTools(): ToolDefinition[] {
           if (e instanceof CostQueryError) return err(e.message);
           throw e;
         }
+      },
+    },
+
+    {
+      name: "list_saved_cost_filters",
+      title: "List saved cost filters",
+      description:
+        "The organization's saved cost filters — named, reusable filter sets ('prod only', " +
+        "'team platform') that graphs, reports and budgets apply by reference. Each row " +
+        "carries the structured filters and the same filter as cost-query-language text. Use " +
+        "an id from here as query_costs' savedFilterId, or to set a budget's or graph " +
+        "config's savedFilterId, when the user refers to a scope by its saved name.",
+      inputSchema: {},
+      risk: "read",
+      permission: "costs:read",
+      handler: async (_input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:read");
+        if (denied) return denied;
+        return ok(await listSavedCostFiltersForOrg(auth.organizationId));
       },
     },
 

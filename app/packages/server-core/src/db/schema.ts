@@ -338,6 +338,17 @@ export const budgets = pgTable(
      * is what it has been measuring.
      */
     costBasis: text("cost_basis").notNull().default("cash"),
+    /**
+     * A `saved_cost_filters` row applied by reference and AND-composed with
+     * `filters` at evaluation time; null is none. A real column rather than a
+     * key inside the `filters` jsonb (which is an array), and deliberately
+     * without a foreign key: saved filters are soft-deleted, so referential
+     * integrity is enforced above the database — deletion is *refused* while
+     * anything references the filter (services/saved-cost-filters.ts), and a
+     * reference that fails to resolve anyway errors the budget's evaluation
+     * rather than silently widening it to all spend.
+     */
+    savedFilterId: text("saved_filter_id"),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -347,6 +358,57 @@ export const budgets = pgTable(
   },
   (t) => ({
     orgIdx: index("budgets_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
+ * Named, reusable cost filter sets ("prod only", "team platform's accounts").
+ *
+ * Graphs, reports and budgets reference a row here **by id** and the server
+ * resolves it at query time — never a copy at pick time — so editing the
+ * filter once changes everything using it. `filters` is a `CostFilter[]`
+ * (`@infrawrench/client-core`), the same shape those configs hold inline; the
+ * cost-query-language text form is derived from it on read and guaranteed
+ * derivable by input validation (a tag term must carry its key).
+ *
+ * Soft-deleted like budgets and reports, but with one extra rule enforced in
+ * services/saved-cost-filters.ts: deletion is refused (409) while any budget,
+ * report or dashboard graph still references the row. Deleting a referenced
+ * filter would silently widen every referent's scope to all spend — for a
+ * budget, that can fire or suppress alerts — so the referents are surfaced and
+ * the user detaches them deliberately.
+ */
+export const savedCostFilters = pgTable(
+  "saved_cost_filters",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** Free text shown under the name in the list; null is no description. */
+    description: text("description"),
+    /** The filter itself — a non-empty `CostFilter[]`. */
+    filters: jsonb("filters").notNull().default([]),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /** Soft delete, matching `budgets` — set, never cleared. */
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("saved_cost_filters_org_idx").on(t.organizationId),
+    /**
+     * Names are how the CLI (`--filter <name>`) and humans address these, so
+     * they must be unambiguous per org — among *live* rows only, hence the
+     * partial index: a soft-deleted "prod only" must not squat on the name
+     * forever.
+     */
+    orgNameUnique: uniqueIndex("saved_cost_filters_org_name_unique")
+      .on(t.organizationId, t.name)
+      .where(sql`deleted_at IS NULL`),
   }),
 );
 

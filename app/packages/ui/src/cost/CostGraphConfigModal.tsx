@@ -19,6 +19,7 @@ import {
   type CostBasis,
   type CostFilter,
   type CostGraphConfig,
+  type SavedCostFilter,
 } from "./config.js";
 import type { CostDimensionOption } from "./config.js";
 import type { CostApi } from "./types.js";
@@ -294,6 +295,147 @@ export interface CostFilterEditorProps extends FilterRowEditorProps {
    * the user was looking at their new one.
    */
   onErrorChange?: (error: string | null) => void;
+  /**
+   * The saved filter this config references (AND-composed with the inline
+   * rows, server-side, at query time). Supplying `onSavedFilterChange` is what
+   * turns the saved-filter UI on; hosts whose config has no such field simply
+   * don't pass it and the editor renders exactly as before.
+   */
+  savedFilterId?: string | undefined;
+  onSavedFilterChange?: ((savedFilterId: string | undefined) => void) | undefined;
+}
+
+/**
+ * The saved-filter half of the editor: the chip naming the applied filter, the
+ * picker to apply one, and "Save these rows as a filter…".
+ *
+ * The chip is a *reference*, deliberately never expanded into rows here —
+ * expanding would invite editing a copy, and the whole point of the object is
+ * that the rows live in one place. Editing goes through the Costs panel's
+ * Saved filters section, where the referents are visible.
+ */
+function SavedFilterPicker({
+  api,
+  filters,
+  onChange,
+  savedFilterId,
+  onSavedFilterChange,
+  rowsMode,
+}: {
+  api: CostApi;
+  filters: CostFilter[];
+  onChange: (filters: CostFilter[]) => void;
+  savedFilterId: string | undefined;
+  onSavedFilterChange: (savedFilterId: string | undefined) => void;
+  /** "Save these rows…" only makes sense while the rows are on screen. */
+  rowsMode: boolean;
+}) {
+  // undefined = loading, null = load failed.
+  const [saved, setSaved] = useState<SavedCostFilter[] | null | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .listSavedFilters?.()
+      .then((rows) => {
+        if (!cancelled) setSaved(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setSaved(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+
+  const applied = savedFilterId ? saved?.find((f) => f.id === savedFilterId) : undefined;
+  const savableRows = filters.filter((f) => f.values.length > 0);
+
+  const saveRowsAsFilter = async () => {
+    if (!api.createSavedFilter) return;
+    const name = window.prompt("Save these rows as a filter named…");
+    if (name === null || !name.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await api.createSavedFilter({ name: name.trim(), filters: savableRows });
+      // The rows now live in the saved filter; keeping them inline too would
+      // apply them twice (harmless under AND, but it reads as duplication and
+      // future edits to the saved filter would no longer cover them).
+      onSavedFilterChange(created.id);
+      onChange([]);
+      setSaved((prev) => (Array.isArray(prev) ? [...prev, created] : prev));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn’t save the filter.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1">
+      {savedFilterId && (
+        <div className="flex items-center gap-2">
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-sunken px-2.5 py-1 text-xs text-on-surface"
+            title="Applied by reference and combined (AND) with the rows below. Edit it in the Costs panel to change every graph, report and budget using it."
+          >
+            <span className="text-on-surface-faint">Saved filter</span>
+            <span className="font-medium">
+              {applied ? applied.name : saved === undefined ? "…" : savedFilterId}
+            </span>
+            <button
+              type="button"
+              onClick={() => onSavedFilterChange(undefined)}
+              className="text-on-surface-faint hover:text-on-surface-secondary"
+              title="Remove the saved filter from this config (the filter itself is untouched)"
+              aria-label="Remove saved filter"
+            >
+              ✕
+            </button>
+          </span>
+        </div>
+      )}
+      {savedFilterId && Array.isArray(saved) && !applied && (
+        <p className="text-xs text-amber-500">
+          This saved filter no longer resolves — queries will fail until it is removed here or
+          restored.
+        </p>
+      )}
+      <div className="flex items-center gap-3">
+        {!savedFilterId && Array.isArray(saved) && saved.length > 0 && (
+          <select
+            aria-label="Apply saved filter"
+            className={`${selectBaseClass} max-w-56 text-xs`}
+            value=""
+            onChange={(e) => {
+              if (e.target.value) onSavedFilterChange(e.target.value);
+            }}
+          >
+            <option value="">Apply saved filter…</option>
+            {saved.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+        )}
+        {rowsMode && api.createSavedFilter && savableRows.length > 0 && !savedFilterId && (
+          <button
+            type="button"
+            onClick={() => void saveRowsAsFilter()}
+            disabled={busy}
+            className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50"
+          >
+            Save these rows as a filter…
+          </button>
+        )}
+      </div>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+    </div>
+  );
 }
 
 /**
@@ -315,7 +457,14 @@ export interface CostFilterEditorProps extends FilterRowEditorProps {
  * - to rows, while the query does not parse — the rows can only show the last
  *   valid filter, so switching would silently discard what was typed.
  */
-export function CostFilterEditor({ filters, onChange, api, onErrorChange }: CostFilterEditorProps) {
+export function CostFilterEditor({
+  filters,
+  onChange,
+  api,
+  onErrorChange,
+  savedFilterId,
+  onSavedFilterChange,
+}: CostFilterEditorProps) {
   const uid = useId();
   const [mode, setMode] = useState<"rows" | "text">("rows");
   const [text, setText] = useState("");
@@ -365,8 +514,23 @@ export function CostFilterEditor({ filters, onChange, api, onErrorChange }: Cost
         : "text-on-surface-faint hover:text-on-surface-secondary"
     }`;
 
+  // The saved-filter UI needs both a place to write the reference and a host
+  // API that can list filters — absent either, this editor is exactly the
+  // pre-saved-filters one.
+  const savedFilterUi = Boolean(onSavedFilterChange && api.listSavedFilters);
+
   return (
     <div className="space-y-2">
+      {savedFilterUi && (
+        <SavedFilterPicker
+          api={api}
+          filters={filters}
+          onChange={onChange}
+          savedFilterId={savedFilterId}
+          onSavedFilterChange={onSavedFilterChange!}
+          rowsMode={mode === "rows"}
+        />
+      )}
       <div className="flex items-center gap-1">
         <button
           type="button"
@@ -699,6 +863,8 @@ export function CostGraphConfigModal({
               onChange={(filters) => set({ filters })}
               api={api}
               onErrorChange={setFilterError}
+              savedFilterId={config.savedFilterId}
+              onSavedFilterChange={(savedFilterId) => set({ savedFilterId })}
             />
           </div>
 

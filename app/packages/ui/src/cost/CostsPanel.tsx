@@ -14,7 +14,9 @@ import { SleepSchedulesSection } from "../schedules/SleepSchedulesSection.js";
 import type { SchedulesClient, SleepSchedule } from "../schedules/types.js";
 import { BudgetCard } from "./BudgetCard.js";
 import { CostAnomaliesSection } from "./CostAnomaliesSection.js";
+import { CostChangeAlertsSection } from "./CostChangeAlertsSection.js";
 import { TagGovernanceSection } from "./TagGovernanceSection.js";
+import { SavedFiltersSection } from "./SavedFiltersSection.js";
 import { BudgetConfigModal, DEFAULT_BUDGET_INPUT } from "./BudgetConfigModal.js";
 import { CostGraphCard } from "./CostGraphCard.js";
 import { CostCollectionNotice } from "./CostCollectionNotice.js";
@@ -51,6 +53,9 @@ function budgetToInput(budget: BudgetWithStatus): BudgetInput {
     // Round-tripped, or editing a budget's name would quietly move it back to
     // the cash basis it was deliberately taken off.
     ...(budget.costBasis ? { costBasis: budget.costBasis } : {}),
+    // Same rule: a rename must not silently detach the saved filter scoping
+    // this budget — updates are full replaces.
+    ...(budget.savedFilterId ? { savedFilterId: budget.savedFilterId } : {}),
   };
 }
 

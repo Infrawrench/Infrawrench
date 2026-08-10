@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui";
 import { CostBasisChips } from "./CostBasisChips";
 import { CostFilterEditor } from "./CostFilterEditor";
+import { SavedFilterChip } from "./SavedFilterChip";
 
 /**
  * Author a budget — the native counterpart of web's `BudgetConfigModal`, over
@@ -120,9 +121,16 @@ export function BudgetSheet({
         </ChipRow>
       </Field>
       <CostBasisChips value={input.costBasis} onChange={(costBasis) => set({ costBasis })} />
+      {/* Read-only on purpose; the reference round-trips through `input`
+          untouched, so saving here never widens the budget. */}
+      <SavedFilterChip savedFilterId={input.savedFilterId} />
       <CostFilterEditor
         label="Scope"
-        hint="All spend when empty."
+        hint={
+          input.savedFilterId
+            ? "Combined (AND) with the saved filter above."
+            : "All spend when empty."
+        }
         filters={input.filters}
         onChange={(filters) => set({ filters })}
       />

@@ -24,6 +24,7 @@ import {
 } from "@/components/form";
 import { CostBasisChips } from "./CostBasisChips";
 import { CostFilterEditor, useDimensionValues } from "./CostFilterEditor";
+import { SavedFilterChip } from "./SavedFilterChip";
 
 /**
  * Author a cost-graph widget — the native counterpart of web's
@@ -162,10 +163,17 @@ export function CostGraphSheet({
           onChange={(groupByTagKey) => set({ groupByTagKey })}
         />
       ) : null}
+      {/* Read-only on purpose; the reference round-trips through `config`
+          untouched, so saving here never detaches it. */}
+      <SavedFilterChip savedFilterId={config.savedFilterId} />
       <CostFilterEditor
         filters={config.filters}
         onChange={(filters) => set({ filters })}
-        hint="All spend when empty."
+        hint={
+          config.savedFilterId
+            ? "Combined (AND) with the saved filter above."
+            : "All spend when empty."
+        }
       />
       <Field label="Top groups" hint="1–15; anything beyond folds into “Other”.">
         <ChipRow>

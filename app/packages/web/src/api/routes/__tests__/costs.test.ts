@@ -40,6 +40,15 @@ vi.mock("@infrawrench/server-core/cost/currency-settings", () => ({
   listOrgExchangeRates: vi.fn().mockResolvedValue([]),
 }));
 
+// Same reason: the saved-filter resolver reaches server-core's db client at
+// import time. Its behaviour (AND-composition, error on a dangling reference)
+// is covered in services/__tests__/cost-query-saved-filters.test.ts; requests
+// in this file never set savedFilterId, so the mock is never called.
+vi.mock("@infrawrench/server-core/cost/saved-filters", () => ({
+  SavedCostFilterResolutionError: class extends Error {},
+  resolveSavedCostFilters: vi.fn(),
+}));
+
 const mockGetAnomalySettings = vi.fn();
 const mockSetAnomalySettings = vi.fn();
 

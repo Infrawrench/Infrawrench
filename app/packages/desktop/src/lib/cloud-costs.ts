@@ -172,3 +172,128 @@ export async function updateCloudCostReport(
 export async function deleteCloudCostReport(orgId: string, reportId: string): Promise<void> {
   await invoke("cloud_delete_cost_report", { orgId, reportId });
 }
+
+/* ------------------------------------------------------------------ *
+ * Cost-report folders — the tree the Reports list groups by.
+ * ------------------------------------------------------------------ */
+
+export async function listCloudCostReportFolders(orgId: string): Promise<CostReportFolder[]> {
+  return (await invoke<CostReportFolder[]>("cloud_list_cost_report_folders", { orgId })) ?? [];
+}
+
+export async function createCloudCostReportFolder(
+  orgId: string,
+  input: CostReportFolderInput,
+): Promise<CostReportFolder> {
+  return invoke("cloud_create_cost_report_folder", { orgId, input });
+}
+
+export async function updateCloudCostReportFolder(
+  orgId: string,
+  folderId: string,
+  input: CostReportFolderInput,
+): Promise<CostReportFolder> {
+  return invoke("cloud_update_cost_report_folder", { orgId, folderId, input });
+}
+
+export async function deleteCloudCostReportFolder(orgId: string, folderId: string): Promise<void> {
+  await invoke("cloud_delete_cost_report_folder", { orgId, folderId });
+}
+
+/* ------------------------------------------------------------------ *
+ * Report delivery schedules — scheduled sends of a saved report to
+ * Slack/Teams/email. Cloud-only like everything else here.
+ * ------------------------------------------------------------------ */
+
+export async function listCloudReportNotifications(
+  orgId: string,
+  reportId: string,
+): Promise<ReportNotification[]> {
+  return (
+    (await invoke<ReportNotification[]>("cloud_list_report_notifications", { orgId, reportId })) ??
+    []
+  );
+}
+
+export async function loadCloudReportDeliveryTargets(
+  orgId: string,
+  reportId: string,
+): Promise<ReportDeliveryTargets> {
+  return invoke("cloud_report_delivery_targets", { orgId, reportId });
+}
+
+export async function createCloudReportNotification(
+  orgId: string,
+  reportId: string,
+  input: ReportNotificationInput,
+): Promise<ReportNotification> {
+  return invoke("cloud_create_report_notification", { orgId, reportId, input });
+}
+
+export async function updateCloudReportNotification(
+  orgId: string,
+  reportId: string,
+  notificationId: string,
+  input: ReportNotificationInput,
+): Promise<ReportNotification> {
+  return invoke("cloud_update_report_notification", { orgId, reportId, notificationId, input });
+}
+
+export async function deleteCloudReportNotification(
+  orgId: string,
+  reportId: string,
+  notificationId: string,
+): Promise<void> {
+  await invoke("cloud_delete_report_notification", { orgId, reportId, notificationId });
+}
+
+export async function sendCloudReportNotificationNow(
+  orgId: string,
+  reportId: string,
+  notificationId: string,
+): Promise<ReportNotificationSendResult> {
+  return invoke("cloud_send_report_notification", { orgId, reportId, notificationId });
+}
+
+/* ------------------------------------------------------------------ *
+ * Saved cost filters — named filter sets applied by reference. Cloud-mode
+ * only, and resolved server-side at query time like every other surface.
+ * ------------------------------------------------------------------ */
+
+export async function listCloudSavedCostFilters(orgId: string): Promise<SavedCostFilter[]> {
+  return (await invoke<SavedCostFilter[]>("cloud_list_saved_cost_filters", { orgId })) ?? [];
+}
+
+export async function createCloudSavedCostFilter(
+  orgId: string,
+  input: SavedCostFilterInput,
+): Promise<SavedCostFilter> {
+  return invoke("cloud_create_saved_cost_filter", { orgId, input });
+}
+
+export async function updateCloudSavedCostFilter(
+  orgId: string,
+  savedFilterId: string,
+  input: SavedCostFilterInput,
+): Promise<SavedCostFilter> {
+  return invoke("cloud_update_saved_cost_filter", { orgId, savedFilterId, input });
+}
+
+/** Rejects with the server's 409 message (naming referents) while referenced. */
+export async function deleteCloudSavedCostFilter(
+  orgId: string,
+  savedFilterId: string,
+): Promise<void> {
+  await invoke("cloud_delete_saved_cost_filter", { orgId, savedFilterId });
+}
+
+export async function listCloudSavedCostFilterReferents(
+  orgId: string,
+  savedFilterId: string,
+): Promise<SavedCostFilterReferent[]> {
+  const res = await invoke<{ referents: SavedCostFilterReferent[] }>(
+    "cloud_saved_cost_filter_referents",
+    { orgId, savedFilterId },
+  );
+  return res?.referents ?? [];
+}

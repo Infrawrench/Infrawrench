@@ -7,6 +7,15 @@ const mockListTagKeys = vi.fn();
 const mockGetOrgCostStatus = vi.fn();
 // The tag-policy modules reach the db client at import time, which requires
 // DATABASE_URL — stub them like the other server-core imports below.
+// Same DATABASE_URL reason: the saved-filter service and the commitments feed
+// both reach a db client at import time. Behaviour lives in their own tests
+// (services/__tests__ and api/routes/__tests__/saved-filters.test.ts).
+vi.mock("../../services/saved-cost-filters", () => ({
+  listSavedCostFilters: vi.fn().mockResolvedValue([]),
+}));
+vi.mock("@infrawrench/server-core/commitments/feed", () => ({
+  getCommitmentsFeed: vi.fn().mockResolvedValue([]),
+}));
 vi.mock("@infrawrench/server-core/cost/tag-policy", () => ({
   getOrgTagPolicy: vi.fn().mockResolvedValue(null),
   setOrgTagPolicy: vi.fn(),

@@ -1,27 +1,40 @@
 import { useUIStore } from "@infrawrench/ui";
 import type {
   BudgetInput,
+  CostAlertInput,
   CostAnomalySettings,
   CostsClient,
   CostsPanelDashboard,
+  SavedCostFilterInput,
 } from "@infrawrench/ui/cost";
 import {
   createCloudBudget,
+  createCloudCostAlert,
   createCloudWidget,
   deleteCloudBudget,
+  deleteCloudCostAlert,
   deleteCloudWidget,
   listCloudBudgets,
+  listCloudCostAlertEvents,
+  listCloudCostAlerts,
   listCloudCostAnomalies,
   loadCloudAnomalySettings,
   loadCloudCostDimensionValues,
   loadCloudCostStatus,
   loadCloudShowback,
+  loadCloudCommitments,
   loadCloudCreditBurndown,
   loadCloudTagCompliance,
   loadCloudUntaggedSpend,
   queryCloudCosts,
   saveCloudAnomalySettings,
   updateCloudBudget,
+  updateCloudCostAlert,
+  createCloudSavedCostFilter,
+  deleteCloudSavedCostFilter,
+  listCloudSavedCostFilterReferents,
+  listCloudSavedCostFilters,
+  updateCloudSavedCostFilter,
 } from "./cloud-costs";
 import { listCloudDashboards } from "./cloud-dashboards";
 
@@ -50,6 +63,18 @@ export function createDesktopCostsClient(): CostsClient {
       if (!orgId) return Promise.resolve([]);
       return loadCloudCostStatus(orgId);
     },
+    // Saved filters get the full editor on desktop for the same reason the
+    // anomaly tuning does: the Costs panel is the same shared component, and
+    // the filters are org-level cloud state either way.
+    listSavedFilters: () => listCloudSavedCostFilters(requireOrgId()),
+    createSavedFilter: (input: SavedCostFilterInput) =>
+      createCloudSavedCostFilter(requireOrgId(), input),
+    updateSavedFilter: (savedFilterId: string, input: SavedCostFilterInput) =>
+      updateCloudSavedCostFilter(requireOrgId(), savedFilterId, input),
+    deleteSavedFilter: (savedFilterId: string) =>
+      deleteCloudSavedCostFilter(requireOrgId(), savedFilterId),
+    getSavedFilterReferents: (savedFilterId: string) =>
+      listCloudSavedCostFilterReferents(requireOrgId(), savedFilterId),
     listBudgets: () => listCloudBudgets(requireOrgId()),
     listAnomalies: (days?: number) => listCloudCostAnomalies(requireOrgId(), days),
     // Desktop gets the tuning editor too: the Costs panel is the same

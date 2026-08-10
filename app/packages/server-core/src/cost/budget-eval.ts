@@ -16,6 +16,7 @@ import { queryCosts, type CostBasis, type CostFilter } from "../clickhouse/cost-
 import { convertGroups } from "./currency-convert";
 import { getOrgCurrencySettings, listOrgExchangeRates } from "./currency-settings";
 import { forecastMonthTotal, type DailyPoint } from "./forecast";
+import { resolveSavedCostFilters } from "./saved-filters";
 import { sendBudgetAlertPage } from "../twilio-pager";
 import { alertReached, routeAlert } from "../alerts/route";
 import {
@@ -93,6 +94,7 @@ export async function budgetMonthStatus(
   currency: string,
   now = new Date(),
   costBasis?: CostBasis,
+  savedFilterId?: string | null,
 ): Promise<{
   month: string;
   actualCents: number;
@@ -104,12 +106,19 @@ export async function budgetMonthStatus(
 }> {
   const today = isoDay(now);
   const month = today.slice(0, 7);
+  // A saved filter is resolved here, at evaluation time, so an edit to it
+  // re-scopes the budget on the next pass. A reference that fails to resolve
+  // throws — the caller must surface the failure, because evaluating this
+  // budget over unfiltered spend would fire or suppress alerts it should not.
+  const effectiveFilters = savedFilterId
+    ? [...(await resolveSavedCostFilters(organizationId, savedFilterId)), ...filters]
+    : filters;
   const groups = await queryCosts(organizationId, {
     from: addDays(today, -59),
     to: today,
     binning: "daily",
     groupBy: "none",
-    filters,
+    filters: effectiveFilters,
     ...(costBasis ? { costBasis } : {}),
   });
 
@@ -181,12 +190,16 @@ export async function evaluateBudgetsForOrg(
       );
       if ((thresholds.length === 0 && watchers.length === 0) || budget.amountCents <= 0) continue;
 
+      // A budget referencing a saved filter that no longer resolves throws
+      // out of budgetMonthStatus into this budget's catch below: the
+      // evaluation is skipped and logged, never silently run over all spend.
       const status = await budgetMonthStatus(
         organizationId,
         (budget.filters ?? []) as CostFilter[],
         budget.currency,
         now,
         (budget.costBasis ?? undefined) as CostBasis | undefined,
+        budget.savedFilterId,
       );
 
       if (watchers.length > 0) {

@@ -38,11 +38,21 @@ const BudgetCostBasis = z
   )
   .openapi("BudgetCostBasis");
 
+const BudgetSavedFilterId = z
+  .string()
+  .describe(
+    "A saved cost filter (see /saved-cost-filters) applied by reference and AND-composed " +
+      "with `filters` when the budget is evaluated. Updates are full replaces, so omitting " +
+      "it on PUT clears it. A reference that fails to resolve errors the budget's " +
+      "evaluation rather than silently measuring all spend.",
+  );
+
 const BudgetInput = strict({
   name: z.string().min(1).max(120),
   amountCents: z.number().int().positive(),
   currency: z.string().length(3).optional(),
   filters: z.array(CostFilterRef).optional(),
+  savedFilterId: BudgetSavedFilterId.optional(),
   thresholds: z.array(BudgetThreshold).min(1).max(10),
   costBasis: BudgetCostBasis.optional(),
 }).openapi("BudgetInput");
@@ -54,6 +64,7 @@ const BudgetFull = strict({
   amountCents: z.number().int(),
   currency: z.string(),
   filters: z.array(CostFilterRef),
+  savedFilterId: BudgetSavedFilterId.nullable(),
   thresholds: z.array(BudgetThreshold),
   costBasis: BudgetCostBasis,
   createdByUserId: z.string().nullable(),
@@ -82,6 +93,7 @@ const BudgetWithStatus = strict({
   costBasis: BudgetCostBasis.describe(
     "The basis `actualCents` and `forecastCents` were measured on.",
   ),
+  savedFilterId: BudgetSavedFilterId.nullable(),
   month: Month,
   actualCents: z.number().int(),
   forecastCents: z.number().int().nullable(),

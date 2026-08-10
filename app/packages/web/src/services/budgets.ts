@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 import type { BudgetPlacement, BudgetWithStatus } from "@infrawrench/ui/cost";
 import type { BudgetInput, CostBasis, CostFilter } from "@infrawrench/ui/cost/config";
 import { budgetMonthStatus } from "@infrawrench/server-core/cost/budget-eval";
+import { resolveSavedCostFilters } from "@infrawrench/server-core/cost/saved-filters";
 import { db } from "../db/client";
 import { budgetAlertEvents, budgets, dashboardWidgets, dashboards } from "../db/schema";
 
@@ -66,12 +67,15 @@ async function toBudgetWithStatus(
   placements: BudgetPlacement[],
 ): Promise<BudgetWithStatus> {
   const costBasis = (b.costBasis ?? "cash") as CostBasis;
+  // A saved-filter reference that fails to resolve throws out of here rather
+  // than evaluating the budget over all spend — the error is the honest answer.
   const status = await budgetMonthStatus(
     organizationId,
     (b.filters ?? []) as CostFilter[],
     b.currency,
     undefined,
     costBasis,
+    b.savedFilterId,
   );
   const events = await db
     .select()
@@ -87,6 +91,7 @@ async function toBudgetWithStatus(
     filters: (b.filters ?? []) as CostFilter[],
     thresholds: b.thresholds as BudgetWithStatus["thresholds"],
     costBasis,
+    savedFilterId: b.savedFilterId,
     month: status.month,
     actualCents: status.actualCents,
     forecastCents: status.forecastCents,
@@ -152,6 +157,10 @@ export async function createBudget(
   input: BudgetInput,
   createdByUserId: string | null,
 ): Promise<BudgetRow> {
+  // Reject a dangling reference at write time (SavedCostFilterResolutionError
+  // → 400 in the route): a budget born pointing at nothing would error every
+  // evaluation from its first day.
+  if (input.savedFilterId) await resolveSavedCostFilters(organizationId, input.savedFilterId);
   const [created] = await db
     .insert(budgets)
     .values({
@@ -165,6 +174,7 @@ export async function createBudget(
       // Absent means cash — the column's own default, restated here so the
       // insert doesn't depend on which of the two defaults applies.
       costBasis: input.costBasis ?? "cash",
+      savedFilterId: input.savedFilterId ?? null,
       createdByUserId,
     })
     .returning();
@@ -177,6 +187,7 @@ export async function updateBudget(
   budgetId: string,
   input: BudgetInput,
 ): Promise<BudgetRow | null> {
+  if (input.savedFilterId) await resolveSavedCostFilters(organizationId, input.savedFilterId);
   const [updated] = await db
     .update(budgets)
     .set({
@@ -186,6 +197,9 @@ export async function updateBudget(
       filters: input.filters,
       thresholds: input.thresholds,
       costBasis: input.costBasis ?? "cash",
+      // A PUT is a full replace, so absent clears the reference — the editor
+      // always sends the whole object, including the chip it still shows.
+      savedFilterId: input.savedFilterId ?? null,
       updatedAt: new Date(),
     })
     .where(

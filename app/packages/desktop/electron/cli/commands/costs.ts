@@ -15,6 +15,7 @@ import type {
   CostFilter,
   CostQueryRequest,
   CostQueryResponse,
+  SavedCostFilter,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
 import type { RangeFlags } from "../args";
 import { parseLastDays, resolveDayWindow } from "../args";
@@ -159,6 +160,39 @@ async function parseWhere(where: string | undefined): Promise<CostFilter[]> {
 }
 
 /**
+ * `--filter <name|id>` → the saved filter it names, or null when the flag is
+ * absent.
+ *
+ * Resolved to an *id* here and to rows on the server at query time — the same
+ * reference semantics every graph and budget pointing at the filter gets. The
+ * list is fetched once to match by id or (case-insensitive) name; names are
+ * unique per org, so a name can never be ambiguous. An unknown value is an
+ * error listing what exists, never a silent unfiltered query.
+ */
+async function resolveSavedFilterFlag(
+  orgId: string,
+  flag: string | undefined,
+): Promise<SavedCostFilter | null> {
+  const wanted = flag?.trim();
+  if (!wanted) return null;
+  const saved = (await orgFetch<SavedCostFilter[]>(orgId, "/saved-cost-filters")) ?? [];
+  const match =
+    saved.find((f) => f.id === wanted) ??
+    saved.find((f) => f.name.toLowerCase() === wanted.toLowerCase());
+  if (!match) {
+    const names = saved.map((f) => `"${f.name}"`).join(", ");
+    throw new CliError(
+      `--filter: no saved cost filter named "${wanted}".` +
+        (saved.length > 0
+          ? ` Saved filters: ${names}.`
+          : " This organization has no saved filters yet — create one from any cost editor."),
+      2,
+    );
+  }
+  return match;
+}
+
+/**
  * Collection runs daily in the background and backs off on failure, so a
  * misconfigured provider reads as missing spend rather than an error. Fetch
  * the per-account state so the numbers below can be trusted (or explained).
@@ -234,6 +268,7 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
   const chargeTypes = parseChargeTypes(range.chargeTypes);
   const displayCurrency = parseCurrency(range.currency);
   const filters = await parseWhere(range.where);
+  const savedFilter = await resolveSavedFilterFlag(org.id, range.filter);
 
   const days = range.last ? Math.max(1, Math.round(parseLastDays(range.last))) : 30;
   const to = range.to ?? isoDay(Date.now());
@@ -255,6 +290,11 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     // Omitted unless asked for, so a server that has never heard of conversion
     // — and an org that has not opted in — answers the request it always did.
     ...(displayCurrency ? { displayCurrency } : {}),
+    // The *id*, resolved server-side at query time and AND-composed with the
+    // --where filter above — the same reference semantics a graph or budget
+    // pointing at this filter gets, so `--filter prod-only` cannot drift from
+    // what "prod-only" means everywhere else.
+    ...(savedFilter ? { savedFilterId: savedFilter.id } : {}),
   };
 
   const [response, collection] = await Promise.all([
@@ -275,6 +315,11 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
       // to, so a script can see which filter actually ran without re-parsing.
       where: range.where?.trim() || null,
       filters,
+      // The saved filter is echoed as id + name + the rows it resolved to at
+      // request time, so a script can see the whole effective filter.
+      savedFilter: savedFilter
+        ? { id: savedFilter.id, name: savedFilter.name, filters: savedFilter.filters }
+        : null,
       costBasis: basis ?? "cash",
       chargeTypes,
       // Echoed so a script can tell an unconverted run from a converted one
@@ -312,6 +357,9 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     // The filter belongs on the header line for the same reason the basis
     // does: a narrowed total that does not say what it excludes gets quoted as
     // if it were the whole bill.
+    // The saved filter's name too — a total scoped by "prod only" that does
+    // not say so gets quoted as the whole bill.
+    ...(savedFilter ? [`filter "${savedFilter.name}"`] : []),
     ...(filters.length > 0 ? [range.where!.trim()] : []),
     ...(basis === "amortized" ? ["amortized"] : []),
     ...(chargeTypes.length > 0 ? [chargeTypes.join(", ")] : []),

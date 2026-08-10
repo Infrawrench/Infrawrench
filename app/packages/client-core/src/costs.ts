@@ -225,6 +225,14 @@ export interface CostGraphConfig {
   /** Required when groupBy === "tag". */
   groupByTagKey?: string | undefined;
   filters: CostFilter[];
+  /**
+   * A saved cost filter (`saved-cost-filters.ts`) applied **by reference** and
+   * AND-composed with `filters` at query time, server-side. Referencing rather
+   * than copying is the point: editing the saved filter changes every graph
+   * using it. A reference that fails to resolve makes the query error rather
+   * than silently run unfiltered.
+   */
+  savedFilterId?: string | undefined;
   /** Groups beyond the top N fold into an "Other" series. */
   topN: number;
   comparePreviousPeriod: boolean;
@@ -258,6 +266,14 @@ export interface BudgetInput {
   amountCents: number;
   currency: string;
   filters: CostFilter[];
+  /**
+   * A saved cost filter applied by reference, AND-composed with `filters` when
+   * the budget is evaluated. Absent means none; a PUT that omits it clears it
+   * (budget updates are full replaces). A budget whose reference fails to
+   * resolve errors its evaluation rather than silently measuring all spend —
+   * un-scoping a budget could fire or suppress alerts.
+   */
+  savedFilterId?: string | undefined;
   thresholds: BudgetThreshold[];
   /**
    * Which number the budget tracks. Absent is `cash`, so every budget written
@@ -382,6 +398,12 @@ export interface BudgetWithStatus {
    * cash, which is what such a server was measuring.
    */
   costBasis?: CostBasis | undefined;
+  /**
+   * The saved cost filter AND-composed with `filters` when the budget is
+   * evaluated, or null. Optional so a client a release ahead of its server
+   * still renders the row.
+   */
+  savedFilterId?: string | null | undefined;
   /** Month the status covers, YYYY-MM. */
   month: string;
   actualCents: number;
@@ -674,6 +696,15 @@ export interface CostQueryRequest {
    * silently gets one of them is the failure this is designed to avoid.
    */
   query?: string | undefined;
+  /**
+   * A saved cost filter (`saved-cost-filters.ts`) resolved **server-side** and
+   * AND-composed with whichever inline spelling is present (`filters` or
+   * `query`). Unlike those two it is not an alternative but a composition —
+   * "the saved 'prod only' scope, further narrowed to this service" is the
+   * intended use. An id that fails to resolve is an error, never a silent
+   * fall-through to unfiltered spend.
+   */
+  savedFilterId?: string | undefined;
   topN: number;
   comparePreviousPeriod: boolean;
   forecast: boolean;
@@ -837,6 +868,9 @@ export function costQueryForConfig(config: CostGraphConfig, today = new Date()):
     groupBy: config.groupBy,
     ...(config.groupByTagKey ? { groupByTagKey: config.groupByTagKey } : {}),
     filters: config.filters,
+    // Passed by reference so the server resolves it at query time — the whole
+    // point of a saved filter is that the config never holds a copy.
+    ...(config.savedFilterId ? { savedFilterId: config.savedFilterId } : {}),
     topN: config.topN,
     comparePreviousPeriod: config.comparePreviousPeriod,
     forecast: config.showForecast,

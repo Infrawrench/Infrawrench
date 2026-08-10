@@ -8,6 +8,7 @@ import {
   softDeleteBudget,
   updateBudget,
 } from "../../services/budgets";
+import { SavedCostFilterResolutionError } from "@infrawrench/server-core/cost/saved-filters";
 import type { AuthSession } from "../auth-middleware";
 import { requirePermission } from "../../auth/permissions";
 
@@ -37,7 +38,14 @@ app.post("/", async (c) => {
     return c.json({ error: "Invalid budget", issues: parsed.error.issues }, 400);
   }
 
-  return c.json(await createBudget(organizationId, parsed.data, session.userId ?? null));
+  try {
+    return c.json(await createBudget(organizationId, parsed.data, session.userId ?? null));
+  } catch (e) {
+    // A budget must not be born pointing at a saved filter that doesn't
+    // resolve — it would error every evaluation from day one.
+    if (e instanceof SavedCostFilterResolutionError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
 });
 
 /** GET /api/org/:orgId/budgets/:id */
@@ -60,9 +68,14 @@ app.put("/:id", async (c) => {
     return c.json({ error: "Invalid budget", issues: parsed.error.issues }, 400);
   }
 
-  const updated = await updateBudget(organizationId, c.req.param("id"), parsed.data);
-  if (!updated) return c.json({ error: "Not found" }, 404);
-  return c.json(updated);
+  try {
+    const updated = await updateBudget(organizationId, c.req.param("id"), parsed.data);
+    if (!updated) return c.json({ error: "Not found" }, 404);
+    return c.json(updated);
+  } catch (e) {
+    if (e instanceof SavedCostFilterResolutionError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
 });
 
 /** DELETE /api/org/:orgId/budgets/:id — soft delete. */

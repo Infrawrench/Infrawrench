@@ -1,22 +1,34 @@
 import type {
   BudgetWithStatus,
   CostAccountStatus,
+  CostAlert,
+  CostAlertEvent,
+  CostAlertInput,
   CostAnomaly,
   CostAnomalySettings,
   CostAnomalySettingsView,
+  CommitmentsFeed,
   CostDimensionOption,
   CreditBurndown,
   ShowbackReport,
   TagComplianceReport,
   UntaggedSpendReport,
 } from "@infrawrench/client-core";
-import type { BudgetInput, CostQueryRequest, CostQueryResponse } from "./config.js";
+import type {
+  BudgetInput,
+  CostQueryRequest,
+  CostQueryResponse,
+  SavedCostFilter,
+  SavedCostFilterInput,
+  SavedCostFilterReferent,
+} from "./config.js";
 
 /**
  * The cost contract lives in client-core so mobile (which doesn't depend on
  * this package) shares one definition of it; re-exported for web and desktop.
  */
 export type {
+  CommitmentsFeed,
   CreditBurndown,
   BudgetWithStatus,
   BudgetPlacement,
@@ -41,6 +53,15 @@ export interface CostApi {
   loadDimensionValues(dimension: string, tagKey?: string): Promise<CostDimensionOption[]>;
   /** Per-account collection state — backs {@link CostAccountStatus} notices. */
   loadCostStatus(): Promise<CostAccountStatus[]>;
+  /**
+   * The org's saved cost filters, for the picker in {@link CostFilterEditor}.
+   * Optional the way the mutating budget calls are: a host that hasn't wired
+   * the endpoint simply doesn't offer the picker, and the editor renders
+   * exactly as it did before saved filters existed.
+   */
+  listSavedFilters?(): Promise<SavedCostFilter[]>;
+  /** "Save these rows as a filter…" in the editor. Omitted for read-only hosts. */
+  createSavedFilter?(input: SavedCostFilterInput): Promise<SavedCostFilter>;
 }
 
 /** A dashboard a budget card can be added to, for the Costs panel's picker. */
@@ -106,4 +127,27 @@ export interface CostsClient extends CostApi {
    * no credit-capable accounts, which is the common case.
    */
   getCreditBurndown?(): Promise<CreditBurndown>;
+  /**
+   * Commitments — reservations, savings plans, committed-use discounts —
+   * with coverage, utilization and planner recommendations. Optional the way
+   * `getCreditBurndown` is: an unwired host doesn't render the section, and
+   * the section renders nothing anyway for an org with no commitment-capable
+   * accounts.
+   */
+  getCommitments?(): Promise<CommitmentsFeed | null>;
+  /**
+   * Saved-filter management, for the Saved filters section of the Costs panel.
+   * The read half (`listSavedFilters`) lives on {@link CostApi} because the
+   * filter editors need it too; these are the management-only calls. All
+   * optional on the usual rule: omitted, the section renders read-only (or not
+   * at all when even the list is unavailable).
+   */
+  updateSavedFilter?(savedFilterId: string, input: SavedCostFilterInput): Promise<SavedCostFilter>;
+  /**
+   * Rejects while the filter is referenced — the server answers 409 with the
+   * referents, and the thrown error's message names them.
+   */
+  deleteSavedFilter?(savedFilterId: string): Promise<void>;
+  /** Everything referencing a saved filter (budgets, reports, dashboard graphs). */
+  getSavedFilterReferents?(savedFilterId: string): Promise<SavedCostFilterReferent[]>;
 }
