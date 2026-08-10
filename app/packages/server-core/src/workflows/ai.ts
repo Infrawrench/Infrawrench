@@ -126,18 +126,16 @@ export async function aiFromWorkflow(
       ctx.signal ? { signal: ctx.signal } : undefined,
     );
 
-    // Stop after the provider returned: do not bill. The platform may still
-    // owe Anthropic for a completed response; the org should not, once they
-    // asked the run to stop. The finally below drops the reservation.
-    if (ctx.signal?.aborted) throw stoppedError();
-
     const usage = {
       inputTokens: response.usage.input_tokens,
       outputTokens: response.usage.output_tokens,
       cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
       cacheWriteTokens: response.usage.cache_creation_input_tokens ?? 0,
     };
-    // Record real usage before releasing the hold so the brief overlap is a
+    // Always settle usage for a completed provider response before honoring
+    // Stop — otherwise a race where abort lands after Anthropic returns would
+    // release the reservation with nothing recorded and understate the org's
+    // shared AI spend. Record before releasing so the brief overlap is a
     // conservative double-count rather than a gap concurrent callers could use.
     const costMicros = await recordWorkflowAiUsage({
       organizationId: ctx.organizationId,
@@ -146,6 +144,10 @@ export async function aiFromWorkflow(
       model: response.model || spec.model,
       usage,
     });
+
+    // Stop after accounting: the org was billed for the completed call, but the
+    // workflow must not receive the reply once the run was cancelled.
+    if (ctx.signal?.aborted) throw stoppedError();
 
     // Safety classifiers answer 200 with `stop_reason: "refusal"` and no
     // content. An empty string would be a confusing non-answer to branch on, so
