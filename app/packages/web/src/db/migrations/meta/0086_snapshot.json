@@ -1,6 +1,6 @@
 {
-  "id": "b7096a0e-9e37-47f5-bda6-251384e9abb9",
-  "prevId": "130cb87a-262a-4cb6-8586-afda5190c09c",
+  "id": "130cb87a-262a-4cb6-8586-afda5190c09c",
+  "prevId": "27d61042-537a-4e39-9f54-834cfd1ab22a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -779,12 +779,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'cash'"
-        },
-        "saved_filter_id": {
-          "name": "saved_filter_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -13215,141 +13209,6 @@
           "tableTo": "cost_report_folders",
           "columnsFrom": [
             "parent_folder_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.saved_cost_filters": {
-      "name": "saved_cost_filters",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "organization_id": {
-          "name": "organization_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "filters": {
-          "name": "filters",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
-        "created_by_user_id": {
-          "name": "created_by_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "deleted_at": {
-          "name": "deleted_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "saved_cost_filters_org_idx": {
-          "name": "saved_cost_filters_org_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "saved_cost_filters_org_name_unique": {
-          "name": "saved_cost_filters_org_name_unique",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "deleted_at IS NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "saved_cost_filters_organization_id_organizations_id_fk": {
-          "name": "saved_cost_filters_organization_id_organizations_id_fk",
-          "tableFrom": "saved_cost_filters",
-          "tableTo": "organizations",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "saved_cost_filters_created_by_user_id_users_id_fk": {
-          "name": "saved_cost_filters_created_by_user_id_users_id_fk",
-          "tableFrom": "saved_cost_filters",
-          "tableTo": "users",
-          "columnsFrom": [
-            "created_by_user_id"
           ],
           "columnsTo": [
             "id"

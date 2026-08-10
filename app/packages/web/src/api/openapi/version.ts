@@ -19,4 +19,3 @@
  */
 // 1.6.0: Linear issue filing alongside Jira (new routes and permissions).
 export const API_VERSION = "1.6.0";
-export const API_VERSION = "1.5.0";
