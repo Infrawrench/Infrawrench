@@ -1736,24 +1736,31 @@ Prod web runs on a regional **GKE** cluster in `us-east4`: `web` (2 replicas, HT
 
 ### Releasing to the stores (`mobile-release.yml`)
 
-**The release ritual is one number.** Bump `version` in `mobile/app.config.ts`, push to main, done. `mobile-release.yml` reads it back with `expo config --json` (evaluating the config the way eas-cli does, rather than parsing the source), skips everything if the tag `mobile-v<version>` already exists, and otherwise runs `eas build --platform all --profile production --auto-submit` and tags on success. Same idiom as `desktop-build.yml`'s `check-if-release` and `publish-sdks.yml`'s `sdk-v*` gate: the version file is the trigger, the tag is the ledger, re-runs are no-ops, and a failed run resumes rather than double-publishing. The tag is written **last** for that reason.
+**iOS only for now.** Android stays out of this workflow until the Play Console app has had its first manual AAB upload and `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` is set — then widen `--platform ios` back to `all` and restore the Play key write/cleanup steps from the original both-stores revision.
+
+**The release ritual is one number.** Bump `version` in `mobile/app.config.ts`, push to main, done. `mobile-release.yml` reads it back with `expo config --json` (evaluating the config the way eas-cli does, rather than parsing the source), skips everything if the tag `mobile-v<version>` already exists, and otherwise runs `eas build --platform ios --profile production --auto-submit` and tags on success. Same idiom as `desktop-build.yml`'s `check-if-release` and `publish-sdks.yml`'s `sdk-v*` gate: the version file is the trigger, the tag is the ledger, re-runs are no-ops, and a failed run resumes rather than double-publishing. The tag is written **last** for that reason. Manual re-runs use Actions → Mobile Release (iOS) → `force`.
 
 Notes on the shape:
 
 - **`version` in `app.config.ts` is authoritative, not `mobile/package.json`.** It is the one that becomes `CFBundleShortVersionString` / `versionName`. The package.json version is inert, as it is for every private package in this workspace.
 - **Build numbers are not part of the ritual.** `appVersionSource: "remote"` + `autoIncrement` on the production profile means EAS owns `buildNumber` and `versionCode`, so there is no release commit and two builds of one version string can't collide.
-- **`--auto-submit` stops at internal testing.** It reuses the submit profile named after the build profile (`production` → `submit.production`) and lands iOS in TestFlight and Android in the Play **internal** track. Neither store's public review is triggered from CI — promoting is a human decision in the consoles. `mobile-build.yml`'s per-push `preview` builds are untouched and still the internal-distribution path.
-- **eas.json submit profiles have no environment-variable interpolation** — the fields are static strings (verified against the docs; `$VAR` does not expand). So `android.serviceAccountKeyPath` names a fixed path and CI writes the key there from `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` (gitignored, removed in an `if: always()` step). iOS credentials go the other way, through the `EXPO_ASC_*` / `EXPO_APPLE_TEAM_ID` env vars the preview workflow already uses.
-- **Prerequisites are checked in seconds, not after a 40-minute build.** A step fails fast if `ascAppId` is still the placeholder or the Play secret is missing, because both are one-time store setup that CI cannot do for itself.
+- **`--auto-submit` stops at TestFlight.** It reuses the submit profile named after the build profile (`production` → `submit.production`) and lands iOS in TestFlight. App Store public review is not triggered from CI — promoting is a human decision in App Store Connect. `mobile-build.yml`'s preview builds are untouched and still the internal-distribution path.
+- **iOS credentials** go through the `EXPO_ASC_*` / `EXPO_APPLE_TEAM_ID` env vars the preview workflow already uses. (When Android is wired back in: eas.json submit profiles have no environment-variable interpolation — `$VAR` does not expand — so `android.serviceAccountKeyPath` names a fixed path and CI writes the key there from `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, gitignored, removed in an `if: always()` step.)
+- **Prerequisites are checked in seconds, not after a 40-minute build.** A step fails fast if `ascAppId` is still the placeholder, because that is one-time store setup that CI cannot do for itself.
 - A version bump also re-triggers `mobile-build.yml` (its path filter covers all of `mobile/**`), so a release commit costs one redundant preview build. Left as-is: the preview is cheap next to the coupling that suppressing it would add.
 
-**What has to be done by hand, once, before the first run can succeed:**
+**What has to be done by hand, once, before the first iOS run can succeed:**
 
 1. ~~Create the App Store Connect app record.~~ **Done** — `com.infrawrench.mobile`, Apple ID `6795309207`, already in `submit.production.ios.ascAppId`. (That number is the app's public App Store id, not a secret; the SKU is a separate private field and is not used by EAS.) The workflow's placeholder check stays in place for a fork setting this up from scratch.
-2. **Create the Play Console app and upload the first AAB manually.** Google's Publishing API refuses to touch an app that has never had a manual upload — this is the usual first-release surprise, and no amount of CI fixes it.
-3. **Create a Play Console service account**, grant it release permissions, and add its JSON key as the repo secret `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`. This is the only credential gap; the Apple side is already covered by `EXPO_ASC_API_KEY_BASE64` / `EXPO_ASC_KEY_ID` / `EXPO_ASC_ISSUER_ID` / `APPLE_TEAM_ID`.
-4. **Run `eas build --profile production` once interactively per platform** from a workstation. Non-interactive CI can use credentials but cannot create them, and the same `--non-interactive` capability-sync trap documented above applies to production builds too.
-5. **Store listing metadata** — screenshots, description, age rating, Apple privacy labels, Play Data Safety. The privacy policy URL exists (`website/src/pages/privacy.astro`); there is no terms page, which the Play listing usually wants.
+2. **Run `eas build --platform ios --profile production` once interactively** from a workstation. Non-interactive CI can use credentials but cannot create them, and the same `--non-interactive` capability-sync trap documented above applies to production builds too. Apple credentials are already covered by `EXPO_ASC_API_KEY_BASE64` / `EXPO_ASC_KEY_ID` / `EXPO_ASC_ISSUER_ID` / `APPLE_TEAM_ID`.
+3. **Store listing metadata** — screenshots, description, age rating, Apple privacy labels. The privacy policy URL exists (`website/src/pages/privacy.astro`).
+
+**Before Android can join this workflow:**
+
+1. **Create the Play Console app and upload the first AAB manually.** Google's Publishing API refuses to touch an app that has never had a manual upload — this is the usual first-release surprise, and no amount of CI fixes it.
+2. **Create a Play Console service account**, grant it release permissions, and add its JSON key as the repo secret `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`.
+3. **Run `eas build --platform android --profile production` once interactively** from a workstation (same credential-creation caveat as iOS).
+4. **Play listing metadata** — screenshots, description, Data Safety; the Play listing usually also wants a terms page (there is none yet).
 
 **App Store review will also check that the app can delete an account** (guideline 5.1.1(v)) — that is what `DELETE /api/profile` and the delete-account cards on web and mobile are for; see the account-deletion note under `api/routes/profile.ts`.
 
