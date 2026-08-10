@@ -55,11 +55,22 @@ jobs:
     outputs:
       version: ${{ steps.check.outputs.VERSION }}
     steps:
-      - uses: actions/checkout@v6
+      # workflow_dispatch can target any ref; refuse anything but main so an
+      # unmerged branch cannot reach TestFlight or mint the shared mobile-v* tag.
+      - name: Require main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Mobile releases must run from main (got ${{ github.ref }}). Re-run Actions → Mobile Release (iOS) with the main branch selected."
+          exit 1
+
+      # Pin privileged actions by SHA — this job (and release) hold contents:write
+      # plus Expo/ASC credentials. Floating major tags would let a future tag move
+      # execute unreviewed code with those rights.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0 # tags, for the gate below
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
       - run: corepack enable
@@ -95,9 +106,14 @@ jobs:
     # hung build should not sit there burning the whole budget.
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          # Tags are the release ledger: a force re-run of an already-tagged
+          # version must see mobile-v* locally, or the final push is rejected
+          # after TestFlight already got the build.
+          fetch-depth: 0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
       - run: corepack enable
