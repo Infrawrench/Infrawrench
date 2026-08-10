@@ -12,9 +12,15 @@
  * return directly when auth fails, the org doesn't match, or the permission is
  * missing.
  *
- * The org tree's normal middleware stack (`sessionMiddleware` +
- * `permissionsMiddleware`) can't do this: it 401s an `iwk_` key outright. Use
- * this for routes an unattended server calls — chat, cost ingest, paging.
+ * The org tree now accepts `iwk_` keys too, through `apiKeyOrgMiddleware` in
+ * `api/auth-middleware.ts` — the same `authenticateApiRequest` and the same
+ * `effectivePermissions` intersection, so there is one rule about what a key
+ * may do, not two. This function stays for the four routers that sit *outside*
+ * that tree on purpose (chat, cost ingest, paging): they are mounted ahead of
+ * it, they authenticate per-handler rather than per-request, and their failure
+ * responses are part of a published contract. Folding them in would change the
+ * order the checks run in and the wording of three error bodies for no gain —
+ * see the note on {@link authenticateOrgRequest}.
  */
 import type { Context } from "hono";
 import { getCookie } from "hono/cookie";
@@ -68,6 +74,22 @@ async function denyUnlessPermitted(
 /**
  * Authenticate the request and verify membership in `:orgId`. On failure
  * returns a Response that the caller should return directly.
+ *
+ * Deliberately **not** collapsed into `apiKeyOrgMiddleware` + `requirePermission`,
+ * even though the two now agree on every authorization question. The observable
+ * behaviour differs in three ways, each of which some caller depends on:
+ *
+ *  - It checks `requireScope` against the key's raw scopes *before* comparing
+ *    orgs, so a key aimed at another org with the wrong scope answers "missing
+ *    scope"; the middleware pins the org first. Neither order is wrong; they
+ *    are not the same order.
+ *  - The 403 bodies read `Missing required scope:` / `Missing required
+ *    permission:`, where `requirePermission` says `Missing permission:`.
+ *  - The session branch upserts the user's email (`onConflictDoUpdate`), where
+ *    `sessionMiddleware` inserts and leaves an existing row alone.
+ *
+ * The duplication that mattered — a second answer to "what may this key do" —
+ * is already gone: both paths resolve through {@link effectivePermissions}.
  */
 export async function authenticateOrgRequest(
   c: Context,
@@ -104,6 +126,11 @@ export async function authenticateOrgRequest(
         via: "api-key",
       };
       if (auth.email) result.email = auth.email;
+      // Carried, not established: `AsyncLocalStorage.enterWith` only reaches
+      // the current execution's descendants, and this function is awaited by
+      // its callers — a store entered here is gone by the time the handler
+      // resumes. Callers that go on to write audit rows call
+      // `enterAuditPrincipal` themselves; see `api/routes/chat.ts`.
       if (auth.apiKeyId) result.apiKeyId = auth.apiKeyId;
       return result;
     }

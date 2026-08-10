@@ -1,0 +1,101 @@
+import { describe, it, expect } from "vitest";
+import { API_KEY_DENY_RULES, apiKeyRouteDenial, orgSubPath } from "../api-key-route-policy";
+
+const ORG = "/api/org/org_01ABCDEF";
+
+describe("orgSubPath", () => {
+  it("strips the org prefix", () => {
+    expect(orgSubPath(`${ORG}/api-keys`)).toBe("/api-keys");
+    expect(orgSubPath(`${ORG}/team/members/u1`)).toBe("/team/members/u1");
+  });
+
+  it("returns / for the org root", () => {
+    expect(orgSubPath(ORG)).toBe("/");
+    expect(orgSubPath(`${ORG}/`)).toBe("/");
+  });
+
+  it("returns null for paths outside the org tree", () => {
+    expect(orgSubPath("/api/profile/mfa")).toBeNull();
+    expect(orgSubPath("/api/orgs")).toBeNull();
+    expect(orgSubPath("/api/admin/organizations")).toBeNull();
+    expect(orgSubPath("/openapi.json")).toBeNull();
+  });
+
+  /**
+   * The org id is an opaque segment. Splitting on `/` rather than slicing a
+   * known id keeps the match working whatever the id contains.
+   */
+  it("does not care what the org id looks like", () => {
+    expect(orgSubPath("/api/org/a.b%20c/api-keys")).toBe("/api-keys");
+  });
+});
+
+describe("apiKeyRouteDenial", () => {
+  it("closes key minting to keys entirely", () => {
+    for (const method of ["GET", "POST", "PATCH", "DELETE"]) {
+      expect(apiKeyRouteDenial(method, `${ORG}/api-keys`)).toMatch(/cannot manage API keys/);
+    }
+    expect(apiKeyRouteDenial("DELETE", `${ORG}/api-keys/k1`)).toMatch(/cannot manage API keys/);
+  });
+
+  it("closes billing and push entirely", () => {
+    expect(apiKeyRouteDenial("GET", `${ORG}/billing`)).toMatch(/cannot change billing/);
+    expect(apiKeyRouteDenial("POST", `${ORG}/billing/checkout`)).toMatch(/cannot change billing/);
+    expect(apiKeyRouteDenial("PUT", `${ORG}/push/preferences`)).toMatch(/cannot register devices/);
+  });
+
+  it("closes team and break-glass mutations but leaves their reads open", () => {
+    expect(apiKeyRouteDenial("GET", `${ORG}/team`)).toBeNull();
+    expect(apiKeyRouteDenial("GET", `${ORG}/team/members`)).toBeNull();
+    expect(apiKeyRouteDenial("POST", `${ORG}/team/invitations`)).toMatch(/team membership/);
+    expect(apiKeyRouteDenial("PATCH", `${ORG}/team/members/u1/role`)).toMatch(/team membership/);
+    expect(apiKeyRouteDenial("DELETE", `${ORG}/team/members/u1`)).toMatch(/team membership/);
+
+    expect(apiKeyRouteDenial("GET", `${ORG}/access-requests`)).toBeNull();
+    expect(apiKeyRouteDenial("POST", `${ORG}/access-requests/r1/approve`)).toMatch(/break-glass/);
+  });
+
+  /**
+   * A prefix rule must not swallow a sibling that merely starts with the same
+   * characters — `/teams-something` is not `/team`.
+   */
+  it("matches on path segments, not string prefixes", () => {
+    expect(apiKeyRouteDenial("POST", `${ORG}/teams-of-things`)).toBeNull();
+    expect(apiKeyRouteDenial("POST", `${ORG}/api-keys-report`)).toBeNull();
+    expect(apiKeyRouteDenial("POST", `${ORG}/billing-rules`)).toBeNull();
+  });
+
+  it("leaves the automation surface open", () => {
+    for (const path of [
+      "/accounts",
+      "/resources/aws:a1:i-1",
+      "/costs/query",
+      "/workflows",
+      "/config",
+      "/dashboards",
+      "/audit-logs",
+      "/session-recordings",
+    ]) {
+      expect(apiKeyRouteDenial("POST", `${ORG}${path}`)).toBeNull();
+      expect(apiKeyRouteDenial("GET", `${ORG}${path}`)).toBeNull();
+    }
+  });
+
+  it("is case-insensitive on the method", () => {
+    expect(apiKeyRouteDenial("post", `${ORG}/team/invitations`)).toMatch(/team membership/);
+  });
+
+  it("says nothing about paths outside the org tree", () => {
+    // `/api/profile` is human-only for a different reason — it sits under the
+    // `authed` group, whose session middleware is untouched.
+    expect(apiKeyRouteDenial("DELETE", "/api/profile/sessions/s1")).toBeNull();
+  });
+
+  it("gives every rule a reason a caller can act on", () => {
+    for (const rule of API_KEY_DENY_RULES) {
+      expect(rule.reason.length).toBeGreaterThan(20);
+      expect(rule.prefix.startsWith("/")).toBe(true);
+      expect(rule.prefix.endsWith("/")).toBe(false);
+    }
+  });
+});

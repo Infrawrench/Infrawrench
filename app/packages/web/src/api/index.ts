@@ -7,7 +7,13 @@ import { HTTPException } from "hono/http-exception";
 import { setCookie } from "hono/cookie";
 import { randomBytes, randomUUID } from "node:crypto";
 import { apiReference } from "@scalar/hono-api-reference";
-import { sessionMiddleware, orgMiddleware, permissionsMiddleware } from "./auth-middleware";
+import {
+  sessionMiddleware,
+  orgMiddleware,
+  permissionsMiddleware,
+  apiKeyOrgMiddleware,
+  unlessApiKey,
+} from "./auth-middleware";
 import { securityHeaders } from "./security-headers";
 import { workos, clientId } from "../auth/workos";
 import { getPublicOpenApiDocument } from "./openapi/index";
@@ -264,9 +270,19 @@ authed.route("/push", pushDeviceRoutes);
 api.route("/api", authed);
 
 const orgScoped = new Hono();
-orgScoped.use("*", sessionMiddleware);
-orgScoped.use("*", orgMiddleware);
-orgScoped.use("*", permissionsMiddleware);
+// `iwk_` API keys authenticate here, alongside the session cookie and WorkOS
+// bearer tokens the three middlewares below have always handled. The key path
+// leaves the context in the identical shape — session, organizationId,
+// permissions, role, elevations — so every route's `requirePermission` gate
+// applies unchanged, over the key's scopes ∩ its owner's current role. Routes
+// closed to keys whatever they hold are listed in `auth/api-key-route-policy.ts`.
+//
+// `unlessApiKey` is a pass-through for every other caller: when no key
+// authenticated, each middleware runs exactly as it did before.
+orgScoped.use("*", apiKeyOrgMiddleware);
+orgScoped.use("*", unlessApiKey(sessionMiddleware));
+orgScoped.use("*", unlessApiKey(orgMiddleware));
+orgScoped.use("*", unlessApiKey(permissionsMiddleware));
 
 orgScoped.route("/dashboards", dashboardRoutes);
 orgScoped.route("/costs", costRoutes);

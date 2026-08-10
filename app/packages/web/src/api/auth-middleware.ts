@@ -1,8 +1,12 @@
 import { createMiddleware } from "hono/factory";
+import type { MiddlewareHandler } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { eq, and } from "drizzle-orm";
 import { workos } from "../auth/workos";
-import { verifyWorkosAccessToken } from "../auth/api-auth";
+import { authenticateApiRequest, verifyWorkosAccessToken } from "../auth/api-auth";
+import { effectivePermissions } from "../auth/effective-permissions";
+import { apiKeyRouteDenial } from "../auth/api-key-route-policy";
+import { runWithAuditPrincipal } from "../services/audit-context";
 import { db } from "../db/client";
 import { users, organizationMembers, organizations } from "../db/schema";
 import {
@@ -23,12 +27,29 @@ export interface AuthSession {
   sessionId?: string;
 }
 
+/**
+ * The `iwk_` API key a request authenticated with, when it did.
+ *
+ * Its presence is what tells the rest of the org middleware stack to stand
+ * down — and what tells a handler it is not talking to a person. Deliberately
+ * *not* a place to look up authority: `permissions` already carries the key's
+ * effective set, and a handler that reached into `scopes` here would be reading
+ * the un-intersected ceiling rather than what the key may actually do.
+ */
+export interface ApiKeyPrincipal {
+  /** `api_keys.id`. Recorded on every audit row the request writes. */
+  id: string;
+  /** The key's stored scopes, before intersection with the owner's role. */
+  scopes: readonly string[];
+}
+
 declare module "hono" {
   interface ContextVariableMap {
     session: AuthSession;
     organizationId: string;
     permissions: readonly string[];
     role: ResolvedRole | null;
+    apiKey: ApiKeyPrincipal;
     /**
      * Live break-glass grants already folded into `permissions`. Kept separate
      * so a surface can say *why* the caller can do something — "until 14:32,
@@ -174,6 +195,96 @@ export const permissionsMiddleware = createMiddleware(async (c, next) => {
   c.set("elevations", access.elevations);
   return next();
 });
+
+/**
+ * Authenticate an `iwk_` API key against the org in the URL, and leave the
+ * context in exactly the shape the three middlewares above would have left it.
+ *
+ * This is the whole of the widening. It changes *who may present credentials*
+ * to the org tree and nothing else: every route keeps the `requirePermission`
+ * call it already had, and the `permissions` this sets are the key's scopes
+ * intersected with its owner's role right now, so a key can never do something
+ * its holder could not do while signed in. See `auth/effective-permissions.ts`.
+ *
+ * A no-op — straight through to `sessionMiddleware` — for any request that
+ * isn't presenting an `iwk_` bearer token. Session cookies and WorkOS access
+ * tokens take the identical path they take today.
+ *
+ * Order matters and is deliberate: org pinning is checked before the route
+ * policy, and both before any permission resolution, so a key aimed at the
+ * wrong org learns nothing about the org it aimed at.
+ */
+export const apiKeyOrgMiddleware = createMiddleware(async (c, next) => {
+  const bearer = c.req.header("authorization");
+  if (!bearer?.startsWith("Bearer ") || !bearer.slice(7).startsWith("iwk_")) return next();
+
+  const orgId = c.req.param("orgId");
+  if (!orgId) return c.json({ error: "Missing organization ID" }, 400);
+
+  // Fails closed for an unknown, revoked, expired or past-sunset key, and for
+  // one whose owner no longer has a membership row in the key's own org.
+  const auth = await authenticateApiRequest(c.req.raw);
+  if (!auth?.apiKeyId) return c.json({ error: "Unauthorized" }, 401);
+
+  // A key is pinned to the org it was minted in. Presenting it against another
+  // org's URL is a 403 whatever the key holds — there is no cross-org key.
+  if (auth.organizationId !== orgId) {
+    return c.json({ error: "API key belongs to a different organization" }, 403);
+  }
+
+  const denial = apiKeyRouteDenial(c.req.method, new URL(c.req.url).pathname);
+  if (denial) return c.json({ error: denial }, 403);
+
+  // The owner's `users` row, which is also what `AuthSession.email` needs. A
+  // deleted user cascades away their keys and memberships, so this is belt and
+  // braces — but it is the belt that is actually checked, rather than a
+  // property of a foreign key three tables away.
+  const [owner] = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.id, auth.userId))
+    .limit(1);
+  if (!owner) return c.json({ error: "Unauthorized" }, 401);
+
+  // Always an array, never `undefined`: `[]` means "a key holding no scopes"
+  // and resolves to no permissions, whereas `undefined` would mean "not a key"
+  // and would hand over the owner's whole role.
+  const scopes = auth.scopes ?? [];
+  const permissions = await effectivePermissions({
+    userId: auth.userId,
+    organizationId: orgId,
+    scopes,
+  });
+
+  c.set("session", { userId: auth.userId, email: owner.email });
+  c.set("organizationId", orgId);
+  c.set("permissions", permissions);
+  // A key holds no role. `role` exists so a handler can ask "is the caller an
+  // owner" (routes/team.ts does, for owner-only mutations); answering `null`
+  // makes those fail closed. The routes that ask are denied to keys anyway —
+  // this is the second lock on the same door.
+  c.set("role", null);
+  // Break-glass never reaches a key; `effectivePermissions` resolves key
+  // principals with `includeElevation: false`, so there is nothing to report.
+  c.set("elevations", []);
+  c.set("apiKey", { id: auth.apiKeyId, scopes });
+
+  return runWithAuditPrincipal({ apiKeyId: auth.apiKeyId, userId: auth.userId }, next);
+});
+
+/**
+ * Run `mw` only when {@link apiKeyOrgMiddleware} has not already authenticated
+ * the request.
+ *
+ * Wrapping rather than editing the three middlewares keeps the existing path
+ * byte-identical: for a cookie or WorkOS-bearer request `c.get("apiKey")` is
+ * undefined and `mw` is invoked with the same context and the same `next`, in
+ * the same order Hono would have invoked it directly. The wrapper returns `mw`'s
+ * result untouched, so a 401/403 Response still short-circuits the chain.
+ */
+export function unlessApiKey(mw: MiddlewareHandler): MiddlewareHandler {
+  return createMiddleware((c, next) => (c.get("apiKey") ? next() : mw(c, next)));
+}
 
 export async function ensureUserFromClaims(
   userId: string,

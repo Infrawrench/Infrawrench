@@ -1,6 +1,7 @@
 import { v4 as uuid } from "uuid";
 import { db } from "@/db/client";
 import { auditLogs } from "@/db/schema";
+import { currentAuditPrincipal } from "./audit-context";
 
 interface AuditParams {
   organizationId: string;
@@ -15,6 +16,11 @@ interface AuditParams {
 
 /**
  * Log an audit event. Fire-and-forget — errors are logged but not thrown.
+ *
+ * `apiKeyId` falls back to the credential the current request authenticated
+ * with (see `services/audit-context.ts`), so a write made through an `iwk_` key
+ * names that key even though the call site only knows the acting user. An
+ * explicit `apiKeyId` always wins.
  */
 export async function logAudit(params: AuditParams): Promise<void> {
   try {
@@ -22,7 +28,7 @@ export async function logAudit(params: AuditParams): Promise<void> {
       id: uuid(),
       organizationId: params.organizationId,
       userId: params.userId ?? null,
-      apiKeyId: params.apiKeyId ?? null,
+      apiKeyId: params.apiKeyId ?? currentAuditPrincipal()?.apiKeyId ?? null,
       action: params.action,
       entityType: params.entityType,
       entityId: params.entityId,

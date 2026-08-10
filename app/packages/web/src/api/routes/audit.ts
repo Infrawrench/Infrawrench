@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { desc, eq, and, gte, lte, sql } from "drizzle-orm";
 import { db } from "../../db/client";
-import { auditLogs, users } from "../../db/schema";
+import { apiKeys, auditLogs, users } from "../../db/schema";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
@@ -21,6 +21,10 @@ app.get("/", async (c) => {
   const action = c.req.query("action");
   const entityType = c.req.query("entityType");
   const userId = c.req.query("userId");
+  // "Which key did this?" — the question an operator asks after a credential
+  // leaks. Filtering by owner is not a substitute: a person and every key they
+  // minted share a `userId`.
+  const apiKeyId = c.req.query("apiKeyId");
   const from = c.req.query("from");
   const to = c.req.query("to");
 
@@ -28,6 +32,7 @@ app.get("/", async (c) => {
   if (action) conditions.push(eq(auditLogs.action, action));
   if (entityType) conditions.push(eq(auditLogs.entityType, entityType));
   if (userId) conditions.push(eq(auditLogs.userId, userId));
+  if (apiKeyId) conditions.push(eq(auditLogs.apiKeyId, apiKeyId));
   if (from) conditions.push(gte(auditLogs.createdAt, new Date(from)));
   if (to) conditions.push(lte(auditLogs.createdAt, new Date(to)));
 
@@ -51,9 +56,15 @@ app.get("/", async (c) => {
       createdAt: auditLogs.createdAt,
       userName: users.displayName,
       userEmail: users.email,
+      // A key id alone answers "which key" only if you can still look it up;
+      // a revoked key is gone from the UI long before the audit row ages out.
+      // Carry the name and prefix so the entry stays readable on its own.
+      apiKeyName: apiKeys.name,
+      apiKeyPrefix: apiKeys.prefix,
     })
     .from(auditLogs)
     .leftJoin(users, eq(auditLogs.userId, users.id))
+    .leftJoin(apiKeys, eq(auditLogs.apiKeyId, apiKeys.id))
     .where(where)
     .orderBy(desc(auditLogs.createdAt))
     .limit(pageSize)

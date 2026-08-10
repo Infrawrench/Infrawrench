@@ -21,6 +21,7 @@ import { noteChatToolApprovalDecided } from "../../chat/slack-approvals";
 import { getMonthlySpend } from "../../chat/billing";
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL } from "@infrawrench/ui";
 import type { ToolAuthContext } from "../../tools/types";
+import { enterAuditPrincipal } from "../../services/audit-context";
 
 const app = new Hono();
 
@@ -217,6 +218,12 @@ app.post("/conversations/:id/messages", async (c) => {
     ...(auth.apiKeyId !== undefined ? { apiKeyId: auth.apiKeyId } : {}),
     ...(auth.scopes !== undefined ? { scopes: auth.scopes } : {}),
   };
+  // Most of the tool layer passes `source` to `logAudit` and drops
+  // `apiKeyId`, so a key-driven `resource.delete` would otherwise read as if
+  // the owner did it by hand. Entered here rather than inside
+  // `authenticateChat`: `enterWith` reaches this execution's descendants —
+  // which is the tool loop — but not the caller of an awaited function.
+  if (auth.apiKeyId) enterAuditPrincipal({ apiKeyId: auth.apiKeyId, userId: auth.userId });
 
   // Title auto-rename: if conversation still has the default title and the
   // user just sent a new text turn, set the title to the first 60 chars.
@@ -301,6 +308,12 @@ app.post("/conversations/:id/pending/:pendingId", async (c) => {
     ...(auth.apiKeyId !== undefined ? { apiKeyId: auth.apiKeyId } : {}),
     ...(auth.scopes !== undefined ? { scopes: auth.scopes } : {}),
   };
+  // Most of the tool layer passes `source` to `logAudit` and drops
+  // `apiKeyId`, so a key-driven `resource.delete` would otherwise read as if
+  // the owner did it by hand. Entered here rather than inside
+  // `authenticateChat`: `enterWith` reaches this execution's descendants —
+  // which is the tool loop — but not the caller of an awaited function.
+  if (auth.apiKeyId) enterAuditPrincipal({ apiKeyId: auth.apiKeyId, userId: auth.userId });
 
   // Name the decider the way every other approval surface does: display name
   // first, email as the fallback.

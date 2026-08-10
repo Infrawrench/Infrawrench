@@ -10,9 +10,11 @@ vi.mock("@/db/schema", () => ({
     action: "action",
     entityType: "et",
     userId: "uid",
+    apiKeyId: "api_key_id",
     createdAt: "ts",
   },
   users: { id: "id", displayName: "dn", email: "email" },
+  apiKeys: { id: "id", name: "name", prefix: "prefix" },
 }));
 vi.mock("@infrawrench/server-core/permissions/catalog", () => ({ hasPermission: () => true }));
 
@@ -22,19 +24,27 @@ const buildApp = () => buildTestApp(auditRoutes);
 describe("Audit routes", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  function setup(entries: unknown[], count: number) {
+  /**
+   * The entries query joins `users` and `api_keys`, so `leftJoin` has to be
+   * chainable with itself before `where` is reachable.
+   */
+  function setup(entries: unknown[], count: number | null) {
     // count query
-    const countWhere = vi.fn().mockResolvedValue([{ count }]);
+    const countWhere = vi.fn().mockResolvedValue(count === null ? [] : [{ count }]);
     const countFrom = vi.fn().mockReturnValue({ where: countWhere });
     // entries query
     const offset = vi.fn().mockResolvedValue(entries);
     const limit = vi.fn().mockReturnValue({ offset });
     const orderBy = vi.fn().mockReturnValue({ limit });
     const entriesWhere = vi.fn().mockReturnValue({ orderBy });
-    const leftJoin = vi.fn().mockReturnValue({ where: entriesWhere });
-    const entriesFrom = vi.fn().mockReturnValue({ leftJoin });
+    const joined: { leftJoin: ReturnType<typeof vi.fn>; where: typeof entriesWhere } = {
+      leftJoin: vi.fn(),
+      where: entriesWhere,
+    };
+    joined.leftJoin.mockReturnValue(joined);
+    const entriesFrom = vi.fn().mockReturnValue(joined);
     mockSelect.mockReturnValueOnce({ from: countFrom }).mockReturnValueOnce({ from: entriesFrom });
-    return { limit, offset };
+    return { limit, offset, leftJoin: joined.leftJoin, entriesWhere, countWhere };
   }
 
   it("returns paginated entries with total", async () => {
@@ -62,17 +72,34 @@ describe("Audit routes", () => {
   });
 
   it("returns 0 total when count result missing", async () => {
-    const countWhere = vi.fn().mockResolvedValue([]);
-    const countFrom = vi.fn().mockReturnValue({ where: countWhere });
-    const offset = vi.fn().mockResolvedValue([]);
-    const limit = vi.fn().mockReturnValue({ offset });
-    const orderBy = vi.fn().mockReturnValue({ limit });
-    const entriesWhere = vi.fn().mockReturnValue({ orderBy });
-    const leftJoin = vi.fn().mockReturnValue({ where: entriesWhere });
-    const entriesFrom = vi.fn().mockReturnValue({ leftJoin });
-    mockSelect.mockReturnValueOnce({ from: countFrom }).mockReturnValueOnce({ from: entriesFrom });
-
+    setup([], null);
     const res = await buildApp().request("/");
     expect((await res.json()).total).toBe(0);
+  });
+
+  /**
+   * "Which key did this?" is the question an operator asks after a credential
+   * leaks. `userId` cannot answer it — a person and every key they minted share
+   * one user id — so the filter has to be on the key itself.
+   */
+  it("filters by apiKeyId", async () => {
+    const { entriesWhere } = setup([], 0);
+    const res = await buildApp().request("/?apiKeyId=key-1");
+    expect(res.status).toBe(200);
+    expect(entriesWhere).toHaveBeenCalled();
+  });
+
+  it("joins the key so an entry carries its name and prefix", async () => {
+    const { leftJoin } = setup(
+      [{ id: "l1", apiKeyId: "key-1", apiKeyName: "ci-deploy", apiKeyPrefix: "iwk_abc1" }],
+      1,
+    );
+    const res = await buildApp().request("/");
+    // users and api_keys.
+    expect(leftJoin).toHaveBeenCalledTimes(2);
+    expect((await res.json()).entries[0]).toMatchObject({
+      apiKeyName: "ci-deploy",
+      apiKeyPrefix: "iwk_abc1",
+    });
   });
 });

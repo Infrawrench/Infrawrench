@@ -14,6 +14,13 @@ const AuditEntry = strict({
   createdAt: IsoDateTime,
   userName: z.string().nullable(),
   userEmail: Email.nullable(),
+  /**
+   * The key's name and display prefix, resolved at read time. Null for entries
+   * a person made in the browser, and for a key row that has since been
+   * deleted — `apiKeyId` outlives both.
+   */
+  apiKeyName: z.string().nullable(),
+  apiKeyPrefix: z.string().nullable(),
 }).openapi("AuditEntry");
 
 const AuditResponse = strict({
@@ -54,6 +61,9 @@ export function registerAuditPaths(ctx: BuildContext) {
           .optional()
           .openapi({ param: { name: "entityType", in: "query" } }),
         userId: Uuid.optional().openapi({ param: { name: "userId", in: "query" } }),
+        // Narrower than `userId`: a person and every key they minted share one
+        // user id, so filtering by owner cannot isolate a single credential.
+        apiKeyId: Uuid.optional().openapi({ param: { name: "apiKeyId", in: "query" } }),
         from: IsoDateTime.optional().openapi({ param: { name: "from", in: "query" } }),
         to: IsoDateTime.optional().openapi({ param: { name: "to", in: "query" } }),
       }),
