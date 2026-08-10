@@ -4,3 +4,7 @@ export { CostReportPickerModal, type CostReportPickerModalProps } from "./CostRe
 export { CostReportsIcon } from "./CostReportsIcon.js";
 export { ReportDeliverySection, type ReportDeliverySectionProps } from "./ReportDeliverySection.js";
 export type { CostReportsClient } from "./types.js";
+export {
+  CostAnnotationsSection,
+  type CostAnnotationsSectionProps,
+} from "./CostAnnotationsSection.js";

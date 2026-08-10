@@ -1,13 +1,21 @@
 import { useUIStore } from "@infrawrench/ui";
 import type {
   BudgetInput,
+  BusinessMetricInput,
+  BusinessMetricValueInput,
   CostAlertInput,
+  CostAnnotationInput,
   CostAnomalySettings,
   CostsClient,
   CostsPanelDashboard,
   SavedCostFilterInput,
+  CostScenarioModelInput,
 } from "@infrawrench/ui/cost";
 import {
+  createCloudCostAnnotation,
+  deleteCloudCostAnnotation,
+  listCloudCostAnnotations,
+  updateCloudCostAnnotation,
   createCloudBudget,
   createCloudCostAlert,
   createCloudWidget,
@@ -75,6 +83,19 @@ export function createDesktopCostsClient(): CostsClient {
       if (!orgId) return Promise.resolve([]);
       return loadCloudCostStatus(orgId);
     },
+    // Dated notes drawn over the chart. Org-wide notes belong on every cost
+    // chart, so these live on the base cost API rather than the report client.
+    listCostAnnotations: (reportId?: string) => {
+      const orgId = useUIStore.getState().activeCloudOrgId;
+      if (!orgId) return Promise.resolve([]);
+      return listCloudCostAnnotations(orgId, reportId);
+    },
+    createCostAnnotation: (input: CostAnnotationInput) =>
+      createCloudCostAnnotation(requireOrgId(), input),
+    updateCostAnnotation: (annotationId: string, input: CostAnnotationInput) =>
+      updateCloudCostAnnotation(requireOrgId(), annotationId, input),
+    deleteCostAnnotation: (annotationId: string) =>
+      deleteCloudCostAnnotation(requireOrgId(), annotationId),
     // Saved filters get the full editor on desktop for the same reason the
     // anomaly tuning does: the Costs panel is the same shared component, and
     // the filters are org-level cloud state either way.

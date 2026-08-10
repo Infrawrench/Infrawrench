@@ -77,6 +77,43 @@ export function createWebCostApi(orgId: string): CostApi {
     listSavedFilters: () => apiGet<SavedCostFilter[]>(`/api/org/${orgId}/saved-cost-filters`),
     createSavedFilter: (input: SavedCostFilterInput) =>
       apiPost<SavedCostFilter>(`/api/org/${orgId}/saved-cost-filters`, input),
+    // Scenario models ride the base CostApi for the same reason saved filters
+    // do: every surface that can author or draw a cost graph needs the list —
+    // the picker in the editor, and the card that labels an applied scenario.
+    listScenarioModels: async () => {
+      const res = await apiGet<{ models: CostScenarioModel[] }>(`/api/org/${orgId}/cost-scenarios`);
+      return res.models;
+    },
+    // Annotations ride the base CostApi so an org-wide note is drawn on every
+    // cost chart — the dashboard card as much as the saved report. The writes
+    // are included unconditionally (server-side `costs:write`), so a viewer's
+    // 403 surfaces as the action's error rather than as a missing button.
+    listCostAnnotations: async (reportId?: string) => {
+      const qs = reportId ? `?reportId=${encodeURIComponent(reportId)}` : "";
+      const res = await apiGet<{ annotations: CostAnnotation[] }>(
+        `/api/org/${orgId}/cost-annotations${qs}`,
+      );
+      return res.annotations;
+    },
+    createCostAnnotation: (input: CostAnnotationInput) =>
+      apiPost<CostAnnotation>(`/api/org/${orgId}/cost-annotations`, input),
+    updateCostAnnotation: (annotationId: string, input: CostAnnotationInput) =>
+      apiPut<CostAnnotation>(`/api/org/${orgId}/cost-annotations/${annotationId}`, input),
+    deleteCostAnnotation: async (annotationId: string) => {
+      await apiDelete(`/api/org/${orgId}/cost-annotations/${annotationId}`);
+    },
+    // Business metrics ride the base CostApi for the same reason saved filters
+    // do: every surface that can author or draw a cost graph needs them — the
+    // picker in the editor, and the card that divides spend by one.
+    listBusinessMetrics: async () => {
+      const res = await apiGet<{ metrics: BusinessMetric[] }>(`/api/org/${orgId}/business-metrics`);
+      return res.metrics;
+    },
+    queryUnitCosts: (metricId: string, request: UnitCostQueryRequest) =>
+      apiPost<UnitCostQueryResponse>(
+        `/api/org/${orgId}/business-metrics/${encodeURIComponent(metricId)}/unit-costs`,
+        request,
+      ),
   };
 }
 

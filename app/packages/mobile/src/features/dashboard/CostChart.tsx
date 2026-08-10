@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, {
   Circle,
   G,
@@ -10,11 +11,15 @@ import Svg, {
 } from "react-native-svg";
 import {
   binForecast,
+  bucketCostAnnotations,
   formatBucketLabel,
+  formatCostAnnotationDates,
   formatMoney,
   niceAxis,
   totalPerBucket,
   OTHER_GROUP_KEY,
+  type CostAnnotation,
+  type CostAnnotationMarker,
   type CostBinningId,
   type CostChartType,
   type CostQueryResponse,
@@ -41,6 +46,13 @@ const SERIES_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f87171", "#a78bfa", "#
 const OTHER_COLOR = "#6b7280";
 /** The forecast overlay reads as the same measure, so it wears series one. */
 const FORECAST_COLOR = SERIES_COLORS[0]!;
+/**
+ * The scenario overlay wears a *different* hue from the trend on purpose: the
+ * two lines are different claims — one is what the data extrapolates to, the
+ * other is what somebody says they know is coming — and a reader has to be able
+ * to tell them apart at a glance on a phone.
+ */
+const SCENARIO_COLOR = SERIES_COLORS[2]!;
 
 const WIDTH = 320;
 const HEIGHT = 168;
@@ -55,6 +67,12 @@ export interface CostChartProps {
   chartType: CostChartType;
   binning: CostBinningId;
   currency: string;
+  /**
+   * Dated notes drawn over the chart, read-only. Mobile shows the markers and
+   * the text on tap; writing one stays on web and desktop, where the date
+   * picker and the org-wide/this-report choice belong.
+   */
+  annotations?: readonly CostAnnotation[] | undefined;
 }
 
 interface PlotSeries {
@@ -69,7 +87,7 @@ function colorFor(index: number, isOther: boolean): string {
   return isOther ? OTHER_COLOR : (SERIES_COLORS[index % SERIES_COLORS.length] ?? OTHER_COLOR);
 }
 
-export function CostChart({ response, chartType, binning, currency }: CostChartProps) {
+export function CostChart({ response, chartType, binning, currency, annotations }: CostChartProps) {
   const actualTotals = totalPerBucket(response.series);
 
   // Forecast buckets run past the observed ones, so they widen the axis.
@@ -81,8 +99,23 @@ export function CostChart({ response, chartType, binning, currency }: CostChartP
       )
     : [];
 
+  // The scenario covers exactly the forecast's days, so it never widens the
+  // axis on its own — but it is unioned in anyway so a server/client mismatch
+  // cannot silently drop points off the right-hand edge.
+  const scenarioPoints = response.scenario
+    ? binForecast(
+        response.scenario.points,
+        binning,
+        binning === "cumulative" ? actualTotals[actualTotals.length - 1]?.amount : undefined,
+      )
+    : [];
+
   const buckets = [
-    ...new Set([...actualTotals.map((p) => p.bucket), ...forecastPoints.map((p) => p.bucket)]),
+    ...new Set([
+      ...actualTotals.map((p) => p.bucket),
+      ...forecastPoints.map((p) => p.bucket),
+      ...scenarioPoints.map((p) => p.bucket),
+    ]),
   ].sort();
   const bucketIndex = new Map(buckets.map((b, i) => [b, i]));
 
@@ -124,11 +157,25 @@ export function CostChart({ response, chartType, binning, currency }: CostChartP
     }
   }
 
+  // A second overlay beside the trend, never in place of it — the same rule
+  // the web card follows, and the reason both are returned by the API.
+  const scenario =
+    scenarioPoints.length > 0 ? new Array<number | null>(buckets.length).fill(null) : null;
+  if (scenario) {
+    const lastActual = actualTotals[actualTotals.length - 1];
+    if (lastActual) scenario[bucketIndex.get(lastActual.bucket)!] = lastActual.amount;
+    for (const p of scenarioPoints) {
+      const at = bucketIndex.get(p.bucket)!;
+      scenario[at] = (scenario[at] ?? 0) + p.amount;
+    }
+  }
+
   const stackTotals = buckets.map((_, i) => series.reduce((sum, s) => sum + (s.values[i] ?? 0), 0));
   const plotted = [
     ...(stacked ? stackTotals : series.flatMap((s) => s.values)),
     ...(comparison ?? []),
     ...(forecast ?? []),
+    ...(scenario ?? []),
   ].filter((v): v is number => v !== null);
   const axis = niceAxis(Math.min(0, ...plotted), Math.max(0, ...plotted), 4);
   const [lo, hi] = axis.domain;
@@ -142,6 +189,15 @@ export function CostChart({ response, chartType, binning, currency }: CostChartP
       .map((v, i) => (v === null ? null : `${cx(i)},${y(v)}`))
       .filter((p): p is string => p !== null)
       .join(" ");
+
+  /**
+   * Annotation markers, mapped onto the buckets this chart actually drew by the
+   * shared `bucketCostAnnotations` — the same function the web card uses, so a
+   * note lands on the same bar on a phone as on the dashboard it was written
+   * from. Nothing here touches `series`, `axis`, or `buckets`: annotations are
+   * an overlay, and the bars are identical with or without them.
+   */
+  const markers = bucketCostAnnotations(annotations ?? [], buckets, binning);
 
   return (
     <View style={{ gap: spacing.sm }}>
@@ -201,6 +257,53 @@ export function CostChart({ response, chartType, binning, currency }: CostChartP
             strokeDasharray="5 5"
           />
         )}
+        {scenario && (
+          <Polyline
+            points={polyline(scenario)}
+            fill="none"
+            stroke={SCENARIO_COLOR}
+            strokeWidth={2}
+            strokeDasharray="2 3"
+          />
+        )}
+
+        {markers.map((marker) => {
+          const at = bucketIndex.get(marker.bucket)!;
+          const end = marker.endBucket ? bucketIndex.get(marker.endBucket) : undefined;
+          const x = cx(at);
+          return (
+            <G key={marker.bucket}>
+              {end !== undefined && end > at && (
+                <Rect
+                  x={PAD.left + bandWidth * at}
+                  y={PAD.top}
+                  width={bandWidth * (end - at + 1)}
+                  height={PLOT_H}
+                  fill={colors.textFaint}
+                  opacity={0.1}
+                />
+              )}
+              <SvgLine
+                x1={x}
+                y1={PAD.top}
+                x2={x}
+                y2={PAD.top + PLOT_H}
+                stroke={colors.textMuted}
+                strokeWidth={1}
+                strokeDasharray="2 3"
+              />
+              <SvgText
+                x={x}
+                y={PAD.top + 7}
+                fill={colors.textMuted}
+                fontSize={8}
+                textAnchor="middle"
+              >
+                {marker.index}
+              </SvgText>
+            </G>
+          );
+        })}
 
         {/* First and last bucket only — interior labels collide at this width. */}
         <SvgText x={PAD.left} y={HEIGHT - 5} fill={colors.textFaint} fontSize={8}>
@@ -224,9 +327,17 @@ export function CostChart({ response, chartType, binning, currency }: CostChartP
         currency={currency}
         extra={[
           ...(comparison ? [{ label: "Previous period", color: colors.textMuted }] : []),
-          ...(forecast ? [{ label: "Forecast", color: FORECAST_COLOR }] : []),
+          ...(forecast ? [{ label: "Forecast (trend)", color: FORECAST_COLOR }] : []),
+          // The model's *name*, not a generic "Scenario": a projection that
+          // silently includes somebody's assumptions is worse than none, so the
+          // legend has to say whose.
+          ...(response.scenario && scenario
+            ? [{ label: `Scenario: ${response.scenario.modelName}`, color: SCENARIO_COLOR }]
+            : []),
         ]}
       />
+
+      {markers.length > 0 && <AnnotationNotes markers={markers} />}
     </View>
   );
 }
@@ -421,8 +532,62 @@ function Legend({
   );
 }
 
+/**
+ * The notes behind the numbered flags, one row per marker.
+ *
+ * A phone has no hover, so the marker cannot be the only place the text lives —
+ * the same reason the legend here carries each series' total instead of a
+ * tooltip. Tapping a row expands every note on that bucket; several notes on
+ * one bar are one row, matching the single flag drawn above.
+ */
+function AnnotationNotes({ markers }: { markers: CostAnnotationMarker[] }) {
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <View style={styles.notes}>
+      {markers.map((marker) => {
+        const expanded = open === marker.bucket;
+        const first = marker.annotations[0]!;
+        const more = marker.annotations.length - 1;
+        return (
+          <Pressable
+            key={marker.bucket}
+            onPress={() => setOpen(expanded ? null : marker.bucket)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded }}
+            accessibilityLabel={`Annotation ${marker.index}, ${formatCostAnnotationDates(first)}: ${first.text}`}
+            style={styles.noteRow}
+          >
+            <Text style={styles.noteIndex}>{marker.index}</Text>
+            <View style={{ flex: 1 }}>
+              {expanded ? (
+                marker.annotations.map((annotation) => (
+                  <View key={annotation.id} style={{ gap: 1 }}>
+                    <Text style={styles.noteText}>{annotation.text}</Text>
+                    <Text style={styles.noteDate}>{formatCostAnnotationDates(annotation)}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.noteText} numberOfLines={1}>
+                  {first.text}
+                  {more > 0 ? ` +${more}` : ""}
+                </Text>
+              )}
+            </View>
+            <Text style={styles.noteDate}>{formatCostAnnotationDates(first)}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   empty: { color: colors.textFaint, fontSize: 13, paddingVertical: spacing.lg },
+  notes: { gap: 4, marginTop: spacing.xs },
+  noteRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  noteIndex: { color: colors.textFaint, fontSize: 10, width: 12, textAlign: "center" },
+  noteText: { color: colors.textMuted, fontSize: 11, flexShrink: 1 },
+  noteDate: { color: colors.textFaint, fontSize: 10 },
   legend: { gap: 4 },
   legendItem: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   swatch: { width: 8, height: 8, borderRadius: 2 },

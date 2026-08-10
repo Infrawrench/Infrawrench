@@ -25,6 +25,8 @@ import {
   COST_REPORT_LIMITS,
   COST_REPORT_FOLDER_LIMITS,
   type CostReportFolderInput,
+  COST_ANNOTATION_LIMITS,
+  type CostAnnotationInput,
   CURRENCY_CODE_PATTERN,
   EXCHANGE_RATE_LIMITS,
   type ExchangeRateInput,
@@ -122,6 +124,15 @@ export {
   flattenCostReportFolderTree,
   costReportFolderPaths,
   costReportFolderMoveBlocker,
+  // Cost annotations — dated notes drawn over a chart, never part of its data.
+  COST_ANNOTATION_LIMITS,
+  costAnnotationInputError,
+  bucketCostAnnotations,
+  formatCostAnnotationDates,
+  describeCostAnnotationScope,
+  type CostAnnotation,
+  type CostAnnotationInput,
+  type CostAnnotationMarker,
   type CostReport,
   type CostReportInput,
   type CostReportFolder,
@@ -369,6 +380,26 @@ export const costReportInputSchema = z.object({
 export const costReportFolderInputSchema = z.object({
   name: z.string().min(1).max(COST_REPORT_FOLDER_LIMITS.maxNameLength),
   parentFolderId: z.string().min(1).nullable().optional(),
+});
+
+/**
+ * Create/update body for a cost annotation (POST/PUT /cost-annotations).
+ *
+ * Shape-only, deliberately: the semantic rules — a non-empty note, an end date
+ * that isn't before the start, a span that isn't a year long — live in
+ * `costAnnotationInputError` (client-core), which both the editors and the
+ * service run, so a form refuses exactly what the API refuses and in the same
+ * words.
+ *
+ * `costReportId` is nullable rather than merely optional because "make this note
+ * org-wide again" has to be expressible; null (the default) puts the note on
+ * every cost chart.
+ */
+export const costAnnotationInputSchema = z.object({
+  startDate: isoDate,
+  endDate: isoDate.nullable().optional(),
+  text: z.string().min(1).max(COST_ANNOTATION_LIMITS.maxTextLength),
+  costReportId: z.string().min(1).nullable().optional(),
 });
 
 export const budgetThresholdSchema = z.object({
@@ -695,6 +726,7 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof costReportWidgetConfigSchema>, CostReportWidgetConfig>,
   Exact<z.infer<typeof costReportInputSchema>, CostReportInput>,
   Exact<z.infer<typeof costReportFolderInputSchema>, CostReportFolderInput>,
+  Exact<z.infer<typeof costAnnotationInputSchema>, CostAnnotationInput>,
   Exact<z.infer<typeof budgetThresholdSchema>, BudgetThreshold>,
   Exact<z.infer<typeof budgetInputSchema>, BudgetInput>,
   Exact<z.infer<typeof costAlertInputSchema>, CostAlertInput>,

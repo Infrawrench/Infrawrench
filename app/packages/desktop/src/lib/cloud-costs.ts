@@ -246,6 +246,44 @@ export async function deleteCloudCostReport(orgId: string, reportId: string): Pr
 }
 
 /* ------------------------------------------------------------------ *
+ * Cost annotations — dated notes drawn over cost charts. Org-wide unless
+ * scoped to a report, which is why these are not report sub-calls.
+ * ------------------------------------------------------------------ */
+
+export async function listCloudCostAnnotations(
+  orgId: string,
+  reportId?: string,
+): Promise<CostAnnotation[]> {
+  const res = await invoke<{ annotations: CostAnnotation[] }>("cloud_list_cost_annotations", {
+    orgId,
+    ...(reportId ? { reportId } : {}),
+  });
+  return res?.annotations ?? [];
+}
+
+export async function createCloudCostAnnotation(
+  orgId: string,
+  input: CostAnnotationInput,
+): Promise<CostAnnotation> {
+  return invoke("cloud_create_cost_annotation", { orgId, input });
+}
+
+export async function updateCloudCostAnnotation(
+  orgId: string,
+  annotationId: string,
+  input: CostAnnotationInput,
+): Promise<CostAnnotation> {
+  return invoke("cloud_update_cost_annotation", { orgId, annotationId, input });
+}
+
+export async function deleteCloudCostAnnotation(
+  orgId: string,
+  annotationId: string,
+): Promise<void> {
+  await invoke("cloud_delete_cost_annotation", { orgId, annotationId });
+}
+
+/* ------------------------------------------------------------------ *
  * Cost-report folders — the tree the Reports list groups by.
  * ------------------------------------------------------------------ */
 

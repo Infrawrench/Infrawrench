@@ -259,6 +259,53 @@ ipcMain.handle(
 );
 
 /* ------------------------------------------------------------------ *
+ * Cost annotations — dated notes drawn over cost charts. Their own
+ * channel family rather than a child of the report ones: a note with no
+ * report id is org-wide and belongs to every chart, so it is not a
+ * sub-resource of any one report.
+ * ------------------------------------------------------------------ */
+
+ipcMain.handle(
+  "cloud_list_cost_annotations",
+  async (_e, { orgId, reportId }: { orgId: string; reportId?: string }) => {
+    const qs = reportId ? `?reportId=${encodeURIComponent(reportId)}` : "";
+    return cloudFetch(orgId, `/cost-annotations${qs}`);
+  },
+);
+
+ipcMain.handle(
+  "cloud_create_cost_annotation",
+  async (_e, { orgId, input }: { orgId: string; input: unknown }) => {
+    return cloudFetch(orgId, "/cost-annotations", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_update_cost_annotation",
+  async (
+    _e,
+    { orgId, annotationId, input }: { orgId: string; annotationId: string; input: unknown },
+  ) => {
+    return cloudFetch(orgId, `/cost-annotations/${encodeURIComponent(annotationId)}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_delete_cost_annotation",
+  async (_e, { orgId, annotationId }: { orgId: string; annotationId: string }) => {
+    return cloudFetch(orgId, `/cost-annotations/${encodeURIComponent(annotationId)}`, {
+      method: "DELETE",
+    });
+  },
+);
+
+/* ------------------------------------------------------------------ *
  * Cost-report folders — the tree the Reports list groups by.
  * ------------------------------------------------------------------ */
 

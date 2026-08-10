@@ -13,6 +13,7 @@ import {
 } from "../cost/config.js";
 import { CostGraphCard } from "../cost/CostGraphCard.js";
 import { CostGraphConfigModal } from "../cost/CostGraphConfigModal.js";
+import { CostAnnotationsSection } from "./CostAnnotationsSection.js";
 import { Modal } from "../components/Modal.js";
 import type { CostsPanelDashboard } from "../cost/types.js";
 import { ReportDeliverySection } from "./ReportDeliverySection.js";
@@ -749,12 +750,20 @@ function ReportDetail({
           config={report.config}
           api={client}
           onEdit={canWrite ? onEdit : undefined}
+          // The chart draws this report's own notes as well as the org-wide
+          // ones, and a note written from it defaults to this report's scope.
+          annotationReportId={report.id}
+          annotationReportName={report.name}
         />
       </div>
 
       <div className="text-xs text-on-surface-faint">
         <PlacementList report={report} onOpenDashboard={onOpenDashboard} />
       </div>
+
+      {/* The same notes as a list — where you go to fix a date you can no
+          longer see, or move a note between this report and org-wide. */}
+      <CostAnnotationsSection reportId={report.id} reportName={report.name} client={client} />
 
       {/* Scheduled sends to Slack/Teams/email; renders nothing when the host
           provides no notifications client (e.g. a surface without them). */}

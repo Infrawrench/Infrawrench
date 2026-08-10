@@ -591,6 +591,62 @@ export const costReports = pgTable(
 );
 
 /**
+ * Dated notes drawn over cost charts — "we migrated to Graviton here".
+ *
+ * A step change in spend is only self-explanatory for about a fortnight. These
+ * rows are the explanation, stored next to nothing else: an annotation is an
+ * overlay and never participates in a sum, so there is deliberately no amount,
+ * no currency and no filter here. It is a date, some words, and a scope.
+ *
+ * `start_date` / `end_date` rather than one date because a deploy is a moment
+ * and a migration is a week. `end_date` null means the moment case; the
+ * rendering treats [start, start] and [start, end] identically, so the nullable
+ * column is the whole cost of supporting both.
+ *
+ * `cost_report_id` null means **org-wide**: the note appears on every cost
+ * chart. That is the default worth having — an instance-type change is not a
+ * fact about one report, and filing it under one would leave every other chart
+ * showing the same step with no explanation. Set, it narrows the note to one
+ * report's chart. CASCADE because a note scoped to a report has no meaning
+ * without it; a *soft*-deleted report simply becomes unreachable, taking its
+ * notes out of view with it.
+ *
+ * Hard-deleted, like `cost_report_folders`: a deleted note carries no config
+ * anything else depends on, and a soft-delete column would only ever be a way
+ * for withdrawn explanations to keep showing up.
+ */
+export const costAnnotations = pgTable(
+  "cost_annotations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Scoped to one report, or null for org-wide — see above. */
+    costReportId: text("cost_report_id").references(() => costReports.id, { onDelete: "cascade" }),
+    /** Inclusive first day (UTC). A `date`, not a timestamp: spend is daily. */
+    startDate: date("start_date").notNull(),
+    /** Inclusive last day, or null when the note marks a single day. */
+    endDate: date("end_date"),
+    text: text("text").notNull(),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    /**
+     * Every read is "the notes this org's chart should draw", ordered by date —
+     * one org's rows, sorted, is the whole access pattern.
+     */
+    orgDateIdx: index("cost_annotations_org_date_idx").on(t.organizationId, t.startDate),
+    /** A report's own notes, for the list on its detail page. */
+    reportIdx: index("cost_annotations_report_idx").on(t.organizationId, t.costReportId),
+  }),
+);
+
+/**
  * Fired budget-threshold crossings. The unique index makes each threshold
  * fire at most once per calendar month — evaluation inserts with
  * onConflictDoNothing and only notifies on a fresh insert.

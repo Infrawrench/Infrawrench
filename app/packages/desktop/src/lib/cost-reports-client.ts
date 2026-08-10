@@ -2,12 +2,17 @@ import { useUIStore } from "@infrawrench/ui";
 import type { CostsPanelDashboard } from "@infrawrench/ui/cost";
 import type { CostReportsClient } from "@infrawrench/ui/cost-reports";
 import type {
+  CostAnnotationInput,
   CostReportFolderInput,
   CostReportInput,
   ReportNotificationInput,
   SavedCostFilterInput,
 } from "@infrawrench/client-core";
 import {
+  createCloudCostAnnotation,
+  deleteCloudCostAnnotation,
+  listCloudCostAnnotations,
+  updateCloudCostAnnotation,
   createCloudCostReport,
   createCloudCostReportFolder,
   createCloudReportNotification,
@@ -58,6 +63,19 @@ export function createDesktopCostReportsClient(): CostReportsClient {
       if (!orgId) return Promise.resolve([]);
       return loadCloudCostStatus(orgId);
     },
+    // Dated notes drawn over the chart. Org-wide notes belong on every cost
+    // chart, so these live on the base cost API rather than the report client.
+    listCostAnnotations: (reportId?: string) => {
+      const orgId = useUIStore.getState().activeCloudOrgId;
+      if (!orgId) return Promise.resolve([]);
+      return listCloudCostAnnotations(orgId, reportId);
+    },
+    createCostAnnotation: (input: CostAnnotationInput) =>
+      createCloudCostAnnotation(requireOrgId(), input),
+    updateCostAnnotation: (annotationId: string, input: CostAnnotationInput) =>
+      updateCloudCostAnnotation(requireOrgId(), annotationId, input),
+    deleteCostAnnotation: (annotationId: string) =>
+      deleteCloudCostAnnotation(requireOrgId(), annotationId),
     // The report editor is the shared CostGraphConfigModal, so it offers the
     // saved-filter picker; management lives on the Costs panel.
     listSavedFilters: () => listCloudSavedCostFilters(requireOrgId()),

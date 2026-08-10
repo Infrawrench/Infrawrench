@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Area,
   Bar,
@@ -9,6 +9,8 @@ import {
   Line,
   Pie,
   PieChart,
+  ReferenceArea,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -16,9 +18,16 @@ import {
 } from "recharts";
 import { useChartTheme } from "../chart-theme.js";
 import { niceAxis, rowsExtent } from "../components/charts/nice-axis.js";
+import { CostAnnotationModal } from "./CostAnnotationModal.js";
 import {
+  bucketCostAnnotations,
   costQueryForConfig,
+  describeCostAnnotationScope,
   describeCostConversion,
+  formatCostAnnotationDates,
+  type CostAnnotation,
+  type CostAnnotationInput,
+  type CostAnnotationMarker,
   type CostGraphConfig,
   type CostQueryResponse,
 } from "./config.js";
@@ -58,6 +67,14 @@ export interface CostGraphCardProps {
    */
   editLabel?: string | undefined;
   onRemove?: (() => void) | undefined;
+  /**
+   * Draw this report's annotations as well as the org-wide ones, and scope new
+   * notes written from this chart to it. Absent on an ad-hoc dashboard card,
+   * which has no report to belong to and therefore sees only org-wide notes.
+   */
+  annotationReportId?: string | undefined;
+  /** The report's name, for the scope choice in the annotation editor. */
+  annotationReportName?: string | undefined;
 }
 
 interface LoadedState {
@@ -78,11 +95,20 @@ function SpendGraphCard({
   onEdit,
   editLabel = "Edit widget",
   onRemove,
+  annotationReportId,
+  annotationReportName,
 }: CostGraphCardProps) {
   const chart = useChartTheme();
   const [state, setState] = useState<LoadedState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [annotations, setAnnotations] = useState<CostAnnotation[]>([]);
+  /** Which marker's notes are expanded under the chart; null is none. */
+  const [openMarker, setOpenMarker] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{
+    annotation: CostAnnotation | null;
+    startDate: string;
+  } | null>(null);
 
   const request = useMemo(() => costQueryForConfig(config), [config]);
 
@@ -101,6 +127,12 @@ function SpendGraphCard({
         if (response.forecast && config.chartType !== "pie") {
           spliceForecast(pivot, response, config.binning);
         }
+        // A second overlay, never a replacement for the first: the trend line
+        // stays on the chart beside the scenario line so a reader can see what
+        // the fit said before anybody's assumptions touched it.
+        if (response.scenario && config.chartType !== "pie") {
+          spliceScenario(pivot, response, config.binning);
+        }
         setState({ response, pivot });
       })
       .catch((e: unknown) => {
@@ -114,9 +146,79 @@ function SpendGraphCard({
     };
   }, [api, request, config.chartType, config.binning]);
 
+  const loadAnnotations = api.listCostAnnotations;
+  const refreshAnnotations = useCallback(async () => {
+    if (!loadAnnotations) return;
+    try {
+      setAnnotations(await loadAnnotations(annotationReportId));
+    } catch {
+      // The chart is the point of this card; annotations are commentary on it.
+      // A failed notes fetch degrades to a chart with no markers rather than
+      // replacing a working chart with an error about something else.
+      setAnnotations([]);
+    }
+  }, [loadAnnotations, annotationReportId]);
+
+  useEffect(() => {
+    void refreshAnnotations();
+  }, [refreshAnnotations]);
+
+  /**
+   * The markers, derived from the buckets the chart actually drew.
+   *
+   * `pivot.rows` is read, never written: annotations are an overlay, so the
+   * series, the totals and the y domain are computed from exactly the same rows
+   * whether or not a single note exists.
+   */
+  const markers: CostAnnotationMarker[] = useMemo(() => {
+    if (!state || config.chartType === "pie") return [];
+    return bucketCostAnnotations(
+      annotations,
+      state.pivot.rows.map((r) => String(r["bucket"])),
+      config.binning,
+    );
+  }, [annotations, state, config.binning, config.chartType]);
+
+  const canWriteAnnotations = Boolean(
+    api.createCostAnnotation && api.updateCostAnnotation && api.deleteCostAnnotation,
+  );
+  const openMarkerRow = markers.find((m) => m.bucket === openMarker) ?? null;
+
   const currency = state?.response.currencies[0] ?? "USD";
   const mixedCurrency = (state?.response.currencies.length ?? 0) > 1;
   const conversionNote = describeCostConversion(state?.response.conversion);
+  /**
+   * The applied scenario, and the label its line carries.
+   *
+   * The model's *name* is in the legend and the tooltip rather than a generic
+   * "Scenario", because a projection that silently includes somebody's
+   * assumptions is worse than no projection: the reader has to be able to tell
+   * which assumptions, from the chart alone.
+   */
+  const scenario = state?.response.scenario;
+  const scenarioLabel = scenario ? `Scenario: ${scenario.modelName}` : "Scenario";
+  /**
+   * The org's billing rules, when this card asked for them.
+   *
+   * Rendered unconditionally whenever the response carries it, and next to the
+   * total rather than in a tooltip. That is the whole raw-vs-adjusted contract
+   * on the client side: the server cannot return an adjusted figure without
+   * `adjustment.rawTotals`, and this card cannot draw one without saying so and
+   * printing the collected number beside it. A card someone screenshots into a
+   * finance review has to carry both figures or it reconciles against nothing.
+   */
+  const adjustment = state?.response.adjustment;
+  const adjustedRawTotal = adjustment
+    ? Object.entries(adjustment.rawTotals)
+        .map(([cur, amt]) => formatMoney(amt, cur))
+        .join(" + ")
+    : null;
+  const adjustedFixedTotal =
+    adjustment && Object.keys(adjustment.fixedTotals).length > 0
+      ? Object.entries(adjustment.fixedTotals)
+          .map(([cur, amt]) => formatMoney(amt, cur))
+          .join(" + ")
+      : null;
   const total = state
     ? Object.entries(state.response.totals)
         .map(([cur, amt]) => formatMoney(amt, cur))
@@ -144,8 +246,16 @@ function SpendGraphCard({
         `${deltaPct > 0 ? "up" : "down"} ${Math.abs(deltaPct).toFixed(1)}% vs previous period`,
       );
     }
+    // The chart body is one opaque image to assistive tech, so the count has to
+    // be said here; the notes themselves are read from the rail below it.
+    const noted = markers.reduce((sum, m) => sum + m.annotations.length, 0);
+    if (noted > 0) parts.push(`${noted} annotation${noted === 1 ? "" : "s"}`);
+    // Said here as well as in the header: the chart body is one opaque image to
+    // assistive tech, so "part of this line is an assumption" cannot be left to
+    // a legend nobody can read.
+    if (scenario) parts.push(`projection includes scenario ${scenario.modelName}`);
     return parts.join(", ");
-  }, [title, total, deltaPct]);
+  }, [title, total, deltaPct, markers, scenario]);
 
   const tooltipStyle = {
     backgroundColor: chart.tooltipBg,
@@ -219,6 +329,7 @@ function SpendGraphCard({
     const overlayKeys = [
       ...(response.comparison ? [COMPARISON_KEY] : []),
       ...(response.forecast ? [FORECAST_KEY] : []),
+      ...(response.scenario ? [SCENARIO_KEY] : []),
     ];
     const extent = rowsExtent(pivot.rows, {
       stackedKeys: stacked ? seriesKeys : [],
@@ -228,7 +339,25 @@ function SpendGraphCard({
 
     return (
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={pivot.rows} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+        <ComposedChart
+          data={pivot.rows}
+          margin={{ top: 4, right: 4, left: 4, bottom: 0 }}
+          {...(canWriteAnnotations
+            ? {
+                // Clicking a bar is the natural way to say "something happened
+                // here". The keyboard route to the same editor is the rail
+                // below the chart — this is the pointer shortcut, not the only
+                // way in.
+                onClick: (nextState: { activeLabel?: string | number | undefined }) => {
+                  const bucket = nextState?.activeLabel;
+                  if (typeof bucket !== "string") return;
+                  const existing = markers.find((m) => m.bucket === bucket);
+                  if (existing) setOpenMarker(bucket);
+                  else setEditing({ annotation: null, startDate: bucket });
+                },
+              }
+            : {})}
+        >
           <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
           <XAxis
             dataKey="bucket"
@@ -253,8 +382,11 @@ function SpendGraphCard({
                 String(name) === COMPARISON_KEY
                   ? "Previous period"
                   : String(name) === FORECAST_KEY
-                    ? "Forecast"
-                    : (pivot.series.find((s) => s.dataKey === String(name))?.label ?? String(name));
+                    ? "Forecast (trend)"
+                    : String(name) === SCENARIO_KEY
+                      ? scenarioLabel
+                      : (pivot.series.find((s) => s.dataKey === String(name))?.label ??
+                        String(name));
               return [formatMoney(Number(value), currency), label];
             }}
           />
@@ -269,8 +401,10 @@ function SpendGraphCard({
                       (value === COMPARISON_KEY
                         ? "Previous period"
                         : value === FORECAST_KEY
-                          ? "Forecast"
-                          : value)}
+                          ? "Forecast (trend)"
+                          : value === SCENARIO_KEY
+                            ? scenarioLabel
+                            : value)}
                   </span>
                 );
               }}
@@ -334,6 +468,59 @@ function SpendGraphCard({
               connectNulls={false}
             />
           )}
+          {/*
+            The scenario overlay. Drawn *after* the trend line and in a
+            different hue, because the two are different claims: one is what the
+            data extrapolates to, the other is what somebody says they know.
+          */}
+          {response.scenario && (
+            <Line
+              type="monotone"
+              dataKey={SCENARIO_KEY}
+              name={SCENARIO_KEY}
+              stroke={chart.colors[3] ?? "#f59e0b"}
+              strokeWidth={2}
+              strokeDasharray="2 3"
+              dot={false}
+              connectNulls={false}
+            />
+          )}
+          {/*
+            Annotation markers, in the idiom the comparison and forecast
+            overlays already use: recharts primitives that reference existing
+            categories and carry no data of their own. Every `x` here is a
+            bucket the chart drew (bucketCostAnnotations guarantees it), so the
+            axis domain and the plotted values are exactly what they would be
+            with no annotations at all — `ifOverflow="hidden"` keeps that true
+            even if a bucket ever went missing between the two renders.
+          */}
+          {markers.map((marker) => (
+            <Fragment key={marker.bucket}>
+              {marker.endBucket && (
+                <ReferenceArea
+                  x1={marker.bucket}
+                  x2={marker.endBucket}
+                  ifOverflow="hidden"
+                  fill={chart.tick}
+                  fillOpacity={0.08}
+                  stroke="none"
+                />
+              )}
+              <ReferenceLine
+                x={marker.bucket}
+                ifOverflow="hidden"
+                stroke={chart.tick}
+                strokeWidth={1}
+                strokeDasharray="2 3"
+                label={{
+                  value: String(marker.index),
+                  position: "top",
+                  fill: chart.tick,
+                  fontSize: 10,
+                }}
+              />
+            </Fragment>
+          ))}
         </ComposedChart>
       </ResponsiveContainer>
     );
@@ -376,6 +563,14 @@ function SpendGraphCard({
           {total && (
             <span className="text-sm text-on-surface-secondary flex-shrink-0">{total}</span>
           )}
+          {adjustment && (
+            <span
+              className="text-[10px] uppercase tracking-wide text-amber-500 border border-amber-500/40 rounded px-1 py-px flex-shrink-0"
+              title="The organisation's billing rules are applied to this figure."
+            >
+              Adjusted
+            </span>
+          )}
           {deltaPct !== null && (
             <span
               className={`text-xs flex-shrink-0 ${deltaPct > 0 ? "text-red-400" : "text-emerald-400"}`}
@@ -385,6 +580,41 @@ function SpendGraphCard({
             </span>
           )}
         </div>
+        {/*
+          Applying a scenario is stated in the card's own header, not left to
+          the legend. A card someone screenshots into a planning doc has to
+          carry the fact that part of its line is an assumption, whose
+          assumption it is, and how much of the projection it accounts for.
+        */}
+        {adjustment && (
+          <p className="text-[11px] text-amber-500 mt-0.5">
+            Billing rules applied — collected spend {adjustedRawTotal}.
+            {adjustment.rules.length > 0
+              ? ` In force: ${adjustment.rules.map((r) => `${r.name} (${r.summary})`).join("; ")}.`
+              : " No billing rules are defined, so these are the collected figures."}
+            {/*
+              Fixed charges are stated separately and never folded into the
+              total above, which stays the sum of the series drawn. The figure
+              the org reports internally is the two added together, and saying
+              that out loud is cheaper than a total nobody can add up from the
+              bars.
+            */}
+            {adjustedFixedTotal &&
+              ` Plus ${adjustedFixedTotal} in fixed charges, not included in the total above (they have no series behind them).`}
+          </p>
+        )}
+        {scenario && (
+          <p className="text-[11px] text-amber-500 mt-0.5">
+            Projection includes scenario &ldquo;{scenario.modelName}&rdquo; (
+            {scenario.totalDelta >= 0 ? "+" : "−"}
+            {formatMoney(Math.abs(scenario.totalDelta), scenario.currency)} over the forecast
+            horizon). The dashed trend line is the unadjusted forecast.
+            {scenario.convertedFrom &&
+              ` Amounts converted from ${scenario.convertedFrom} at your stated rates.`}
+            {scenario.outOfScope.length > 0 &&
+              ` Not applied here (out of this chart's scope): ${scenario.outOfScope.join(", ")}.`}
+          </p>
+        )}
         {(mixedCurrency || periodNativeNote || conversionNote) && (
           <p className="text-[11px] text-on-surface-faint mt-0.5">
             {mixedCurrency && "Mixed currencies — series are shown per currency. "}
@@ -423,6 +653,153 @@ function SpendGraphCard({
           renderChart()
         )}
       </div>
+
+      {/*
+        The annotation rail — deliberately outside the `role="img"` chart body,
+        which would hide these controls from assistive tech, and deliberately
+        not a hover affordance. The numbered flags on the chart are the visual
+        marker; this is how they are read and reached with a keyboard, on a
+        phone, and by anyone who never hovers anything.
+      */}
+      {(markers.length > 0 || (canWriteAnnotations && hasChartData)) && (
+        <div className="px-4 pb-3 -mt-1 flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-center gap-1">
+            {markers.map((marker) => {
+              const first = marker.annotations[0]!;
+              const more = marker.annotations.length - 1;
+              const dates = formatCostAnnotationDates(first);
+              return (
+                <button
+                  key={marker.bucket}
+                  type="button"
+                  onClick={() => setOpenMarker(openMarker === marker.bucket ? null : marker.bucket)}
+                  aria-expanded={openMarker === marker.bucket}
+                  aria-label={`Annotation ${marker.index}, ${dates}: ${first.text}${
+                    more > 0 ? `, and ${more} more on the same bucket` : ""
+                  }`}
+                  className="flex max-w-full items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[11px] text-on-surface-secondary hover:border-border-strong hover:text-on-surface focus-visible:border-border-strong"
+                >
+                  <span
+                    aria-hidden
+                    className="flex size-4 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-[9px] text-on-surface-faint"
+                  >
+                    {marker.index}
+                  </span>
+                  <span aria-hidden className="shrink-0 text-on-surface-faint">
+                    {dates}
+                  </span>
+                  <span aria-hidden className="truncate">
+                    {first.text}
+                  </span>
+                  {more > 0 && (
+                    <span aria-hidden className="shrink-0 text-on-surface-faint">
+                      +{more}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            {canWriteAnnotations && hasChartData && (
+              <button
+                type="button"
+                onClick={() =>
+                  setEditing({
+                    annotation: null,
+                    // Default to the chart's last bucket — the thing somebody
+                    // is usually explaining is the most recent movement.
+                    startDate: String(
+                      state?.pivot.rows[state.pivot.rows.length - 1]?.["bucket"] ??
+                        new Date().toISOString().slice(0, 10),
+                    ),
+                  })
+                }
+                className="rounded-full border border-dashed border-border px-2 py-0.5 text-[11px] text-on-surface-faint hover:border-border-strong hover:text-on-surface-secondary"
+              >
+                + Annotate
+              </button>
+            )}
+          </div>
+
+          {openMarkerRow && (
+            <ul className="flex flex-col gap-1 rounded-lg border border-border bg-surface-sunken px-2.5 py-2">
+              {openMarkerRow.annotations.map((annotation) => (
+                <li key={annotation.id} className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs text-on-surface">{annotation.text}</p>
+                    <p className="text-[11px] text-on-surface-faint">
+                      {formatCostAnnotationDates(annotation)} ·{" "}
+                      {describeCostAnnotationScope(annotation)}
+                    </p>
+                  </div>
+                  {canWriteAnnotations && (
+                    <button
+                      type="button"
+                      onClick={() => setEditing({ annotation, startDate: annotation.startDate })}
+                      className="shrink-0 text-[11px] text-on-surface-faint underline hover:text-on-surface-secondary"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {editing && (
+        <CostAnnotationModal
+          annotation={editing.annotation}
+          defaultStartDate={editing.startDate}
+          {...(annotationReportId ? { reportId: annotationReportId } : {})}
+          {...(annotationReportName ? { reportName: annotationReportName } : {})}
+          onSave={async (input: CostAnnotationInput) => {
+            if (editing.annotation) await api.updateCostAnnotation!(editing.annotation.id, input);
+            else await api.createCostAnnotation!(input);
+            await refreshAnnotations();
+          }}
+          {...(editing.annotation
+            ? {
+                onDelete: async () => {
+                  await api.deleteCostAnnotation!(editing.annotation!.id);
+                  setOpenMarker(null);
+                  await refreshAnnotations();
+                },
+              }
+            : {})}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </div>
   );
+}
+
+/**
+ * A cost card: spend over time, or — when the config names a business metric —
+ * cost per unit of it.
+ *
+ * The switch lives here, at the component boundary, rather than as a branch
+ * inside either chart. Two different component types is what lets React remount
+ * cleanly when a stored config is edited from one mode into the other, and it
+ * keeps each chart free of the other's concepts: the spend chart knows nothing
+ * about gaps in a denominator, and the unit-cost chart knows nothing about
+ * stacking, top-N or forecasts.
+ *
+ * `unitCostMetricId` is absent on every config written before unit costs
+ * existed, so an old card draws exactly what it always drew.
+ */
+export function CostGraphCard(props: CostGraphCardProps) {
+  if (props.config.unitCostMetricId) {
+    return (
+      <UnitCostCard
+        title={props.title}
+        config={props.config}
+        api={props.api}
+        onEdit={props.onEdit}
+        editLabel={props.editLabel}
+        onRemove={props.onRemove}
+      />
+    );
+  }
+  return <SpendGraphCard {...props} />;
 }

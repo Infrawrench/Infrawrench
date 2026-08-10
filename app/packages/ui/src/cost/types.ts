@@ -74,6 +74,52 @@ export interface CostApi {
   listSavedFilters?(): Promise<SavedCostFilter[]>;
   /** "Save these rows as a filter…" in the editor. Omitted for read-only hosts. */
   createSavedFilter?(input: SavedCostFilterInput): Promise<SavedCostFilter>;
+  /**
+   * The org's scenario models, for the picker in the graph editor and for
+   * naming an applied scenario on a card.
+   *
+   * On the base `CostApi` rather than on {@link CostsClient} because a card
+   * drawing a scenario is a `cost_graph` widget like any other: it renders on a
+   * dashboard, on a saved report and on the Costs panel, and all three go
+   * through the same component. Optional the way `listSavedFilters` is — a host
+   * that hasn't wired it simply doesn't offer scenarios.
+   */
+  listScenarioModels?(): Promise<CostScenarioModel[]>;
+  /**
+   * The dated notes a chart should draw. Lives on the base `CostApi` rather
+   * than on the report client because an annotation with no report id is
+   * org-wide: it belongs on the ad-hoc dashboard cost card just as much as on a
+   * saved report, and every one of those renders through {@link CostGraphCard}.
+   *
+   * Optional the way `listSavedFilters` is — a host that hasn't wired it draws
+   * the chart exactly as it did before annotations existed.
+   */
+  listCostAnnotations?(reportId?: string): Promise<CostAnnotation[]>;
+  /**
+   * The mutating half. Omitted, the markers render read-only rather than
+   * offering controls that fail on click — the same stance the budget half of
+   * {@link CostsClient} takes.
+   */
+  createCostAnnotation?(input: CostAnnotationInput): Promise<CostAnnotation>;
+  updateCostAnnotation?(annotationId: string, input: CostAnnotationInput): Promise<CostAnnotation>;
+  deleteCostAnnotation?(annotationId: string): Promise<void>;
+  /**
+   * The org's business metrics, for the unit-cost picker in the graph editor
+   * and for naming the denominator on a card.
+   *
+   * On the base `CostApi` rather than on {@link CostsClient} because a
+   * unit-cost graph is a `cost_graph` widget like any other: it renders on a
+   * dashboard, on a saved report and on the Costs panel, and all three go
+   * through {@link CostGraphCard}. Optional the way `listSavedFilters` is — a
+   * host that hasn't wired it simply doesn't offer unit costs.
+   */
+  listBusinessMetrics?(): Promise<BusinessMetric[]>;
+  /**
+   * Spend divided by a metric. Separate from `queryCosts` because the answer is
+   * a different shape: points can be `null` (a period with no reported value is
+   * a gap, never a zero), and there are no groups to stack.
+   */
+  queryUnitCosts?(metricId: string, request: UnitCostQueryRequest): Promise<UnitCostQueryResponse>;
 }
 
 /** A dashboard a budget card can be added to, for the Costs panel's picker. */

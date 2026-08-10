@@ -54,6 +54,10 @@ import {
   queryCloudCosts,
   loadCloudCostDimensionValues,
   loadCloudCostStatus,
+  listCloudCostAnnotations,
+  createCloudCostAnnotation,
+  updateCloudCostAnnotation,
+  deleteCloudCostAnnotation,
   listCloudBudgets,
   listCloudCostReports,
   createCloudBudget,
@@ -842,6 +846,28 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         const orgId = useUIStore.getState().activeCloudOrgId;
         if (!orgId) return Promise.resolve([]);
         return loadCloudCostStatus(orgId);
+      },
+      // A dashboard cost card belongs to no report, so it draws the org-wide
+      // notes only — which is exactly what "we changed instance types" is.
+      listCostAnnotations: (reportId?: string) => {
+        const orgId = useUIStore.getState().activeCloudOrgId;
+        if (!orgId) return Promise.resolve([]);
+        return listCloudCostAnnotations(orgId, reportId);
+      },
+      createCostAnnotation: (input) => {
+        const orgId = useUIStore.getState().activeCloudOrgId;
+        if (!orgId) return Promise.reject(new Error("Annotations require cloud mode"));
+        return createCloudCostAnnotation(orgId, input);
+      },
+      updateCostAnnotation: (annotationId, input) => {
+        const orgId = useUIStore.getState().activeCloudOrgId;
+        if (!orgId) return Promise.reject(new Error("Annotations require cloud mode"));
+        return updateCloudCostAnnotation(orgId, annotationId, input);
+      },
+      deleteCostAnnotation: (annotationId) => {
+        const orgId = useUIStore.getState().activeCloudOrgId;
+        if (!orgId) return Promise.reject(new Error("Annotations require cloud mode"));
+        return deleteCloudCostAnnotation(orgId, annotationId);
       },
     }),
     [],

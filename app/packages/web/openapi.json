@@ -4333,6 +4333,103 @@
         ],
         "additionalProperties": false
       },
+      "CostAnnotation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "startDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Inclusive first day (UTC) the note is about. Mapped to whichever bucket holds it at the chart's binning — daily and cumulative use the day itself, weekly the Monday that starts its week, monthly the first of its month.",
+            "example": "2026-07-15"
+          },
+          "endDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Inclusive last day, or null for a note about a single moment. A deploy is a moment; a migration is a week, and a week spelled as seven notes misstates how many things happened. An end equal to the start is stored as null — the same fact has one spelling.",
+            "example": "2026-07-15"
+          },
+          "text": {
+            "type": "string"
+          },
+          "costReportId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The report this note is scoped to, or null for **org-wide**. Null is the useful default: an org-wide note is drawn on every cost chart, because \"we changed instance types\" is not a fact about one report. An id from another org is a 400."
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "startDate",
+          "endDate",
+          "text",
+          "costReportId",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CostAnnotationInput": {
+        "type": "object",
+        "properties": {
+          "startDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Inclusive first day (UTC) the note is about. Mapped to whichever bucket holds it at the chart's binning — daily and cumulative use the day itself, weekly the Monday that starts its week, monthly the first of its month.",
+            "example": "2026-07-15"
+          },
+          "endDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Inclusive last day, or null for a note about a single moment. A deploy is a moment; a migration is a week, and a week spelled as seven notes misstates how many things happened. An end equal to the start is stored as null — the same fact has one spelling.",
+            "example": "2026-07-15"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "costReportId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The report this note is scoped to, or null for **org-wide**. Null is the useful default: an org-wide note is drawn on every cost chart, because \"we changed instance types\" is not a fact about one report. An id from another org is a 400."
+          }
+        },
+        "required": [
+          "startDate",
+          "text"
+        ],
+        "additionalProperties": false
+      },
       "CostExportFilter": {
         "type": "object",
         "properties": {
@@ -23706,44 +23803,45 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                },
-                "required": [
-                  "name"
-                ],
-                "additionalProperties": false
+                "$ref": "#/components/schemas/CostAnnotationInput"
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Renamed",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Ok"
+                  "$ref": "#/components/schemas/CostAnnotation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
           }
         },
-        "operationId": "postOrgOrgIdDashboardsIdRename",
-        "x-required-permission": "dashboards:write",
-        "description": "_Requires permission: `dashboards:write`._"
+        "operationId": "postOrgOrgIdCostAnnotations",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
       }
     },
-    "/api/org/{orgId}/dashboards/widgets": {
-      "post": {
+    "/api/org/{orgId}/cost-annotations/{id}": {
+      "put": {
         "tags": [
-          "Dashboards"
+          "Cost annotations"
         ],
-        "summary": "Add a cost-graph or budget widget to a dashboard",
+        "summary": "Update a cost annotation",
+        "description": "Replaces the note's dates, text and scope. Moving a note between org-wide and one report is this same PUT with a different `costReportId`.\n\n_Requires permission: `costs:write`._",
         "parameters": [
           {
             "schema": {
@@ -23762,18 +23860,18 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateWidgetRequest"
+                "$ref": "#/components/schemas/CostAnnotationInput"
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Created",
+            "description": "Updated",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DashboardWidgetFull"
+                  "$ref": "#/components/schemas/CostAnnotation"
                 }
               }
             }
@@ -23799,15 +23897,70 @@
             }
           }
         },
-        "operationId": "postOrgOrgIdDashboardsWidgets"
+        "operationId": "putOrgOrgIdCostAnnotationsId",
+        "x-required-permission": "costs:write"
+      },
+      "delete": {
+        "tags": [
+          "Cost annotations"
+        ],
+        "summary": "Delete a cost annotation",
+        "description": "A hard delete. A withdrawn explanation should stop being drawn, and nothing references a note by id.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCostAnnotationsId",
+        "x-required-permission": "costs:write"
       }
     },
-    "/api/org/{orgId}/dashboards/widgets/{widgetId}": {
-      "patch": {
+    "/api/org/{orgId}/cost-exports": {
+      "get": {
         "tags": [
-          "Dashboards"
+          "Cost exports"
         ],
-        "summary": "Update a widget's title, config, or layout",
+        "summary": "List scheduled cost exports",
         "parameters": [
           {
             "schema": {
@@ -28245,10 +28398,56 @@
             "schema": {
               "type": "string",
               "format": "uuid",
+              "description": "Scope to the notes a chart for this report should draw.",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": false,
+            "name": "reportId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Annotations, newest date first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "annotations": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CostAnnotation"
+                      }
+                    }
+                  },
+                  "required": [
+                    "annotations"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostAnnotations",
+        "x-required-permission": "costs:read"
+      },
+      "post": {
+        "tags": [
+          "Cost annotations"
+        ],
+        "summary": "Create a cost annotation",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
               "example": "00000000-0000-0000-0000-000000000000"
             },
             "required": true,
-            "name": "id",
+            "name": "orgId",
             "in": "path"
           }
         ],
