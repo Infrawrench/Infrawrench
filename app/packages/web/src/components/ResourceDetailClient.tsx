@@ -5,6 +5,7 @@ import {
   DraggableChildPill,
   ConfirmDeleteModal,
   CredentialExportModal,
+  TerraformExportModal,
   EditResourceModal,
   dispatchResourcesChanged,
   buildChildResourceGroups,
@@ -50,6 +51,7 @@ import type {
   SecretVersion,
   SecretVersionMutation,
   SynthesizeSpeechResult,
+  TerraformExportOutcome,
   TranscribeAudioResult,
 } from "@infrawrench/plugin-base";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
@@ -135,6 +137,7 @@ interface Props {
   canEdit?: boolean | undefined;
   editableFields?: FieldDefinition[] | undefined;
   credentialFormats?: CredentialFormat[] | undefined;
+  supportsTerraformExport?: boolean | undefined;
   hasManifestEditor: boolean;
   hasSecretVersions?: boolean | undefined;
   resourceDisplayName: string;
@@ -182,6 +185,7 @@ export function ResourceDetailClient({
   canEdit,
   editableFields,
   credentialFormats,
+  supportsTerraformExport,
   hasManifestEditor,
   hasSecretVersions,
   resourceDisplayName,
@@ -252,6 +256,7 @@ export function ResourceDetailClient({
     };
   }, [loadCostEstimate]);
   const [showExportCredential, setShowExportCredential] = useState(false);
+  const [showTerraformExport, setShowTerraformExport] = useState(false);
   const [metricSeries, setMetricSeries] = useState<MetricSeries[] | undefined>(undefined);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [consoleToken, setConsoleToken] = useState<string | null>(null);
@@ -1443,10 +1448,22 @@ export function ResourceDetailClient({
       )}
 
       {/* Bottom action row */}
-      {(canDelete || canEdit || (credentialFormats && credentialFormats.length > 0)) &&
+      {(canDelete ||
+        canEdit ||
+        supportsTerraformExport ||
+        (credentialFormats && credentialFormats.length > 0)) &&
         !isSshView &&
         !isSftpView && (
           <div className="shrink-0 px-4 py-2 border-t border-border flex items-center justify-end gap-3">
+            {supportsTerraformExport && (
+              <button
+                type="button"
+                onClick={() => setShowTerraformExport(true)}
+                className="text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
+              >
+                Export to Terraform…
+              </button>
+            )}
             {credentialFormats && credentialFormats.length > 0 && (
               <button
                 type="button"
@@ -1520,6 +1537,19 @@ export function ResourceDetailClient({
             )
           }
           onClose={() => setShowExportCredential(false)}
+        />
+      )}
+
+      {showTerraformExport && (
+        <TerraformExportModal
+          subjectDisplayName={resourceDisplayName}
+          generate={() =>
+            apiPost<TerraformExportOutcome>(
+              `/api/org/${orgId}/resources/${pluginId}/${resourceTypeId}/export-terraform`,
+              { resourceId, accountId },
+            )
+          }
+          onClose={() => setShowTerraformExport(false)}
         />
       )}
 

@@ -17,5 +17,5 @@
  * Adding or removing a plugin changes the `pluginId` / `resourceTypeId` enums,
  * which is a real change to the published surface — that counts.
  */
-// 1.2.0: org config-as-code export/plan/apply (additive on top of 1.1.0 environment-diff).
-export const API_VERSION = "1.2.0";
+// 1.3.0: Terraform export endpoints (additive on top of 1.2.0 config-as-code).
+export const API_VERSION = "1.3.0";

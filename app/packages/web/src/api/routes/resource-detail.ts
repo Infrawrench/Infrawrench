@@ -397,6 +397,8 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     client.exportCredential && resourceTypeDef?.credentialFormats
       ? resourceTypeDef.credentialFormats
       : [];
+  const supportsTerraformExport =
+    plugin.terraformExport?.supportedResourceTypeIds.includes(resourceTypeId) ?? false;
   const hasManifestEditor = !!finalSchema.manifestEditor && !!client.getManifest;
   const hasSecretVersions =
     !!finalSchema.secretVersions &&
@@ -487,6 +489,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     canEdit,
     editableFields,
     credentialFormats,
+    supportsTerraformExport,
     hasManifestEditor,
     hasSecretVersions,
     resourceDisplayName: instance.displayName,

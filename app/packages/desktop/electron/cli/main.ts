@@ -13,6 +13,7 @@ import { setColorEnabled, printErr, println, c } from "./output";
 import { cmdLogin, cmdLogout, cmdWhoami } from "./commands/auth";
 import { cmdOrgs, cmdAccounts, cmdResources, cmdResource } from "./commands/listing";
 import { cmdMetrics } from "./commands/metrics";
+import { cmdExport } from "./commands/export";
 import { cmdEstimate } from "./commands/estimate";
 import { cmdCosts, cmdCostAnomalies } from "./commands/costs";
 import { cmdTags, cmdShowback } from "./commands/tags";
@@ -59,6 +60,7 @@ COMMANDS
   resources           list an account's resources   --account <id|name>
   resource <id>       show one resource's fields & outputs
   metrics <id>        metric charts for a resource   [--last 6h] [--series cpu] [--local]
+  export              eject an account's inventory as Terraform HCL   --account <id|name> [--format terraform]
   estimate <id|name>  what a resource costs per month at list price, itemized (cloud only;
                       full id, or a name/external-id with --account)
   costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource]
@@ -145,6 +147,7 @@ FLAGS
   --resource <id>     focus one resource (graph) / filter to it (changes)
   -w, --window <d>    moment half-window, e.g. 30m, 1h, 6h (± around the timestamp)
   --type <typeId>     filter resources by resource type
+  --format <fmt>      export format (default: terraform)
   --reason <text>     posture dismiss: why the finding is an accepted risk
   --source <name>     who is pushing (required by page and costs push)
   --key <k>           page throttle key   --title <t>   --cooldown <min>   --voice
@@ -300,6 +303,9 @@ export async function runCli(): Promise<void> {
         break;
       case "metrics":
         await cmdMetrics(ctx, rest[0] ?? "", parsed.range);
+        break;
+      case "export":
+        await cmdExport(ctx, parsed.exportFlags.format);
         break;
       case "estimate":
         await cmdEstimate(ctx, rest[0] ?? "");

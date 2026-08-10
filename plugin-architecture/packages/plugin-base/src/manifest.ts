@@ -859,6 +859,13 @@ export interface Plugin {
   /** Create a scoped client for a set of credentials — host never exposes raw credentials */
   createClient(credentials: Record<string, string>, services?: HostServices): PluginClient;
   /**
+   * Optional "eject to Terraform" capability. Declared on the plugin (not the
+   * client) because mapping works purely from stored resource state — no
+   * credentials or provider API calls — so hosts can export from persisted
+   * inventory. Secrets must be referenced as `var.*`, never inlined.
+   */
+  terraformExport?: TerraformExportCapability;
+  /**
    * Parse the raw body fetched from `manifest.statusFeed.url` into normalized
    * incidents. Required when the manifest declares `statusFeed`. Lives on the
    * Plugin (not the client) because it needs no credentials — the feed is
@@ -909,3 +916,4 @@ import type {
   CreateSizePricingRequest,
   FieldActionResult,
 } from "./create.js";
+import type { TerraformExportCapability } from "./terraform.js";

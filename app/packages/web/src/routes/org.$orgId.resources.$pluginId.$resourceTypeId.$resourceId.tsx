@@ -65,6 +65,7 @@ interface ResourceDetailResponse {
     enumValues?: string[];
   }>;
   credentialFormats?: CredentialFormat[];
+  supportsTerraformExport?: boolean;
   hasManifestEditor: boolean;
   hasSecretVersions?: boolean;
   resourceDisplayName: string;
@@ -302,6 +303,7 @@ export function ResourcePanel({
         canEdit={data.canEdit}
         editableFields={data.editableFields}
         credentialFormats={data.credentialFormats}
+        supportsTerraformExport={data.supportsTerraformExport}
         hasManifestEditor={data.hasManifestEditor}
         hasSecretVersions={data.hasSecretVersions}
         resourceDisplayName={data.resourceDisplayName}

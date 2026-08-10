@@ -1,5 +1,6 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { CloudflareClient } from "./client.js";
+import { cloudflareTerraformExport } from "./terraform.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { cloudflarePreflight, buildCloudflarePolicyTemplate } from "./preflight.js";
 import { ZoneResourceType } from "./resources/zone.js";
@@ -160,6 +161,7 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials) => new CloudflareClient(credentials, resourceTypes),
+  terraformExport: cloudflareTerraformExport,
   parseStatusFeed,
   policyTemplate: buildCloudflarePolicyTemplate,
 };
