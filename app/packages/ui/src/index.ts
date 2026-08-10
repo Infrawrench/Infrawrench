@@ -446,6 +446,8 @@ export type {
   RerollParentOutputDetail,
 } from "./utils.js";
 
+export { parseNumericInputValue } from "./form-values.js";
+
 export { useChartTheme } from "./chart-theme.js";
 export { getTerminalTheme } from "./terminal-theme.js";
 export type { TerminalThemeColors } from "./terminal-theme.js";

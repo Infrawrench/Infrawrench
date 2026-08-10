@@ -1,6 +1,12 @@
 import { Hono } from "hono";
 import {
+  COST_EFFICIENCY_LIMITS,
+  EFFICIENCY_ALERT_KINDS,
+  type EfficiencyAlertKind,
+} from "@infrawrench/client-core";
+import {
   costAnomalySettingsSchema,
+  costEfficiencySettingsSchema,
   costQueryRequestSchema,
   type CostBasis,
 } from "@infrawrench/ui/cost/config";
@@ -8,6 +14,11 @@ import {
   getOrgAnomalySettings,
   setOrgAnomalySettings,
 } from "@infrawrench/server-core/cost/anomaly-settings";
+import {
+  getOrgEfficiencySettings,
+  setOrgEfficiencySettings,
+} from "@infrawrench/server-core/cost/efficiency-settings";
+import { listEfficiencyAlerts } from "../../services/efficiency-alerts";
 import { isSmsPagingConfigured } from "@infrawrench/server-core/twilio-pager";
 import {
   CostQueryError,
@@ -144,6 +155,78 @@ app.put("/anomaly-settings", async (c) => {
     isSmsPagingConfigured(organizationId),
   ]);
   return c.json({ ...settings, smsConfigured });
+});
+
+/**
+ * GET /api/org/:orgId/costs/efficiency-alerts?kind=&limit= — what the three
+ * efficiency detectors have fired, newest first.
+ *
+ * One feed rather than three endpoints: every surface renders them in one
+ * list, and three round trips for one section would be three chances for a
+ * partial render.
+ */
+app.get("/efficiency-alerts", async (c) => {
+  requirePermission(c, "costs:read");
+  const organizationId = c.get("organizationId");
+
+  const rawKind = c.req.query("kind");
+  if (rawKind !== undefined && !EFFICIENCY_ALERT_KINDS.includes(rawKind as EfficiencyAlertKind)) {
+    return c.json({ error: `kind must be one of ${EFFICIENCY_ALERT_KINDS.join(", ")}` }, 400);
+  }
+
+  const rawLimit = c.req.query("limit");
+  const limit =
+    rawLimit === undefined ? COST_EFFICIENCY_LIMITS.defaultEventsLimit : Number(rawLimit);
+  if (
+    !Number.isInteger(limit) ||
+    limit < COST_EFFICIENCY_LIMITS.minEventsLimit ||
+    limit > COST_EFFICIENCY_LIMITS.maxEventsLimit
+  ) {
+    return c.json(
+      {
+        error:
+          `limit must be an integer between ${COST_EFFICIENCY_LIMITS.minEventsLimit} and ` +
+          `${COST_EFFICIENCY_LIMITS.maxEventsLimit}`,
+      },
+      400,
+    );
+  }
+
+  const events = await listEfficiencyAlerts(organizationId, {
+    kind: rawKind as EfficiencyAlertKind | undefined,
+    limit,
+  });
+  return c.json({ events });
+});
+
+/**
+ * GET /api/org/:orgId/costs/efficiency-alert-settings — the org's tuning for
+ * commitment expiry, idle commitments and unit-cost regression. An org that
+ * has never changed one reads back the defaults.
+ */
+app.get("/efficiency-alert-settings", async (c) => {
+  requirePermission(c, "costs:read");
+  return c.json(await getOrgEfficiencySettings(c.get("organizationId")));
+});
+
+/**
+ * PUT /api/org/:orgId/costs/efficiency-alert-settings — retune the three
+ * efficiency detectors.
+ *
+ * `costs:write`, matching `PUT /costs/anomaly-settings` and for the same
+ * reason: this is not a budget, and it changes what the org's whole cost feed
+ * alerts on rather than one cost object.
+ */
+app.put("/efficiency-alert-settings", async (c) => {
+  requirePermission(c, "costs:write");
+  const organizationId = c.get("organizationId");
+
+  const parsed = costEfficiencySettingsSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: "Invalid efficiency alert settings", issues: parsed.error.issues }, 400);
+  }
+
+  return c.json(await setOrgEfficiencySettings(organizationId, parsed.data));
 });
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;

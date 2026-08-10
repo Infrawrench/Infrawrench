@@ -21,12 +21,7 @@ import {
   type CostScenarioReferent,
 } from "./config.js";
 import type { CostsClient } from "./types.js";
-// The same guard the cost-export settings use for `<input type="number">`, and
-// deliberately the only copy of it: "cleared" and "half-typed" have to mean the
-// same thing everywhere a typed number becomes a stored one. It belongs in a
-// shared module rather than in a settings section — imported from where it
-// already lives until somebody moves it there.
-import { parseNumericInputValue } from "../settings/CostExportsSection.js";
+import { parseNumericInputValue } from "../form-values.js";
 
 const inputClass =
   "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";

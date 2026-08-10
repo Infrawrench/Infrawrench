@@ -76,6 +76,51 @@ export type PushNotificationData =
     }
   | {
       /**
+       * A commitment is about to lapse (or already has) — see server-core
+       * `commitments/expiry-eval.ts`.
+       *
+       * Target route: the Costs tab, where the commitments section lists the
+       * holding and the efficiency-alerts section lists the firing.
+       */
+      type: "commitment_expiry";
+      orgId: string;
+      accountId: string;
+      /** Provider-native commitment id. */
+      commitmentId: string;
+      /** Days of notice this firing represents; 0 means it already expired. */
+      horizonDays: number;
+    }
+  | {
+      /**
+       * A commitment stayed under its utilization threshold for a whole
+       * window — see server-core `commitments/idle-eval.ts`.
+       *
+       * Target route: the Costs tab.
+       */
+      type: "commitment_idle";
+      orgId: string;
+      accountId: string;
+      commitmentId: string;
+      /** The month the window ended in, "YYYY-MM" — the dedup key. */
+      periodKey: string;
+    }
+  | {
+      /**
+       * Cost per unit of a business metric rose past its threshold against
+       * the prior window — see server-core `cost/unit-cost-regression-eval.ts`.
+       *
+       * Target route: the Costs tab, where the unit-costs section charts the
+       * metric.
+       */
+      type: "unit_cost_regression";
+      orgId: string;
+      metricId: string;
+      /** Last day of the current window, YYYY-MM-DD (UTC) — the dedup key. */
+      windowTo: string;
+      currency: string;
+    }
+  | {
+      /**
        * A metric threshold alert rule fired (or recovered) on one resource —
        * "CPU > 90% for 15 minutes" (see server-core `metric-alerts/eval.ts`).
        *

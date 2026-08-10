@@ -42,3 +42,7 @@ export { CostsIcon } from "./CostsIcon.js";
 export { BudgetPickerModal, type BudgetPickerModalProps } from "./BudgetPickerModal.js";
 export { CreditBurndownSection } from "./CreditBurndownSection.js";
 export { CommitmentsSection } from "./CommitmentsSection.js";
+export {
+  EfficiencyAlertsSection,
+  type EfficiencyAlertsSectionProps,
+} from "./EfficiencyAlertsSection.js";

@@ -2272,6 +2272,141 @@ export const orgCostAnomalySettings = pgTable("org_cost_anomaly_settings", {
 });
 
 /**
+ * Per-org tuning for the three *efficiency* detectors — commitment expiry,
+ * idle commitments, and unit-cost regression. `org_cost_anomaly_settings`'
+ * protocol exactly: one row per org that has ever changed a knob, no row means
+ * the shipped defaults (`DEFAULT_COST_EFFICIENCY_SETTINGS` in
+ * `client-core/src/costs.ts`), and the API bounds every value
+ * (`COST_EFFICIENCY_LIMITS`) so a stored setting cannot turn a detector into a
+ * pager storm or a permanent silence.
+ *
+ * One table for three detectors rather than three tables, because an org tunes
+ * them as one decision — "how noisy is the slow lane" — and because the three
+ * are read together, once per evaluation pass, by three drivers that already
+ * run back to back.
+ *
+ * Money is USD cents and restated per currency by each detector, the same rule
+ * the anomaly settings follow.
+ */
+export const orgCostEfficiencySettings = pgTable("org_cost_efficiency_settings", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+
+  commitmentExpiryEnabled: boolean("commitment_expiry_enabled").notNull().default(true),
+  /**
+   * Days of notice, each firing once per commitment per term end. JSON rather
+   * than an `integer[]`: the list is read whole, written whole, and never
+   * queried by element, so the array operators a Postgres array would buy are
+   * operators nothing here uses.
+   */
+  commitmentExpiryHorizonDays: jsonb("commitment_expiry_horizon_days")
+    .$type<number[]>()
+    .notNull()
+    .default([60, 30, 7]),
+  /** Whether a commitment that lapsed unwarned raises one alert at horizon 0. */
+  commitmentExpiryAlertOnExpired: boolean("commitment_expiry_alert_on_expired")
+    .notNull()
+    .default(true),
+
+  commitmentIdleEnabled: boolean("commitment_idle_enabled").notNull().default(true),
+  commitmentIdleThresholdPercent: integer("commitment_idle_threshold_percent")
+    .notNull()
+    .default(70),
+  commitmentIdleWindowDays: integer("commitment_idle_window_days").notNull().default(30),
+  /**
+   * Days inside the window that must carry cost data before anything is
+   * judged. The guard that keeps a collection outage from reading as an idle
+   * commitment — see `commitments/utilization.ts`.
+   */
+  commitmentIdleMinMeasuredDays: integer("commitment_idle_min_measured_days").notNull().default(14),
+  /** Least wasted money before alerting, USD cents. */
+  commitmentIdleMinWasteCents: integer("commitment_idle_min_waste_cents").notNull().default(5000),
+
+  unitCostRegressionEnabled: boolean("unit_cost_regression_enabled").notNull().default(true),
+  unitCostThresholdPercent: integer("unit_cost_threshold_percent").notNull().default(20),
+  unitCostWindowDays: integer("unit_cost_window_days").notNull().default(14),
+  /** Reported, positive metric days required in **each** window. */
+  unitCostMinReportedDays: integer("unit_cost_min_reported_days").notNull().default(10),
+  /** Least current-window spend before alerting, USD cents. */
+  unitCostMinSpendCents: integer("unit_cost_min_spend_cents").notNull().default(10000),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * Fired unit-cost regressions: one row per (metric, currency, window end).
+ *
+ * The `budget_alert_events` once-per-period protocol, with the period being
+ * the current window's last day — evaluation inserts with
+ * `onConflictDoNothing` and only a fresh insert notifies. That alone would
+ * still re-fire daily while a regression persists (the window slides), so the
+ * driver adds the `cost_anomalies` cross-day cooldown on top: a metric that
+ * was *notified* inside the trailing cooldown stores its row but stays quiet.
+ * Counting only notified rows matters for the same reason it does there — a
+ * suppressed row must not extend its own silence, and a row nobody received
+ * must not suppress the alert that would have told them.
+ *
+ * Per currency because unit costs are: a metric whose spend lands in EUR and
+ * USD has two unit costs and neither divides the other's denominator.
+ */
+export const unitCostRegressionEvents = pgTable(
+  "unit_cost_regression_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    metricId: text("metric_id")
+      .notNull()
+      .references(() => businessMetrics.id, { onDelete: "cascade" }),
+    currency: text("currency").notNull(),
+    /** Current window, inclusive UTC days. */
+    windowFrom: text("window_from").notNull(),
+    windowTo: text("window_to").notNull(),
+    /** Prior window it was compared against, inclusive UTC days. */
+    previousFrom: text("previous_from").notNull(),
+    previousTo: text("previous_to").notNull(),
+    /**
+     * The two ratios, in currency units per metric unit. Not cents: a unit
+     * cost is routinely sub-cent (cost per request, cost per event) and
+     * rounding it to the currency's minor unit would store `0` — the same lie
+     * `cost/unit-costs.ts` refuses to draw.
+     */
+    previousUnitCost: doublePrecision("previous_unit_cost").notNull(),
+    currentUnitCost: doublePrecision("current_unit_cost").notNull(),
+    /** Signed percent change of the unit cost, rounded. */
+    changePercent: integer("change_percent").notNull(),
+    /** Current window's spend, in currency units — the "is this worth reading" number. */
+    currentSpend: doublePrecision("current_spend").notNull(),
+    /** Summed metric value on each side, over the reported days only. */
+    previousMetricValue: doublePrecision("previous_metric_value").notNull(),
+    currentMetricValue: doublePrecision("current_metric_value").notNull(),
+    /** Days in each window that carried a reported, positive value. */
+    previousReportedDays: integer("previous_reported_days").notNull(),
+    currentReportedDays: integer("current_reported_days").notNull(),
+    firedAt: timestamp("fired_at").notNull().defaultNow(),
+    notifiedAt: timestamp("notified_at"),
+  },
+  (t) => ({
+    onceUnique: uniqueIndex("unit_cost_regression_once_unique").on(
+      t.metricId,
+      t.currency,
+      t.windowTo,
+    ),
+    /** The read: one org's recent firings, newest first. */
+    orgFiredIdx: index("unit_cost_regression_events_org_fired_idx").on(t.organizationId, t.firedAt),
+    /**
+     * The cooldown probe — "this metric's notified rows inside a day range" —
+     * needs no index of its own: `onceUnique` is already
+     * `(metric_id, currency, window_to)`, which is equality on the first two
+     * and a range on the third, exactly the shape of that query.
+     */
+  }),
+);
+
+/**
  * Per-org filtering and throttling for resource-drift alerts, plus the claim
  * column that makes the throttle exactly-once across poller replicas. One row
  * per org that has either tuned the settings or been alerted; no row means the

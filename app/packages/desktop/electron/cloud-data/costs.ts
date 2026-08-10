@@ -51,6 +51,36 @@ ipcMain.handle(
   },
 );
 
+/**
+ * The three efficiency alerts — commitment expiry, idle commitments, unit-cost
+ * regression — and their tuning. Cloud-only for the same reason the anomaly
+ * settings are: the detectors run server-side after each cost collection.
+ */
+ipcMain.handle(
+  "cloud_costs_efficiency_alerts",
+  async (_e, { orgId, kind, limit }: { orgId: string; kind?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (kind) params.set("kind", kind);
+    if (limit) params.set("limit", String(limit));
+    const qs = params.toString();
+    return cloudFetch(orgId, `/costs/efficiency-alerts${qs ? `?${qs}` : ""}`);
+  },
+);
+
+ipcMain.handle("cloud_costs_efficiency_settings", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetch(orgId, "/costs/efficiency-alert-settings");
+});
+
+ipcMain.handle(
+  "cloud_costs_update_efficiency_settings",
+  async (_e, { orgId, settings }: { orgId: string; settings: unknown }) => {
+    return cloudFetch(orgId, "/costs/efficiency-alert-settings", {
+      method: "PUT",
+      body: JSON.stringify(settings),
+    });
+  },
+);
+
 ipcMain.handle("cloud_tag_policy", async (_e, { orgId }: { orgId: string }) => {
   return cloudFetch(orgId, "/tag-policy");
 });

@@ -196,6 +196,15 @@ export function pushDataToPath(data: MobilePushData): string {
     // which is exactly what the push summarised.
     case "cost_change":
       return `/org/${data.orgId}/costs`;
+    // The three efficiency alerts are all "here is a standing condition, go
+    // look at it when you can" rather than "what just happened", so they open
+    // the Costs tab where the commitments, unit-costs and efficiency-alert
+    // sections all live — never the moment view, which centres on an instant
+    // these alerts do not have.
+    case "commitment_expiry":
+    case "commitment_idle":
+    case "unit_cost_regression":
+      return `/org/${data.orgId}/costs`;
     // A cost anomaly is a "what happened just now?" alert, so it opens the
     // moment view centred on the tap — the anomaly event, plus whatever else
     // (deploys, incidents, drift) coincided with it. The Costs tab is one tap
@@ -329,6 +338,45 @@ export function parsePushData(raw: unknown): MobilePushData | null {
         return null;
       }
       return { type: "cost_change", orgId, alertId, periodKey, groupKey };
+    }
+    case "commitment_expiry": {
+      const accountId = data["accountId"];
+      const commitmentId = data["commitmentId"];
+      const horizonDays = data["horizonDays"];
+      if (
+        typeof accountId !== "string" ||
+        typeof commitmentId !== "string" ||
+        typeof horizonDays !== "number"
+      ) {
+        return null;
+      }
+      return { type: "commitment_expiry", orgId, accountId, commitmentId, horizonDays };
+    }
+    case "commitment_idle": {
+      const accountId = data["accountId"];
+      const commitmentId = data["commitmentId"];
+      const periodKey = data["periodKey"];
+      if (
+        typeof accountId !== "string" ||
+        typeof commitmentId !== "string" ||
+        typeof periodKey !== "string"
+      ) {
+        return null;
+      }
+      return { type: "commitment_idle", orgId, accountId, commitmentId, periodKey };
+    }
+    case "unit_cost_regression": {
+      const metricId = data["metricId"];
+      const windowTo = data["windowTo"];
+      const currency = data["currency"];
+      if (
+        typeof metricId !== "string" ||
+        typeof windowTo !== "string" ||
+        typeof currency !== "string"
+      ) {
+        return null;
+      }
+      return { type: "unit_cost_regression", orgId, metricId, windowTo, currency };
     }
     case "metric_alert": {
       const ruleId = data["ruleId"];

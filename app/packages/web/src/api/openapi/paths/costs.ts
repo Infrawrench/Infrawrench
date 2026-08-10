@@ -370,6 +370,142 @@ const CostAnomalySettingsView = CostAnomalySettings.extend({
     ),
 }).openapi("CostAnomalySettingsView");
 
+/**
+ * Tuning for the three efficiency detectors. One object rather than three,
+ * because an organization tunes them as one decision and the settings row is
+ * one row — see `org_cost_efficiency_settings`.
+ */
+const CostEfficiencySettings = strict({
+  commitmentExpiryEnabled: z
+    .boolean()
+    .describe("Whether commitments approaching their term end raise alerts. Defaults to true."),
+  commitmentExpiryHorizonDays: z
+    .array(z.number().int().min(1).max(730))
+    .min(1)
+    .max(6)
+    .describe(
+      "Days of notice, each firing at most once per commitment per term end. Defaults to " +
+        "[60, 30, 7]. A commitment fires at the *smallest* horizon it has reached, so an " +
+        "account connected 30 days before a term ends gets one alert, not two.",
+    ),
+  commitmentExpiryAlertOnExpired: z
+    .boolean()
+    .describe(
+      "Whether a commitment that lapsed without any horizon warning having fired raises one " +
+        "alert anyway. Defaults to true, and bounded to terms that ended within the last 90 " +
+        "days — connecting an account with years of dead reservations produces one pass of " +
+        "recent news, not an archive.",
+    ),
+  commitmentIdleEnabled: z
+    .boolean()
+    .describe("Whether under-used commitments raise alerts. Defaults to true."),
+  commitmentIdleThresholdPercent: z
+    .number()
+    .int()
+    .min(1)
+    .max(99)
+    .describe(
+      "Utilization percent the whole window must stay under. Defaults to 70 — roughly where " +
+        "a 1-year no-upfront commitment stops beating on-demand for the usage it covers.",
+    ),
+  commitmentIdleWindowDays: z
+    .number()
+    .int()
+    .min(7)
+    .max(90)
+    .describe(
+      "Trailing days utilization is aggregated over. Defaults to 30. Aggregated, never " +
+        "sampled per day: a weekday-only workload reads about 71% over a month and does not " +
+        "fire, which is the point.",
+    ),
+  commitmentIdleMinMeasuredDays: z
+    .number()
+    .int()
+    .min(3)
+    .max(90)
+    .describe(
+      "Window days that must carry cost data before anything is judged. Defaults to 14. A " +
+        "commitment whose utilization cannot be measured at all — a unit-denominated GCP CUD, " +
+        "or an account whose plugin reports no commitment attribution — never alerts, " +
+        "regardless of this value.",
+    ),
+  commitmentIdleMinWasteCents: z
+    .number()
+    .int()
+    .min(100)
+    .max(100_000_000)
+    .describe(
+      "Least wasted money (obligation − delivered) before alerting, in USD cents, restated " +
+        "per currency. Defaults to 5000 ($50).",
+    ),
+  unitCostRegressionEnabled: z
+    .boolean()
+    .describe("Whether rising cost per business-metric unit raises alerts. Defaults to true."),
+  unitCostThresholdPercent: z
+    .number()
+    .int()
+    .min(1)
+    .max(1000)
+    .describe("Percent the unit cost must rise versus the prior window. Defaults to 20."),
+  unitCostWindowDays: z
+    .number()
+    .int()
+    .min(7)
+    .max(90)
+    .describe(
+      "Length of each of the two compared windows. Defaults to 14 — two whole weekly cycles " +
+        "a side, so a weekday-shaped unit cost compares like with like.",
+    ),
+  unitCostMinReportedDays: z
+    .number()
+    .int()
+    .min(5)
+    .max(90)
+    .describe(
+      "Days inside **each** window that must carry a reported, positive metric value. " +
+        "Defaults to 10. A day with no reported value is a gap and contributes to neither the " +
+        "numerator nor the denominator; a window that fails this bar produces no comparison at " +
+        "all rather than a comparison against a gap.",
+    ),
+  unitCostMinSpendCents: z
+    .number()
+    .int()
+    .min(100)
+    .max(100_000_000)
+    .describe(
+      "Least spend in the current window before alerting, in USD cents, restated per " +
+        "currency. Defaults to 10000 ($100).",
+    ),
+}).openapi("CostEfficiencySettings");
+
+const EfficiencyAlertEvent = strict({
+  id: Uuid,
+  kind: z
+    .enum(["commitment_expiry", "commitment_idle", "unit_cost_regression"])
+    .describe("Which detector produced it."),
+  subject: z.string().describe("The commitment's description, or the business metric's name."),
+  accountId: Uuid.nullable().describe("The account, for commitment kinds; null otherwise."),
+  accountName: z.string().nullable(),
+  currency: z.string().nullable().describe("ISO 4217 of `amount`, or null when it carries none."),
+  amount: z
+    .number()
+    .nullable()
+    .describe(
+      "The money at stake, in **units of `currency`** rather than cents — commitment amounts " +
+        "are provider-reported in currency units. Per kind: the monthly on-demand exposure for " +
+        "an expiry, the wasted amount for an idle commitment, the current window's spend for a " +
+        "regression.",
+    ),
+  detail: z
+    .record(z.union([z.string(), z.number(), z.null()]))
+    .describe("Per-kind display facts. Free-form; nothing branches on it."),
+  firedAt: IsoDateTime,
+  notifiedAt: IsoDateTime.nullable().describe(
+    "When the alert reached its routed destinations, or null when nothing was routed (or the " +
+      "routing rule held it for quiet hours and the follow-up pass has not run yet).",
+  ),
+}).openapi("EfficiencyAlertEvent");
+
 const PushedCostRow = strict({
   date: IsoDate.describe("UTC day the spend belongs to."),
   currency: z.string().length(3).openapi({ example: "USD" }),
@@ -584,6 +720,85 @@ export function registerCostPaths(ctx: BuildContext) {
       200: {
         description: "The updated settings",
         content: { "application/json": { schema: CostAnomalySettingsView } },
+      },
+      400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/costs/efficiency-alerts",
+    tags: ["Costs"],
+    summary: "Recently fired efficiency alerts",
+    description:
+      "The three slow-lane cost alerts in one feed, newest first: commitments about to lapse, " +
+      "commitments that are not being used, and business metrics whose cost per unit rose. " +
+      "Unlike budgets, anomalies and change alerts — all of which compare a spend total " +
+      "against another spend total — these read the commitment calendar and the volume the " +
+      "spend bought, so they see the two surprises the other three structurally cannot.",
+    request: {
+      params: OrgIdParam,
+      query: strict({
+        kind: z
+          .enum(["commitment_expiry", "commitment_idle", "unit_cost_regression"])
+          .optional()
+          .describe("Restrict to one detector. Omitted returns all three, interleaved by time."),
+        limit: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(200)
+          .optional()
+          .describe("Rows to return, newest first. Defaults to 50."),
+      }),
+    },
+    responses: {
+      200: {
+        description: "Fired efficiency alerts",
+        content: {
+          "application/json": { schema: strict({ events: z.array(EfficiencyAlertEvent) }) },
+        },
+      },
+      400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/costs/efficiency-alert-settings",
+    tags: ["Costs"],
+    summary: "Get the organization's efficiency alert tuning",
+    description:
+      "Thresholds for the commitment-expiry, idle-commitment and unit-cost-regression " +
+      "detectors. An organization that has never changed one reads back the defaults, which " +
+      "are chosen to work with no setup.",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "Efficiency alert settings",
+        content: { "application/json": { schema: CostEfficiencySettings } },
+      },
+    },
+  });
+
+  registry.registerPath({
+    method: "put",
+    path: "/api/org/{orgId}/costs/efficiency-alert-settings",
+    tags: ["Costs"],
+    summary: "Update the organization's efficiency alert tuning",
+    description:
+      "Takes effect on the next evaluation pass (which runs after each cost collection). " +
+      "Already-fired alerts are not re-judged, and horizons that have already fired for a " +
+      "commitment's current term do not fire again — widening the horizon list warns about " +
+      "future crossings, not past ones. A PUT of the whole object, not a patch.",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: CostEfficiencySettings } }, required: true },
+    },
+    responses: {
+      200: {
+        description: "The updated settings",
+        content: { "application/json": { schema: CostEfficiencySettings } },
       },
       400: ErrorResponses[400],
     },

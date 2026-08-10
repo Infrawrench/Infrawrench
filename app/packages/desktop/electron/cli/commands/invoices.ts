@@ -225,6 +225,17 @@ export async function cmdInvoice(ctx: CliContext, query: string): Promise<void> 
   if (invoice.status === "void" && invoice.voidReason) {
     println(c.red(`Voided — ${invoice.voidReason}`));
   }
+  // Delivery, when there has been an attempt. Worth a line in a reconciliation
+  // script: "sent" is a decision a person made, "delivered" is a thing that
+  // either happened or did not, and only the second is checkable here.
+  if (invoice.delivery) {
+    const { status, delivered, recipients, attemptedAt, error } = invoice.delivery;
+    const summary = `Delivery: ${status} — ${delivered}/${recipients.length} recipient${
+      recipients.length === 1 ? "" : "s"
+    } on ${attemptedAt.slice(0, 10)}`;
+    println(status === "succeeded" ? c.dim(summary) : c.yellow(summary));
+    if (error) println(c.dim(error));
+  }
   println();
 
   if (invoice.lines.length === 0) {

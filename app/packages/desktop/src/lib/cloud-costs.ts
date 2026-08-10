@@ -45,6 +45,9 @@ import type {
   CreditBurndown,
 } from "@infrawrench/ui/cost";
 import type {
+  CostEfficiencySettings,
+  EfficiencyAlertEvent,
+  EfficiencyAlertKind,
   ReportDeliveryTargets,
   ReportNotification,
   ReportNotificationInput,
@@ -135,6 +138,29 @@ export async function loadCloudCreditBurndown(orgId: string): Promise<CreditBurn
 
 export async function loadCloudCommitments(orgId: string): Promise<CommitmentsFeed> {
   return invoke("cloud_commitments", { orgId });
+}
+
+export async function loadCloudEfficiencyAlerts(
+  orgId: string,
+  options: { kind?: EfficiencyAlertKind; limit?: number } = {},
+): Promise<EfficiencyAlertEvent[]> {
+  const res = await invoke<{ events: EfficiencyAlertEvent[] }>("cloud_costs_efficiency_alerts", {
+    orgId,
+    ...(options.kind ? { kind: options.kind } : {}),
+    ...(options.limit !== undefined ? { limit: options.limit } : {}),
+  });
+  return res?.events ?? [];
+}
+
+export async function loadCloudEfficiencySettings(orgId: string): Promise<CostEfficiencySettings> {
+  return invoke("cloud_costs_efficiency_settings", { orgId });
+}
+
+export async function saveCloudEfficiencySettings(
+  orgId: string,
+  settings: CostEfficiencySettings,
+): Promise<CostEfficiencySettings> {
+  return invoke("cloud_costs_update_efficiency_settings", { orgId, settings });
 }
 
 export async function listCloudBudgets(orgId: string): Promise<BudgetWithStatus[]> {

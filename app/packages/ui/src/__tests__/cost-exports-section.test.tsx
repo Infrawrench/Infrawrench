@@ -16,7 +16,8 @@ beforeAll(() => {
   }
 });
 
-import { CostExportsSection, parseNumericInputValue } from "../settings/CostExportsSection.js";
+import { CostExportsSection } from "../settings/CostExportsSection.js";
+import { parseNumericInputValue } from "../form-values.js";
 import { SettingsHostProvider, type SettingsHostValue } from "../settings/host.js";
 
 /**

@@ -12,6 +12,7 @@ import {
   COST_ALERT_LIMITS,
   COST_ANOMALY_LIMITS,
   COST_ANOMALY_SMS_MODES,
+  COST_EFFICIENCY_LIMITS,
   COST_BASES,
   COST_CHANGE_CADENCES,
   COST_CHANGE_DIRECTIONS,
@@ -33,6 +34,7 @@ import {
   type OrgCurrencySettings,
   type BudgetInput,
   type CostAnomalySettings,
+  type CostEfficiencySettings,
   type BudgetThreshold,
   type BudgetWidgetConfig,
   type CostFilter,
@@ -96,6 +98,7 @@ export {
   COST_BINNINGS,
   COST_ANOMALY_LIMITS,
   COST_ANOMALY_SMS_MODES,
+  COST_EFFICIENCY_LIMITS,
   COST_ANOMALY_SMS_MODE_LABELS,
   COST_ALERT_LIMITS,
   COST_CHANGE_CADENCES,
@@ -117,6 +120,7 @@ export {
   DEFAULT_COST_ANOMALY_SETTINGS,
   type CostAnomalySettings,
   type CostAnomalySettingsView,
+  type CostEfficiencySettings,
   type CostAnomalySmsMode,
   COST_CHART_TYPE_LABELS,
   COST_BINNING_LABELS,
@@ -533,6 +537,83 @@ export const costAnomalySettingsSchema = z.object({
   smsAlerts: z.enum(COST_ANOMALY_SMS_MODES),
 });
 
+/**
+ * Per-org tuning for the three efficiency detectors
+ * (PUT /costs/efficiency-alert-settings).
+ *
+ * Whole-object, no defaults, matching `costAnomalySettingsSchema`: a client
+ * that omits a field is rejected rather than having a deliberate setting
+ * silently reset by a save from an older build.
+ *
+ * Two bounds are worth explaining because they are not merely "a sane range".
+ * `commitmentExpiryHorizonDays` is capped at six entries because past that one
+ * commitment is its own digest — six notices about one term end is not six
+ * decisions. And the two "minimum days" fields are floors on *confidence*, not
+ * on noise: below them a detector is comparing against a window that is mostly
+ * gaps, which is the failure the whole gap-versus-zero rule exists to prevent.
+ */
+export const costEfficiencySettingsSchema = z.object({
+  commitmentExpiryEnabled: z.boolean(),
+  commitmentExpiryHorizonDays: z
+    .array(
+      z
+        .number()
+        .int()
+        .min(COST_EFFICIENCY_LIMITS.minExpiryHorizonDays)
+        .max(COST_EFFICIENCY_LIMITS.maxExpiryHorizonDays),
+    )
+    .min(1)
+    .max(COST_EFFICIENCY_LIMITS.maxExpiryHorizons)
+    // De-duplicated and descending on the way in, so the stored row and the
+    // form agree about order and a list with "30, 30" cannot fire twice.
+    .transform((v) => [...new Set(v)].sort((a, b) => b - a)),
+  commitmentExpiryAlertOnExpired: z.boolean(),
+
+  commitmentIdleEnabled: z.boolean(),
+  commitmentIdleThresholdPercent: z
+    .number()
+    .int()
+    .min(COST_EFFICIENCY_LIMITS.minIdleThresholdPercent)
+    .max(COST_EFFICIENCY_LIMITS.maxIdleThresholdPercent),
+  commitmentIdleWindowDays: z
+    .number()
+    .int()
+    .min(COST_EFFICIENCY_LIMITS.minIdleWindowDays)
+    .max(COST_EFFICIENCY_LIMITS.maxIdleWindowDays),
+  commitmentIdleMinMeasuredDays: z
+    .number()
+    .int()
+    .min(COST_EFFICIENCY_LIMITS.minIdleMinMeasuredDays)
+    .max(COST_EFFICIENCY_LIMITS.maxIdleMinMeasuredDays),
+  commitmentIdleMinWasteCents: z
+    .number()
+    .int()
+    .min(COST_EFFICIENCY_LIMITS.minIdleWasteCents)
+    .max(COST_EFFICIENCY_LIMITS.maxIdleWasteCents),
+
+  unitCostRegressionEnabled: z.boolean(),
+  unitCostThresholdPercent: z
+    .number()
+    .int()
+    .min(COST_EFFICIENCY_LIMITS.minUnitCostThresholdPercent)
+    .max(COST_EFFICIENCY_LIMITS.maxUnitCostThresholdPercent),
+  unitCostWindowDays: z
+    .number()
+    .int()
+    .min(COST_EFFICIENCY_LIMITS.minUnitCostWindowDays)
+    .max(COST_EFFICIENCY_LIMITS.maxUnitCostWindowDays),
+  unitCostMinReportedDays: z
+    .number()
+    .int()
+    .min(COST_EFFICIENCY_LIMITS.minUnitCostReportedDays)
+    .max(COST_EFFICIENCY_LIMITS.maxUnitCostReportedDays),
+  unitCostMinSpendCents: z
+    .number()
+    .int()
+    .min(COST_EFFICIENCY_LIMITS.minUnitCostSpendCents)
+    .max(COST_EFFICIENCY_LIMITS.maxUnitCostSpendCents),
+});
+
 /** A custom-graph widget is a dashboard view onto a custom_graphs row. */
 export const customGraphWidgetConfigSchema = z.object({
   version: z.literal(1),
@@ -831,6 +912,7 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof budgetInputSchema>, BudgetInput>,
   Exact<z.infer<typeof costAlertInputSchema>, CostAlertInput>,
   Exact<z.infer<typeof costAnomalySettingsSchema>, CostAnomalySettings>,
+  Exact<z.infer<typeof costEfficiencySettingsSchema>, CostEfficiencySettings>,
   Exact<z.infer<typeof costQueryRequestSchema>, CostQueryRequest>,
   Exact<z.infer<typeof customGraphWidgetConfigSchema>, CustomGraphWidgetConfig>,
   Exact<z.infer<typeof requiredTagSchema>, RequiredTag>,

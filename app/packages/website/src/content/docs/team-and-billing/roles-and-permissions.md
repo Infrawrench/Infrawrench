@@ -108,7 +108,7 @@ The same permission set gates every surface, not just the web UI:
 - **[Managed accounts & invoices](../features/managed-accounts.md)** are a family of their own rather than more `costs:*`, and split three ways. Every other cost surface is the organization looking at its own spend; a managed account holds a customer's contact details and the price you quoted them.
   - `invoices:read` — customers, invoices, line items and the CSV export.
   - `invoices:write` — add a customer, raise a draft invoice, edit its period, delete a draft. Entirely revisable, and none of it visible outside the organization.
-  - `invoices:issue` — approve, mark as sent, void. The irreversible half: approving freezes the figures a customer will be sent, sending states that they have them, voiding withdraws a document already in their hands.
+  - `invoices:issue` — approve, send, void. The irreversible half: approving freezes the figures a customer will be sent, sending emails the invoice to them, voiding withdraws a document already in their hands.
 
   The last split is the one worth using: a billing clerk holding `read` and `write` can prepare a month's invoices while only the finance lead holds `issue`. Members hold none of the three; Admin and Owner hold all three through their wildcards.
 

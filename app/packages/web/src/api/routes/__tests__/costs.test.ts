@@ -76,6 +76,21 @@ vi.mock("@infrawrench/server-core/cost/anomaly-settings", () => ({
   setOrgAnomalySettings: (...args: unknown[]) => mockSetAnomalySettings(...args),
 }));
 
+const mockGetEfficiencySettings = vi.fn();
+const mockSetEfficiencySettings = vi.fn();
+
+// Same reason as the anomaly settings above: the module reaches server-core's
+// db client, which throws at import time without DATABASE_URL.
+vi.mock("@infrawrench/server-core/cost/efficiency-settings", () => ({
+  getOrgEfficiencySettings: (...args: unknown[]) => mockGetEfficiencySettings(...args),
+  setOrgEfficiencySettings: (...args: unknown[]) => mockSetEfficiencySettings(...args),
+}));
+
+const mockListEfficiencyAlerts = vi.fn();
+vi.mock("../../../services/efficiency-alerts", () => ({
+  listEfficiencyAlerts: (...args: unknown[]) => mockListEfficiencyAlerts(...args),
+}));
+
 const mockIsSmsPagingConfigured = vi.fn();
 
 // Same reason as above: the pager module reaches server-core's db client.
@@ -144,6 +159,23 @@ const defaultSettings = {
   smsAlerts: "off",
 };
 
+/** The shipped efficiency defaults, mirroring DEFAULT_COST_EFFICIENCY_SETTINGS. */
+const defaultEfficiencySettings = {
+  commitmentExpiryEnabled: true,
+  commitmentExpiryHorizonDays: [60, 30, 7],
+  commitmentExpiryAlertOnExpired: true,
+  commitmentIdleEnabled: true,
+  commitmentIdleThresholdPercent: 70,
+  commitmentIdleWindowDays: 30,
+  commitmentIdleMinMeasuredDays: 14,
+  commitmentIdleMinWasteCents: 5000,
+  unitCostRegressionEnabled: true,
+  unitCostThresholdPercent: 20,
+  unitCostWindowDays: 14,
+  unitCostMinReportedDays: 10,
+  unitCostMinSpendCents: 10_000,
+};
+
 /** An org that has not opted into conversion — the default in every test. */
 const noConversion = { displayCurrency: null, rates: [] };
 
@@ -173,6 +205,11 @@ beforeEach(() => {
   mockSetAnomalySettings.mockImplementation((_org: string, settings: unknown) =>
     Promise.resolve(settings),
   );
+  mockGetEfficiencySettings.mockResolvedValue(defaultEfficiencySettings);
+  mockSetEfficiencySettings.mockImplementation((_org: string, settings: unknown) =>
+    Promise.resolve(settings),
+  );
+  mockListEfficiencyAlerts.mockResolvedValue([]);
 });
 
 describe("POST /query", () => {
@@ -763,5 +800,92 @@ describe("POST /query — cost query language", () => {
     expect(filtersPassedDown()).toEqual([
       { dimension: "service", op: "in", values: ["x') OR 1=1 --"] },
     ]);
+  });
+});
+
+describe("efficiency alerts", () => {
+  function put(app: Hono, body: unknown) {
+    return app.request("/efficiency-alert-settings", {
+      method: "PUT",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  it("reads the tuning with costs:read", async () => {
+    const res = await buildAppWithPermissions(["costs:read"]).request("/efficiency-alert-settings");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(defaultEfficiencySettings);
+  });
+
+  it("rejects a read without costs:read", async () => {
+    const res = await buildAppWithPermissions(["dashboards:read"]).request(
+      "/efficiency-alert-settings",
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects a write to a reader — retuning needs costs:write", async () => {
+    const res = await put(buildAppWithPermissions(["costs:read"]), defaultEfficiencySettings);
+    expect(res.status).toBe(403);
+    expect(mockSetEfficiencySettings).not.toHaveBeenCalled();
+  });
+
+  it("saves a valid update", async () => {
+    const next = {
+      ...defaultEfficiencySettings,
+      commitmentIdleThresholdPercent: 60,
+      commitmentExpiryHorizonDays: [90, 14],
+    };
+    const res = await put(buildApp(), next);
+    expect(res.status).toBe(200);
+    expect(mockSetEfficiencySettings).toHaveBeenCalledWith("org-1", next);
+  });
+
+  it("rejects an out-of-range threshold rather than storing a permanent silence", async () => {
+    const res = await put(buildApp(), {
+      ...defaultEfficiencySettings,
+      commitmentIdleThresholdPercent: 0,
+    });
+    expect(res.status).toBe(400);
+    expect(mockSetEfficiencySettings).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty horizon list — silence is what the enable flag is for", async () => {
+    const res = await put(buildApp(), {
+      ...defaultEfficiencySettings,
+      commitmentExpiryHorizonDays: [],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("lists fired alerts with costs:read", async () => {
+    mockListEfficiencyAlerts.mockResolvedValue([{ id: "ev1", kind: "commitment_idle" }]);
+    const res = await buildAppWithPermissions(["costs:read"]).request("/efficiency-alerts");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ events: [{ id: "ev1", kind: "commitment_idle" }] });
+    expect(mockListEfficiencyAlerts).toHaveBeenCalledWith("org-1", {
+      kind: undefined,
+      limit: 50,
+    });
+  });
+
+  it("passes a kind filter through", async () => {
+    await buildApp().request("/efficiency-alerts?kind=commitment_expiry&limit=5");
+    expect(mockListEfficiencyAlerts).toHaveBeenCalledWith("org-1", {
+      kind: "commitment_expiry",
+      limit: 5,
+    });
+  });
+
+  it("rejects an unknown kind", async () => {
+    const res = await buildApp().request("/efficiency-alerts?kind=nonsense");
+    expect(res.status).toBe(400);
+    expect(mockListEfficiencyAlerts).not.toHaveBeenCalled();
+  });
+
+  it("rejects an out-of-range limit", async () => {
+    const res = await buildApp().request("/efficiency-alerts?limit=9999");
+    expect(res.status).toBe(400);
   });
 });

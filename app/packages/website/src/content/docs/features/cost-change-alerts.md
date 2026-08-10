@@ -3,15 +3,16 @@ title: Cost change alerts
 description: Configured alerts that fire when spend on a chosen scope moves more than a chosen percent or amount versus the prior period, on a daily, weekly, or monthly cadence.
 ---
 
-A change alert answers one question the other two cost alert families don't: **"tell me when
-spend on this scope moves more than X% (or $Y) versus the prior period."** You pick the scope,
-the cadence, the direction, and the threshold; Infrawrench compares each period to the one
-before it and alerts when the movement clears the bar.
+A change alert answers one question no other cost alert family does: **"tell me when spend on
+this scope moves more than X% (or $Y) versus the prior period."** You pick the scope, the
+cadence, the direction, and the threshold; Infrawrench compares each period to the one before
+it and alerts when the movement clears the bar.
 
-## Three alert families, three different questions
+## Six alert kinds, six different questions
 
-Infrawrench has three ways to be told about spend, and they are deliberately not the same
-feature:
+Infrawrench has six ways to be told about spend, and they are deliberately not the same
+feature. The first three compare **money against money**; the last three read facts no spend
+total contains — a calendar, an obligation, a volume.
 
 - **[Budgets](./cloud-costs.md)** watch an **absolute monthly total you chose** — "alert me
   when Production AWS passes $10,000 this month." The number is fixed; the alert is about
@@ -22,9 +23,19 @@ feature:
 - **Change alerts** (this page) watch a **configured relative change on a scope you chose** —
   "the api-gateway service moved more than 25% and more than $100 week over week." You state
   what movement matters; nothing is learned and nothing is absolute.
+- **[Commitment expiry](./commitment-and-unit-cost-alerts.md)** watches a **term end date**. A
+  reservation lapsing is a step change with no movement to notice until after it has happened.
+- **[Idle commitments](./commitment-and-unit-cost-alerts.md)** watch **utilization of what you
+  already bought**. Nothing moves at all — the waste has been there since the purchase.
+- **[Unit-cost regressions](./commitment-and-unit-cost-alerts.md)** watch **spend ÷ a business
+  metric**. The only one that stays quiet when spend doubles because volume tripled, and fires
+  when spend is flat because volume halved.
 
 A 15% creep across a whole account will never be a statistical outlier and may sit comfortably
-under a budget for months — a change alert is the tool that catches it deliberately.
+under a budget for months — a change alert is the tool that catches it deliberately. And a
+change alert firing on a scope whose cost-per-customer went _down_ is the case the last three
+exist to keep in proportion; the
+[comparison table](./commitment-and-unit-cost-alerts.md) lines all six up side by side.
 
 ## Windows: what is compared to what
 

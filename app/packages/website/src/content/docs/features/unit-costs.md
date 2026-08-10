@@ -153,6 +153,16 @@ Unreported periods print as `—` in the table, with the reason in the last colu
 
 The MCP server and the in-app chat expose `list_business_metrics`, `get_business_metric_values`, `query_unit_costs`, and the metric write tools, so "what did a customer cost us last month, and is that up or down?" works without building a graph. The tool descriptions carry the gap rule and the summed-sides rule explicitly, so a model summarising the data does not turn a gap into a zero. See [MCP](./mcp.md) and [AI chat](./ai-chat.md).
 
+## Being told, rather than looking
+
+A **unit-cost regression** alert fires when cost per unit rises more than 20% against the prior
+fortnight — the business signal a spend-versus-spend alert cannot see, because spend rising
+while cost-per-customer falls is good news. The gap rule above carries straight through: a day
+with no reported value contributes to neither side, and a window that is mostly gaps produces no
+comparison at all rather than an invented regression. A metric needs at least 10 reported days
+in each of the two 14-day windows before it can fire. See
+[Commitment & unit-cost alerts](./commitment-and-unit-cost-alerts.md).
+
 ## On your phone
 
 The [mobile app](./mobile-app.md)'s **Costs** tab shows a read-only card per metric: the trailing 30 days, the period figure, and a sparkline that **breaks on a gap** rather than bridging it. Declaring metrics and reporting values stay on web and desktop — both are finance-governance acts needing `costs:write` and the full cost-filter editor, the same deliberate omission as the tag policy and exchange rates.

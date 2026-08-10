@@ -16,6 +16,7 @@ import {
   type CostExportS3Destination,
 } from "@infrawrench/client-core";
 import { Modal } from "../components/Modal.js";
+import { parseNumericInputValue } from "../form-values.js";
 import { useSettingsHost } from "./host.js";
 import { CARD, INPUT, LABEL, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./styles.js";
 
@@ -39,22 +40,6 @@ import { CARD, INPUT, LABEL, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./styles.j
 
 /** Which dimensions the column picker offers. `tag` is handled by the tag-key list. */
 const PICKABLE_DIMENSIONS = COST_DIMENSIONS.filter((d) => d !== "tag");
-
-/**
- * A number typed into an `<input type="number">`, or `null` when there is
- * nothing the user has actually chosen yet.
- *
- * `Number("")` is `0` and `Number("-")` is `NaN`, so coercing the raw value
- * writes a *setting* the user never picked: clearing the restatement field to
- * retype it would silently store "restate 0 days", and a half-typed value
- * would store `NaN` and travel into the request body. Both cases mean "keep
- * what is there and wait for the rest of the keystrokes".
- */
-export function parseNumericInputValue(raw: string): number | null {
-  if (raw.trim() === "") return null;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : null;
-}
 
 function statusTone(exp: CostExport): string {
   if (exp.lastStatus === "failed") return "text-red-400";

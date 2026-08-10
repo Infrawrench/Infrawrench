@@ -16,6 +16,7 @@ import {
 import { CommitmentsSection } from "@/features/costs/CommitmentsSection";
 import { CostAnomaliesSection } from "@/features/costs/CostAnomaliesSection";
 import { CostChangeAlertsSection } from "@/features/costs/CostChangeAlertsSection";
+import { EfficiencyAlertsSection } from "@/features/costs/EfficiencyAlertsSection";
 import { TagGovernanceSection } from "@/features/costs/TagGovernanceSection";
 import { UnitCostsSection } from "@/features/costs/UnitCostsSection";
 import { BudgetCard } from "@/features/dashboard/BudgetCard";
@@ -73,6 +74,7 @@ export default function CostsScreen() {
         void queryClient.invalidateQueries({ queryKey: ["cost-anomalies"] });
         void queryClient.invalidateQueries({ queryKey: ["cost-alerts"] });
         void queryClient.invalidateQueries({ queryKey: ["cost-alert-events"] });
+        void queryClient.invalidateQueries({ queryKey: ["efficiency-alerts"] });
         void queryClient.invalidateQueries({ queryKey: ["commitments"] });
         void queryClient.invalidateQueries({ queryKey: ["tag-compliance"] });
         void queryClient.invalidateQueries({ queryKey: ["business-metrics"] });
@@ -124,6 +126,9 @@ export default function CostsScreen() {
       <CostAnomaliesSection />
 
       <CostChangeAlertsSection />
+      {/* Same order as web: the two "did something happen yesterday" sections
+          first, then the three "is something quietly wrong" ones. */}
+      <EfficiencyAlertsSection />
 
       {/* First of the savings-shaped sections, matching web/desktop:
           commitments are the largest single lever on a big bill. */}

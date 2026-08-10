@@ -830,6 +830,13 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   // Retuning detection changes what the org's whole cost feed alerts on, so it
   // rides the cost write scope rather than the budget one.
   "PUT /costs/anomaly-settings": "costs:write",
+  // efficiency alerts — commitment expiry, idle commitments, unit-cost
+  // regression. Same split as anomaly settings and for the same reason:
+  // reading what fired is cost data, retuning it changes what the org's whole
+  // cost feed alerts on.
+  "GET /costs/efficiency-alerts": "costs:read",
+  "GET /costs/efficiency-alert-settings": "costs:read",
+  "PUT /costs/efficiency-alert-settings": "costs:write",
   "POST /costs/rows": "costs:write",
   // cost reports — a report is cost data under a name, so it follows the cost
   // permissions rather than the dashboard ones. Running one is a read.

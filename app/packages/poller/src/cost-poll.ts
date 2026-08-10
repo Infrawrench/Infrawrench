@@ -5,6 +5,8 @@ import { collectAccountCosts, describeCostFailure } from "@infrawrench/server-co
 import { evaluateBudgetsForOrg } from "@infrawrench/server-core/cost/budget-eval";
 import { detectCostAnomaliesForOrg } from "@infrawrench/server-core/cost/anomaly-eval";
 import { evaluateCostChangeAlertsForOrg } from "@infrawrench/server-core/cost/change-eval";
+import { evaluateCommitmentAlertsForOrg } from "@infrawrench/server-core/commitments/alert-eval";
+import { evaluateUnitCostRegressionsForOrg } from "@infrawrench/server-core/cost/unit-cost-regression-eval";
 import type { PollAccountRow } from "./poll-account";
 
 /**
@@ -56,6 +58,18 @@ export async function pollAccountCosts(account: PollAccountRow): Promise<void> {
     // total and anomalies' unconfigured statistical outliers). Also
     // rate-limited per org internally, and its errors are swallowed too.
     await evaluateCostChangeAlertsForOrg(account.organizationId);
+
+    // The two commitment alerts ride the same trigger point, for the same
+    // reason: derived utilization is computed from the cost rows that just
+    // landed, and the collected inventory is refreshed on the same cadence.
+    // Expiry needs no cost data at all, but running it here keeps all five
+    // cost alert families on one clock rather than inventing a sixth.
+    // Rate-limited per org internally; its errors are swallowed too.
+    await evaluateCommitmentAlertsForOrg(account.organizationId);
+
+    // Unit-cost regressions: the numerator is the spend just collected, the
+    // denominator is whatever the org has reported into `business_metric_values`.
+    await evaluateUnitCostRegressionsForOrg(account.organizationId);
   } catch (e) {
     console.error(`[poller] cost collection for ${account.id} (${account.pluginId}) failed:`, e);
     const failures = account.pollFailureCount + 1;

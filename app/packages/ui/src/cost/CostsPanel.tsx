@@ -16,6 +16,7 @@ import type { SchedulesClient, SleepSchedule } from "../schedules/types.js";
 import { BudgetCard } from "./BudgetCard.js";
 import { CostAnomaliesSection } from "./CostAnomaliesSection.js";
 import { CostChangeAlertsSection } from "./CostChangeAlertsSection.js";
+import { EfficiencyAlertsSection } from "./EfficiencyAlertsSection.js";
 import { TagGovernanceSection } from "./TagGovernanceSection.js";
 import { SavedFiltersSection } from "./SavedFiltersSection.js";
 import { ScenarioModelsSection } from "./ScenarioModelsSection.js";
@@ -370,6 +371,14 @@ export function CostsPanel({
             compare: anomalies are unconfigured statistical outliers, change
             alerts are configured "moved more than X% vs the prior period". */}
         <CostChangeAlertsSection client={client} />
+        {/* The third sibling in the alert family, and last of the three
+            because it reads on a different clock. Budgets, anomalies and
+            change alerts all answer "did something happen yesterday"; these
+            three answer "is something quietly wrong" — a commitment about to
+            lapse, a commitment nobody is using, a unit cost going the wrong
+            way. Nobody acts on them within the hour, and putting them above
+            the two that are read that way would bury those. */}
+        <EfficiencyAlertsSection client={client} />
         {/* Above the savings sections on purpose: those are about spending
             less, this is about not stopping. A pot running dry is an outage. */}
         <CreditBurndownSection client={client} {...(onOpenExternal ? { onOpenExternal } : {})} />

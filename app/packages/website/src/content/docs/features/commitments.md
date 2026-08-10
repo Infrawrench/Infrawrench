@@ -61,6 +61,19 @@ Quoted savings use the providers' published rates, which are "up to" figures —
 
 **Nothing is ever purchased automatically.** The planner produces a briefing; the purchase happens in your provider's console, by a human who has read the caveats.
 
+## Being told, rather than looking
+
+Two of these facts raise alerts of their own — see
+[Commitment & unit-cost alerts](./commitment-and-unit-cost-alerts.md):
+
+- **Commitment expiry** warns at 60, 30 and 7 days before a term ends (and once about one that
+  already lapsed unnoticed), stating what the covered usage will cost once it reverts to
+  on-demand. A commitment with a successor already queued is skipped — nothing lapses.
+- **Idle commitments** alert when utilization stays under 70% across a whole 30-day window,
+  reporting the wasted money rather than only the percentage. A commitment whose utilization
+  reads `—` on the table above — a unit-denominated CUD, or an account whose provider reports no
+  attribution — **never** alerts: unknown is not zero.
+
 ## Everywhere else
 
 - **CLI** — `infrawrench commitments` prints the holdings table, coverage range and planner recommendations; `--json` is built for a weekly cron that checks for commitments expiring inside your renewal horizon or utilization sagging.

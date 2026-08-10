@@ -129,6 +129,42 @@ export const ALERT_TRIGGERS = [
     defaultSeverity: "warning",
   },
   {
+    // Commitment lapse. Not an anomaly (nothing statistical about a calendar),
+    // not a change alert (the spend has not moved *yet* — that is the point):
+    // a reservation or savings plan is about to run out and the usage it was
+    // covering reverts to on-demand the hour after it does.
+    id: "commitmentExpiryAlerts",
+    label: "Commitment expiry",
+    description: "A reservation, savings plan or committed-use discount is about to lapse.",
+    pushDefaultMuted: false,
+    channelOnly: false,
+    defaultSeverity: "warning",
+  },
+  {
+    // The opposite failure to expiry: the commitment is alive and nobody is
+    // using it. `info` rather than `warning` because nothing is breaking —
+    // this is money already spent, reported once a month per commitment, and
+    // an org that sleeps through `info` should keep sleeping through it.
+    id: "commitmentIdleAlerts",
+    label: "Idle commitments",
+    description: "A commitment stayed under its utilization threshold for a whole window.",
+    pushDefaultMuted: false,
+    channelOnly: false,
+    defaultSeverity: "info",
+  },
+  {
+    // The business signal the other four cost triggers cannot see. Spend
+    // rising while cost-per-customer falls is growth; this is the trigger that
+    // fires on the case that is actually bad.
+    id: "unitCostRegressionAlerts",
+    label: "Unit-cost regressions",
+    description:
+      "Cost per unit of a business metric rose past its threshold versus the prior window.",
+    pushDefaultMuted: false,
+    channelOnly: false,
+    defaultSeverity: "warning",
+  },
+  {
     id: "metricAlerts",
     label: "Metric alerts",
     description: "A metric threshold rule fired or recovered.",

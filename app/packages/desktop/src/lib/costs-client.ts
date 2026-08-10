@@ -32,6 +32,9 @@ import {
   loadCloudBillingRules,
   loadCloudShowback,
   loadCloudCommitments,
+  loadCloudEfficiencyAlerts,
+  loadCloudEfficiencySettings,
+  saveCloudEfficiencySettings,
   loadCloudCreditBurndown,
   loadCloudTagCompliance,
   loadCloudUntaggedSpend,
@@ -189,5 +192,9 @@ export function createDesktopCostsClient(): CostsClient {
     listBillingRules: () => loadCloudBillingRules(requireOrgId()),
     getCreditBurndown: () => loadCloudCreditBurndown(requireOrgId()),
     getCommitments: () => loadCloudCommitments(requireOrgId()),
+    listEfficiencyAlerts: (options) => loadCloudEfficiencyAlerts(requireOrgId(), options ?? {}),
+    getEfficiencyAlertSettings: () => loadCloudEfficiencySettings(requireOrgId()),
+    updateEfficiencyAlertSettings: (settings) =>
+      saveCloudEfficiencySettings(requireOrgId(), settings),
   };
 }

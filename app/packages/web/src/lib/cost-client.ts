@@ -18,6 +18,9 @@ import type {
   CostAnomaly,
   CostAnomalySettings,
   CostAnomalySettingsView,
+  CostEfficiencySettings,
+  EfficiencyAlertEvent,
+  EfficiencyAlertKind,
   CostApi,
   CostDimensionOption,
   CostQueryRequest,
@@ -241,6 +244,20 @@ export function createWebCostsClient(orgId: string): CostsClient {
       ),
     getCreditBurndown: () => apiGet<CreditBurndown>(`/api/org/${orgId}/credits`),
     getCommitments: () => apiGet<CommitmentsFeed>(`/api/org/${orgId}/commitments`),
+    listEfficiencyAlerts: async (options?: { kind?: EfficiencyAlertKind; limit?: number }) => {
+      const params = new URLSearchParams();
+      if (options?.kind) params.set("kind", options.kind);
+      if (options?.limit !== undefined) params.set("limit", String(options.limit));
+      const qs = params.toString();
+      const res = await apiGet<{ events: EfficiencyAlertEvent[] }>(
+        `/api/org/${orgId}/costs/efficiency-alerts${qs ? `?${qs}` : ""}`,
+      );
+      return res.events;
+    },
+    getEfficiencyAlertSettings: () =>
+      apiGet<CostEfficiencySettings>(`/api/org/${orgId}/costs/efficiency-alert-settings`),
+    updateEfficiencyAlertSettings: (settings: CostEfficiencySettings) =>
+      apiPut<CostEfficiencySettings>(`/api/org/${orgId}/costs/efficiency-alert-settings`, settings),
   };
 }
 

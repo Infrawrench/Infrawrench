@@ -8,6 +8,9 @@ import type {
   CostAnomaly,
   CostAnomalySettings,
   CostAnomalySettingsView,
+  CostEfficiencySettings,
+  EfficiencyAlertEvent,
+  EfficiencyAlertKind,
   CommitmentsFeed,
   CostDimensionOption,
   CreditBurndown,
@@ -49,6 +52,9 @@ export type {
   CostAnomaly,
   CostAnomalyDimension,
   CostAnomalyKind,
+  /** One firing of an efficiency detector, as listed on the Costs panel. */
+  EfficiencyAlertEvent,
+  EfficiencyAlertKind,
 } from "@infrawrench/client-core";
 // The rest of the cost/tag-policy contract (CostAccountStatus, the anomaly
 // settings, ShowbackReport, TagComplianceReport, …) is re-exported by
@@ -222,6 +228,23 @@ export interface CostsClient extends CostApi {
    * accounts.
    */
   getCommitments?(): Promise<CommitmentsFeed | null>;
+  /**
+   * The three efficiency alerts — commitment expiry, idle commitments,
+   * unit-cost regression — in one feed, newest first. Optional the way
+   * `listAnomalies` is: an unwired host doesn't render the section.
+   */
+  listEfficiencyAlerts?(options?: {
+    kind?: EfficiencyAlertKind;
+    limit?: number;
+  }): Promise<EfficiencyAlertEvent[]>;
+  /** The org's tuning for those three detectors; defaults when never saved. */
+  getEfficiencyAlertSettings?(): Promise<CostEfficiencySettings>;
+  /**
+   * Save the tuning. Omitted for a viewer without `costs:write`, and the
+   * controls then render read-only rather than failing on save — the same rule
+   * `updateAnomalySettings` follows.
+   */
+  updateEfficiencyAlertSettings?(settings: CostEfficiencySettings): Promise<CostEfficiencySettings>;
   /**
    * Saved-filter management, for the Saved filters section of the Costs panel.
    * The read half (`listSavedFilters`) lives on {@link CostApi} because the

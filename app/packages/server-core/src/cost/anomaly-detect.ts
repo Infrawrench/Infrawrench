@@ -116,6 +116,23 @@ const UNITS_PER_USD: Readonly<Record<string, number>> = {
 };
 
 /**
+ * A USD-denominated noise floor restated in `currency`.
+ *
+ * The one primitive behind {@link optionsForCurrency}, exported because the
+ * efficiency detectors (`commitments/idle-eval.ts`,
+ * `cost/unit-cost-regression-eval.ts`) hold money floors of their own and must
+ * scale them the same way — an org that sets "$50 of waste" means fifty
+ * dollars whether the commitment is priced in USD or in KRW, and a floor
+ * compared raw against a KRW amount is off by three orders of magnitude in the
+ * direction that alerts on everything.
+ *
+ * Not an exchange rate and never usable as one: see {@link UNITS_PER_USD}.
+ */
+export function usdFloorIn(currency: string, usdAmount: number): number {
+  return usdAmount * (UNITS_PER_USD[currency.toUpperCase()] ?? 1);
+}
+
+/**
  * `options` with its USD-denominated noise floors restated in `currency`, so a
  * series billed in JPY or IDR is held to the same real threshold as one billed
  * in USD. Everything else (sigmas, baseline-day minimum) is dimensionless and
