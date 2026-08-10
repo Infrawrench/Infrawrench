@@ -23,4 +23,7 @@
 // costs, report annotations, nested cost centres, scenario models, billing
 // rules, managed accounts and invoicing; plus API-key authentication across
 // the org route tree and audit entries that name the key. All additive.
-export const API_VERSION = "1.8.0";
+// 1.9.0: invoice delivery, and commitment-expiry, idle-commitment and
+// unit-cost-regression alerts (new routes, new schemas, three new alert
+// trigger enum members). All additive.
+export const API_VERSION = "1.9.0";

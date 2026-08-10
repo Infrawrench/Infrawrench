@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.8.0",
+    "version": "1.9.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -3656,6 +3656,199 @@
             "additionalProperties": false
           }
         ]
+      },
+      "EfficiencyAlertEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "commitment_expiry",
+              "commitment_idle",
+              "unit_cost_regression"
+            ],
+            "description": "Which detector produced it."
+          },
+          "subject": {
+            "type": "string",
+            "description": "The commitment's description, or the business metric's name."
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The account, for commitment kinds; null otherwise.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 4217 of `amount`, or null when it carries none."
+          },
+          "amount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "The money at stake, in **units of `currency`** rather than cents — commitment amounts are provider-reported in currency units. Per kind: the monthly on-demand exposure for an expiry, the wasted amount for an idle commitment, the current window's spend for a regression."
+          },
+          "detail": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "Per-kind display facts. Free-form; nothing branches on it."
+          },
+          "firedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "notifiedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the alert reached its routed destinations, or null when nothing was routed (or the routing rule held it for quiet hours and the follow-up pass has not run yet)."
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "subject",
+          "accountId",
+          "accountName",
+          "currency",
+          "amount",
+          "detail",
+          "firedAt",
+          "notifiedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CostEfficiencySettings": {
+        "type": "object",
+        "properties": {
+          "commitmentExpiryEnabled": {
+            "type": "boolean",
+            "description": "Whether commitments approaching their term end raise alerts. Defaults to true."
+          },
+          "commitmentExpiryHorizonDays": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 730
+            },
+            "minItems": 1,
+            "maxItems": 6,
+            "description": "Days of notice, each firing at most once per commitment per term end. Defaults to [60, 30, 7]. A commitment fires at the *smallest* horizon it has reached, so an account connected 30 days before a term ends gets one alert, not two."
+          },
+          "commitmentExpiryAlertOnExpired": {
+            "type": "boolean",
+            "description": "Whether a commitment that lapsed without any horizon warning having fired raises one alert anyway. Defaults to true, and bounded to terms that ended within the last 90 days — connecting an account with years of dead reservations produces one pass of recent news, not an archive."
+          },
+          "commitmentIdleEnabled": {
+            "type": "boolean",
+            "description": "Whether under-used commitments raise alerts. Defaults to true."
+          },
+          "commitmentIdleThresholdPercent": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 99,
+            "description": "Utilization percent the whole window must stay under. Defaults to 70 — roughly where a 1-year no-upfront commitment stops beating on-demand for the usage it covers."
+          },
+          "commitmentIdleWindowDays": {
+            "type": "integer",
+            "minimum": 7,
+            "maximum": 90,
+            "description": "Trailing days utilization is aggregated over. Defaults to 30. Aggregated, never sampled per day: a weekday-only workload reads about 71% over a month and does not fire, which is the point."
+          },
+          "commitmentIdleMinMeasuredDays": {
+            "type": "integer",
+            "minimum": 3,
+            "maximum": 90,
+            "description": "Window days that must carry cost data before anything is judged. Defaults to 14. A commitment whose utilization cannot be measured at all — a unit-denominated GCP CUD, or an account whose plugin reports no commitment attribution — never alerts, regardless of this value."
+          },
+          "commitmentIdleMinWasteCents": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 100000000,
+            "description": "Least wasted money (obligation − delivered) before alerting, in USD cents, restated per currency. Defaults to 5000 ($50)."
+          },
+          "unitCostRegressionEnabled": {
+            "type": "boolean",
+            "description": "Whether rising cost per business-metric unit raises alerts. Defaults to true."
+          },
+          "unitCostThresholdPercent": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "description": "Percent the unit cost must rise versus the prior window. Defaults to 20."
+          },
+          "unitCostWindowDays": {
+            "type": "integer",
+            "minimum": 7,
+            "maximum": 90,
+            "description": "Length of each of the two compared windows. Defaults to 14 — two whole weekly cycles a side, so a weekday-shaped unit cost compares like with like."
+          },
+          "unitCostMinReportedDays": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 90,
+            "description": "Days inside **each** window that must carry a reported, positive metric value. Defaults to 10. A day with no reported value is a gap and contributes to neither the numerator nor the denominator; a window that fails this bar produces no comparison at all rather than a comparison against a gap."
+          },
+          "unitCostMinSpendCents": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 100000000,
+            "description": "Least spend in the current window before alerting, in USD cents, restated per currency. Defaults to 10000 ($100)."
+          }
+        },
+        "required": [
+          "commitmentExpiryEnabled",
+          "commitmentExpiryHorizonDays",
+          "commitmentExpiryAlertOnExpired",
+          "commitmentIdleEnabled",
+          "commitmentIdleThresholdPercent",
+          "commitmentIdleWindowDays",
+          "commitmentIdleMinMeasuredDays",
+          "commitmentIdleMinWasteCents",
+          "unitCostRegressionEnabled",
+          "unitCostThresholdPercent",
+          "unitCostWindowDays",
+          "unitCostMinReportedDays",
+          "unitCostMinSpendCents"
+        ],
+        "additionalProperties": false
       },
       "CostAccountStatus": {
         "type": "object",
@@ -8943,6 +9136,68 @@
         "additionalProperties": false,
         "description": "**Null for a draft** — null, not zero. A draft's figures are recomputed on read and the list does not recompute; fetch the invoice by id for a draft's current numbers."
       },
+      "InvoiceDelivery": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "succeeded",
+              "partial",
+              "failed",
+              "no_targets"
+            ],
+            "description": "`pending` means an attempt was claimed and its outcome never recorded — the process died mid-send, so whether the customer received it is unknown. It is not a failure and is never retried automatically."
+          },
+          "recipients": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The addresses this attempt was made to, as the customer record had them then."
+          },
+          "delivered": {
+            "type": "integer",
+            "description": "How many the mail provider accepted."
+          },
+          "attemptedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deliveredAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The last attempt that reached at least one address, or null when none ever has. Never cleared by a later failure — it is a fact about the past, and it is what decides whether sending again is a retry or a second copy."
+          },
+          "attempts": {
+            "type": "integer"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "recipients",
+          "delivered",
+          "attemptedAt",
+          "deliveredAt",
+          "attempts",
+          "error"
+        ],
+        "additionalProperties": false,
+        "description": "The last delivery attempt, or null when none has been made — including on an invoice marked sent by a deployment with no mail provider. “A person released this” and “we delivered it” are different claims, and this field is only ever the second."
+      },
       "InvoiceSummary": {
         "type": "object",
         "properties": {
@@ -9002,6 +9257,9 @@
             ],
             "format": "date-time"
           },
+          "delivery": {
+            "$ref": "#/components/schemas/InvoiceDelivery"
+          },
           "voidedAt": {
             "type": [
               "string",
@@ -9052,6 +9310,7 @@
           "totals",
           "issuedAt",
           "sentAt",
+          "delivery",
           "voidedAt",
           "voidReason",
           "supersedesInvoiceId",
@@ -9438,6 +9697,17 @@
           "periodFrom",
           "periodTo"
         ],
+        "additionalProperties": false
+      },
+      "InvoiceSendRequest": {
+        "type": "object",
+        "properties": {
+          "resend": {
+            "type": "boolean",
+            "default": false,
+            "description": "Send another copy of an invoice that has already reached somebody. Required only in that case: retrying a delivery that reached nobody (`failed`, `no_targets`) needs no flag, because there is no inbox to duplicate into. Refused with 409 without it when the last attempt landed, or when its outcome is unknown (`pending`)."
+          }
+        },
         "additionalProperties": false
       },
       "InvoiceVoidResponse": {
@@ -21900,6 +22170,9 @@
           "budgetAlerts",
           "anomalyAlerts",
           "costChangeAlerts",
+          "commitmentExpiryAlerts",
+          "commitmentIdleAlerts",
+          "unitCostRegressionAlerts",
           "metricAlerts",
           "resourceDrift",
           "workflowPages",
@@ -27213,6 +27486,181 @@
           }
         },
         "operationId": "putOrgOrgIdCostsAnomalySettings",
+        "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/costs/efficiency-alerts": {
+      "get": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Recently fired efficiency alerts",
+        "description": "The three slow-lane cost alerts in one feed, newest first: commitments about to lapse, commitments that are not being used, and business metrics whose cost per unit rose. Unlike budgets, anomalies and change alerts — all of which compare a spend total against another spend total — these read the commitment calendar and the volume the spend bought, so they see the two surprises the other three structurally cannot.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "commitment_expiry",
+                "commitment_idle",
+                "unit_cost_regression"
+              ],
+              "description": "Restrict to one detector. Omitted returns all three, interleaved by time."
+            },
+            "required": false,
+            "description": "Restrict to one detector. Omitted returns all three, interleaved by time.",
+            "name": "kind",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "description": "Rows to return, newest first. Defaults to 50."
+            },
+            "required": false,
+            "description": "Rows to return, newest first. Defaults to 50.",
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fired efficiency alerts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EfficiencyAlertEvent"
+                      }
+                    }
+                  },
+                  "required": [
+                    "events"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostsEfficiencyAlerts",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/costs/efficiency-alert-settings": {
+      "get": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Get the organization's efficiency alert tuning",
+        "description": "Thresholds for the commitment-expiry, idle-commitment and unit-cost-regression detectors. An organization that has never changed one reads back the defaults, which are chosen to work with no setup.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Efficiency alert settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostEfficiencySettings"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostsEfficiencyAlertSettings",
+        "x-required-permission": "costs:read"
+      },
+      "put": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Update the organization's efficiency alert tuning",
+        "description": "Takes effect on the next evaluation pass (which runs after each cost collection). Already-fired alerts are not re-judged, and horizons that have already fired for a commitment's current term do not fire again — widening the horizon list warns about future crossings, not past ones. A PUT of the whole object, not a patch.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostEfficiencySettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostEfficiencySettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdCostsEfficiencyAlertSettings",
         "x-required-permission": "costs:write"
       }
     },
@@ -33869,7 +34317,7 @@
           "Invoices"
         ],
         "summary": "Approve an invoice — freeze its figures",
-        "description": "Computes the figures one last time and writes them onto the invoice together with the exchange rates, the day they were read, the billing rules in force and the names everything in scope had. From here the invoice is a document, not a query.\n\nA distinct act from generation, on a distinct permission (`invoices:issue`), with its own audit entry recording who approved what.\n\nRefused with 409 when a currency in the invoice has no stated exchange rate: an approved invoice has to be quotable as one number in the customer's currency.\n\n_Requires permission: `invoices:issue`._",
+        "description": "Computes the figures one last time and writes them onto the invoice together with the exchange rates, the day they were read, the billing rules in force and the names everything in scope had. From here the invoice is a document, not a query.\n\nA distinct act from generation, on a distinct permission (`invoices:issue`), with its own audit entry recording who approved what.\n\nRefused with 409 when a currency in the invoice has no stated exchange rate: an approved invoice has to be quotable as one number in the customer's currency.\n\nRefused with 409, too, when the draft or its customer changed while the figures were being computed — a different period, scope, currency, cost basis or billing-rules setting. Nothing is approved in that case: freezing figures that describe a different question would be worse than making the caller look again.\n\n_Requires permission: `invoices:issue`._",
         "parameters": [
           {
             "schema": {
@@ -33934,8 +34382,8 @@
         "tags": [
           "Invoices"
         ],
-        "summary": "Mark an approved invoice as sent",
-        "description": "Changes no figure. It records that the document left the building and who let it.\n\nThis deployment does not deliver invoices itself — `GET /invoices/{id}/export` produces the artifact a human attaches to their own mail. The state transition and its audit trail are the part that has to be right; a delivery channel can be added later without changing a single stored figure.\n\n_Requires permission: `invoices:issue`._",
+        "summary": "Send an invoice to its customer",
+        "description": "Changes no figure — the document was frozen at approval. It records the **release** (this may go to the customer, and this person said so), then emails the invoice to the customer's contact addresses with the CSV attached.\n\n**200 even when delivery failed.** The release happened and is recorded either way; `delivery` says what became of the transport. An error status would leave the caller unable to tell which of the two failed. A failed delivery is visible, and re-sending retries it.\n\nSending again needs `resend: true` only when the last attempt reached somebody — see `InvoiceSendRequest`. The body may be omitted entirely for a first send.\n\n_Requires permission: `invoices:issue`._",
         "parameters": [
           {
             "schema": {
@@ -33959,13 +34407,33 @@
             "in": "path"
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvoiceSendRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
-            "description": "Sent",
+            "description": "Released, with the delivery outcome",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Invoice"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -34001,7 +34469,7 @@
           "Invoices"
         ],
         "summary": "Void an issued invoice",
-        "description": "The only correction there is. The original keeps every figure it was sent with — “we billed you this, it was wrong, here is the corrected one” is a story a customer can follow, and “we changed the invoice” is not.\n\n_Requires permission: `invoices:issue`._",
+        "description": "The only correction there is. The original keeps every figure it was sent with — “we billed you this, it was wrong, here is the corrected one” is a story a customer can follow, and “we changed the invoice” is not.\n\nWith `supersede`, the void, the corrective draft and both directions of the link between them are one transaction. Void is irreversible, so a half-applied correction would leave a withdrawn invoice with no way forward; this call either applies whole or not at all.\n\n_Requires permission: `invoices:issue`._",
         "parameters": [
           {
             "schema": {

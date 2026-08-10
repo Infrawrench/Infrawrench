@@ -2430,6 +2430,30 @@ Coverage was inert on ship: no collector stamped `commitmentId`, so it honestly 
 
 **Nested cost centres**: `parent_id` on the existing table rather than a second "segment" noun, so there is one allocation model and one rule list. `totals` keeps its exact old meaning (directly-allocated spend) and `subtreeTotals` is new, so a consumer summing centres still gets the org total and cannot be made to double count. The `multiIf` still resolves a row to one centre in one scan; the tree is assembled in application code afterwards.
 
+## Period-native plugins must date to the period _start_
+
+Mistral dated an in-progress month's running total to a clamped month-end — a date that moved every collection, so each pass wrote a new `cost_daily` key instead of replacing the last. The month summed to the sum of its own prefixes: an inflation factor of **(N+1)/2**, roughly 16x over a full month, and permanent, because incremental collection never revisits days outside the restatement window.
+
+**A `periodNative` row is dated to the period start**, which is stable across the period — the discipline Cloudflare, PlanetScale, Scaleway, Turso and OVH already followed. `restatementDays` must then be wide enough to _contain_ that start: a 3-day window straddles the 1st on three days a month and misses it on the rest, so the running month simply stops being collected. Mistral uses 62 — the smallest constant always containing the 1st of both the current and previous month.
+
+Reconciliation's day-scoped guard is what let this rot: a monthly-native plugin files a whole month on one day, so "only days the plugin wrote" never covers the rest. `cost/period-scope.ts` widens the restated _unit_ — for a `periodNative` plugin a row on the 1st restates that calendar month. Deliberately only the 1st: Cloudflare anchors on arbitrary days, Turso on a due date, OVH on an issue date, and widening to "any written day's month" would let one flaky invoice page zero a sibling row.
+
+## Invoice approval is a compare-and-swap
+
+`computeInvoiceFigures` reads ClickHouse, so it cannot run inside the Postgres transaction without holding a row lock across an analytics query. Approval snapshots its inputs, computes, then re-reads the invoice **and** the customer under `SELECT ... FOR UPDATE` and refuses with a 409 if anything feeding the figures moved — period, managed account, the customer's cost centres, accounts, cost basis, billing-rules flag, currency, name, or the customer being soft-deleted. The lock closes both orderings. Without it, a draft edited mid-approval froze the new period against the old period's numbers.
+
+Void-with-supersede is one transaction covering the void, the corrective draft and **both** link directions; a half-applied supersede leaves an irreversibly void invoice with no path forward. The invoice-number retry loop wraps the transaction rather than sitting inside it, because a unique violation poisons a transaction.
+
+Delivery attaches the breakdown rather than linking it — a link has to keep resolving and would serve a customer's spend to whoever holds it. Retry versus resend is drawn on whether anything landed: a failure with no delivered recipient retries freely, anything partly or wholly successful needs an explicit resend, and an attempt whose outcome was never recorded is treated as unknown rather than as failure.
+
+## Efficiency alerts, and the null that must never become zero
+
+Three trigger kinds — commitment expiry, idle commitment, unit-cost regression — routed through `alerts/route.ts` like every other kind. One `ALERT_TRIGGERS` entry in `client-core/src/alert-routing.ts` derives the rules picker, mute lists, push defaults and the OpenAPI enum. The **one axis that is not derived** is `PushNotificationData`, whose mobile `pushDataToPath`/`parsePushData` switches have no `never` guard — a missing arm compiles and silently drops the deep link.
+
+**Idle detection returns an explicit skip before any arithmetic when utilization is `null`**, never `?? 0`. Unattributed accounts, unit-denominated commitments, missing data days and zero obligation all report null deliberately; treating any of them as zero pages someone about a commitment that is fine. Unit-cost regression applies the same rule to gaps: a day with no reported metric contributes to neither window, so flat spend across gap days reads as _improved_, not as a fabricated regression. Below the minimum reported days a window returns a distinct insufficient-history reason rather than a quiet "no regression".
+
+Idle is `info`, not `warning`: nothing is breaking, the money is already spent, and the finding restates monthly.
+
 ## API keys on the org route tree
 
 `iwk_` keys used to 401 against everything under `/api/org/:orgId` — `sessionMiddleware`'s Bearer branch only verified WorkOS tokens — so keys worked on four routes while nine published SDKs advertised key auth. `apiKeyOrgMiddleware` runs first in the chain and the other three are wrapped in `unlessApiKey(...)`, so the existing path is untouched rather than edited.
