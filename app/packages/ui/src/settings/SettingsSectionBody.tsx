@@ -17,6 +17,7 @@ import { CostExportsSection } from "./CostExportsSection.js";
 import { ApprovalsSection } from "./ApprovalsSection.js";
 import { NotificationsSection } from "./NotificationsSection.js";
 import { JiraSection } from "./JiraSection.js";
+import { LinearSection } from "./LinearSection.js";
 import { BillingSection } from "./BillingSection.js";
 import { AuditLogSection } from "./AuditLogSection.js";
 
@@ -64,6 +65,8 @@ export function SettingsSectionBody({ section }: { section: string }): ReactNode
       return <NotificationsSection />;
     case "jira":
       return <JiraSection />;
+    case "linear":
+      return <LinearSection />;
     case "billing":
       return <BillingSection />;
     case "audit-log":

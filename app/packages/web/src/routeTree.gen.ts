@@ -57,6 +57,7 @@ import { Route as OrgOrgIdSettingsSshHostKeysRouteImport } from './routes/org.$o
 import { Route as OrgOrgIdSettingsSshKeysRouteImport } from './routes/org.$orgId.settings.ssh-keys'
 import { Route as OrgOrgIdSettingsTagPolicyRouteImport } from './routes/org.$orgId.settings.tag-policy'
 import { Route as OrgOrgIdSettingsJiraRouteImport } from './routes/org.$orgId.settings.jira'
+import { Route as OrgOrgIdSettingsLinearRouteImport } from './routes/org.$orgId.settings.linear'
 import { Route as OrgOrgIdSettingsCurrencyRouteImport } from './routes/org.$orgId.settings.currency'
 import { Route as OrgOrgIdSettingsCostExportsRouteImport } from './routes/org.$orgId.settings.cost-exports'
 import { Route as OrgOrgIdSettingsTeamRouteImport } from './routes/org.$orgId.settings.team'
@@ -316,6 +317,13 @@ const OrgOrgIdSettingsJiraRoute =
     path: '/jira',
     getParentRoute: () => OrgOrgIdSettingsRoute,
   } as any)
+
+const OrgOrgIdSettingsLinearRoute =
+  OrgOrgIdSettingsLinearRouteImport.update({
+    id: '/linear',
+    path: '/linear',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsCurrencyRoute =
   OrgOrgIdSettingsCurrencyRouteImport.update({
     id: '/currency',
@@ -387,6 +395,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
+  '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
   '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
   '/org/$orgId/settings/cost-exports': typeof OrgOrgIdSettingsCostExportsRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
@@ -438,6 +447,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
+  '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
   '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
   '/org/$orgId/settings/cost-exports': typeof OrgOrgIdSettingsCostExportsRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
@@ -493,6 +503,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
+  '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
   '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
   '/org/$orgId/settings/cost-exports': typeof OrgOrgIdSettingsCostExportsRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
@@ -902,6 +913,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsJiraRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/linear': {
+      id: '/org/$orgId/settings/linear'
+      path: '/linear'
+      fullPath: '/org/$orgId/settings/linear'
+      preLoaderRoute: typeof OrgOrgIdSettingsLinearRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/currency': {
       id: '/org/$orgId/settings/currency'
       path: '/currency'
@@ -1062,6 +1080,7 @@ interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsSshKeysRoute: typeof OrgOrgIdSettingsSshKeysRoute
   OrgOrgIdSettingsTagPolicyRoute: typeof OrgOrgIdSettingsTagPolicyRoute
   OrgOrgIdSettingsJiraRoute: typeof OrgOrgIdSettingsJiraRoute
+  OrgOrgIdSettingsLinearRoute: typeof OrgOrgIdSettingsLinearRoute
   OrgOrgIdSettingsCurrencyRoute: typeof OrgOrgIdSettingsCurrencyRoute
   OrgOrgIdSettingsCostExportsRoute: typeof OrgOrgIdSettingsCostExportsRoute
   OrgOrgIdSettingsTeamRoute: typeof OrgOrgIdSettingsTeamRoute
@@ -1087,6 +1106,7 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsSshKeysRoute: OrgOrgIdSettingsSshKeysRoute,
   OrgOrgIdSettingsTagPolicyRoute: OrgOrgIdSettingsTagPolicyRoute,
   OrgOrgIdSettingsJiraRoute: OrgOrgIdSettingsJiraRoute,
+  OrgOrgIdSettingsLinearRoute: OrgOrgIdSettingsLinearRoute,
   OrgOrgIdSettingsCurrencyRoute: OrgOrgIdSettingsCurrencyRoute,
   OrgOrgIdSettingsCostExportsRoute: OrgOrgIdSettingsCostExportsRoute,
   OrgOrgIdSettingsTeamRoute: OrgOrgIdSettingsTeamRoute,

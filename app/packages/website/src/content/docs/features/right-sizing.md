@@ -61,7 +61,7 @@ Applying goes through the same update path as the resource's Edit form, so it pl
 ## Filing a recommendation as an issue
 
 A resize is often somebody else's change to make, or one that needs scheduling. With
-[Jira connected](./jira.md), each row in the Oversized section has a **File in Jira** link
-that opens an issue prefilled with the resource, its current and recommended size, the p95
-CPU and memory behind the recommendation, and the estimated monthly saving. Filed rows show
-their issue key from then on.
+[Jira](./jira.md) or [Linear](./linear.md) connected, each row in the Oversized section has a
+file link that opens an issue prefilled with the resource, its current and recommended size,
+the p95 CPU and memory behind the recommendation, and the estimated monthly saving. Filed
+rows show their issue key from then on.

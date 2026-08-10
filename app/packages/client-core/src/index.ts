@@ -482,6 +482,7 @@ export * from "./credential-hygiene";
 export * from "./credits";
 export * from "./commitments";
 export * from "./jira";
+export * from "./linear";
 export * from "./cost-exports";
 export * from "./report-notifications";
 export * from "./chat/types";

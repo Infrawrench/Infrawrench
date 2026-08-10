@@ -103,6 +103,14 @@ export const ALL_PERMISSIONS = [
   // and cannot be retracted from here.
   "jira:read",
   "jira:write",
+  // Linear issue tracking — the same split as Jira, for the same reasons:
+  // `read` covers the integration's redacted config and the finding→issue
+  // links a list view needs to render "already filed"; `write` covers
+  // configuring the API key and filing. The "already filed" marker is useless
+  // if only admins can see it, while filing writes into a third-party system
+  // under the org's shared credential and cannot be retracted from here.
+  "linear:read",
+  "linear:write",
   "pages:write",
   "org:settings:write",
 ] as const;

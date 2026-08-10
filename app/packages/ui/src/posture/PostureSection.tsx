@@ -10,7 +10,7 @@ import {
   type PostureSeverity,
 } from "@infrawrench/client-core";
 
-import { FileJiraIssueButton } from "../jira/FileJiraIssueButton.js";
+import { FileIssueButton } from "../issue-filing/FileIssueButton.js";
 
 export interface PostureSectionProps {
   /**
@@ -261,7 +261,7 @@ function ActiveFindingRow({
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
       >
-        <FileJiraIssueButton
+        <FileIssueButton
           sourceKind="posture_finding"
           // A posture finding has no id of its own — it is the pairing of a
           // rule with a resource, which is also what the row is keyed on.

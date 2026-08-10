@@ -8,8 +8,8 @@ import {
   type CostAnomaly,
 } from "@infrawrench/client-core";
 import { Card, SectionTitle } from "@/components/ui";
-import { FileJiraIssueSheet } from "@/features/jira/FileJiraIssueSheet";
-import { useCanFileJira, useJiraLinks } from "@/features/jira/useJira";
+import { FileIssueSheet } from "@/features/issue-filing/FileIssueSheet";
+import { useFilableTrackers, useIssueLinks } from "@/features/issue-filing/useIssueFiling";
 import { colors, radii, spacing } from "@/lib/theme";
 import { ANOMALY_WINDOW_DAYS, useCostAnomalies } from "./useCostAnomalies";
 
@@ -86,10 +86,16 @@ function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
   // Optional on the wire — an app a release ahead of its server still renders.
   const hints = anomaly.hints ?? [];
 
-  const { linkFor } = useJiraLinks();
-  const canFile = useCanFileJira();
+  const { linksFor } = useIssueLinks();
+  const trackers = useFilableTrackers();
   const [filing, setFiling] = useState(false);
-  const link = linkFor("cost_anomaly", anomaly.id);
+  const links = linksFor("cost_anomaly", anomaly.id);
+  const fileLabel =
+    trackers.length > 1
+      ? "File an issue"
+      : trackers[0] === "jira"
+        ? "File in Jira"
+        : "File in Linear";
 
   return (
     <View style={styles.row}>
@@ -117,16 +123,33 @@ function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
             · {hint}
           </Text>
         ))}
-        {/* Filed → the issue key, which opens Jira. Not filed but filable →
-            the offer. Neither → nothing, rather than a control that can only
-            fail. Same three states as the web button. */}
-        {link ? (
-          <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(link.issueUrl)}>
-            <Text style={styles.jiraLink}>{link.issueKey}</Text>
-          </Pressable>
-        ) : canFile ? (
+        {/* Filed → the issue key/identifier, which opens the tracker — one
+            badge per tracker holding a link (both, if both do). Not filed but
+            filable → the offer, labelled by what is connected. Neither →
+            nothing, rather than a control that can only fail. Same three
+            states as the web button. */}
+        {links.jira || links.linear ? (
+          <View style={styles.linkRow}>
+            {links.jira && (
+              <Pressable
+                accessibilityRole="link"
+                onPress={() => void Linking.openURL(links.jira!.issueUrl)}
+              >
+                <Text style={styles.issueLink}>{links.jira.issueKey}</Text>
+              </Pressable>
+            )}
+            {links.linear && (
+              <Pressable
+                accessibilityRole="link"
+                onPress={() => void Linking.openURL(links.linear!.issueUrl)}
+              >
+                <Text style={styles.issueLink}>{links.linear.issueIdentifier}</Text>
+              </Pressable>
+            )}
+          </View>
+        ) : trackers.length > 0 ? (
           <Pressable accessibilityRole="button" onPress={() => setFiling(true)}>
-            <Text style={styles.jiraAction}>File in Jira</Text>
+            <Text style={styles.issueAction}>{fileLabel}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -139,8 +162,9 @@ function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
         </Text>
       </View>
       {filing && (
-        <FileJiraIssueSheet
+        <FileIssueSheet
           visible={filing}
+          trackers={trackers}
           sourceKind="cost_anomaly"
           sourceId={anomaly.id}
           draft={{
@@ -184,8 +208,9 @@ const styles = StyleSheet.create({
   subtitle: { color: colors.textMuted, fontSize: 12 },
   baseline: { color: colors.textFaint, fontSize: 11 },
   hint: { color: colors.textFaint, fontSize: 11 },
-  jiraLink: { color: colors.accent, fontSize: 11, fontWeight: "600", marginTop: 2 },
-  jiraAction: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
+  linkRow: { flexDirection: "row", gap: spacing.sm },
+  issueLink: { color: colors.accent, fontSize: 11, fontWeight: "600", marginTop: 2 },
+  issueAction: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
   amount: { color: colors.text, fontSize: 15, fontWeight: "600" },
   delta: { fontSize: 12, fontWeight: "500" },
   badge: {

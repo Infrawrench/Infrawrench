@@ -24,6 +24,7 @@ export { CostExportsSection } from "./CostExportsSection.js";
 export { ApprovalsSection } from "./ApprovalsSection.js";
 export { NotificationsSection } from "./NotificationsSection.js";
 export { JiraSection } from "./JiraSection.js";
+export { LinearSection } from "./LinearSection.js";
 export { ExpiryAlertsSection } from "./ExpiryAlertsSection.js";
 export { WeeklyDigestSection } from "./WeeklyDigestSection.js";
 export { BillingSection } from "./BillingSection.js";

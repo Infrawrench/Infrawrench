@@ -759,9 +759,11 @@ export type { PlaybackTerminal, MountPlaybackTerminal } from "./session-recordin
 export * from "./metric-alerts/index.js";
 export * from "./probes/index.js";
 export * from "./savings/index.js";
-// "File a Jira issue" — the provider a host mounts once, and the button any
-// findings row drops in. See jira/host.tsx for the batching contract.
-export * from "./jira/index.js";
+// Issue filing (Jira and Linear) — the tracker-aware provider a host mounts
+// once, and the button any findings row drops in. See issue-filing/host.tsx
+// for the batching contract; the Jira-named exports are compatibility
+// re-exports over the same components.
+export * from "./issue-filing/index.js";
 export * from "./logs/index.js";
 export { SleepSchedulesSection } from "./schedules/SleepSchedulesSection.js";
 export type { SleepSchedulesSectionProps } from "./schedules/SleepSchedulesSection.js";

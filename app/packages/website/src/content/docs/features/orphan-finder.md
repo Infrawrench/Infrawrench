@@ -106,6 +106,7 @@ Waste is not always a resource doing nothing — sometimes it is a machine doing
 ## Filing a flagged resource as an issue
 
 Deleting something is a decision, and often not yours alone to make. With
-[Jira connected](./jira.md), each flagged row carries a **File in Jira** link that opens an
-issue prefilled with the resource, its type, account and provider id, the trailing spend, and
-the plugin's reason for flagging it. Filed rows show their issue key instead of the link.
+[Jira](./jira.md) or [Linear](./linear.md) connected, each flagged row carries a file link
+that opens an issue prefilled with the resource, its type, account and provider id, the
+trailing spend, and the plugin's reason for flagging it. Filed rows show their issue key
+instead of the link.

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatMoney } from "@infrawrench/client-core";
-import { FileJiraIssueButton } from "../jira/FileJiraIssueButton.js";
+import { FileIssueButton } from "../issue-filing/FileIssueButton.js";
 import type { OversizedResource, RightsizingClient, RightsizingListResponse } from "./types.js";
 
 export interface OversizedSectionProps {
@@ -222,7 +222,7 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
                       )}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-right">
-                      <FileJiraIssueButton
+                      <FileIssueButton
                         sourceKind="oversized"
                         sourceId={r.id}
                         draft={{

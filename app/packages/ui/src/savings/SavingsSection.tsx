@@ -4,7 +4,7 @@ import {
   formatTicketRef,
   type ResourceOwnerAnnotation,
 } from "@infrawrench/client-core";
-import { FileJiraIssueButton } from "../jira/FileJiraIssueButton.js";
+import { FileIssueButton } from "../issue-filing/FileIssueButton.js";
 import type { OrphanedResource, OrphanListResponse, OrphansClient } from "./types.js";
 
 /**
@@ -220,7 +220,7 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
                       onClick={(e) => e.stopPropagation()}
                       onKeyDown={(e) => e.stopPropagation()}
                     >
-                      <FileJiraIssueButton
+                      <FileIssueButton
                         sourceKind="orphan"
                         sourceId={r.id}
                         draft={{

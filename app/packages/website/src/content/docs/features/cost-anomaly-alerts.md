@@ -276,7 +276,7 @@ opted into SMS). It is derived, and is not accepted on `PUT`. See the
 ## Filing an anomaly as an issue
 
 An anomaly usually needs someone to go and look at something. If your organization has
-[Jira connected](./jira.md), each row on the Anomalies table carries a **File in Jira** link
-that opens an issue prefilled with the day, the dimension, the spend, the baseline, the
-percentage over, and any root-cause hints already computed for it. Once filed, the row shows
-the issue key instead, so the same spike doesn't get raised twice.
+[Jira](./jira.md) or [Linear](./linear.md) connected, each row on the Anomalies table carries
+a file link that opens an issue prefilled with the day, the dimension, the spend, the
+baseline, the percentage over, and any root-cause hints already computed for it. Once filed,
+the row shows the issue key instead, so the same spike doesn't get raised twice.

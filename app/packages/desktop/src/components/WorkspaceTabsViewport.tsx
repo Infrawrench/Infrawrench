@@ -9,7 +9,7 @@ import {
   costReportsTabTarget,
   resourceTabTarget,
   DeploymentsPanel,
-  JiraFilingProvider,
+  IssueFilingProvider,
   useUIStore,
   workspaceTabTargetsEqual,
   type DeploymentClient,
@@ -132,19 +132,19 @@ export function DesktopWorkspaceTabsViewport() {
   }, [tabsHydrated, pathname, hash, searchStr]);
 
   return (
-    <JiraFiling orgId={activeCloudOrgId}>
+    <IssueFiling orgId={activeCloudOrgId}>
       <BaseViewport
         showActive={showActive}
         renderTabPanel={(tab) => renderPanel(tab, navigate, activeCloudOrgId)}
       />
-    </JiraFiling>
+    </IssueFiling>
   );
 }
 
 /**
- * Bind the shared Jira filing provider to the desktop's cloud transport, so
- * the Costs, Savings, and Posture tabs offer "File a Jira issue" exactly as
- * web does.
+ * Bind the shared issue-filing provider (Jira and Linear) to the desktop's
+ * cloud transport, so the Costs, Savings, and Posture tabs offer to file a
+ * finding exactly as web does.
  *
  * Local (non-cloud) mode has no org and no cloud credentials, so it renders
  * the children bare — the filing context is then absent and every button
@@ -152,10 +152,10 @@ export function DesktopWorkspaceTabsViewport() {
  * could only fail.
  *
  * Requests go over the same allowlisted `cloud_settings_request` IPC channel
- * the settings sections use; `/jira` is in that allowlist
+ * the settings sections use; `/jira` and `/linear` are in that allowlist
  * (electron/cloud-data/settings.ts).
  */
-function JiraFiling({ orgId, children }: { orgId: string | null; children: ReactNode }) {
+function IssueFiling({ orgId, children }: { orgId: string | null; children: ReactNode }) {
   const api = useMemo(() => createDesktopSettingsApi(), []);
   const [permissions, setPermissions] = useState<readonly string[]>([]);
 
@@ -181,15 +181,17 @@ function JiraFiling({ orgId, children }: { orgId: string | null; children: React
   if (!orgId) return <>{children}</>;
 
   return (
-    <JiraFilingProvider
+    <IssueFilingProvider
       orgId={orgId}
       api={api}
-      canRead={hasPermission(permissions, "jira:read")}
-      canFile={hasPermission(permissions, "jira:write")}
+      canReadJira={hasPermission(permissions, "jira:read")}
+      canFileJira={hasPermission(permissions, "jira:write")}
+      canReadLinear={hasPermission(permissions, "linear:read")}
+      canFileLinear={hasPermission(permissions, "linear:write")}
       openExternal={(url) => void invoke("open_external_url", { url })}
     >
       {children}
-    </JiraFilingProvider>
+    </IssueFilingProvider>
   );
 }
 

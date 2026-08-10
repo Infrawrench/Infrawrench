@@ -94,6 +94,13 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       // undone from Infrawrench; an org that wants members filing grants
       // `jira:write` through a custom role.
       "jira:read",
+      // Same decision as `jira:read`, for the same reasons: members must see
+      // "already filed as ENG-123" or they are exactly the people who file the
+      // duplicate, while filing itself writes into a third-party tracker under
+      // the org's single shared Linear API key and cannot be undone from
+      // Infrawrench — an org that wants members filing grants `linear:write`
+      // through a custom role.
+      "linear:read",
     ],
   },
 };

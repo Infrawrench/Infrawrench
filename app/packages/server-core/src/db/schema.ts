@@ -2901,6 +2901,98 @@ export const jiraIssueLinks = pgTable(
 );
 
 /**
+ * An org's connection to one Linear workspace — the second issue tracker next
+ * to `jira_integrations`, covering the same six finding kinds. Deliberately a
+ * parallel table rather than a generalized "trackers" table: an org may
+ * connect either or both, and two tables keep the integrations independently
+ * removable.
+ *
+ * One row per org, keyed by `organizationId` for the same reason
+ * `jira_integrations` is: "configured or not" is a property of the org, and a
+ * primary key makes the upsert in `setLinearIntegration` a plain
+ * `onConflictDoUpdate` on the org.
+ *
+ * Auth is a Linear personal API key sent as `Authorization: <key>` (no Bearer
+ * prefix — see server-core/linear.ts). No site URL column: Linear has one
+ * fixed GraphQL endpoint for every workspace. The key is a bearer credential
+ * for everything the Linear user can see, so it is encrypted at rest exactly
+ * like the Jira API token, and never leaves the server — the API returns
+ * {@link keyHint} instead.
+ */
+export const linearIntegrations = pgTable("linear_integrations", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  /** AES-256-GCM encrypted Linear personal API key. AAD: `linear:<orgId>:apiKey`. */
+  encryptedApiKey: text("encrypted_api_key").notNull(),
+  apiKeyIv: text("api_key_iv").notNull(),
+  /**
+   * Non-secret display marker, e.g. `…a7f2`. Lets the settings UI show that a
+   * key is stored, and which one, without ever returning the key itself.
+   */
+  keyHint: text("key_hint").notNull(),
+  /**
+   * Team the "File in Linear" modal preselects. A team id (UUID), not a key:
+   * `issueCreate` takes `teamId`, and the settings UI only ever writes values
+   * picked from the API's team list.
+   */
+  defaultTeamId: text("default_team_id"),
+  createdByUserId: text("created_by_user_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * The Linear issue a finding was filed as — the exact counterpart of
+ * `jira_issue_links`, with the issue identifier (`ENG-123`) where Jira has an
+ * issue key. Same idempotency story: the unique constraint spans (org, kind,
+ * source, identifier) so re-filing the same finding as the same issue is a
+ * no-op, while a deliberate second issue for the same finding stays possible.
+ */
+export const linearIssueLinks = pgTable(
+  "linear_issue_links",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /**
+     * Which detector produced the finding. Constrained in the database as well
+     * as in the route's zod schema — these rows outlive any one code path, and
+     * an unknown kind would strand the link where no UI looks for it.
+     */
+    sourceKind: text("source_kind").notNull(),
+    /**
+     * The finding's own id, opaque here. Not a foreign key, for the same
+     * reason as `jira_issue_links.source_id`: the six sources live in six
+     * different tables and some are recomputed rather than stored.
+     */
+    sourceId: text("source_id").notNull(),
+    /** Linear issue identifier, e.g. `ENG-123`. */
+    issueIdentifier: text("issue_identifier").notNull(),
+    /** Issue URL as Linear returned it. Stored rather than derived — the URL
+     * embeds the workspace slug, which this table does not otherwise know. */
+    issueUrl: text("issue_url").notNull(),
+    createdByUserId: text("created_by_user_id"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgSourceIssueUnique: uniqueIndex("linear_issue_links_org_source_issue_unique").on(
+      t.organizationId,
+      t.sourceKind,
+      t.sourceId,
+      t.issueIdentifier,
+    ),
+    /** Backs the batch `GET /links?sourceKind=&sourceId=` a list view calls once. */
+    orgKindIdx: index("linear_issue_links_org_kind_idx").on(t.organizationId, t.sourceKind),
+    sourceKindValid: check(
+      "linear_issue_links_source_kind_valid",
+      sql`${t.sourceKind} IN ('cost_anomaly', 'orphan', 'oversized', 'posture_finding', 'expiring', 'probe')`,
+    ),
+  }),
+);
+
+/**
  * The org's display currency for cost reporting — one row per org, the same
  * missing-row-means-defaults protocol as `org_tag_policies` and
  * `org_cost_anomaly_settings`.

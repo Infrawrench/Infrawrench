@@ -78,6 +78,7 @@ import { registerAlertRulePaths } from "./paths/alert-rules";
 import { registerSlackPaths } from "./paths/slack";
 import { registerMsTeamsPaths } from "./paths/msteams";
 import { registerJiraPaths } from "./paths/jira";
+import { registerLinearPaths } from "./paths/linear";
 import { registerDigestPaths } from "./paths/digest";
 
 interface BuildOptions {
@@ -190,6 +191,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerSlackPaths(ctx);
   registerMsTeamsPaths(ctx);
   registerJiraPaths(ctx);
+  registerLinearPaths(ctx);
   registerDigestPaths(ctx);
 
   const generator = new OpenApiGeneratorV31(registry.definitions);
@@ -411,6 +413,13 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
           "Jira Cloud connection, project and issue-type pickers, and filing a finding " +
           "(cost anomaly, orphan, oversized resource, posture finding, expiring credential, " +
           "failed probe) as a tracked issue.",
+      },
+      {
+        name: "Linear",
+        description:
+          "Linear workspace connection, team picker, and filing a finding (cost anomaly, " +
+          "orphan, oversized resource, posture finding, expiring credential, failed probe) " +
+          "as a tracked issue.",
       },
     ],
   });
@@ -664,6 +673,16 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /jira/projects/{key}/issue-types": "jira:read",
   "POST /jira/issues": "jira:write",
   "GET /jira/links": "jira:read",
+  // linear — the same split as jira, for the same reasons: read covers the
+  // redacted connection, the team picker, and the finding→issue links; write
+  // covers configuring the API key and filing.
+  "GET /linear": "linear:read",
+  "PUT /linear": "linear:write",
+  "DELETE /linear": "linear:write",
+  "POST /linear/verify": "linear:write",
+  "GET /linear/teams": "linear:read",
+  "POST /linear/issues": "linear:write",
+  "GET /linear/links": "linear:read",
   // resources
   "GET /resources/{pluginId}/{typeId}/detail": "resources:read",
   "GET /resources/{pluginId}/{typeId}/manifest": "resources:read",

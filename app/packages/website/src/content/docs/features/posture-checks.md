@@ -103,7 +103,8 @@ The `list_posture_findings` tool exposes the findings to AI agents, filterable b
 
 ## Filing a finding as an issue
 
-Posture findings are work for somebody. With [Jira connected](./jira.md), each finding row has
-a **File in Jira** link that opens an issue prefilled with the resource, the account, the rule
-id, the severity and category, and the plugin's written explanation. Once filed, the row shows
-its issue key, which keeps two people from opening the same ticket off the same list.
+Posture findings are work for somebody. With [Jira](./jira.md) or [Linear](./linear.md)
+connected, each finding row has a file link that opens an issue prefilled with the resource,
+the account, the rule id, the severity and category, and the plugin's written explanation.
+Once filed, the row shows its issue key, which keeps two people from opening the same ticket
+off the same list.

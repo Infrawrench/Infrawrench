@@ -14,6 +14,10 @@ Connect Jira and any of those findings becomes a real issue in your team's backl
 click. The link is kept on the finding, so the row shows the issue key from then on instead of
 offering to file it again.
 
+If your backlog lives in Linear instead — or as well — see [Linear issues](./linear.md). The
+two trackers work side by side: an organization with both connected chooses the tracker each
+time it files, and a finding filed to both shows both issue links.
+
 <insert [The Costs panel Anomalies table with a "File in Jira" link on one row and a filed issue key like OPS-412 on another] here>
 
 ## What can be filed
