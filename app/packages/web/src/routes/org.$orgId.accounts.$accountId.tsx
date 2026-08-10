@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   useUIStore,
   useTabId,
+  getAccountRootType,
   RESOURCES_CHANGED_EVENT,
   type ResourcesChangedDetail,
 } from "@infrawrench/ui";
@@ -12,6 +13,7 @@ import {
   type CategoryState,
   type ResourceTypeInfo,
 } from "@/components/AccountDetailView";
+import { ResourcePanel } from "@/routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId";
 import { apiGet, apiPost } from "@/lib/api";
 import type { AccountListItem } from "@/lib/api-types";
 
@@ -205,9 +207,41 @@ export function AccountPanel({
     };
   }, [accountId, orgId, loadVersion, groupRows, tabId]);
 
+  const rootTypeId = meta ? getAccountRootType(meta.resourceTypes)?.id : undefined;
+  const accountRoot = rootTypeId
+    ? categories.find((cat) => cat.typeDef.id === rootTypeId)?.resources[0]
+    : undefined;
+
   if (initialLoading)
     return <div className="p-6 text-on-surface-muted text-sm animate-pulse">Loading…</div>;
   if (!meta) return <div className="p-6 text-red-400 text-sm">Failed to load account.</div>;
+
+  // Account-root plugins (UploadThing) hold exactly one instance of their root
+  // type, and that instance *is* the account — so the account opens straight
+  // to its detail view rather than to an inventory whose only content is a
+  // section holding one pill.
+  //
+  // The tab, the URL, and the sidebar selection all stay the account's: only
+  // the body is swapped. That matters because the root is discovered from
+  // already-loaded rows — if the sync hasn't produced one yet we fall through
+  // to the normal inventory instead of rendering a detail page for a resource
+  // id we don't have.
+  if (accountRoot) {
+    return (
+      <ResourcePanel
+        orgId={orgId}
+        pluginId={meta.account.pluginId}
+        resourceTypeId={accountRoot.resourceTypeId}
+        resourceId={accountRoot.id}
+        accountId={accountId}
+        view="details"
+        // The account *is* this resource, so the name the user gave the
+        // account names the thing. The provider id it would otherwise show
+        // (an UploadThing app id) is not something anyone recognises.
+        titleOverride={meta.account.displayName}
+      />
+    );
+  }
 
   return (
     <AccountDetailView

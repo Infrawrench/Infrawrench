@@ -260,9 +260,11 @@ export {
 export {
   getVisibleAccountCategories,
   pickDefaultAccountSectionId,
+  getAccountRootType,
   type SectionTypeDef,
   type SectionResource,
   type SectionCategoryState,
+  type RootTypeDef,
 } from "./account-sections";
 export { deriveSSHUsername, pickQuickConnectKeyId } from "./ssh-quick-connect";
 export {

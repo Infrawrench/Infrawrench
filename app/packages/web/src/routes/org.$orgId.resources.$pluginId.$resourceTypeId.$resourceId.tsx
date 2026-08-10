@@ -130,6 +130,13 @@ interface ResourcePanelProps {
   sshKeyName?: string | undefined;
   initialCommand?: string | undefined;
   initialCwd?: string | undefined;
+  /**
+   * Title to show instead of the resource's own display name, for panels
+   * standing in for something else — an account-root resource rendered as its
+   * account's page. Applies to the header and the workspace tab together, so
+   * the two can't disagree.
+   */
+  titleOverride?: string | undefined;
 }
 
 export function ResourcePanel({
@@ -145,6 +152,7 @@ export function ResourcePanel({
   sshKeyName,
   initialCommand,
   initialCwd,
+  titleOverride,
 }: ResourcePanelProps) {
   const tabId = useTabId();
   const [store, setStore] = useState<{
@@ -202,8 +210,11 @@ export function ResourcePanel({
     if (!data || !tabId) return;
     useUIStore
       .getState()
-      .setWorkspaceTabTitle(tabId, resourceTabTitle(data.resourceDisplayName, currentView));
-  }, [data, currentView, tabId]);
+      .setWorkspaceTabTitle(
+        tabId,
+        resourceTabTitle(titleOverride ?? data.resourceDisplayName, currentView),
+      );
+  }, [data, currentView, tabId, titleOverride]);
 
   useEffect(() => {
     let cancelled = false;
@@ -289,7 +300,12 @@ export function ResourcePanel({
   return (
     <>
       <ResourceDetailClient
-        detailSchema={data.detailSchema}
+        // Overridden here rather than in the plugin: only the host knows this
+        // panel is standing in for its account, and the plugin has no way to
+        // read the name the user gave that account.
+        detailSchema={
+          titleOverride ? { ...data.detailSchema, title: titleOverride } : data.detailSchema
+        }
         childResources={data.childResources}
         childTypes={data.childTypes}
         pluginId={data.pluginId}

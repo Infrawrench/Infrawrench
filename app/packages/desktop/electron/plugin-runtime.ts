@@ -95,13 +95,27 @@ const httpHostServices: HttpHostServices = {
       headers: req.headers,
       ...(req.body != null ? { body: req.body as string | Uint8Array<ArrayBuffer> } : {}),
     });
+    const headers = Object.fromEntries(resp.headers.entries());
+    if (req.responseEncoding === "binary") {
+      return {
+        status: resp.status,
+        headers,
+        body: "",
+        rawBody: new Uint8Array(await resp.arrayBuffer()),
+      };
+    }
     return {
       status: resp.status,
-      headers: Object.fromEntries(resp.headers.entries()),
+      headers,
       body: await resp.text(),
     };
   },
 };
+
+/** Shared by plugin clients and storage node-drivers in the main process. */
+export function getDesktopHttpHostServices(): HttpHostServices {
+  return httpHostServices;
+}
 
 function nodeHttpsRequest(req: {
   url: string;
@@ -109,7 +123,13 @@ function nodeHttpsRequest(req: {
   headers: Record<string, string>;
   body?: string | Uint8Array;
   caCert?: string;
-}): Promise<{ status: number; headers: Record<string, string>; body: string }> {
+  responseEncoding?: "utf8" | "binary";
+}): Promise<{
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+  rawBody?: Uint8Array;
+}> {
   const parsed = new URL(req.url);
   const isHttps = parsed.protocol === "https:";
   // A custom CA means the caller intended TLS; refuse to silently downgrade.
@@ -125,6 +145,7 @@ function nodeHttpsRequest(req: {
     headers: req.headers,
     ...(isHttps && req.caCert ? { ca: req.caCert } : {}),
   };
+  const binary = req.responseEncoding === "binary";
   return new Promise((resolve, reject) => {
     const clientReq = mod.request(options, (res) => {
       const chunks: Buffer[] = [];
@@ -135,10 +156,20 @@ function nodeHttpsRequest(req: {
           if (v == null) continue;
           headers[k] = Array.isArray(v) ? v.join(", ") : String(v);
         }
+        const buf = Buffer.concat(chunks);
+        if (binary) {
+          resolve({
+            status: res.statusCode ?? 0,
+            headers,
+            body: "",
+            rawBody: new Uint8Array(buf),
+          });
+          return;
+        }
         resolve({
           status: res.statusCode ?? 0,
           headers,
-          body: Buffer.concat(chunks).toString("utf8"),
+          body: buf.toString("utf8"),
         });
       });
     });
@@ -274,6 +305,16 @@ export async function createAccountPluginClient(
  * package — server-core duplicates it for the same reason.
  */
 function listableResourceTypes(types: ResourceTypeDefinition[]): ResourceTypeDefinition[] {
+  // An account-root type *is* the account, so it drops out of its own subtree
+  // and its direct children take the top level it vacated. Without this the
+  // account expands to a single pill for the root while the GUI, which uses
+  // `getListableResourceTypes`, expands to the root's contents.
+  const root = types.find((t) => t.accountRoot && !t.parentTypeId);
+  if (root) {
+    return types.filter(
+      (t) => t.id !== root.id && (t.parentTypeId === root.id || !t.parentTypeId || t.showInSidebar),
+    );
+  }
   return types.filter((t) => !t.parentTypeId || t.showInSidebar);
 }
 

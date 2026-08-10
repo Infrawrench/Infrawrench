@@ -207,6 +207,7 @@ export type {
   DockerNodeDriver,
   K8sNodeDriver,
   StorageNodeDriver,
+  StorageDownloadOptions,
   PluginNodeDriver,
 } from "./node-driver.js";
 

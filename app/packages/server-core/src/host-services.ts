@@ -109,6 +109,7 @@ const secretHostServices: SecretHostServices = {
 function buildHttpHostServices(bastionId: string | null | undefined): HttpHostServices {
   return {
     request: async (req) => {
+      const binary = req.responseEncoding === "binary";
       if (bastionId) {
         const dispatcher = getDispatcherFor(bastionId);
         if (!dispatcher) throw new BastionDisconnectedError(bastionId);
@@ -124,9 +125,18 @@ function buildHttpHostServices(bastionId: string | null | undefined): HttpHostSe
           init.body = req.body as NonNullable<UndiciRequestInit["body"]>;
         }
         const resp = await undiciFetch(req.url, init);
+        const headers = Object.fromEntries(resp.headers.entries());
+        if (binary) {
+          return {
+            status: resp.status,
+            headers,
+            body: "",
+            rawBody: new Uint8Array(await resp.arrayBuffer()),
+          };
+        }
         return {
           status: resp.status,
-          headers: Object.fromEntries(resp.headers.entries()),
+          headers,
           body: await resp.text(),
         };
       }
@@ -138,9 +148,18 @@ function buildHttpHostServices(bastionId: string | null | undefined): HttpHostSe
         headers: req.headers,
         ...(req.body != null ? { body: req.body as string | Uint8Array<ArrayBuffer> } : {}),
       });
+      const headers = Object.fromEntries(resp.headers.entries());
+      if (binary) {
+        return {
+          status: resp.status,
+          headers,
+          body: "",
+          rawBody: new Uint8Array(await resp.arrayBuffer()),
+        };
+      }
       return {
         status: resp.status,
-        headers: Object.fromEntries(resp.headers.entries()),
+        headers,
         body: await resp.text(),
       };
     },
@@ -153,7 +172,13 @@ function nodeHttpsRequest(req: {
   headers?: Record<string, string>;
   body?: string | Uint8Array;
   caCert?: string;
-}): Promise<{ status: number; headers: Record<string, string>; body: string }> {
+  responseEncoding?: "utf8" | "binary";
+}): Promise<{
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+  rawBody?: Uint8Array;
+}> {
   const parsed = new URL(req.url);
   const isHttps = parsed.protocol === "https:";
   // A custom CA strongly implies the caller intended TLS. Refuse to silently
@@ -173,6 +198,7 @@ function nodeHttpsRequest(req: {
     headers: req.headers ?? {},
     ...(isHttps && req.caCert ? { ca: req.caCert } : {}),
   };
+  const binary = req.responseEncoding === "binary";
   return new Promise((resolve, reject) => {
     const clientReq = mod.request(options, (res) => {
       const chunks: Buffer[] = [];
@@ -183,10 +209,20 @@ function nodeHttpsRequest(req: {
           if (v == null) continue;
           flatHeaders[k] = Array.isArray(v) ? v.join(", ") : String(v);
         }
+        const buf = Buffer.concat(chunks);
+        if (binary) {
+          resolve({
+            status: res.statusCode ?? 0,
+            headers: flatHeaders,
+            body: "",
+            rawBody: new Uint8Array(buf),
+          });
+          return;
+        }
         resolve({
           status: res.statusCode ?? 0,
           headers: flatHeaders,
-          body: Buffer.concat(chunks).toString("utf8"),
+          body: buf.toString("utf8"),
         });
       });
     });

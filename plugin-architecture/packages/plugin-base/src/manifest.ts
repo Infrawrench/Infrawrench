@@ -234,9 +234,11 @@ export interface KubernetesHostServices {
  *     directly will *not* be tunnelled — even when the user has selected a
  *     bastion for that account.
  *
- * `body` accepts a `Uint8Array` for SigV4 / binary payloads. The response
- * body is always a UTF-8 string; for endpoints that return arbitrary binary
- * (storage object reads, etc.), use a dedicated host service instead.
+ * `body` accepts a `Uint8Array` for SigV4 / binary payloads. By default the
+ * response `body` is a UTF-8 string. Pass `responseEncoding: "binary"` when
+ * the endpoint returns arbitrary bytes — then `rawBody` carries them and
+ * `body` is empty. Prefer that over decoding a UTF-8 string, which would
+ * corrupt anything that isn't text.
  */
 export interface HttpHostServices {
   /** Make an HTTP request through the host process. */
@@ -246,7 +248,18 @@ export interface HttpHostServices {
     headers: Record<string, string>;
     body?: string | Uint8Array;
     caCert?: string;
-  }): Promise<{ status: number; headers: Record<string, string>; body: string }>;
+    /**
+     * How to decode the response. `"utf8"` (default) puts text in `body`.
+     * `"binary"` puts the raw bytes in `rawBody` and leaves `body` empty.
+     */
+    responseEncoding?: "utf8" | "binary";
+  }): Promise<{
+    status: number;
+    headers: Record<string, string>;
+    body: string;
+    /** Set when `responseEncoding` was `"binary"`. */
+    rawBody?: Uint8Array;
+  }>;
 }
 
 /**

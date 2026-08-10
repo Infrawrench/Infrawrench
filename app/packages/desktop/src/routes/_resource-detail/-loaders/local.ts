@@ -43,6 +43,7 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
     setters,
     setAccountConnected,
     tabId,
+    titleOverride,
   } = params;
 
   const db = await getDb();
@@ -183,7 +184,12 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
   const resourceTypeDef = plugin.resourceTypes.find((t) => t.id === resourceTypeId);
   if (!isCancelled()) {
     setters.setHasStorageToken(!!client.getStorageAccessToken);
-    setters.setCanDelete(!!client.deleteResource);
+    // `supportsDelete: false` means the provider has no delete API for this
+    // type at all — the client may still expose `deleteResource` for its other
+    // types. Checking only the method (as this did) offered a Delete button
+    // that dispatched into a throw. The cloud path already gates on both; see
+    // `web/src/api/routes/resource-detail.ts`.
+    setters.setCanDelete(!!client.deleteResource && resourceTypeDef?.supportsDelete !== false);
     const canEdit = !!client.updateResource && !!resourceTypeDef?.supportsUpdate;
     setters.setCanEdit(canEdit);
     setters.setEditableFields(canEdit ? (resourceTypeDef?.fields ?? []) : []);
@@ -391,7 +397,10 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
     setters.setResource(enrichedResource);
 
     if (tabId) {
-      const viewSuffix = resourceTabTitle(enrichedResource.displayName, locationHash);
+      const viewSuffix = resourceTabTitle(
+        titleOverride ?? enrichedResource.displayName,
+        locationHash,
+      );
       useUIStore.getState().setWorkspaceTabTitle(tabId, viewSuffix);
     }
 

@@ -430,6 +430,7 @@ export {
   dispatchPromptNoSqlCommand,
   dispatchRerollParentOutput,
   getListableResourceTypes,
+  getAccountRootType,
   extractHostLabel,
   buildChildResourceGroups,
   resourceTabTitle,

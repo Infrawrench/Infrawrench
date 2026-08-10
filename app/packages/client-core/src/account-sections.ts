@@ -17,6 +17,30 @@ export interface SectionTypeDef {
   supportsCreate?: boolean | undefined;
 }
 
+/** Minimal resource-type shape needed to resolve the account root. */
+export interface RootTypeDef {
+  id: string;
+  parentTypeId?: string | undefined;
+  accountRoot?: boolean | undefined;
+}
+
+/**
+ * The plugin's account-root type, if it declares one — the singleton that *is*
+ * the account. See `ResourceTypeDefinition.accountRoot`.
+ *
+ * Shared by web, desktop, and mobile so all three agree on what an account
+ * opens to. Only a top-level type qualifies: a root nested under a parent
+ * would make the account open to something that is itself inside something
+ * else, and `plugin-loader.test.ts` rejects that at build time — but hosts
+ * check here too rather than trusting a serialized flag from the wire.
+ *
+ * Returns the *first* match. A plugin declaring two is a bug the loader test
+ * catches; picking one deterministically beats throwing inside a render path.
+ */
+export function getAccountRootType<T extends RootTypeDef>(resourceTypes: T[]): T | null {
+  return resourceTypes.find((typeDef) => typeDef.accountRoot && !typeDef.parentTypeId) ?? null;
+}
+
 /** Minimal resource shape needed for search filtering. */
 export interface SectionResource {
   id: string;

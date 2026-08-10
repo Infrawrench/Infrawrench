@@ -44,6 +44,39 @@ describe("loadPlugins", () => {
 });
 
 /**
+ * `accountRoot` changes what an account *opens to* on all three surfaces, and
+ * both ways of getting it wrong fail silently rather than loudly: a second
+ * root means the hosts pick whichever comes first in the array, and a root
+ * with a `parentTypeId` means the account opens to something that is itself
+ * nested inside something else. Neither is a type error, so check the
+ * registry.
+ */
+describe("accountRoot declarations", () => {
+  it("are at most one per plugin", async () => {
+    const loaded = await loader.loadPlugins();
+    for (const { plugin } of loaded) {
+      const roots = plugin.resourceTypes.filter((rt) => rt.accountRoot);
+      expect(
+        roots.map((rt) => `${plugin.manifest.id}/${rt.id}`),
+        `${plugin.manifest.id} declares ${roots.length} accountRoot types`,
+      ).toHaveLength(Math.min(roots.length, 1));
+    }
+  });
+
+  it("are top-level types", async () => {
+    const loaded = await loader.loadPlugins();
+    for (const { plugin } of loaded) {
+      for (const rt of plugin.resourceTypes) {
+        if (!rt.accountRoot) continue;
+        expect(rt.parentTypeId, `${plugin.manifest.id}/${rt.id} is a root but has a parent`).toBe(
+          undefined,
+        );
+      }
+    }
+  });
+});
+
+/**
  * `dependsOn.targetTypeId` / `targetPluginId` are plain strings — nothing in
  * the type system checks that they name a type that exists. A typo doesn't
  * fail to compile, it just silently produces no edge on the dependency graph,

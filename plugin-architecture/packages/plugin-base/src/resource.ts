@@ -592,6 +592,29 @@ export interface ResourceTypeDefinition {
    * so they're reachable without first drilling into the parent.
    */
   showInSidebar?: boolean;
+  /**
+   * Marks this type as the plugin's **account root**: an account of this
+   * plugin holds exactly one instance of it, and that instance *is* the
+   * account. Hosts render its detail view in place of the account's inventory
+   * page, and the sidebar skips it so an account expands straight to the
+   * root's children rather than through a section containing a single pill.
+   *
+   * Declare this only when the provider genuinely admits one instance per
+   * credential — where a second one is not rare but *impossible*. UploadThing
+   * is the shape it exists for: an API key is app-scoped, every endpoint is
+   * implicitly scoped to that app, and there is no "list apps" call to make,
+   * so an account can never hold two. A provider that merely *usually* has
+   * one (a single Fly org, one Neon project) must not declare it — the page
+   * would silently hide every instance but the first.
+   *
+   * At most one type per plugin may set this, and it must be a top-level type
+   * (no `parentTypeId`). `plugin-loader.test.ts` enforces both.
+   *
+   * Nothing else changes: the type is still a real resource with its own id,
+   * outputs, and detail route, still syncs like any other, and is still
+   * reachable directly by URL. This only decides what an account *opens* to.
+   */
+  accountRoot?: boolean;
   /** Whether instances of this type can be pinned directly to a dashboard */
   dashboardPinnable: boolean;
   /** Named icon key within the plugin's icon set, falls back to the plugin logo */

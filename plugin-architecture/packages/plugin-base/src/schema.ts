@@ -685,6 +685,22 @@ export interface DetailViewSchema {
    * suppresses from the pill render.
    */
   childTables?: ChildTableSchema[];
+  /**
+   * Child resource types that must not render as an auto-injected group or
+   * table anywhere on this detail view — not on Overview, not in a custom tab.
+   *
+   * Use it when another surface on the same page already *is* the listing, so
+   * the injected one would be a second copy of the same rows. The UploadThing
+   * app hides its files this way: the storage browser tab lists them with
+   * upload/download/delete, and repeating them on Overview only added a table
+   * that could disagree with it.
+   *
+   * This suppresses the listing, not the type — children still sync, still
+   * have their own pages, and are still reachable from the sidebar. Hiding a
+   * type whose only create button lived on that group does remove the button,
+   * so make sure the surface you are deferring to can create too.
+   */
+  hiddenChildTypeIds?: string[];
   headerActions?: ActionNode[];
   /** If present, the host renders a SQL editor tab alongside the overview */
   sqlEditor?: SqlEditorCapability;

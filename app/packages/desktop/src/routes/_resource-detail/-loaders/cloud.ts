@@ -44,6 +44,7 @@ export async function loadCloudResource(orgId: string, params: LoaderParams): Pr
     setters,
     setAccountConnected,
     tabId,
+    titleOverride,
   } = params;
 
   const accountDetail = await getCloudAccountDetail(orgId, accountId);
@@ -239,7 +240,7 @@ export async function loadCloudResource(orgId: string, params: LoaderParams): Pr
   }
 
   if (tabId) {
-    const viewSuffix = resourceTabTitle(detail.resourceDisplayName, locationHash);
+    const viewSuffix = resourceTabTitle(titleOverride ?? detail.resourceDisplayName, locationHash);
     useUIStore.getState().setWorkspaceTabTitle(tabId, viewSuffix);
   }
 

@@ -31,11 +31,18 @@ describe("drivers maps", () => {
     }
   });
 
-  it("registers the storage driver keyed by its pluginId", () => {
-    expect(storageDrivers.size).toBe(1);
+  it("registers every storage driver keyed by its pluginId", () => {
+    expect(storageDrivers.size).toBeGreaterThan(0);
     for (const [id, driver] of storageDrivers) {
       expect(driver.pluginId).toBe(id);
     }
+  });
+
+  it("registers the drivers the storage download route needs", () => {
+    // `storage.ts` refuses the download when `storageDrivers.get(pluginId)`
+    // misses, so a plugin that offers a file browser but no driver silently
+    // loses its Download button.
+    expect([...storageDrivers.keys()]).toEqual(expect.arrayContaining(["gcp", "uploadthing"]));
   });
 
   it("keeps SQL and KV driver id-spaces disjoint enough to look up by id", () => {

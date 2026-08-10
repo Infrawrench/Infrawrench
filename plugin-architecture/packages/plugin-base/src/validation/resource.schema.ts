@@ -321,6 +321,8 @@ export const resourceTypeDefinitionSchema = z.object({
   fields: z.array(fieldDefinitionSchema),
   outputs: z.array(resourceOutputSchema),
   parentTypeId: z.string().optional(),
+  showInSidebar: z.boolean().optional(),
+  accountRoot: z.boolean().optional(),
   dashboardPinnable: z.boolean(),
   iconKey: z.string().optional(),
   peerIntegrations: z.array(peerPluginIntegrationSchema).optional(),

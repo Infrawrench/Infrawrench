@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { StyleSheet, TextInput } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  getAccountRootType,
   getVisibleAccountCategories,
   type AccountDetail,
   type Resource,
@@ -84,12 +85,46 @@ export default function AccountResources() {
     return getVisibleAccountCategories(categories, query.trim().toLowerCase());
   }, [resources.data, detail.data, query]);
 
+  // Account-root plugins (UploadThing) hold exactly one instance of their root
+  // type, and that instance *is* the account. Web and desktop swap the account
+  // page's body for the resource's detail view; the phone has one screen per
+  // route, so the equivalent is to redirect — same destination, and Back still
+  // lands on the accounts list rather than on a page holding a single row.
+  const accountRoot = useMemo(() => {
+    const rootTypeId = getAccountRootType(detail.data?.resourceTypes ?? [])?.id;
+    if (!rootTypeId) return null;
+    return (resources.data ?? []).find((r) => r.resourceTypeId === rootTypeId) ?? null;
+  }, [detail.data, resources.data]);
+
   if (resources.isLoading) return <LoadingView />;
+  // The type list is the only thing that says whether this account has a root,
+  // and it is fetched alongside the rows rather than before them — so rendering
+  // the inventory while it is still in flight would flash a screen we are about
+  // to redirect away from. Wait for it. On error we carry on: the fallback type
+  // list below (ids as titles) is better than a dead end, and an account that
+  // *does* have a root will pick it up on the next successful fetch.
+  if (detail.isLoading) return <LoadingView />;
   if (resources.isError) {
     return (
       <ErrorView
         message={resources.error instanceof Error ? resources.error.message : "Failed to load"}
         onRetry={() => void resources.refetch()}
+      />
+    );
+  }
+
+  // Only redirect once a root row actually exists — before the first sync
+  // lands there is nothing to redirect to, and the inventory is the right
+  // fallback rather than a detail screen for an id we do not have.
+  if (accountRoot) {
+    // `title` carries the account's name across the redirect: the account *is*
+    // this resource, so its name names the thing, and the provider id the
+    // screen would otherwise show (an UploadThing app id) is not something
+    // anyone recognises. Web and desktop pass the same value as a prop.
+    const rootTitle = detail.data?.account.displayName ?? "";
+    return (
+      <Redirect
+        href={`/org/${orgId}/resources/${encodeURIComponent(accountRoot.pluginId)}/${encodeURIComponent(accountRoot.resourceTypeId)}/${encodeURIComponent(accountRoot.id)}${rootTitle ? `?title=${encodeURIComponent(rootTitle)}` : ""}`}
       />
     );
   }

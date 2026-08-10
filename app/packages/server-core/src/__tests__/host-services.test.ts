@@ -393,6 +393,29 @@ describe("http.request — direct fetch", () => {
     expect(init.body).toBe("hi");
     fetchSpy.mockRestore();
   });
+
+  it("returns rawBody when responseEncoding is binary", async () => {
+    const bytes = new Uint8Array([0xff, 0x00, 0x80]);
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      status: 200,
+      headers: new Headers({ "content-type": "application/octet-stream" }),
+      arrayBuffer: async () =>
+        bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+      text: async () => {
+        throw new Error("text() should not be called for binary responses");
+      },
+    } as unknown as Response);
+    const out = await hs.buildPluginHostServices({} as never, {});
+    const resp = await out!.http!.request({
+      url: "https://api/x",
+      method: "GET",
+      headers: {},
+      responseEncoding: "binary",
+    });
+    expect(resp.body).toBe("");
+    expect(resp.rawBody).toEqual(bytes);
+    fetchSpy.mockRestore();
+  });
 });
 
 describe("http.request — node https with caCert", () => {

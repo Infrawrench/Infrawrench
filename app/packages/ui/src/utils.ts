@@ -1,5 +1,13 @@
+// The account-root rule is pure and mobile resolves it too, so it lives in
+// client-core; re-exported here because web and desktop import it from `ui`,
+// and `getListableResourceTypes` below is its only in-package caller.
+import { getAccountRootType } from "@infrawrench/client-core";
+
+export { getAccountRootType };
+
 /** Minimal shape needed by the account resource type helpers. */
 interface ResourceTypeInfo {
+  id: string;
   parentTypeId?: string | undefined;
   supportsCreate?: boolean | undefined;
   /**
@@ -7,6 +15,12 @@ interface ResourceTypeInfo {
    * their own top-level section. See `ResourceTypeDefinition.showInSidebar`.
    */
   showInSidebar?: boolean | undefined;
+  /**
+   * The plugin's singleton root — the account opens straight to it, so the
+   * sidebar promotes its children in its place. See
+   * `ResourceTypeDefinition.accountRoot`.
+   */
+  accountRoot?: boolean | undefined;
 }
 
 /** Custom DOM event name dispatched when resources are created or deleted. */
@@ -319,8 +333,22 @@ export { evaluateShowWhen, buildDefaultFields } from "@infrawrench/client-core";
  *
  * This is the only place `showInSidebar` belongs. Account pages list every
  * type regardless of parentage; see `getVisibleAccountCategories`.
+ *
+ * When the plugin declares an account root (`accountRoot`), the root *is* the
+ * account, so it drops out of its own subtree and its direct children take
+ * the top level it vacated. Without the promotion the account would expand to
+ * nothing: an account-root plugin's real content hangs off the root, and those
+ * child types are sidebar-hidden by default.
  */
 export function getListableResourceTypes<T extends ResourceTypeInfo>(resourceTypes: T[]): T[] {
+  const root = getAccountRootType(resourceTypes);
+  if (root) {
+    return resourceTypes.filter(
+      (typeDef) =>
+        typeDef.id !== root.id &&
+        (typeDef.parentTypeId === root.id || !typeDef.parentTypeId || typeDef.showInSidebar),
+    );
+  }
   return resourceTypes.filter((typeDef) => !typeDef.parentTypeId || typeDef.showInSidebar);
 }
 

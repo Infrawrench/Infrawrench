@@ -426,11 +426,18 @@ export function DetailView({
   // Render the child-tables + auto child-groups whose typeId passes `predicate`,
   // in that order. Used by Overview (unclaimed types) and custom tabs (their
   // claimed types).
+  // Types the schema suppresses outright — another surface on this page is
+  // already their listing. Applied inside renderChildArea so it holds for
+  // Overview and custom tabs alike; filtering at the call sites would let a
+  // tab that claims the type render it anyway.
+  const hiddenChildTypeIds = new Set(schema.hiddenChildTypeIds ?? []);
+
   const renderChildArea = (predicate: (typeId: string) => boolean) => {
-    const tables = (schema.childTables ?? []).filter((t) => predicate(t.typeId));
+    const visible = (typeId: string) => predicate(typeId) && !hiddenChildTypeIds.has(typeId);
+    const tables = (schema.childTables ?? []).filter((t) => visible(t.typeId));
     const tableTypeIds = new Set(tables.map((t) => t.typeId));
     const groups = childResourceGroups.filter(
-      (g) => predicate(g.typeId) && !tableTypeIds.has(g.typeId),
+      (g) => visible(g.typeId) && !tableTypeIds.has(g.typeId),
     );
     return (
       <>

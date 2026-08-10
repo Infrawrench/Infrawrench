@@ -63,6 +63,7 @@ vi.mock("@infrawrench/plugin-cloudinary", () => stub("cloudinary"));
 vi.mock("@infrawrench/plugin-clickhouse", () => stub("clickhouse"));
 vi.mock("@infrawrench/plugin-opensearch", () => stub("opensearch"));
 vi.mock("@infrawrench/plugin-xai", () => stub("xai"));
+vi.mock("@infrawrench/plugin-uploadthing", () => stub("uploadthing"));
 vi.mock("@infrawrench/plugin-together", () => stub("together"));
 vi.mock("@infrawrench/plugin-speechmatics", () => stub("speechmatics"));
 vi.mock("@infrawrench/plugin-revai", () => stub("revai"));

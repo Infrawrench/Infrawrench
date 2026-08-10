@@ -11,6 +11,12 @@ vi.mock("@/services/drivers", () => ({
   storageDrivers: { get: (...a: unknown[]) => mockStorageDriversGet(...a) },
 }));
 
+// host-services pulls in server-core's db client, which throws at import time
+// without DATABASE_URL. Downloads only need the http bridge from it.
+vi.mock("@/services/host-services", () => ({
+  buildPluginHostServices: vi.fn().mockResolvedValue({ http: { request: vi.fn() } }),
+}));
+
 const { storageRoutes } = await import("@/api/routes/storage");
 const buildApp = () => buildTestApp(storageRoutes);
 

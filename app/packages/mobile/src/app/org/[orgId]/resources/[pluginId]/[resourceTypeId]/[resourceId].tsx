@@ -78,6 +78,12 @@ export default function ResourceDetailScreen() {
     resourceId: string;
     accountId?: string;
     parentResourceId?: string;
+    /**
+     * Heading to show instead of the resource's own display name. Set by the
+     * account screen when it redirects here for an account-root resource —
+     * the account *is* this resource, so its name names the thing.
+     */
+    title?: string;
   }>();
   const { api, orgId } = useOrgApi();
   const queryClient = useQueryClient();
@@ -87,6 +93,7 @@ export default function ResourceDetailScreen() {
   const resourceTypeId = params.resourceTypeId;
   const resourceId = params.resourceId;
   const parentResourceId = params.parentResourceId;
+  const title = params.title;
   const queryKey = [
     "resource-detail",
     orgId,
@@ -110,6 +117,17 @@ export default function ResourceDetailScreen() {
   });
 
   const data = detail.data;
+
+  // `hiddenChildTypeIds` says another surface on this page is already the
+  // listing for these types, so a second copy would be a duplicate. Web and
+  // desktop honour it in `DetailView`; mobile renders its own child rows and
+  // has to apply it too — without this, opening an UploadThing app lists every
+  // file in the app as a "Related resources" row, and that listing is uncapped.
+  const visibleChildResources = useMemo(() => {
+    const hidden = new Set(data?.detailSchema.hiddenChildTypeIds ?? []);
+    if (hidden.size === 0) return data?.childResources ?? [];
+    return (data?.childResources ?? []).filter((child) => !hidden.has(child.resourceTypeId));
+  }, [data]);
 
   const handlers = useMemo<ActionHandlers>(
     () => ({
@@ -219,7 +237,7 @@ export default function ResourceDetailScreen() {
     <ActionDispatchProvider value={handlers}>
       <Screen onRefresh={() => void detail.refetch()} refreshing={detail.isRefetching}>
         <Text style={{ color: colors.text, fontSize: 20, fontWeight: "700" }}>
-          {data.resourceDisplayName}
+          {title || data.resourceDisplayName}
         </Text>
         <Text style={{ color: colors.textMuted, fontSize: 13 }}>
           {data.resourceTypeLabel} · {pluginId}
@@ -324,11 +342,11 @@ export default function ResourceDetailScreen() {
           </Card>
         )}
 
-        {data.childResources.length > 0 && (
+        {visibleChildResources.length > 0 && (
           <Card>
             <SectionTitle>Related resources</SectionTitle>
             <RowGroup>
-              {data.childResources.map((child) => (
+              {visibleChildResources.map((child) => (
                 <Row
                   key={child.id}
                   title={child.displayName}

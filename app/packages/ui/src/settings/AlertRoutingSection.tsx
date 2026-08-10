@@ -391,7 +391,7 @@ function AmountInput({
 
 /**
  * A checkbox list for the enumerable fields, and a comma-separated text input
- * for resource type ids — there are hundreds of those across 48 plugins, and a
+ * for resource type ids — there are hundreds of those across 49 plugins, and a
  * picker over all of them is worse than typing the one you mean.
  */
 function MultiSelect({

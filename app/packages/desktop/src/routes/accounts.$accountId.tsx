@@ -12,6 +12,7 @@ import {
   dispatchResourcesChanged,
   dispatchRefreshResource,
   AccountResourceSections,
+  getAccountRootType,
   type SectionCategoryState,
   type DraggableResource,
   formatErrorMessage,
@@ -45,6 +46,7 @@ import {
   accountTabTarget,
 } from "../lib/workspace-tabs";
 import { ResourcePill } from "./_account-detail/-ResourcePill";
+import { ResourcePanel } from "./resource.$accountId.$resourceId";
 
 export const Route = createFileRoute("/accounts/$accountId")({
   // Rendering is handled by WorkspaceTabsViewport in __root.tsx, which mounts
@@ -765,21 +767,74 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     dispatchResourcesChanged({ accountId });
   }
 
+  const accountRootTypeId = getAccountRootType(categories.map((cat) => cat.typeDef))?.id;
+  const accountRootCategory = accountRootTypeId
+    ? categories.find((cat) => cat.typeDef.id === accountRootTypeId)
+    : undefined;
+  const accountRootResource = accountRootCategory?.resources[0];
+
+  // Both load paths publish the category list (with empty `resources`) and
+  // clear `initialLoading` as soon as the *type list* is known, well before
+  // the rows land. For a normal account that's the point — sections render
+  // with their own spinners. For an account-root plugin it would paint the
+  // inventory we're about to throw away, so the page visibly flashes a list
+  // of empty sections before snapping to the app. Hold the spinner instead:
+  // the type list already tells us a root is coming, only its id is missing.
+  //
+  // Scoped to `loading` so it can't latch. A failed listing clears the flag
+  // with no rows, which falls through to the inventory — where the error
+  // belongs — and a background refresh never re-raises it.
+  const awaitingAccountRoot =
+    !!accountRootCategory && !accountRootResource && accountRootCategory.loading;
+
   function openDetail(resource: ResourceInstance) {
     void navigateToWorkspaceTarget(navigate, resourceTabTarget(accountId, resource.id), {
       label: resource.displayName,
     });
   }
 
-  if (initialLoading) {
+  if (initialLoading || awaitingAccountRoot) {
+    // While awaiting a root we already know ResourcePanel is what renders
+    // next, so borrow its exact loading treatment — otherwise the handoff
+    // swaps one spinner for a differently-styled one, which reads as a second
+    // load rather than a continuous one.
     return (
-      <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
+      <div
+        className={
+          awaitingAccountRoot
+            ? "flex items-center justify-center h-full text-on-surface-muted text-sm animate-pulse"
+            : "flex items-center justify-center h-full text-on-surface-faint text-sm"
+        }
+      >
         Loading…
       </div>
     );
   }
   if (error) {
     return <div className="p-6 text-red-400 text-sm">{error}</div>;
+  }
+
+  // Account-root plugins (UploadThing) hold exactly one instance of their root
+  // type, and that instance *is* the account — so the account opens straight
+  // to its detail view rather than to an inventory whose only content is a
+  // section holding one pill. Tab, route, and sidebar selection stay the
+  // account's; only the body is swapped.
+  //
+  // Derived from already-loaded rows rather than asserted, so an account whose
+  // first sync hasn't landed yet falls through to the normal inventory instead
+  // of rendering a detail page for a resource id we don't have.
+  if (accountRootResource) {
+    return (
+      <ResourcePanel
+        accountId={accountId}
+        resourceId={accountRootResource.id}
+        view=""
+        // The account *is* this resource, so the name the user gave the
+        // account names the thing. The provider id it would otherwise show
+        // (an UploadThing app id) is not something anyone recognises.
+        {...(account?.display_name ? { titleOverride: account.display_name } : {})}
+      />
+    );
   }
 
   return (

@@ -63,6 +63,14 @@ The [mobile app](../features/mobile-app.md) shows the same sections and the same
 
 <insert [A DigitalOcean account page with the full tab bar visible and one tab selected, then the same page with a search query typed showing the narrowed tabs] here>
 
+### Providers with a single root
+
+A few providers scope a credential so tightly that an account can only ever hold one top-level resource. [UploadThing](../plugins/uploadthing.md) is the clearest case: an API key belongs to one app, and there is no way to reach a second one with it.
+
+For those, the account page _is_ that resource. Opening the account lands you straight on its detail page rather than on an inventory whose only content is a section holding one item, and the sidebar expands the account directly to what lives inside it — for UploadThing, your files. Nothing else changes: it is still a normal resource with its own outputs and its own URL.
+
+This only applies where a second instance is impossible, not merely unusual. A provider where you happen to have one project today still gets the normal inventory, because tomorrow you might have two.
+
 ## Resource detail pages
 
 Click any resource to open its detail page. Every detail page has:

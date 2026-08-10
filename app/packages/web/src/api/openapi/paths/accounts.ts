@@ -177,6 +177,8 @@ const ResourceTypeSummary = strict({
     .optional(),
   isSshHost: z.boolean().optional(),
   sshTunnelAttachSource: z.boolean().optional(),
+  showInSidebar: z.boolean().optional(),
+  accountRoot: z.boolean().optional(),
   schedulable: z
     .boolean()
     .optional()
