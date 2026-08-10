@@ -10,6 +10,7 @@ import { LoadBalancerResourceType } from "./resources/load-balancer.js";
 import { PrivateNetworkResourceType } from "./resources/private-network.js";
 import { FloatingIpResourceType } from "./resources/floating-ip.js";
 import { GatewayResourceType } from "./resources/gateway.js";
+import { ovhTerraformExport } from "./terraform.js";
 
 const manifest: PluginManifest = {
   id: "ovh",
@@ -90,4 +91,5 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new OvhClient(credentials, resourceTypes, services),
+  terraformExport: ovhTerraformExport,
 };

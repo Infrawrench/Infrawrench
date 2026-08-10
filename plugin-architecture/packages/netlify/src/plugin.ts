@@ -9,6 +9,7 @@ import { NetlifyDnsZoneResourceType } from "./resources/dns-zone.js";
 import { NetlifyDnsRecordResourceType } from "./resources/dns-record.js";
 import { NetlifyBuildHookResourceType } from "./resources/build-hook.js";
 import { NetlifyEnvVarResourceType } from "./resources/env-var.js";
+import { netlifyTerraformExport } from "./terraform.js";
 
 const manifest: PluginManifest = {
   id: "netlify",
@@ -52,4 +53,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new NetlifyClient(credentials, services),
   parseStatusFeed,
+  terraformExport: netlifyTerraformExport,
 };

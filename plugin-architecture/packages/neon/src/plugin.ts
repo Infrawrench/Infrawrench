@@ -15,6 +15,7 @@ import { NeonAiGatewayResourceType } from "./resources/ai-gateway.js";
 import { NeonAuthResourceType } from "./resources/auth.js";
 import { NeonAuthOauthProviderResourceType } from "./resources/auth-oauth-provider.js";
 import { NeonAuthDomainResourceType } from "./resources/auth-domain.js";
+import { neonTerraformExport } from "./terraform.js";
 
 const manifest: PluginManifest = {
   id: "neon",
@@ -67,4 +68,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new NeonClient(credentials, services),
   parseStatusFeed,
+  terraformExport: neonTerraformExport,
 };

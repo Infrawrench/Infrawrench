@@ -4,6 +4,7 @@ import { ClickHouseClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { ServiceResourceType } from "./resources/service.js";
 import { DatabaseResourceType } from "./resources/database.js";
+import { clickhouseTerraformExport } from "./terraform.js";
 
 const manifest: PluginManifest = {
   id: "clickhouse",
@@ -96,4 +97,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new ClickHouseClient(credentials, services),
   parseStatusFeed,
+  terraformExport: clickhouseTerraformExport,
 };

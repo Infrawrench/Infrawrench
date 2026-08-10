@@ -68,6 +68,26 @@ describe("renderTerraformValue", () => {
     expect(renderTerraformValue(tf.list([tf.num(1), tf.bool(false)]))).toBe("[1, false]");
     expect(renderTerraformValue(tf.map({ id: tf.str("abc") }))).toBe('{\n  id = "abc"\n}');
   });
+  it("renders empty nested blocks without an equals sign", () => {
+    const bundle = renderTerraformBundle([
+      {
+        capability: {
+          ...capability,
+          provider: { name: "azurerm", source: "hashicorp/azurerm", version: "~> 5.0" },
+          providerConfig: {
+            features: tf.block(),
+            subscription_id: tf.ref("var.azure_subscription_id"),
+          },
+          variables: [{ name: "azure_subscription_id" }],
+        },
+        results: [capability.mapResource(makeResource({ fields: { name: "web-1" } }))!],
+      },
+    ]);
+    expect(bundle.hcl).toContain(
+      'provider "azurerm" {\n  features {}\n  subscription_id = var.azure_subscription_id\n}',
+    );
+    expect(bundle.hcl).not.toContain("features =");
+  });
 });
 
 describe("renderTerraformBundle", () => {

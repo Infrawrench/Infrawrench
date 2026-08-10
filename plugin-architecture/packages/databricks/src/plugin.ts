@@ -25,6 +25,7 @@ import {
   VolumeResourceType,
   WorkspaceObjectResourceType,
 } from "./resources/platform.js";
+import { databricksTerraformExport } from "./terraform.js";
 
 const manifest: PluginManifest = {
   id: "databricks",
@@ -95,4 +96,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) =>
     new DatabricksClient(credentials, resourceTypes, services),
+  terraformExport: databricksTerraformExport,
 };

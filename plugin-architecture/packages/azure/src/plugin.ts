@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { AzureClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { azureTerraformExport } from "./terraform.js";
 import { VMResourceType } from "./resources/vm.js";
 import { DiskResourceType } from "./resources/disk.js";
 import { VNetResourceType } from "./resources/vnet.js";
@@ -127,4 +128,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials) => new AzureClient(credentials, resourceTypes),
   parseStatusFeed,
+  terraformExport: azureTerraformExport,
 };
