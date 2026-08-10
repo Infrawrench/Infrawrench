@@ -153,6 +153,33 @@ describe("typecheckWorkflow", () => {
     ).toBe(true);
   });
 
+  it("types both call shapes of infra.ai, and rejects a bad model", () => {
+    const source = [
+      'const r = await infra.ai("Summarize these logs", { model: "claude-haiku-4-5" });',
+      "await infra.log(r.text, r.costMicros);",
+      'await infra.ai({ prompt: "Classify this error", system: "One word.", maxTokens: 16 });',
+    ].join("\n");
+    expect(typecheckWorkflow({ source, dts }).diagnostics).toEqual([]);
+    // The model allowlist is a closed union — a typo fails at save time, the
+    // same place dispatch would refuse it at run time.
+    expect(
+      typecheckWorkflow({ source: 'await infra.ai("hi", { model: "gpt-4o" });', dts }).hasErrors,
+    ).toBe(true);
+  });
+
+  it("types infra.ai as unavailable when the host cannot reach a model", () => {
+    const localDts = generateInfraDts({
+      plugins: PLUGINS,
+      metrics: [],
+      interactive: false,
+      triggerKind: "cron",
+      ai: false,
+    });
+    expect(typecheckWorkflow({ source: 'await infra.ai("hi");', dts: localDts }).hasErrors).toBe(
+      true,
+    );
+  });
+
   it("types both call shapes of infra.page, and rejects a bad option", () => {
     const source = [
       'const r = await infra.page("3 pods are crash-looping", { key: "restarts" });',

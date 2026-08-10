@@ -111,15 +111,17 @@ Caching behaves differently per provider, and you're only ever charged 1.5× wha
 
 [Web search](#reading-the-web) has one extra component. Search providers charge per query rather than per token, so a `web_search` call bills 1.5× the provider's per-query rate — currently $0.021 per query on Google Search grounding, $0.015 on Anthropic web search — plus 1.5× the tokens of the small model that runs the retrieval. One call can issue more than one query when the question needs it, and you're charged for the queries actually run. `web_fetch` has no per-request fee; you pay only for the page text that enters the conversation as tokens.
 
+One pool covers every AI feature: [`infra.ai(...)` calls made from workflows](./workflows.md#asking-a-model-for-help) are metered at the same rates and count toward the same month-to-date spend and caps described below.
+
 ### Free tier
 
-Orgs on the free plan get **$5 of chat usage per month**. When that runs out, the agent refuses new turns until the next month — add a payment method in **Settings → Billing** to keep going. The chat header shows `(free tier)` next to the spend readout while the free cap applies.
+Orgs on the free plan get **$5 of AI usage per month**, shared between chat and workflow `infra.ai` calls. When that runs out, the agent refuses new turns (and `infra.ai` throws) until the next month — add a payment method in **Settings → Billing** to keep going. The chat header shows `(free tier)` next to the spend readout while the free cap applies.
 
 Either kind of paid seat lifts the cap: a monthly subscription or a [prepaid capacity slot](../team-and-billing/billing-and-plans.md#prepaid-capacity-slots).
 
 ### Monthly cap
 
-Each org can set `chatMonthlyCapMicros` (in micro-dollars; 1 USD = 1,000,000). When the org's month-to-date chat cost crosses the cap, the agent refuses to start new turns until the next month or the cap is raised. Set the cap in **Settings → Billing → Chat cap**, or via SQL on the `organizations` row. On the free tier, a configured cap below $5 still applies; caps above $5 take effect once the org is on a paid plan.
+Each org can set `chatMonthlyCapMicros` (in micro-dollars; 1 USD = 1,000,000). When the org's month-to-date AI cost — chat plus workflow `infra.ai` calls — crosses the cap, the agent refuses to start new turns and `infra.ai` throws, until the next month or the cap is raised. Set the cap in **Settings → Billing → Chat cap**, or via SQL on the `organizations` row. On the free tier, a configured cap below $5 still applies; caps above $5 take effect once the org is on a paid plan.
 
 The header of every chat shows month-to-date spend and remaining headroom against the cap.
 

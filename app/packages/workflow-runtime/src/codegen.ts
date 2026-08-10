@@ -614,6 +614,54 @@ interface InfraWaitForApproval {
 }`;
 
 /**
+ * `infra.ai` — one prompt in, one reply out. The model union must list exactly
+ * `WORKFLOW_AI_MODELS` in types.ts (dispatch rejects anything else at runtime;
+ * this makes the editor reject it first). Mirrors `WorkflowAiSpec` /
+ * `WorkflowAiResult` in types.ts.
+ */
+const AI_INTERFACES = `interface AiOptions {
+  /**
+   * Model to ask. "claude-sonnet-5" (default) balances quality and cost;
+   * "claude-haiku-4-5" is the fastest and cheapest; "claude-opus-5" is the
+   * most capable and the most expensive.
+   */
+  model?: "claude-sonnet-5" | "claude-haiku-4-5" | "claude-opus-5";
+  /** Optional system prompt framing how the model should answer. */
+  system?: string;
+  /** Cap on the reply length in tokens. Default 1024, max 8192. */
+  maxTokens?: number;
+}
+
+interface AiSpec extends AiOptions {
+  /**
+   * What to ask. The model sees only this (plus \`system\`) — it has no access
+   * to your accounts, resources, or anything else in the run, so paste in the
+   * material you want it to work from.
+   */
+  prompt: string;
+}
+
+interface AiResult {
+  /** The model's reply. */
+  readonly text: string;
+  /** The concrete model id that answered. */
+  readonly model: string;
+  /** "end" when the model finished; "max_tokens" when it hit \`maxTokens\` mid-answer. */
+  readonly stopReason: "end" | "max_tokens";
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  /** What this call cost in micro-dollars (1 USD = 1_000_000), after markup. */
+  readonly costMicros: number;
+}
+
+interface InfraAi {
+  /** Ask a model one question and get its reply. */
+  (prompt: string, opts?: AiOptions): Promise<AiResult>;
+  /** Ask, passing every option in one object. */
+  (spec: AiSpec): Promise<AiResult>;
+}`;
+
+/**
  * The global `fetch`. Declared here rather than pulled from `lib.dom` because
  * the sandbox implements a deliberately small subset: a fully-buffered body
  * (so the reader methods can be called more than once), no `Request`/`Headers`
@@ -694,6 +742,13 @@ export interface GenerateInfraDtsInput {
    * unavailable while editing instead of at run time.
    */
   approvals?: boolean;
+  /**
+   * Whether this host can make AI model calls (cloud only — the call is made
+   * server-side with the deployment's API key and metered against the org's
+   * monthly AI spend cap). When false, `infra.ai` is typed `never` so a
+   * desktop author sees it's unavailable while editing instead of at run time.
+   */
+  ai?: boolean;
   /**
    * Names of the caller's Infrawrench-managed SSH keys. Surfaced as autocomplete
    * for `ssh-key-picker` create fields and `resource.ssh`'s `sshKey` option.
@@ -818,6 +873,16 @@ export function generateInfraDts(input: GenerateInfraDtsInput): string {
     input.costs === false
       ? `  /** Unavailable here — cost reporting needs the cloud's cost store. */\n  costs: never;`
       : `  /** Report spend from a source Infrawrench has no plugin for. */\n  readonly costs: InfraCosts;`;
+  const aiOff = readOnly || input.ai === false;
+  const aiDecl = aiOff
+    ? `  /** Unavailable here — AI calls are made by the cloud and metered like chat. */\n  ai: never;`
+    : `  /**
+   * Ask an AI model for help mid-run — summarize a log tail before paging it,
+   * classify an error, draft the message an alert should carry. One prompt in,
+   * one reply out; the model sees only what you pass it. Metered like AI chat
+   * and counted against the same monthly spend cap.
+   */
+  readonly ai: InfraAi;`;
   const approvalsOff = readOnly || input.approvals === false;
   const approvalsDecl = approvalsOff
     ? `  /** Unavailable here — approval gates need the cloud's approvals surface. */\n  waitForApproval: never;`
@@ -835,6 +900,8 @@ ${renderEventType(input.triggerKind ?? "manual")}
 ${input.costs === false ? "" : COSTS_INTERFACE}
 
 ${approvalsOff ? "" : APPROVAL_INTERFACES}
+
+${aiOff ? "" : AI_INTERFACES}
 
 ${PAGE_INTERFACE}
 
@@ -864,6 +931,7 @@ ${promptDecl}
   readonly event: WorkflowEvent;
 ${costsDecl}
 ${pageDecl}
+${aiDecl}
 ${approvalsDecl}
   /** Record a JSON-serializable result for this run. */
   output(value: JsonValue): Promise<void>;

@@ -201,6 +201,43 @@ export const workflowApprovals = pgTable(
 );
 
 /**
+ * One `infra.ai(...)` call's token usage and billable cost. The AI-chat
+ * equivalent is `chat_usage`; kept as its own table because chat rows hang off
+ * a conversation/message, which a workflow run doesn't have. The org's monthly
+ * AI spend cap sums both tables (see ../billing/ai-usage.ts).
+ *
+ * `workflow_id` and `run_id` are plain columns, not foreign keys, on purpose:
+ * these are billing records, and deleting a workflow (or pruning its runs) must
+ * not delete the spend it caused — an org could otherwise reset its free tier
+ * by deleting the workflow that spent it.
+ */
+export const workflowAiUsage = pgTable(
+  "workflow_ai_usage",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workflowId: text("workflow_id").notNull(),
+    runId: text("run_id"),
+    model: text("model").notNull(),
+    inputTokens: integer("input_tokens").notNull(),
+    outputTokens: integer("output_tokens").notNull(),
+    cacheReadTokens: integer("cache_read_tokens").notNull(),
+    cacheWriteTokens: integer("cache_write_tokens").notNull(),
+    /** Total billable cost in micro-dollars after markup. */
+    costMicros: integer("cost_micros").notNull(),
+    /** Stripe meter-event identifier once reported; null until reported. */
+    stripeUsageRecordId: text("stripe_usage_record_id"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgCreatedIdx: index("workflow_ai_usage_org_created_idx").on(t.organizationId, t.createdAt),
+    unreportedIdx: index("workflow_ai_usage_unreported_idx").on(t.stripeUsageRecordId),
+  }),
+);
+
+/**
  * A GitHub App installation connected to an org. The github-watcher uses the
  * installation id to mint short-lived installation tokens (acting as the app /
  * bot) to list repos and read branch heads. Repos a workflow watches are stored

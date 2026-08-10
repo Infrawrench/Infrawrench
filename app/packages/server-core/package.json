@@ -39,6 +39,7 @@
     "./workflows/runner": "./src/workflows/runner.ts",
     "./workflows/approvals": "./src/workflows/approvals.ts",
     "./workflows/fetch": "./src/workflows/fetch.ts",
+    "./workflows/ai": "./src/workflows/ai.ts",
     "./github/app": "./src/github/app.ts",
     "./permissions": "./src/permissions/index.ts",
     "./permissions/catalog": "./src/permissions/catalog.ts",
@@ -125,7 +126,9 @@
     "./entitlements": "./src/entitlements.ts",
     "./infrafile/runner": "./src/infrafile/runner.ts",
     "./billing/build-meter": "./src/billing/build-meter.ts",
-    "./billing/capacity-slots": "./src/billing/capacity-slots.ts"
+    "./billing/capacity-slots": "./src/billing/capacity-slots.ts",
+    "./billing/ai-pricing": "./src/billing/ai-pricing.ts",
+    "./billing/ai-usage": "./src/billing/ai-usage.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

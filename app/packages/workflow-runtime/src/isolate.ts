@@ -35,6 +35,12 @@ import type { RunLimits, RunResult } from "./types.js";
  * `fetch` is deliberately NOT here. Each call is already bounded by its own
  * timeout, and counting them keeps `while (true) await fetch(...)` inside the
  * run's budget — pausing would make that loop unkillable.
+ *
+ * `ai` IS here, despite also being a network wait: a couple of long model
+ * completions would otherwise consume most of a five-minute budget doing no
+ * guest work at all. Unlike a fetch loop it stays bounded without the budget —
+ * the cloud host enforces a per-call timeout and a hard per-run call cap, so
+ * pausing cannot make a loop unkillable.
  */
 export const PAUSED_METHODS: ReadonlySet<string> = new Set([
   "prompt",
@@ -44,6 +50,7 @@ export const PAUSED_METHODS: ReadonlySet<string> = new Set([
   "ssh.streamRead",
   "ssh.probe",
   "approval.wait",
+  "ai",
 ]);
 
 export interface IsolateEnvValues {
