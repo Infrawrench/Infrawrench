@@ -65,6 +65,30 @@ const manifest: PluginManifest = {
     dimensions: ["service"],
     maxHistoryDays: 365,
     periodNative: true,
+    /**
+     * The default of 3 days is a daily provider's window and is wrong for a
+     * monthly one twice over.
+     *
+     * Rows are dated to the **first** of their month (`client.ts` explains
+     * why), and the host only asks for `[today − restatementDays, today]`, cut
+     * into calendar-month chunks. A 3-day window contains the 1st on three days
+     * of the month and no others — so for the rest of the month the in-progress
+     * total, which Mistral restates continuously, would simply never be
+     * re-collected.
+     *
+     * 62 days is the smallest constant that always contains the 1st of *both*
+     * the in-progress month and the one before it, whatever today's date: the
+     * longest two consecutive months are 62 days, so counting back 62 from any
+     * day of month M reaches at or before the 1st of M−1. That buys the two
+     * things a monthly provider needs — the running month re-fetched entire,
+     * and a closed month re-fetched for a further month while late usage and
+     * credits settle against it.
+     *
+     * The price is one `/admin/usage` request per month in the window, so a
+     * daily collection makes three or four rather than one. That is the whole
+     * cost: the endpoint is a single per-month aggregate with no pagination.
+     */
+    restatementDays: 62,
   },
 };
 

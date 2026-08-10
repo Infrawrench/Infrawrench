@@ -105,3 +105,42 @@ describe("collectAccountCosts and degraded passes", () => {
     expect(result.rowCount).toBe(0);
   });
 });
+
+describe("collectAccountCosts tells the reconciler what shape the rows are", () => {
+  it("passes periodNative through, because it changes what a restated day means", async () => {
+    // A monthly-native plugin files a whole month on one day. Without the flag
+    // the reconciler applies the day rule, and anything stored in the month's
+    // interior — the rows a collector that once dated its in-progress total to
+    // a moving day left behind — stands forever.
+    loadAccountClient.mockResolvedValue({
+      account: { pluginId: "mistral", costBackfilledAt: new Date("2026-07-01") },
+      plugin: {
+        manifest: { costs: { maxHistoryDays: 10, restatementDays: 5, periodNative: true } },
+      },
+      client: { fetchCostData },
+    });
+    fetchCostData.mockResolvedValue([{ date: "2026-07-01", currency: "USD", amount: 61 }]);
+
+    await collectAccountCosts("acc-1", "org-1");
+
+    expect(reconcileCollectedChunk).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      { periodNative: true },
+    );
+  });
+
+  it("says nothing about it for a plugin that reports real daily spend", async () => {
+    fetchCostData.mockResolvedValue([row]);
+
+    await collectAccountCosts("acc-1", "org-1");
+
+    expect(reconcileCollectedChunk).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      { periodNative: undefined },
+    );
+  });
+});

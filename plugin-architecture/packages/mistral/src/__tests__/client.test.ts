@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MistralClient } from "../client.js";
+import { plugin } from "../plugin.js";
 
 const ACCOUNT = "acct-1";
 
@@ -108,10 +109,103 @@ describe("admin degradation", () => {
     });
 
     expect(calls[0]?.url).toBe("https://api.mistral.ai/v1/admin/usage?year=2026&month=7");
+    // Dated to the period *start*, the one day of the month that does not move.
     expect(rows).toEqual([
-      { date: "2026-07-31", service: "chat", currency: "USD", amount: 12.5 },
-      { date: "2026-07-31", service: "audio", currency: "USD", amount: 3.25 },
-      { date: "2026-07-31", service: "fine_tuning", currency: "USD", amount: 2 },
+      { date: "2026-07-01", service: "chat", currency: "USD", amount: 12.5 },
+      { date: "2026-07-01", service: "audio", currency: "USD", amount: 3.25 },
+      { date: "2026-07-01", service: "fine_tuning", currency: "USD", amount: 2 },
+    ]);
+  });
+});
+
+describe("period-native cost dating", () => {
+  it("keeps an in-progress month on one key as it is re-collected day after day", async () => {
+    // `/admin/usage` returns the *running* total of the month, so the same
+    // month is fetched again every day. Dating those re-fetches to anything
+    // that moves — the month end clamped into the requested range, as this
+    // collector once did — files month-to-date-through-15 on the 15th and
+    // month-to-date-through-16 on the 16th. Nothing rewrites the earlier days,
+    // so the month sums to the sum of its own prefixes: 12.5 + 40 + 61 here
+    // instead of 61. One stable key is what makes the host's
+    // ReplacingMergeTree *replace* rather than accumulate.
+    const monthToDate = [12.5, 40, 61];
+    const collected = [];
+    for (const [i, total] of monthToDate.entries()) {
+      calls = [];
+      installFetch(() => jsonResponse({ currency: "USD", chat: { cost: total } }));
+      collected.push(
+        await client("admin-key").fetchCostData(ACCOUNT, {
+          // The host's month-aligned chunk for the in-progress month, on three
+          // successive collection days.
+          fromDate: "2026-08-01",
+          toDate: `2026-08-${15 + i}`,
+        }),
+      );
+      vi.restoreAllMocks();
+    }
+
+    expect(collected).toEqual([
+      [{ date: "2026-08-01", service: "chat", currency: "USD", amount: 12.5 }],
+      [{ date: "2026-08-01", service: "chat", currency: "USD", amount: 40 }],
+      [{ date: "2026-08-01", service: "chat", currency: "USD", amount: 61 }],
+    ]);
+    // One row, one date, every time: the last collection replaces the previous
+    // one instead of adding a fourth day's worth of the same money.
+    expect(new Set(collected.flat().map((r) => r.date))).toEqual(new Set(["2026-08-01"]));
+  });
+
+  it("reports a month only from the chunk that contains its first day", async () => {
+    // Month-aligned chunks mean the oldest chunk of a backfill can start
+    // mid-month. That month belongs to no chunk in this pass — claiming it here
+    // would land the same month on two dates — so nothing is fetched at all.
+    installFetch(() => jsonResponse({ currency: "USD", chat: { cost: 99 } }));
+
+    const rows = await client("admin-key").fetchCostData(ACCOUNT, {
+      fromDate: "2026-06-10",
+      toDate: "2026-06-30",
+    });
+
+    expect(rows).toEqual([]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("declares a restatement window that always reaches a period start", async () => {
+    // The dating fix has a manifest half: rows only exist for a month whose 1st
+    // the chunk contains, and the host asks for `[today − restatementDays,
+    // today]`. The default of 3 days contains the 1st on three days of the
+    // month and no others, so for the rest of the month the running total —
+    // which Mistral restates continuously — would never be re-collected at all.
+    const { restatementDays } = plugin.manifest.costs!;
+    expect(restatementDays).toBe(62);
+
+    // Checked rather than argued: from *every* day of a leap year, the window
+    // reaches back past the 1st of the previous month, so the in-progress month
+    // and the one before it are both re-collected whatever today's date is.
+    for (let day = new Date(Date.UTC(2028, 0, 1)); day.getUTCFullYear() === 2028;) {
+      const start = new Date(day.valueOf() - restatementDays! * 86_400_000);
+      const previousMonthStart = Date.UTC(day.getUTCFullYear(), day.getUTCMonth() - 1, 1);
+      expect(start.valueOf()).toBeLessThanOrEqual(previousMonthStart);
+      day = new Date(day.valueOf() + 86_400_000);
+    }
+  });
+
+  it("fetches each month once when a chunk spans several period starts", async () => {
+    installFetch((url) =>
+      jsonResponse({ currency: "USD", chat: { cost: url.includes("month=7") ? 10 : 20 } }),
+    );
+
+    const rows = await client("admin-key").fetchCostData(ACCOUNT, {
+      fromDate: "2026-06-15",
+      toDate: "2026-08-10",
+    });
+
+    expect(calls.map((c) => c.url)).toEqual([
+      "https://api.mistral.ai/v1/admin/usage?year=2026&month=7",
+      "https://api.mistral.ai/v1/admin/usage?year=2026&month=8",
+    ]);
+    expect(rows).toEqual([
+      { date: "2026-07-01", service: "chat", currency: "USD", amount: 10 },
+      { date: "2026-08-01", service: "chat", currency: "USD", amount: 20 },
     ]);
   });
 });

@@ -763,7 +763,31 @@ export class MistralClient implements PluginClient {
    *
    * Monthly granularity with a per-service breakdown (chat, completion, ocr,
    * audio, audio_characters, fine_tuning, connectors, libraries_api), so rows
-   * are dated to the period and the manifest declares `periodNative`.
+   * are period-native and the manifest says so.
+   *
+   * **Every row is dated to the *first* day of its month, and the chunk only
+   * reports months whose first day it contains.** Both halves matter, and the
+   * date has to be a fixed point in the period rather than a moving one.
+   *
+   * The endpoint returns the *running* total of a month, so an in-progress
+   * month is re-fetched on every collection. Dating those re-fetches to
+   * anything that moves — the month end clamped into the requested range, say —
+   * files month-to-date-through-the-15th on the 15th, month-to-date-through-the
+   * -16th on the 16th, and so on: each collection lands on a **new** key
+   * instead of replacing the previous one, and summing the month yields the sum
+   * of its own prefixes (roughly 15× the true figure by mid-month). The host
+   * only re-fetches a trailing window, so those earlier days are never restated
+   * and the inflation is permanent. A stable date makes every collection of a
+   * month write the same key, which is what makes the ReplacingMergeTree behind
+   * `cost_daily` *replace* rather than accumulate.
+   *
+   * The period start is that stable point, and it is what the other
+   * period-native plugins use (Scaleway's billing period, PlanetScale's
+   * `billing_period_start`, Cloudflare's charge-period start). Skipping months
+   * whose first day falls outside the chunk keeps re-fetches exactly-once
+   * across the host's month-aligned chunks — and it is why the manifest asks
+   * for a restatement window wide enough to always contain the 1st (see
+   * `plugin.ts`).
    */
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
     if (!this.hasAdmin) {
@@ -774,15 +798,11 @@ export class MistralClient implements PluginClient {
     }
 
     const rows: CostRow[] = [];
-    for (const { year, month } of monthsBetween(range.fromDate, range.toDate)) {
+    for (const { year, month, date } of monthStartsInRange(range)) {
       const body = await this.adminFetch<Record<string, unknown>>(
         `/usage?year=${year}&month=${month}`,
       );
       const currency = typeof body["currency"] === "string" ? (body["currency"] as string) : "USD";
-      // Date the row to the last day of the month that falls inside the range
-      // — the billing-period boundary, matching `periodNative`.
-      const date = clampDate(lastDayOf(year, month), range.fromDate, range.toDate);
-      if (!date) continue;
 
       for (const [service, value] of Object.entries(body)) {
         const amount = costOf(value);
@@ -1429,38 +1449,36 @@ function costOf(value: unknown): number | undefined {
   return undefined;
 }
 
-function monthsBetween(fromDate: string, toDate: string): Array<{ year: number; month: number }> {
-  const out: Array<{ year: number; month: number }> = [];
-  const start = new Date(`${fromDate}T00:00:00Z`);
-  const end = new Date(`${toDate}T00:00:00Z`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return out;
-  let year = start.getUTCFullYear();
-  let month = start.getUTCMonth() + 1;
+/**
+ * The billing months whose **first day** falls inside the chunk, as the
+ * `/admin/usage` query parameters plus the date their row is filed under.
+ *
+ * A month whose 1st is outside the range is not reported by this chunk at all —
+ * some other chunk owns it — so a month is never fetched twice for one
+ * collection and never lands on two different days.
+ */
+function monthStartsInRange(range: CostFetchRange): Array<{
+  year: number;
+  month: number;
+  date: string;
+}> {
+  const out: Array<{ year: number; month: number; date: string }> = [];
+  const start = new Date(`${range.fromDate}T00:00:00Z`);
+  if (Number.isNaN(start.getTime())) return out;
+
+  const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+  // The chunk may start mid-month; that month's 1st belongs to an earlier one.
+  if (cursor.toISOString().slice(0, 10) < range.fromDate) {
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
   // 60 months is well past the host's 365-day backfill; it just bounds the loop.
   for (let guard = 0; guard < 60; guard += 1) {
-    out.push({ year, month });
-    if (
-      year > end.getUTCFullYear() ||
-      (year === end.getUTCFullYear() && month >= end.getUTCMonth() + 1)
-    )
-      break;
-    month += 1;
-    if (month > 12) {
-      month = 1;
-      year += 1;
-    }
+    const date = cursor.toISOString().slice(0, 10);
+    if (date > range.toDate) break;
+    out.push({ year: cursor.getUTCFullYear(), month: cursor.getUTCMonth() + 1, date });
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
   }
   return out;
-}
-
-function lastDayOf(year: number, month: number): string {
-  const date = new Date(Date.UTC(year, month, 0));
-  return date.toISOString().slice(0, 10);
-}
-
-function clampDate(date: string, fromDate: string, toDate: string): string | undefined {
-  if (date < fromDate) return undefined;
-  return date > toDate ? toDate : date;
 }
 
 function jobStatusDot(

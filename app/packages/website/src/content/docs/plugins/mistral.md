@@ -37,7 +37,14 @@ Open a voice (or any model) for a **Speech** tab:
 
 ## Costs
 
-With an Admin API key attached, `GET /v1/admin/usage` feeds the cost dashboards. Mistral reports usage **monthly**, broken down by service (chat, completion, OCR, audio, fine-tuning, connectors), so rows are dated to the billing-period boundary and charts label the series as monthly-native.
+With an Admin API key attached, `GET /v1/admin/usage` feeds the cost dashboards. Mistral reports usage **monthly**, broken down by service (chat, completion, OCR, audio, fine-tuning, connectors), so charts label the series as monthly-native.
+
+Each month's spend is recorded **on the first day of that month** — the whole month's total, on one date, the way an invoice is one line. A month in progress is re-collected every day and its figure is replaced in place, so what you see is month-to-date until the month closes. Two things follow:
+
+- **A short date range can look empty.** "Last 7 days" mid-month contains no 1st, so it shows no Mistral spend even though the month has plenty. Look at a range that includes the 1st, or at the month view.
+- **The in-progress month and the one before it are re-fetched daily**, so late usage and credits settle into the right month without you doing anything.
+
+If you collected Mistral costs before August 2026, an earlier version dated the running monthly total to a date that moved with each collection, which made a month sum to several times its real value. The next collection after upgrading rewrites the month on its first day and clears the stale dates automatically — no manual step, and nothing to delete.
 
 ## Tips & limits
 

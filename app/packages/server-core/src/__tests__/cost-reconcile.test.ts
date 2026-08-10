@@ -224,6 +224,121 @@ describe("supersededTombstones must not fire on thin evidence", () => {
   });
 });
 
+// ─── The period-native repair ───────────────────────────────────────────────
+
+describe("supersededTombstones repairs a period-native plugin's intra-period residue", () => {
+  const MISTRAL = { organizationId: "org-1", accountId: "acc-1", pluginId: "mistral" };
+
+  /**
+   * What a month of the old Mistral dating left behind: the running total of
+   * the in-progress month, filed on a *different* day every collection because
+   * the month end was clamped into the requested range. Summed, the month reads
+   * as the sum of its own prefixes.
+   */
+  function pollutedAugust(): StoredCostRowKey[] {
+    return [15, 16, 17, 18].map((day) =>
+      stored({ day: `2026-08-${day}`, service: "chat", region: "" }),
+    );
+  }
+
+  /** The fixed collector: one row for the month, dated to the period start. */
+  const augustTotal = () =>
+    toCostDailyRows(MISTRAL, [
+      { date: "2026-08-01", service: "chat", currency: "USD", amount: 61 },
+    ]);
+
+  it("zeroes the stranded prefixes the fixed dating no longer writes", () => {
+    // The day rule cannot reach these: nothing rewrites 2026-08-15..18 ever
+    // again, because the month's total now lives on the 1st. Reading the month
+    // as the restated unit is what retires them — on the next collection, with
+    // no operator step and nothing plugin-specific in this module.
+    const tombstones = supersededTombstones(MISTRAL, pollutedAugust(), augustTotal(), {
+      periodNative: true,
+    });
+
+    expect(tombstones.map((t) => t.day)).toEqual([
+      "2026-08-15",
+      "2026-08-16",
+      "2026-08-17",
+      "2026-08-18",
+    ]);
+    for (const tombstone of tombstones) {
+      expect(tombstone.amount).toBe(0);
+      expect(tombstone.amortized_amount).toBe(0);
+      expect(tombstone.plugin_id).toBe("mistral");
+    }
+  });
+
+  it("leaves the period start it just rewrote alone", () => {
+    const withStart = [
+      ...pollutedAugust(),
+      stored({ day: "2026-08-01", service: "chat", region: "" }),
+    ];
+    const tombstones = supersededTombstones(MISTRAL, withStart, augustTotal(), {
+      periodNative: true,
+    });
+    // The row on the 1st was replaced by the collection itself; a tombstone for
+    // it would zero the month's actual total.
+    expect(tombstones.some((t) => t.day === "2026-08-01")).toBe(false);
+    expect(tombstones).toHaveLength(4);
+  });
+
+  it("does nothing of the sort for a daily plugin", () => {
+    // Same input, no `periodNative`: a day the plugin did not write to is a day
+    // the provider skipped, and skipping is not restating to zero.
+    expect(supersededTombstones(MISTRAL, pollutedAugust(), augustTotal())).toEqual([]);
+    expect(
+      supersededTombstones(MISTRAL, pollutedAugust(), augustTotal(), { periodNative: false }),
+    ).toEqual([]);
+  });
+
+  it("expands only a month whose first day the collection wrote", () => {
+    // Cloudflare's charge periods follow each subscription's billing-cycle
+    // anchor, Turso dates rows to an invoice due date, OVH to a bill's issue
+    // date — all period-native, none of them a calendar month filed on the 1st.
+    // Widening the unit to "whatever month a written row falls in" would let a
+    // flaky page of one provider's invoice list zero a sibling invoice.
+    const anchored = toCostDailyRows(MISTRAL, [
+      { date: "2026-08-17", service: "workers", currency: "USD", amount: 5 },
+    ]);
+    expect(
+      supersededTombstones(MISTRAL, [stored({ day: "2026-08-03", service: "workers" })], anchored, {
+        periodNative: true,
+      }),
+    ).toEqual([]);
+  });
+
+  it("expands only the months it wrote, not every month in the chunk", () => {
+    // A backfill chunk can span two months. July was collected and restated;
+    // June was not fetched at all by this pass and must be untouched.
+    const june = stored({ day: "2026-06-20", service: "chat", region: "" });
+    const july = stored({ day: "2026-07-20", service: "chat", region: "" });
+    const rows = toCostDailyRows(MISTRAL, [
+      { date: "2026-07-01", service: "chat", currency: "USD", amount: 30 },
+    ]);
+
+    const tombstones = supersededTombstones(MISTRAL, [june, july], rows, { periodNative: true });
+    expect(tombstones.map((t) => t.day)).toEqual(["2026-07-20"]);
+  });
+
+  it("keeps every other guard while it does so", () => {
+    // Guard 1: an empty fetch is still not evidence of anything, period-native
+    // or not — this is the guard that makes zeroing safe to run every day.
+    expect(supersededTombstones(MISTRAL, pollutedAugust(), [], { periodNative: true })).toEqual([]);
+
+    // Guard 3: a pushed row inside the period is still not a collector's to
+    // zero, even though the collector now claims the whole month.
+    const pushed = stored({
+      day: "2026-08-12",
+      service: "Snowflake",
+      tags: { "infrawrench:source": "external" },
+    });
+    expect(supersededTombstones(MISTRAL, [pushed], augustTotal(), { periodNative: true })).toEqual(
+      [],
+    );
+  });
+});
+
 // ─── The invisible coupling guard 3 rests on ────────────────────────────────
 
 describe("guard 3 depends on collectors keeping reserved keys out of `tags`", () => {

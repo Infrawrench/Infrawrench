@@ -68,6 +68,12 @@ export async function collectAccountCosts(
       // that keep this from firing on a merely-incomplete fetch, and for what
       // it does not repair.
       //
+      // `periodNative` travels with it because it changes what "a day this
+      // collection restated" means: a monthly-native plugin files a whole month
+      // on one day, so reconciling day-by-day would leave anything stored in
+      // the month's interior standing forever — including the rows a collector
+      // that once dated its in-progress total to a moving day left behind.
+      //
       // A pass the plugin flagged degraded is the fourth guard, and it lives
       // here rather than in that module because only the plugin can know it:
       // the rows are correct in total but written at a *coarser* key space
@@ -78,7 +84,11 @@ export async function collectAccountCosts(
       // refusal that ages past that window would destroy the attribution for
       // good. Skipping reconciliation leaves the stored rows exactly as they
       // were, which is what happened before reconciliation existed.
-      const tombstones = degraded ? [] : await reconcileCollectedChunk(meta, chunk, mapped);
+      const tombstones = degraded
+        ? []
+        : await reconcileCollectedChunk(meta, chunk, mapped, {
+            periodNative: capability.periodNative,
+          });
       await insertCostRows([...mapped, ...tombstones]);
       rowCount += rows.length;
     }

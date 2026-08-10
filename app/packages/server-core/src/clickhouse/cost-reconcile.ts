@@ -43,16 +43,12 @@
  *
  * ─── What it does not fix ─────────────────────────────────────────────────
  *
- * It repairs a key that moved *under a day the collection rewrites*, which is
- * the whole of the charge-type hazard above and most restatement shapes. It
- * does **not** repair duplication on days nothing rewrites, and guard 2 below
- * is exactly why: a period-native plugin that dates a month's total to a moving
- * boundary (Mistral clamps the month end into the requested range, so an
- * in-progress month lands on a different day every collection) leaves one row
- * per day it was collected, and the earlier days are never restated. Those need
- * the plugin to date its rows stably, or an operator, and neither is this
- * module's job. So: no operator step remains for the hazard this fixes — not
- * "no operator step remains", full stop.
+ * It repairs a key that moved *under a day the collection restates*, which is
+ * the whole of the charge-type hazard above and most restatement shapes. A day
+ * no collection ever covers again — one that has aged out of the plugin's
+ * restatement window — is beyond it, and stays wrong until a re-backfill covers
+ * it. Choosing a restatement window wide enough to reach a plugin's own
+ * dating unit is therefore part of the plugin's job, not this module's.
  *
  * ─── When it must not fire ────────────────────────────────────────────────
  *
@@ -66,13 +62,22 @@
  *    a billing export that has not caught up yet, a partition that returns
  *    nothing for a window it has not finished computing — none of those are
  *    evidence that the stored spend is wrong.
- * 2. **Only days the plugin wrote to.** Within a chunk, a stored row is a
- *    candidate only if the plugin returned at least one row for *that day*. A
- *    day the provider skipped entirely is not a day it restated to zero. This
- *    is what keeps a provider that reports the last 24h late from wiping
- *    yesterday. The hazard being fixed is intra-day by nature — the stale cell
- *    always sits on a day that has other, healthy cells — so the guard costs
- *    nothing real.
+ * 2. **Only days the plugin restated.** Within a chunk, a stored row is a
+ *    candidate only if the plugin restated *that day*. A day the provider
+ *    skipped entirely is not a day it restated to zero. This is what keeps a
+ *    provider that reports the last 24h late from wiping yesterday. The
+ *    intra-day hazard costs nothing here — the stale cell always sits on a day
+ *    that has other, healthy cells.
+ *
+ *    "Restated" is a day the plugin wrote to, **plus**, for a period-native
+ *    plugin that wrote a row dated to the 1st of a month, the rest of that
+ *    calendar month. A monthly-native plugin files a whole month on one day, so
+ *    the day rule alone would leave anything stored in the interior standing
+ *    forever — which is precisely how a month once dated to a *moving* day
+ *    inside itself (an in-progress total clamped to the requested range, as
+ *    Mistral's collector did) stays inflated after the dating is fixed. The
+ *    rule, and why it is the 1st rather than any written day, lives in
+ *    `cost/period-scope.ts`.
  * 3. **Only this plugin's own rows.** Rows pushed through the ingest API
  *    (`cost/cost-ingest.ts`) are written under their own `plugin_id` and carry
  *    a reserved `infrawrench:`-prefixed tag; both are excluded. A collector must
@@ -87,11 +92,20 @@
  *    exists to fix. The coupling is called out at both ends; do not "fix" the
  *    asymmetry in either place alone.
  */
+import { restatedDayScope } from "../cost/period-scope";
 import { getClickHouseClient, isClickHouseConfigured } from "./client";
 import type { CostDailyRow } from "./cost-writers";
 
 /** Mirrors `cost/cost-ingest.ts`'s `RESERVED_TAG_PREFIX`; see guard 3 above. */
 const RESERVED_KEY_PREFIX = "infrawrench:";
+
+/**
+ * What the collecting plugin says about the shape of its own rows. Only
+ * `periodNative` matters here, and only to guard 2 — see `cost/period-scope.ts`.
+ */
+export interface ReconcileOptions {
+  periodNative?: boolean | undefined;
+}
 
 /**
  * A stored row's identity plus the non-key columns a tombstone has to carry
@@ -140,17 +154,22 @@ export function supersededTombstones(
   meta: { organizationId: string; accountId: string; pluginId: string },
   stored: StoredCostRowKey[],
   written: CostDailyRow[],
+  options?: ReconcileOptions,
 ): CostDailyRow[] {
   // Guard 1: a chunk that produced nothing is not evidence of anything.
   if (written.length === 0) return [];
 
   const writtenKeys = new Set(written.map(identity));
-  // Guard 2: only days this collection actually restated.
-  const restatedDays = new Set(written.map((r) => r.day));
+  // Guard 2: only days this collection actually restated — which for a
+  // period-native plugin means the period, not just the day it filed it on.
+  const restated = restatedDayScope(
+    written.map((r) => r.day),
+    options,
+  );
 
   const tombstones = new Map<string, CostDailyRow>();
   for (const row of stored) {
-    if (!restatedDays.has(row.day)) continue;
+    if (!restated.has(row.day)) continue;
     const key = identity(row);
     if (writtenKeys.has(key)) continue;
     // Guard 3, second half: never zero a pushed row that slipped through the
