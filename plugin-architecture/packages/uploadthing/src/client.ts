@@ -290,9 +290,14 @@ function assertFetchableUrl(raw: string): void {
 /**
  * Fetch a user-supplied URL for upload, re-checking every redirect hop.
  *
- * `redirect: "follow"` would defeat `assertFetchableUrl` — a public host can
- * 302 to the metadata service and the denylist never sees the final address.
- * Manual hops keep the same scheme/host rules on each Location.
+ * Deliberately uses bare `fetch`, not `services.http`. The source is an
+ * arbitrary public URL the user typed — not an UploadThing host — so it is
+ * never on the bastion egress allowlist. Routing it through a bastion-bound
+ * `services.http` would reject every real import with "destination not
+ * allowlisted". SSRF is handled here instead: scheme + host denylist, and
+ * every redirect hop is re-checked (`redirect: "manual"`).
+ *
+ * UploadThing API / ingest traffic still goes through `services.http`.
  */
 async function downloadFromUrl(sourceUrl: string): Promise<Response> {
   let current = sourceUrl;

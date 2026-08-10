@@ -64,6 +64,15 @@ export interface K8sNodeDriver {
  * Object-storage driver — lets plugins own the download logic for their
  * storage provider so the host never hard-codes provider-specific URLs or auth.
  */
+export interface StorageDownloadOptions {
+  /**
+   * Host HTTP bridge. When the account is bound to a bastion, the driver
+   * should route grant + byte fetches through this so they stay on the
+   * tunnelled allowlist path instead of the host's default network.
+   */
+  http?: import("./manifest.js").HttpHostServices;
+}
+
 export interface StorageNodeDriver {
   /** Must match the plugin manifest `id` — used by the host to dispatch. */
   readonly pluginId: string;
@@ -71,7 +80,13 @@ export interface StorageNodeDriver {
    * Download a single object to `destPath`.
    * The host calls this in a loop and handles directory creation.
    */
-  downloadFile(bucket: string, key: string, accessToken: string, destPath: string): Promise<void>;
+  downloadFile(
+    bucket: string,
+    key: string,
+    accessToken: string,
+    destPath: string,
+    options?: StorageDownloadOptions,
+  ): Promise<void>;
 }
 
 /**

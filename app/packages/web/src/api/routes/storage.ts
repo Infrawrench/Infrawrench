@@ -5,6 +5,7 @@ import os from "node:os";
 import { randomUUID } from "node:crypto";
 import { getClientForAccount } from "../../services/plugin-clients";
 import { storageDrivers } from "../../services/drivers";
+import { buildPluginHostServices } from "@infrawrench/server-core/host-services";
 import archiver from "archiver";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
@@ -88,12 +89,19 @@ app.get("/download", async (c) => {
   const storageDriver = storageDrivers.get(ctx.account.pluginId);
   if (!storageDriver) return c.json({ error: "No storage driver for this plugin" }, 400);
 
+  // Prefer the account's host HTTP bridge so bastion-bound accounts keep
+  // grant + byte fetches on the tunnel. Drivers that don't need it ignore it.
+  const hostServices = await buildPluginHostServices(ctx.plugin.manifest, ctx.credentials, {
+    bastionId: ctx.account.bastionId ?? null,
+  });
+  const downloadOpts = hostServices?.http ? { http: hostServices.http } : undefined;
+
   if (keys.length === 1) {
     const key = keys[0]!;
     const tmpPath = tmpDownloadPath(key);
 
     try {
-      await storageDriver.downloadFile(bucket, key, accessToken, tmpPath);
+      await storageDriver.downloadFile(bucket, key, accessToken, tmpPath, downloadOpts);
       const { readFile, unlink } = await import("node:fs/promises");
       const data = await readFile(tmpPath);
       unlink(tmpPath).catch((err: unknown) => {
@@ -122,7 +130,7 @@ app.get("/download", async (c) => {
       for (const key of keys) {
         if (key.endsWith("/")) continue;
         const tmpPath = tmpDownloadPath(key);
-        await storageDriver.downloadFile(bucket, key, accessToken, tmpPath);
+        await storageDriver.downloadFile(bucket, key, accessToken, tmpPath, downloadOpts);
         archive.file(tmpPath, { name: key });
       }
       await archive.finalize();

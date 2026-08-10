@@ -4,12 +4,16 @@ import { Readable } from "node:stream";
 const mockMkdirSync = vi.fn();
 const mockCreateWriteStream = vi.fn();
 const mockUnlink = vi.fn(async (_path: string) => {});
+const mockWriteFile = vi.fn(async (_path: string, _data: Uint8Array) => {});
 
 vi.mock("node:fs", () => ({
   default: {
     mkdirSync: (...args: unknown[]) => mockMkdirSync(...args),
     createWriteStream: (...args: unknown[]) => mockCreateWriteStream(...args),
-    promises: { unlink: (p: string) => mockUnlink(p) },
+    promises: {
+      unlink: (p: string) => mockUnlink(p),
+      writeFile: (p: string, data: Uint8Array) => mockWriteFile(p, data),
+    },
   },
 }));
 
@@ -61,6 +65,7 @@ beforeEach(() => {
   mockMkdirSync.mockClear();
   mockCreateWriteStream.mockClear();
   mockUnlink.mockClear();
+  mockWriteFile.mockClear();
   mockPipeline.mockClear();
   mockPipeline.mockImplementation(async () => {});
 });
@@ -191,5 +196,43 @@ describe("downloadFile", () => {
       nodeDriver.downloadFile(APP_ID, KEY, API_KEY, "/tmp/out/logo.png"),
     ).rejects.toThrow(/socket hang up/);
     expect(mockUnlink).toHaveBeenCalledWith("/tmp/out/logo.png");
+  });
+
+  it("routes the grant and byte fetch through the host HTTP bridge when given", async () => {
+    // Bastion-bound cloud accounts pass services.http so the API-key-bearing
+    // grant and the allowlisted ufs.sh GET stay on the tunnel.
+    const request = vi.fn(async (req: { url: string; responseEncoding?: string }) => {
+      if (req.url.endsWith("/v6/requestFileAccess")) {
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({ ufsUrl: `https://${APP_ID}.ufs.sh/f/${KEY}?sig=1`, url: "" }),
+        };
+      }
+      expect(req.responseEncoding).toBe("binary");
+      return {
+        status: 200,
+        headers: {},
+        body: "",
+        rawBody: new Uint8Array([1, 2, 3]),
+      };
+    });
+
+    await nodeDriver.downloadFile(APP_ID, KEY, API_KEY, "/tmp/out/logo.png", {
+      http: { request },
+    });
+
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(request.mock.calls[0]![0]).toMatchObject({
+      url: "https://api.uploadthing.com/v6/requestFileAccess",
+      method: "POST",
+    });
+    expect(request.mock.calls[1]![0]).toMatchObject({
+      url: `https://${APP_ID}.ufs.sh/f/${KEY}?sig=1`,
+      method: "GET",
+      responseEncoding: "binary",
+    });
+    expect(mockWriteFile).toHaveBeenCalledWith("/tmp/out/logo.png", new Uint8Array([1, 2, 3]));
+    expect(calls).toHaveLength(0);
   });
 });

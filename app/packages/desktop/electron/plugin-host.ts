@@ -9,6 +9,7 @@ import { ipcMain } from "electron";
 import path from "node:path";
 import { sqlDrivers, kvDrivers, dockerDrivers, k8sDrivers, storageDrivers } from "./drivers";
 import { isDialogBlessedPath } from "./main-utils";
+import { getDesktopHttpHostServices } from "./plugin-runtime";
 
 ipcMain.handle(
   "plugin_sql_query",
@@ -157,7 +158,9 @@ ipcMain.handle(
         continue;
       }
       try {
-        await driver.downloadFile(bucket, key, accessToken, destPath);
+        await driver.downloadFile(bucket, key, accessToken, destPath, {
+          http: getDesktopHttpHostServices(),
+        });
       } catch (e) {
         errors.push(`${key}: ${String(e)}`);
       }
