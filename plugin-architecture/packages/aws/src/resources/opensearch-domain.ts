@@ -13,11 +13,25 @@ export const OpenSearchDomainResourceType = rt({
     f("volumeType", "Volume Type", { required: false }),
     f("volumeSize", "Volume Size (GB)", { kind: "number", required: false }),
     f("encryptionEnabled", "Encryption", { kind: "boolean", required: false }),
+    f("vpcId", "VPC ID", { required: false, description: "Set on VPC-attached domains only" }),
+    f("subnetIds", "Subnets", {
+      required: false,
+      description: "Comma-separated subnet IDs the domain's ENIs live in",
+    }),
+    f("securityGroupIds", "Security Groups", {
+      required: false,
+      description: "Comma-separated security group IDs applied to the domain's ENIs",
+    }),
   ],
   outputs: [
     o("endpoint", "Endpoint"),
     o("dashboardEndpoint", "Dashboard Endpoint"),
     o("domainArn", "Domain ARN"),
+  ],
+  dependsOn: [
+    { fieldKey: "vpcId", targetTypeId: "vpc", label: "in VPC" },
+    { fieldKey: "subnetIds", targetTypeId: "subnet", label: "in subnet" },
+    { fieldKey: "securityGroupIds", targetTypeId: "security-group", label: "guarded by" },
   ],
   iconKey: "search",
   supportsCreate: true,
@@ -44,6 +58,27 @@ export const OpenSearchDomainResourceType = rt({
         { envKey: "OPENSEARCH_ENDPOINT", outputKey: "endpoint" },
         { envKey: "OPENSEARCH_DASHBOARD", outputKey: "dashboardEndpoint" },
       ],
+    },
+  ],
+  // `vpcId` is only stored for VPC-attached domains — public domains leave it
+  // unset, which is what `empty` matches.
+  postureChecks: [
+    {
+      id: "opensearch-public-endpoint",
+      title: "Domain publicly reachable",
+      severity: "high",
+      category: "public-exposure",
+      conditions: [{ fieldKey: "vpcId", when: "empty" }],
+      reason:
+        "The domain has no VPC attachment, so its endpoint is reachable from the public internet and only the domain access policy stands between it and the world.",
+    },
+    {
+      id: "opensearch-unencrypted",
+      title: "Encryption at rest disabled",
+      severity: "medium",
+      category: "encryption",
+      conditions: [{ fieldKey: "encryptionEnabled", when: "falsy" }],
+      reason: "Encryption at rest is disabled for the domain's indices and logs.",
     },
   ],
 });

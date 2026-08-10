@@ -22,9 +22,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "rm -rf dist && tsup",
-    "dev": "tsup --watch",
-    "typecheck": "tsgo --noEmit",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "clean": "rm -rf dist"
   },
@@ -35,10 +35,10 @@
     "dockerode": ">=3"
   },
   "devDependencies": {
-    "@types/dockerode": "^3.3.31",
-    "dockerode": "^5.0.0",
-    "tsup": "^8.3.5",
-    "typescript": "^5.7.3",
-    "vitest": "^4.1.8"
+    "@types/dockerode": "^3.3.47",
+    "dockerode": "^5.0.1",
+    "tsdown": "^0.22.14",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   }
 }

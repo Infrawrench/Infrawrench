@@ -28,6 +28,13 @@ export const GroqFineTuningResourceType = rt({
     o("fineTuningId", "Fine-Tuning ID"),
     o("baseUrl", "OpenAI-Compatible Base URL"),
   ],
+  // `base_model` is a `/openai/v1/models` id; `input_file_id` a `/openai/v1/files`
+  // id. `fineTunedModel` names the adapter this registration produces, so it is
+  // deliberately not an edge.
+  dependsOn: [
+    { fieldKey: "baseModel", targetTypeId: "groq-model", label: "adapts" },
+    { fieldKey: "inputFileId", targetTypeId: "groq-file", label: "built from" },
+  ],
   supportsCreate: true,
   supportsDelete: true,
   iconKey: "sliders",

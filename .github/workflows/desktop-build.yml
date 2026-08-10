@@ -67,12 +67,10 @@ jobs:
       - name: Copy env.production.ts to env.ts for desktop package
         run: cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
       - name: Build plugin dependencies
-        run: sudo env "PATH=$PATH" pnpm turbo build --filter='@infrawrench/desktop^...'
+        # sudo drops CI=; pnpm 11 aborts module purges without CI/TTY (ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY)
+        run: sudo env "PATH=$PATH" "CI=true" pnpm turbo build --filter='@infrawrench/desktop^...'
       - name: Build
-        run: sudo env "PATH=$PATH" pnpm --filter @infrawrench/desktop dist --linux deb appimage snap
-        env:
-          ELECTRON_CACHE: ${{ runner.temp }}/electron-cache
-          ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache
+        run: sudo env "PATH=$PATH" "CI=true" "ELECTRON_CACHE=${{ runner.temp }}/electron-cache" "ELECTRON_BUILDER_CACHE=${{ runner.temp }}/electron-builder-cache" pnpm --filter @infrawrench/desktop dist --linux deb appimage snap
       - name: Upload artifacts to R2
         shell: bash
         env:
@@ -298,13 +296,7 @@ jobs:
       - run: corepack enable
       - name: Skip workerd build (unsupported on Windows ARM64)
         if: matrix.platform == 'windows-11-arm'
-        run: |
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.pnpm = { ...pkg.pnpm, neverBuiltDependencies: ['workerd'] };
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
-          "
+        run: 'sed -i "s/workerd: true/workerd: false/" pnpm-workspace.yaml'
       - run: pnpm install --frozen-lockfile
       - name: Copy env.production.ts to env.ts for desktop package
         run: cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts

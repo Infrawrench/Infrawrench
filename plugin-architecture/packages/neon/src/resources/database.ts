@@ -15,6 +15,12 @@ export const NeonDatabaseResourceType = rt({
     o("host", "Host"),
     o("database", "Database Name"),
   ],
+  dependsOn: [
+    { fieldKey: "projectId", targetTypeId: "neon-project", label: "in project" },
+    { fieldKey: "branchId", targetTypeId: "neon-branch", label: "on branch" },
+    // Roles are keyed by name within a branch, which is also their external id.
+    { fieldKey: "ownerName", targetTypeId: "neon-role", label: "owned by" },
+  ],
   parentTypeId: "neon-branch",
   supportsCreate: true,
   iconKey: "neon",

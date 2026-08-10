@@ -35,6 +35,7 @@ import { SpotlightSearch } from "../components/SpotlightSearch";
 import { UpdatePromptHost } from "../components/UpdatePromptHost";
 import { SwipeIndicator } from "../components/SwipeIndicator";
 import { SidebarAccounts } from "../components/SidebarAccounts";
+import { ProviderIncidentShellBanner } from "../components/ProviderIncidentShellBanner";
 import { SidebarDashboards } from "../components/SidebarDashboards";
 import { Onboarding, isOnboardingComplete, markOnboardingComplete } from "../components/Onboarding";
 import { getDb } from "../db/client";
@@ -60,8 +61,10 @@ import {
   dashboardTabTarget,
   resourceTabTarget,
   workflowsTabTarget,
+  settingsTabTarget,
   getWorkspaceNavigateArgs,
   navigateToWorkspaceTarget,
+  plainRouteDocumentTitle,
   syncWorkspaceRouteFromPath,
 } from "../lib/workspace-tabs";
 import { BANNERS, SHOW_SIGN_IN_BUTTON } from "../../env";
@@ -135,14 +138,26 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     return rows[0] ? { ...tab, title: rows[0].display_name } : null;
   }
 
-  // Agents, Costs, Workflows, and Chat tabs aren't backed by a single resource
-  // row; keep them as-is.
+  // Agents, Costs, Graph, Logs, Changes, Expiring, Posture, Domains, Env diff,
+  // Fan-out, Alerts, Workflows, and Chat tabs aren't backed by a single
+  // resource row; keep them as-is.
   if (
     target.kind === "agents" ||
     target.kind === "costs" ||
+    target.kind === "graph" ||
+    target.kind === "logs" ||
+    target.kind === "changes" ||
+    target.kind === "expiring" ||
+    target.kind === "posture" ||
+    target.kind === "dns" ||
+    target.kind === "environment-diff" ||
+    target.kind === "ssh-fanout" ||
+    target.kind === "metric-alerts" ||
+    target.kind === "probes" ||
     target.kind === "workflows" ||
     target.kind === "deployments" ||
-    target.kind === "chat"
+    target.kind === "chat" ||
+    target.kind === "settings"
   ) {
     return tab;
   }
@@ -239,9 +254,11 @@ function RootLayout() {
     getWorkspaceNavigateArgs,
   );
 
-  useWorkspaceTabDocumentTitle({ suffix: false });
   const router = useRouter();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  // On plain routes (Changes, Expiring, Fan-out, Alerts, …) the workspace
+  // tabs are all background — the page's own title wins over the active tab.
+  useWorkspaceTabDocumentTitle({ suffix: false, routeTitle: plainRouteDocumentTitle(pathname) });
   const hash = useRouterState({ select: (state) => state.location.hash });
   // Under hash history the query string lives inside the hash fragment, so
   // window.location.search is always empty — read it from router state.
@@ -621,6 +638,8 @@ function RootLayout() {
           </div>
         )}
 
+        <ProviderIncidentShellBanner />
+
         <GlobalTabBar
           tabs={workspaceTabs}
           activeTabId={activeWorkspaceTabId}
@@ -673,6 +692,23 @@ function RootLayout() {
                   <span className="text-base leading-none">+</span>
                   Add account
                 </button>
+                {/* Org settings are cloud-backed; local-only mode has no org
+                    to configure, so no tile without one. Same shared sections
+                    the web renders — see DesktopSettingsPanel. */}
+                {activeOrgId && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void navigateToWorkspaceTarget(navigate, settingsTabTarget(), {
+                        label: "Settings",
+                      })
+                    }
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+                  >
+                    <span className="text-base leading-none">&#9881;</span>
+                    Settings
+                  </button>
+                )}
                 {shellCommandInstalled === false && (
                   <button
                     type="button"
@@ -730,7 +766,7 @@ function RootLayout() {
             {/* Tabs render via WorkspaceTabsViewport: every open tab stays
                 mounted so SSH PTYs / xterm scrollback / port-forwards
                 survive tab switches. <Outlet/> still renders non-tab routes
-                (index, settings); tab routes' components are no-ops. */}
+                (index); tab routes' components are no-ops. */}
             <DesktopWorkspaceTabsViewport />
             <Outlet />
           </main>

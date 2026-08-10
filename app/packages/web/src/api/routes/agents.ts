@@ -13,8 +13,15 @@ import type {
   ResourceInstance,
 } from "@infrawrench/plugin-base";
 import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
-import type { AgentTool } from "@infrawrench/ui/agents";
+import type { AgentSurface, AgentTool } from "@infrawrench/ui/agents";
 import { buildAgentLaunchCommand, isCloneableGitRepo } from "@infrawrench/ui/agents/launch-command";
+import {
+  agentSurfaceOrDefault,
+  agentSurfaceRequiresRepo,
+  buildT3CodeConnectCommand,
+  isT3CodeSurface,
+  T3_CODE_PROJECTS_DIR,
+} from "@infrawrench/ui/agents/t3-code";
 
 import { db } from "../../db/client";
 import { accounts, agentSessions, agentSettings, resources, sshKeys } from "../../db/schema";
@@ -23,12 +30,14 @@ import { requirePermission } from "../../auth/permissions";
 import { getClientForAccount } from "../../services/plugin-clients";
 import { buildAad, decrypt, encrypt } from "../../services/encryption";
 import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
+import { createT3CodeSetupPlan } from "@infrawrench/ui/agents/t3-code";
 import {
   createAgentSetupPlanForRepo,
   ensureAgentVmSetupForSession,
   hasAgentSetupComplete,
   maybeAutoResumeAgentSetup,
   scheduleAgentVmSetup,
+  revokeT3CodeLinkOnVm,
   setupAwareAgentStatus,
   setupPlanLogLines,
 } from "../../services/agent-setup";
@@ -127,6 +136,7 @@ app.get("/settings", async (c) => {
     pluginId: row.pluginId,
     resourceTypeId: row.resourceTypeId,
     tool: row.tool,
+    surface: agentSurfaceOrDefault(row.surface),
     fields: row.fieldsJson,
   });
 });
@@ -139,33 +149,25 @@ app.put("/settings", async (c) => {
     pluginId: string;
     resourceTypeId: string;
     tool: string;
+    surface?: string;
     fields: Record<string, string>;
   }>();
   const id = `${organizationId}:default`;
+  const surface = agentSurfaceOrDefault(body.surface);
+  const values = {
+    accountId: body.accountId,
+    pluginId: body.pluginId,
+    resourceTypeId: body.resourceTypeId,
+    tool: body.tool,
+    surface,
+    fieldsJson: body.fields ?? {},
+    updatedAt: new Date(),
+  };
   await db
     .insert(agentSettings)
-    .values({
-      id,
-      organizationId,
-      accountId: body.accountId,
-      pluginId: body.pluginId,
-      resourceTypeId: body.resourceTypeId,
-      tool: body.tool,
-      fieldsJson: body.fields ?? {},
-      updatedAt: new Date(),
-    })
-    .onConflictDoUpdate({
-      target: agentSettings.id,
-      set: {
-        accountId: body.accountId,
-        pluginId: body.pluginId,
-        resourceTypeId: body.resourceTypeId,
-        tool: body.tool,
-        fieldsJson: body.fields ?? {},
-        updatedAt: new Date(),
-      },
-    });
-  return c.json(body);
+    .values({ id, organizationId, ...values })
+    .onConflictDoUpdate({ target: agentSettings.id, set: values });
+  return c.json({ ...body, surface });
 });
 
 app.get("/sessions", async (c) => {
@@ -194,7 +196,7 @@ app.post("/sessions", async (c) => {
   const organizationId = orgId(c);
   const { userId } = c.get("session");
   const body = await c.req.json<{
-    repo: string;
+    repo?: string;
     projectName?: string;
     workspaceName?: string;
     settings: {
@@ -202,26 +204,38 @@ app.post("/sessions", async (c) => {
       pluginId: string;
       resourceTypeId: string;
       tool: string;
+      surface?: string;
       fields: Record<string, string>;
     };
   }>();
-  if (!body.repo?.trim()) return c.json({ error: "repo is required" }, 400);
-  const repo = body.repo.trim();
-  // Web sessions have no local-folder upload path; the repo is cloned on the
-  // VM during setup, so it must be a URL Git can clone.
-  if (!isCloneableGitRepo(repo)) {
-    return c.json(
-      { error: "repo must be a cloneable Git URL (https://, ssh://, git://, or git@host:path)" },
-      400,
-    );
+  const tool: AgentTool = body.settings.tool === "claude-code" ? "claude-code" : "codex";
+  const surface: AgentSurface = agentSurfaceOrDefault(body.settings.surface);
+  const repo = body.repo?.trim() ?? "";
+  // T3 Code servers manage their own projects, so they are provisioned
+  // without a repository; every other surface still requires one.
+  if (agentSurfaceRequiresRepo(surface)) {
+    if (!repo) return c.json({ error: "repo is required" }, 400);
+    // Web sessions have no local-folder upload path; the repo is cloned on the
+    // VM during setup, so it must be a URL Git can clone.
+    if (!isCloneableGitRepo(repo)) {
+      return c.json(
+        { error: "repo must be a cloneable Git URL (https://, ssh://, git://, or git@host:path)" },
+        400,
+      );
+    }
   }
   const id = randomUUID();
-  const projectName = body.projectName?.trim() || projectNameFromRepo(body.repo);
-  const workspaceName = body.workspaceName?.trim() || projectNameFromRepo(body.repo) || projectName;
-  const tool: AgentTool = body.settings.tool === "claude-code" ? "claude-code" : "codex";
-  const setupPlan = createAgentSetupPlanForRepo(repo, tool, workspaceName);
+  const isT3Code = isT3CodeSurface(surface);
+  const projectName =
+    body.projectName?.trim() || (repo ? projectNameFromRepo(repo) : "") || "t3-code";
+  const workspaceName = isT3Code
+    ? T3_CODE_PROJECTS_DIR
+    : body.workspaceName?.trim() || projectNameFromRepo(repo) || projectName;
+  const setupPlan = isT3Code
+    ? createT3CodeSetupPlan(tool)
+    : createAgentSetupPlanForRepo(repo, tool, workspaceName);
   const logs = [
-    "Agent session created.",
+    isT3Code ? "T3 Code server session created." : "Agent session created.",
     "Setup policy: conservative detection.",
     ...setupPlanLogLines(setupPlan),
     "Provisioning VM with selected provider defaults.",
@@ -286,7 +300,10 @@ app.post("/sessions", async (c) => {
     accountId: body.settings.accountId,
     pluginId: body.settings.pluginId,
     resourceTypeId: body.settings.resourceTypeId,
-    tool: body.settings.tool,
+    tool,
+    surface,
+    // Kept non-empty for T3 Code servers too: nothing checks it out, but a
+    // blank branch reads as data loss in the session row.
     branchName: branchName(id),
     status: initialStatus,
     vmResourceId: resource.id,
@@ -323,10 +340,23 @@ app.post("/sessions/:id/open", async (c) => {
   }).catch((error) => {
     console.warn(`Agent VM setup failed for ${row.id}`, error);
   });
+  const tool: AgentTool = row.tool === "claude-code" ? "claude-code" : "codex";
+  // A T3 Code session's terminal is the one-off authorization flow, not an
+  // attached agent: T3 Code itself runs the agent, and its own tab is the
+  // session's main surface. There is no launch-ready marker to wait on
+  // because nothing is being attached.
+  if (isT3CodeSurface(row.surface)) {
+    return c.json({
+      command: buildT3CodeConnectCommand({ tool }),
+      cwd: `~/${row.workspaceName}`,
+      sshKeyId: agentKey.id,
+      sshKeyName: agentKey.name,
+    });
+  }
   return c.json({
     command: buildAgentLaunchCommand({
       sessionId: row.id,
-      tool: row.tool === "claude-code" ? "claude-code" : "codex",
+      tool,
       workspaceName: row.workspaceName,
       ...(launchReadyToken ? { launchReadyToken } : {}),
     }),
@@ -341,6 +371,12 @@ app.delete("/sessions/:id", async (c) => {
   const organizationId = orgId(c);
   const row = await loadSession(c.req.param("id"), organizationId);
   if (!row) return c.json({ error: "Not found" }, 404);
+  // Revoke the relay link while the VM still exists — afterwards there is no
+  // way to remove the environment from T3's side. Best effort: an unreachable
+  // VM must not block deletion of a machine that is still billing.
+  if (isT3CodeSurface(row.surface)) {
+    await revokeT3CodeLinkOnVm(row.id, organizationId);
+  }
   if (row.vmResourceId) {
     const [resourceRow] = await db
       .select({ id: resources.id })
@@ -388,6 +424,13 @@ app.post("/sessions/:id/reconcile", async (c) => {
     await db.delete(agentSessions).where(eq(agentSessions.id, row.id));
     return c.json({ error: "Agent VM no longer exists" }, 404);
   }
+  if (isT3CodeSurface(row.surface)) {
+    return c.json({
+      branchName: row.branchName,
+      message:
+        "T3 Code owns this server's projects and their branches — push from inside T3 Code. Infrawrench has nothing to reconcile.",
+    });
+  }
   return c.json({
     branchName: row.branchName,
     // Web sessions clone from a Git URL on the VM; there is no local checkout
@@ -415,6 +458,7 @@ function rowToSession(row: typeof agentSessions.$inferSelect) {
     pluginId: row.pluginId,
     resourceTypeId: row.resourceTypeId,
     tool: row.tool,
+    surface: agentSurfaceOrDefault(row.surface),
     branchName: row.branchName,
     status: row.status,
     vmResourceId: row.vmResourceId,

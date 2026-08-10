@@ -23,6 +23,16 @@ export const StaticIpResourceType = rt({
   ],
   outputs: [o("address", "IP Address")],
   supportsCreate: true,
+  // status is the API's own idle signal (RESERVED vs IN_USE). Internal
+  // reserved addresses are free, so they're excluded. Don't switch this to
+  // attachedVmName — the lister never populates that field.
+  orphanRule: {
+    conditions: [
+      { fieldKey: "status", when: "equals", value: "RESERVED" },
+      { fieldKey: "addressType", when: "notEquals", value: "INTERNAL" },
+    ],
+    reason: "Static external IP is reserved but not in use",
+  },
   attachTargets: [
     {
       pluginId: "gcp",

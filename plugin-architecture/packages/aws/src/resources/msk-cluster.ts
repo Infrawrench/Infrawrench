@@ -23,8 +23,20 @@ export const MSKClusterResourceType = rt({
     f("numberOfBrokerNodes", "Broker Nodes", { kind: "number", required: false }),
     f("instanceType", "Instance Type", { required: false }),
     f("storagePerBrokerGb", "Storage/Broker (GB)", { kind: "number", required: false }),
+    f("subnetIds", "Client Subnets", {
+      required: false,
+      description: "Comma-separated subnet IDs the broker ENIs live in",
+    }),
+    f("securityGroupIds", "Security Groups", {
+      required: false,
+      description: "Comma-separated security group IDs applied to the broker ENIs",
+    }),
   ],
   outputs: [o("clusterArn", "Cluster ARN"), o("bootstrapBrokers", "Bootstrap Brokers")],
+  dependsOn: [
+    { fieldKey: "subnetIds", targetTypeId: "subnet", label: "in subnet" },
+    { fieldKey: "securityGroupIds", targetTypeId: "security-group", label: "guarded by" },
+  ],
   iconKey: "stream",
   supportsMetrics: true,
   secretExportTemplates: [

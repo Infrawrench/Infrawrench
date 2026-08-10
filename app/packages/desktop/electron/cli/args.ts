@@ -2,6 +2,9 @@
 // subcommand routing happens in main.ts over the returned positionals.
 import { parseArgs } from "node:util";
 import { CliError, type CliFlags } from "./context";
+import type { FanoutFlags } from "./commands/ssh-fanout";
+import type { DiffFlags } from "./commands/diff";
+import type { ConfigFlags } from "./commands/config";
 
 export interface RangeFlags {
   last?: string | undefined;
@@ -10,6 +13,24 @@ export interface RangeFlags {
   groupBy?: string | undefined;
   series?: string | undefined;
   type?: string | undefined;
+  /**
+   * Explicit whole-day window for endpoints that take a `days` query param
+   * (`costs --anomalies`, `changes`). `--last 14d` says the same thing; this
+   * exists because the server-side parameter is literally named `days` and
+   * scripts read better spelling it the same way.
+   */
+  days?: number | undefined;
+  /** Row cap for listings (`changes`) — maps to the endpoint's `pageSize`. */
+  limit?: number | undefined;
+  /** `changes` filter: created | updated | deleted. */
+  kind?: string | undefined;
+  /** Resource id to filter/focus on (`changes`, `graph`). */
+  resource?: string | undefined;
+  /**
+   * `moment` half-window, in `parseDuration` form (`30m`, `6h`). Named apart
+   * from `--last` because it is a ± around a centre, not a lookback.
+   */
+  window?: string | undefined;
 }
 
 /** Flags for the push-up commands (`page`, `costs push`). */
@@ -64,8 +85,13 @@ export interface ParsedCli {
   push: PushFlags;
   deploy: DeployFlags;
   exportFlags: ExportFlags;
+  fanout: FanoutFlags;
+  diff: DiffFlags;
+  config: ConfigFlags;
   positionals: string[];
   version: boolean;
+  /** `costs --anomalies` — the spend-spike list instead of the spend chart. */
+  anomalies: boolean;
 }
 
 export function parseCliArgs(argv: string[]): ParsedCli {
@@ -92,6 +118,16 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         "group-by": { type: "string" },
         series: { type: "string" },
         type: { type: "string" },
+        days: { type: "string" },
+        limit: { type: "string" },
+        kind: { type: "string" },
+        resource: { type: "string" },
+        // `moment` half-window (± around the timestamp).
+        window: { type: "string", short: "w" },
+        // `costs --anomalies` — same command, different question.
+        anomalies: { type: "boolean", default: false },
+        // `posture dismiss` — why the finding is an accepted risk.
+        reason: { type: "string" },
         // Push-up flags (`page`, `costs push`).
         source: { type: "string" },
         key: { type: "string" },
@@ -109,6 +145,25 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         "to-run": { type: "string" },
         "delete-created": { type: "boolean", default: false },
         created: { type: "boolean", default: false },
+        // Fan-out SSH flags (`ssh-fanout`). `--list` and `--yes` are booleans;
+        // the rest narrow the host set or supply credentials.
+        list: { type: "boolean", default: false },
+        hosts: { type: "string" },
+        plugin: { type: "string" },
+        tag: { type: "string" },
+        user: { type: "string" },
+        snippet: { type: "string" },
+        yes: { type: "boolean", short: "y", default: false },
+        concurrency: { type: "string" },
+        // Environment diff (`diff`). `-a` is the existing account flag, so the
+        // second side needs one of its own.
+        against: { type: "string", short: "b" },
+        all: { type: "boolean", default: false },
+        // Config-as-code flags (`config`). `--file` doubles as the export
+        // destination; `--out` is the name that reads right when writing.
+        out: { type: "string" },
+        sections: { type: "string" },
+        prune: { type: "boolean", default: false },
       },
     });
   } catch (e) {
@@ -150,6 +205,17 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     }
   }
 
+  /** A flag that must be a positive whole number, or a single-line error. */
+  const positiveInt = (key: string): number | undefined => {
+    const text = str(key);
+    if (text === undefined) return undefined;
+    const value = Number(text);
+    if (!Number.isInteger(value) || value < 1) {
+      throw new CliError(`--${key} must be a whole number of at least 1, got "${text}"`, 2);
+    }
+    return value;
+  };
+
   return {
     flags: {
       output,
@@ -157,6 +223,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       org: str("org") ?? null,
       local: values.local === true,
       account: str("account") ?? null,
+      reason: str("reason") ?? null,
       help: values.help === true,
     },
     range: {
@@ -166,6 +233,11 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       groupBy: str("group-by"),
       series: str("series"),
       type: str("type"),
+      days: positiveInt("days"),
+      limit: positiveInt("limit"),
+      kind: str("kind"),
+      resource: str("resource"),
+      window: str("window"),
     },
     deploy: {
       env: str("env"),
@@ -178,6 +250,28 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     exportFlags: {
       format: str("format"),
     },
+    diff: {
+      against: str("against"),
+      all: values.all === true,
+    },
+    fanout: {
+      list: values.list === true,
+      hosts: str("hosts"),
+      plugin: str("plugin"),
+      tag: str("tag"),
+      key: str("key"),
+      user: str("user"),
+      snippet: str("snippet"),
+      yes: values.yes === true,
+      concurrency: positiveInt("concurrency"),
+    },
+    config: {
+      file: str("file"),
+      out: str("out"),
+      sections: str("sections"),
+      prune: values.prune === true,
+      yes: values.yes === true,
+    },
     push: {
       source: str("source"),
       key: str("key"),
@@ -188,7 +282,40 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     },
     positionals: parsed.positionals,
     version: values.version === true,
+    anomalies: values.anomalies === true,
   };
+}
+
+/**
+ * `--last 30d|12w|3m` for the day-granularity commands (costs, anomalies,
+ * changes). Separate from `parseDuration` because those spans are whole days
+ * and accept months, which minutes/hours never do.
+ */
+export function parseLastDays(text: string): number {
+  const match = /^(\d+)([dwm])$/.exec(text);
+  if (!match) {
+    throw new CliError(`Invalid --last "${text}" — use forms like 7d, 30d, 12w, 3m`, 2);
+  }
+  const n = Number(match[1]);
+  return n * { d: 1, w: 7, m: 30 }[match[2] as "d" | "w" | "m"]!;
+}
+
+/**
+ * The day window a command should ask the server for: an explicit `--days`
+ * wins, `--last` is converted, and neither means the caller's default. Bounds
+ * are the endpoint's own, checked here so a typo fails before the round trip.
+ */
+export function resolveDayWindow(range: RangeFlags, defaultDays: number, max: number): number {
+  const days =
+    range.days ?? (range.last ? Math.max(1, Math.round(parseLastDays(range.last))) : null);
+  if (days === null) return defaultDays;
+  if (days > max) {
+    throw new CliError(
+      `Window too large — the server accepts at most ${max} days, asked for ${days}.`,
+      2,
+    );
+  }
+  return days;
 }
 
 const DURATION_RE = /^(\d+)([mhdw])$/;

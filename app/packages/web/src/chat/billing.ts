@@ -12,66 +12,24 @@
  * job has not been written.
  */
 import { v4 as uuidv4 } from "uuid";
-import { eq, and, gte, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import { getAiSpendStatus } from "@infrawrench/server-core/billing/ai-usage";
 import { db } from "../db/client";
 import { chatUsage, organizations, subscriptions } from "../db/schema";
 import { computeCostMicros, computeSearchCostMicros, type TokenUsage } from "./pricing";
 import { getStripe } from "../services/stripe";
 import type { SpendStatus } from "@infrawrench/ui";
 
-/** ISO timestamp of the first day of the current month (UTC). */
-function monthStart(): Date {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-}
-
 /**
- * Orgs without a paid subscription (no payment method on file) get this much
- * chat usage per month: $5. An org-configured cap below this still applies.
+ * The org's month-to-date AI spend against its monthly cap. Since `infra.ai()`
+ * arrived in workflows this is org-wide AI spend, not just chat: the sum covers
+ * `chat_usage`, `workflow_ai_usage`, and active in-flight reservations. Both
+ * features reserve under the same org lock before a provider call — the
+ * canonical logic lives in server-core's billing/ai-usage.ts (the poller
+ * needs it too).
  */
-const FREE_TIER_CAP_MICROS = 5_000_000;
-
 export async function getMonthlySpend(organizationId: string): Promise<SpendStatus> {
-  const [org] = await db
-    .select({
-      cap: organizations.chatMonthlyCapMicros,
-      complimentary: organizations.complimentary,
-    })
-    .from(organizations)
-    .where(eq(organizations.id, organizationId))
-    .limit(1);
-
-  const [sub] = await db
-    .select({ status: subscriptions.status })
-    .from(subscriptions)
-    .where(eq(subscriptions.organizationId, organizationId))
-    .limit(1);
-  // Same definition of "paid" as the billing settings page: an org is free
-  // when it has no subscription row or the subscription never activated.
-  // Complimentary orgs count as paid everywhere without a Stripe subscription.
-  const complimentary = org?.complimentary === true;
-  const hasPaidSubscription =
-    complimentary || sub?.status === "active" || sub?.status === "past_due";
-
-  const rows = await db
-    .select({ total: sql<string>`coalesce(sum(${chatUsage.costMicros}), 0)` })
-    .from(chatUsage)
-    .where(
-      and(eq(chatUsage.organizationId, organizationId), gte(chatUsage.createdAt, monthStart())),
-    );
-
-  const monthToDateMicros = Number(rows[0]?.total ?? 0) || 0;
-  const orgCapMicros = org?.cap ?? null;
-  const monthlyCapMicros = hasPaidSubscription
-    ? orgCapMicros
-    : Math.min(orgCapMicros ?? FREE_TIER_CAP_MICROS, FREE_TIER_CAP_MICROS);
-  return {
-    monthToDateMicros,
-    monthlyCapMicros,
-    exceeded: monthlyCapMicros != null && monthToDateMicros >= monthlyCapMicros,
-    freeTier: !hasPaidSubscription,
-    complimentary,
-  };
+  return getAiSpendStatus(organizationId);
 }
 
 interface RecordUsageInput {

@@ -9,6 +9,8 @@ export {
 export { WorkflowEditorView } from "./WorkflowEditorView.js";
 export { WorkflowIcon } from "./WorkflowIcon.js";
 export { WorkflowDashboardCard } from "./WorkflowDashboardCard.js";
+export { ApprovalCard, formatExpiry, type ApprovalCardProps } from "./ApprovalCard.js";
+export { ApprovalsInbox, type ApprovalsInboxProps } from "./ApprovalsInbox.js";
 export type {
   WorkflowDashboardCardData,
   WorkflowDashboardCardProps,
@@ -17,6 +19,8 @@ export type {
 export type {
   MetricValue,
   PromptSpec,
+  ApprovalsClient,
+  WorkflowApprovalStatus,
   BudgetIntegration,
   BudgetOption,
   GitRepoOption,
@@ -28,6 +32,7 @@ export type {
   StoredWorkflowMetricDef,
   WorkflowMetricDef,
   WorkflowMetricRow,
+  WorkflowApprovalRow,
   WorkflowRunResult,
   WorkflowRunRow,
   WorkflowRunLog,

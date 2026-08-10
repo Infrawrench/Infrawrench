@@ -18,6 +18,10 @@ export const NeonBucketResourceType = rt({
     f("createdAt", "Created At", { required: false }),
   ],
   outputs: [o("bucketName", "Bucket Name"), o("s3Endpoint", "S3 Endpoint"), o("region", "Region")],
+  dependsOn: [
+    { fieldKey: "projectId", targetTypeId: "neon-project", label: "in project" },
+    { fieldKey: "branchId", targetTypeId: "neon-branch", label: "on branch" },
+  ],
   parentTypeId: "neon-branch",
   supportsCreate: true,
   supportsDelete: true,

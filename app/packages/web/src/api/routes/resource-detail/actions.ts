@@ -13,6 +13,11 @@ import {
 import { getMetricRange } from "@infrawrench/server-core/clickhouse/readers";
 import { requirePermission } from "../../../auth/permissions";
 import { runTunnelSshAttach } from "../../../services/tunnel-ssh-attach";
+import {
+  checkChangeFreeze,
+  getActiveChangeFreeze,
+  isActionDestructive,
+} from "../../../services/change-freezes";
 
 /**
  * Cross-cutting per-resource action routes:
@@ -45,6 +50,34 @@ export function registerActionRoutes(app: Hono): void {
     if (!ctx.client.invokeAction) {
       return c.json({ error: "Plugin does not support custom actions" }, 400);
     }
+
+    // Change-freeze gate. The freeze only blocks actions the plugin flagged
+    // `destructive: true` in its detail schema; determining that requires a
+    // schema re-render, so the check is nested behind the (cheap) active-freeze
+    // lookup and costs nothing outside a freeze window.
+    if (await getActiveChangeFreeze(organizationId)) {
+      const destructive = await isActionDestructive(
+        ctx.client,
+        input.resourceTypeId,
+        input.resourceId,
+        input.accountId,
+        input.actionId,
+      );
+      if (destructive) {
+        const frozen = await checkChangeFreeze(c, {
+          action: "resource.invoke_action",
+          entityType: "resource",
+          entityId: input.resourceId,
+          metadata: {
+            pluginId: input.pluginId,
+            resourceTypeId: input.resourceTypeId,
+            actionId: input.actionId,
+          },
+        });
+        if (frozen) return frozen;
+      }
+    }
+
     try {
       await ctx.client.invokeAction(
         input.resourceTypeId,

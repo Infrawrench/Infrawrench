@@ -14,6 +14,9 @@ export const FirewallResourceType = rt({
     f("threatIntelMode", "Threat Intel Mode", { required: false }),
   ],
   outputs: [o("privateIp", "Private IP")],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+  ],
   supportsMetrics: true,
   iconKey: "firewall",
 });

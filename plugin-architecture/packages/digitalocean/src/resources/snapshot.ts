@@ -18,6 +18,12 @@ export const SnapshotResourceType = rt({
     f("minDiskSize", "Min Disk (GB)", { kind: "number", required: false }),
   ],
   outputs: [],
+  // `resourceId` is a numeric Droplet id or a volume uuid depending on
+  // `resourceType`; the id spaces don't overlap, so both rules are safe.
+  dependsOn: [
+    { fieldKey: "resourceId", targetTypeId: "droplet", label: "snapshot of" },
+    { fieldKey: "resourceId", targetTypeId: "volume", label: "snapshot of" },
+  ],
   parentTypeId: "project",
   showInSidebar: true,
   iconKey: "snapshot",

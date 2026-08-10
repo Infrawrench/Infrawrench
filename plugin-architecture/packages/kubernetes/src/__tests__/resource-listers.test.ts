@@ -145,6 +145,74 @@ describe("listPods", () => {
     expect(p!.fields["containerName"]).toBe("nocon");
     expect(p!.fields["restarts"]).toBe(0);
   });
+
+  it("records the scheduled node and namespace-qualifies every configmap/secret reference", async () => {
+    const ctx = ctxFor({
+      "/api/v1/pods": {
+        items: [
+          {
+            metadata: meta("web", "prod"),
+            spec: {
+              nodeName: "node-1",
+              imagePullSecrets: [{ name: "regcred" }],
+              volumes: [
+                { configMap: { name: "app-config" } },
+                { secret: { secretName: "tls" } },
+                {
+                  projected: {
+                    sources: [{ configMap: { name: "ca-bundle" } }, { secret: { name: "token" } }],
+                  },
+                },
+                { emptyDir: {} },
+              ],
+              initContainers: [
+                { name: "init", image: "busybox", envFrom: [{ configMapRef: { name: "shared" } }] },
+              ],
+              containers: [
+                {
+                  name: "c1",
+                  image: "nginx",
+                  // duplicate of the volume mount above -> deduped
+                  envFrom: [
+                    { configMapRef: { name: "app-config" } },
+                    { secretRef: { name: "db" } },
+                  ],
+                  env: [
+                    { valueFrom: { configMapKeyRef: { name: "feature-flags" } } },
+                    { valueFrom: { secretKeyRef: { name: "api-key" } } },
+                    { value: "literal" },
+                  ],
+                },
+              ],
+            },
+            status: { phase: "Running" },
+          },
+        ],
+      },
+    });
+    const [p] = await listers.listPods(ctx, "a");
+    expect(p!.fields["nodeName"]).toBe("node-1");
+    expect(p!.fields["configMaps"]).toBe(
+      "prod/app-config, prod/ca-bundle, prod/shared, prod/feature-flags",
+    );
+    expect(p!.fields["secrets"]).toBe("prod/tls, prod/token, prod/db, prod/api-key, prod/regcred");
+  });
+
+  it("leaves the new reference fields empty when the spec names nothing", async () => {
+    const ctx = ctxFor({
+      "/api/v1/pods": {
+        items: [
+          {
+            metadata: meta("bare", "prod"),
+            spec: { containers: [{ name: "c", image: "img" }] },
+            status: { phase: "Pending" },
+          },
+        ],
+      },
+    });
+    const [p] = await listers.listPods(ctx, "a");
+    expect(p!.fields).toMatchObject({ nodeName: "", configMaps: "", secrets: "" });
+  });
 });
 
 describe("listDeployments / listStatefulSets / listDaemonSets", () => {
@@ -164,7 +232,47 @@ describe("listDeployments / listStatefulSets / listDaemonSets", () => {
       },
     });
     const [d] = await listers.listDeployments(ctx, "a");
-    expect(d!.fields).toMatchObject({ replicas: 3, readyReplicas: 2, image: "img" });
+    expect(d!.fields).toMatchObject({
+      replicas: 3,
+      readyReplicas: 2,
+      image: "img",
+      serviceAccountName: "",
+    });
+  });
+
+  it("carries the pod template's service account through", async () => {
+    const ctx = ctxFor({
+      "/apis/apps/v1/deployments": {
+        items: [
+          {
+            metadata: meta("api", "prod"),
+            spec: {
+              template: {
+                spec: { serviceAccountName: "api-sa", containers: [{ name: "a", image: "img" }] },
+              },
+            },
+            status: {},
+          },
+        ],
+      },
+      "/apis/apps/v1/statefulsets": {
+        items: [
+          {
+            metadata: meta("db", "prod"),
+            spec: {
+              template: {
+                spec: { serviceAccountName: "db-sa", containers: [{ name: "a", image: "pg" }] },
+              },
+            },
+            status: {},
+          },
+        ],
+      },
+    });
+    const [d] = await listers.listDeployments(ctx, "a");
+    const [s] = await listers.listStatefulSets(ctx, "a");
+    expect(d!.fields["serviceAccountName"]).toBe("api-sa");
+    expect(s!.fields["serviceAccountName"]).toBe("db-sa");
   });
 
   it("defaults replicas to 0 when missing", async () => {
@@ -223,6 +331,7 @@ describe("listServices", () => {
       clusterIP: "10.0.0.1",
       ports: "80/TCP",
       hasSelector: "true",
+      qualifiedName: "prod/svc",
     });
     expect(s!.resolvedOutputs).toEqual({ serviceName: "svc" });
   });
@@ -270,6 +379,29 @@ describe("listJobs", () => {
     ]);
     expect(jobs[0]!.fields["completions"]).toBe("1/1");
   });
+
+  it("picks the owning CronJob out of the owner references", async () => {
+    const ctx = ctxFor({
+      "/apis/batch/v1/jobs": {
+        items: [
+          {
+            metadata: {
+              ...meta("backup-28401120", "prod"),
+              ownerReferences: [
+                { kind: "SomethingElse", name: "noise" },
+                { kind: "CronJob", name: "backup", controller: true },
+              ],
+            },
+            spec: { template: { spec: { containers: [{ name: "c", image: "busybox" }] } } },
+            status: { succeeded: 1 },
+          },
+          jobItem("standalone", { active: 1 }),
+        ],
+      },
+    });
+    const jobs = await listers.listJobs(ctx, "a");
+    expect(jobs.map((j) => j.fields["cronJob"])).toEqual(["backup", ""]);
+  });
 });
 
 describe("listCronJobs", () => {
@@ -295,6 +427,7 @@ describe("listCronJobs", () => {
       schedule: "*/5 * * * *",
       suspended: "true",
       lastSchedule: "2024-01-02T00:00:00Z",
+      qualifiedName: "prod/cj",
     });
     expect(cjs[1]!.fields).toMatchObject({ suspended: "false", lastSchedule: "" });
   });
@@ -318,7 +451,40 @@ describe("listIngresses", () => {
       ingressClassName: "nginx",
       hosts: "a.com, *",
       address: "1.2.3.4, lb.example",
+      services: "",
     });
+  });
+
+  it("namespace-qualifies every backend service, default backend included", async () => {
+    const ctx = ctxFor({
+      "/apis/networking.k8s.io/v1/ingresses": {
+        items: [
+          {
+            metadata: meta("ing", "prod"),
+            spec: {
+              defaultBackend: { service: { name: "fallback" } },
+              rules: [
+                {
+                  host: "a.com",
+                  http: {
+                    paths: [
+                      { path: "/", backend: { service: { name: "web" } } },
+                      { path: "/api", backend: { service: { name: "api" } } },
+                      // duplicate of /, and a resource-backend path naming no service
+                      { path: "/dup", backend: { service: { name: "web" } } },
+                      { path: "/static", backend: { resource: { name: "bucket" } } },
+                    ],
+                  },
+                },
+              ],
+            },
+            status: {},
+          },
+        ],
+      },
+    });
+    const [i] = await listers.listIngresses(ctx, "a");
+    expect(i!.fields["services"]).toBe("prod/fallback, prod/web, prod/api");
   });
 
   it("handles missing status / rules", async () => {
@@ -343,7 +509,11 @@ describe("listConfigMaps", () => {
       },
     });
     const cms = await listers.listConfigMaps(ctx, "a");
-    expect(cms[0]!.fields).toMatchObject({ keys: "a, b", dataCount: 2 });
+    expect(cms[0]!.fields).toMatchObject({
+      keys: "a, b",
+      dataCount: 2,
+      qualifiedName: "prod/cm",
+    });
     expect(cms[1]!.fields).toMatchObject({ keys: "", dataCount: 0 });
   });
 });
@@ -365,7 +535,12 @@ describe("listSecrets", () => {
     });
     const secrets = await listers.listSecrets(ctx, "a");
     expect(secrets.map((s) => s.displayName)).toEqual(["app", "notype"]);
-    expect(secrets[0]!.fields).toMatchObject({ type: "Opaque", keys: "token", dataCount: 1 });
+    expect(secrets[0]!.fields).toMatchObject({
+      type: "Opaque",
+      keys: "token",
+      dataCount: 1,
+      qualifiedName: "prod/app",
+    });
     expect(secrets[1]!.fields["type"]).toBe("Opaque");
   });
 });

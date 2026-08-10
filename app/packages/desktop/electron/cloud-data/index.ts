@@ -1,8 +1,24 @@
 // Cloud IPC handlers, split by concern. Importing this file (or the parent
 // directory) registers all of them via electron's `ipcMain.handle`.
 import "./accounts";
+import "./agents";
 import "./chat";
 import "./costs";
+import "./metric-alerts";
+import "./orphans";
+import "./rightsizing";
+import "./expiring";
+import "./posture";
+import "./dns";
+import "./environment-diff";
+import "./changes";
+import "./moment";
+import "./schedules";
+import "./leases";
+import "./probes";
+import "./status-pages";
+import "./ownership";
+import "./log-workspaces";
 import "./custom-graphs";
 import "./dashboards";
 import "./deployments";
@@ -13,4 +29,6 @@ import "./sql-kv-docker";
 import "./workflows";
 import "./sftp";
 import "./ssh-tunnels";
+import "./ssh-fanout";
 import "./host-key-trust";
+import "./settings";

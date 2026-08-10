@@ -18,6 +18,18 @@ export const VolumeResourceType = rt({
     f("appName", "App", { description: "Name of the parent app" }),
   ],
   outputs: [],
+  // `attachedMachineId` is a bare machine id while a machine's external id is
+  // `{appName}/{machineId}`. A volume only ever attaches within its own app, so
+  // composing the qualified id is exact.
+  dependsOn: [
+    { fieldKey: "appName", targetTypeId: "app", label: "in app" },
+    {
+      fieldKey: "attachedMachineId",
+      targetTypeId: "machine",
+      matchTemplate: "{appName}/{attachedMachineId}",
+      label: "attached to",
+    },
+  ],
   supportsCreate: true,
   iconKey: "volume",
   attachTargets: [

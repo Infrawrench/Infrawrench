@@ -10,7 +10,7 @@ The AWS plugin covers the services most teams live in day to day.
 
 - **Compute** — EC2 instances, Auto Scaling Groups, Lambda functions, ECS services.
 - **Kubernetes** — EKS clusters (links to the [Kubernetes plugin](./kubernetes.md) for pod-level access).
-- **Databases** — RDS (Postgres, MySQL, MariaDB, SQL Server, Oracle), Aurora, Redshift, DynamoDB, ElastiCache (Redis / Memcached), OpenSearch Service domains.
+- **Databases** — RDS (Postgres, MySQL, MariaDB, SQL Server, Oracle), Aurora, DocumentDB, Neptune, Redshift, DynamoDB, ElastiCache (Redis / Memcached), OpenSearch Service domains, DB subnet groups.
 - **Storage** — S3 buckets, EBS volumes, EFS file systems.
 - **Networking** — VPC, Subnets, Security Groups, Internet / NAT Gateways, Elastic IPs, Load Balancers, API Gateway, CloudFront.
 - **Messaging** — SQS, SNS.
@@ -29,6 +29,17 @@ Generate an access key pair in the AWS console (**IAM → Users → Security cre
 <insert [AWS Add-account form with access key / secret / region fields] here>
 
 Use least-privilege policies. For read-only browsing, the `ReadOnlyAccess` managed policy is usually enough; for creating resources, you need the matching write permissions.
+
+### Credential preflight & least-privilege policy
+
+The add-account form (and **Check credentials** on the account page) probes what the key pair can actually do, per capability — see [Credential preflight](../core-concepts/credential-preflight.md):
+
+- **Resource inventory** — read-only Describe/List access, checked via a representative sample: `ec2:DescribeInstances`, `s3:ListAllMyBuckets`, `rds:DescribeDBInstances`, `lambda:ListFunctions`, `dynamodb:ListTables`.
+- **Metrics & dashboards** — `cloudwatch:GetMetricStatistics`, `cloudwatch:GetMetricData`, `cloudwatch:ListMetrics`.
+- **Cost reporting** — `ce:GetCostAndUsage`. This is **not** part of `ReadOnlyAccess`-style infra policies, so it's the check that most often comes back ✗.
+- **[Cost estimates](../features/cost-estimates.md)** — `pricing:GetProducts`, for the live per-region prices behind the create form's estimate, the size picker's price chips and the resource page's monthly figure. Also outside typical read-only policies. Without it nothing breaks; AWS resources simply quote no estimate.
+
+The probe resolves the caller with `sts:GetCallerIdentity` (needs no permission) and asks `iam:SimulatePrincipalPolicy` for an exact per-permission verdict; when the key isn't allowed to call the simulator it falls back to one cheap sample read per capability. The generator produces an IAM policy JSON document scoped to the capabilities you tick — attach it as an inline policy on the IAM user whose keys you pasted. It also grants `iam:SimulatePrincipalPolicy` so later preflights stay exact.
 
 ## Notable flows
 
@@ -60,3 +71,11 @@ AWS accounts feed [cost graphs & budgets](../features/cloud-costs.md) via Cost E
 - The IAM user needs the `ce:GetCostAndUsage` action — it is **not** part of typical read-only policies, so add a small policy for it.
 - AWS charges **$0.01 per Cost Explorer request**. Infrawrench fetches once a day (plus a one-time history backfill in month-sized chunks), so expect a few cents per month per account.
 - Per-resource cost breakdown is not collected (Cost Explorer only retains it for 14 days).
+
+## Dependency graph
+
+The VPC wiring is declared, so the [dependency graph](../features/dependency-graph.md) draws it exactly rather than inferring it: EC2 instances link to their VPC, subnet and security groups, and subnets, security groups, load balancers, target groups, NAT gateways and internet gateways link to their VPC. These arrows appear as soon as the account syncs — nothing to wire by hand.
+
+**DB subnet groups** are listed as their own resource so database clusters reach the network. AWS reports a cluster's placement as nothing but the subnet group's name, so Aurora, DocumentDB and Neptune clusters link to their **DB subnet group**, and the group in turn links to its **VPC** and each **subnet** it spans. Opening the group shows every database sharing that placement.
+
+<insert [Dependency graph showing an Aurora cluster linked to a DB subnet group, which fans out to a VPC and two subnets] here>

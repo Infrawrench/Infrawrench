@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { ClickHouseClient } from "./client.js";
+import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { ServiceResourceType } from "./resources/service.js";
 import { DatabaseResourceType } from "./resources/database.js";
 
@@ -85,6 +86,7 @@ const manifest: PluginManifest = {
   // Amounts are CHC credits converted at the $1-per-CHC list price, so
   // committed-spend discounts are not reflected.
   costs: { dimensions: ["service", "resource"], restatementDays: 3 },
+  statusFeed,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [ServiceResourceType, DatabaseResourceType];
@@ -93,4 +95,5 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new ClickHouseClient(credentials, services),
+  parseStatusFeed,
 };

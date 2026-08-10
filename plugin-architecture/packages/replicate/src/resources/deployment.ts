@@ -22,6 +22,12 @@ export const DeploymentResourceType = rt({
     o("predictionsUrl", "Predictions URL"),
     o("version", "Deployed Version ID"),
   ],
+  // The release's `model` is an `owner/name` reference — the same string the
+  // Model list uses as its external id — and `hardware` is a `/v1/hardware` SKU.
+  dependsOn: [
+    { fieldKey: "model", targetTypeId: "model", label: "serves" },
+    { fieldKey: "hardware", targetTypeId: "hardware", label: "runs on" },
+  ],
   supportsCreate: true,
   supportsUpdate: true,
   iconKey: "deployment",

@@ -265,6 +265,26 @@ export async function collectPerZone<T>(
   return results;
 }
 
+/**
+ * Resolve a zone id to its hostname using the client's cached zone list.
+ *
+ * Listers get the name handed to them by {@link collectPerZone}; the create and
+ * edit paths only know the id they were called with, so they resolve it here.
+ * `listZones` caches its promise for the life of the client, so this is a
+ * lookup rather than an extra request in the common case.
+ *
+ * An unresolvable zone yields `""`: the `zoneName` field is optional, and a
+ * blank is better than a wrong name feeding the dependency graph.
+ */
+export async function resolveZoneName(api: CloudflareApi, zoneId: string): Promise<string> {
+  try {
+    const zones = await api.listZones();
+    return zones.find((z) => z.id === zoneId)?.name ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export class CloudflareApi {
   readonly apiToken: string;
   readonly baseUrl = "https://api.cloudflare.com/client/v4";

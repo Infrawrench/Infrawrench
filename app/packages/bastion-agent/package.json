@@ -8,19 +8,19 @@
     "dev": "tsx watch src/index.ts",
     "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs --banner:js=\"import{createRequire}from'node:module';const require=createRequire(import.meta.url);\"",
     "start": "node dist/index.mjs",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "ws": "^8.21.1"
+    "ws": "^8.21.3"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
-    "@types/ws": "^8.5.13",
-    "@vitest/coverage-v8": "^4.1.8",
+    "@types/node": "^22.20.1",
+    "@types/ws": "^8.18.1",
+    "@vitest/coverage-v8": "^4.1.10",
     "esbuild": "^0.25.12",
-    "tsx": "^4.23.1",
-    "typescript": "^5.7.3",
-    "vitest": "^4.1.8"
+    "tsx": "^4.23.11",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   }
 }

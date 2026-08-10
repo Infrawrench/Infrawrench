@@ -65,6 +65,20 @@ interface CloudinaryUploadPresetList {
 }
 
 /**
+ * A preset's `transformation` comes back either as a string — a named
+ * reference (`"t_thumb"`) or a raw spec (`"w_100,c_fill"`) — or as a
+ * structured array/object. Strings are kept verbatim; only the structured
+ * forms are serialized.
+ *
+ * Stringifying unconditionally is what broke `attachResource`: it stored
+ * `"\"t_thumb\""` (quotes included) and then compared it against `t_thumb`, so
+ * the "already attached" check never held and every attach re-issued the PUT.
+ */
+function formatTransformationSetting(value: unknown): string {
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+/**
  * Cloudinary plugin client.
  * Created per account (per API key + secret + cloud name).
  * All API calls use Basic Auth (API key:API secret) over HTTPS.
@@ -833,7 +847,7 @@ export class CloudinaryClient implements PluginClient {
             ? { allowedFormats: String(settings["allowed_formats"]) }
             : {}),
           ...(settings["transformation"]
-            ? { transformation: JSON.stringify(settings["transformation"]) }
+            ? { transformation: formatTransformationSetting(settings["transformation"]) }
             : {}),
         },
         resolvedOutputs: { presetName: preset.name, mode },

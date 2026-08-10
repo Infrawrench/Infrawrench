@@ -17,6 +17,19 @@ export const SpannerBackupResourceType = rt({
     f("backupSchedules", "Schedules", { required: false }),
   ],
   outputs: [],
+  dependsOn: [
+    { fieldKey: "instance", targetTypeId: "spanner-instance", label: "in instance" },
+    // Databases are keyed `instance/name`, so match the bare `name` field.
+    {
+      fieldKey: "database",
+      targetTypeId: "spanner-database",
+      targetKey: "name",
+      label: "backs up",
+    },
+  ],
+  expiryFields: [
+    { fieldKey: "expireTime", from: "expiry", kind: "other", label: "Backup expires" },
+  ],
   parentTypeId: "spanner-instance",
   supportsCreate: true,
 });

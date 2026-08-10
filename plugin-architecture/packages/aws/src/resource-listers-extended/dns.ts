@@ -1,14 +1,26 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { ListerContext } from "../resource-listers.js";
+import { ensureArray } from "../xml.js";
 
+/**
+ * Route 53 is a REST-**XML** API — every response here is XML, so these
+ * listers must use `xmlGet`. They used `jsonGet` (`res.json()`), which threw a
+ * SyntaxError on the `<?xml` prefix every poll, meaning hosted zones, record
+ * sets and health checks never listed at all. Same bug CloudFront had.
+ *
+ * `parseXml` strips the single root element (`ListHostedZonesResponse` and
+ * friends), so the shape that arrives here is the response *body*: a
+ * `<HostedZones>` container wrapping repeated `<HostedZone>` entries, which
+ * collapse to a bare object when there is only one — hence `ensureArray`.
+ */
 export async function listRoute53HostedZones(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.jsonGet<{
-    HostedZones?: Array<Record<string, unknown>>;
+  const data = await ctx.xmlGet<{
+    HostedZones?: { HostedZone?: Record<string, unknown> | Array<Record<string, unknown>> };
   }>("route53", "/2013-04-01/hostedzone");
-  const zones = data.HostedZones ?? [];
+  const zones = ensureArray(data.HostedZones?.HostedZone);
   return zones.map((zone) => {
     const id = String(zone["Id"] ?? "").replace("/hostedzone/", "");
     const name = String(zone["Name"] ?? "");
@@ -49,18 +61,23 @@ export async function listRoute53RecordSets(
   for (const zone of zones) {
     const zoneId = zone.externalId ?? "";
     try {
-      const data = await ctx.jsonGet<{
-        ResourceRecordSets?: Array<Record<string, unknown>>;
+      const data = await ctx.xmlGet<{
+        ResourceRecordSets?: {
+          ResourceRecordSet?: Record<string, unknown> | Array<Record<string, unknown>>;
+        };
       }>("route53", `/2013-04-01/hostedzone/${zoneId}/rrset`);
-      const records = data.ResourceRecordSets ?? [];
+      const records = ensureArray(data.ResourceRecordSets?.ResourceRecordSet);
       for (const record of records) {
         const name = String(record["Name"] ?? "");
         const type = String(record["Type"] ?? "");
         const recordId = `${zoneId}:${name}:${type}`;
-        const resourceRecords = record["ResourceRecords"] as
-          | Array<Record<string, string>>
-          | undefined;
-        const values = resourceRecords?.map((r) => String(r["Value"] ?? "")).join(", ") ?? "";
+        // `<ResourceRecords><ResourceRecord><Value>…` — one more container to
+        // unwrap, and a single record parses as a bare object.
+        const resourceRecords = ensureArray(
+          (record["ResourceRecords"] as Record<string, unknown> | undefined)?.["ResourceRecord"] as
+            Record<string, unknown> | Array<Record<string, unknown>> | undefined,
+        );
+        const values = resourceRecords.map((r) => String(r["Value"] ?? "")).join(", ");
 
         results.push({
           id: ctx.id(accountId, "route53-record-set", recordId),
@@ -93,10 +110,10 @@ export async function listRoute53HealthChecks(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.jsonGet<{
-    HealthChecks?: Array<Record<string, unknown>>;
+  const data = await ctx.xmlGet<{
+    HealthChecks?: { HealthCheck?: Record<string, unknown> | Array<Record<string, unknown>> };
   }>("route53", "/2013-04-01/healthcheck");
-  const checks = data.HealthChecks ?? [];
+  const checks = ensureArray(data.HealthChecks?.HealthCheck);
   return checks.map((hc) => {
     const id = String(hc["Id"] ?? "");
     const config = hc["HealthCheckConfig"] as Record<string, unknown> | undefined;

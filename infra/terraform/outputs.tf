@@ -39,6 +39,12 @@ output "ingress_ip" {
 }
 
 output "egress_ip" {
-  description = "Cloud NAT address every pod's outbound traffic leaves from — allowlist this in ClickHouse Cloud and Neon."
+  description = "Cloud NAT address every pod's outbound traffic leaves from — allowlist this in Neon (and ClickHouse Cloud, if metrics haven't been cut over to the in-cluster ClickHouse yet)."
   value       = google_compute_address.nat.address
+}
+
+output "clickhouse_app_password" {
+  description = "Generated password for the in-cluster ClickHouse `infrawrench` user. Set as CLICKHOUSE_METRICS_PASSWORD in var.app_env when cutting over from ClickHouse Cloud."
+  value       = random_password.clickhouse_app.result
+  sensitive   = true
 }

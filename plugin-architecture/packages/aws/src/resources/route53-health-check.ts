@@ -28,6 +28,12 @@ export const Route53HealthCheckResourceType = rt({
     f("disabled", "Disabled", { kind: "boolean", required: false }),
   ],
   outputs: [o("healthCheckId", "Health Check ID")],
+  // The check targets a bare IPv4 address, so match it against the address a
+  // resource answers to rather than its external id.
+  dependsOn: [
+    { fieldKey: "ipAddress", targetTypeId: "elastic-ip", targetKey: "publicIp", label: "checks" },
+    { fieldKey: "ipAddress", targetTypeId: "ec2-instance", targetKey: "publicIp", label: "checks" },
+  ],
   iconKey: "dns",
   supportsMetrics: true,
 });

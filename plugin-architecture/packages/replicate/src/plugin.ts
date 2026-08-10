@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { ReplicateClient } from "./client.js";
+import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { PredictionResourceType } from "./resources/prediction.js";
 import { ModelResourceType } from "./resources/model.js";
 import { CollectionResourceType } from "./resources/collection.js";
@@ -46,6 +47,7 @@ const manifest: PluginManifest = {
     },
     caCertCredentialField,
   ],
+  statusFeed,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -62,4 +64,5 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new ReplicateClient(credentials, services),
+  parseStatusFeed,
 };

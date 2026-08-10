@@ -13,6 +13,15 @@ export const DaemonSetResourceType = rt({
     f("image", "Image", { required: false }),
   ],
   outputs: [],
+  dependsOn: [
+    // Namespaces report no external id; their identity is the bare name.
+    {
+      fieldKey: "namespace",
+      targetTypeId: "k8s-namespace",
+      targetKey: "name",
+      label: "in namespace",
+    },
+  ],
   parentTypeId: "k8s-namespace",
   supportsCreate: true,
 });

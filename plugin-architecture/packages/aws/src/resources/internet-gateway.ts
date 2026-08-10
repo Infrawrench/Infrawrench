@@ -11,6 +11,7 @@ export const InternetGatewayResourceType = rt({
     f("state", "State", { required: false }),
   ],
   outputs: [],
+  dependsOn: [{ fieldKey: "vpcId", targetTypeId: "vpc", label: "attached to" }],
   iconKey: "network",
   supportsCreate: true,
   attachTargets: [

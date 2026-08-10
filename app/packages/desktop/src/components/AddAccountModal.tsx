@@ -4,10 +4,12 @@ import {
   type AccountReferenceOption,
   type PluginInfo,
 } from "@infrawrench/ui";
+import { runAccountPreflight, type PolicyTemplate } from "@infrawrench/client-core";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import type { AccountRow } from "../db/rows";
-import { loadPlugins } from "../plugins/loader";
+import { loadPlugins, getPlugin } from "../plugins/loader";
+import { buildPluginHostServices } from "../lib/sql-drivers";
 import { createCloudAccount } from "../lib/cloud-api";
 
 interface Props {
@@ -59,6 +61,7 @@ export function AddAccountModal({
       id: l.plugin.manifest.id,
       displayName: l.plugin.manifest.displayName,
       logoSvg: l.plugin.manifest.logoSvg,
+      preflight: l.plugin.manifest.preflight ?? null,
       credentialFields: l.plugin.manifest.credentialFields.map((f) => ({
         key: f.key,
         label: f.label,
@@ -94,12 +97,38 @@ export function AddAccountModal({
     [orgId],
   );
 
+  // Preflight runs entirely in the renderer — plugins are bundled locally, so
+  // no server round-trip is needed even for cloud-org accounts.
+  const runPreflight = useCallback(
+    async (pluginId: string, credentials: Record<string, string>, _bastionId: string | null) => {
+      const loaded = await getPlugin(pluginId);
+      if (!loaded) throw new Error(`Plugin "${pluginId}" not loaded`);
+      const services = buildPluginHostServices(loaded.plugin.manifest, credentials);
+      const client = loaded.plugin.createClient(credentials, services);
+      return runAccountPreflight(loaded.plugin, client);
+    },
+    [],
+  );
+
+  const fetchPolicyTemplate = useCallback(
+    async (pluginId: string, capabilityIds: string[]): Promise<PolicyTemplate> => {
+      const loaded = await getPlugin(pluginId);
+      if (!loaded?.plugin.policyTemplate) {
+        throw new Error(`Plugin "${pluginId}" does not provide a policy template`);
+      }
+      return loaded.plugin.policyTemplate(capabilityIds);
+    },
+    [],
+  );
+
   return (
     <SharedAddAccountModal
       onClose={onClose}
       onAdded={onAdded}
       loadPlugins={handleLoadPlugins}
       saveAccount={saveAccount}
+      runPreflight={runPreflight}
+      fetchPolicyTemplate={fetchPolicyTemplate}
       accounts={accounts}
       onOpenExternal={(url) => void invoke("open_external_url", { url })}
       {...(prefilledPluginId ? { prefilledPluginId } : {})}

@@ -1,5 +1,6 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { AzureClient } from "./client.js";
+import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { VMResourceType } from "./resources/vm.js";
 import { DiskResourceType } from "./resources/disk.js";
 import { VNetResourceType } from "./resources/vnet.js";
@@ -12,6 +13,7 @@ import { CosmosDBAccountResourceType } from "./resources/cosmos-db.js";
 import { StorageAccountResourceType } from "./resources/storage-account.js";
 import { FunctionAppResourceType } from "./resources/function-app.js";
 import { AppServiceResourceType } from "./resources/app-service.js";
+import { AppServicePlanResourceType } from "./resources/app-service-plan.js";
 import { ContainerInstanceResourceType } from "./resources/container-instance.js";
 import { KeyVaultResourceType } from "./resources/key-vault.js";
 import { RedisCacheResourceType } from "./resources/redis-cache.js";
@@ -82,6 +84,7 @@ const manifest: PluginManifest = {
   // Reader" role — plain "Reader" is not enough. Azure serves ~13 months
   // of cost history.
   costs: { dimensions: ["service", "region"], maxHistoryDays: 395, restatementDays: 3 },
+  statusFeed,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -98,6 +101,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   StorageAccountResourceType,
   FunctionAppResourceType,
   AppServiceResourceType,
+  AppServicePlanResourceType,
   ContainerInstanceResourceType,
   KeyVaultResourceType,
   RedisCacheResourceType,
@@ -122,4 +126,5 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials) => new AzureClient(credentials, resourceTypes),
+  parseStatusFeed,
 };

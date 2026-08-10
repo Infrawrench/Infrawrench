@@ -14,6 +14,9 @@ export const NSGResourceType = rt({
     f("nicCount", "Associated NICs", { kind: "number", required: false }),
   ],
   outputs: [o("resourceId", "Resource ID")],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+  ],
   iconKey: "firewall",
   supportsCreate: true,
   attachTargets: [

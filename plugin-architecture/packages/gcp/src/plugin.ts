@@ -1,5 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { GcpClient } from "./client.js";
+import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { gcpPreflight, buildGcpPolicyTemplate } from "./preflight.js";
 import { GcpProjectResourceType } from "./resources/project.js";
 import { GceInstanceResourceType } from "./resources/gce-instance.js";
 import { GceDiskResourceType } from "./resources/gce-disk.js";
@@ -111,6 +113,8 @@ const manifest: PluginManifest = {
     maxHistoryDays: 365,
     restatementDays: 5,
   },
+  statusFeed,
+  preflight: gcpPreflight,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -190,4 +194,6 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new GcpClient(credentials, resourceTypes, services),
+  parseStatusFeed,
+  policyTemplate: buildGcpPolicyTemplate,
 };

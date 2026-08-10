@@ -1,0 +1,258 @@
+# Local dev stack — NOT a deployment artifact (prod is k8s, infra/terraform).
+#
+#   docker compose -f docker-compose.dev.yml watch
+#
+# brings up Postgres (migrated), ClickHouse, the WorkOS emulator
+# (github.com/workos/emulate) and the three services (web, poller,
+# github-watcher) with hot reload: source changes sync into the containers and
+# tsx/Vite pick them up. App: http://localhost:3000 — log in with
+# dev@infrawrench.local / devpassword1! (see infra/docker/workos-emulate/seed.yaml).
+#
+# The WorkOS emulator shares the web container's network namespace so that
+# `localhost:4100` is the emulator for BOTH the server-side SDK and your
+# browser (the authorize URL the SDK builds must be reachable from each, under
+# one hostname). Its 4100 is therefore published by the `web` service.
+#
+# Stripe uses a real TEST-mode account — no container. Put keys in a root
+# `.env` (gitignored) and they pass through to web:
+#   STRIPE_SECRET_KEY=sk_test_...
+#   STRIPE_PRICE_ID=price_...          # licensed $20/seat price in test mode
+#   STRIPE_WEBHOOK_SECRET=whsec_...    # from: stripe listen --print-secret
+# Then forward webhooks with the opt-in profile:
+#   docker compose -f docker-compose.dev.yml --profile stripe up stripe-cli
+#
+# Caveats:
+#   - Emulator state is in-memory but survives restarts in practice: user/org
+#     ids are pinned in the seed and the signing key is generated at image
+#     build time, so sessions keep verifying. Rebuilding the workos image or
+#     changing the seed rotates identities — then reset with `down -v`.
+#   - Dependency (ui/client-core/plugin) edits rebuild on container restart,
+#     same as host dev; app-source edits hot-reload.
+#   - After big dependency changes: docker compose -f docker-compose.dev.yml build
+
+name: infrawrench-dev
+
+x-dev-image: &dev-image
+  build:
+    context: .
+    dockerfile: infra/docker/dev.Dockerfile
+  image: infrawrench-dev
+
+x-watch: &watch
+  - path: app/packages
+    target: /repo/app/packages
+    action: sync
+    ignore:
+      - "**/node_modules"
+      - "**/dist"
+      - "**/.turbo"
+  - path: plugin-architecture/packages
+    target: /repo/plugin-architecture/packages
+    action: sync
+    ignore:
+      - "**/node_modules"
+      - "**/dist"
+      - "**/.turbo"
+  - path: pnpm-lock.yaml
+    action: rebuild
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgres://infrawrench:infrawrench@postgres:5432/infrawrench
+  # Dev-only fixed keys — never reuse outside this compose file.
+  ENCRYPTION_MASTER_KEY: uRW8wQXfjwBUcLFwQnmNnO3VvY4x/Nd8E2VVQF9nnvo=
+  CLICKHOUSE_METRICS_URL: http://clickhouse:8123
+  CLICKHOUSE_METRICS_USER: default
+  CLICKHOUSE_METRICS_PASSWORD: infrawrench
+  CLICKHOUSE_METRICS_DATABASE: infrawrench
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: infrawrench
+      POSTGRES_PASSWORD: infrawrench
+      POSTGRES_DB: infrawrench
+    ports:
+      # 5433 on the host so a natively installed Postgres on 5432 keeps working.
+      # psql postgres://infrawrench:infrawrench@localhost:5433/infrawrench
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U infrawrench -d infrawrench"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8-alpine
+    environment:
+      CLICKHOUSE_DB: infrawrench
+      CLICKHOUSE_PASSWORD: infrawrench
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - chdata:/var/lib/clickhouse
+      # IPv4 listen override — the image defaults to "::", which fails (and
+      # leaves nothing listening) on IPv6-less Docker networks.
+      - ./infra/docker/clickhouse/listen.xml:/etc/clickhouse-server/config.d/zz-listen.xml:ro
+    healthcheck:
+      # 127.0.0.1, not localhost: the server listens IPv4-only (see the
+      # listen.xml mount below) and in-container localhost resolves to ::1.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # One-shot: applies drizzle migrations, then web starts. Idempotent.
+  migrate:
+    <<: *dev-image
+    command: ["pnpm", "--filter", "@infrawrench/web", "db:migrate"]
+    environment:
+      <<: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    <<: *dev-image
+    # Two steps on purpose: `turbo run build` of the workspace deps (cache
+    # replay unless synced sources changed — so a container restart picks up
+    # ui/plugin edits), then the dev script DIRECTLY, not via `turbo run dev`:
+    # turbo 2's strict env mode strips undeclared vars (DATABASE_URL,
+    # WORKOS_*…) from task processes, and unlike host dev there is no .env
+    # file in here for env-loader to fall back on.
+    command:
+      [
+        "sh",
+        "-c",
+        "pnpm exec turbo run build --filter=@infrawrench/web^... && pnpm --filter @infrawrench/web dev",
+      ]
+    ports:
+      - "3000:3000"
+      - "4100:4100" # WorkOS emulator (shares this container's network namespace)
+      - "24678:24678" # Vite HMR websocket
+    environment:
+      <<: *backend-env
+      APP_URL: http://localhost:3000
+      INFRAWRENCH_PLATFORM_ADMIN_EMAILS: dev@infrawrench.local
+      # WorkOS emulator — sk_test_default is the emulator's built-in key, and
+      # it does not validate client ids. The https/port overrides exist for
+      # exactly this (src/auth/workos.ts).
+      WORKOS_API_KEY: sk_test_default
+      WORKOS_CLIENT_ID: client_dev_emulator
+      WORKOS_API_HOSTNAME: localhost
+      WORKOS_API_PORT: "4100"
+      WORKOS_API_HTTPS: "false"
+      WORKOS_REDIRECT_URI: http://localhost:3000/callback
+      WORKOS_COOKIE_PASSWORD: 9US946nJNfO1GgaWA3tog2kvIRDw9mBcaVVwMUyIeY0=
+      WORKOS_AUTHKIT_DOMAIN: http://localhost:4100
+      # Stripe test account + optional extras, passed through from a root .env
+      # (empty string reads as unset everywhere in the app).
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
+      STRIPE_CHAT_PRICE_ID: ${STRIPE_CHAT_PRICE_ID:-}
+      STRIPE_BUILD_PRICE_ID: ${STRIPE_BUILD_PRICE_ID:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      INFRAWRENCH_STRIPE_CHAT_METER_EVENT: ${INFRAWRENCH_STRIPE_CHAT_METER_EVENT:-}
+      INFRAWRENCH_STRIPE_BUILD_METER_EVENT: ${INFRAWRENCH_STRIPE_BUILD_METER_EVENT:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+    develop:
+      watch: *watch
+
+  workos:
+    build:
+      context: infra/docker/workos-emulate
+    # Shares web's network namespace — see the header comment. Port 4100 is
+    # published on the `web` service; restarting web restarts this too.
+    network_mode: "service:web"
+    healthcheck:
+      # 127.0.0.1: --host 0.0.0.0 is IPv4-only and localhost resolves ::1 first.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:4100/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  poller:
+    <<: *dev-image
+    command:
+      [
+        "sh",
+        "-c",
+        "pnpm exec turbo run build --filter=@infrawrench/poller^... && pnpm --filter @infrawrench/poller dev",
+      ]
+    environment:
+      <<: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    develop:
+      watch: *watch
+
+  # Idles with a warning unless GITHUB_APP_ID / GITHUB_APP_PRIVATE_KEY are in
+  # your environment — fine for most dev sessions.
+  github-watcher:
+    <<: *dev-image
+    command:
+      [
+        "sh",
+        "-c",
+        "pnpm exec turbo run build --filter=@infrawrench/github-watcher^... && pnpm --filter @infrawrench/github-watcher dev",
+      ]
+    environment:
+      <<: *backend-env
+      GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
+      GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    develop:
+      watch: *watch
+
+  # Opt-in: forwards Stripe test-mode webhooks to the web container.
+  #   docker compose -f docker-compose.dev.yml --profile stripe up stripe-cli
+  stripe-cli:
+    image: stripe/stripe-cli:latest
+    profiles: ["stripe"]
+    command: ["listen", "--forward-to", "http://web:3000/api/v1/webhooks/stripe"]
+    environment:
+      # Empty unless set in your environment / root .env — the CLI then exits
+      # with its own "no API key" error. (`:?` would break plain `up`, since
+      # compose interpolates the whole file even for inactive profiles.)
+      STRIPE_API_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_DEVICE_NAME: infrawrench-compose
+    depends_on:
+      web:
+        condition: service_started
+
+volumes:
+  pgdata:
+  chdata:

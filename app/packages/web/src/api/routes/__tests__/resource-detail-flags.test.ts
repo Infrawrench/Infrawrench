@@ -100,8 +100,7 @@ const ACCOUNT = {
 interface SetupOpts {
   sshEndpoint?: { hostOutputKey: string };
   getSshConfig?:
-    | (() => { host: string; port: number; username: string; privateKey: string })
-    | null;
+    (() => { host: string; port: number; username: string; privateKey: string }) | null;
   sqlDriver?: { driver: string; credentialKey: string } | null;
   kvDriver?: { driver: string; credentialKey: string } | null;
   dockerDriver?: { driver: string; credentialKey: string } | null;

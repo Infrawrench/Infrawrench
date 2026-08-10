@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ApprovalsInbox,
   WorkflowsPanel,
+  type ApprovalsClient,
   type BudgetOption,
   type GitRepoOption,
   type WorkflowClient,
@@ -9,6 +11,7 @@ import { useUIStore } from "@infrawrench/ui";
 
 import { createDesktopWorkflowClient } from "@/lib/workflow-client";
 import {
+  createCloudApprovalsClient,
   createCloudWorkflowClient,
   getCloudGithubInstallUrl,
   getCloudGithubStatus,
@@ -48,6 +51,16 @@ function getCloudClient(orgId: string): WorkflowClient {
   if (!client) {
     client = createCloudWorkflowClient(orgId);
     cloudClients.set(orgId, client);
+  }
+  return client;
+}
+
+const approvalsClients = new Map<string, ApprovalsClient>();
+function getApprovalsClient(orgId: string): ApprovalsClient {
+  let client = approvalsClients.get(orgId);
+  if (!client) {
+    client = createCloudApprovalsClient(orgId);
+    approvalsClients.set(orgId, client);
   }
   return client;
 }
@@ -131,12 +144,23 @@ export function DesktopWorkflowsPanel() {
 
   if (!activeCloudOrgId) return <WorkflowsPanel client={client} />;
 
+  // The org-wide inbox rides above the panel rather than living in a tab of its
+  // own: the desktop app has no settings-route tree to hang it off, and an
+  // approval that nobody lands blocks a run, so it should be hard to miss. It
+  // collapses to nothing when there is nothing pending. Permission gating is
+  // the server's — the desktop renderer does not resolve the viewer's role, so
+  // a decision by someone without `workflows:approve` comes back 403.
   return (
-    <WorkflowsPanel
-      client={client}
-      gitTriggers
-      gitIntegration={{ configured, repos, loading: gitLoading, onConnect }}
-      budgetIntegration={{ budgets, loading: budgetsLoading }}
-    />
+    <div className="h-full flex flex-col min-h-0">
+      <ApprovalsInbox client={getApprovalsClient(activeCloudOrgId)} hideWhenEmpty />
+      <div className="flex-1 min-h-0">
+        <WorkflowsPanel
+          client={client}
+          gitTriggers
+          gitIntegration={{ configured, repos, loading: gitLoading, onConnect }}
+          budgetIntegration={{ budgets, loading: budgetsLoading }}
+        />
+      </div>
+    </div>
   );
 }

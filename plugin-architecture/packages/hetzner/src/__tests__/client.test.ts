@@ -191,6 +191,127 @@ describe("listResources", () => {
     expect(res[1]!.fields["appliedToCount"]).toBe(0);
   });
 
+  it("records the server's placement group, firewall and network ids", async () => {
+    const c = makeClient();
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        servers: [
+          {
+            id: 1,
+            name: "web",
+            status: "running",
+            public_net: {
+              ipv4: { ip: "1.2.3.4" },
+              firewalls: [{ id: 30, status: "applied" }, { id: 31 }],
+            },
+            private_net: [
+              { ip: "10.0.0.2", network: 40 },
+              { ip: "10.1.0.2", network: 41 },
+            ],
+            placement_group: { id: 50, name: "spread", type: "spread" },
+          },
+        ],
+      }),
+    );
+    const s = (await c.listResources("server", ACCOUNT))[0]!;
+    expect(s.fields["placementGroupId"]).toBe("50");
+    expect(s.fields["firewallIds"]).toBe("30, 31");
+    expect(s.fields["networkIds"]).toBe("40, 41");
+  });
+
+  it("leaves the server's link fields blank when the payload omits them", async () => {
+    const c = makeClient();
+    fetchMock.mockResolvedValueOnce(okJson({ servers: [{ id: 2, name: "bare", status: "off" }] }));
+    const s = (await c.listResources("server", ACCOUNT))[0]!;
+    expect(s.fields["placementGroupId"]).toBe("");
+    expect(s.fields["firewallIds"]).toBe("");
+    expect(s.fields["networkIds"]).toBe("");
+  });
+
+  it("collects firewall server ids from both direct and label-selector entries", async () => {
+    const c = makeClient();
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        firewalls: [
+          {
+            id: 30,
+            name: "fw",
+            applied_to: [
+              { type: "server", server: { id: 1 } },
+              {
+                type: "label_selector",
+                label_selector: { selector: "env=prod" },
+                applied_to_resources: [
+                  { type: "server", server: { id: 2 } },
+                  // Duplicate of the direct entry — must not repeat.
+                  { type: "server", server: { id: 1 } },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const fw = (await c.listResources("firewall", ACCOUNT))[0]!;
+    expect(fw.fields["appliedToCount"]).toBe(2);
+    expect(fw.fields["appliedToServerIds"]).toBe("1, 2");
+    expect(fw.fields["appliedToLabelSelectors"]).toBe("env=prod");
+  });
+
+  it("records network server/load-balancer ids and both vswitch spellings", async () => {
+    const c = makeClient();
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        networks: [
+          {
+            id: 40,
+            name: "net",
+            ip_range: "10.0.0.0/16",
+            servers: [1, 2],
+            load_balancers: [70],
+            expose_routes_to_vswitch: true,
+          },
+          { id: 41, name: "legacy", ip_range: "10.1.0.0/16" },
+        ],
+      }),
+    );
+    const [net, legacy] = await c.listResources("network", ACCOUNT);
+    expect(net!.fields["serverIds"]).toBe("1, 2");
+    expect(net!.fields["loadBalancerIds"]).toBe("70");
+    expect(net!.fields["exposesRoutesToVswitch"]).toBe(true);
+    expect(legacy!.fields["serverIds"]).toBe("");
+    expect(legacy!.fields["loadBalancerIds"]).toBe("");
+    expect(legacy!.fields["exposesRoutesToVswitch"]).toBe(false);
+  });
+
+  it("collects load-balancer target server ids and attached network ids", async () => {
+    const c = makeClient();
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        load_balancers: [
+          {
+            id: 70,
+            name: "lb",
+            targets: [
+              { type: "server", server: { id: 1, ip: "10.0.0.2" } },
+              {
+                type: "label_selector",
+                label_selector: { selector: "env=prod" },
+                targets: [{ type: "server", server: { id: 2, ip: "10.0.0.3" } }],
+              },
+              { type: "ip", ip: { ip: "203.0.113.1" } },
+            ],
+            private_net: [{ network: 40, ip: "10.0.0.9" }],
+          },
+        ],
+      }),
+    );
+    const lb = (await c.listResources("load-balancer", ACCOUNT))[0]!;
+    expect(lb.fields["targetCount"]).toBe(3);
+    expect(lb.fields["targetServerIds"]).toBe("1, 2");
+    expect(lb.fields["networkIds"]).toBe("40");
+  });
+
   it("throws on unknown type", async () => {
     const c = makeClient();
     await expect(c.listResources("nope", ACCOUNT)).rejects.toThrow(/unknown resource type/);
@@ -1175,6 +1296,173 @@ describe("renderDetail / renderSidebarItem", () => {
       const r = { ...server, fields: { ...server.fields, status } };
       expect(c.renderDetail(r).status).toEqual({ kind: "status-dot", status: dot });
     }
+  });
+});
+
+describe("updateResource (server rename + change_type)", () => {
+  const serverBody = {
+    server: {
+      id: 42,
+      name: "web-1",
+      status: "off",
+      created: "2026-01-01T00:00:00Z",
+      server_type: { name: "cx32", cores: 4, memory: 8, disk: 80 },
+      primary_disk_size: 40,
+      datacenter: { name: "fsn1-dc14", location: { name: "fsn1", city: "Falkenstein" } },
+      image: { name: "ubuntu-24.04", description: "Ubuntu" },
+      public_net: { ipv4: { ip: "1.2.3.4" } },
+    },
+  };
+
+  it("changes the server type with upgrade_disk:false and returns the refreshed server", async () => {
+    const c = makeClient();
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/servers/42/actions/change_type")) {
+        expect(init?.method).toBe("POST");
+        expect(JSON.parse(String(init?.body))).toEqual({
+          server_type: "cx32",
+          upgrade_disk: false,
+        });
+        return okJson({ action: { id: 1 } });
+      }
+      if (url.endsWith("/servers/42")) return okJson(serverBody);
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    const r = await c.updateResource("server", `${ACCOUNT}:server:42`, ACCOUNT, {
+      serverType: "cx32",
+    });
+    expect(r.fields["serverType"]).toBe("cx32");
+    expect(r.fields["primaryDiskGb"]).toBe(40);
+  });
+
+  it("renames via PUT /servers/{id}", async () => {
+    const c = makeClient();
+    const puts: string[] = [];
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/servers/42") && init?.method === "PUT") {
+        puts.push(String(init.body));
+        return okJson(serverBody);
+      }
+      if (url.endsWith("/servers/42")) return okJson(serverBody);
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    await c.updateResource("server", `${ACCOUNT}:server:42`, ACCOUNT, { name: "web-2" });
+    expect(puts).toEqual([JSON.stringify({ name: "web-2" })]);
+  });
+
+  it("rejects unsupported types", async () => {
+    await expect(makeClient().updateResource("volume", "a:volume:1", ACCOUNT, {})).rejects.toThrow(
+      /not supported/,
+    );
+  });
+
+  it("still attempts change_type when the rename fails, and reports both in one error", async () => {
+    const c = makeClient();
+    const attempted: string[] = [];
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/servers/42") && init?.method === "PUT") {
+        attempted.push("rename");
+        return notOk(500, "rename exploded");
+      }
+      if (url.endsWith("/servers/42/actions/change_type")) {
+        attempted.push("change_type");
+        return okJson({ action: { id: 1 } });
+      }
+      if (url.endsWith("/servers/42")) return okJson(serverBody);
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    await expect(
+      c.updateResource("server", `${ACCOUNT}:server:42`, ACCOUNT, {
+        name: "web-2",
+        serverType: "cx32",
+      }),
+    ).rejects.toThrow(/rename failed/);
+    // The resize was not silently skipped by the rename failure.
+    expect(attempted).toEqual(["rename", "change_type"]);
+  });
+
+  it("overlays the requested server type on the returned resource (async change_type)", async () => {
+    const c = makeClient();
+    const staleBody = {
+      server: {
+        ...serverBody.server,
+        server_type: { name: "cx22", cores: 2, memory: 4, disk: 40 },
+      },
+    };
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/servers/42/actions/change_type")) return okJson({ action: { id: 1 } });
+      if (url.endsWith("/servers/42") && init?.method !== "PUT") return okJson(staleBody);
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    const r = await c.updateResource("server", `${ACCOUNT}:server:42`, ACCOUNT, {
+      serverType: "cx32",
+    });
+    // Hetzner hasn't converged yet (the re-read still says cx22) but the
+    // returned resource reflects the accepted request.
+    expect(r.fields["serverType"]).toBe("cx32");
+  });
+});
+
+describe("getCreateSizePricing (per-location server type prices)", () => {
+  it("returns the requested location's monthly gross price", async () => {
+    const c = makeClient();
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/server_types")) {
+        return okJson({
+          server_types: [
+            {
+              id: 1,
+              name: "cx22",
+              cores: 2,
+              memory: 4,
+              disk: 40,
+              deprecated: false,
+              prices: [
+                { location: "fsn1", price_monthly: { net: "3.00", gross: "3.57" } },
+                { location: "ash", price_monthly: { net: "4.00", gross: "4.76" } },
+              ],
+            },
+          ],
+          meta: { pagination: { total_entries: 1 } },
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    const prices = await c.getCreateSizePricing("server", {
+      regionId: "ash",
+      sizes: [{ id: "cx22" }],
+    });
+    expect(prices).toEqual({ cx22: 4.76 });
+  });
+
+  it("falls back to the first listed price when the location is unknown", async () => {
+    const c = makeClient();
+    fetchMock.mockImplementation(async () =>
+      okJson({
+        server_types: [
+          {
+            id: 1,
+            name: "cx22",
+            cores: 2,
+            memory: 4,
+            disk: 40,
+            deprecated: false,
+            prices: [{ location: "fsn1", price_monthly: { net: "3.00", gross: "3.57" } }],
+          },
+        ],
+        meta: { pagination: { total_entries: 1 } },
+      }),
+    );
+    const prices = await c.getCreateSizePricing("server", {
+      regionId: "sin",
+      sizes: [{ id: "cx22" }],
+    });
+    expect(prices).toEqual({ cx22: 3.57 });
   });
 });
 

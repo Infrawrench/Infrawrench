@@ -26,6 +26,8 @@ export const MistralModelResourceType = rt({
     f("created", "Created", { required: false }),
   ],
   outputs: [o("modelId", "Model ID"), o("baseUrl", "API Base URL")],
+  // Fine-tuned models carry the id of the job that produced them.
+  dependsOn: [{ fieldKey: "job", targetTypeId: "mistral-fine-tuning-job", label: "produced by" }],
   supportsDelete: false,
   iconKey: "cpu",
 });

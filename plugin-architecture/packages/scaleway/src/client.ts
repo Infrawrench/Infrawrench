@@ -515,6 +515,26 @@ export class ScalewayClient implements PluginClient {
     throw new Error(`Scaleway plugin: deleteResource not supported for type "${typeId}"`);
   }
 
+  async invokeAction(
+    typeId: string,
+    resourceId: string,
+    actionId: string,
+    _accountId: string,
+  ): Promise<void> {
+    if (typeId === "instance" && (actionId === "poweron" || actionId === "poweroff")) {
+      const externalId = resourceId.split(":").pop()!;
+      // externalId format: {zone}/{serverId}
+      const parts = externalId.split("/");
+      const zone = parts[0]! as Zone;
+      const serverId = parts[1]!;
+      await this.instanceApi().serverAction({ zone, serverId, action: actionId });
+      return;
+    }
+    throw new Error(
+      `Scaleway plugin: invokeAction "${actionId}" not supported for type "${typeId}"`,
+    );
+  }
+
   async attachResource(
     sourceTypeId: string,
     sourceResourceId: string,
@@ -1001,6 +1021,39 @@ export class ScalewayClient implements PluginClient {
       ],
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
+
+    if (resource.resourceTypeId === "instance") {
+      if (state === "running") {
+        detail.headerActions = [
+          {
+            kind: "action",
+            label: "Power off",
+            action: {
+              type: "plugin-action",
+              actionId: "poweroff",
+              confirmMessage:
+                "Power off this instance? Compute billing stops while it is powered off; volumes and reserved IPs keep billing.",
+              successMessage: "Power off requested.",
+            },
+            variant: "danger",
+          },
+          ...(detail.headerActions ?? []),
+        ];
+      } else if (state === "stopped" || state === "stopped in place") {
+        detail.headerActions = [
+          {
+            kind: "action",
+            label: "Power on",
+            action: {
+              type: "plugin-action",
+              actionId: "poweron",
+              successMessage: "Power on requested.",
+            },
+          },
+          ...(detail.headerActions ?? []),
+        ];
+      }
+    }
 
     if (resource.resourceTypeId === "object-storage-bucket") {
       const bucketName = String(fields["name"] ?? "");

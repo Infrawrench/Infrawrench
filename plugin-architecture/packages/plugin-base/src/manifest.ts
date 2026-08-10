@@ -149,6 +149,29 @@ export interface PluginManifest {
    * pass for its accounts.
    */
   costs?: CostCapabilityDeclaration;
+  /**
+   * If present, this plugin can report a prepaid credit balance for an
+   * account via `fetchCreditBalance`, and the host schedules a low-frequency
+   * collection pass that turns the resulting series into a burn rate and a
+   * runway. Independent of `costs`: most prepaid providers bill nothing in
+   * arrears and expose no cost API at all.
+   */
+  credits?: CreditsCapabilityDeclaration;
+  /**
+   * If present, this plugin's provider publishes a public status feed. The
+   * host polls `statusFeed.url` (no credentials — the feed is public) on a
+   * low-frequency background pass and hands the raw body to the plugin's
+   * `parseStatusFeed`, then correlates the returned incidents against the
+   * resources an org holds on this plugin.
+   */
+  statusFeed?: StatusFeedDeclaration;
+  /**
+   * If present, this plugin supports credential preflight: the host offers a
+   * per-capability permission checklist at add-account time (backed by
+   * `PluginClient.verifyCredentials`) and, when `templateFormat` is set, a
+   * least-privilege policy generator (backed by `Plugin.policyTemplate`).
+   */
+  preflight?: PreflightDeclaration;
 }
 
 export interface RateLimitDeclaration {
@@ -288,6 +311,16 @@ export interface PeerPaneContext {
 
 export interface PluginClient {
   /**
+   * Probe the provider with this client's credentials and report what each
+   * declared capability can actually do — ok / missing (with which
+   * permissions) / unknown. Only called when the manifest declares
+   * `preflight`. Run at add-account time and re-runnable from account
+   * settings, so implementations must be read-only and side-effect free.
+   * Failures to reach the provider at all should be reported as `unknown`
+   * checks rather than thrown, so a partial probe still renders.
+   */
+  verifyCredentials?(): Promise<PreflightResult>;
+  /**
    * List all instances of a resource type for an account.
    *
    * `opts.regionHint` is a non-binding scope: the host passes it when it knows
@@ -356,6 +389,16 @@ export interface PluginClient {
    * so bastion routing and custom CAs keep working.
    */
   fetchCostData?(accountId: string, range: CostFetchRange): Promise<CostRow[]>;
+  /**
+   * Read the account's prepaid credit balance(s). Only called when the
+   * manifest declares `credits`. Called on a low-frequency background pass
+   * (roughly daily), so it should be one cheap request; the host derives the
+   * burn rate from successive readings rather than asking the plugin for one.
+   *
+   * Throw {@link CreditAccessError} when the credential cannot see the balance
+   * — that is a different situation from a failure and the host says so.
+   */
+  fetchCreditBalance?(accountId: string): Promise<CreditBalance[]>;
   /** List objects in a storage bucket at a given prefix (delimiter="/") */
   listStorageObjects?(bucket: string, prefix: string): Promise<StorageObject[]>;
   /** Upload a file to the given key within a bucket */
@@ -423,10 +466,25 @@ export interface PluginClient {
     request: CreateSizePricingRequest,
   ): Promise<Record<string, number>>;
   /**
-   * Optionally estimate the total monthly cost for the current create-form field values.
-   * Plugins can include provider-specific components like storage in this estimate.
+   * Estimate what a configuration would cost per month, as a total plus the
+   * line items that make it up. See {@link CostEstimate}.
+   *
+   * `fields` is a bag of field values keyed the way the *create form* keys
+   * them — that is the one spelling every caller can produce, and it is what
+   * the create form has in hand while the user is still typing. Hosts asking
+   * about an existing resource pass its stored fields instead, so a plugin
+   * whose lister spells a key differently from its create form (Azure's
+   * `vmSize` vs `size`, the same split `rightsizing.createSizeFieldKey`
+   * already names) should accept both spellings.
+   *
+   * Implementations must be cheap enough to call on every keystroke: the
+   * create form debounces and then calls this on each field change, so rates
+   * belong in the plugin's existing pricing cache, not in a fresh API round
+   * trip per call. Return `null` for a type this plugin cannot price, and
+   * quote a partial estimate (never a guessed one) when only some components
+   * have known rates.
    */
-  getCreateCostEstimate?(typeId: string, fields: Record<string, string>): Promise<number | null>;
+  estimateCost?(typeId: string, fields: Record<string, string>): Promise<CostEstimate | null>;
   /**
    * Execute an in-form field action (declared via `CreateFieldConfig.actions`).
    * Plugins typically use this to mint a dependency mid-form — e.g. generate
@@ -807,10 +865,29 @@ export interface Plugin {
    * inventory. Secrets must be referenced as `var.*`, never inlined.
    */
   terraformExport?: TerraformExportCapability;
+  /**
+   * Parse the raw body fetched from `manifest.statusFeed.url` into normalized
+   * incidents. Required when the manifest declares `statusFeed`. Lives on the
+   * Plugin (not the client) because it needs no credentials — the feed is
+   * public. Malformed bodies should throw; the host logs the failure against
+   * the feed rather than silently treating it as "no incidents".
+   */
+  parseStatusFeed?(body: string): StatusIncident[];
+  /**
+   * Build the paste-ready least-privilege credential document scoped to the
+   * given capability ids (a subset of `manifest.preflight.capabilities`).
+   * Required when `manifest.preflight.templateFormat` is set. Lives on the
+   * Plugin (not the client) because generating a template needs no
+   * credentials — the host offers it even before the user has working keys.
+   */
+  policyTemplate?(capabilityIds: string[]): PolicyTemplate;
 }
 
 // Forward declarations — defined in their own modules but used here
-import type { CostCapabilityDeclaration, CostFetchRange, CostRow } from "./cost.js";
+import type { CostCapabilityDeclaration, CostEstimate, CostFetchRange, CostRow } from "./cost.js";
+import type { CreditBalance, CreditsCapabilityDeclaration } from "./credits.js";
+import type { PolicyTemplate, PreflightDeclaration, PreflightResult } from "./preflight.js";
+import type { StatusFeedDeclaration, StatusIncident } from "./status-feed.js";
 import type { ResourceCreateReturn, ResourceInstance } from "./instance.js";
 import type {
   ArtifactEntry,

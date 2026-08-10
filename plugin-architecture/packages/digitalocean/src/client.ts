@@ -14,10 +14,12 @@ import type {
   SizeOption,
   ImageOption,
   HostServices,
+  CostEstimate,
   CostFetchRange,
   CostRow,
 } from "@infrawrench/plugin-base";
 import {
+  buildCostEstimate,
   deleteS3Object,
   getS3BucketPolicy,
   jsonRestFetch,
@@ -44,7 +46,12 @@ import {
   doCreateResource,
   estimateDoDatabaseMonthlyPrice,
 } from "./create-handlers.js";
-import { type ActionContext, invokeDropletAction, invokeVolumeAction } from "./actions.js";
+import {
+  type ActionContext,
+  invokeDropletAction,
+  invokeReservedIpAction,
+  invokeVolumeAction,
+} from "./actions.js";
 import {
   applyGenAiModelRouterDetail,
   applyManagedDatabaseDetail,
@@ -56,6 +63,7 @@ import {
   applySnapshotDetail,
   applyImageDetail,
   applyNfsShareDetail,
+  applyReservedIpDetail,
   renderDomainDetail,
   renderDnsRecordDetail,
 } from "./detail-renderers.js";
@@ -574,6 +582,11 @@ export class DigitalOceanClient implements PluginClient {
       }
     }
 
+    if (typeId === "vpc" && outputKey === "vpcId") {
+      // The VPC uuid is the externalId — no API call needed.
+      return externalId;
+    }
+
     if (typeId === "domain" && outputKey === "nameservers") {
       return "ns1.digitalocean.com, ns2.digitalocean.com, ns3.digitalocean.com";
     }
@@ -683,29 +696,40 @@ export class DigitalOceanClient implements PluginClient {
   }
 
   /**
-   * Compute the form's estimated monthly cost. The size-picker only carries
-   * the per-node price; the cost panel needs to multiply by node count for
-   * resource types that scale horizontally (managed-database, doks-cluster).
-   * Droplet has its own per-size price already shown in the picker; for it
-   * we return the picked size's price directly so the panel matches.
+   * Monthly estimate with line items. The size picker only carries the
+   * per-node price, so the types that scale horizontally have to multiply it
+   * by their node count here — that multiplication is the whole reason the
+   * form's headline figure can't just read the picker.
+   *
+   * Droplet is deliberately absent: its picker already shows the size's own
+   * monthly price, and re-quoting the identical number in a second place adds
+   * nothing the user can't see.
    */
-  async getCreateCostEstimate(
-    typeId: string,
-    fields: Record<string, string>,
-  ): Promise<number | null> {
+  async estimateCost(typeId: string, fields: Record<string, string>): Promise<CostEstimate | null> {
     if (typeId === "managed-database") {
       const slug = fields["size"] ?? "";
       const memMatch = /(\d+)gb/i.exec(slug);
       const memoryGb = memMatch ? Number(memMatch[1]) : 0;
       const perNode = estimateDoDatabaseMonthlyPrice(slug, memoryGb);
-      const nodes = Math.max(1, Number(fields["nodeCount"] ?? 1));
-      return perNode > 0 ? perNode * nodes : null;
-    }
-    if (typeId === "doks-cluster") {
-      // Cluster control plane is free; cost is node count × droplet size price.
-      // We don't have a size price lookup for DOKS sizes here — defer to the
-      // sidebar's picker price which the host already shows.
-      return null;
+      if (perNode <= 0) return null;
+      const nodes = Math.max(1, Math.floor(Number(fields["nodeCount"] ?? 1)) || 1);
+      return buildCostEstimate(
+        [
+          {
+            label: nodes === 1 ? `Database node (${slug})` : `Database nodes (${nodes} × ${slug})`,
+            monthlyAmount: perNode * nodes,
+            detail: `${nodes} × $${Number(perNode.toFixed(2))}/month`,
+            quantity: nodes,
+            unit: nodes === 1 ? "node" : "nodes",
+          },
+        ],
+        {
+          notes:
+            nodes > 1
+              ? ["Standby nodes are billed at the same rate as the primary."]
+              : ["Adding a standby node doubles this."],
+        },
+      );
     }
     return null;
   }
@@ -873,8 +897,21 @@ export class DigitalOceanClient implements PluginClient {
       case "project":
         await this.fetch<unknown>(`/projects/${externalId}`, { method: "DELETE" });
         break;
+      case "vpc":
+        // DO refuses (403) when the VPC is a region's default or still has
+        // member resources; that error surfaces to the user verbatim.
+        await this.fetch<unknown>(`/vpcs/${externalId}`, { method: "DELETE" });
+        break;
       case "volume":
         await this.fetch<unknown>(`/volumes/${externalId}`, { method: "DELETE" });
+        break;
+      case "reserved-ip":
+        // The address itself is the id. DELETE releases it back to the pool —
+        // irreversible, you don't get the same address again. DO returns 422
+        // while the IP is still assigned to a Droplet; that message surfaces
+        // to the user verbatim, which reads better than pre-unassigning
+        // behind their back.
+        await this.fetch<unknown>(`/reserved_ips/${externalId}`, { method: "DELETE" });
         break;
       case "snapshot":
         // /v2/snapshots/{id} covers both droplet and volume snapshots — DO
@@ -1148,6 +1185,61 @@ export class DigitalOceanClient implements PluginClient {
       };
     }
 
+    if (typeId === "droplet") {
+      // Rename and/or resize. Resize is DO's `resize` droplet action with
+      // `disk: false` — CPU/RAM only, reversible, and DO powers the Droplet
+      // off for it automatically. DO rejects targets whose included disk is
+      // smaller than the Droplet's current disk; that error surfaces as-is.
+      //
+      // The two actions are independent: one failing must not silently skip
+      // or hide the other, so each runs in its own guard and the failures are
+      // combined into one labelled error that makes partial success explicit.
+      const failures: string[] = [];
+      const name = fields["name"];
+      if (name !== undefined && name !== "") {
+        try {
+          await this.fetch<unknown>(`/droplets/${externalId}/actions`, {
+            method: "POST",
+            body: JSON.stringify({ type: "rename", name }),
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (e) {
+          failures.push(`rename failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      const size = fields["size"];
+      if (size !== undefined && size !== "") {
+        try {
+          await this.fetch<unknown>(`/droplets/${externalId}/actions`, {
+            method: "POST",
+            body: JSON.stringify({ type: "resize", size, disk: false }),
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (e) {
+          failures.push(`resize failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      if (failures.length > 0) {
+        throw new Error(`DigitalOcean droplet update: ${failures.join("; ")}`);
+      }
+      // Both actions are asynchronous on DO's side — an immediate re-read can
+      // still report the old name/size while the action runs. Overlay the
+      // accepted values so the returned resource reflects the requested end
+      // state (the sleep/wake "don't fight the sync" stance); the next sync
+      // reads the converged truth.
+      const refreshed = await this.getResource(typeId, resourceId, accountId);
+      return {
+        ...refreshed,
+        fields: {
+          ...refreshed.fields,
+          ...(name !== undefined && name !== "" ? { name } : {}),
+          ...(size !== undefined && size !== "" ? { size } : {}),
+        },
+        ...(name !== undefined && name !== "" ? { displayName: name } : {}),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
     if (typeId !== "project") {
       throw new Error(`DigitalOcean plugin: updateResource not supported for type "${typeId}"`);
     }
@@ -1211,6 +1303,34 @@ export class DigitalOceanClient implements PluginClient {
       await this.fetch(`/volumes/${volumeId}/actions`, {
         method: "POST",
         body: JSON.stringify({ type: "attach", droplet_id: dropletId, region: volumeRegion }),
+      });
+      return;
+    }
+    if (sourceTypeId === "reserved-ip" && targetTypeId === "droplet") {
+      // Drag a reserved IP onto a Droplet to assign it. The type declares
+      // `matchField: "region"` so the host already rejects cross-region drops,
+      // but re-check here: `attachResource` is also reachable from the API and
+      // DO's own error for this ("Droplet is not in the same region") gives no
+      // hint about which side is wrong.
+      const [reservedIp, droplet] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const ipRegion = String(reservedIp.fields["region"] ?? "");
+      const dropletRegion = String(droplet.fields["region"] ?? "");
+      if (ipRegion && dropletRegion && ipRegion !== dropletRegion) {
+        throw new Error(
+          `Reserved IP region ${ipRegion} does not match droplet region ${dropletRegion} — DigitalOcean reserved IPs can only be assigned to Droplets in the region they are reserved to.`,
+        );
+      }
+      const ip = reservedIp.externalId ?? sourceResourceId.split(":").pop();
+      const dropletId = Number(droplet.externalId ?? targetResourceId.split(":").pop());
+      if (!ip || !Number.isFinite(dropletId)) {
+        throw new Error("Cannot determine reserved IP or droplet id for assignment");
+      }
+      await this.fetch(`/reserved_ips/${ip}/actions`, {
+        method: "POST",
+        body: JSON.stringify({ type: "assign", droplet_id: dropletId }),
       });
       return;
     }
@@ -1373,6 +1493,9 @@ export class DigitalOceanClient implements PluginClient {
     if (typeId === "volume") {
       return invokeVolumeAction(this.actionCtx, resourceId, accountId, actionId);
     }
+    if (typeId === "reserved-ip") {
+      return invokeReservedIpAction(this.actionCtx, resourceId, accountId, actionId);
+    }
     if (typeId === "gen-ai-agent") {
       const agentUuid = resourceId.split(":").slice(2).join(":");
       if (actionId === "make-public" || actionId === "make-private") {
@@ -1502,6 +1625,17 @@ export class DigitalOceanClient implements PluginClient {
           { label: "Region", value: String(f["region"] ?? "") },
           { label: "Size", value: `${String(f["sizeGb"] ?? 0)} GB` },
           ...(f["dropletIds"] ? [{ label: "Attached", value: "Yes" }] : []),
+        ];
+      case "reserved-ip":
+        return [
+          { label: "IP", value: String(f["ip"] ?? "") },
+          { label: "Region", value: String(f["region"] ?? "") },
+          {
+            label: "Assigned",
+            value: f["dropletId"]
+              ? String(f["dropletName"] ?? f["dropletId"])
+              : "No — billed while idle",
+          },
         ];
       case "doks-cluster":
         return [
@@ -1647,6 +1781,8 @@ export class DigitalOceanClient implements PluginClient {
       applyImageDetail(detail, resource);
     } else if (resource.resourceTypeId === "nfs-share") {
       applyNfsShareDetail(detail, resource);
+    } else if (resource.resourceTypeId === "reserved-ip") {
+      applyReservedIpDetail(detail, resource);
     }
 
     if (resource.resourceTypeId === "spaces-bucket") {

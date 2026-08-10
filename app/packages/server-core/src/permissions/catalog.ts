@@ -20,6 +20,15 @@ export const ALL_PERMISSIONS = [
   "storage:write",
   "dashboards:read",
   "dashboards:write",
+  // Workflows are sandboxed automations, not dashboard content — they get their
+  // own family. `approve` is separate from `write` on purpose: landing the
+  // decision on someone else's `infra.waitForApproval(...)` is a different
+  // trust level from editing the automation, and separating them is what makes
+  // "can edit but cannot self-approve" (and its inverse) expressible in a
+  // custom role at all.
+  "workflows:read",
+  "workflows:write",
+  "workflows:approve",
   "deployments:read",
   "deployments:plan",
   "deployments:write",
@@ -27,7 +36,37 @@ export const ALL_PERMISSIONS = [
   "costs:write",
   "budgets:read",
   "budgets:write",
+  "metric-alerts:read",
+  "metric-alerts:write",
+  "freezes:read",
+  "freezes:write",
+  "freezes:override",
+  // Create anyway when the org's tag policy would reject the resource. Its own
+  // family (not `resources:*`) so "can create but cannot skip governance"
+  // stays expressible, mirroring `freezes:override`.
+  "tag-policy:override",
+  // Org config as code: exporting and applying the one JSON document that
+  // carries dashboards, workflows, budgets, custom graphs, alert rules and
+  // policies. Its own family because the *document* is the unit of trust —
+  // `config:read` hands over every workflow's source in one call, and
+  // `config:write` rewrites nine surfaces at once. Neither is a substitute for
+  // the per-section permissions: apply requires both, so a role denied
+  // `workflows:write` cannot reach workflows through a config document.
+  "config:read",
+  "config:write",
   "audit:read",
+  // Break-glass access. Its own family because the three verbs are held by
+  // genuinely different people: everyone can ask, everyone can see the queue
+  // (an elevation nobody can see is not a control), and only a subset decides.
+  //
+  // `access:approve` is the one that matters and it is deliberately NOT
+  // implied by `team:role:write`: granting someone a role is a considered
+  // change with a paper trail, while approving an elevation happens in the
+  // middle of an incident, and an org should be able to say who may do the
+  // second without also saying who may do the first.
+  "access:read",
+  "access:request",
+  "access:approve",
   "team:read",
   "team:invite",
   "team:role:write",
@@ -38,6 +77,20 @@ export const ALL_PERMISSIONS = [
   "billing:write",
   "ssh-keys:read",
   "ssh-keys:write",
+  // Recorded SSH sessions. Its own family rather than `ssh-keys:*` or
+  // `audit:read`, because watching a colleague's terminal back is a distinct
+  // and much sharper capability than either holding a key or reading the audit
+  // log — and the people who should hold it (compliance, security) are often
+  // not the people who administer keys. `write` covers the org's recording
+  // policy and deleting tapes; both are the kind of thing an investigation
+  // would want to know had happened, so both are audit-logged.
+  //
+  // Deliberately absent from the `member` system role: recording exists to
+  // watch operators, so handing every operator the ability to watch is
+  // self-defeating. Admins and owners get it for free (their sets are
+  // catalog-derived).
+  "session-recordings:read",
+  "session-recordings:write",
   "bastions:read",
   "bastions:write",
   "chat:read",

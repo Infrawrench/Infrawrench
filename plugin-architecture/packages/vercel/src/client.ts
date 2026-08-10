@@ -16,6 +16,8 @@ import { fetchVercelCostData } from "./cost-data.js";
 interface VercelProject {
   id: string;
   name: string;
+  /** Owner of the project — the team id when the project belongs to a team. */
+  accountId?: string;
   framework?: string | null;
   nodeVersion?: string;
   serverlessFunctionRegion?: string;
@@ -66,6 +68,8 @@ interface VercelDomain {
   id?: string;
   name: string;
   verified: boolean;
+  /** Set when the domain belongs to a team rather than a personal account. */
+  teamId?: string | null;
   serviceType?: string;
   nameservers?: string[];
   intendedNameservers?: string[];
@@ -769,6 +773,7 @@ export class VercelClient implements PluginClient {
         outputDirectory: p.outputDirectory,
         productionUrl: productionUrl,
         gitRepo: gitRepo || null,
+        ownerId: p.accountId,
         createdAt: formatTimestamp(p.createdAt),
         updatedAt: formatTimestamp(p.updatedAt),
         live: p.live ?? null,
@@ -833,6 +838,7 @@ export class VercelClient implements PluginClient {
         renew: d.renew != null ? String(d.renew) : null,
         expiresAt: formatTimestamp(d.expiresAt),
         boughtAt: formatTimestamp(d.boughtAt),
+        teamId: d.teamId,
         createdAt: formatTimestamp(d.createdAt),
       }),
       resolvedOutputs: {},

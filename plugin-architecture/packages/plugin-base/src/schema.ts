@@ -47,6 +47,15 @@ export type HostAction =
       actionId: string;
       confirmMessage?: string;
       successMessage?: string;
+      /**
+       * Marks the action as destructive — it deletes data or capacity that
+       * cannot be trivially recreated (delete an index, purge a cache, drop a
+       * model). The host uses this generically: during an org change freeze
+       * the server refuses destructive actions, and clients may render extra
+       * warnings. Restarts/reboots are disruptive but not destructive — leave
+       * this unset for them.
+       */
+      destructive?: boolean;
     }
   | {
       /**

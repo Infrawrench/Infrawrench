@@ -18,6 +18,9 @@ interface ContainerInfo {
   Ports: Array<{ IP?: string; PrivatePort: number; PublicPort?: number; Type: string }>;
   Labels: Record<string, string>;
   Created: number;
+  /** Keyed by network *name*, not id — see `formatNetworks`. */
+  NetworkSettings?: { Networks?: Record<string, { NetworkID?: string }> };
+  Mounts?: Array<{ Type?: string; Name?: string }>;
 }
 
 interface VersionInfo {
@@ -61,6 +64,28 @@ function formatPorts(ports: ContainerInfo["Ports"]): string {
     .filter((p) => p.PublicPort)
     .map((p) => `${p.PublicPort}->${p.PrivatePort}/${p.Type}`)
     .join(", ");
+}
+
+/**
+ * The networks a container is attached to. `NetworkSettings.Networks` is an
+ * object keyed by network name (the id lives inside each entry), so these match
+ * a `docker-network`'s `name` field rather than its external id.
+ */
+function formatNetworks(container: ContainerInfo): string {
+  return Object.keys(container.NetworkSettings?.Networks ?? {}).join(", ");
+}
+
+/**
+ * The named volumes a container mounts. Bind mounts are skipped — they are
+ * host paths, not Docker-managed volumes, and name nothing the graph knows.
+ * A volume's `Name` here is exactly a `docker-volume`'s external id.
+ */
+function formatMountedVolumes(container: ContainerInfo): string {
+  const names = new Set<string>();
+  for (const mount of container.Mounts ?? []) {
+    if (mount.Type === "volume" && mount.Name) names.add(mount.Name);
+  }
+  return [...names].join(", ");
 }
 
 function containerStatus(state: string): ResourceStatus {
@@ -139,6 +164,8 @@ export class DockerClient implements PluginClient {
             image: c.Image,
             status: c.Status,
             ports,
+            networks: formatNetworks(c),
+            volumes: formatMountedVolumes(c),
           },
           resolvedOutputs: {
             containerId: c.Id,

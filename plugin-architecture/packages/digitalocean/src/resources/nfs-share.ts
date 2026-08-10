@@ -19,6 +19,8 @@ export const NfsShareResourceType = rt({
     f("status", "Status", { required: false }),
   ],
   outputs: [o("mountCommand", "Mount Command"), o("mountTarget", "Mount Target")],
+  // Comma-joined `vpc_ids` — one edge per VPC the share is exported to.
+  dependsOn: [{ fieldKey: "vpcIds", targetTypeId: "vpc", label: "exported to" }],
   parentTypeId: "project",
   showInSidebar: true,
   supportsCreate: true,

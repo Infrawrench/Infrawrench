@@ -9,7 +9,7 @@ import { streamSSE } from "hono/streaming";
 import { eq, and, isNull, desc, asc } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { db } from "../../db/client";
-import { chatConversations, chatMessages, chatPendingActions } from "../../db/schema";
+import { chatConversations, chatMessages, chatPendingActions, users } from "../../db/schema";
 import { authenticateChat } from "../../chat/auth";
 import {
   runAgentTurn,
@@ -17,6 +17,7 @@ import {
   rejectPendingAction,
   type AgentEvent,
 } from "../../chat/agent";
+import { noteChatToolApprovalDecided } from "../../chat/slack-approvals";
 import { getMonthlySpend } from "../../chat/billing";
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL } from "@infrawrench/ui";
 import type { ToolAuthContext } from "../../tools/types";
@@ -301,21 +302,59 @@ app.post("/conversations/:id/pending/:pendingId", async (c) => {
     ...(auth.scopes !== undefined ? { scopes: auth.scopes } : {}),
   };
 
-  if (body.action === "reject") {
-    const { allResolved } = await rejectPendingAction(pendingId, body.reason);
-    return c.json({ ok: true, allResolved });
+  // Name the decider the way every other approval surface does: display name
+  // first, email as the fallback.
+  const [decider] = await db
+    .select({ displayName: users.displayName })
+    .from(users)
+    .where(eq(users.id, auth.userId))
+    .limit(1);
+  const decidedByName = decider?.displayName ?? auth.email ?? null;
+
+  // Retire the interactive Slack copies of this request, whatever the
+  // decision. Fire-and-forget (the helper never throws) — the decision below
+  // is the record; Slack is presentation.
+  const noteDecided = (decision: "approved" | "denied") =>
+    void noteChatToolApprovalDecided({
+      organizationId: auth.organizationId,
+      pendingActionId: pendingId,
+      toolName: row.pending.toolName,
+      toolInput: row.pending.toolInput,
+      decision,
+      decidedByName,
+      via: "the web app",
+    });
+
+  // Claim the row conditioned on it still being `pending`: the returned row
+  // count makes two racing deciders — this route, a Slack button, or both —
+  // produce exactly one decision. The loser gets the same 409 as the
+  // status pre-check above.
+  const claimed = await db
+    .update(chatPendingActions)
+    .set({ status: body.action === "reject" ? "rejected" : "approved" })
+    .where(and(eq(chatPendingActions.id, pendingId), eq(chatPendingActions.status, "pending")))
+    .returning({ id: chatPendingActions.id });
+  if (claimed.length === 0) {
+    return c.json({ error: "Action already resolved" }, 409);
   }
 
-  // Approve: mark approved, then execute synchronously. If execution succeeds
-  // and all sibling pending actions are now resolved, the caller can hit
-  // POST /messages { resume: true } to continue the model loop.
-  await db
-    .update(chatPendingActions)
-    .set({ status: "approved" })
-    .where(eq(chatPendingActions.id, pendingId));
+  if (body.action === "reject") {
+    // finally: the claim above already decided the row, so the Slack copies
+    // must retire even when recording the rejection details throws.
+    try {
+      const { allResolved } = await rejectPendingAction(pendingId, body.reason);
+      return c.json({ ok: true, allResolved });
+    } finally {
+      noteDecided("denied");
+    }
+  }
 
+  // Approved and claimed: execute synchronously. If execution succeeds and all
+  // sibling pending actions are now resolved, the caller can hit
+  // POST /messages { resume: true } to continue the model loop.
   try {
     const { allResolved } = await executePendingAction(pendingId, toolAuth);
+    noteDecided("approved");
     return c.json({ ok: true, allResolved });
   } catch (e) {
     await db
@@ -327,6 +366,9 @@ app.post("/conversations/:id/pending/:pendingId", async (c) => {
         resolvedAt: new Date(),
       })
       .where(eq(chatPendingActions.id, pendingId));
+    // The approval itself landed — only the execution failed — so the Slack
+    // copies' decision controls still retire.
+    noteDecided("approved");
     return c.json({ error: e instanceof Error ? e.message : "Execution failed" }, 500);
   }
 });

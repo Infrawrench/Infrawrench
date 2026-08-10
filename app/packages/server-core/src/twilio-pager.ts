@@ -8,9 +8,7 @@ import {
   twilioSettings,
 } from "./db/schema";
 import { buildAad, decrypt, encrypt } from "./encryption";
-import { sendPushToOrg } from "./push/dispatch";
-import { sendSlackToOrg } from "./slack";
-import { sendMsTeamsToOrg } from "./msteams";
+import { alertReached, routeAlert } from "./alerts/route";
 
 /**
  * Paging pipeline. Records sync-failure history per (account, type), opens an
@@ -275,6 +273,44 @@ export async function sendOneShotPage(
 }
 
 /**
+ * Whether a one-shot SMS raised right now could actually reach anybody: paging
+ * enabled for the org, credentials and a from-number stored, and at least one
+ * recipient opted into SMS.
+ *
+ * Answered without decrypting anything — the ciphertext columns being present
+ * is the fact being asked about, and this runs on read paths (the anomaly
+ * settings form) that have no business handling credentials. Never throws: a
+ * settings screen that cannot answer "can we text you?" should say no rather
+ * than fail to load.
+ */
+export async function isSmsPagingConfigured(organizationId: string): Promise<boolean> {
+  try {
+    const [row] = await db
+      .select({
+        enabled: twilioSettings.enabled,
+        accountSid: twilioSettings.encryptedAccountSid,
+        authToken: twilioSettings.encryptedAuthToken,
+        fromNumber: twilioSettings.fromNumber,
+      })
+      .from(twilioSettings)
+      .where(eq(twilioSettings.organizationId, organizationId));
+    if (!row?.enabled || !row.accountSid || !row.authToken || !row.fromNumber) return false;
+
+    const [recipient] = await db
+      .select({ id: twilioRecipients.id })
+      .from(twilioRecipients)
+      .where(
+        and(eq(twilioRecipients.organizationId, organizationId), eq(twilioRecipients.sms, true)),
+      )
+      .limit(1);
+    return recipient !== undefined;
+  } catch (err) {
+    console.error("[twilio-pager] SMS configuration check failed:", err);
+    return false;
+  }
+}
+
+/**
  * SMS-only one-shot page for budget alerts. Voice is intentionally not used for
  * budgets. Returns true when at least one SMS was delivered to Twilio.
  */
@@ -422,48 +458,41 @@ export async function notePollOutcome(args: NotePollOutcomeArgs): Promise<void> 
       }
     }
 
-    const pushResult = await sendPushToOrg(args.organizationId, "syncIncidents", {
+    const routed = await routeAlert({
+      organizationId: args.organizationId,
+      trigger: "syncIncidents",
       title: `Sync failure: ${args.accountLabel}`,
       body,
-      data: {
+      context: `${args.resourceTypeId} · ${count} failures in ${Math.round(settings.windowMs / 60_000)} min`,
+      pushData: {
         type: "sync_incident",
         orgId: args.organizationId,
         accountId: args.accountId,
         resourceTypeId: args.resourceTypeId,
         incidentId,
       },
-    });
-
-    const slackResult = await sendSlackToOrg(args.organizationId, "syncIncidents", {
-      title: `Sync failure: ${args.accountLabel}`,
-      body,
-      context: `${args.resourceTypeId} · ${count} failures in ${Math.round(settings.windowMs / 60_000)} min`,
-    });
-
-    const msTeamsResult = await sendMsTeamsToOrg(args.organizationId, "syncIncidents", {
-      title: `Sync failure: ${args.accountLabel}`,
-      body,
-      context: `${args.resourceTypeId} · ${count} failures in ${Math.round(settings.windowMs / 60_000)} min`,
+      facts: {
+        accountId: args.accountId,
+        resourceTypeId: args.resourceTypeId,
+      },
     });
 
     // Only mark the incident as paged if at least one transport succeeded —
     // otherwise the cooldown gate would suppress retries even though the
     // recipients never actually heard from us. A push success gates Twilio
     // re-sends too (one cooldown cadence per incident), and vice versa.
-    if (
-      twilioResult.succeeded +
-        pushResult.succeeded +
-        slackResult.succeeded +
-        msTeamsResult.succeeded >
-      0
-    ) {
+    //
+    // `alertReached` rather than `succeeded > 0`: a quiet-hours hold is a
+    // delivery in flight, and treating it as a failure would let the cooldown
+    // lapse and re-page the same incident before the held copy even arrives.
+    if (twilioResult.succeeded > 0 || alertReached(routed)) {
       await db
         .update(pagingIncidents)
         .set({ pagedAt: now })
         .where(eq(pagingIncidents.id, incidentId));
     } else {
       console.error(
-        `[twilio-pager] all ${twilioResult.attempted + pushResult.attempted + slackResult.attempted + msTeamsResult.attempted} deliveries failed for incident ${incidentId}; will retry on next poll`,
+        `[twilio-pager] all ${twilioResult.attempted + routed.attempted} deliveries failed for incident ${incidentId}; will retry on next poll`,
       );
     }
   } catch (err) {

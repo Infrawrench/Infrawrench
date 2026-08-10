@@ -6,8 +6,19 @@ export type WorkspaceTabTarget =
   | { kind: "account"; accountId: string }
   | { kind: "agents" }
   | { kind: "costs" }
+  | { kind: "graph" }
+  | { kind: "logs" }
+  | { kind: "changes" }
+  | { kind: "expiring" }
+  | { kind: "posture" }
+  | { kind: "dns" }
+  | { kind: "environment-diff"; a?: string; b?: string }
+  | { kind: "ssh-fanout" }
+  | { kind: "metric-alerts" }
+  | { kind: "probes" }
   | { kind: "workflows"; workflowId?: string }
   | { kind: "deployments"; repo?: string }
+  | { kind: "settings"; section?: string }
   | { kind: "chat"; conversationId?: string }
   | {
       kind: "resource";
@@ -50,12 +61,37 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "agents";
     case "costs":
       return "costs";
+    case "graph":
+      return "graph";
+    case "logs":
+      return "logs";
+    case "changes":
+      return "changes";
+    case "expiring":
+      return "expiring";
+    case "posture":
+      return "posture";
+    case "dns":
+      return "dns";
+    // Not keyed by the two accounts: picking a different pair should retarget
+    // the open Diff tab rather than pile up a tab per comparison.
+    case "environment-diff":
+      return "environment-diff";
+    case "ssh-fanout":
+      return "ssh-fanout";
+    case "metric-alerts":
+      return "metric-alerts";
+    case "probes":
+      return "probes";
     case "workflows":
       return target.workflowId ? `workflows:${target.workflowId}` : "workflows";
     case "deployments":
       // Not keyed by repo: a hotlink to a different repo should retarget the
       // open Deploy tab rather than pile up a tab per repository.
       return "deployments";
+    case "settings":
+      // Not keyed by section: one Settings tab that remembers where you were.
+      return "settings";
     case "chat":
       return target.conversationId ? `chat:${target.conversationId}` : "chat";
     case "resource":
@@ -79,12 +115,35 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Agents";
     case "costs":
       return "Costs";
+    case "graph":
+      return "Graph";
+    case "logs":
+      return "Logs";
+    case "changes":
+      return "Changes";
+    case "expiring":
+      return "Expiring";
+    case "posture":
+      return "Posture";
+    case "dns":
+      return "Domains";
+    case "environment-diff":
+      return "Env diff";
+    // Titles match the sidebar tiles the pages are opened from.
+    case "ssh-fanout":
+      return "Fan-out";
+    case "metric-alerts":
+      return "Alerts";
+    case "probes":
+      return "Probes";
     case "workflows":
       return "Workflows";
     case "deployments":
       // "Deploy" everywhere the user reads it — the sidebar tile, the panel
       // heading and the docs all say Deploy; only the tab used to disagree.
       return "Deploy";
+    case "settings":
+      return "Settings";
     case "chat":
       return "Chat";
     case "resource":
@@ -103,12 +162,31 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
       return a.accountId === (b as { accountId: string }).accountId;
     case "agents":
     case "costs":
+    case "graph":
+    case "logs":
+    case "changes":
+    case "expiring":
+    case "posture":
+    case "dns":
+    case "ssh-fanout":
+    case "metric-alerts":
+    case "probes":
       return true;
     case "deployments":
       // Compared even though the tab *id* ignores it: the id keeps a second
       // hotlink reusing one tab, while this comparison is what makes the route
       // sync notice the repo changed and actually retarget it.
       return a.repo === (b as { repo?: string }).repo;
+    // Same trick: one Diff tab by id, but comparing the two accounts lets the
+    // route sync record which comparison the tab is showing.
+    case "environment-diff": {
+      const other = b as { a?: string; b?: string };
+      return a.a === other.a && a.b === other.b;
+    }
+    case "settings":
+      // Same deployments trick: single tab by id, but comparing the section
+      // lets the route sync record which settings page the tab is on.
+      return a.section === (b as { section?: string }).section;
     case "workflows":
       return a.workflowId === (b as { workflowId?: string }).workflowId;
     case "chat":
@@ -139,6 +217,58 @@ function createWorkspaceTab(target: WorkspaceTabTarget, title?: string, id?: str
           }
         : target,
     title: title?.trim() || getWorkspaceTabFallbackTitle(target),
+  };
+}
+
+/** Bumped whenever a stored tab shape stops being renderable. See migrateWorkspaceTabs. */
+const PERSISTED_TABS_VERSION = 1;
+
+interface PersistedWorkspaceTabs {
+  workspaceTabs: WorkspaceTab[];
+  activeWorkspaceTabId: string | null;
+  activeCloudOrgId: string | null;
+}
+
+/**
+ * `savings` was its own tab kind until the panel became a section of Costs.
+ * Stored tabs are typed as current targets, so the dead kind needs a widening
+ * cast to be recognised at all.
+ */
+function isRetiredSavingsTab(tab: WorkspaceTab): boolean {
+  return (tab.target as { kind: string }).kind === "savings";
+}
+
+/**
+ * v1: fold any open Savings tab into Costs. Without this the tab rehydrates
+ * with a kind no viewport case renders — a permanently blank tab the user can
+ * only close.
+ */
+export function migrateWorkspaceTabs(persisted: unknown, version: number): PersistedWorkspaceTabs {
+  const state = persisted as PersistedWorkspaceTabs;
+  if (version >= PERSISTED_TABS_VERSION || !Array.isArray(state?.workspaceTabs)) return state;
+
+  const retired = state.workspaceTabs.filter(isRetiredSavingsTab);
+  if (retired.length === 0) return state;
+
+  // Retarget the first one in place so it keeps its position in the strip, and
+  // drop the rest — duplicate ids would break tab selection. If Costs is
+  // already open there is nothing to retarget onto.
+  const hasCosts = state.workspaceTabs.some((tab) => tab.target.kind === "costs");
+  const workspaceTabs = state.workspaceTabs.flatMap((tab) => {
+    if (!isRetiredSavingsTab(tab)) return [tab];
+    if (hasCosts || tab !== retired[0]) return [];
+    return [createWorkspaceTab({ kind: "costs" })];
+  });
+
+  const wasActive = retired.some((tab) => tab.id === state.activeWorkspaceTabId);
+  return {
+    ...state,
+    workspaceTabs,
+    activeWorkspaceTabId: wasActive
+      ? (workspaceTabs.find((tab) => tab.target.kind === "costs")?.id ??
+        workspaceTabs[0]?.id ??
+        null)
+      : state.activeWorkspaceTabId,
   };
 }
 
@@ -446,6 +576,8 @@ export const useUIStore = create<UIState>()(
     {
       name: WORKSPACE_TABS_STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
+      version: PERSISTED_TABS_VERSION,
+      migrate: migrateWorkspaceTabs,
       partialize: (state) => ({
         workspaceTabs: state.workspaceTabs,
         activeWorkspaceTabId: state.activeWorkspaceTabId,

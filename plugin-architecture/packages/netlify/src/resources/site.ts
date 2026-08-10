@@ -32,8 +32,40 @@ export const NetlifySiteResourceType = rt({
     o("sslUrl", "SSL URL"),
     o("deployHook", "Deploy Hook URL", { sensitive: true }),
   ],
+  // A Netlify DNS zone is identified by its domain name, which the zone lister
+  // stores in `name` — the site's domains match against that, not the zone id.
+  // `domainAliases` is comma-joined, so each alias becomes its own edge.
+  dependsOn: [
+    {
+      fieldKey: "customDomain",
+      targetTypeId: "netlify-dns-zone",
+      targetKey: "name",
+      label: "in zone",
+    },
+    {
+      fieldKey: "domainAliases",
+      targetTypeId: "netlify-dns-zone",
+      targetKey: "name",
+      label: "in zone",
+    },
+  ],
   supportsCreate: true,
   iconKey: "site",
+  // `<site-name>.netlify.app` (and the legacy `.netlify.com`), plus branch /
+  // deploy-preview aliases of the form `<branch>--<site-name>.netlify.app`.
+  // Capture group 1 is always the site name so the existing `name` claimant
+  // resolves them. `url`/`sslUrl` are full URLs, reduced to their host before
+  // comparing.
+  dnsServiceHosts: [
+    {
+      id: "netlify-subdomain",
+      label: "Netlify site subdomain",
+      hostPattern: String.raw`(?:[a-z0-9][a-z0-9-]*--)?([a-z0-9][a-z0-9-]*)\.netlify\.(?:app|com)`,
+      hostKeys: ["url", "sslUrl"],
+      reason:
+        "Deleting or renaming a site frees its subdomain for any Netlify user to claim, and Netlify will serve their deploy under your hostname.",
+    },
+  ],
   secretExportTemplates: [
     {
       id: "site-url",

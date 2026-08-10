@@ -14,7 +14,19 @@ import {
 } from "@infrawrench/ui";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
-import { DeployIcon } from "@infrawrench/ui";
+import {
+  DeployIcon,
+  ChangesIcon,
+  GraphIcon,
+  ExpiryIcon,
+  PostureIcon,
+  DomainsIcon,
+  EnvironmentDiffIcon,
+  FanoutIcon,
+  LogsIcon,
+  MetricAlertIcon,
+  ProbesIcon,
+} from "@infrawrench/ui";
 import { CHAT_CONVERSATIONS_CHANGED_EVENT, type ConversationSummary } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { chatTabTarget, navigateToWorkspaceTarget } from "@/lib/workspace-tabs";
@@ -468,6 +480,77 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <CostsIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/costs", params: { orgId: orgId! } }),
+              },
+              {
+                key: "metric-alerts",
+                label: "Alerts",
+                icon: <MetricAlertIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/metric-alerts", params: { orgId: orgId! } }),
+              },
+              {
+                key: "changes",
+                label: "Changes",
+                icon: <ChangesIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/changes", params: { orgId: orgId! } }),
+              },
+              {
+                key: "graph",
+                label: "Graph",
+                icon: <GraphIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/graph", params: { orgId: orgId! } }),
+              },
+              {
+                key: "expiring",
+                label: "Expiring",
+                icon: <ExpiryIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/expiring", params: { orgId: orgId! } }),
+              },
+              {
+                key: "posture",
+                label: "Posture",
+                icon: <PostureIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/posture", params: { orgId: orgId! } }),
+              },
+              {
+                key: "dns",
+                label: "Domains",
+                icon: <DomainsIcon />,
+                onClick: () => void navigate({ to: "/org/$orgId/dns", params: { orgId: orgId! } }),
+              },
+              {
+                key: "environment-diff",
+                label: "Env diff",
+                icon: <EnvironmentDiffIcon />,
+                onClick: () =>
+                  void navigate({
+                    to: "/org/$orgId/environment-diff",
+                    params: { orgId: orgId! },
+                  }),
+              },
+              {
+                key: "probes",
+                label: "Probes",
+                icon: <ProbesIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/probes", params: { orgId: orgId! } }),
+              },
+              {
+                key: "ssh-fanout",
+                label: "Fan-out",
+                icon: <FanoutIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/ssh-fanout", params: { orgId: orgId! } }),
+              },
+              {
+                key: "logs",
+                label: "Logs",
+                icon: <LogsIcon />,
+                onClick: () => void navigate({ to: "/org/$orgId/logs", params: { orgId: orgId! } }),
               },
             ]}
           />

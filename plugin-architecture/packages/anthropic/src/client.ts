@@ -816,10 +816,23 @@ export class AnthropicClient implements PluginClient {
       );
     }
 
+    // `ending_at` is exclusive (buckets that *end before* this timestamp).
+    // Anthropic rejects a future `ending_at` with 400 "Invalid date range:
+    // ending date must be after starting date" — their own cookbook always
+    // ends at start-of-today UTC so only completed days are requested. Cap
+    // here so a host window that includes "today" (monthChunks does) still
+    // works; a today-only chunk becomes an empty range and we skip the call.
+    // https://github.com/anthropics/anthropic-cookbook/blob/main/observability/usage_cost_api.ipynb
+    const today = new Date().toISOString().slice(0, 10);
+    const exclusiveEnd = addDays(range.toDate, 1);
+    const endingDay = exclusiveEnd > today ? today : exclusiveEnd;
+    if (range.fromDate >= endingDay) {
+      return [];
+    }
+
     const base = new URLSearchParams();
     base.set("starting_at", `${range.fromDate}T00:00:00Z`);
-    // `ending_at` is exclusive, so push it to midnight after the last day.
-    base.set("ending_at", `${addDays(range.toDate, 1)}T00:00:00Z`);
+    base.set("ending_at", `${endingDay}T00:00:00Z`);
     base.set("bucket_width", "1d");
     base.set("limit", "31");
     base.append("group_by[]", "description");

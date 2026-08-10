@@ -98,6 +98,14 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns probes route args", () => {
+    const args = getWorkspaceNavigateArgs({ kind: "probes" });
+    expect(args).toEqual({
+      to: "/org/$orgId/probes",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("returns resource route args with ssh hash (fallback without pluginId)", () => {
     const args = getWorkspaceNavigateArgs({
       kind: "resource",
@@ -165,6 +173,32 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(args).toMatchObject({ hash: "sftp" });
   });
 
+  it("returns posture route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "posture" })).toEqual({
+      to: "/org/$orgId/posture",
+      params: { orgId: "test-org" },
+    });
+  });
+
+  it("returns dns route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "dns" })).toEqual({
+      to: "/org/$orgId/dns",
+      params: { orgId: "test-org" },
+    });
+  });
+
+  it("carries the environment diff pair as query parameters", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "environment-diff" })).toEqual({
+      to: "/org/$orgId/environment-diff",
+      params: { orgId: "test-org" },
+    });
+    expect(getWorkspaceNavigateArgs({ kind: "environment-diff", a: "acc-a", b: "acc-b" })).toEqual({
+      to: "/org/$orgId/environment-diff",
+      params: { orgId: "test-org" },
+      search: { a: "acc-a", b: "acc-b" },
+    });
+  });
+
   it("sets replace when requested", () => {
     const args = getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId: "d1" }, true);
     expect(args.replace).toBe(true);
@@ -188,6 +222,27 @@ describe("syncWorkspaceRouteFromPath", () => {
       kind: "account",
       accountId: "a1",
     });
+  });
+
+  it("parses the org-scoped posture path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/test-org/posture")).toEqual({ kind: "posture" });
+  });
+
+  it("parses the org-scoped dns path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/test-org/dns")).toEqual({ kind: "dns" });
+  });
+
+  it("parses the environment diff path, with and without a pair", () => {
+    expect(syncWorkspaceRouteFromPath("/org/test-org/environment-diff", undefined, "")).toEqual({
+      kind: "environment-diff",
+    });
+    expect(
+      syncWorkspaceRouteFromPath("/org/test-org/environment-diff", undefined, "?a=acc-a&b=acc-b"),
+    ).toEqual({ kind: "environment-diff", a: "acc-a", b: "acc-b" });
+  });
+
+  it("parses the probes path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/probes")).toEqual({ kind: "probes" });
   });
 
   it("parses the chat list path", () => {
@@ -257,7 +312,19 @@ describe("syncWorkspaceRouteFromPath", () => {
   });
 
   it("returns null for unknown paths", () => {
-    expect(syncWorkspaceRouteFromPath("/settings")).toBeNull();
+    expect(syncWorkspaceRouteFromPath("/moment")).toBeNull();
+  });
+
+  it("parses settings paths into the single settings tab", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/settings")).toEqual({ kind: "settings" });
+    expect(syncWorkspaceRouteFromPath("/org/myorg/settings/team")).toEqual({
+      kind: "settings",
+      section: "team",
+    });
+    expect(syncWorkspaceRouteFromPath("/org/myorg/settings/ssh-host-keys")).toEqual({
+      kind: "settings",
+      section: "ssh-host-keys",
+    });
   });
 
   it("returns null for org path without sub-route", () => {

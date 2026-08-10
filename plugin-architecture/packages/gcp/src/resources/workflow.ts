@@ -12,5 +12,10 @@ export const WorkflowResourceType = rt({
     f("serviceAccount", "Service Account", { required: false }),
   ],
   outputs: [],
+  // The lister trims `projects/<p>/serviceAccounts/<email>` down to the email,
+  // which is the service account's externalId.
+  dependsOn: [
+    { fieldKey: "serviceAccount", targetTypeId: "gcp-service-account", label: "runs as" },
+  ],
   supportsCreate: true,
 });

@@ -14,7 +14,14 @@ export const ElasticIPResourceType = rt({
     f("domain", "Domain", { required: false }),
   ],
   outputs: [o("publicIp", "Public IP")],
+  dependsOn: [{ fieldKey: "instanceId", targetTypeId: "ec2-instance", label: "attached to" }],
   supportsCreate: true,
+  // associationId covers both instance and bare-ENI associations, so an empty
+  // one means the address is truly idle — exactly what AWS charges extra for.
+  orphanRule: {
+    conditions: [{ fieldKey: "associationId", when: "empty" }],
+    reason: "Elastic IP is not associated with any instance or network interface",
+  },
   attachTargets: [
     {
       pluginId: "aws",

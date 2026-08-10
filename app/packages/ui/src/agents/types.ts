@@ -1,6 +1,20 @@
 import type { CreateFieldConfig } from "@infrawrench/plugin-base";
 
+/** The coding agent CLI installed on the session's VM. */
 export type AgentTool = "codex" | "claude-code";
+
+/**
+ * What the session's main tab shows — orthogonal to which agent runs.
+ *
+ * - `terminal`: the tool's CLI, attached in an SSH terminal (the original
+ *   behaviour, and still the default).
+ * - `t3-code`: T3 Code (https://github.com/pingdotgg/t3code) runs as a server
+ *   on the VM and *drives* the tool's CLI, so the main tab is its embedded
+ *   app. T3 Code is a control surface, not an agent: it ships no model access
+ *   of its own and still needs `codex` or `claude` installed and signed in
+ *   next to it — which is why `tool` still applies. See `t3-code.ts`.
+ */
+export type AgentSurface = "terminal" | "t3-code";
 export type AgentStatus = "pending" | "provisioning" | "setting-up" | "up" | "failed" | "stopped";
 export type AgentRuntimeLanguage = "node" | "php" | "ruby" | "go";
 export type AgentRuntimeVersionSource = "project" | "latest";
@@ -79,6 +93,8 @@ export interface AgentSettings {
   pluginId: string;
   resourceTypeId: string;
   tool: AgentTool;
+  /** Absent on rows saved before T3 Code sessions existed; treat as "terminal". */
+  surface?: AgentSurface;
   fields: Record<string, string>;
 }
 
@@ -91,6 +107,8 @@ export interface AgentSession {
   pluginId: string;
   resourceTypeId: string;
   tool: AgentTool;
+  /** Absent on sessions created before T3 Code sessions existed. */
+  surface?: AgentSurface;
   branchName: string;
   status: AgentStatus;
   vmResourceId?: string | null;

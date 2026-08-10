@@ -577,6 +577,91 @@ interface InfraPage {
 }`;
 
 /**
+ * `infra.waitForApproval` — a human gate in the middle of a run. Mirrors
+ * `ApprovalSpec` / `ApprovalResult` in types.ts.
+ */
+const APPROVAL_INTERFACES = `interface ApprovalOptions {
+  /** Short headline for the approval card. Defaults to this workflow's name. */
+  title?: string;
+  /**
+   * Minutes to wait for a decision before the request expires and is treated
+   * as denied. Defaults to 60; capped at 1440 (24 hours).
+   */
+  timeoutMinutes?: number;
+}
+
+interface ApprovalSpec extends ApprovalOptions {
+  /** What the approver is deciding — shown on the approval card. */
+  message: string;
+}
+
+interface ApprovalResult {
+  readonly approved: true;
+  /** Display name (or email) of the org member who approved. */
+  readonly decidedBy?: string;
+  /** ISO timestamp of the decision. */
+  readonly decidedAt?: string;
+}
+
+interface InfraWaitForApproval {
+  /**
+   * Pause here until an org member approves or denies. Resolves on approval;
+   * a denial or timeout **throws**, so an unhandled deny fails the run.
+   */
+  (message: string, opts?: ApprovalOptions): Promise<ApprovalResult>;
+  /** Pause for approval, passing every option in one object. */
+  (spec: ApprovalSpec): Promise<ApprovalResult>;
+}`;
+
+/**
+ * `infra.ai` — one prompt in, one reply out. The model union must list exactly
+ * `WORKFLOW_AI_MODELS` in types.ts (dispatch rejects anything else at runtime;
+ * this makes the editor reject it first). Mirrors `WorkflowAiSpec` /
+ * `WorkflowAiResult` in types.ts.
+ */
+const AI_INTERFACES = `interface AiOptions {
+  /**
+   * Model to ask. "claude-sonnet-5" (default) balances quality and cost;
+   * "claude-haiku-4-5" is the fastest and cheapest; "claude-opus-5" is the
+   * most capable and the most expensive.
+   */
+  model?: "claude-sonnet-5" | "claude-haiku-4-5" | "claude-opus-5";
+  /** Optional system prompt framing how the model should answer. */
+  system?: string;
+  /** Cap on the reply length in tokens. Default 1024, max 8192. */
+  maxTokens?: number;
+}
+
+interface AiSpec extends AiOptions {
+  /**
+   * What to ask. The model sees only this (plus \`system\`) — it has no access
+   * to your accounts, resources, or anything else in the run, so paste in the
+   * material you want it to work from.
+   */
+  prompt: string;
+}
+
+interface AiResult {
+  /** The model's reply. */
+  readonly text: string;
+  /** The concrete model id that answered. */
+  readonly model: string;
+  /** "end" when the model finished; "max_tokens" when it hit \`maxTokens\` mid-answer. */
+  readonly stopReason: "end" | "max_tokens";
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  /** What this call cost in micro-dollars (1 USD = 1_000_000), after markup. */
+  readonly costMicros: number;
+}
+
+interface InfraAi {
+  /** Ask a model one question and get its reply. */
+  (prompt: string, opts?: AiOptions): Promise<AiResult>;
+  /** Ask, passing every option in one object. */
+  (spec: AiSpec): Promise<AiResult>;
+}`;
+
+/**
  * The global `fetch`. Declared here rather than pulled from `lib.dom` because
  * the sandbox implements a deliberately small subset: a fully-buffered body
  * (so the reader methods can be called more than once), no `Request`/`Headers`
@@ -650,6 +735,20 @@ export interface GenerateInfraDtsInput {
    * author sees it's unavailable while editing instead of at run time.
    */
   costs?: boolean;
+  /**
+   * Whether this host supports human-approval gates (cloud only — approvals
+   * are org-level records with notifications). When false,
+   * `infra.waitForApproval` is typed `never` so a desktop author sees it's
+   * unavailable while editing instead of at run time.
+   */
+  approvals?: boolean;
+  /**
+   * Whether this host can make AI model calls (cloud only — the call is made
+   * server-side with the deployment's API key and metered against the org's
+   * monthly AI spend cap). When false, `infra.ai` is typed `never` so a
+   * desktop author sees it's unavailable while editing instead of at run time.
+   */
+  ai?: boolean;
   /**
    * Names of the caller's Infrawrench-managed SSH keys. Surfaced as autocomplete
    * for `ssh-key-picker` create fields and `resource.ssh`'s `sshKey` option.
@@ -727,8 +826,30 @@ function collectResourceInterfaces(
   }
 }
 
-/** Build the full `infra.d.ts` source string. */
-export function generateInfraDts(input: GenerateInfraDtsInput): string {
+/** One named interface from the generated typings, e.g. `Account_aws`. */
+export interface InfraDtsNamedType {
+  name: string;
+  dts: string;
+}
+
+/**
+ * The generated typings split into a global scope and the per-plugin named
+ * interfaces, so context-priced callers (the MCP/chat tools) can send the
+ * global scope first and hand out named interfaces on demand. `full` is the
+ * complete file — {@link generateInfraDts} returns exactly it — and `global`
+ * is everything except the named interfaces, which it references by name
+ * (`InfraAccounts` → `AccountGroup_<plugin>` → `Account_<plugin>` →
+ * `Resource_<plugin>_<type>`), so the omitted names are discoverable.
+ */
+export interface InfraDtsParts {
+  full: string;
+  global: string;
+  /** Named interfaces in the order they appear in `full`. */
+  types: InfraDtsNamedType[];
+}
+
+/** Build the `infra.d.ts` source, whole and split into named parts. */
+export function generateInfraDtsParts(input: GenerateInfraDtsInput): InfraDtsParts {
   const readOnly = input.readOnly ?? false;
   const plugins = readOnly ? stripMutations(input.plugins) : input.plugins;
   const interactive = input.interactive ?? true;
@@ -746,9 +867,23 @@ export function generateInfraDts(input: GenerateInfraDtsInput): string {
       readOnly,
     );
   }
+  const accountTypes = plugins.map((p) => ({
+    name: accountInterfaceName(p.pluginId),
+    dts: renderAccountInterface(p, sshKeyNames),
+  }));
+  const groupTypes = plugins.map((p) => ({
+    name: groupInterfaceName(p.pluginId),
+    dts: renderGroupInterface(p),
+  }));
+  const namedTypes: InfraDtsNamedType[] = [
+    ...[...resourceByName].map(([name, dts]) => ({ name, dts })),
+    ...[...sidecarByName].map(([name, dts]) => ({ name, dts })),
+    ...accountTypes,
+    ...groupTypes,
+  ];
   const resourceInterfaces = [...resourceByName.values(), ...sidecarByName.values()].join("\n\n");
-  const accountInterfaces = plugins.map((p) => renderAccountInterface(p, sshKeyNames)).join("\n\n");
-  const groupInterfaces = plugins.map(renderGroupInterface).join("\n\n");
+  const accountInterfaces = accountTypes.map((t) => t.dts).join("\n\n");
+  const groupInterfaces = groupTypes.map((t) => t.dts).join("\n\n");
 
   const accountsProps = plugins
     .map(
@@ -774,26 +909,43 @@ export function generateInfraDts(input: GenerateInfraDtsInput): string {
     input.costs === false
       ? `  /** Unavailable here — cost reporting needs the cloud's cost store. */\n  costs: never;`
       : `  /** Report spend from a source Infrawrench has no plugin for. */\n  readonly costs: InfraCosts;`;
+  const aiOff = readOnly || input.ai === false;
+  const aiDecl = aiOff
+    ? `  /** Unavailable here — AI calls are made by the cloud and metered like chat. */\n  ai: never;`
+    : `  /**
+   * Ask an AI model for help mid-run — summarize a log tail before paging it,
+   * classify an error, draft the message an alert should carry. One prompt in,
+   * one reply out; the model sees only what you pass it. Metered like AI chat
+   * and counted against the same monthly spend cap.
+   */
+  readonly ai: InfraAi;`;
+  const approvalsOff = readOnly || input.approvals === false;
+  const approvalsDecl = approvalsOff
+    ? `  /** Unavailable here — approval gates need the cloud's approvals surface. */\n  waitForApproval: never;`
+    : `  /**
+   * Pause the run until an org member approves or denies. The pending request
+   * shows on the run view (and notifies the org); a denial or timeout throws,
+   * so an unhandled deny fails the run. Timeout defaults to 60 minutes.
+   */
+  readonly waitForApproval: InfraWaitForApproval;`;
 
-  return `${STATIC_PREAMBLE}
+  const head = `${STATIC_PREAMBLE}
 
 ${renderEventType(input.triggerKind ?? "manual")}
 
 ${input.costs === false ? "" : COSTS_INTERFACE}
 
+${approvalsOff ? "" : APPROVAL_INTERFACES}
+
+${aiOff ? "" : AI_INTERFACES}
+
 ${PAGE_INTERFACE}
 
 ${FETCH_INTERFACES}
 
-${renderSshExecOptions(sshKeyNames)}
+${renderSshExecOptions(sshKeyNames)}`;
 
-${resourceInterfaces}
-
-${accountInterfaces || "// (no accounts connected yet)"}
-
-${groupInterfaces}
-
-interface InfraAccounts {
+  const tail = `interface InfraAccounts {
 ${accountsProps || "  [pluginId: string]: never;"}
 }
 
@@ -809,6 +961,8 @@ ${promptDecl}
   readonly event: WorkflowEvent;
 ${costsDecl}
 ${pageDecl}
+${aiDecl}
+${approvalsDecl}
   /** Record a JSON-serializable result for this run. */
   output(value: JsonValue): Promise<void>;
   /** Stream an SSH \`{ stdout, stderr }\` object to the run log live (stderr in red). */
@@ -828,4 +982,20 @@ declare const infra: InfraApi;
  */
 declare function fetch(url: string, init?: FetchInit): Promise<FetchResponse>;
 `;
+
+  const namedSection = [
+    resourceInterfaces,
+    accountInterfaces || "// (no accounts connected yet)",
+    groupInterfaces,
+  ].join("\n\n");
+  return {
+    full: `${head}\n\n${namedSection}\n\n${tail}`,
+    global: `${head}\n\n${tail}`,
+    types: namedTypes,
+  };
+}
+
+/** Build the full `infra.d.ts` source string. */
+export function generateInfraDts(input: GenerateInfraDtsInput): string {
+  return generateInfraDtsParts(input).full;
 }

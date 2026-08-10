@@ -12,6 +12,7 @@ export { CosmosDBAccountResourceType } from "./resources/cosmos-db.js";
 export { StorageAccountResourceType } from "./resources/storage-account.js";
 export { FunctionAppResourceType } from "./resources/function-app.js";
 export { AppServiceResourceType } from "./resources/app-service.js";
+export { AppServicePlanResourceType } from "./resources/app-service-plan.js";
 export { ContainerInstanceResourceType } from "./resources/container-instance.js";
 export { KeyVaultResourceType } from "./resources/key-vault.js";
 export { RedisCacheResourceType } from "./resources/redis-cache.js";

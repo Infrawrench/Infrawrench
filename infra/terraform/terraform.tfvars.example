@@ -16,7 +16,12 @@ app_env = {
   # Core
   DATABASE_URL          = "postgres://...@....neon.tech/infrawrench?sslmode=require"
   ENCRYPTION_MASTER_KEY = "<openssl rand -base64 32>"
-  APP_URL               = "https://app.infrawrench.com"
+  # Public origin of the web app, no trailing slash. Required in production:
+  # every Slack/Teams alert (sync incidents, budgets, cost anomalies, resource
+  # drift, workflow pages and approval requests) loses its "View in
+  # Infrawrench" button without it, and the Slack OAuth redirect below is built
+  # from it.
+  APP_URL = "https://app.infrawrench.com"
 
   # WorkOS
   WORKOS_API_KEY         = "sk_live_..."
@@ -33,6 +38,9 @@ app_env = {
   # authorize/token, and JWKS through it; api.workos.com is unsupported after
   # cutover. Omit only while still on the default WorkOS domain.
   WORKOS_API_HOSTNAME = "auth-api.infrawrench.com"
+  # WORKOS_API_HTTPS / WORKOS_API_PORT also exist but are dev-only knobs for
+  # the WorkOS emulator (docker-compose.dev.yml). Never set them in prod — the
+  # SDK must keep speaking https on the default port.
 
   # Stripe
   STRIPE_SECRET_KEY                   = "sk_live_..."
@@ -40,14 +48,38 @@ app_env = {
   STRIPE_PRICE_ID                     = "price_..." # $20/seat/mo licensed price
   STRIPE_CHAT_PRICE_ID                = "price_..." # metered price bound to the chat meter
   INFRAWRENCH_STRIPE_CHAT_METER_EVENT = "..."
+  # Optional: sell prepaid capacity slots — one seat bought outright for 2 years
+  # at $200 instead of rented monthly. Must be a ONE-TIME price (Checkout opens
+  # in payment mode); a recurring price here fails at checkout. Unset = the
+  # billing page hides the offer and the purchase route returns 503, which is
+  # the right default for a monthly-only deployment. The term and the quoted
+  # price live in code (CAPACITY_SLOT_TERM_MONTHS / CAPACITY_SLOT_PRICE_USD in
+  # server-core/src/billing/capacity-slots.ts) — keep this price object in step
+  # with them, since the code number is only copy and this one is the charge.
+  STRIPE_CAPACITY_SLOT_PRICE_ID       = "price_..."
 
-  # ClickHouse Cloud (metrics; all four together or writes/reads no-op).
-  # Stays on ClickHouse Cloud — if its IP access list is enabled, add the
-  # `egress_ip` output (the Cloud NAT address) to it.
-  CLICKHOUSE_METRICS_URL      = "https://xxxxx.clickhouse.cloud:8443"
-  CLICKHOUSE_METRICS_USER     = "default"
-  CLICKHOUSE_METRICS_PASSWORD = "..."
-  CLICKHOUSE_METRICS_DATABASE = "infrawrench"
+  # ClickHouse (metrics + costs; the four URL/USER/PASSWORD/DATABASE keys are
+  # required together or writes/reads no-op). Two options:
+  #
+  # In-cluster (default) — clickhouse.tf runs a 2-replica ClickHouse on its
+  # own node pool. Password comes from `terraform output clickhouse_app_password`.
+  # CLICKHOUSE_METRICS_REPLICATED="1" is required here: it makes the schema
+  # migrations create Replicated* table engines so data actually replicates
+  # between the two replicas. Never set it against ClickHouse Cloud, which
+  # rejects ReplicatedMergeTree DDL.
+  CLICKHOUSE_METRICS_URL        = "http://clickhouse.infrawrench.svc.cluster.local:8123"
+  CLICKHOUSE_METRICS_USER       = "infrawrench"
+  CLICKHOUSE_METRICS_PASSWORD   = "<terraform output clickhouse_app_password>"
+  CLICKHOUSE_METRICS_DATABASE   = "infrawrench"
+  CLICKHOUSE_METRICS_REPLICATED = "1"
+  #
+  # ClickHouse Cloud — point the URL at the service endpoint instead, omit
+  # CLICKHOUSE_METRICS_REPLICATED, and if the Cloud IP access list is enabled,
+  # add the `egress_ip` output (the Cloud NAT address) to it.
+  # CLICKHOUSE_METRICS_URL      = "https://xxxxx.clickhouse.cloud:8443"
+  # CLICKHOUSE_METRICS_USER     = "default"
+  # CLICKHOUSE_METRICS_PASSWORD = "..."
+  # CLICKHOUSE_METRICS_DATABASE = "infrawrench"
 
   # GitHub App (workflow git triggers; used by web + github-watcher)
   GITHUB_APP_ID          = "..."
@@ -64,12 +96,45 @@ app_env = {
   # same shape as the GitHub App.
   #
   # The Slack app needs: redirect URL <APP_URL>/api/slack/oauth/callback, bot
-  # scopes chat:write / chat:write.public / channels:read / groups:read, public
-  # distribution ON (each org installs into its own workspace), and token
-  # rotation OFF — the bot token is stored once and never refreshed. No signing
-  # secret is needed; there are no events, slash commands, or interactivity.
+  # scopes chat:write / chat:write.public / channels:read / groups:read /
+  # commands, public distribution ON (each org installs into its own
+  # workspace), and token rotation OFF — the bot token is stored once and
+  # never refreshed.
   SLACK_CLIENT_ID     = "1234567890.1234567890"
   SLACK_CLIENT_SECRET = "..."
+
+  # Optional: enables the two-way half of Slack — the /infrawrench slash
+  # command (costs, resource status, account linking) and the Approve/Deny
+  # buttons on approval messages. From the Slack app's Basic Information →
+  # App Credentials → Signing Secret. The app also needs a slash command named
+  # /infrawrench pointed at <APP_URL>/api/slack/commands and Interactivity
+  # turned on with request URL <APP_URL>/api/slack/interactions. Without this
+  # key, outbound alerts still send but every inbound Slack request is refused
+  # (commands error, approval messages carry buttons that don't work).
+  SLACK_SIGNING_SECRET = "..."
+
+  # Optional: transactional email via Mailgun, used only by the weekly digest's
+  # email recipients. The first three are required together — with any missing,
+  # email delivery is a logged no-op and the digest still reaches Slack and
+  # Teams. There is no other email in the product; WorkOS sends its own
+  # verification and invitation mail.
+  #
+  # Mailgun rather than something Google-native because there is nothing
+  # Google-native to use: GCP has no first-party transactional mail service,
+  # its own "sending email from an instance" guide names Mailgun, SendGrid and
+  # Mailjet, and outbound port 25 is blocked from the cluster — so a hosted
+  # provider over HTTPS is the only shape that works here.
+  #
+  # MAILGUN_API_KEY is a domain sending key (Send → Domain settings → Sending
+  # keys), preferred over the account key because it can only post messages for
+  # its one domain. MAILGUN_DOMAIN is the verified sending domain — usually a
+  # subdomain like mg.infrawrench.com, and until its DNS verifies every send is
+  # rejected. EMAIL_FROM must be an address on that domain. MAILGUN_API_BASE is
+  # only set for EU-region Mailgun accounts, which live on a different host.
+  MAILGUN_API_KEY = "..."
+  MAILGUN_DOMAIN  = "mg.infrawrench.com"
+  EMAIL_FROM      = "Infrawrench <digest@mg.infrawrench.com>"
+  # MAILGUN_API_BASE = "https://api.eu.mailgun.net"
 
   # Workflow and chat outbound HTTP. `fetch()` inside a workflow, and the chat
   # agent's `web_fetch` tool, are both performed by the egress proxy Worker
@@ -105,6 +170,14 @@ app_env = {
   INFRAWRENCH_STRIPE_BUILD_METER_EVENT = "hosted_build_seconds"
   STRIPE_BUILD_PRICE_ID                = "price_..."
 
+  # Optional: egress proxy Worker (app/packages/egress-proxy) for workflow
+  # fetch(), the chat agent's web_fetch, the poller's provider status-feed
+  # pass, and the poller's synthetic-probe pass. Token = the Worker's
+  # PROXY_TOKEN secret. Without both, workflow fetch() throws, web_fetch is
+  # withheld from the model, and synthetic probes silently skip (they exist to
+  # measure from an external vantage point, so there is no in-pod fallback);
+  # status feeds fall back to a direct in-pod fetch (manifest-declared public
+  # URLs only).
   WORKFLOW_FETCH_PROXY_URL   = "https://egress.infrawrench.com"
   WORKFLOW_FETCH_PROXY_TOKEN = "<openssl rand -base64 32>"
 
@@ -128,7 +201,12 @@ app_env = {
   #
   # ANTHROPIC_API_KEY is what enables the Claude models in the picker. Without
   # it, picking one returns a configuration error and chat falls back to
-  # nothing — leave it set unless you intend Gemini-only.
+  # nothing — leave it set unless you intend Gemini-only. The same key also
+  # backs `infra.ai()` in workflows (read by the poller as well as web —
+  # without it the generated typings mark infra.ai unavailable and a call
+  # throws) and the weekly digest's opt-in AI summary paragraph; without it
+  # that paragraph is skipped with a log line and the digest still sends its
+  # deterministic content.
   # Optional
   # ANTHROPIC_API_KEY    = "..."
   # OPENAI_API_KEY       = "..."

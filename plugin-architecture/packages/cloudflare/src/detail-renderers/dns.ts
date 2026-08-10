@@ -155,6 +155,7 @@ export function renderZoneDetail(resource: ResourceInstance): DetailViewSchema {
         action: {
           type: "plugin-action",
           actionId: "purge-cache-all",
+          destructive: true,
           confirmMessage:
             "Purge all cached content for this zone? Visitors may briefly hit your origin while the cache refills.",
           successMessage: "Cache purge started for this zone.",

@@ -21,6 +21,16 @@ export default function SettingsScreen() {
           subtitle="Push preferences and devices"
           onPress={go("notifications")}
         />
+        <Row
+          title="Approvals"
+          subtitle="Workflow runs waiting on a decision"
+          onPress={go("approvals")}
+        />
+        <Row
+          title="Break-glass access"
+          subtitle="Time-boxed permission elevation"
+          onPress={go("access-requests")}
+        />
         <Row title="SSH keys" subtitle="Org SSH keys" onPress={go("ssh-keys")} />
         <Row title="Billing" subtitle="Plan and seats" onPress={go("billing")} />
       </Card>

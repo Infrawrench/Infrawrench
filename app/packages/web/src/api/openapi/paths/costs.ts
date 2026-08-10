@@ -78,6 +78,110 @@ const CostAccountStatus = strict({
   coverage: strict({ firstDay: IsoDate, lastDay: IsoDate }).nullable(),
 }).openapi("CostAccountStatus");
 
+const CostAnomaly = strict({
+  id: Uuid,
+  day: IsoDate.describe("The anomalous UTC day."),
+  kind: z
+    .enum(["spike", "new_source"])
+    .describe(
+      "Which detection produced the row. `spike` is spend far above the key's own trailing " +
+        "baseline; `new_source` is a provider or service with no spend at all across the " +
+        "trailing window that suddenly has material spend — it can never be a `spike`, since " +
+        "a zero baseline has no mean or deviation to exceed. Rows written before new-source " +
+        "detection existed read as `spike`.",
+    ),
+  dimension: z.enum(["provider", "service"]),
+  dimensionKey: z.string().describe("The dimension's value — a plugin id or a service name."),
+  currency: z.string(),
+  actualCents: z.number().int(),
+  baselineCents: z
+    .number()
+    .int()
+    .describe(
+      "Mean daily spend over the trailing 28-day baseline, in cents. Zero, or near it, for a " +
+        "`new_source` — clients must not compute a percentage change from it.",
+    ),
+  thresholdCents: z
+    .number()
+    .int()
+    .describe(
+      "The detection bar the day cleared, in cents: baseline mean + N·stddev for a `spike`, " +
+        "the new-source floor for a `new_source`.",
+    ),
+  detectedAt: IsoDateTime,
+  notifiedAt: IsoDateTime.nullable().describe(
+    "When the anomaly was delivered to a notification channel; null when delivery " +
+      "failed or a recent anomaly for the same key suppressed it.",
+  ),
+  hints: z
+    .array(z.string())
+    .describe(
+      "Root-cause hints computed when the anomaly fired: human-readable facts from the " +
+        "change timeline and audit log for the anomalous day and the day before (e.g. " +
+        '"12 gce-instance resources appeared", a workflow run, a lifted change freeze), ' +
+        "ranked by likely relevance and capped at three. Empty when nothing notable " +
+        "happened in the window or the anomaly predates hint collection.",
+    ),
+}).openapi("CostAnomaly");
+
+const CostAnomalySettings = strict({
+  sigmas: z
+    .number()
+    .min(1)
+    .max(10)
+    .describe(
+      "Standard deviations above a key's own trailing mean that count as a spike. " +
+        "Lower is more sensitive. Bounded at 1 — below that roughly a third of ordinary " +
+        "days clear the bar — and at 10, above which nothing short of a 10x jump fires. " +
+        "Defaults to 3.",
+    ),
+  minDeltaCents: z
+    .number()
+    .int()
+    .min(100)
+    .max(10_000_000)
+    .describe(
+      "Minimum rise over the baseline mean before a spike alerts, in USD cents (converted " +
+        "per series, so it means the same real amount in every currency). Defaults to 1000 ($10).",
+    ),
+  newSourceMinCents: z
+    .number()
+    .int()
+    .min(100)
+    .max(10_000_000)
+    .describe(
+      "Minimum first-day spend before a new spend source alerts, in USD cents. A key with no " +
+        "prior spend has no statistical bar to clear, so this absolute floor is the only thing " +
+        "keeping a new $0.02/day service quiet. Defaults to 2500 ($25).",
+    ),
+  smsAlerts: z
+    .enum(["off", "new_source", "all"])
+    .describe(
+      "Which anomalies also text the organization's Twilio recipients. Defaults to `off` — " +
+        "an organization with Twilio configured for budgets does not start receiving anomaly " +
+        "texts until it asks to. `new_source` texts only about spend appearing from nothing, " +
+        "which is what a leaked key looks like on a bill; `all` adds spikes on existing lines. " +
+        "Delivery is batched — one SMS per detection pass summarizing what it alerted on, at " +
+        "most one every six hours per organization — and never places a voice call. Push, " +
+        "Slack and Teams delivery is unaffected by this setting.",
+    ),
+}).openapi("CostAnomalySettings");
+
+/**
+ * What the settings routes answer with: the stored object plus one derived
+ * fact, so a client can tell "SMS is on" from "SMS is on and would actually
+ * reach somebody" without holding `org:settings:write`.
+ */
+const CostAnomalySettingsView = CostAnomalySettings.extend({
+  smsConfigured: z
+    .boolean()
+    .describe(
+      "Whether an SMS raised right now could be delivered: paging enabled for the " +
+        "organization, Twilio credentials and a from-number stored, and at least one recipient " +
+        "opted into SMS. Read-only and derived — it is not accepted on PUT.",
+    ),
+}).openapi("CostAnomalySettingsView");
+
 const PushedCostRow = strict({
   date: IsoDate.describe("UTC day the spend belongs to."),
   currency: z.string().length(3).openapi({ example: "USD" }),
@@ -204,6 +308,83 @@ export function registerCostPaths(ctx: BuildContext) {
       200: {
         description: "Values",
         content: { "application/json": { schema: CostDimensionValues } },
+      },
+      400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/costs/anomalies",
+    tags: ["Costs"],
+    summary: "List recently detected cost anomalies",
+    description:
+      "Spend anomalies detected by the daily background pass. Two kinds share the list: a " +
+      "`spike`, where a provider's or service's spend exceeded its trailing 28-day baseline " +
+      "by a statistical threshold (mean + N·stddev, with an absolute floor to ignore " +
+      "penny-scale noise), and a `new_source`, where a provider or service with no spend at " +
+      "all across that window suddenly billed a material amount. Thresholds are per " +
+      "organization — see GET /costs/anomaly-settings. Newest day first, capped at 200 rows.",
+    request: {
+      params: OrgIdParam,
+      query: strict({
+        days: z
+          .string()
+          .regex(/^\d+$/)
+          .optional()
+          .describe("Window in days over anomalous days, 1-90. Defaults to 30."),
+      }),
+    },
+    responses: {
+      200: {
+        description: "Anomalies",
+        content: {
+          "application/json": { schema: strict({ anomalies: z.array(CostAnomaly) }) },
+        },
+      },
+      400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/costs/anomaly-settings",
+    tags: ["Costs"],
+    summary: "Get the organization's anomaly detection thresholds",
+    description:
+      "The tunable part of cost anomaly detection. Everything else about the model — the " +
+      "28-day baseline, the 7-day notification cooldown, the minimum history a baseline needs " +
+      "— is fixed. An organization that has never changed a threshold reads back the defaults. " +
+      "The response also carries the derived, read-only `smsConfigured`.",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "Anomaly settings",
+        content: { "application/json": { schema: CostAnomalySettingsView } },
+      },
+    },
+  });
+
+  registry.registerPath({
+    method: "put",
+    path: "/api/org/{orgId}/costs/anomaly-settings",
+    tags: ["Costs"],
+    summary: "Update the organization's anomaly detection thresholds",
+    description:
+      "Takes effect on the next detection pass (which runs after each cost collection). " +
+      "Anomalies already stored are not re-judged. All four fields are required — this is a " +
+      "PUT of the whole settings object, not a patch — and `smsAlerts` deliberately has no " +
+      "server-side default, so a client that omits it is rejected rather than silently " +
+      "switching an organization's SMS paging back off. `smsConfigured` is derived and is not " +
+      "accepted here.",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: CostAnomalySettings } }, required: true },
+    },
+    responses: {
+      200: {
+        description: "The updated settings",
+        content: { "application/json": { schema: CostAnomalySettingsView } },
       },
       400: ErrorResponses[400],
     },

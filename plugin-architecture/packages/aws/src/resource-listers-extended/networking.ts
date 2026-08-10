@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { ensureArray } from "../xml.js";
-import type { ListerContext } from "../resource-listers.js";
+import { joinIds, type ListerContext } from "../resource-listers.js";
 
 export async function listALBs(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
   const data = await ctx.ec2Query<Record<string, unknown>>(
@@ -19,6 +19,12 @@ export async function listALBs(ctx: ListerContext, accountId: string): Promise<R
     ) as Record<string, unknown>[];
     const azNames = azs.map((az) => String(az["ZoneName"] ?? "")).join(", ");
     const stateObj = lb["State"] as Record<string, unknown> | undefined;
+    // Each availability zone entry names the subnet the load balancer has an
+    // interface in, so the subnet links come out of the same payload as the AZs.
+    const subnetIds = joinIds(azs.map((az) => az["SubnetId"]));
+    const securityGroupIds = joinIds(
+      ensureArray((lb["SecurityGroups"] as Record<string, unknown> | undefined)?.["member"]),
+    );
 
     return {
       id: ctx.id(accountId, "alb", name),
@@ -35,6 +41,8 @@ export async function listALBs(ctx: ListerContext, accountId: string): Promise<R
         vpcId: String(lb["VpcId"] ?? ""),
         availabilityZones: azNames,
         ipAddressType: String(lb["IpAddressType"] ?? ""),
+        subnetIds,
+        securityGroupIds,
       },
       resolvedOutputs: {
         dnsName: String(lb["DNSName"] ?? ""),
@@ -64,6 +72,11 @@ export async function listTargetGroups(
 
   return tgs.map((tg) => {
     const name = String(tg["TargetGroupName"] ?? "");
+    // A target group can be attached to more than one load balancer; the
+    // ARNs are on the describe response already.
+    const loadBalancerArns = joinIds(
+      ensureArray((tg["LoadBalancerArns"] as Record<string, unknown> | undefined)?.["member"]),
+    );
     return {
       id: ctx.id(accountId, "target-group", name),
       pluginId: "aws",
@@ -80,6 +93,7 @@ export async function listTargetGroups(
         healthCheckProtocol: String(tg["HealthCheckProtocol"] ?? ""),
         healthCheckPath: String(tg["HealthCheckPath"] ?? ""),
         healthyThreshold: Number(tg["HealthyThresholdCount"] ?? 0),
+        loadBalancerArns,
       },
       resolvedOutputs: {
         targetGroupArn: String(tg["TargetGroupArn"] ?? ""),
@@ -200,6 +214,15 @@ export async function listRouteTables(
       (rt["associationSet"] as Record<string, unknown> | undefined)?.["item"],
     ) as Record<string, unknown>[];
     const main = associations.some((assoc) => String(assoc["main"] ?? "") === "true");
+    // `routeCount` stays as-is; these name the gateways the routes actually
+    // point at. `gatewayId` also carries "local" and `vpce-…` endpoint ids,
+    // so only the internet-gateway ids are kept.
+    const natGatewayIds = joinIds(routes.map((route) => route["natGatewayId"]));
+    const internetGatewayIds = joinIds(
+      routes
+        .map((route) => String(route["gatewayId"] ?? ""))
+        .filter((gatewayId) => gatewayId.startsWith("igw-")),
+    );
 
     return {
       id: ctx.id(accountId, "route-table", routeTableId),
@@ -215,6 +238,8 @@ export async function listRouteTables(
         main,
         routeCount: routes.length,
         associationCount: associations.length,
+        natGatewayIds,
+        internetGatewayIds,
       },
       resolvedOutputs: { routeTableId },
       secretStates: [],

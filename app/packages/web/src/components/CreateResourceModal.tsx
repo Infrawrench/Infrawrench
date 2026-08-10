@@ -6,7 +6,12 @@ import {
   type SshKeyEntry,
   type ResourcePickerOption,
 } from "@infrawrench/ui";
-import type { CreateResourceConfig, AssociationSource } from "@infrawrench/plugin-base";
+import type {
+  CostEstimate,
+  CreateResourceConfig,
+  AssociationSource,
+} from "@infrawrench/plugin-base";
+import type { RequiredTag, TagPolicy } from "@infrawrench/client-core";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 
@@ -32,10 +37,19 @@ export function CreateResourceModal({
 }: Props) {
   const orgId = useOrgId();
   const [currentUserId, setCurrentUserId] = useState<string | undefined>();
+  const [requiredTags, setRequiredTags] = useState<RequiredTag[] | undefined>();
 
   useEffect(() => {
     apiGet<{ userId: string }>("/api/auth/me").then((s) => setCurrentUserId(s.userId));
   }, []);
+
+  useEffect(() => {
+    // Best-effort: the notice/prefill is advisory, the server enforces.
+    apiGet<TagPolicy>(`/api/org/${orgId}/tag-policy`).then(
+      (policy) => setRequiredTags(policy.requiredTags),
+      () => setRequiredTags(undefined),
+    );
+  }, [orgId]);
 
   const loadSshKeys = useCallback(
     () => apiGet<SshKeyEntry[]>(`/api/org/${orgId}/ssh-keys`),
@@ -88,7 +102,7 @@ export function CreateResourceModal({
           sizes: request.sizes,
         }),
       loadCostEstimate: (fields: Record<string, string>) =>
-        apiPost<{ estimate: number | null }>(`/api/org/${orgId}/resources/create-cost-estimate`, {
+        apiPost<{ estimate: CostEstimate | null }>(`/api/org/${orgId}/resources/cost-estimate`, {
           accountId,
           resourceTypeId,
           pluginId,
@@ -138,6 +152,7 @@ export function CreateResourceModal({
       displayName={resourceTypeDisplayName}
       form={form}
       onClose={onClose}
+      requiredTags={requiredTags}
       renderField={(f, value, onChange) => (
         <FieldRenderer
           key={f.key}

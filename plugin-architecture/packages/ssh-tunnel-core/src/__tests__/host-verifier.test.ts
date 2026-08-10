@@ -56,12 +56,10 @@ describe("openTunnel host-key verifier", () => {
 
   it("calls configureConnect so callers can install their own verifier", () => {
     const customVerifier = vi.fn(() => true);
-    const configureConnect = vi.fn(
-      (opts: ConnectConfig): ConnectConfig => ({
-        ...opts,
-        hostVerifier: customVerifier,
-      }),
-    );
+    const configureConnect = vi.fn((opts: ConnectConfig): ConnectConfig => ({
+      ...opts,
+      hostVerifier: customVerifier,
+    }));
 
     void openTunnel(baseConfig, undefined, { configureConnect }).catch(() => {
       /* ignored */

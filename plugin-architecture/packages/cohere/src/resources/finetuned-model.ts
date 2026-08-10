@@ -38,5 +38,11 @@ export const FinetunedModelResourceType = rt({
     o("modelName", "Model Name"),
     o("status", "Status"),
   ],
+  // `settings.base_model.name` is a `/v1/models` name; `settings.dataset_id` a
+  // `/v1/datasets` id.
+  dependsOn: [
+    { fieldKey: "baseModel", targetTypeId: "model", label: "trained from" },
+    { fieldKey: "datasetId", targetTypeId: "dataset", label: "trains on" },
+  ],
   iconKey: "model",
 });

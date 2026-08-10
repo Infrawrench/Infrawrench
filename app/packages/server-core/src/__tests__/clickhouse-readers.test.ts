@@ -195,3 +195,58 @@ describe("getMetricRange", () => {
     expect(await readers.getMetricRange("o", "r", 0, 1000)).toEqual([]);
   });
 });
+
+describe("getMetricQuantilesBatch", () => {
+  it("returns an empty map for an empty id list without querying", async () => {
+    const out = await readers.getMetricQuantilesBatch("o", [], 0, 1000);
+    expect(out.size).toBe(0);
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it("reads the 1m rollup and groups quantiles per resource", async () => {
+    json.mockResolvedValue([
+      {
+        resource_id: "r1",
+        series_label: "CPU Utilization",
+        unit: "%",
+        q05: 1,
+        q95: 12.5,
+        vmax: 40,
+        samples: "20160",
+      },
+      {
+        resource_id: "r1",
+        series_label: "Memory Available",
+        unit: "bytes",
+        q05: 1024,
+        q95: 4096,
+        vmax: 8192,
+        samples: 20160,
+      },
+      {
+        resource_id: "r2",
+        series_label: "CPU Utilization",
+        unit: "%",
+        q05: 0.5,
+        q95: 90,
+        vmax: 100,
+        samples: 100,
+      },
+    ]);
+    const out = await readers.getMetricQuantilesBatch("o", ["r1", "r2"], 0, 1000);
+    const q = query.mock.calls[0]![0] as { query: string };
+    expect(q.query).toContain("metric_points_1m");
+    expect(q.query).toContain("quantile(0.95)");
+    expect(out.get("r1")).toEqual([
+      { label: "CPU Utilization", unit: "%", q05: 1, q95: 12.5, max: 40, samples: 20160 },
+      { label: "Memory Available", unit: "bytes", q05: 1024, q95: 4096, max: 8192, samples: 20160 },
+    ]);
+    expect(out.get("r2")).toHaveLength(1);
+  });
+
+  it("returns an empty map when not configured", async () => {
+    isConfigured.mockReturnValue(false);
+    const out = await readers.getMetricQuantilesBatch("o", ["r1"], 0, 1000);
+    expect(out.size).toBe(0);
+  });
+});

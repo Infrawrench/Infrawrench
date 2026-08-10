@@ -27,6 +27,7 @@ import {
   runDeployment,
 } from "../../services/deployments";
 import { PlanRequiredError } from "../../services/entitlements";
+import { checkChangeFreeze } from "../../services/change-freezes";
 
 const app = new Hono();
 
@@ -137,6 +138,12 @@ app.get("/runs/:id", async (c) => {
  */
 app.post("/runs/:id/rollback", async (c) => {
   requirePermission(c, "deployments:write");
+  const frozen = await checkChangeFreeze(c, {
+    action: "deployment.rollback",
+    entityType: "deployment_run",
+    entityId: c.req.param("id"),
+  });
+  if (frozen) return frozen;
   // The body is optional — a bare rollback has nothing to say.
   const body = (await c.req.json().catch(() => ({}))) as { deleteCreated?: unknown };
   try {

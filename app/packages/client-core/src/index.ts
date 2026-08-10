@@ -6,14 +6,38 @@ export {
   type TokenManagerOptions,
 } from "./tokens";
 export { createCloudFetch, CloudApiError, type CloudFetch, type CloudFetchOptions } from "./fetch";
+export {
+  isSeatLimitResponse,
+  SeatLimitReachedClientError,
+  PlanRequiredClientError,
+  type SeatLimitPayload,
+} from "./api-errors";
 export { parseSseStream, parseNdjsonStream } from "./sse";
 export { fetchOrgs, fetchMe, type CloudOrg, type CloudMe } from "./orgs";
+export {
+  fetchOrgPermissions,
+  hasPermission,
+  type OrgMembership,
+  type OrgRoleSummary,
+} from "./permissions";
+export {
+  fetchWorkflowApprovals,
+  decideWorkflowApproval,
+  isApprovalConflict,
+  isApprovalExpired,
+  formatApprovalExpiry,
+  type ApprovalDecision,
+  type WorkflowApproval,
+  type WorkflowApprovalStatus,
+} from "./workflow-approvals";
 export {
   registerPushToken,
   listPushDevices,
   unregisterPushDevice,
   getPushPreferences,
   updatePushPreferences,
+  pushTriggerEnabled,
+  withPushTrigger,
   type RegisterPushTokenArgs,
   type PushDeviceSummary,
   type PushNotificationData,
@@ -31,7 +55,6 @@ export {
   type SlackStatus,
   type SlackInstallation,
   type SlackChannel,
-  type SlackChannelTriggers,
   type SlackAvailableChannel,
   type SlackTestResult,
   type AddSlackChannelArgs,
@@ -44,10 +67,24 @@ export {
   sendMsTeamsTestMessage,
   type MsTeamsStatus,
   type MsTeamsWebhook,
-  type MsTeamsWebhookTriggers,
   type MsTeamsTestResult,
   type AddMsTeamsWebhookArgs,
 } from "./msteams";
+export {
+  getDigestSettings,
+  updateDigestSettings,
+  sendDigestNow,
+  listDigestRecipients,
+  addDigestRecipient,
+  removeDigestRecipient,
+  type DigestSettings,
+  type DigestSettingsPatch,
+  type DigestSendResult,
+  type DigestTransportResult,
+  type DigestEmailRecipient,
+  type DigestSendDay,
+  type DigestStatus,
+} from "./digest";
 export {
   fetchProfile,
   updateProfile,
@@ -91,6 +128,9 @@ export {
   formatMoney,
   formatBucketLabel,
   formatBudgetMonth,
+  costAnomalyDeltaPercent,
+  listCostAnomalies,
+  COST_ANOMALY_WINDOW,
   COST_DIMENSIONS,
   COST_RANGE_PRESETS,
   COST_CHART_TYPES,
@@ -103,6 +143,18 @@ export {
   COST_BINNING_LABELS,
   COST_RANGE_PRESET_LABELS,
   COST_DIMENSION_LABELS,
+  COST_ANOMALY_DIMENSION_LABELS,
+  COST_ANOMALY_KIND_LABELS,
+  COST_ANOMALY_LIMITS,
+  COST_ANOMALY_SMS_MODES,
+  COST_ANOMALY_SMS_MODE_LABELS,
+  DEFAULT_COST_ANOMALY_SETTINGS,
+  type CostAnomaly,
+  type CostAnomalyDimension,
+  type CostAnomalyKind,
+  type CostAnomalySettings,
+  type CostAnomalySettingsView,
+  type CostAnomalySmsMode,
   type BudgetInput,
   type CostDimensionOption,
   type CostAccountStatus,
@@ -125,6 +177,54 @@ export {
   type CostQuerySeries,
   type CostQueryResponse,
 } from "./costs";
+export {
+  describeMonthlyDelta,
+  fetchResourceCostEstimate,
+  formatMonthlyDelta,
+  formatMonthlyEstimate,
+  partialEstimatePrefix,
+} from "./cost-estimate";
+export {
+  buildPreflightChecklist,
+  summarizePreflight,
+  defaultTemplateCapabilityIds,
+  runAccountPreflight,
+  type PolicyTemplate,
+  type PreflightCapability,
+  type PreflightCheck,
+  type PreflightChecklistRow,
+  type PreflightDeclaration,
+  type PreflightPermission,
+  type PreflightReport,
+  type PreflightSummary,
+} from "./preflight";
+export {
+  DEFAULT_TAG_POLICY,
+  TAG_POLICY_LIMITS,
+  TAG_POLICY_UNMET_CODE,
+  TAG_POLICY_OVERRIDE_HEADER,
+  ALLOCATION_RULE_LIMITS,
+  UNALLOCATED_KEY,
+  fieldsDeclareTagField,
+  extractRecordTags,
+  tagPolicyViolations,
+  describeTagViolations,
+  complianceScore,
+  taggedSpendPercent,
+  type RequiredTag,
+  type TagPolicy,
+  type TagViolationReason,
+  type TagPolicyViolation,
+  type AccountTagCompliance,
+  type TagComplianceReport,
+  type CostCentre,
+  type AllocationRuleMatch,
+  type AllocationRule,
+  type AllocationRuleInput,
+  type UntaggedSpendReport,
+  type ShowbackReportCentre,
+  type ShowbackReport,
+} from "./tag-policy";
 export {
   CUSTOM_GRAPH_CHART_TYPES,
   CUSTOM_GRAPH_MIN_REFRESH_SECONDS,
@@ -166,6 +266,53 @@ export {
 } from "./account-sections";
 export { deriveSSHUsername, pickQuickConnectKeyId } from "./ssh-quick-connect";
 export {
+  FANOUT_DEFAULT_CONCURRENCY,
+  FANOUT_MAX_TARGETS,
+  normalizeFanoutOutput,
+  groupFanoutResults,
+  diffLines,
+  compactDiff,
+  runWithConcurrency,
+  type FanoutHostStatus,
+  type FanoutHostResult,
+  type FanoutOutputGroup,
+  type DiffLine,
+} from "./ssh-fanout";
+export {
+  CHANGE_KIND_LABELS,
+  DEFAULT_DRIFT_ALERT_SETTINGS,
+  DRIFT_ALERT_LIMITS,
+  formatChangeValue,
+  summarizeChange,
+  changeFeedSearchParams,
+  fetchOrgChanges,
+  fetchResourceChanges,
+  computeResourceChangeEvents,
+  diffResourceRecords,
+  valuesEqual,
+  type ChangeFeedRequest,
+  type ChangeFeedResult,
+  type ComputeChangeEventsArgs,
+  type DriftAlertSettings,
+  type DriftAlertSettingsPatch,
+  type FetchedResourceSnapshot,
+  type PriorResourceSnapshot,
+  type ResourceChangeEvent,
+  type ResourceChangeKind,
+  type ResourceFieldChange,
+  type ResourceChangeEntry,
+} from "./resource-changes";
+export {
+  fetchOrgStatusIncidents,
+  compareStatusIncidents,
+  summarizeStatusIncident,
+  type ProviderIncidentImpact,
+  type ProviderIncidentState,
+  type ProviderIncidentResourceSample,
+  type OrgStatusIncident,
+  type OrgStatusIncidentsResponse,
+} from "./status-incidents";
+export {
   isHostKeyTrustResponse,
   trustPayloadFromFrame,
   hostKeyTrustRequestBody,
@@ -192,6 +339,39 @@ export {
 } from "./speech";
 export { evaluateShowWhen, buildDefaultFields, type ShowWhenRuleLike } from "./create-fields";
 export {
+  inferDependencyEdges,
+  collectDependencyRules,
+  dependencyRuleKey,
+  focusPrefilterTokens,
+  type DependencyRuleSet,
+  type InferenceResource,
+  type InferDependencyEdgesOptions,
+  type InferredDependencyEdges,
+} from "./dependency-inference";
+export {
+  collapseIdenticalNodes,
+  type CollapsedDependencyGraph,
+  type CollapseOptions,
+} from "./dependency-collapse";
+export {
+  buildDependencyGraph,
+  directDependencies,
+  collectDependents,
+  collectDependencies,
+  layoutDependencyGraph,
+  dependencyEdgeLabel,
+  fetchDependencyGraph,
+  type DependencyGraphNode,
+  type DependencyGraphEdge,
+  type DependencyEdgeKind,
+  type DependencyGraphData,
+  type DependencyGraphModel,
+  type DependencyNeighbor,
+  type ResourceDependencies,
+  type DependencyGraphLayout,
+  type DependencyGraphLayoutOptions,
+} from "./dependency-graph";
+export {
   MONGO_PAGE_SIZE,
   mongoCommands,
   formatMongoValue,
@@ -201,6 +381,37 @@ export {
   type MongoCommand,
 } from "./mongo-browser";
 export * from "./api-types";
+export { normalizeTerminalLinkUrl } from "./terminal-links";
+export * from "./moment";
+export * from "./orphans";
+export * from "./expiry";
+export * from "./leases";
+export * from "./posture";
+export * from "./dns";
+export * from "./environment-diff";
+export * from "./schedules";
+export * from "./probes";
+export * from "./status-pages";
+export * from "./ownership";
+export * from "./log-workspaces";
+export * from "./log-discovery";
+export * from "./alert-routing";
+export * from "./metric-alerts";
+export * from "./org-config";
+export * from "./rightsizing";
+export * from "./session-recordings";
+export * from "./access-requests";
+export * from "./credential-hygiene";
+export * from "./credits";
 export * from "./chat/types";
 export { createBearerChatClient } from "./chat/bearer-client";
 export * from "./ws-protocol";
+export {
+  parseCronExpression,
+  validateCronExpression,
+  isValidCronTimezone,
+  nextCronOccurrence,
+  nextCronOccurrences,
+  type ParsedCron,
+  type CronOccurrenceOptions,
+} from "./cron";

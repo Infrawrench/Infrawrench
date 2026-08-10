@@ -4,8 +4,10 @@ import {
   attachAltBufferScrollHandler,
   attachTerminalClipboard,
   buildInitialShellCommand,
+  createTerminalLinkHandler,
   getXtermTerminalOptions,
   hideXtermScrollbar,
+  openTerminalLinkInNewTab,
   pastedImageFilename,
 } from "@infrawrench/ui";
 import { apiPost } from "@/lib/api";
@@ -59,12 +61,26 @@ export function WebTerminal({
     async function init() {
       const { Terminal } = await import("@xterm/xterm");
       const { FitAddon } = await import("@xterm/addon-fit");
+      const { WebLinksAddon } = await import("@xterm/addon-web-links");
       if (!containerRef.current || disposed) return;
 
-      term = new Terminal(getXtermTerminalOptions(agentTerminal ? { scrollback: 0 } : undefined));
+      // URLs printed by the remote host (a `gh auth login` device-code page,
+      // the `t3 connect link` authorization URL) open in a new browser tab.
+      // The handler validates the scheme first — terminal output is
+      // remote-controlled text.
+      const linkHandler = createTerminalLinkHandler({
+        openExternal: openTerminalLinkInNewTab,
+      });
+      term = new Terminal({
+        ...getXtermTerminalOptions(agentTerminal ? { scrollback: 0 } : undefined),
+        linkHandler,
+      });
 
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
+      // OSC 8 hyperlinks are handled by `linkHandler` above; this addon finds
+      // bare URLs in the buffer and routes clicks through the same policy.
+      term.loadAddon(new WebLinksAddon((event, uri) => linkHandler.activate(event, uri)));
       term.open(containerRef.current);
       if (agentTerminal) hideXtermScrollbar(containerRef.current);
 

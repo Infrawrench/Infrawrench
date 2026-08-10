@@ -1,9 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   isK8sApiEndpointAllowed,
   registerK8sEndpoint,
   registerKubeconfigClusterEndpoints,
 } from "../k8s-endpoints";
+
+// `registerKubeconfigClusterEndpoints` dynamically imports
+// @kubernetes/client-node (ESM-only, so it can't be required at module load).
+// That cold import lands inside whichever test calls it first, and under a
+// fully parallel `turbo test` run it can exceed the default 5s per-test
+// timeout — an intermittent failure of only the kubeconfig tests, only under
+// load. Warm it once here instead, the way plugin-loader.test.ts warms the
+// plugin registry.
+beforeAll(async () => {
+  await import("@kubernetes/client-node");
+}, 60_000);
 
 // The allowlist is module-level state shared across this file, so every test
 // registers distinct host:port pairs and asserts against endpoints no other

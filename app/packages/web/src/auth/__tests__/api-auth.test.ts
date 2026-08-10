@@ -181,6 +181,43 @@ describe("authenticateApiRequest", () => {
     expect(set).toHaveBeenCalledWith(
       expect.objectContaining({ hashedKey: "hmac-hash", legacyHashSunsetAt: null }),
     );
+    // A rename is a rename: the new strings replace the old ones on the row.
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({ scopes: ["resources:read", "resources:write"] }),
+    );
+  });
+
+  /**
+   * Regression guard for the `dashboards:*` → `workflows:*` split. The
+   * grandfathering ran once, in migration
+   * `0055_grandfather_workflow_permissions`; authentication must not expand
+   * anything on top of what the row stores. Expanding here would be bad twice
+   * over: the widened set is written straight back to `api_keys.scopes` (so the
+   * key would permanently hold scopes its creator never ticked, and the key
+   * listing would show them), and a key minted *after* the split to
+   * deliberately exclude workflow access would silently gain it.
+   */
+  it("returns a dashboards-scoped key exactly as stored, and persists no expansion", async () => {
+    mockSelect.mockReturnValueOnce(
+      selectReturning([
+        {
+          id: "k4",
+          userId: "u4",
+          organizationId: "o4",
+          scopes: ["dashboards:read", "dashboards:write"],
+          createdAt: new Date("2026-01-01T00:00:00Z"),
+          expiresAt: null,
+          legacyHashSunsetAt: null,
+        },
+      ]),
+    );
+    mockSelect.mockReturnValueOnce(membershipReturning(MEMBER));
+    const { set } = updateChain();
+    const result = await authenticateApiRequest(req({ authorization: "Bearer iwk_dash" }));
+    expect(result?.scopes).toEqual(["dashboards:read", "dashboards:write"]);
+    // Touching `lastUsedAt` is expected; rewriting `scopes` is not.
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(set.mock.calls[0]![0]).not.toHaveProperty("scopes");
   });
 
   it("rejects a legacy-hash hit past its sunset", async () => {

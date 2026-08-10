@@ -24,6 +24,7 @@
  *   - shared.ts                    common types/constants
  */
 import type {
+  CostEstimate,
   CostFetchRange,
   CostRow,
   PluginClient,
@@ -57,7 +58,7 @@ import {
   type AzurePricingCacheEntry,
 } from "./pricing.js";
 import { type AzureCreateContext } from "./create-handlers.js";
-import { type AzureHttpContext } from "./shared.js";
+import { ARM, type AzureHttpContext } from "./shared.js";
 import {
   deleteStorageObject,
   listStorageObjects,
@@ -80,7 +81,7 @@ import { getAzureCreateConfig } from "./create-config-dispatch.js";
 import { createAzureResource } from "./create-dispatch.js";
 import {
   azureSupportsSizePricing,
-  getAzureCreateCostEstimate,
+  estimateAzureCost,
   getAzureCreateSizePricing,
 } from "./pricing-estimates.js";
 
@@ -315,6 +316,7 @@ export class AzureClient implements PluginClient {
     "azure-storage-account": listers.listStorageAccounts,
     "azure-function-app": listers.listFunctionApps,
     "azure-app-service": listers.listAppServices,
+    "azure-app-service-plan": listers.listAppServicePlans,
     "azure-container-instance": listers.listContainerInstances,
     "azure-key-vault": listers.listKeyVaults,
     "azure-redis-cache": listers.listRedisCaches,
@@ -462,13 +464,15 @@ export class AzureClient implements PluginClient {
     return getAzureCreateSizePricing(rates, request);
   }
 
-  async getCreateCostEstimate(
-    typeId: string,
-    fields: Record<string, string>,
-  ): Promise<number | null> {
-    const region = fields["region"] ?? "eastus";
+  /**
+   * Monthly estimate with line items, priced from the region's Retail Prices
+   * rates. `location` is the lister's spelling of the form's `region`, so the
+   * same call prices an existing resource from its stored fields.
+   */
+  async estimateCost(typeId: string, fields: Record<string, string>): Promise<CostEstimate | null> {
+    const region = fields["region"] || fields["location"] || "eastus";
     const rates = await this.getPricingRatesForRegion(region);
-    return getAzureCreateCostEstimate(typeId, fields, rates);
+    return estimateAzureCost(typeId, fields, rates);
   }
 
   // ─── Create / attach / delete / manifest / export ─────────────────────
@@ -513,6 +517,55 @@ export class AzureClient implements PluginClient {
       resourceId,
       accountId,
     );
+  }
+
+  async invokeAction(
+    typeId: string,
+    resourceId: string,
+    actionId: string,
+    accountId: string,
+  ): Promise<void> {
+    if (typeId === "azure-vm" && (actionId === "start" || actionId === "deallocate")) {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      // externalId is rg/name — the same two-part form deleteResource splits.
+      const [rg, name] = String(resource.externalId ?? "").split("/");
+      if (!rg || !name) throw new Error("Cannot determine resource group/name for VM");
+      await this.post(
+        `${ARM}/subscriptions/${this.creds.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.Compute/virtualMachines/${name}/${actionId}?api-version=2024-03-01`,
+        {},
+      );
+      return;
+    }
+    throw new Error(`Azure plugin: invokeAction "${actionId}" not supported for type "${typeId}"`);
+  }
+
+  /**
+   * Edit a VM: change its size (`vmSize`) — the right-sizing apply path.
+   * ARM PATCH on `hardwareProfile.vmSize`; Azure accepts it on a running VM
+   * but restarts it during the change, and rejects sizes unavailable on the
+   * current hardware cluster (deallocate first to widen the choice). VM
+   * names are immutable in Azure, so nothing else is editable.
+   */
+  async updateResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    if (typeId !== "azure-vm") {
+      throw new Error(`Azure plugin: updateResource not supported for type "${typeId}"`);
+    }
+    const vmSize = fields["vmSize"];
+    if (!vmSize) throw new Error("Azure plugin: vmSize is the only editable VM field");
+    const resource = await this.getResource(typeId, resourceId, accountId);
+    // externalId is rg/name — the same two-part form deleteResource splits.
+    const [rg, name] = String(resource.externalId ?? "").split("/");
+    if (!rg || !name) throw new Error("Cannot determine resource group/name for VM");
+    await this.patch(
+      `${ARM}/subscriptions/${this.creds.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.Compute/virtualMachines/${name}?api-version=2024-03-01`,
+      { properties: { hardwareProfile: { vmSize } } },
+    );
+    return this.getResource(typeId, resourceId, accountId);
   }
 
   async publishMessage(

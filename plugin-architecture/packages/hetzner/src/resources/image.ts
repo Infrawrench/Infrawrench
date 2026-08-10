@@ -17,5 +17,7 @@ export const ImageResourceType = rt({
     f("boundTo", "Bound To", { required: false }),
   ],
   outputs: [o("imageId", "Image ID")],
+  // Only backups carry `bound_to`; it is the id of the server they were taken from.
+  dependsOn: [{ fieldKey: "boundTo", targetTypeId: "server", label: "bound to" }],
   iconKey: "image",
 });

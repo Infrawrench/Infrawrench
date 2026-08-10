@@ -47,6 +47,12 @@ export const ModelEndpointResourceType = rt({
     f("supportedParameters", "Supported Parameters", { required: false }),
   ],
   outputs: [o("modelId", "Model ID"), o("providerName", "Provider")],
+  // `provider_name` is the provider's display name ("OpenAI", "DeepInfra"),
+  // not its slug, so it matches the Provider row's `name`. The model this
+  // endpoint serves is already the parent link.
+  dependsOn: [
+    { fieldKey: "providerName", targetTypeId: "provider", targetKey: "name", label: "served by" },
+  ],
   supportsDelete: false,
   iconKey: "server",
 });

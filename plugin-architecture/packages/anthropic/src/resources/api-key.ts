@@ -31,6 +31,9 @@ export const ApiKeyResourceType = rt({
     f("principalId", "Principal ID", { required: false, editable: false }),
   ],
   outputs: [o("apiKeyId", "API Key ID"), o("keyName", "Key Name"), o("status", "Status")],
+  expiryFields: [
+    { fieldKey: "expiresAt", from: "expiry", kind: "api-token", label: "Key expires" },
+  ],
   parentTypeId: "workspace",
   showInSidebar: true,
   supportsCreate: false,

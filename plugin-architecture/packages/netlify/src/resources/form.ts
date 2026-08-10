@@ -10,8 +10,10 @@ export const NetlifyFormResourceType = rt({
     f("submissionCount", "Submissions", { kind: "number", required: false }),
     f("paths", "Paths", { required: false }),
     f("createdAt", "Created At", { required: false }),
+    f("siteId", "Site", { required: false }),
   ],
   outputs: [o("formId", "Form ID"), o("formName", "Form Name")],
+  dependsOn: [{ fieldKey: "siteId", targetTypeId: "netlify-site", label: "on site" }],
   parentTypeId: "netlify-site",
   iconKey: "form",
 });

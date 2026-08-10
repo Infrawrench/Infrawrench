@@ -15,11 +15,33 @@ export const MySQLFlexibleServerResourceType = rt({
     f("storageSizeGb", "Storage (GB)", { kind: "number", required: false }),
     f("haEnabled", "HA Enabled", { kind: "boolean", required: false }),
     f("backupRetentionDays", "Backup Retention (Days)", { kind: "number", required: false }),
+    f("delegatedSubnet", "Delegated Subnet", { required: false }),
+    f("privateDnsZone", "Private DNS Zone", { required: false }),
+    f("keyVaultName", "Encryption Key Vault", {
+      required: false,
+      description: "Key Vault holding the customer-managed encryption key",
+    }),
   ],
   outputs: [
     o("fqdn", "FQDN"),
     o("connectionString", "Connection String", { sensitive: true }),
     o("administratorLogin", "Admin Username"),
+  ],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+    { fieldKey: "delegatedSubnet", targetTypeId: "azure-subnet", label: "in subnet" },
+    {
+      fieldKey: "privateDnsZone",
+      targetTypeId: "azure-private-dns-zone",
+      targetKey: "name",
+      label: "resolves via",
+    },
+    {
+      fieldKey: "keyVaultName",
+      targetTypeId: "azure-key-vault",
+      targetKey: "name",
+      label: "encrypted with",
+    },
   ],
   iconKey: "database",
   supportsCreate: true,

@@ -39,6 +39,13 @@ export const BatchResourceType = rt({
     }),
     o("status", "Status"),
   ],
+  // `model` is a `/v1/models` name — which is what the Model rows use as their
+  // external id — and both dataset fields are `/v1/datasets` ids.
+  dependsOn: [
+    { fieldKey: "model", targetTypeId: "model", label: "runs" },
+    { fieldKey: "inputDatasetId", targetTypeId: "dataset", label: "reads" },
+    { fieldKey: "outputDatasetId", targetTypeId: "dataset", label: "writes" },
+  ],
   supportsDelete: false,
   iconKey: "batch",
 });

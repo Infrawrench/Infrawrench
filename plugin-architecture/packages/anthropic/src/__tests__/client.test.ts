@@ -47,6 +47,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -242,6 +243,41 @@ describe("fetchCostData", () => {
     expect(rows[1]!.amount).toBe(0.5);
     expect(rows[1]!.service).toBe("web_search");
     expect(rows[1]!.resourceId).toBe("default-workspace");
+  });
+
+  it("caps ending_at at start-of-today so a range that includes today never asks for the future", async () => {
+    // Host monthChunks often ends with a single-day {today, today} chunk;
+    // without the cap Anthropic 400s with "ending date must be after starting date".
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-01T15:30:00Z"));
+    const spy = installFetch(() => jsonResponse({ data: [], has_more: false }));
+
+    await client().fetchCostData(ACCOUNT, {
+      fromDate: "2026-07-29",
+      toDate: "2026-08-01",
+    });
+
+    const url = calls[0]!.url;
+    expect(url).toContain("starting_at=2026-07-29T00%3A00%3A00Z");
+    // Exclusive end is capped at today 00:00 — completed days only.
+    expect(url).toContain("ending_at=2026-08-01T00%3A00%3A00Z");
+    expect(spy).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
+  it("skips the API when the range is only the incomplete current day", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-01T15:30:00Z"));
+    const spy = installFetch(() => jsonResponse({ data: [], has_more: false }));
+
+    const rows = await client().fetchCostData(ACCOUNT, {
+      fromDate: "2026-08-01",
+      toDate: "2026-08-01",
+    });
+
+    expect(rows).toEqual([]);
+    expect(spy).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });
 

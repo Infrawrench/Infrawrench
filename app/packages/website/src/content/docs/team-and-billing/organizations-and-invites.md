@@ -4,7 +4,7 @@ description: Share a workspace with teammates.
 sidebar_order: 1
 ---
 
-> **Web only.** The desktop app is single-user by design.
+> The desktop app in local-only mode is single-user by design. Signed in to a cloud organization, the desktop app manages the same team from its Settings tab.
 
 An **organization** is a shared workspace. Accounts, resources, dashboards, SSH keys, API keys, and audit logs all live under exactly one organization. You can belong to many organizations and switch between them from the workspace picker in the top-left.
 
@@ -21,7 +21,11 @@ The invitee gets an email with a link. They sign up (or sign in), and the org ap
 
 Inviting teammates requires the paid plan — the [free plan](./billing-and-plans.md) is a single user, and the invite form will prompt you to upgrade.
 
-On the paid plan, every member and pending invite occupies a [seat](./billing-and-plans.md). If all seats are taken, you'll be asked to confirm adding one (billed pro-rata) before the invite is sent — this needs billing permission, so a member who can invite but can't manage billing will be asked to get a billing admin to add the seat first.
+You can only invite someone into a role you could assign an existing member: the role's permissions must be a subset of your own, and only an owner can invite another owner. If the role picker refuses a choice, ask an owner to send that invite.
+
+On the paid plan, every member and pending invite occupies a [seat](./billing-and-plans.md) — counting both your monthly seats and any [prepaid capacity slots](./billing-and-plans.md#prepaid-capacity-slots). If all seats are taken, you'll be asked to confirm adding one (billed pro-rata) before the invite is sent — this needs billing permission, so a member who can invite but can't manage billing will be asked to get a billing admin to add the seat first.
+
+If your capacity is entirely prepaid slots there is no monthly seat to add, so the prompt instead points you at **Settings → Billing** to buy another slot.
 
 <insert [Invite form showing the "All seats are in use. Add a seat for $20/month and send the invitation?" confirmation prompt] here>
 

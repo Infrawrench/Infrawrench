@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * `collectAccountCosts` decides when an account stops backfilling history and
@@ -8,6 +8,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  *
  * Everything external is mocked: the DB (recording `update().set()` payloads),
  * the account/plugin/client loader, and the ClickHouse writers.
+ *
+ * "Today" is frozen mid-month so a short history window stays inside one
+ * calendar month. Without that, near the 1st the same windows span two months
+ * and `monthChunks` yields two fetches — each mock returns a row, so
+ * `rowCount` becomes 2 and these assertions flake.
  */
 
 const updates: Array<Record<string, unknown>> = [];
@@ -36,12 +41,13 @@ vi.mock("../sync-resources", () => ({ loadAccountClient }));
 const { collectAccountCosts } = await import("../cost/collect");
 
 /** One cost row; the shape only matters to the mocked writers. */
-const row = { date: "2026-07-27", currency: "USD", amount: 1 };
+const row = { date: "2026-07-10", currency: "USD", amount: 1 };
 
 function setup(costBackfilledAt: Date | null) {
   loadAccountClient.mockResolvedValue({
     account: { pluginId: "gcp", costBackfilledAt },
-    // A short history keeps the backfill to a single month chunk.
+    // A short history keeps the backfill to a single month chunk (with the
+    // frozen mid-month "today" below).
     plugin: { manifest: { costs: { maxHistoryDays: 10, restatementDays: 5 } } },
     client: { fetchCostData },
   });
@@ -50,6 +56,14 @@ function setup(costBackfilledAt: Date | null) {
 beforeEach(() => {
   updates.length = 0;
   vi.clearAllMocks();
+  vi.useFakeTimers();
+  // Mid-month so maxHistoryDays=10 and restatementDays=5 never cross a month
+  // boundary (see file header).
+  vi.setSystemTime(new Date("2026-07-15T12:00:00.000Z"));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("collectAccountCosts backfill flag", () => {

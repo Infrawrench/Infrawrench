@@ -18,7 +18,12 @@ export const DnsRecordResourceType = rt({
     f("domainName", "Domain", { required: false }),
   ],
   outputs: [],
+  // The domain's externalId is its name, which is what the lister stores here.
+  dependsOn: [{ fieldKey: "domainName", targetTypeId: "domain", label: "in domain" }],
   parentTypeId: "domain",
+  // DigitalOcean stores record names relative to the domain (`@` for the
+  // apex); the host qualifies them against the zone.
+  dnsRole: { role: "record", contentKey: "data", zoneKey: "domainName", priorityKey: "priority" },
   supportsCreate: true,
   supportsUpdate: true,
   iconKey: "dns-record",

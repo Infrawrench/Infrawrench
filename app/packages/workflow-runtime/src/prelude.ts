@@ -395,6 +395,28 @@ export const PRELUDE = String.raw`
   // occurrence pages immediately instead of waiting out a stale cooldown.
   page.clear = (key) => rpc("page.clear", { key });
 
+  // Ask an AI model for help mid-run — summarize a log tail before paging it,
+  // classify an error, draft the message an alert should carry. Accepts either
+  // ai("question", opts) or ai({ prompt, ... }) so the common case stays one
+  // argument. The model sees only what is passed here, nothing of the run.
+  const ai = (promptOrSpec, opts) => {
+    const spec = typeof promptOrSpec === "string"
+      ? Object.assign({}, opts || {}, { prompt: promptOrSpec })
+      : (promptOrSpec || {});
+    return rpc("ai", { spec });
+  };
+
+  // Suspend the run until an org member approves or denies. Accepts either
+  // waitForApproval("text", opts) or waitForApproval({ message, ... }) so the
+  // common case stays one argument. Denial/timeout reject host-side, so an
+  // unhandled deny fails the run.
+  const waitForApproval = (messageOrSpec, opts) => {
+    const spec = typeof messageOrSpec === "string"
+      ? Object.assign({}, opts || {}, { message: messageOrSpec })
+      : (messageOrSpec || {});
+    return rpc("approval.wait", { spec });
+  };
+
   globalThis.infra = {
     accounts,
     prompt: (spec) => rpc("prompt", { spec: typeof spec === "string" ? { message: spec } : spec }),
@@ -402,6 +424,8 @@ export const PRELUDE = String.raw`
     event,
     costs,
     page,
+    ai,
+    waitForApproval,
     output: (value) => rpc("output", { value }),
     log: infraLog,
   };

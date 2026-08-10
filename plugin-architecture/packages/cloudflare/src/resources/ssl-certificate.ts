@@ -14,6 +14,10 @@ export const SSLCertificateResourceType = rt({
     f("zoneName", "Zone", { required: false }),
   ],
   outputs: [],
+  dependsOn: [{ fieldKey: "zoneName", targetTypeId: "zone", targetKey: "name", label: "in zone" }],
+  expiryFields: [
+    { fieldKey: "expiresOn", from: "expiry", kind: "tls-cert", label: "Certificate expires" },
+  ],
   parentTypeId: "zone",
   supportsCreate: true,
   iconKey: "certificate",

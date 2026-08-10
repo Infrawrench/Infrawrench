@@ -32,4 +32,23 @@ describe("useWorkspaceTabDocumentTitle", () => {
     renderHook(() => useWorkspaceTabDocumentTitle({ suffix: false }));
     expect(document.title).toBe("My Account");
   });
+
+  it("prefers routeTitle over the active tab — plain pages aren't the tab", () => {
+    useUIStore.setState({ workspaceTabs: [tab], activeWorkspaceTabId: "t1" });
+    renderHook(() => useWorkspaceTabDocumentTitle({ routeTitle: "Expiring" }));
+    expect(document.title).toBe("Expiring | Infrawrench");
+  });
+
+  it("sets routeTitle even with no active tab", () => {
+    renderHook(() => useWorkspaceTabDocumentTitle({ routeTitle: "Alerts", suffix: false }));
+    expect(document.title).toBe("Alerts");
+  });
+
+  it("falls back to the active tab when routeTitle is null or blank", () => {
+    useUIStore.setState({ workspaceTabs: [tab], activeWorkspaceTabId: "t1" });
+    renderHook(() => useWorkspaceTabDocumentTitle({ routeTitle: null }));
+    expect(document.title).toBe("My Account | Infrawrench");
+    renderHook(() => useWorkspaceTabDocumentTitle({ routeTitle: "  " }));
+    expect(document.title).toBe("My Account | Infrawrench");
+  });
 });

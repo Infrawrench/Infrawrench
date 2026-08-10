@@ -91,8 +91,7 @@ export async function listCloudFunctions(
     const buildConfig = fn["buildConfig"] as Record<string, unknown> | undefined;
     const stateMessages =
       (fn["stateMessages"] as
-        | Array<{ severity?: string; type?: string; message?: string }>
-        | undefined) ?? [];
+        Array<{ severity?: string; type?: string; message?: string }> | undefined) ?? [];
     const stateMessage = stateMessages
       .map((m) => `[${m.severity ?? "INFO"}] ${m.type ? `${m.type}: ` : ""}${m.message ?? ""}`)
       .join("\n");
@@ -123,6 +122,9 @@ export async function listCloudFunctions(
         serviceAccount: String(serviceConfig?.["serviceAccountEmail"] ?? ""),
         entryPoint: String(buildConfig?.["entryPoint"] ?? ""),
         sourceLocation,
+        // The bucket half of `sourceLocation`, on its own so it matches a
+        // gcs-bucket external id (which is the bare bucket name).
+        sourceBucket: bucket,
         environment: String(fn["environment"] ?? ""),
         buildId: String(buildConfig?.["build"] ?? ""),
         minInstances: String(serviceConfig?.["minInstanceCount"] ?? "0"),

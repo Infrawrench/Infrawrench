@@ -27,6 +27,19 @@ export const EKSClusterResourceType = rt({
       required: false,
       description: "Disk size of the first node group",
     }),
+    f("vpcId", "VPC ID", { required: false }),
+    f("subnetIds", "Subnets", {
+      required: false,
+      description: "Comma-separated subnet IDs the control plane ENIs live in",
+    }),
+    f("securityGroupIds", "Security Groups", {
+      required: false,
+      description: "Comma-separated additional security group IDs on the control plane ENIs",
+    }),
+    f("clusterSecurityGroupId", "Cluster Security Group", {
+      required: false,
+      description: "EKS-managed security group shared by the control plane and managed nodes",
+    }),
   ],
   outputs: [
     o("endpoint", "API Endpoint", {
@@ -42,6 +55,15 @@ export const EKSClusterResourceType = rt({
       hidden: true,
       description: "Generated kubeconfig YAML for kubectl access",
     }),
+  ],
+  // The cluster stores the service role as a full ARN while an IAM role's
+  // external id is the bare role name, so match the role's `roleArn` output.
+  dependsOn: [
+    { fieldKey: "roleArn", targetTypeId: "iam-role", targetKey: "roleArn", label: "runs as" },
+    { fieldKey: "vpcId", targetTypeId: "vpc", label: "in VPC" },
+    { fieldKey: "subnetIds", targetTypeId: "subnet", label: "in subnet" },
+    { fieldKey: "securityGroupIds", targetTypeId: "security-group", label: "guarded by" },
+    { fieldKey: "clusterSecurityGroupId", targetTypeId: "security-group", label: "guarded by" },
   ],
   iconKey: "kubernetes",
   supportsCreate: true,

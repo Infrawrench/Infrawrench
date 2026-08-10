@@ -247,7 +247,9 @@ describe("openSshShell (cloud mode)", () => {
     ws.dispatch("message", { data: JSON.stringify({ type: "ssh:closed" }) });
     expect(exits).toHaveLength(1);
 
-    // write -> base64 ssh:data
+    // write -> base64 ssh:data. Writes are buffered until the proxy reports
+    // the shell is up, so announce that first (see the buffering suite below).
+    ws.dispatch("message", { data: JSON.stringify({ type: "ssh:connected" }) });
     handle.write("ab");
     const writeMsg = JSON.parse(ws.sent.at(-1)!) as { type: string; data: string };
     expect(writeMsg.type).toBe("ssh:data");
@@ -264,5 +266,73 @@ describe("openSshShell (cloud mode)", () => {
     const sentBefore = ws.sent.length;
     handle.write("x");
     expect(ws.sent.length).toBe(sentBefore);
+  });
+});
+
+describe("openSshShell (cloud mode) — write buffering", () => {
+  async function openCloud() {
+    vi.stubGlobal("window", { electronAPI: makeElectronApi() });
+    invoke.mockResolvedValue("ws-token-abc");
+    getCloudWsUrl.mockResolvedValue("ws://localhost:3000");
+    const handle = await openSshShell({
+      mode: "cloud",
+      orgId: "org1",
+      keySource: { type: "cloud", sshKeyId: "key1", name: "k" },
+      accountId: "acc",
+      resourceId: "res",
+      host: "h",
+      username: "u",
+      cols: 80,
+      rows: 24,
+    });
+    return { handle, ws: FakeWebSocket.instances[0]! };
+  }
+
+  function dataFrames(ws: FakeWebSocket): string[] {
+    return ws.sent
+      .map((raw) => JSON.parse(raw) as { type: string; data?: string })
+      .filter((m) => m.type === "ssh:data")
+      .map((m) => atob(m.data ?? ""));
+  }
+
+  // The regression: agent tabs write their launch command the instant the
+  // handle resolves. The socket is still CONNECTING then, and the proxy only
+  // registers its ssh:data listener inside conn.shell() — so an unbuffered
+  // write is dropped twice over and the user lands on a bare shell prompt.
+  it("holds writes until ssh:connected, then flushes them in order", async () => {
+    const { handle, ws } = await openCloud();
+
+    handle.write("t3 connect link\n");
+    handle.write("second\n");
+    ws.dispatch("open");
+    expect(dataFrames(ws)).toEqual([]);
+
+    ws.dispatch("message", { data: JSON.stringify({ type: "ssh:connected" }) });
+    expect(dataFrames(ws)).toEqual(["t3 connect link\n", "second\n"]);
+  });
+
+  it("sends straight through once connected", async () => {
+    const { handle, ws } = await openCloud();
+    ws.dispatch("open");
+    ws.dispatch("message", { data: JSON.stringify({ type: "ssh:connected" }) });
+
+    handle.write("later\n");
+    expect(dataFrames(ws)).toEqual(["later\n"]);
+  });
+
+  it("drops buffered writes when the handle is killed", async () => {
+    const { handle, ws } = await openCloud();
+    handle.write("never\n");
+    handle.kill();
+    ws.dispatch("message", { data: JSON.stringify({ type: "ssh:connected" }) });
+    expect(dataFrames(ws)).toEqual([]);
+  });
+
+  // A shell that never connects must not accumulate writes without bound.
+  it("caps the pending buffer", async () => {
+    const { handle, ws } = await openCloud();
+    for (let i = 0; i < 300; i++) handle.write(`${i}\n`);
+    ws.dispatch("message", { data: JSON.stringify({ type: "ssh:connected" }) });
+    expect(dataFrames(ws)).toHaveLength(256);
   });
 });

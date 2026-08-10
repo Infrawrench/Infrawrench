@@ -690,6 +690,16 @@ function compareImports(a: string, b: string): number {
 // Model emission
 // ---------------------------------------------------------------------------
 
+function fallbackVariantIdent(variants: EnumVariant[]): string {
+  const taken = new Set(variants.map((v) => v.ident));
+  for (const candidate of ["Other", "Unrecognized", "UnrecognizedValue"]) {
+    if (!taken.has(candidate)) return candidate;
+  }
+  let ident = "UnrecognizedValue";
+  while (taken.has(ident)) ident += "_";
+  return ident;
+}
+
 function emitDecl(decl: Decl): string {
   const lines: string[] = [];
   const header = doc([decl.doc], "");
@@ -728,11 +738,14 @@ function emitDecl(decl: Decl): string {
       // Without this, one new value on the server turns every response carrying
       // this field into a deserialization error. It has to come last: serde
       // tries the named variants first and only then the untagged fallback.
+      // The ident must not collide with a real variant (an enum with a literal
+      // "other" member otherwise generates two `Other`s and the crate won't
+      // compile); the name is local to each enum, so renaming is safe.
       lines.push(
         "    /// A value this build of the SDK predates — the API grew it after",
         "    /// this crate was generated.",
         "    #[serde(untagged)]",
-        "    Other(String),",
+        `    ${fallbackVariantIdent(decl.variants)}(String),`,
         "}",
       );
       break;
@@ -1372,9 +1385,10 @@ match client.accounts().list(AccountsListParams::new()).await {
 
 ## Forward compatibility
 
-Enumerated string fields deserialize an unrecognized value into an
-\`Other(String)\` variant instead of failing, so a value the API adds after this
-crate was generated does not break calls that never look at it.
+Enumerated string fields deserialize an unrecognized value into an untagged
+fallback variant — \`Other(String)\`, or \`Unrecognized(String)\` where the enum
+has a real \`Other\` member — instead of failing, so a value the API adds after
+this crate was generated does not break calls that never look at it.
 
 ## Scope
 

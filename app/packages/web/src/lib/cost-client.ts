@@ -2,12 +2,19 @@ import type {
   BudgetInput,
   BudgetWithStatus,
   CostAccountStatus,
+  CostAnomaly,
+  CostAnomalySettings,
+  CostAnomalySettingsView,
   CostApi,
   CostDimensionOption,
   CostQueryRequest,
   CostQueryResponse,
   CostsClient,
   CostsPanelDashboard,
+  CreditBurndown,
+  ShowbackReport,
+  TagComplianceReport,
+  UntaggedSpendReport,
 } from "@infrawrench/ui/cost";
 import { apiDelete, apiGet, apiPost, apiPut } from "./api";
 
@@ -49,6 +56,16 @@ export function createWebCostsClient(orgId: string): CostsClient {
   return {
     ...createWebCostApi(orgId),
     listBudgets: () => apiGet<BudgetWithStatus[]>(`/api/org/${orgId}/budgets`),
+    listAnomalies: async (days = 30) => {
+      const res = await apiGet<{ anomalies: CostAnomaly[] }>(
+        `/api/org/${orgId}/costs/anomalies?days=${days}`,
+      );
+      return res.anomalies;
+    },
+    getAnomalySettings: () =>
+      apiGet<CostAnomalySettingsView>(`/api/org/${orgId}/costs/anomaly-settings`),
+    updateAnomalySettings: (settings: CostAnomalySettings) =>
+      apiPut<CostAnomalySettingsView>(`/api/org/${orgId}/costs/anomaly-settings`, settings),
     listDashboards: () => apiGet<CostsPanelDashboard[]>(`/api/org/${orgId}/dashboards`),
     createBudget: (input: BudgetInput) =>
       apiPost<{ id: string }>(`/api/org/${orgId}/budgets`, input),
@@ -69,5 +86,19 @@ export function createWebCostsClient(orgId: string): CostsClient {
     removeBudgetPlacement: async (widgetId: string) => {
       await apiDelete(`/api/org/${orgId}/dashboards/widgets/${widgetId}`);
     },
+    getTagCompliance: () => apiGet<TagComplianceReport>(`/api/org/${orgId}/tag-policy/compliance`),
+    getUntaggedSpend: (from?: string, to?: string) =>
+      apiGet<UntaggedSpendReport>(`/api/org/${orgId}/costs/untagged${rangeQuery(from, to)}`),
+    getShowback: (from?: string, to?: string) =>
+      apiGet<ShowbackReport>(`/api/org/${orgId}/costs/showback${rangeQuery(from, to)}`),
+    getCreditBurndown: () => apiGet<CreditBurndown>(`/api/org/${orgId}/credits`),
   };
+}
+
+function rangeQuery(from?: string, to?: string): string {
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
 }

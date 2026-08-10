@@ -3,6 +3,7 @@ import { Sha256 } from "@aws-crypto/sha256-js";
 import { HttpRequest } from "@smithy/protocol-http";
 import { SignatureV4 } from "@smithy/signature-v4";
 import { ensureArray } from "./xml.js";
+import { EC2_SSH_WORLD_OPEN } from "./constants.js";
 import type { AwsCredentials } from "./auth.js";
 import { ec2SshUsernameFromImageName } from "./ssh-username.js";
 
@@ -37,6 +38,32 @@ export interface ListerContext {
    * assume-role the user isn't authorized for).
    */
   creds: AwsCredentials;
+}
+
+/**
+ * Flatten a provider id list into the comma-joined form the dependency graph
+ * splits back apart (one edge per element). Blank entries are dropped so a
+ * partially-populated payload can't contribute an empty token.
+ */
+export function joinIds(values: unknown[]): string {
+  return values
+    .map((v) => String(v ?? "").trim())
+    .filter((v) => v.length > 0)
+    .join(", ");
+}
+
+/**
+ * The `sg-…` ids inside an RDS-family `VpcSecurityGroups` container. Shared by
+ * DB instances, Aurora/DocumentDB/Neptune clusters — they all come off the same
+ * RDS control plane and use the `VpcSecurityGroupMembership` member tag.
+ */
+export function rdsSecurityGroupIds(entity: Record<string, unknown>): string {
+  const container = entity["VpcSecurityGroups"] as Record<string, unknown> | undefined;
+  const members = ensureArray(container?.["VpcSecurityGroupMembership"]) as Record<
+    string,
+    unknown
+  >[];
+  return joinIds(members.map((m) => m["VpcSecurityGroupId"]));
 }
 
 export async function listEC2Instances(
@@ -170,7 +197,7 @@ export async function listEC2Instances(
         sshAccess =
           "⚠ Port 22 not exposed by any attached security group — SSH will time out. Add an inbound rule for TCP/22.";
       } else if (sshCidrs.has("0.0.0.0/0") || sshCidrs.has("::/0")) {
-        sshAccess = "Port 22 open to the world (0.0.0.0/0).";
+        sshAccess = EC2_SSH_WORLD_OPEN;
       } else {
         const list = [...sshCidrs].slice(0, 4).join(", ");
         sshAccess = `Port 22 open from ${list}${sshCidrs.size > 4 ? ` (+${sshCidrs.size - 4} more)` : ""}.`;
@@ -407,6 +434,10 @@ export async function listEKSClusters(
       const caData = String(
         (c["certificateAuthority"] as Record<string, unknown> | undefined)?.["data"] ?? "",
       );
+      // The VPC placement is already in the DescribeCluster payload — keeping
+      // it means the graph can draw the cluster into its network without a
+      // second call.
+      const vpcConfig = c["resourcesVpcConfig"] as Record<string, unknown> | undefined;
 
       // Fetch managed node groups so we can surface instance type, disk size, and node count
       let nodeGroupCount = 0;
@@ -467,6 +498,12 @@ export async function listEKSClusters(
           nodeCount: totalNodeCount,
           instanceTypes: Array.from(instanceTypesSet).join(", "),
           diskSizeGb,
+          vpcId: String(vpcConfig?.["vpcId"] ?? ""),
+          subnetIds: joinIds((vpcConfig?.["subnetIds"] as string[] | undefined) ?? []),
+          securityGroupIds: joinIds(
+            (vpcConfig?.["securityGroupIds"] as string[] | undefined) ?? [],
+          ),
+          clusterSecurityGroupId: String(vpcConfig?.["clusterSecurityGroupId"] ?? ""),
         },
         resolvedOutputs: {
           endpoint,
@@ -508,6 +545,13 @@ export async function listRDSInstances(
     const host = String(endpoint?.["Address"] ?? "");
     const port = String(endpoint?.["Port"] ?? "");
     const masterUsername = String(db["MasterUsername"] ?? "");
+    // The instance's network placement rides along on the DB subnet group
+    // (there is no separate subnet-group resource type, so the VPC and subnet
+    // ids it carries are lifted onto the instance itself).
+    const subnetGroup = db["DBSubnetGroup"] as Record<string, unknown> | undefined;
+    const subnets = ensureArray(
+      (subnetGroup?.["Subnets"] as Record<string, unknown> | undefined)?.["Subnet"],
+    ) as Record<string, unknown>[];
     return {
       id: ctx.id(accountId, "rds-instance", dbId),
       pluginId: "aws",
@@ -524,6 +568,10 @@ export async function listRDSInstances(
         allocatedStorage: Number(db["AllocatedStorage"] ?? 0),
         availabilityZone: String(db["AvailabilityZone"] ?? ""),
         multiAZ: String(db["MultiAZ"]) === "true",
+        vpcId: String(subnetGroup?.["VpcId"] ?? ""),
+        subnetIds: joinIds(subnets.map((s) => s["SubnetIdentifier"])),
+        securityGroupIds: rdsSecurityGroupIds(db),
+        dbClusterIdentifier: String(db["DBClusterIdentifier"] ?? ""),
       },
       resolvedOutputs: {
         endpoint: host,
@@ -603,6 +651,9 @@ export async function listLambdaFunctions(
   const functions = data.Functions ?? [];
   return functions.map((fn) => {
     const name = String(fn["FunctionName"] ?? "");
+    // ListFunctions returns the full FunctionConfiguration, VPC attachment
+    // included — no per-function GetFunctionConfiguration needed.
+    const vpcConfig = fn["VpcConfig"] as Record<string, unknown> | undefined;
     return {
       id: ctx.id(accountId, "lambda-function", name),
       pluginId: "aws",
@@ -619,6 +670,10 @@ export async function listLambdaFunctions(
         timeout: Number(fn["Timeout"] ?? 0),
         state: String(fn["State"] ?? fn["LastUpdateStatus"] ?? "Active"),
         lastModified: String(fn["LastModified"] ?? ""),
+        roleArn: String(fn["Role"] ?? ""),
+        vpcId: String(vpcConfig?.["VpcId"] ?? ""),
+        subnetIds: joinIds((vpcConfig?.["SubnetIds"] as string[] | undefined) ?? []),
+        securityGroupIds: joinIds((vpcConfig?.["SecurityGroupIds"] as string[] | undefined) ?? []),
       },
       resolvedOutputs: {
         functionArn: String(fn["FunctionArn"] ?? ""),
@@ -786,6 +841,11 @@ export async function listElastiCacheClusters(
     const nodesContainer = c["CacheNodes"] as Record<string, unknown> | undefined;
     const nodes = ensureArray(nodesContainer?.["CacheNode"]) as Record<string, unknown>[];
     const endpoint = nodes[0]?.["Endpoint"] as Record<string, unknown> | undefined;
+    // VPC clusters report their groups under `SecurityGroups` (the legacy
+    // EC2-Classic `CacheSecurityGroups` list holds names, not sg- ids).
+    const securityGroups = ensureArray(
+      (c["SecurityGroups"] as Record<string, unknown> | undefined)?.["member"],
+    ) as Record<string, unknown>[];
 
     return {
       id: ctx.id(accountId, "elasticache-cluster", clusterId),
@@ -802,6 +862,7 @@ export async function listElastiCacheClusters(
         numNodes: Number(c["NumCacheNodes"] ?? 0),
         status: String(c["CacheClusterStatus"] ?? ""),
         availabilityZone: String(c["PreferredAvailabilityZone"] ?? ""),
+        securityGroupIds: joinIds(securityGroups.map((g) => g["SecurityGroupId"])),
       },
       resolvedOutputs: {
         endpoint: String(endpoint?.["Address"] ?? ""),
@@ -894,8 +955,7 @@ export async function listSNSTopics(
         { TopicArn: topicArn },
       );
       const attrResult = attrData["GetTopicAttributesResult"] as
-        | Record<string, unknown>
-        | undefined;
+        Record<string, unknown> | undefined;
       const attrEntries = ensureArray(
         (attrResult?.["Attributes"] as Record<string, unknown> | undefined)?.["entry"],
       ) as Record<string, unknown>[];
@@ -1023,6 +1083,10 @@ export async function listSecretsManagerSecrets(
         description: String(s["Description"] ?? ""),
         lastAccessedDate: String(s["LastAccessedDate"] ?? ""),
         lastChangedDate: String(s["LastChangedDate"] ?? ""),
+        // Empty when AWS has never recorded a rotation — expiry evaluation
+        // falls back to createdDate via the type's fallbackFieldKey.
+        lastRotatedDate: String(s["LastRotatedDate"] ?? ""),
+        createdDate: String(s["CreatedDate"] ?? ""),
         rotationEnabled: s["RotationEnabled"] === true,
       },
       resolvedOutputs: {
@@ -1040,13 +1104,34 @@ export async function listCloudFrontDistributions(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.jsonGet<{
-    DistributionList?: { Items?: Record<string, unknown>[] };
+  // CloudFront is a REST-XML API — `ListDistributions` answers with a
+  // `<DistributionList>` document, never JSON, so this has to go through the
+  // XML transport. `parseXml` strips the single root element, which means what
+  // lands here is the *body* of `<DistributionList>`: an `<Items>` container
+  // holding one `<DistributionSummary>` per distribution (absent entirely when
+  // the account has none).
+  const data = await ctx.xmlGet<{
+    Items?: { DistributionSummary?: Record<string, unknown> | Record<string, unknown>[] };
   }>("cloudfront", "/2020-05-31/distribution");
 
-  const items = data.DistributionList?.Items ?? [];
+  const items = ensureArray(data.Items?.DistributionSummary);
   return items.map((dist) => {
     const distId = String(dist["Id"] ?? "");
+    // Origins ship with the distribution summary as
+    // `<Origins><Items><Origin>…</Origin></Items></Origins>`; `ensureArray`
+    // covers the single-origin case, which parses to a bare object.
+    const originsContainer = dist["Origins"] as Record<string, unknown> | undefined;
+    const origins = ensureArray(
+      (originsContainer?.["Items"] as Record<string, unknown> | undefined)?.["Origin"],
+    ) as Record<string, unknown>[];
+    const originDomains = origins.map((origin) => String(origin["DomainName"] ?? ""));
+    // An S3 origin's domain is `<bucket>.s3[.-]<region>.amazonaws.com`; the
+    // bucket resource is keyed by the bare name, so peel it off.
+    const originBucketNames = originDomains.map((domain) => {
+      if (!domain.endsWith(".amazonaws.com")) return "";
+      const marker = domain.indexOf(".s3");
+      return marker > 0 ? domain.slice(0, marker) : "";
+    });
     return {
       id: ctx.id(accountId, "cloudfront-distribution", distId),
       pluginId: "aws",
@@ -1061,6 +1146,8 @@ export async function listCloudFrontDistributions(
         comment: String(dist["Comment"] ?? ""),
         priceClass: String(dist["PriceClass"] ?? ""),
         httpVersion: String(dist["HttpVersion"] ?? ""),
+        originDomains: joinIds(originDomains),
+        originBucketNames: joinIds(originBucketNames),
       },
       resolvedOutputs: {
         distributionArn: String(dist["ARN"] ?? ""),

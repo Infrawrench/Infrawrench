@@ -12,6 +12,10 @@ export const NeonRoleResourceType = rt({
     f("protected", "Protected", { kind: "boolean", required: false }),
   ],
   outputs: [o("password", "Password", { sensitive: true })],
+  dependsOn: [
+    { fieldKey: "projectId", targetTypeId: "neon-project", label: "in project" },
+    { fieldKey: "branchId", targetTypeId: "neon-branch", label: "on branch" },
+  ],
   parentTypeId: "neon-branch",
   supportsCreate: true,
   iconKey: "neon",

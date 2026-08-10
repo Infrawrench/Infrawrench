@@ -5,9 +5,20 @@ import {
   accountTabTarget,
   agentsTabTarget,
   costsTabTarget,
+  graphTabTarget,
+  logsTabTarget,
+  changesTabTarget,
+  expiringTabTarget,
+  postureTabTarget,
+  dnsTabTarget,
+  environmentDiffTabTarget,
+  sshFanoutTabTarget,
+  metricAlertsTabTarget,
+  probesTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
+  settingsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -78,6 +89,81 @@ export function getWorkspaceNavigateArgs(
       return {
         to: "/org/$orgId/costs",
         params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "graph":
+      return {
+        to: "/org/$orgId/graph",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "logs":
+      return {
+        to: "/org/$orgId/logs",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "changes":
+      return {
+        to: "/org/$orgId/changes",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "expiring":
+      return {
+        to: "/org/$orgId/expiring",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "posture":
+      return {
+        to: "/org/$orgId/posture",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "dns":
+      return {
+        to: "/org/$orgId/dns",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    // The two accounts ride as query parameters rather than path segments:
+    // they are a pair of optional ids, not a hierarchy, and the panel is
+    // reachable with neither of them chosen.
+    case "environment-diff": {
+      const search: Record<string, string> = {};
+      if (target.a) search["a"] = target.a;
+      if (target.b) search["b"] = target.b;
+      return {
+        to: "/org/$orgId/environment-diff",
+        params: { orgId },
+        ...(Object.keys(search).length > 0 ? { search } : {}),
+        ...(replace ? { replace: true } : {}),
+      };
+    }
+    case "ssh-fanout":
+      return {
+        to: "/org/$orgId/ssh-fanout",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "metric-alerts":
+      return {
+        to: "/org/$orgId/metric-alerts",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "probes":
+      return {
+        to: "/org/$orgId/probes",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    // The section is a static child route, not a path param, so the path is
+    // built concretely rather than through `params`.
+    case "settings":
+      return {
+        to: `/org/${orgId}/settings${target.section ? `/${target.section}` : ""}`,
         ...(replace ? { replace: true } : {}),
       };
     // Web addresses conversations by path segment; desktop uses a
@@ -178,8 +264,47 @@ export function syncWorkspaceRouteFromPath(
   if (s[0] === "agents") {
     return agentsTabTarget();
   }
-  if (s[0] === "costs") {
+  // /savings was the standalone potential-savings page; it is now a section of
+  // Costs. Old bookmarks and links keep working by landing on the tab that
+  // carries the content.
+  if (s[0] === "costs" || s[0] === "savings") {
     return costsTabTarget();
+  }
+  if (s[0] === "graph") {
+    return graphTabTarget();
+  }
+  if (s[0] === "logs") {
+    return logsTabTarget();
+  }
+  if (s[0] === "changes") {
+    return changesTabTarget();
+  }
+  if (s[0] === "expiring") {
+    return expiringTabTarget();
+  }
+  if (s[0] === "posture") {
+    return postureTabTarget();
+  }
+  if (s[0] === "dns") {
+    return dnsTabTarget();
+  }
+  if (s[0] === "environment-diff") {
+    const params = new URLSearchParams(
+      search ?? (typeof window === "undefined" ? "" : window.location.search),
+    );
+    return environmentDiffTabTarget(params.get("a") ?? undefined, params.get("b") ?? undefined);
+  }
+  if (s[0] === "ssh-fanout") {
+    return sshFanoutTabTarget();
+  }
+  if (s[0] === "metric-alerts") {
+    return metricAlertsTabTarget();
+  }
+  if (s[0] === "probes") {
+    return probesTabTarget();
+  }
+  if (s[0] === "settings") {
+    return settingsTabTarget(s.slice(1).join("/") || undefined);
   }
   if (s[0] === "chat") {
     // /chat is the conversation list; /chat/{id} is one conversation. Each
@@ -218,4 +343,24 @@ export function syncWorkspaceRouteFromPath(
     return resourceTabTarget(accountId, resourceId, pluginId, resourceTypeId);
   }
   return null;
+}
+
+/**
+ * Document title for *plain* routes — pages that render outside the
+ * workspace-tab system, where `syncWorkspaceRouteFromPath` returns null and
+ * the active tab's title would therefore go stale in the browser tab.
+ * Labels match the sidebar tiles the pages are opened from. Returns null on
+ * tab routes (the tab title applies) and on unknown paths.
+ */
+export function plainRouteDocumentTitle(pathname: string): string | null {
+  const segments = pathname.split("/").filter(Boolean);
+  const s = segments[0] === "org" && segments[1] ? segments.slice(2) : segments;
+  switch (s[0]) {
+    case "moment":
+      return "Moment";
+    case "admin":
+      return "Admin";
+    default:
+      return null;
+  }
 }

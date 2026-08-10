@@ -1,11 +1,12 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { asRecord, collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone, resolveZoneName } from "./shared.js";
 
 function mapWorkerRoute(
   route: Record<string, unknown>,
   accountId: string,
   zoneId: string,
+  zoneName: string,
 ): ResourceInstance {
   const id = String(route["id"] ?? "");
   const pattern = String(route["pattern"] ?? "");
@@ -19,6 +20,7 @@ function mapWorkerRoute(
     fields: {
       pattern,
       script,
+      zoneName,
     },
     resolvedOutputs: {},
     secretStates: [],
@@ -35,10 +37,10 @@ export async function listAllWorkerRoutes(
 ): Promise<ResourceInstance[]> {
   return collectPerZone(
     api,
-    async (zoneId) => {
+    async (zoneId, zoneName) => {
       const part: ResourceInstance[] = [];
       for await (const route of api.cf.workers.routes.list({ zone_id: zoneId })) {
-        part.push(mapWorkerRoute(asRecord(route), accountId, zoneId));
+        part.push(mapWorkerRoute(asRecord(route), accountId, zoneId, zoneName));
       }
       return part;
     },
@@ -60,7 +62,7 @@ export async function createWorkerRoute(
     pattern: fields["pattern"] ?? "",
     script: fields["scriptName"] ?? "",
   });
-  return mapWorkerRoute(asRecord(route), accountId, zoneId);
+  return mapWorkerRoute(asRecord(route), accountId, zoneId, await resolveZoneName(api, zoneId));
 }
 
 export async function deleteWorkerRoute(api: CloudflareApi, externalId: string): Promise<void> {

@@ -1114,6 +1114,7 @@ export class OpenAIClient implements PluginClient {
         action: {
           type: "plugin-action",
           actionId: "delete-fine-tuned-model",
+          destructive: true,
           confirmMessage: `Permanently delete ${modelId}? Anything still calling this model id will start failing. Only fine-tuned models can be deleted, and only by an organization Owner.`,
           successMessage: "Fine-tuned model deleted.",
         },

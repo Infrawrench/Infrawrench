@@ -26,6 +26,15 @@ export const ApiKeyResourceType = rt({
       description: "The secret key. Only available on the response that created it.",
     }),
   ],
+  // The list endpoint returns the owning member alongside each key, and members
+  // are addressed by email rather than by their composite external id. (The
+  // owning project is already the parent link.)
+  dependsOn: [
+    { fieldKey: "memberEmail", targetTypeId: "member", targetKey: "email", label: "owned by" },
+  ],
+  expiryFields: [
+    { fieldKey: "expirationDate", from: "expiry", kind: "api-token", label: "Key expires" },
+  ],
   parentTypeId: "project",
   showInSidebar: true,
   supportsCreate: true,

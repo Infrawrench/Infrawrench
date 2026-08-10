@@ -29,11 +29,35 @@ export const ACMCertificateResourceType = rt({
     f("keyAlgorithm", "Key Algorithm", { required: false }),
     f("subjectAlternativeNames", "SANs", { required: false }),
     f("inUseBy", "In Use By", { kind: "number", required: false }),
+    f("inUseByArns", "In Use By (ARNs)", {
+      required: false,
+      description: "Comma-separated ARNs of the resources the certificate is installed on",
+    }),
   ],
   outputs: [
     o("certificateArn", "Certificate ARN"),
     o("dnsRecords", "DNS Validation Records"),
     o("domainValidationStatus", "Domain Validation Status"),
+  ],
+  // `InUseBy` holds ARNs; neither an ALB nor a distribution is keyed by ARN, so
+  // match each type's ARN output.
+  dependsOn: [
+    {
+      fieldKey: "inUseByArns",
+      targetTypeId: "alb",
+      targetKey: "loadBalancerArn",
+      label: "used by",
+    },
+    {
+      fieldKey: "inUseByArns",
+      targetTypeId: "cloudfront-distribution",
+      targetKey: "distributionArn",
+      label: "used by",
+    },
+  ],
+  // The lister stores DescribeCertificate's NotAfter (epoch seconds, stringified).
+  expiryFields: [
+    { fieldKey: "notAfter", from: "expiry", kind: "tls-cert", label: "Certificate expires" },
   ],
   iconKey: "certificate",
   supportsCreate: true,

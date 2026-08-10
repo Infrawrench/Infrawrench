@@ -12,6 +12,18 @@ export const DocumentDBClusterResourceType = rt({
     f("storageEncrypted", "Encrypted", { kind: "boolean", required: false }),
     f("multiAZ", "Multi-AZ", { kind: "boolean", required: false }),
     f("dbClusterMembers", "Members", { kind: "number", required: false }),
+    f("dbClusterMemberIds", "Member Instances", {
+      required: false,
+      description: "Comma-separated DB instance identifiers in this cluster",
+    }),
+    f("securityGroupIds", "Security Groups", {
+      required: false,
+      description: "Comma-separated VPC security group IDs attached to the cluster",
+    }),
+    f("dbSubnetGroupName", "DB Subnet Group", {
+      required: false,
+      description: "Name of the DB subnet group holding the cluster's VPC and subnets",
+    }),
   ],
   outputs: [
     o("endpoint", "Writer Endpoint"),
@@ -23,6 +35,17 @@ export const DocumentDBClusterResourceType = rt({
       sensitive: true,
       description: "MongoDB connection URI for DocumentDB (constructed from endpoint + port)",
     }),
+  ],
+  // DocumentDB instances come back from the shared RDS DescribeDBInstances
+  // call, so cluster members resolve to `rds-instance` resources.
+  dependsOn: [
+    { fieldKey: "dbClusterMemberIds", targetTypeId: "rds-instance", label: "has member" },
+    { fieldKey: "securityGroupIds", targetTypeId: "security-group", label: "guarded by" },
+    {
+      fieldKey: "dbSubnetGroupName",
+      targetTypeId: "db-subnet-group",
+      label: "placed in",
+    },
   ],
   iconKey: "database",
   supportsCreate: true,
@@ -65,6 +88,17 @@ export const DocumentDBClusterResourceType = rt({
           description: "MongoDB connection URI",
         },
       ],
+    },
+  ],
+  postureChecks: [
+    {
+      id: "documentdb-cluster-unencrypted",
+      title: "Storage not encrypted",
+      severity: "medium",
+      category: "encryption",
+      conditions: [{ fieldKey: "storageEncrypted", when: "falsy" }],
+      reason:
+        "The cluster's storage is not encrypted at rest; enabling encryption later requires restoring into a new encrypted cluster.",
     },
   ],
 });

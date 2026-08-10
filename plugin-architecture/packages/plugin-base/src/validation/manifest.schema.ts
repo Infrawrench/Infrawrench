@@ -74,4 +74,47 @@ export const pluginManifestSchema = z.object({
       periodNative: z.boolean().optional(),
     })
     .optional(),
+  credits: z
+    .object({
+      label: z.string().optional(),
+      topUpUrl: z.string().url().optional(),
+      requiresElevatedCredential: z.boolean().optional(),
+    })
+    .optional(),
+  statusFeed: z
+    .object({
+      url: z.string().url(),
+      format: z.enum(["statuspage-v2", "custom-json", "rss", "atom"]),
+      statusPageUrl: z.string().url().optional(),
+    })
+    .optional(),
+  preflight: z
+    .object({
+      capabilities: z
+        .array(
+          z.object({
+            id: z.string().min(1),
+            label: z.string().min(1),
+            description: z.string().optional(),
+            requiredPermissions: z.array(
+              z.object({
+                id: z.string().min(1),
+                label: z.string().min(1),
+              }),
+            ),
+            essential: z.boolean().optional(),
+          }),
+        )
+        .min(1)
+        .refine((caps) => new Set(caps.map((c) => c.id)).size === caps.length, {
+          message: "capability ids must be unique within the plugin",
+        }),
+      templateFormat: z
+        .object({
+          label: z.string().min(1),
+          language: z.enum(["json", "yaml", "text"]),
+        })
+        .optional(),
+    })
+    .optional(),
 });

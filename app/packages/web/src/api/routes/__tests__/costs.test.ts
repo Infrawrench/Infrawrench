@@ -28,6 +28,37 @@ vi.mock("@infrawrench/server-core/cost/forecast", () => ({
   forecastDaily: vi.fn().mockReturnValue([]),
 }));
 
+const mockGetAnomalySettings = vi.fn();
+const mockSetAnomalySettings = vi.fn();
+
+// Mocked rather than imported for real: the settings module reaches
+// server-core's db client, which throws at import time without DATABASE_URL.
+vi.mock("@infrawrench/server-core/cost/anomaly-settings", () => ({
+  getOrgAnomalySettings: (...args: unknown[]) => mockGetAnomalySettings(...args),
+  setOrgAnomalySettings: (...args: unknown[]) => mockSetAnomalySettings(...args),
+}));
+
+const mockIsSmsPagingConfigured = vi.fn();
+
+// Same reason as above: the pager module reaches server-core's db client.
+vi.mock("@infrawrench/server-core/twilio-pager", () => ({
+  isSmsPagingConfigured: (...args: unknown[]) => mockIsSmsPagingConfigured(...args),
+}));
+
+// Same reason again: the tag-policy modules reach the db client at import
+// time via the services/tag-policy chain.
+vi.mock("@infrawrench/server-core/cost/tag-policy", () => ({
+  getOrgTagPolicy: vi.fn().mockResolvedValue(null),
+  setOrgTagPolicy: vi.fn(),
+}));
+vi.mock("../../../services/tag-policy", () => ({
+  getUntaggedSpendReport: vi.fn(),
+  getAccountTagCompliance: vi.fn(),
+}));
+vi.mock("../../../services/showback", () => ({
+  getShowbackReport: vi.fn(),
+}));
+
 vi.mock("@/plugins/loader", () => ({
   getPlugin: vi.fn().mockResolvedValue({
     plugin: { manifest: { id: "aws", displayName: "AWS", costs: { dimensions: ["service"] } } },
@@ -68,9 +99,21 @@ const validQuery = {
   filters: [],
 };
 
+const defaultSettings = {
+  sigmas: 3,
+  minDeltaCents: 1000,
+  newSourceMinCents: 2500,
+  smsAlerts: "off",
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockQueryCosts.mockResolvedValue([]);
+  mockGetAnomalySettings.mockResolvedValue(defaultSettings);
+  mockIsSmsPagingConfigured.mockResolvedValue(false);
+  mockSetAnomalySettings.mockImplementation((_org: string, settings: unknown) =>
+    Promise.resolve(settings),
+  );
 });
 
 describe("POST /query", () => {
@@ -164,5 +207,117 @@ describe("GET /dimensions", () => {
     const res = await buildApp().request("/dimensions?dimension=tag-keys");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ values: ["env", "team"] });
+  });
+});
+
+describe("anomaly settings", () => {
+  function put(app: Hono, body: unknown) {
+    return app.request("/anomaly-settings", {
+      method: "PUT",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  it("reads with costs:read, and says whether an SMS could be delivered", async () => {
+    const res = await buildAppWithPermissions(["costs:read"]).request("/anomaly-settings");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ...defaultSettings, smsConfigured: false });
+  });
+
+  it("reports SMS as reachable when Twilio is set up with a recipient", async () => {
+    mockIsSmsPagingConfigured.mockResolvedValue(true);
+    const res = await buildAppWithPermissions(["costs:read"]).request("/anomaly-settings");
+    expect(await res.json()).toEqual({ ...defaultSettings, smsConfigured: true });
+  });
+
+  it("rejects a read without costs:read", async () => {
+    const res = await buildAppWithPermissions(["dashboards:read"]).request("/anomaly-settings");
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects a write to a reader — retuning needs costs:write", async () => {
+    const res = await put(buildAppWithPermissions(["costs:read"]), defaultSettings);
+    expect(res.status).toBe(403);
+    expect(mockSetAnomalySettings).not.toHaveBeenCalled();
+  });
+
+  it("saves a valid update", async () => {
+    const next = {
+      sigmas: 2.5,
+      minDeltaCents: 5000,
+      newSourceMinCents: 10_000,
+      smsAlerts: "new_source",
+    };
+    const res = await put(buildAppWithPermissions(["costs:write"]), next);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ...next, smsConfigured: false });
+    expect(mockSetAnomalySettings).toHaveBeenCalledWith("org-1", next);
+  });
+
+  it("rejects an unknown SMS mode", async () => {
+    const res = await put(buildAppWithPermissions(["costs:write"]), {
+      ...defaultSettings,
+      smsAlerts: "everything",
+    });
+    expect(res.status).toBe(400);
+    expect(mockSetAnomalySettings).not.toHaveBeenCalled();
+  });
+
+  it("rejects an update that omits smsAlerts rather than silently paging off", async () => {
+    const { smsAlerts: _omitted, ...withoutSms } = defaultSettings;
+    const res = await put(buildAppWithPermissions(["costs:write"]), withoutSms);
+    expect(res.status).toBe(400);
+    expect(mockSetAnomalySettings).not.toHaveBeenCalled();
+  });
+
+  it("rejects a sigma of 0 — it would alert on every fluctuation", async () => {
+    const res = await put(buildAppWithPermissions(["costs:write"]), {
+      ...defaultSettings,
+      sigmas: 0,
+    });
+    expect(res.status).toBe(400);
+    expect(mockSetAnomalySettings).not.toHaveBeenCalled();
+  });
+
+  it("rejects a negative floor", async () => {
+    const res = await put(buildAppWithPermissions(["costs:write"]), {
+      ...defaultSettings,
+      minDeltaCents: -100,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a negative new-source floor", async () => {
+    const res = await put(buildAppWithPermissions(["costs:write"]), {
+      ...defaultSettings,
+      newSourceMinCents: -1,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a sigma beyond the upper bound", async () => {
+    const res = await put(buildAppWithPermissions(["costs:write"]), {
+      ...defaultSettings,
+      sigmas: 50,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a partial update — PUT replaces the whole object", async () => {
+    const res = await put(buildAppWithPermissions(["costs:write"]), { sigmas: 4 });
+    expect(res.status).toBe(400);
+  });
+
+  it("rounds sigmas to the one decimal the form offers", async () => {
+    const res = await put(buildAppWithPermissions(["costs:write"]), {
+      ...defaultSettings,
+      sigmas: 2.46,
+    });
+    expect(res.status).toBe(200);
+    expect(mockSetAnomalySettings).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({ sigmas: 2.5 }),
+    );
   });
 });

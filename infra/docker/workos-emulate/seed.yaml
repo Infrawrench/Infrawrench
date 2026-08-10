@@ -1,0 +1,36 @@
+# Seed data for the WorkOS emulator (docker-compose.dev.yml). Re-applied on
+# every emulator start — state is in-memory only.
+#
+# Log in at http://localhost:3000 with dev@infrawrench.local / devpassword1!
+# Schema reference: github.com/workos/emulate README, "Seed Data".
+
+users:
+  # id pinned: the emulator is in-memory and would otherwise mint a NEW
+  # user_… id on every restart, while the app's users table keys on the
+  # WorkOS id — the stale row then breaks onboarding with an FK violation
+  # on organization_members.user_id. If you change ids or emails here,
+  # reset the database: docker compose -f docker-compose.dev.yml down -v
+  - id: user_01DEVDEVDEVDEVDEVDEVDEVDEV
+    email: dev@infrawrench.local
+    first_name: Dev
+    last_name: User
+    password: devpassword1!
+    email_verified: true
+
+organizations:
+  - id: org_01DEVDEVDEVDEVDEVDEVDEVDEV
+    name: Infrawrench Dev
+    domains:
+      - domain: infrawrench.local
+        state: verified
+    memberships:
+      # Joined by email — user ids are generated at emulator startup.
+      - email: dev@infrawrench.local
+        role: admin
+        status: active
+
+roles:
+  - slug: admin
+    name: Administrator
+  - slug: member
+    name: Member

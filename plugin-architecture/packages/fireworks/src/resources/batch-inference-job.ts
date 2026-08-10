@@ -23,5 +23,23 @@ export const BatchInferenceJobResourceType = rt({
     f("expireTime", "Deadline", { required: false }),
   ],
   outputs: [o("jobName", "Job Resource Name"), o("outputDatasetId", "Output Dataset ID")],
+  // Despite the `…Id` names, both dataset fields hold full resource names
+  // (`accounts/{acct}/datasets/{id}`), as does `model` — matched against the
+  // target's name output rather than its short external id.
+  dependsOn: [
+    { fieldKey: "model", targetTypeId: "model", targetKey: "modelName", label: "runs" },
+    {
+      fieldKey: "inputDatasetId",
+      targetTypeId: "dataset",
+      targetKey: "datasetName",
+      label: "reads",
+    },
+    {
+      fieldKey: "outputDatasetId",
+      targetTypeId: "dataset",
+      targetKey: "datasetName",
+      label: "writes",
+    },
+  ],
   iconKey: "queue",
 });

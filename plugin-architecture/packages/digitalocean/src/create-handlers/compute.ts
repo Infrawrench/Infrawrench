@@ -37,8 +37,9 @@ export async function computeGetCreateConfig(
             price_monthly: number;
             available: boolean;
             description: string;
+            regions?: string[];
           }>;
-        }>("/sizes"),
+        }>("/sizes?per_page=200"),
         ctx.fetch<{
           images: Array<{
             id: number;
@@ -93,6 +94,10 @@ export async function computeGetCreateConfig(
         diskGb: s.disk,
         ...(Number.isFinite(price) && price > 0 ? { priceMonthly: price } : {}),
         category: cat,
+        // Region availability — the right-sizing host drops candidates the
+        // resource's region can't host. The size-picker ignores it unless a
+        // filterByFieldKey is set, so the create form is unchanged.
+        ...(Array.isArray(s.regions) && s.regions.length > 0 ? { availableFor: s.regions } : {}),
       });
     }
     const sizes = [...sizesByCategory.values()].flat();
@@ -198,7 +203,7 @@ export async function computeGetCreateConfig(
           available: boolean;
           description: string;
         }>;
-      }>("/sizes"),
+      }>("/sizes?per_page=200"),
       buildProjectField(ctx, parentResourceId),
     ]);
 
@@ -343,8 +348,7 @@ export async function computeCreateResource(args: DoCreateArgs): Promise<Resourc
     });
     const d = data.droplet;
     const networks = d["networks"] as
-      | { v4?: Array<{ type: string; ip_address: string }> }
-      | undefined;
+      { v4?: Array<{ type: string; ip_address: string }> } | undefined;
     const publicIp = networks?.v4?.find((n) => n.type === "public")?.ip_address ?? "";
     const privateIp = networks?.v4?.find((n) => n.type === "private")?.ip_address ?? "";
 

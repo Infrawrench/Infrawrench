@@ -1,0 +1,1 @@
+ALTER TABLE "agent_sessions" ADD COLUMN "setup_lease_until" timestamp;

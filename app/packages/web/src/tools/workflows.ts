@@ -9,17 +9,19 @@
  * rejected with diagnostics instead of being persisted and failing at 3am.
  *
  * Everything routes through services/workflows.ts, the same module behind the
- * HTTP routes, so the two surfaces can't drift.
+ * HTTP routes, so the two surfaces can't drift — including the permissions:
+ * reads take `workflows:read`, and writing/running/deleting take
+ * `workflows:write`, exactly as the matching routes do.
  */
 import { z } from "zod";
 
-import type { MetricDef, WorkflowTrigger } from "@infrawrench/workflow-runtime";
+import type { InfraDtsNamedType, MetricDef, WorkflowTrigger } from "@infrawrench/workflow-runtime";
 
 import {
   WorkflowError,
   checkWorkflowSource,
   createWorkflow,
-  generateWorkflowTypings,
+  generateWorkflowTypingsParts,
   listWorkflowMetrics,
   listWorkflowRuns,
   listWorkflows,
@@ -111,6 +113,41 @@ function toTrigger(input: TriggerInput): WorkflowTrigger {
   }
 }
 
+/**
+ * Below this size the full `infra.d.ts` is returned in one call; above it the
+ * default response becomes the global scope plus an index of named interfaces
+ * so a many-plugin org doesn't dump a huge file into the model's context.
+ * Roughly 8k tokens.
+ */
+const FULL_TYPINGS_INLINE_LIMIT = 32_000;
+
+/**
+ * A plugin id as it appears inside generated interface names. MUST stay
+ * byte-identical to codegen's `ident` so plugin-id lookups resolve.
+ */
+function pluginIdent(raw: string): string {
+  const cleaned = raw.replace(/[^A-Za-z0-9_]/g, "_");
+  return /^[0-9]/.test(cleaned) ? `_${cleaned}` : cleaned;
+}
+
+/**
+ * Resolve one requested type name: an exact interface name matches itself,
+ * and a plugin id matches every interface generated for that plugin (group,
+ * account, resources, sidecar).
+ */
+function matchTypeName(types: InfraDtsNamedType[], raw: string): InfraDtsNamedType[] {
+  const exact = types.filter((t) => t.name === raw);
+  if (exact.length > 0) return exact;
+  const safe = pluginIdent(raw);
+  return types.filter(
+    (t) =>
+      t.name === `Account_${safe}` ||
+      t.name === `AccountGroup_${safe}` ||
+      t.name === `Sidecar_${safe}` ||
+      t.name.startsWith(`Resource_${safe}_`),
+  );
+}
+
 /** One diagnostic as a compact `line:col  TS####  message` line. */
 function formatDiagnostics(
   diagnostics: { line: number; column: number; code: number; message: string; category: string }[],
@@ -153,9 +190,9 @@ export function workflowTools(): ToolDefinition[] {
         "get_workflow for that.",
       inputSchema: {},
       risk: "read",
-      permission: "dashboards:read",
+      permission: "workflows:read",
       handler: async (_input, auth) => {
-        const denied = await denyUnlessPermitted(auth, "dashboards:read");
+        const denied = await denyUnlessPermitted(auth, "workflows:read");
         if (denied) return denied;
         const rows = await listWorkflows(auth.organizationId);
         return ok(rows.map((wf) => summarize(wf, false)));
@@ -173,9 +210,9 @@ export function workflowTools(): ToolDefinition[] {
         runLimit: z.number().optional().describe("How many recent runs to include. Default 5."),
       },
       risk: "read",
-      permission: "dashboards:read",
+      permission: "workflows:read",
       handler: async (input, auth) => {
-        const denied = await denyUnlessPermitted(auth, "dashboards:read");
+        const denied = await denyUnlessPermitted(auth, "workflows:read");
         if (denied) return denied;
         const id = input["workflowId"] as string;
         try {
@@ -200,10 +237,13 @@ export function workflowTools(): ToolDefinition[] {
         "ambient declarations the editor uses, specialized with THIS organization's real account " +
         "names, resource types, create-field shapes, SSH key names, and the workflow's declared " +
         "metrics. ALWAYS call this before writing or editing workflow source: the `infra` API is " +
-        "generated per organization and cannot be guessed. Pass workflowId to type against an " +
-        "existing workflow, or pass triggerKind/metrics to preview the typings for one you are " +
-        "about to create (a budget trigger types `infra.event` with the crossing payload; only " +
-        "manual workflows get `infra.prompt`).",
+        "generated per organization and cannot be guessed. Small organizations get the whole file " +
+        "in one call; large ones get the global scope (the `infra` object, InfraAccounts, event, " +
+        "metrics, fetch) plus an index of the named per-plugin interfaces it references — call " +
+        "again with typeNames to pull just the plugins you are working with instead of the whole " +
+        "file. Pass workflowId to type against an existing workflow, or pass triggerKind/metrics " +
+        "to preview the typings for one you are about to create (a budget trigger types " +
+        "`infra.event` with the crossing payload; only manual workflows get `infra.prompt`).",
       inputSchema: {
         workflowId: z
           .string()
@@ -214,11 +254,27 @@ export function workflowTools(): ToolDefinition[] {
           .optional()
           .describe("Ignored when workflowId is given. Defaults to manual."),
         metrics: metricsSchema.optional(),
+        scope: z
+          .enum(["full", "global"])
+          .optional()
+          .describe(
+            "Omit for automatic: the full file when it is small, otherwise the global scope plus " +
+              "an index of named interfaces. 'full' forces the whole file; 'global' forces the " +
+              "split view.",
+          ),
+        typeNames: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Return only these named interface declarations (names come from the index or from " +
+              "references in earlier responses, e.g. 'Account_aws'). A plugin id like 'aws' " +
+              "returns every interface generated for that plugin. Overrides scope.",
+          ),
       },
       risk: "read",
-      permission: "dashboards:read",
+      permission: "workflows:read",
       handler: async (input, auth) => {
-        const denied = await denyUnlessPermitted(auth, "dashboards:read");
+        const denied = await denyUnlessPermitted(auth, "workflows:read");
         if (denied) return denied;
         const workflowId = input["workflowId"] as string | undefined;
         try {
@@ -230,8 +286,49 @@ export function workflowTools(): ToolDefinition[] {
             metrics = (wf.metricDefs ?? []) as MetricDef[];
             triggerKind = (wf.trigger as WorkflowTrigger).kind;
           }
+          const parts = await generateWorkflowTypingsParts(auth.organizationId, {
+            metrics,
+            triggerKind,
+          });
+
+          const requested = input["typeNames"] as string[] | undefined;
+          if (requested && requested.length > 0) {
+            const wanted = new Set<string>();
+            const unknown: string[] = [];
+            for (const raw of requested) {
+              const matches = matchTypeName(parts.types, raw);
+              if (matches.length === 0) unknown.push(raw);
+              for (const m of matches) wanted.add(m.name);
+            }
+            if (wanted.size === 0) {
+              return err(
+                `No interfaces match ${unknown.join(", ")}. ` +
+                  `Available: ${parts.types.map((t) => t.name).join(", ")}`,
+              );
+            }
+            const header =
+              unknown.length > 0 ? `// No interfaces match: ${unknown.join(", ")}\n\n` : "";
+            const picked = parts.types.filter((t) => wanted.has(t.name));
+            return okText(header + picked.map((t) => t.dts).join("\n\n"));
+          }
+
+          const scope = input["scope"] as "full" | "global" | undefined;
+          if (
+            scope === "full" ||
+            (scope !== "global" && parts.full.length <= FULL_TYPINGS_INLINE_LIMIT)
+          ) {
+            return okText(parts.full);
+          }
+          const names = parts.types.map((t) => t.name);
           return okText(
-            await generateWorkflowTypings(auth.organizationId, { metrics, triggerKind }),
+            `${parts.global}\n` +
+              `// ——— ${names.length} named interfaces omitted (full typings are ${parts.full.length} ` +
+              `chars; scope: "full" returns everything) ———\n` +
+              `// The declarations above reference them by name: InfraAccounts → AccountGroup_<plugin> → ` +
+              `Account_<plugin> → Resource_<plugin>_<type>.\n` +
+              `// Fetch only what you need by calling this tool with typeNames — a plugin id (e.g. ` +
+              `"kubernetes") fetches all of that plugin's interfaces. Available:\n` +
+              `// ${names.join(", ")}\n`,
           );
         } catch (e) {
           return toolError(e);
@@ -256,9 +353,9 @@ export function workflowTools(): ToolDefinition[] {
         metrics: metricsSchema.optional(),
       },
       risk: "read",
-      permission: "dashboards:read",
+      permission: "workflows:read",
       handler: async (input, auth) => {
-        const denied = await denyUnlessPermitted(auth, "dashboards:read");
+        const denied = await denyUnlessPermitted(auth, "workflows:read");
         if (denied) return denied;
         try {
           let metrics = (input["metrics"] as MetricDef[] | undefined) ?? [];
@@ -313,9 +410,9 @@ export function workflowTools(): ToolDefinition[] {
           .describe("Save even when the source has type errors. Use only when deliberate."),
       },
       risk: "write",
-      permission: "dashboards:write",
+      permission: "workflows:write",
       handler: async (input, auth) => {
-        const denied = await denyUnlessPermitted(auth, "dashboards:write");
+        const denied = await denyUnlessPermitted(auth, "workflows:write");
         if (denied) return denied;
         const workflowId = input["workflowId"] as string | undefined;
 
@@ -413,9 +510,9 @@ export function workflowTools(): ToolDefinition[] {
       // arbitrary user code that can, so it gets the same confirmation as
       // invoke_action / apply_manifest.
       risk: "destructive",
-      permission: "dashboards:write",
+      permission: "workflows:write",
       handler: async (input, auth) => {
-        const denied = await denyUnlessPermitted(auth, "dashboards:write");
+        const denied = await denyUnlessPermitted(auth, "workflows:write");
         if (denied) return denied;
         const id = input["workflowId"] as string;
         try {
@@ -424,6 +521,10 @@ export function workflowTools(): ToolDefinition[] {
             organizationId: auth.organizationId,
             workflowId: id,
             triggerSource: auth.source === "chat" ? "manual" : "api",
+            // Closes the same gap on this surface: without it, `run_workflow`
+            // would let an agent do through a workflow what the tool registry
+            // refuses it directly.
+            runAsUserId: auth.userId,
             interactive: false,
           });
           void logAudit({
@@ -449,9 +550,9 @@ export function workflowTools(): ToolDefinition[] {
         "surface confirms with the user before invoking.",
       inputSchema: { workflowId: z.string() },
       risk: "destructive",
-      permission: "dashboards:write",
+      permission: "workflows:write",
       handler: async (input, auth) => {
-        const denied = await denyUnlessPermitted(auth, "dashboards:write");
+        const denied = await denyUnlessPermitted(auth, "workflows:write");
         if (denied) return denied;
         const id = input["workflowId"] as string;
         try {

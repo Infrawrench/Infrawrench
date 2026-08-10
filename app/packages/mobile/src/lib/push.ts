@@ -153,26 +153,92 @@ export async function unregisterCurrentDevice(api: CloudFetch): Promise<void> {
 }
 
 /**
+ * The union this app routes on. `expiry_alert` is landing in client-core's
+ * `PushNotificationData` in the same release as this handler; until it does,
+ * the variant is declared here. On the wire it carries `organizationId` where
+ * every other variant carries `orgId` — `parsePushData` normalises that.
+ */
+export type MobilePushData = PushNotificationData | { type: "expiry_alert"; orgId: string };
+
+/**
  * Map a notification payload to an expo-router path. Sync incidents land on
  * the failing account; workflow pages land on the workflow that raised them
  * (its run list is the first thing you want); budget breaches land on the
  * Costs tab, which lists every budget in the org whether or not a dashboard
  * shows it — the alert has to open something that contains the budget it is
  * about, and the Dashboards tab is a list of dashboards, not of budgets.
+ * Expiry alerts land on the Expiring screen, the feed the alert summarised.
  * Tests and API pages land on the org root.
  */
-export function pushDataToPath(data: PushNotificationData): string {
+export function pushDataToPath(data: MobilePushData): string {
   switch (data.type) {
     case "sync_incident":
       return `/org/${data.orgId}/accounts/${data.accountId}`;
     case "workflow_page":
       return `/org/${data.orgId}/workflows/${data.workflowId}`;
+    // Approvals land on the inbox, which is the screen with the buttons on it —
+    // the workflow's run list can only show that a run is stuck. The id rides
+    // along so the inbox can surface this request first.
+    case "workflow_approval":
+      return `/org/${data.orgId}/settings/approvals?approvalId=${encodeURIComponent(data.approvalId)}`;
+    // Break-glass lands on the screen with the buttons on it — a colleague
+    // blocked mid-incident is exactly what you decide from a phone.
+    case "access_request":
+      return `/org/${data.orgId}/settings/access-requests?requestId=${encodeURIComponent(data.requestId)}`;
     // API pages name a source Infrawrench has no page for, so the org home is
     // the closest thing to "where this alert came from".
     case "api_page":
       return `/org/${data.orgId}`;
     case "budget_breach":
       return `/org/${data.orgId}/costs`;
+    // A cost anomaly is a "what happened just now?" alert, so it opens the
+    // moment view centred on the tap — the anomaly event, plus whatever else
+    // (deploys, incidents, drift) coincided with it. The Costs tab is one tap
+    // away via the anomaly row's deep link.
+    case "cost_anomaly":
+      return `/org/${data.orgId}/moment`;
+    // A metric alert is the same "what happened just now?" shape — the moment
+    // view shows what coincided with the breach (mobile has no rule editor;
+    // rules are managed on web/desktop).
+    case "metric_alert":
+      return `/org/${data.orgId}/moment`;
+    // A drift digest describes the window `since → now`, so it opens the
+    // moment view centred on that window's midpoint with a half-width that
+    // covers it — the digest's changes merged with everything else that
+    // happened around them. (This supersedes the old Changes-screen `since`
+    // filter target; the screen still honours the param for old links.)
+    case "resource_drift": {
+      const since = Date.parse(data.since);
+      if (Number.isNaN(since)) return `/org/${data.orgId}/moment`;
+      const now = Date.now();
+      const centre = new Date((since + now) / 2).toISOString();
+      const halfMinutes = Math.max(15, Math.ceil((now - since) / 2 / 60_000) + 5);
+      const query = new URLSearchParams({ at: centre, window: String(halfMinutes) });
+      return `/org/${data.orgId}/moment?${query.toString()}`;
+    }
+    // A provider incident push also lands on the moment view: the question it
+    // raises is "what did this coincide with?", and the view badges every
+    // event inside the incident's span.
+    case "provider_incident":
+      return `/org/${data.orgId}/moment`;
+    // An expiry alert summarises the whole feed, so it opens the feed. Read
+    // both id keys so this stays correct if the shared union grows a variant
+    // carrying the wire's raw `organizationId` rather than the normalised one.
+    case "expiry_alert": {
+      const target = data as { orgId?: string; organizationId?: string };
+      return `/org/${target.orgId ?? target.organizationId}/expiring`;
+    }
+    // A posture alert summarises the whole feed, so it opens the feed.
+    case "posture_alert":
+      return `/org/${data.orgId}/posture`;
+    // A log-match alert names the saved query that fired; open its viewer so
+    // the matching lines are one refresh away.
+    case "log_match":
+      return `/org/${data.orgId}/log-workspaces/${data.queryId}`;
+    // A probe alert names one endpoint; the probes list shows its status dot,
+    // latency and history (mobile has no probe editor — web/desktop own that).
+    case "probe_alert":
+      return `/org/${data.orgId}/probes`;
     case "test":
       return `/org/${data.orgId}`;
     default:
@@ -190,9 +256,19 @@ export function pushDataToPath(data: PushNotificationData): string {
  * or a field of the wrong primitive type yields `null` (the caller then skips
  * the deep link) instead of a path containing "undefined".
  */
-export function parsePushData(raw: unknown): PushNotificationData | null {
+export function parsePushData(raw: unknown): MobilePushData | null {
   if (!raw || typeof raw !== "object") return null;
   const data: Record<string, unknown> = raw as Record<string, unknown>;
+
+  // Expiry alerts identify the org as `organizationId` where every other
+  // variant says `orgId`, so this variant is handled ahead of the shared gate
+  // below (accepting either spelling, normalised to `orgId`).
+  if (data["type"] === "expiry_alert") {
+    const organizationId = data["organizationId"] ?? data["orgId"];
+    if (typeof organizationId !== "string") return null;
+    return { type: "expiry_alert", orgId: organizationId };
+  }
+
   const orgId = data["orgId"];
   if (typeof orgId !== "string") return null;
 
@@ -223,6 +299,47 @@ export function parsePushData(raw: unknown): PushNotificationData | null {
       }
       return { type: "budget_breach", orgId, budgetId, month, thresholdPercent };
     }
+    case "cost_anomaly": {
+      const day = data["day"];
+      const dimension = data["dimension"];
+      const dimensionKey = data["dimensionKey"];
+      if (
+        typeof day !== "string" ||
+        (dimension !== "provider" && dimension !== "service") ||
+        typeof dimensionKey !== "string"
+      ) {
+        return null;
+      }
+      return { type: "cost_anomaly", orgId, day, dimension, dimensionKey };
+    }
+    case "metric_alert": {
+      const ruleId = data["ruleId"];
+      const resourceId = data["resourceId"];
+      const status = data["status"];
+      if (
+        typeof ruleId !== "string" ||
+        typeof resourceId !== "string" ||
+        (status !== "firing" && status !== "resolved")
+      ) {
+        return null;
+      }
+      return { type: "metric_alert", orgId, ruleId, resourceId, status };
+    }
+    case "resource_drift": {
+      const changeCount = data["changeCount"];
+      const since = data["since"];
+      const accountId = data["accountId"];
+      if (typeof changeCount !== "number" || typeof since !== "string") return null;
+      return {
+        type: "resource_drift",
+        orgId,
+        changeCount,
+        since,
+        // Absent whenever the window spanned more than one account, which is
+        // the common case — the feed then opens unfiltered by account.
+        ...(typeof accountId === "string" ? { accountId } : {}),
+      };
+    }
     case "workflow_page": {
       const workflowId = data["workflowId"];
       const runId = data["runId"];
@@ -234,11 +351,64 @@ export function parsePushData(raw: unknown): PushNotificationData | null {
         ...(typeof runId === "string" ? { runId } : {}),
       };
     }
+    case "workflow_approval": {
+      const workflowId = data["workflowId"];
+      const runId = data["runId"];
+      const approvalId = data["approvalId"];
+      if (
+        typeof workflowId !== "string" ||
+        typeof runId !== "string" ||
+        typeof approvalId !== "string"
+      ) {
+        return null;
+      }
+      return { type: "workflow_approval", orgId, workflowId, runId, approvalId };
+    }
+    case "access_request": {
+      const requestId = data["requestId"];
+      const requestedByName = data["requestedByName"];
+      const durationMinutes = data["durationMinutes"];
+      if (typeof requestId !== "string") return null;
+      return {
+        type: "access_request",
+        orgId,
+        requestId,
+        requestedByName: typeof requestedByName === "string" ? requestedByName : "A member",
+        durationMinutes: typeof durationMinutes === "number" ? durationMinutes : 0,
+      };
+    }
     case "api_page": {
       const source = data["source"];
       const key = data["key"];
       if (typeof source !== "string" || typeof key !== "string") return null;
       return { type: "api_page", orgId, source, key };
+    }
+    case "provider_incident": {
+      const pluginId = data["pluginId"];
+      const incidentId = data["incidentId"];
+      const affectedResourceCount = data["affectedResourceCount"];
+      if (
+        typeof pluginId !== "string" ||
+        typeof incidentId !== "string" ||
+        typeof affectedResourceCount !== "number"
+      ) {
+        return null;
+      }
+      return { type: "provider_incident", orgId, pluginId, incidentId, affectedResourceCount };
+    }
+    case "log_match": {
+      const queryId = data["queryId"];
+      const matchCount = data["matchCount"];
+      if (typeof queryId !== "string" || typeof matchCount !== "number") return null;
+      return { type: "log_match", orgId, queryId, matchCount };
+    }
+    case "posture_alert":
+      return { type: "posture_alert", orgId };
+    case "probe_alert": {
+      const probeId = data["probeId"];
+      const status = data["status"];
+      if (typeof probeId !== "string" || (status !== "down" && status !== "up")) return null;
+      return { type: "probe_alert", orgId, probeId, status };
     }
     case "test":
       return { type: "test", orgId };

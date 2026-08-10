@@ -12,6 +12,10 @@ export const TursoGroupResourceType = rt({
     f("version", "Version", { required: false }),
   ],
   outputs: [o("groupName", "Group Name"), o("primaryLocation", "Primary Location")],
+  dependsOn: [
+    { fieldKey: "primaryLocation", targetTypeId: "turso-location", label: "primary in" },
+    { fieldKey: "locations", targetTypeId: "turso-location", label: "spans" },
+  ],
   supportsCreate: true,
   iconKey: "turso",
 });

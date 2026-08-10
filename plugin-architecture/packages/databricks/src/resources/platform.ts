@@ -84,6 +84,9 @@ export const DashboardResourceType = rt({
     f("path", "Path", { required: false }),
   ],
   outputs: [o("dashboardId", "Dashboard ID"), o("dashboardUrl", "Dashboard URL")],
+  dependsOn: [
+    { fieldKey: "warehouseId", targetTypeId: "databricks-sql-warehouse", label: "queries via" },
+  ],
   iconKey: "dashboard",
 });
 
@@ -102,6 +105,18 @@ export const SqlQueryResourceType = rt({
     f("isFavorite", "Favorite", { kind: "boolean", required: false }),
   ],
   outputs: [o("queryId", "Query ID"), o("queryUrl", "Query URL")],
+  // `schema` is bare while a schema's external id is `catalog.schema`; the
+  // query's own `catalog` supplies the missing half.
+  dependsOn: [
+    { fieldKey: "catalog", targetTypeId: "databricks-catalog", label: "in catalog" },
+    {
+      fieldKey: "schema",
+      targetTypeId: "databricks-schema",
+      matchTemplate: "{catalog}.{schema}",
+      label: "in schema",
+    },
+    { fieldKey: "warehouseId", targetTypeId: "databricks-sql-warehouse", label: "runs on" },
+  ],
   iconKey: "database",
 });
 
@@ -124,6 +139,17 @@ export const VolumeResourceType = rt({
     o("volumePath", "Volume Path"),
     o("storageLocation", "Storage Location"),
   ],
+  // A schema's external id is `catalog.schema`, so the bare `schemaName` only
+  // matches once composed with its catalog.
+  dependsOn: [
+    { fieldKey: "catalogName", targetTypeId: "databricks-catalog", label: "in catalog" },
+    {
+      fieldKey: "schemaName",
+      targetTypeId: "databricks-schema",
+      matchTemplate: "{catalogName}.{schemaName}",
+      label: "in schema",
+    },
+  ],
   parentTypeId: "databricks-schema",
   iconKey: "folder",
 });
@@ -143,6 +169,17 @@ export const FunctionResourceType = rt({
     f("comment", "Comment", { required: false }),
   ],
   outputs: [o("fullName", "Full Name")],
+  // A schema's external id is `catalog.schema`, so the bare `schemaName` only
+  // matches once composed with its catalog.
+  dependsOn: [
+    { fieldKey: "catalogName", targetTypeId: "databricks-catalog", label: "in catalog" },
+    {
+      fieldKey: "schemaName",
+      targetTypeId: "databricks-schema",
+      matchTemplate: "{catalogName}.{schemaName}",
+      label: "in schema",
+    },
+  ],
   parentTypeId: "databricks-schema",
   iconKey: "function",
 });
@@ -161,6 +198,18 @@ export const RegisteredModelResourceType = rt({
     f("comment", "Comment", { required: false }),
   ],
   outputs: [o("fullName", "Full Name"), o("storageLocation", "Storage Location")],
+  // A schema's external id is `catalog.schema`. Both halves are optional here —
+  // a model outside Unity Catalog has neither, and the template correctly
+  // yields nothing rather than a half-built key.
+  dependsOn: [
+    { fieldKey: "catalogName", targetTypeId: "databricks-catalog", label: "in catalog" },
+    {
+      fieldKey: "schemaName",
+      targetTypeId: "databricks-schema",
+      matchTemplate: "{catalogName}.{schemaName}",
+      label: "in schema",
+    },
+  ],
   parentTypeId: "databricks-schema",
   iconKey: "model",
 });
@@ -180,6 +229,11 @@ export const ModelVersionResourceType = rt({
     f("source", "Source", { required: false }),
   ],
   outputs: [o("fullName", "Full Name"), o("version", "Version")],
+  // `fullName` on a version is the *model's* full name, which is the registered
+  // model's external id.
+  dependsOn: [
+    { fieldKey: "fullName", targetTypeId: "databricks-registered-model", label: "version of" },
+  ],
   parentTypeId: "databricks-registered-model",
   iconKey: "model",
 });
@@ -212,6 +266,13 @@ export const VectorSearchIndexResourceType = rt({
     f("creator", "Creator", { required: false }),
   ],
   outputs: [o("fullName", "Index Name")],
+  dependsOn: [
+    {
+      fieldKey: "endpointName",
+      targetTypeId: "databricks-vector-search-endpoint",
+      label: "served by",
+    },
+  ],
   parentTypeId: "databricks-vector-search-endpoint",
   iconKey: "search",
 });

@@ -29,6 +29,17 @@ const sampleContainer = {
   ],
   Labels: {},
   Created: 1_700_000_000,
+  NetworkSettings: {
+    Networks: {
+      frontend: { NetworkID: "networkabcdef0123456789" },
+      backend: { NetworkID: "networkfedcba9876543210" },
+    },
+  },
+  Mounts: [
+    { Type: "volume", Name: "app-data" },
+    { Type: "volume", Name: "app-data" }, // same volume twice -> deduped
+    { Type: "bind", Source: "/etc/hosts" }, // bind mount -> not a docker volume
+  ],
 };
 
 const sampleImage = {
@@ -74,6 +85,8 @@ describe("DockerClient.listResources", () => {
       image: "nginx:latest",
       status: "Up 3 hours",
       ports: "8080->80/tcp",
+      networks: "frontend, backend",
+      volumes: "app-data",
     });
     expect(r.resolvedOutputs).toEqual({ containerId: "abcdef0123456789aaaa", status: "running" });
     expect(r.createdAt).toBe(new Date(1_700_000_000 * 1000).toISOString());

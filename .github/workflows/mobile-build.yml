@@ -1,14 +1,7 @@
 name: Mobile Build
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "app/packages/mobile/**"
-      - "app/packages/client-core/**"
-      - "plugin-architecture/packages/plugin-base/**"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/mobile-build.yml"
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

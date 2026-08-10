@@ -27,6 +27,10 @@ export const DiskResourceType = rt({
     f("encryption", "Encryption", { required: false }),
   ],
   outputs: [],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+    { fieldKey: "managedBy", targetTypeId: "azure-vm", targetKey: "name", label: "attached to" },
+  ],
   iconKey: "volume",
   supportsCreate: true,
   supportsMetrics: true,
@@ -36,6 +40,17 @@ export const DiskResourceType = rt({
       resourceTypeId: "azure-vm",
       matchField: "location",
       verb: "Attach",
+    },
+  ],
+  postureChecks: [
+    {
+      id: "azure-disk-unencrypted",
+      title: "Disk not encrypted at rest",
+      severity: "medium",
+      category: "encryption",
+      conditions: [{ fieldKey: "encryption", when: "equals", value: "None" }],
+      reason:
+        "The managed disk reports no at-rest encryption setting; enable platform-managed or customer-managed key encryption.",
     },
   ],
 });

@@ -21,96 +21,32 @@ const mockGetStripe = vi.fn();
 vi.mock("../../services/stripe", () => ({ getStripe: (...a: unknown[]) => mockGetStripe(...a) }));
 vi.mock("uuid", () => ({ v4: () => "usage-uuid" }));
 
+// The spend-status logic moved to server-core (billing/ai-usage.ts) when
+// `infra.ai()` in workflows started sharing the cap — its behavioral tests
+// live in server-core's ai-usage.test.ts. Here we only pin the delegation.
+const mockGetAiSpendStatus = vi.fn();
+vi.mock("@infrawrench/server-core/billing/ai-usage", () => ({
+  getAiSpendStatus: (...a: unknown[]) => mockGetAiSpendStatus(...a),
+}));
+
 const { getMonthlySpend, recordUsage } = await import("../billing");
 
 describe("getMonthlySpend", () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  function setup(
-    cap: number | null,
-    total: string,
-    subStatus: string | null = "active",
-    complimentary = false,
-  ) {
-    const orgLimit = vi.fn().mockResolvedValue([{ cap, complimentary }]);
-    const orgWhere = vi.fn().mockReturnValue({ limit: orgLimit });
-    const orgFrom = vi.fn().mockReturnValue({ where: orgWhere });
-    const subLimit = vi.fn().mockResolvedValue(subStatus ? [{ status: subStatus }] : []);
-    const subWhere = vi.fn().mockReturnValue({ limit: subLimit });
-    const subFrom = vi.fn().mockReturnValue({ where: subWhere });
-    const sumWhere = vi.fn().mockResolvedValue([{ total }]);
-    const sumFrom = vi.fn().mockReturnValue({ where: sumWhere });
-    mockSelect
-      .mockReturnValueOnce({ from: orgFrom })
-      .mockReturnValueOnce({ from: subFrom })
-      .mockReturnValueOnce({ from: sumFrom });
-  }
-
-  it("reports month-to-date and cap", async () => {
-    setup(1_000_000, "250000");
-    const s = await getMonthlySpend("o1");
-    expect(s.monthToDateMicros).toBe(250000);
-    expect(s.monthlyCapMicros).toBe(1_000_000);
-    expect(s.exceeded).toBe(false);
-    expect(s.freeTier).toBe(false);
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it("flags exceeded when spend >= cap", async () => {
-    setup(200000, "250000");
-    const s = await getMonthlySpend("o1");
-    expect(s.exceeded).toBe(true);
-  });
-
-  it("never exceeded when cap is null on a paid org", async () => {
-    setup(null, "999999999");
-    const s = await getMonthlySpend("o1");
-    expect(s.monthlyCapMicros).toBeNull();
-    expect(s.exceeded).toBe(false);
-  });
-
-  it("applies the $5 free-tier cap when there is no subscription", async () => {
-    setup(null, "4999999", null);
-    const s = await getMonthlySpend("o1");
-    expect(s.monthlyCapMicros).toBe(5_000_000);
-    expect(s.freeTier).toBe(true);
-    expect(s.exceeded).toBe(false);
-  });
-
-  it("blocks free-tier orgs at $5 even with no org cap", async () => {
-    setup(null, "5000000", null);
-    const s = await getMonthlySpend("o1");
-    expect(s.exceeded).toBe(true);
-  });
-
-  it("treats a canceled subscription as free tier", async () => {
-    setup(null, "6000000", "canceled");
-    const s = await getMonthlySpend("o1");
-    expect(s.monthlyCapMicros).toBe(5_000_000);
-    expect(s.freeTier).toBe(true);
-    expect(s.exceeded).toBe(true);
-  });
-
-  it("keeps an org cap below $5 for free-tier orgs", async () => {
-    setup(2_000_000, "1000000", null);
-    const s = await getMonthlySpend("o1");
-    expect(s.monthlyCapMicros).toBe(2_000_000);
-  });
-
-  it("treats complimentary orgs as paid and uncapped even without a subscription", async () => {
-    setup(null, "999999999", null, true);
-    const s = await getMonthlySpend("o1");
-    expect(s.monthlyCapMicros).toBeNull();
-    expect(s.exceeded).toBe(false);
-    expect(s.freeTier).toBe(false);
-    expect(s.complimentary).toBe(true);
-  });
-
-  it("still honors a self-set org cap on complimentary orgs", async () => {
-    setup(1_000_000, "1500000", null, true);
-    const s = await getMonthlySpend("o1");
-    expect(s.monthlyCapMicros).toBe(1_000_000);
-    expect(s.exceeded).toBe(true);
-    expect(s.freeTier).toBe(false);
+  it("delegates to the shared org-wide AI spend status", async () => {
+    const status = {
+      monthToDateMicros: 250000,
+      monthlyCapMicros: 1_000_000,
+      exceeded: false,
+      freeTier: false,
+      complimentary: false,
+    };
+    mockGetAiSpendStatus.mockResolvedValue(status);
+    await expect(getMonthlySpend("o1")).resolves.toEqual(status);
+    expect(mockGetAiSpendStatus).toHaveBeenCalledWith("o1");
   });
 });
 

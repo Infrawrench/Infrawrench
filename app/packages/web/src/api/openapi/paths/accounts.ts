@@ -31,12 +31,74 @@ const CredentialField = strict({
   helpLink: strict({ label: z.string(), url: z.string() }).optional(),
 }).openapi("CredentialField");
 
+const PreflightPermission = strict({
+  id: z.string().openapi({
+    description: "Provider-native permission string, e.g. `ce:GetCostAndUsage`.",
+  }),
+  label: z.string(),
+}).openapi("PreflightPermission");
+
+const PreflightCapability = strict({
+  id: z.string().openapi({ example: "costs" }),
+  label: z.string(),
+  description: z.string().optional(),
+  requiredPermissions: z.array(PreflightPermission),
+  essential: z.boolean().optional(),
+}).openapi("PreflightCapability");
+
+const PreflightDeclaration = strict({
+  capabilities: z.array(PreflightCapability),
+  templateFormat: strict({
+    label: z.string(),
+    language: z.enum(["json", "yaml", "text"]),
+  }).optional(),
+}).openapi("PreflightDeclaration");
+
 const PluginSummary = strict({
   id: z.string(),
   displayName: z.string(),
   logoSvg: z.string(),
   credentialFields: z.array(CredentialField),
+  preflight: PreflightDeclaration.nullable().openapi({
+    description:
+      "Declared when the plugin supports credential preflight (per-capability permission checks). `null` for plugins without it.",
+  }),
 }).openapi("PluginSummary");
+
+const PreflightCheck = strict({
+  capabilityId: z.string(),
+  status: z.enum(["ok", "missing", "unknown"]),
+  missingPermissions: z.array(PreflightPermission),
+  message: z.string().nullable(),
+  helpLink: strict({ label: z.string(), url: z.string() }).nullable(),
+}).openapi("PreflightCheck");
+
+const PreflightReport = strict({
+  pluginId: z.string(),
+  supported: z.boolean(),
+  identity: z.string().nullable().openapi({
+    description: "Provider-side identity the credential resolved to (ARN, service account…).",
+  }),
+  checks: z.array(PreflightCheck),
+}).openapi("PreflightReport");
+
+const AdHocPreflightRequest = strict({
+  pluginId: z.string(),
+  credentials: z.record(z.string()),
+  bastionId: Uuid.optional().nullable().openapi({
+    description: "Probe through this bastion, matching how the account will egress once created.",
+  }),
+}).openapi("PreflightRequest");
+
+const PolicyTemplateResponse = strict({
+  template: strict({
+    formatLabel: z.string(),
+    language: z.enum(["json", "yaml", "text"]),
+    document: z.string(),
+    instructions: z.string().optional(),
+    helpLink: strict({ label: z.string(), url: z.string() }).optional(),
+  }).openapi("PolicyTemplate"),
+}).openapi("PolicyTemplateResponse");
 
 const Account = strict({
   id: Uuid,
@@ -115,6 +177,12 @@ const ResourceTypeSummary = strict({
     .optional(),
   isSshHost: z.boolean().optional(),
   sshTunnelAttachSource: z.boolean().optional(),
+  schedulable: z
+    .boolean()
+    .optional()
+    .describe(
+      "The type declares lifecycle start/stop actions, so its resources can carry a sleep/wake schedule.",
+    ),
 }).openapi("ResourceTypeSummary");
 
 const AccountDetail = strict({
@@ -142,6 +210,76 @@ export function registerAccountPaths(ctx: BuildContext) {
         description: "Plugins",
         content: { "application/json": { schema: z.array(PluginSummary) } },
       },
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/accounts/plugins/{pluginId}/policy-template",
+    tags: ["Accounts"],
+    summary: "Generate a least-privilege credential template for a plugin",
+    description:
+      "Returns the paste-ready credential document (IAM policy JSON, custom role YAML, token template…) scoped to the requested capability ids. Omitting `capabilities` (or sending it empty) selects every declared capability; any unknown capability id is rejected with 400. 400 also for plugins that don't provide a template.",
+    request: {
+      params: OrgIdParam.extend({
+        pluginId: enums.PluginId.openapi({ param: { name: "pluginId", in: "path" } }),
+      }),
+      query: strict({
+        capabilities: z.string().optional().openapi({
+          description: "Comma-separated capability ids, e.g. `resources,costs`.",
+          example: "resources,costs",
+        }),
+      }),
+    },
+    responses: {
+      200: {
+        description: "Template",
+        content: { "application/json": { schema: PolicyTemplateResponse } },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/accounts/preflight",
+    tags: ["Accounts"],
+    summary: "Probe credentials before creating an account",
+    description:
+      "Runs the plugin's per-capability permission checks against the submitted credentials. Nothing is stored — use it from the add-account flow before committing.",
+    request: {
+      params: OrgIdParam,
+      body: {
+        content: { "application/json": { schema: AdHocPreflightRequest } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "Preflight report",
+        content: { "application/json": { schema: PreflightReport } },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/accounts/{id}/preflight",
+    tags: ["Accounts"],
+    summary: "Re-run credential preflight on a stored account",
+    request: {
+      params: OrgIdParam.extend({ id: Uuid.openapi({ param: { name: "id", in: "path" } }) }),
+    },
+    responses: {
+      200: {
+        description: "Preflight report",
+        content: { "application/json": { schema: PreflightReport } },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
     },
   });
 

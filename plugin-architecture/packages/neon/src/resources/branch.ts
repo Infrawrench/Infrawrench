@@ -17,6 +17,7 @@ export const NeonBranchResourceType = rt({
     o("projectId", "Project ID"),
     o("connectionString", "Connection String (default database)", { sensitive: true }),
   ],
+  dependsOn: [{ fieldKey: "projectId", targetTypeId: "neon-project", label: "in project" }],
   parentTypeId: "neon-project",
   supportsCreate: true,
   supportsMetrics: true,

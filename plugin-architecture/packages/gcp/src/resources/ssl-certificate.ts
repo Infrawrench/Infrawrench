@@ -13,5 +13,8 @@ export const SslCertificateResourceType = rt({
     f("expireTime", "Expires", { required: false }),
   ],
   outputs: [o("dnsRecords", "DNS Records"), o("domains", "Domains")],
+  expiryFields: [
+    { fieldKey: "expireTime", from: "expiry", kind: "tls-cert", label: "Certificate expires" },
+  ],
   supportsCreate: true,
 });

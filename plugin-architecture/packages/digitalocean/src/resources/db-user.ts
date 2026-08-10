@@ -25,6 +25,10 @@ export const DatabaseUserResourceType = rt({
       required: false,
       description: "DO-assigned role — `primary` for the bootstrap user, `normal` for the rest.",
     }),
+    f("databaseId", "Cluster ID", {
+      required: false,
+      description: "UUID of the managed-database cluster this user belongs to.",
+    }),
   ],
   outputs: [
     o("password", "Password", {
@@ -35,6 +39,9 @@ export const DatabaseUserResourceType = rt({
         "stored password because DO doesn't expose them post-create.",
     }),
   ],
+  // The lister records the cluster uuid; a managed-database's externalId is
+  // that same uuid.
+  dependsOn: [{ fieldKey: "databaseId", targetTypeId: "managed-database", label: "user on" }],
   parentTypeId: "managed-database",
   supportsCreate: true,
   iconKey: "user",

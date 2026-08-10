@@ -41,7 +41,10 @@ import { buildWorkflowSshDeps } from "./ssh-host";
 import { buildWorkflowFetch } from "./fetch";
 import { enrichPlugin } from "./create-fields-cache";
 import { buildSshKeyFieldResolver } from "./ssh-key-fields";
+import { buildWorkflowAi } from "./ai";
 import { clearWorkflowPage, pageFromWorkflow } from "./paging";
+import { requestApprovalAndWait } from "./approvals";
+import { buildWorkflowAuthorizer } from "./authorize";
 import { staticResourceCapabilities } from "@infrawrench/workflow-runtime";
 
 // Re-exported so the cloud web host (which builds its own interactive host) can
@@ -66,6 +69,12 @@ export interface OrgWorkflowHostExtras {
   workflowName?: string;
   /** The run raising a page, so its notification can deep-link to the logs. */
   runId?: string;
+  /**
+   * What started this run. Approval requests quote it so the notification can
+   * say who is asking — `workflow_runs` records no user, so the trigger source
+   * is the honest answer available.
+   */
+  triggerSource?: string;
   /** Provided when storage object reads should be supported for this run. */
   readStorageObject?: (accountId: string, bucket: string, key: string) => Promise<Uint8Array>;
   /** Debugger line hook (instrumented runs); blocks per line until continued. */
@@ -78,6 +87,12 @@ export interface RunOrgWorkflowOptions extends OrgWorkflowHostExtras {
   organizationId: string;
   workflowId: string;
   triggerSource: RunTriggerSource;
+  /**
+   * The user this run acts on behalf of, bounding what the sandbox may do (see
+   * ./authorize.ts). Manual triggers pass whoever asked for the run; automated
+   * triggers omit it and the workflow's author is used instead.
+   */
+  runAsUserId?: string;
   /** Enables `infra.prompt()` / storage reads for websocket-driven manual runs. */
   interactive?: boolean;
   /** Live log streaming callback (interactive runs). */
@@ -323,6 +338,15 @@ export function buildOrgWorkflowHost(
     // Outbound HTTP leaves through the egress proxy, never from the pod the
     // isolate runs in (see ./fetch.ts).
     fetch: buildWorkflowFetch(),
+    // One-shot model calls (infra.ai): made server-side with the deployment's
+    // API key, metered against the org's monthly AI cap, capped per run.
+    // The run abort signal cancels an in-flight Anthropic request on Stop.
+    ai: buildWorkflowAi({
+      organizationId,
+      workflowId,
+      ...(extras.runId ? { runId: extras.runId } : {}),
+      ...(extras.signal ? { signal: extras.signal } : {}),
+    }),
     page: (spec) =>
       pageFromWorkflow(
         {
@@ -334,6 +358,21 @@ export function buildOrgWorkflowHost(
         spec,
       ),
     clearPage: (key) => clearWorkflowPage(workflowId, key),
+    // Human gate: persists a pending approval, notifies the org, and blocks
+    // until a member decides or the timeout denies. The wait rides the paused
+    // execution budget, so it doesn't consume the run's time.
+    waitForApproval: (spec) =>
+      requestApprovalAndWait(
+        {
+          organizationId,
+          workflowId,
+          workflowName: extras.workflowName ?? "Workflow",
+          ...(extras.runId ? { runId: extras.runId } : {}),
+          ...(extras.triggerSource ? { triggerSource: extras.triggerSource } : {}),
+          ...(extras.signal ? { signal: extras.signal } : {}),
+        },
+        spec,
+      ),
     transformCreateFields: buildSshKeyFieldResolver(organizationId, async (accountId) => {
       const ctx = await getOrgAccountClient(accountId, organizationId);
       return ctx ? { client: ctx.client, pluginId: ctx.account.pluginId } : null;
@@ -412,15 +451,23 @@ export async function runOrgWorkflow(opts: RunOrgWorkflowOptions): Promise<RunOr
   const host = buildOrgWorkflowHost(opts.organizationId, wf.id, {
     workflowName: wf.name,
     runId,
+    triggerSource: opts.triggerSource,
     ...(opts.prompt ? { prompt: opts.prompt } : {}),
     ...(opts.readStorageObject ? { readStorageObject: opts.readStorageObject } : {}),
     ...(opts.line ? { line: opts.line } : {}),
     ...(opts.signal ? { signal: opts.signal } : {}),
   });
 
+  // Resolved before the isolate starts, so the per-operation gate below is a
+  // synchronous map lookup rather than a query on every RPC.
+  const authorize = await buildWorkflowAuthorizer(opts.organizationId, wf.id, {
+    userId: opts.runAsUserId,
+  });
+
   const result = await runWorkflow({
     source: wf.source,
     host,
+    authorize,
     interactive: Boolean(opts.interactive),
     // `api` and `budget` are both "not a person at a keyboard"; the event still
     // reports the real source so a workflow can branch on it.

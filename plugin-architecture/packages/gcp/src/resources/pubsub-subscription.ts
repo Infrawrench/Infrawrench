@@ -13,6 +13,11 @@ export const PubSubSubscriptionResourceType = rt({
     f("filter", "Filter", { required: false }),
   ],
   outputs: [],
+  // The lister keeps only the topic's short id, so match the topic's `name`
+  // field — its externalId is the full `projects/<p>/topics/<name>` path.
+  dependsOn: [
+    { fieldKey: "topic", targetTypeId: "pubsub-topic", targetKey: "name", label: "subscribes to" },
+  ],
   parentTypeId: "pubsub-topic",
   supportsCreate: true,
   supportsMetrics: true,

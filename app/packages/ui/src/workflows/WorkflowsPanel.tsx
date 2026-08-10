@@ -1,12 +1,19 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
+import {
+  isValidCronTimezone,
+  nextCronOccurrences,
+  validateCronExpression,
+} from "@infrawrench/client-core";
 
+import { ApprovalCard } from "./ApprovalCard.js";
 import { WorkflowEditorView } from "./WorkflowEditorView.js";
 import type {
   BudgetIntegration,
   BudgetOption,
   DebugSession,
   GitIntegration,
+  WorkflowApprovalRow,
   WorkflowClient,
   WorkflowMetricDef,
   WorkflowMetricRow,
@@ -82,6 +89,104 @@ interface WorkflowsPanelProps {
 
 type TriggerKind = WorkflowTrigger["kind"];
 
+/**
+ * What the server knows about the selected workflow. These four values are
+ * always replaced as a set — cleared on selection, reloaded after a save or a
+ * run — so one action keeps them consistent instead of four setState calls.
+ */
+interface WorkflowDetail {
+  dts: string;
+  runs: WorkflowRunRow[];
+  metrics: WorkflowMetricRow[];
+  approvals: WorkflowApprovalRow[];
+}
+
+type WorkflowDetailAction =
+  | { kind: "cleared" }
+  | { kind: "loaded"; dts: string; runs: WorkflowRunRow[]; metrics: WorkflowMetricRow[] }
+  | { kind: "typings"; dts: string }
+  | { kind: "runsRefreshed"; runs: WorkflowRunRow[]; metrics: WorkflowMetricRow[] }
+  | { kind: "approvals"; approvals: WorkflowApprovalRow[] };
+
+const EMPTY_DETAIL: WorkflowDetail = {
+  dts: "declare const infra: any;",
+  runs: [],
+  metrics: [],
+  approvals: [],
+};
+
+function detailReducer(state: WorkflowDetail, action: WorkflowDetailAction): WorkflowDetail {
+  switch (action.kind) {
+    // A newly picked workflow keeps the old typings until the fresh ones land
+    // (the editor would flash an untyped `infra` otherwise), but its approvals
+    // belong to the previous workflow and must go immediately.
+    case "cleared":
+      return { ...state, approvals: [] };
+    case "loaded":
+      return { ...state, dts: action.dts, runs: action.runs, metrics: action.metrics };
+    case "typings":
+      return { ...state, dts: action.dts };
+    case "runsRefreshed":
+      return { ...state, runs: action.runs, metrics: action.metrics };
+    case "approvals":
+      return { ...state, approvals: action.approvals };
+  }
+}
+
+/**
+ * One in-flight run: whether it is going, what it has logged, where the
+ * debugger sits, and the result once it lands. Starting, pausing and settling
+ * each move several of these at once, so they travel as one action.
+ */
+interface RunSession {
+  running: boolean;
+  liveLogs: WorkflowRunLog[];
+  currentLine: number | null;
+  pausedLine: number | null;
+  lastRun: WorkflowRunResult | null;
+}
+
+type RunSessionAction =
+  | { kind: "cleared" }
+  | { kind: "started" }
+  | { kind: "line"; line: number }
+  | { kind: "log"; entry: WorkflowRunLog }
+  | { kind: "paused"; line: number }
+  | { kind: "resumed" }
+  | { kind: "finished"; result: WorkflowRunResult }
+  | { kind: "settled" };
+
+const IDLE_RUN: RunSession = {
+  running: false,
+  liveLogs: [],
+  currentLine: null,
+  pausedLine: null,
+  lastRun: null,
+};
+
+function runSessionReducer(state: RunSession, action: RunSessionAction): RunSession {
+  switch (action.kind) {
+    case "cleared":
+      return { ...state, lastRun: null };
+    case "started":
+      return { ...state, running: true, liveLogs: [], currentLine: null, pausedLine: null };
+    case "line":
+      return { ...state, currentLine: action.line };
+    case "log":
+      return { ...state, liveLogs: [...state.liveLogs, action.entry] };
+    case "paused":
+      return { ...state, pausedLine: action.line };
+    case "resumed":
+      return { ...state, pausedLine: null };
+    case "finished":
+      return { ...state, lastRun: action.result };
+    // The run ended (cleanly or not): stop reporting a position, but keep
+    // liveLogs so the log panel still shows what happened.
+    case "settled":
+      return { ...state, running: false, currentLine: null, pausedLine: null };
+  }
+}
+
 export function WorkflowsPanel({
   client,
   gitTriggers = false,
@@ -92,21 +197,19 @@ export function WorkflowsPanel({
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<WorkflowSummary | null>(null);
-  const [dts, setDts] = useState<string>("declare const infra: any;");
-  const [runs, setRuns] = useState<WorkflowRunRow[]>([]);
-  const [metrics, setMetrics] = useState<WorkflowMetricRow[]>([]);
   const [busy, setBusy] = useState(false);
-  const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastRun, setLastRun] = useState<WorkflowRunResult | null>(null);
-  // Logs streamed live during a run (e.g. infra.log(ssh streams)).
-  const [liveLogs, setLiveLogs] = useState<WorkflowRunLog[]>([]);
-  // Debugger state. `breakpointsRef` is the live set the running client reads
-  // (so toggles mid-run are seen); `breakpoints` mirrors it for the editor.
+  // The selected workflow's server state — typings, run history, metrics, and
+  // the pending infra.waitForApproval(...) requests for its runs (approvals are
+  // cloud only; the desktop client omits the approval methods).
+  const [detail, dispatchDetail] = useReducer(detailReducer, EMPTY_DETAIL);
+  // Logs, debugger position and result for the run in flight.
+  const [session, dispatchSession] = useReducer(runSessionReducer, IDLE_RUN);
+  const [decidingApprovalId, setDecidingApprovalId] = useState<string | null>(null);
+  // `breakpointsRef` is the live set the running client reads (so toggles
+  // mid-run are seen); `breakpoints` mirrors it for the editor.
   const breakpointsRef = useRef<Set<number>>(new Set());
   const [breakpoints, setBreakpoints] = useState<Set<number>>(() => new Set());
-  const [currentLine, setCurrentLine] = useState<number | null>(null);
-  const [pausedLine, setPausedLine] = useState<number | null>(null);
   // The active debug session (the client fills in resume/step/stop per pause).
   const debugSessionRef = useRef<DebugSession | null>(null);
 
@@ -129,10 +232,56 @@ export function WorkflowsPanel({
     void refreshList();
   }, [refreshList]);
 
+  const refreshApprovals = useCallback(
+    async (workflowId: string) => {
+      if (!client.listPendingApprovals) return;
+      try {
+        dispatchDetail({
+          kind: "approvals",
+          approvals: await client.listPendingApprovals(workflowId),
+        });
+      } catch {
+        // Approvals are decoration on the run view — never surface a poll
+        // failure over whatever the user is actually doing.
+      }
+    },
+    [client],
+  );
+
+  // Keep pending approvals fresh: tight while a run is executing (its
+  // waitForApproval card should appear within a few seconds), relaxed
+  // otherwise (an automated run's request shows without reselecting).
+  useEffect(() => {
+    if (!selectedId || !client.listPendingApprovals) return;
+    void refreshApprovals(selectedId);
+    const interval = setInterval(
+      () => void refreshApprovals(selectedId),
+      session.running ? 4000 : 15000,
+    );
+    return () => clearInterval(interval);
+  }, [client, refreshApprovals, selectedId, session.running]);
+
+  const decideApproval = useCallback(
+    async (approvalId: string, decision: "approve" | "deny") => {
+      if (!client.decideApproval) return;
+      setDecidingApprovalId(approvalId);
+      try {
+        await client.decideApproval(approvalId, decision);
+      } catch (e) {
+        setError(messageOf(e));
+      } finally {
+        setDecidingApprovalId(null);
+        if (selectedId) void refreshApprovals(selectedId);
+      }
+    },
+    [client, refreshApprovals, selectedId],
+  );
+
   const selectWorkflow = useCallback(
     async (id: string) => {
       setSelectedId(id);
-      setLastRun(null);
+      dispatchSession({ kind: "cleared" });
+      dispatchDetail({ kind: "cleared" });
       const wf = list.find((w) => w.id === id);
       if (wf) setDraft(structuredCloneSafe(wf));
       try {
@@ -141,9 +290,7 @@ export function WorkflowsPanel({
           client.listRuns(id),
           client.listMetrics(id),
         ]);
-        setDts(typings);
-        setRuns(runRows);
-        setMetrics(metricRows);
+        dispatchDetail({ kind: "loaded", dts: typings, runs: runRows, metrics: metricRows });
       } catch (e) {
         setError(messageOf(e));
       }
@@ -186,7 +333,7 @@ export function WorkflowsPanel({
       });
       await refreshList();
       // Metrics may have changed → regenerate typings.
-      setDts(await client.getTypings(draft.id));
+      dispatchDetail({ kind: "typings", dts: await client.getTypings(draft.id) });
     } catch (e) {
       setError(messageOf(e));
     } finally {
@@ -196,31 +343,29 @@ export function WorkflowsPanel({
 
   const run = useCallback(async () => {
     if (!draft) return;
-    setRunning(true);
+    dispatchSession({ kind: "started" });
     setError(null);
-    setCurrentLine(null);
-    setPausedLine(null);
-    setLiveLogs([]);
-    const session: DebugSession = {
+    const debug: DebugSession = {
       breakpoints: breakpointsRef.current,
-      onLine: (n) => setCurrentLine(n),
-      onLog: (entry) => setLiveLogs((prev) => [...prev, entry]),
-      onPaused: (n) => setPausedLine(n),
-      onResumed: () => setPausedLine(null),
+      onLine: (n) => dispatchSession({ kind: "line", line: n }),
+      onLog: (entry) => dispatchSession({ kind: "log", entry }),
+      onPaused: (n) => dispatchSession({ kind: "paused", line: n }),
+      onResumed: () => dispatchSession({ kind: "resumed" }),
     };
-    debugSessionRef.current = session;
+    debugSessionRef.current = debug;
     try {
       await client.update(draft.id, { source: draft.source });
-      const { result } = await client.run(draft.id, session);
-      setLastRun(result);
-      setRuns(await client.listRuns(draft.id));
-      setMetrics(await client.listMetrics(draft.id));
+      const { result } = await client.run(draft.id, debug);
+      dispatchSession({ kind: "finished", result });
+      dispatchDetail({
+        kind: "runsRefreshed",
+        runs: await client.listRuns(draft.id),
+        metrics: await client.listMetrics(draft.id),
+      });
     } catch (e) {
       setError(messageOf(e));
     } finally {
-      setRunning(false);
-      setCurrentLine(null);
-      setPausedLine(null);
+      dispatchSession({ kind: "settled" });
       debugSessionRef.current = null;
     }
   }, [client, draft]);
@@ -251,9 +396,13 @@ export function WorkflowsPanel({
   // The accounts portion of the typings comes from the host (getTypings); the
   // metrics portion is overlaid live from the draft so `infra.metrics.<key>`
   // reflects edits in the metrics section immediately, before saving.
+  // Depend on the metric defs alone, not the whole draft — `draft.source`
+  // changes on every keystroke and re-overlaying the typings each time is
+  // wasted work.
+  const metricDefs = draft?.metricDefs;
   const liveDts = useMemo(
-    () => (draft ? overlayMetricTypings(dts, draft.metricDefs) : dts),
-    [dts, draft?.metricDefs],
+    () => (metricDefs ? overlayMetricTypings(detail.dts, metricDefs) : detail.dts),
+    [detail.dts, metricDefs],
   );
 
   const filteredList = useMemo(() => {
@@ -337,12 +486,16 @@ export function WorkflowsPanel({
             <button
               type="button"
               onClick={() => void run()}
-              disabled={running}
+              disabled={session.running}
               className="text-xs px-3 py-1 rounded bg-green-600 hover:bg-green-500 disabled:opacity-50"
             >
-              {running ? (pausedLine != null ? `Paused : ${pausedLine}` : "Running…") : "Run"}
+              {session.running
+                ? session.pausedLine != null
+                  ? `Paused : ${session.pausedLine}`
+                  : "Running…"
+                : "Run"}
             </button>
-            {running && pausedLine != null && (
+            {session.running && session.pausedLine != null && (
               <>
                 <button
                   type="button"
@@ -362,7 +515,7 @@ export function WorkflowsPanel({
                 </button>
               </>
             )}
-            {running && (
+            {session.running && (
               <button
                 type="button"
                 onClick={stopRun}
@@ -395,7 +548,7 @@ export function WorkflowsPanel({
 
           <MetricsEditor
             defs={draft.metricDefs}
-            values={metrics}
+            values={detail.metrics}
             onChange={(defs) => patch({ metricDefs: defs })}
           />
 
@@ -411,12 +564,24 @@ export function WorkflowsPanel({
               onSave={() => void save()}
               breakpoints={breakpoints}
               onToggleBreakpoint={toggleBreakpoint}
-              currentLine={currentLine}
-              pausedLine={pausedLine}
+              currentLine={session.currentLine}
+              pausedLine={session.pausedLine}
             />
           </div>
 
-          {running ? <LiveLogPanel logs={liveLogs} /> : lastRun && <RunResultPanel run={lastRun} />}
+          {detail.approvals.length > 0 && (
+            <PendingApprovalsPanel
+              approvals={detail.approvals}
+              decidingId={decidingApprovalId}
+              onDecide={(id, decision) => void decideApproval(id, decision)}
+            />
+          )}
+
+          {session.running ? (
+            <LiveLogPanel logs={session.liveLogs} />
+          ) : (
+            session.lastRun && <RunResultPanel run={session.lastRun} />
+          )}
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center text-sm opacity-50">
@@ -576,45 +741,7 @@ function TriggerEditor({
         {/* Budgets are a cloud feature; the crossing is evaluated server-side. */}
         {(budgetIntegration || kind === "budget") && <option value="budget">Budget</option>}
       </select>
-      {trigger.kind === "cron" && (
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={
-              CRON_PRESETS.some((p) => p.value === trigger.expression.trim())
-                ? trigger.expression.trim()
-                : "custom"
-            }
-            onChange={(e) => {
-              if (e.target.value !== "custom") onChange({ ...trigger, expression: e.target.value });
-            }}
-            className="bg-transparent border border-white/15 rounded px-2 py-1"
-            aria-label="Schedule preset"
-          >
-            {CRON_PRESETS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-            <option value="custom">Custom…</option>
-          </select>
-          <div className="flex flex-col items-center leading-none">
-            <input
-              value={trigger.expression}
-              onChange={(e) => onChange({ ...trigger, expression: e.target.value })}
-              placeholder="* * * * *"
-              spellCheck={false}
-              aria-label="Cron expression"
-              className="bg-surface-overlay border border-white/15 rounded px-2 py-1 font-mono w-36 text-center tracking-[0.3em]"
-            />
-            <span className="mt-0.5 text-[9px] text-on-surface-faint tracking-tight">
-              min&nbsp;&nbsp;hour&nbsp;&nbsp;day&nbsp;&nbsp;mon&nbsp;&nbsp;wkday
-            </span>
-          </div>
-          <span className="text-[11px] text-blue-300/80" title={trigger.expression}>
-            {describeCron(trigger.expression)}
-          </span>
-        </div>
-      )}
+      {trigger.kind === "cron" && <CronTriggerFields trigger={trigger} onChange={onChange} />}
       {trigger.kind === "git" && (
         <div className="flex flex-wrap items-center gap-2">
           {!gitIntegration?.configured ? (
@@ -695,6 +822,120 @@ function TriggerEditor({
         />
       )}
       {kind === "manual" && <span className="opacity-50">infra.prompt() available</span>}
+    </div>
+  );
+}
+
+/**
+ * Cron-trigger controls: preset picker, raw 5-field expression, optional IANA
+ * timezone, and a live preview of the next few run times. The preview is
+ * computed by the same shared cron engine the schedulers (cloud poller,
+ * desktop cron runner) fire from, so what it shows is what will happen.
+ */
+function CronTriggerFields({
+  trigger,
+  onChange,
+}: {
+  trigger: Extract<WorkflowTrigger, { kind: "cron" }>;
+  onChange: (t: WorkflowTrigger) => void;
+}) {
+  const expression = trigger.expression;
+  const timezone = trigger.timezone?.trim() ?? "";
+
+  const cronError = useMemo(() => validateCronExpression(expression), [expression]);
+  const timezoneError = useMemo(
+    () => (timezone && !isValidCronTimezone(timezone) ? `Unknown timezone "${timezone}"` : null),
+    [timezone],
+  );
+
+  const nextRuns = useMemo(() => {
+    if (cronError || timezoneError) return [];
+    try {
+      return nextCronOccurrences(expression, 3, timezone ? { timezone } : {});
+    } catch {
+      return [];
+    }
+  }, [expression, timezone, cronError, timezoneError]);
+
+  const formatRun = useMemo(() => {
+    try {
+      // Show run times in the zone the schedule is evaluated in (UTC when
+      // unset) — a "daily at 09:00" cron previews as 09:00, not the viewer's
+      // local rendering of it.
+      const dtf = new Intl.DateTimeFormat(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: timezone || "UTC",
+      });
+      return (d: Date) => dtf.format(d);
+    } catch {
+      return (d: Date) => d.toISOString();
+    }
+  }, [timezone]);
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <select
+        value={
+          CRON_PRESETS.some((p) => p.value === expression.trim()) ? expression.trim() : "custom"
+        }
+        onChange={(e) => {
+          if (e.target.value !== "custom") onChange({ ...trigger, expression: e.target.value });
+        }}
+        className="bg-transparent border border-white/15 rounded px-2 py-1"
+        aria-label="Schedule preset"
+      >
+        {CRON_PRESETS.map((p) => (
+          <option key={p.value} value={p.value}>
+            {p.label}
+          </option>
+        ))}
+        <option value="custom">Custom…</option>
+      </select>
+      <div className="flex flex-col items-center leading-none">
+        <input
+          value={expression}
+          onChange={(e) => onChange({ ...trigger, expression: e.target.value })}
+          placeholder="* * * * *"
+          spellCheck={false}
+          aria-label="Cron expression"
+          className="bg-surface-overlay border border-white/15 rounded px-2 py-1 font-mono w-36 text-center tracking-[0.3em]"
+        />
+        <span className="mt-0.5 text-[9px] text-on-surface-faint tracking-tight">
+          min&nbsp;&nbsp;hour&nbsp;&nbsp;day&nbsp;&nbsp;mon&nbsp;&nbsp;wkday
+        </span>
+      </div>
+      <input
+        value={trigger.timezone ?? ""}
+        onChange={(e) => {
+          const tz = e.target.value;
+          // Keep the property absent (not "") when cleared, matching storage.
+          const { timezone: _drop, ...rest } = trigger;
+          onChange(tz ? { ...rest, timezone: tz } : rest);
+        }}
+        placeholder="UTC"
+        spellCheck={false}
+        aria-label="Timezone (IANA name, defaults to UTC)"
+        title="IANA timezone the schedule runs in, e.g. Europe/London. Leave empty for UTC."
+        className="bg-transparent border border-white/15 rounded px-2 py-1 w-32 font-mono"
+      />
+      {cronError || timezoneError ? (
+        <span className="text-[11px] text-red-400">{cronError ?? timezoneError}</span>
+      ) : (
+        <span className="text-[11px] text-blue-300/80" title={expression}>
+          {describeCron(expression)}
+          {nextRuns.length > 0 && (
+            <>
+              {" "}
+              Next: {nextRuns.map(formatRun).join(" · ")}
+              {timezone ? ` (${timezone})` : " (UTC)"}
+            </>
+          )}
+          {nextRuns.length === 0 && " This schedule never matches a run time."}
+        </span>
+      )}
     </div>
   );
 }
@@ -925,6 +1166,33 @@ function MetricsEditor({
             ✕
           </button>
         </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Pending `infra.waitForApproval(...)` requests for the selected workflow's
+ * runs, each with Approve/Deny. Approving lets the suspended run continue
+ * within a few seconds; denying (or letting the timeout pass) fails it.
+ *
+ * The rows themselves are {@link ApprovalCard}, shared with the org-wide
+ * approvals inbox — the workflow is already obvious from context here, so it
+ * is the one thing this surface leaves off.
+ */
+function PendingApprovalsPanel({
+  approvals,
+  decidingId,
+  onDecide,
+}: {
+  approvals: WorkflowApprovalRow[];
+  decidingId: string | null;
+  onDecide: (id: string, decision: "approve" | "deny") => void;
+}) {
+  return (
+    <div className="border-t border-amber-400/30 bg-amber-400/5">
+      {approvals.map((a) => (
+        <ApprovalCard key={a.id} approval={a} deciding={decidingId === a.id} onDecide={onDecide} />
       ))}
     </div>
   );

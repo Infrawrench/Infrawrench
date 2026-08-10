@@ -17,12 +17,15 @@ import {
 } from "@infrawrench/ui";
 import { PromptHost } from "@infrawrench/ui/workflows";
 import { WebSidebar } from "@/components/WebSidebar";
+import { ChangeFreezeBanner } from "@/components/ChangeFreezeBanner";
+import { ProviderIncidentShellBanner } from "@/components/ProviderIncidentShellBanner";
 import { SpotlightSearch } from "@/components/SpotlightSearch";
 import { WebWorkspaceTabsViewport } from "@/components/WorkspaceTabsViewport";
 import { apiGet, apiPost } from "@/lib/api";
 import {
   dashboardTabTarget,
   getWorkspaceNavigateArgs,
+  plainRouteDocumentTitle,
   syncWorkspaceRouteFromPath,
 } from "@/lib/workspace-tabs";
 import { useGithubInstallResultToast } from "@/lib/github-install-result";
@@ -45,6 +48,19 @@ interface TunnelAttachState {
   defaultUsername: string;
 }
 
+/**
+ * Routes that render with no account at all.
+ *
+ * Distinct from `/invite/` and `/admin`, which skip the *onboarding redirect*
+ * but still call `/api/auth/me`: a public status page must not make that call.
+ * Hitting an authenticated endpoint would redirect an anonymous visitor to
+ * sign-in, which is precisely what a public status page cannot do — the page
+ * exists for people who have no relationship with the org beyond the link.
+ */
+function isPublicRoute(pathname: string): boolean {
+  return pathname.startsWith("/status/");
+}
+
 function RootLayout() {
   const [authChecked, setAuthChecked] = useState(false);
   const navigate = useNavigate();
@@ -54,6 +70,7 @@ function RootLayout() {
   useGithubInstallResultToast();
 
   useEffect(() => {
+    if (isPublicRoute(pathname)) return;
     if (
       pathname.startsWith("/onboarding") ||
       pathname.startsWith("/invite/") ||
@@ -89,6 +106,9 @@ function RootLayout() {
         /* apiFetch redirects on 401 */
       });
   }, [navigate, pathname]);
+
+  // Rendered before any auth state is consulted — see isPublicRoute.
+  if (isPublicRoute(pathname)) return <Outlet />;
 
   if (!authChecked) {
     if (
@@ -168,7 +188,9 @@ function AuthenticatedShell() {
     getWorkspaceNavigateArgs,
   );
 
-  useWorkspaceTabDocumentTitle();
+  // On plain routes (Moment, Admin) the workspace tabs are all background —
+  // the page's own title wins over the active tab.
+  useWorkspaceTabDocumentTitle({ routeTitle: plainRouteDocumentTitle(pathname) });
 
   useEffect(() => {
     if (!tabsHydrated) return;
@@ -318,13 +340,16 @@ function AuthenticatedShell() {
           onClose={handleCloseTab}
           onNew={handleNewTab}
         />
+        {orgId && <ChangeFreezeBanner orgId={orgId} />}
+        {orgId && <ProviderIncidentShellBanner orgId={orgId} />}
         <div className="flex flex-1 overflow-hidden">
           <WebSidebar orgId={orgId} />
           <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
             {/* Tabs are rendered via WorkspaceTabsViewport: every open tab
                 stays mounted so SSH sessions / xterm scrollback / websocket
                 subscriptions survive tab switches. <Outlet/> still renders
-                non-tab routes like /onboarding and /settings; tab routes'
+                non-tab routes like /onboarding, plus /settings (a tab in the
+                strip whose content is route-rendered); other tab routes'
                 components are no-ops. */}
             {orgId && <WebWorkspaceTabsViewport orgId={orgId} tabsValidated={tabsValidated} />}
             <Outlet />

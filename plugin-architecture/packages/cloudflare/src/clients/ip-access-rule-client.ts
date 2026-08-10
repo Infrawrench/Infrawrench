@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { asRecord, collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone, resolveZoneName } from "./shared.js";
 
 /**
  * Cloudflare IP Access Rules (`/zones/{id}/firewall/access_rules/rules`) — the
@@ -11,6 +11,7 @@ function mapIpAccessRule(
   rule: Record<string, unknown>,
   accountId: string,
   zoneId: string,
+  zoneName: string,
 ): ResourceInstance {
   const id = String(rule["id"] ?? "");
   const config = (rule["configuration"] as Record<string, unknown>) ?? {};
@@ -24,7 +25,7 @@ function mapIpAccessRule(
     resourceTypeId: "ip-access-rule",
     accountId,
     displayName: notes || `${mode} ${value}` || `Rule ${id.slice(0, 8)}`,
-    fields: { mode, target, value, notes },
+    fields: { mode, target, value, notes, zoneName },
     resolvedOutputs: {},
     secretStates: [],
     externalId: `${zoneId}/${id}`,
@@ -40,10 +41,10 @@ export async function listAllIpAccessRules(
 ): Promise<ResourceInstance[]> {
   return collectPerZone(
     api,
-    async (zoneId) => {
+    async (zoneId, zoneName) => {
       const out: ResourceInstance[] = [];
       for await (const rule of api.cf.firewall.accessRules.list({ zone_id: zoneId })) {
-        out.push(mapIpAccessRule(asRecord(rule), accountId, zoneId));
+        out.push(mapIpAccessRule(asRecord(rule), accountId, zoneId, zoneName));
       }
       return out;
     },
@@ -64,11 +65,7 @@ export async function createIpAccessRule(
   const created = await api.cf.firewall.accessRules.create({
     zone_id: zoneId,
     mode: (fields["mode"] || "block") as
-      | "block"
-      | "challenge"
-      | "whitelist"
-      | "js_challenge"
-      | "managed_challenge",
+      "block" | "challenge" | "whitelist" | "js_challenge" | "managed_challenge",
     configuration: {
       target: (fields["target"] || "ip") as "ip" | "ip_range" | "asn" | "country",
       value: fields["value"] ?? "",
@@ -76,7 +73,7 @@ export async function createIpAccessRule(
     ...(fields["notes"] ? { notes: fields["notes"] } : {}),
   } as Parameters<typeof api.cf.firewall.accessRules.create>[0]);
 
-  return mapIpAccessRule(asRecord(created), accountId, zoneId);
+  return mapIpAccessRule(asRecord(created), accountId, zoneId, await resolveZoneName(api, zoneId));
 }
 
 export async function editIpAccessRule(
@@ -92,16 +89,12 @@ export async function editIpAccessRule(
     ...(fields["mode"]
       ? {
           mode: fields["mode"] as
-            | "block"
-            | "challenge"
-            | "whitelist"
-            | "js_challenge"
-            | "managed_challenge",
+            "block" | "challenge" | "whitelist" | "js_challenge" | "managed_challenge",
         }
       : {}),
     ...(fields["notes"] !== undefined ? { notes: fields["notes"] } : {}),
   } as Parameters<typeof api.cf.firewall.accessRules.edit>[1]);
-  return mapIpAccessRule(asRecord(updated), accountId, zoneId);
+  return mapIpAccessRule(asRecord(updated), accountId, zoneId, await resolveZoneName(api, zoneId));
 }
 
 export async function deleteIpAccessRule(api: CloudflareApi, externalId: string): Promise<void> {

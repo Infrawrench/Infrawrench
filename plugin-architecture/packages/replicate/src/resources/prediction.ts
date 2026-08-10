@@ -30,6 +30,10 @@ export const PredictionResourceType = rt({
     o("status", "Status"),
     o("webUrl", "Web URL"),
   ],
+  // `model` is an `owner/name` reference. The Model list is in fact derived
+  // from these, so the target always exists. `deployment` is left alone — the
+  // API does not document its format.
+  dependsOn: [{ fieldKey: "model", targetTypeId: "model", label: "runs" }],
   supportsDelete: false,
   iconKey: "function",
 });

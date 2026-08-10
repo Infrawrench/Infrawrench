@@ -1,12 +1,12 @@
 import type { CloudFetch } from "./fetch";
 
 /**
- * Microsoft Teams connection + per-channel alert routing. Server contract:
- * org-scoped `/api/org/:orgId/msteams/*` routes (see web `api/routes/msteams.ts`).
+ * Microsoft Teams connection management. Server contract: org-scoped
+ * `/api/org/:orgId/msteams/*` routes (see web `api/routes/msteams.ts`).
  *
- * A channel opts into each of the three alert triggers independently — the
- * same three mobile push and Slack have — so a channel can take budget
- * crossings without also taking every sync failure.
+ * A webhook is a *destination*, not a policy. Which alerts reach it is decided
+ * by the org's routing rules (`alert-routing.ts`), which reference this row by
+ * id — so the twelve trigger booleans a webhook used to carry are gone.
  *
  * Unlike Slack there is no install/OAuth step: Teams offers no app-only flow
  * for posting channel messages, so a channel is identified by the webhook URL
@@ -20,10 +20,6 @@ export interface MsTeamsWebhook {
   label: string;
   /** Non-secret hint at the stored URL, e.g. `contoso.webhook.office.com · …a7f2`. */
   urlHint: string;
-  syncIncidents: boolean;
-  budgetAlerts: boolean;
-  /** Alerts raised by a workflow calling `infra.page(...)`. */
-  workflowPages: boolean;
 }
 
 export interface MsTeamsStatus {
@@ -47,9 +43,6 @@ export interface AddMsTeamsWebhookArgs {
   label: string;
   /** The full webhook URL copied out of the Teams Workflows automation. */
   url: string;
-  syncIncidents?: boolean;
-  budgetAlerts?: boolean;
-  workflowPages?: boolean;
 }
 
 export async function addMsTeamsWebhook(
@@ -63,16 +56,16 @@ export async function addMsTeamsWebhook(
   });
 }
 
-export type MsTeamsWebhookTriggers = Pick<
-  MsTeamsWebhook,
-  "syncIncidents" | "budgetAlerts" | "workflowPages"
->;
-
+/**
+ * A webhook is only renameable now. Which alerts reach it is an `alert_rules`
+ * question — see `alert-routing.ts` — so the twelve trigger booleans this patch
+ * used to carry are gone rather than moved.
+ */
 export async function updateMsTeamsWebhook(
   api: CloudFetch,
   orgId: string,
   webhookId: string,
-  patch: Partial<MsTeamsWebhookTriggers & { label: string }>,
+  patch: { label?: string },
 ): Promise<MsTeamsWebhook | null> {
   return api.org<MsTeamsWebhook>(orgId, `/msteams/webhooks/${encodeURIComponent(webhookId)}`, {
     method: "PATCH",

@@ -47,6 +47,16 @@ If you'd rather scope a token by hand, go to the Cloudflare dashboard → **My P
 
 <insert [Cloudflare Add-account form with the API token field and the "Create a token with these scopes" link highlighted] here>
 
+### Credential preflight & token template
+
+The add-account form (and **Check credentials** on the account page) verifies the token and probes what it can reach, per capability — see [Credential preflight](../core-concepts/credential-preflight.md):
+
+- **Resource inventory** — **Zone Read** (zone listing underpins every zone-scoped resource) and **Account Settings Read** (account-scoped resources: Workers, R2, KV, D1…). Individual resource types may need further per-feature scopes; the resource tab tells you which when one is missing.
+- **Metrics & dashboards** — **Analytics Read** and **Account Analytics Read**.
+- **Cost reporting** — **Billing Read**, checked against the Billable Usage API.
+
+An expired or disabled token is flagged across every row. The generator produces a token template scoped to the capabilities you tick: the permission-group list plus a link that opens Cloudflare's token creator with exactly those scopes pre-filled.
+
 ## Notable flows
 
 - **DNS records table** — a zone's records render as a Cloudflare-style table (type, name, content, proxy, TTL) with inline create and delete. See [DNS records](../features/dns-records.md).
@@ -135,7 +145,8 @@ The token needs the **Account Analytics:Read** permission for account-scoped dat
 
 ## Cost graphs
 
-Cloudflare accounts feed [cost graphs & budgets](../features/cloud-costs.md) via the PayGo billable-usage API — per-product costs (with zone attribution as the `zone` tag) on billing-period boundaries.
+Cloudflare accounts feed [cost graphs & budgets](../features/cloud-costs.md) via Cloudflare's Billable Usage API — per-product costs across the usage-based products (Workers, R2, D1, Workers AI, Vectorize, Images, Stream, …), with zone attribution as the `zone` tag, on billing-period boundaries.
 
-- The API is **v1 alpha**: it may not be enabled for every account yet, and its shape can change. If it is unavailable for your account the cost card shows a clear error and collection backs off.
-- Amounts are contracted costs per billing period, so daily-binned graphs show them as period steps.
+- The token needs the **Billing Read** permission — the "Create a token with these scopes" link now includes it. Tokens created before this permission was added will show a clear "missing Billing Read" error on the cost card; re-create the token from the link and update the account's credentials.
+- The API is generally available for self-serve accounts; Enterprise coverage is still rolling out. If your account isn't covered yet the cost card says so and collection backs off until it is.
+- Amounts are contracted costs per billing period, so daily-binned graphs show them as period steps. Cloudflare refreshes the data daily.

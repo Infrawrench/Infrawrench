@@ -1,4 +1,5 @@
 import type React from "react";
+import { useEffect, useState } from "react";
 import type {
   DetailViewSchema,
   ResourceInstance,
@@ -8,6 +9,7 @@ import type {
   LogsFetchResult,
   ArtifactEntry,
   KvListResult,
+  CostEstimate,
   QueryCostEstimate,
   SecretVersion,
   SecretVersionMutation,
@@ -24,18 +26,32 @@ import {
   DetailView,
   DraggableChildPill,
   FirestoreDocumentBrowser,
+  ResourceSchedulePanel,
+  ResourceLeasePanel,
+  ResourceOwnershipPanel,
+  RESOURCES_CHANGED_EVENT,
+  buildDependencyGraph,
+  directDependencies,
   type ChildResource,
   type ChildResourceGroup,
+  type DependencyGraphNode,
   type KvBrowserListParams,
   type PeerPaneData,
   type QueryResult,
   type RerollSelection,
+  type ResourceDependencies,
 } from "@infrawrench/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { PeerPaneView } from "../../components/PeerPaneView";
 import { FirestoreMongoPeerBrowser } from "../../components/FirestoreMongoPeerBrowser";
 import { getPlugin } from "../../plugins/loader";
+import { createDesktopSchedulesClient } from "../../lib/schedules-client";
+import { createDesktopLeasesClient } from "../../lib/leases-client";
+import { createDesktopOwnershipClient } from "../../lib/ownership-client";
+import type { LeasesClient, OwnershipClient, SchedulesClient } from "@infrawrench/ui";
 import { navigateToWorkspaceTarget, resourceTabTarget } from "../../lib/workspace-tabs";
+import { fetchCloudDependencyGraph } from "../../lib/cloud-resources";
+import { loadLocalDependencyGraph } from "../../lib/local-dependency-graph";
 
 interface DetailViewContainerProps {
   schema: DetailViewSchema;
@@ -70,6 +86,13 @@ interface DetailViewContainerProps {
     action: SecretVersionMutation,
   ) => Promise<SecretVersion>;
   onOpenConsole: () => void;
+  /**
+   * Price this resource's current configuration. Supplied by the route, which
+   * is the only place that holds both the local plugin client and the cloud
+   * context. Omitted when there is no resource loaded yet.
+   */
+  loadCostEstimate?:
+    ((changedFields: Record<string, string>) => Promise<CostEstimate | null>) | null;
   onNoSqlCommand: (command: string, args: (string | number)[]) => Promise<unknown>;
   onChatStream: (
     messages: ChatMessage[],
@@ -94,6 +117,24 @@ interface DetailViewContainerProps {
   renderStorageBrowser?: () => React.ReactNode;
 }
 
+let desktopSchedulesClient: SchedulesClient | null = null;
+function getSchedulesClient(): SchedulesClient {
+  if (!desktopSchedulesClient) desktopSchedulesClient = createDesktopSchedulesClient();
+  return desktopSchedulesClient;
+}
+
+let desktopLeasesClient: LeasesClient | null = null;
+function getLeasesClient(): LeasesClient {
+  if (!desktopLeasesClient) desktopLeasesClient = createDesktopLeasesClient();
+  return desktopLeasesClient;
+}
+
+let desktopOwnershipClient: OwnershipClient | null = null;
+function getOwnershipClient(): OwnershipClient {
+  if (!desktopOwnershipClient) desktopOwnershipClient = createDesktopOwnershipClient();
+  return desktopOwnershipClient;
+}
+
 export function DetailViewContainer({
   schema,
   decodedResourceId,
@@ -107,6 +148,7 @@ export function DetailViewContainer({
   activeCloudOrgId,
   cloudParentResourceId,
   accountPluginId,
+  loadCostEstimate,
   onPeerPaneOpen,
   onRunQuery,
   onExecute,
@@ -139,12 +181,96 @@ export function DetailViewContainer({
   const navigate = useNavigate();
   const noSqlBrowser = schema?.noSqlBrowser;
 
+  // Sleep/wake schedule tab — cloud mode only (the cloud poller executes the
+  // transitions), and only for types whose plugin declares a lifecycle
+  // start/stop pair. Discovered from the local plugin definition, never from
+  // provider names.
+  const [schedulable, setSchedulable] = useState(false);
+  // Depend on the two identifying strings rather than the resource object —
+  // a refetched (new-identity) resource of the same type must not re-run the
+  // plugin load.
+  const resourcePluginId = resource?.pluginId;
+  const resourceTypeId = resource?.resourceTypeId;
+  useEffect(() => {
+    let cancelled = false;
+    setSchedulable(false);
+    if (!activeCloudOrgId || !resourcePluginId || !resourceTypeId) return undefined;
+    getPlugin(resourcePluginId)
+      .then((loaded) => {
+        if (cancelled) return;
+        const typeDef = loaded?.plugin.resourceTypes.find((t) => t.id === resourceTypeId);
+        setSchedulable(!!typeDef?.lifecycle);
+      })
+      .catch(() => {
+        if (!cancelled) setSchedulable(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCloudOrgId, resourcePluginId, resourceTypeId]);
+
+  // Direct neighbors in the output-reference dependency graph — drives the
+  // "Dependencies" tab. Best-effort: on failure the tab simply doesn't show.
+  const [dependencies, setDependencies] = useState<ResourceDependencies | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    function load() {
+      const promise = activeCloudOrgId
+        ? fetchCloudDependencyGraph(activeCloudOrgId, decodedResourceId)
+        : loadLocalDependencyGraph();
+      promise
+        .then((graph) => {
+          if (cancelled) return;
+          const model = buildDependencyGraph(graph.nodes, graph.edges);
+          setDependencies(directDependencies(model, decodedResourceId));
+        })
+        .catch(() => {
+          if (!cancelled) setDependencies(null);
+        });
+    }
+    load();
+    // Switching a field to (or off) an output reference happens on this very
+    // page, so without this the tab keeps showing the pre-change neighbours
+    // until the user navigates away and back.
+    window.addEventListener(RESOURCES_CHANGED_EVENT, load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(RESOURCES_CHANGED_EVENT, load);
+    };
+  }, [activeCloudOrgId, decodedResourceId]);
+  const handleOpenDependency = (node: DependencyGraphNode) => {
+    void navigateToWorkspaceTarget(
+      navigate,
+      resourceTabTarget(node.accountId, node.id, node.pluginId, node.resourceTypeId),
+      { label: node.displayName },
+    );
+  };
+
+  // The resource's standing monthly estimate, refreshed whenever the resource
+  // does. Most plugins can't price their types, so this is null far more
+  // often than not and the header chip simply doesn't render.
+  const [costEstimate, setCostEstimate] = useState<CostEstimate | null>(null);
+  useEffect(() => {
+    if (!loadCostEstimate) {
+      setCostEstimate(null);
+      return;
+    }
+    let cancelled = false;
+    void loadCostEstimate({}).then((estimate) => {
+      if (!cancelled) setCostEstimate(estimate);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadCostEstimate]);
+
   return (
     <div className="flex-1 overflow-hidden min-h-0">
       <DetailView
         schema={schema}
         resourceId={decodedResourceId}
         pluginLogoSvg={logoSvg}
+        costEstimate={costEstimate}
         {...(onReroll ? { onReroll } : {})}
         peerPanes={peerPanes}
         renderPeerPane={(pane) => (
@@ -249,6 +375,52 @@ export function DetailViewContainer({
                   />
                 );
               },
+            }
+          : {})}
+        {...(dependencies ? { dependencies, onOpenDependency: handleOpenDependency } : {})}
+        {...(schedulable && activeCloudOrgId
+          ? {
+              renderScheduleTab: () => (
+                <ResourceSchedulePanel
+                  client={getSchedulesClient()}
+                  target={{
+                    resourceId: decodedResourceId,
+                    accountId,
+                    resourceName: resource?.displayName ?? decodedResourceId,
+                  }}
+                />
+              ),
+            }
+          : {})}
+        {...(activeCloudOrgId
+          ? {
+              // Lease tab — cloud mode only, like schedules (the rows live
+              // server-side and the cloud poller runs the auto-delete pass),
+              // but for every resource type: any resource can carry a TTL.
+              renderLeaseTab: () => (
+                <ResourceLeasePanel
+                  client={getLeasesClient()}
+                  target={{
+                    resourceId: decodedResourceId,
+                    accountId,
+                    resourceName: resource?.displayName ?? decodedResourceId,
+                  }}
+                />
+              ),
+            }
+          : {})}
+        {...(activeCloudOrgId
+          ? {
+              // Ownership tab — cloud mode only, like leases: the record lives
+              // server-side and names an org member. Ungated by type, since
+              // any resource can have an owner.
+              renderOwnershipTab: () => (
+                <ResourceOwnershipPanel
+                  client={getOwnershipClient()}
+                  resourceId={decodedResourceId}
+                  resourceName={resource?.displayName ?? decodedResourceId}
+                />
+              ),
             }
           : {})}
         metricSeries={metricSeries}

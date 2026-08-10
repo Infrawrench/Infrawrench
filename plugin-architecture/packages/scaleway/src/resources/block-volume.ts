@@ -27,6 +27,17 @@ export const BlockVolumeResourceType = rt({
       description: "ID of the instance this volume is attached to, if any",
     }),
   ],
+  // `attachedInstanceId` is a bare server uuid while an instance's external id
+  // is `{zone}/{id}`. Block volumes are zonal and only attach within their own
+  // zone, so composing with `zone` names exactly one instance.
+  dependsOn: [
+    {
+      fieldKey: "attachedInstanceId",
+      targetTypeId: "instance",
+      matchTemplate: "{zone}/{attachedInstanceId}",
+      label: "attached to",
+    },
+  ],
   supportsCreate: true,
   iconKey: "volume",
   attachTargets: [

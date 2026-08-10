@@ -1,5 +1,6 @@
 import type { PeerGuidanceAction } from "./schema.js";
 import type { AssociationSource } from "./create.js";
+import type { PostureCheckRule, PostureSeverity } from "./posture.js";
 
 export type { AssociationSource };
 
@@ -10,13 +11,7 @@ export type { AssociationSource };
  * value. Leaving it blank means "keep the current secret".
  */
 export type FieldKind =
-  | "string"
-  | "number"
-  | "boolean"
-  | "enum"
-  | "secret"
-  | "association"
-  | "password";
+  "string" | "number" | "boolean" | "enum" | "secret" | "association" | "password";
 
 export interface FieldDefinition {
   key: string;
@@ -181,6 +176,390 @@ export interface SecretExportTemplate {
   entries: SecretExportEntry[];
 }
 
+/**
+ * Declares that a field (or output) on this resource type names another
+ * resource — a dependency the host draws on the dependency graph.
+ *
+ * The host can already *guess* these: it indexes every resource by the values
+ * that identify it and looks each field value up in that index. Guessing has to
+ * be conservative, so it drops any value claimed by two resources and refuses
+ * plain names across accounts. A declaration removes the guesswork: it says
+ * which field points where, so `namespace: "default"` resolves to the namespace
+ * type instead of being thrown away as ambiguous.
+ *
+ * Declaring is optional and incremental — a type with no rules still gets the
+ * inferred edges. Nothing here is provider-specific in the host: it reads the
+ * rule and matches values, exactly as it does for the peer-integration and
+ * SSH-endpoint declarations.
+ *
+ * **Don't declare a field whose target you can't name.** A rule takes the field
+ * over: the host stops guessing about it, even when the rule matches nothing.
+ * That is the point — a match against the wrong type is worse than no edge —
+ * but it cuts both ways. `targetPluginId` defaults to the declaring plugin, so
+ * a rule for a field that points *outside* this provider (an SSH target's
+ * `host`, which names someone else's server) would both fail to match and
+ * suppress the inference that resolves it correctly today. Leave those fields
+ * undeclared.
+ */
+export interface ResourceDependencyRule {
+  /** The field on this type holding the reference (e.g. "vpcId"). */
+  fieldKey: string;
+  /**
+   * Read `fieldKey` from the resource's resolved outputs instead of its fields.
+   * Use when the pointer only exists as an output (a resolved endpoint, say).
+   */
+  from?: "fields" | "outputs";
+  /** Resource type the value names. Omit to accept any type. */
+  targetTypeId?: string;
+  /** Plugin owning the target, when the link crosses providers. Defaults to this plugin. */
+  targetPluginId?: string;
+  /**
+   * What the value is matched against on the target: `"externalId"` (default),
+   * or the name of a field/output key on the target — e.g. `"name"` when the
+   * provider references things by name rather than id.
+   */
+  targetKey?: string;
+  /**
+   * Compose the value to match from several of this resource's fields, for
+   * targets whose identity is a composite. `"{databaseName}/{branchName}"`
+   * matches a PlanetScale branch whose external id is `"{db}/{branch}"`;
+   * `"{catalogName}.{schemaName}"` matches a Databricks schema.
+   *
+   * Placeholders name fields on **this** resource (outputs when
+   * `from: "outputs"`). If any placeholder is missing or empty the rule yields
+   * nothing — a half-built key must never be matched. `fieldKey` still names
+   * the field the edge is attributed to and is what the UI captions.
+   *
+   * One placeholder may hold a comma-joined list: the template is expanded per
+   * element, so `"{namespace}/{configMaps}"` over `"a, b"` matches `prod/a`
+   * and `prod/b`. Two list-valued placeholders yield nothing rather than a
+   * cartesian product.
+   *
+   * Prefer this over matching a bare segment: a scope-qualified id composed in
+   * full stays exact, where matching just the tail goes ambiguous the moment
+   * two scopes contain the same name (`main` in five databases).
+   */
+  matchTemplate?: string;
+  /**
+   * How the edge reads in the UI (e.g. "runs in", "routes to"). Defaults to
+   * the usual `field ← key` caption.
+   */
+  label?: string;
+}
+
+/**
+ * What a declared expiry field counts down toward — used by hosts purely for
+ * grouping, labels and icons on the cross-provider Expiry radar. Pick the
+ * closest match; `"other"` is a valid answer.
+ */
+export type ExpiryKind =
+  | "tls-cert"
+  | "domain"
+  | "api-token"
+  | "access-key"
+  | "k8s-cert"
+  | "ssh-key"
+  | "secret-version"
+  /**
+   * A host-managed resource lease (TTL) — never declared by a plugin's
+   * `expiryFields`; the cloud host injects these items into the radar from
+   * its own lease rows.
+   */
+  | "lease"
+  | "other";
+
+/**
+ * Declares that a field this type's lister already stores carries a deadline —
+ * a certificate's notAfter, a domain's registration expiry, a token's
+ * expiration, an access key's creation date. Feeds the cross-provider Expiry
+ * radar (web/desktop/mobile screens, the `infrawrench expiring` CLI and the
+ * poller's expiry alerts).
+ *
+ * Exactly like `orphanRule` and `dependsOn`, this is evaluated over
+ * already-synced `fields` — no plugin client, no credentials, no extra
+ * provider API calls, ever. Only declare a field the lister actually
+ * populates; a rule over a field that never lands in `fields` simply yields
+ * nothing. Values may be ISO 8601 strings, date-only strings, or unix epochs
+ * (seconds or milliseconds, number or numeric string) — the host parses all
+ * of these; anything unparseable is skipped, never alarmed on.
+ */
+export interface ExpiryFieldRule {
+  /** Key into the instance's stored `fields` map holding the timestamp. */
+  fieldKey: string;
+  /**
+   * What the timestamp means:
+   * - `"expiry"` — the field IS the moment the clock runs out (cert
+   *   notAfter, domain expiry date, token expiration).
+   * - `"created"` — the field is a creation/rotation date and the deadline is
+   *   derived from an age budget: `maxAgeDays` when set, otherwise the host's
+   *   per-kind default (e.g. access keys are due for rotation at 90 days).
+   */
+  from: "expiry" | "created";
+  /** Grouping bucket; drives labels/icons on the radar. */
+  kind: ExpiryKind;
+  /** Human caption for the deadline, e.g. "Certificate expires". */
+  label: string;
+  /**
+   * Age budget in days for `from: "created"` rules, overriding the host's
+   * per-kind default. Ignored for `from: "expiry"`.
+   */
+  maxAgeDays?: number;
+  /**
+   * When `from: "created"` and the primary `fieldKey` is empty/unparseable,
+   * try this field instead. Used so never-rotated secrets can age from
+   * `createdDate` without stuffing creation into the rotation field.
+   */
+  fallbackFieldKey?: string;
+}
+
+/**
+ * Marks a resource type as one half of the DNS surface — a zone (the thing a
+ * domain's records live in) or a record — and names the fields the host reads
+ * to render it. Feeds the cross-provider Domains view and the dangling-DNS
+ * posture check.
+ *
+ * Same contract as `orphanRule`, `expiryFields` and `postureChecks`: evaluated
+ * over already-synced `fields`, never an extra provider API call. Every key
+ * defaults to the name the majority of providers already use, so a type whose
+ * lister stores `type`/`name`/`content`/`ttl` needs only `{ role: "record" }`.
+ */
+export type DnsRoleDeclaration = DnsZoneRole | DnsRecordRole;
+
+/** A DNS zone / managed domain: the container records hang off. */
+export interface DnsZoneRole {
+  role: "zone";
+  /**
+   * Field holding the apex domain (`"example.com"`). Default `"name"`. The
+   * host strips a trailing dot, so Cloud DNS's `dnsName` works unchanged.
+   */
+  domainKey?: string;
+  /** Field holding the provider's own record count, when the lister stores one. */
+  recordCountKey?: string;
+  /** Field holding the zone's status; drives the status dot on the surface. */
+  statusKey?: string;
+  /**
+   * Field that marks the zone as split-horizon/internal. Private zones are
+   * listed but never analysed for takeover — an internal name resolving to
+   * nothing is a broken deploy, not an exposure.
+   */
+  privateKey?: string;
+  /**
+   * Values of `privateKey` (case-insensitive) that mean private. Omit for a
+   * boolean field, where truthiness is the test.
+   */
+  privateValues?: string[];
+  /**
+   * Set on types that are private by definition (Azure Private DNS), where
+   * there is no field to read because the type itself is the answer. Mutually
+   * exclusive with `privateKey`.
+   */
+  isPrivate?: boolean;
+}
+
+/** A DNS record inside a zone. */
+export interface DnsRecordRole {
+  role: "record";
+  /**
+   * Field holding the record name. Default `"name"`. May be relative (`"www"`,
+   * `"@"`) or fully qualified with or without a trailing dot — the host
+   * normalises against the owning zone's domain either way.
+   */
+  nameKey?: string;
+  /** Field holding the record type (`"A"`, `"CNAME"`…). Default `"type"`. */
+  typeKey?: string;
+  /**
+   * Field holding the record's target. Default `"content"`. A comma-joined
+   * list (Route 53's `values`, Cloud DNS's `rrdatas`) is split by the host and
+   * each element analysed separately.
+   */
+  contentKey?: string;
+  /** Field holding the TTL in seconds. Default `"ttl"`. */
+  ttlKey?: string;
+  /** Field holding MX/SRV priority, when the lister stores one. */
+  priorityKey?: string;
+  /** Field that is truthy when the provider proxies the record (Cloudflare's orange cloud). */
+  proxiedKey?: string;
+  /**
+   * Field naming the owning zone, used only when the sync path recorded no
+   * `parentResourceId`. Its value is matched against each zone's external id
+   * and against the zone's declared `domainKey`, so either form works.
+   */
+  zoneKey?: string;
+}
+
+/**
+ * Declares the hostname space instances of this type are served at — the
+ * provider-owned namespace a CNAME points into (`myapp.vercel.app`,
+ * `assets.s3.amazonaws.com`). This is what makes dangling-DNS detection
+ * possible without a history table: a record pointing into a namespace we
+ * manage, that no synced resource claims, is a subdomain-takeover candidate.
+ *
+ * Only declare a namespace whose claimant this plugin's lister genuinely
+ * syncs. The host will not evaluate a rule unless the org has a synced account
+ * for the plugin **and** at least one synced resource of a type declaring the
+ * matched pattern — missing data must never alarm, and "you don't have AWS
+ * connected" is missing data, not a finding.
+ */
+export interface DnsServiceHostRule {
+  /** Stable id, unique within the plugin; appears in the finding. */
+  id: string;
+  /** Human name of the namespace, e.g. "S3 bucket endpoint". */
+  label: string;
+  /**
+   * Regex source matched against the whole lowercased hostname — hosts anchor
+   * it themselves, so don't write `^`/`$`. Capture group 1 must be the part
+   * that identifies the instance (the bucket name, the app slug); for an
+   * opaque provider-minted label capture it anyway and set `labelIs: "opaque"`.
+   */
+  hostPattern: string;
+  /**
+   * How capture group 1 relates to the instance:
+   * - `"name"` (default) — it IS the resource's name/external id, so
+   *   `myapp.vercel.app` is claimed by a project called `myapp`.
+   * - `"opaque"` — the provider mints it (`d111111abcdef8.cloudfront.net`), so
+   *   only an exact `hostKeys` value can claim the hostname.
+   */
+  labelIs?: "name" | "opaque";
+  /**
+   * Fields holding the full hostname an instance answers to, checked in
+   * addition to (and, for `labelIs: "opaque"`, instead of) the name match. A
+   * value that is a URL is reduced to its host, so a `url` field works.
+   */
+  hostKeys?: string[];
+  /** Severity of an unclaimed pointer into this namespace. Default `"high"`. */
+  severity?: PostureSeverity;
+  /** Plugin-authored sentence on what an attacker who claims the name gains. */
+  reason: string;
+}
+
+/**
+ * Declares that a resource type can be powered off and back on through a pair
+ * of the plugin's own invoke-actions ("plugin-action" `HostAction`s dispatched
+ * via `client.invokeAction`). The generic convention behind sleep/wake
+ * schedules: the host discovers eligibility from this hint — it never
+ * hard-codes provider names or string-matches action ids — and executes the
+ * named actions server-side when a schedule window opens or closes.
+ *
+ * Only declare action ids the plugin's `invokeAction` actually accepts for
+ * this type. The stop action should be the one that halts billing where the
+ * provider distinguishes (e.g. Azure deallocate rather than an OS-level stop).
+ */
+export interface LifecycleActionsDeclaration {
+  /** actionId understood by `invokeAction` that starts/resumes the resource. */
+  startActionId: string;
+  /** actionId that stops/suspends/powers off the resource. */
+  stopActionId: string;
+  /**
+   * Field on this type holding the provider's run-state (e.g. "status").
+   * When declared with the value lists below, hosts skip a transition whose
+   * stored state already matches the desired one instead of re-invoking.
+   */
+  statusFieldKey?: string;
+  /** Values of that field (case-insensitive) that mean "running". */
+  runningValues?: string[];
+  /** Values of that field (case-insensitive) that mean "stopped". */
+  stoppedValues?: string[];
+}
+
+/**
+ * Points the host at the CPU-utilisation series this type's
+ * `fetchMetricSeries` emits. Series identity is the label string — the same
+ * key the metrics warehouse stores — so the declaration must match it
+ * exactly.
+ */
+export interface RightsizingCpuMetric {
+  /** Exact `MetricSeries.label` of the CPU-utilisation series. */
+  seriesLabel: string;
+  /**
+   * How the series encodes utilisation: `"percent"` (0–100, the default) or
+   * `"fraction"` (0–1 — e.g. GCE `instance/cpu/utilization`).
+   */
+  scale?: "percent" | "fraction";
+}
+
+/**
+ * Points the host at the memory series, when the provider reports one.
+ * Providers disagree on what the number means, so the declaration says:
+ * - `"percent"` — utilisation 0–100 (e.g. DO managed-database `Memory Used`).
+ * - `"used-bytes"` — absolute bytes in use.
+ * - `"available-bytes"` — absolute bytes free/available (e.g. DO droplet
+ *   `Memory Available`, Azure `Available Memory Bytes`); the host derives
+ *   used% from the current size's total RAM.
+ */
+export interface RightsizingMemoryMetric {
+  /** Exact `MetricSeries.label` of the memory series. */
+  seriesLabel: string;
+  interpretation: "percent" | "used-bytes" | "available-bytes";
+}
+
+/**
+ * Declares that this resource type can be right-sized: its create form's
+ * size-picker options (`SizeOption.vcpus` / `memoryMb` / `priceMonthly`) are a
+ * real catalog of what the resource could be resized to, and the metric series
+ * named here measure how much of the current size is actually used.
+ *
+ * The generic convention behind the "Oversized" savings finder — the same
+ * shape as `orphanRule` and `lifecycle`: the host discovers eligibility from
+ * the declaration and never hard-codes provider names. The host reads
+ * candidate sizes from `getCreateConfig`'s size-picker for `sizeFieldKey`
+ * (hydrating prices through `getCreateSizePricing` where the plugin implements
+ * it), computes p95 utilisation from already-stored metrics, and applies a
+ * recommended resize through the ordinary `updateResource` path — so only
+ * declare this on types whose `updateResource` actually accepts a new value
+ * for `sizeFieldKey`.
+ */
+export interface RightsizingDeclaration {
+  /**
+   * Field holding the current size id (e.g. "serverType", "size",
+   * "machineType"). Must be the key of the create form's size-picker so the
+   * stored value and the catalog ids agree, and must be accepted by
+   * `updateResource` to apply a resize.
+   */
+  sizeFieldKey: string;
+  /**
+   * Key of the create form's size-picker field, when it differs from the
+   * stored field (Azure stores `vmSize` but the create form's picker is
+   * `size`). Defaults to `sizeFieldKey`.
+   */
+  createSizeFieldKey?: string;
+  /**
+   * Field holding the provider location the resource lives in (region, zone,
+   * location). Passed to `getCreateSizePricing` as `regionId` and matched
+   * against `SizeOption.availableFor` when present.
+   */
+  regionFieldKey?: string;
+  /**
+   * Field holding the resource's actual disk size in GB, for providers that
+   * bundle disk with size and refuse resizes onto a smaller included disk
+   * (Hetzner `primary_disk_size`, DO droplet `disk`). Without it the host
+   * falls back to the current size's own `diskGb` — conservative, since a
+   * bundled disk never shrinks.
+   */
+  diskFieldKey?: string;
+  cpuMetric: RightsizingCpuMetric;
+  /** Omit when the provider stores no memory series for this type. */
+  memoryMetric?: RightsizingMemoryMetric;
+  /**
+   * ISO 4217 currency of the catalog's `priceMonthly` values. Defaults to
+   * "USD"; set it when the provider bills in something else (Hetzner: EUR).
+   */
+  priceCurrency?: string;
+  /**
+   * Regex applied to size ids to guard cross-family resizes the provider
+   * would reject (architecture changes above all). When set, a candidate
+   * qualifies only if every capture group matches the current size's — e.g.
+   * `"^([a-z]+)"` keeps Hetzner `cax` (arm) and `cx` (x86) apart. Must
+   * contain at least one capture group.
+   */
+  sizeFamilyPattern?: string;
+  /**
+   * Plugin-authored caveat surfaced in the resize confirm dialog — the place
+   * to say "requires the server to be powered off first" or "the VM restarts
+   * during the resize". The plugin is the one that knows.
+   */
+  resizeNote?: string;
+}
+
 export interface ResourceTypeDefinition {
   id: string;
   displayName: string;
@@ -188,6 +567,18 @@ export interface ResourceTypeDefinition {
   description: string;
   fields: FieldDefinition[];
   outputs: ResourceOutput[];
+  /**
+   * Fields on this type that point at other resources. Feeds the dependency
+   * graph; see `ResourceDependencyRule`. Values that hold a comma-separated
+   * list produce one edge per element.
+   */
+  dependsOn?: ResourceDependencyRule[];
+  /**
+   * Fields on this type that carry a deadline (cert expiry, domain renewal,
+   * token expiration, key age). Feeds the cross-provider Expiry radar; see
+   * `ExpiryFieldRule`. Evaluated over already-synced fields only.
+   */
+  expiryFields?: ExpiryFieldRule[];
   /** Set on child resource types — points to the parent type's id */
   parentTypeId?: string;
   /**
@@ -309,6 +700,115 @@ export interface ResourceTypeDefinition {
    * also match between source and target (e.g. matching zone).
    */
   attachTargets?: AttachTarget[];
+  /**
+   * Declarative "this resource is probably wasted" heuristic — e.g. an
+   * unattached volume or a reserved IP that isn't assigned to anything.
+   *
+   * The rule matches when ALL conditions hold against the instance's stored
+   * `fields`. Hosts evaluate it over already-synced resources via
+   * {@link evaluateOrphanRule} — no plugin client, credentials, or extra API
+   * calls involved — and surface matches on the "Potential savings" page and
+   * the `infrawrench orphans` CLI. Only declare rules over fields the type's
+   * lister already populates; a condition on a field the lister never sets
+   * simply never matches (empty-string and absent are distinct: `empty`
+   * matches both, `equals`/`notEquals` never match an absent field).
+   */
+  orphanRule?: OrphanRule;
+  /**
+   * Declarative security posture rules — "this resource is probably exposed":
+   * a public bucket, a 0.0.0.0/0 ingress rule, an unencrypted disk, an access
+   * key past its rotation budget, missing deletion protection.
+   *
+   * The security sibling of {@link ResourceTypeDefinition.orphanRule}: each
+   * rule flags the resource when ALL its conditions hold against the
+   * instance's stored `fields`, evaluated by hosts over already-synced
+   * resources (`evaluatePostureRule`) — no plugin client, credentials, or
+   * extra API calls. Only declare rules over fields the type's lister already
+   * populates; a condition on a field that never lands in `fields` simply
+   * never matches. See `PostureCheckRule` in `posture.ts`.
+   */
+  postureChecks?: PostureCheckRule[];
+  /**
+   * Marks this type as a DNS zone or a DNS record and names the fields the
+   * host reads; see {@link DnsRoleDeclaration}. Absent = the type never
+   * appears on the Domains surface.
+   */
+  dnsRole?: DnsRoleDeclaration;
+  /**
+   * Provider hostname namespaces instances of this type are served at; see
+   * {@link DnsServiceHostRule}. Absent = a record pointing at this type's
+   * hostnames is never analysed for takeover.
+   */
+  dnsServiceHosts?: DnsServiceHostRule[];
+  /**
+   * Start/stop action pair for sleep/wake schedules; see
+   * {@link LifecycleActionsDeclaration}. Absent = the type cannot be
+   * scheduled.
+   */
+  lifecycle?: LifecycleActionsDeclaration;
+  /**
+   * Size catalog + utilisation metric hints for the "Oversized" savings
+   * finder; see {@link RightsizingDeclaration}. Absent = the type is never
+   * flagged as oversized.
+   */
+  rightsizing?: RightsizingDeclaration;
+}
+
+/** One predicate inside an {@link OrphanRule}. All conditions must hold. */
+export interface OrphanCondition {
+  /** Key into the instance's `fields` map. */
+  fieldKey: string;
+  /**
+   * - `empty` — field is absent, `""`, `0` is NOT empty (a count of zero is a
+   *   real value; use `equals` with `"0"` for that).
+   * - `equals` / `notEquals` — string comparison against `value`
+   *   (case-insensitive; numbers/booleans are stringified). An absent field
+   *   never matches either.
+   */
+  when: "empty" | "equals" | "notEquals";
+  /** Comparison operand for `equals` / `notEquals`. */
+  value?: string;
+}
+
+/**
+ * Declares when an instance of this type is likely orphaned or idle, and why.
+ * Kept declarative (rather than a client method) so hosts can evaluate it
+ * against stored resources without provider credentials.
+ */
+export interface OrphanRule {
+  /** All must hold for the resource to be flagged. At least one required. */
+  conditions: OrphanCondition[];
+  /**
+   * Human-readable explanation shown next to the flagged resource, e.g.
+   * "Volume is not attached to any Droplet". Written by the plugin — the one
+   * place that knows what the fields mean.
+   */
+  reason: string;
+}
+
+/**
+ * Evaluate a type's {@link OrphanRule} against a resource instance's stored
+ * fields. Returns the reason string when the resource is flagged, or `null`
+ * when it isn't (or the type declares no rule).
+ *
+ * Shared by the web server's orphan aggregation and the desktop CLI so the
+ * classification behaves identically everywhere.
+ */
+export function evaluateOrphanRule(
+  rule: OrphanRule | undefined,
+  fields: Record<string, string | number | boolean> | undefined,
+): string | null {
+  if (!rule || rule.conditions.length === 0) return null;
+  const matches = rule.conditions.every((cond) => {
+    const raw = fields?.[cond.fieldKey];
+    if (cond.when === "empty") return raw == null || raw === "";
+    if (raw == null) return false;
+    const actual = String(raw).toLowerCase();
+    const expected = (cond.value ?? "").toLowerCase();
+    if (cond.when === "equals") return actual === expected;
+    return actual !== expected;
+  });
+  return matches ? rule.reason : null;
 }
 
 export interface AgentVmCapability {

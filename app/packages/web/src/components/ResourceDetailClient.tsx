@@ -15,12 +15,21 @@ import {
   NAVIGATE_TO_RESOURCE_EVENT,
   formatErrorMessage,
   toast,
+  RESOURCES_CHANGED_EVENT,
+  buildDependencyGraph,
+  directDependencies,
+  type DependencyGraphData,
+  type DependencyGraphNode,
+  type ResourceDependencies,
   type QueryResult,
   type KvBrowserListParams,
   type ChildResource,
   type ChildResourceGroup,
   type NavigateToResourceDetail,
   type PeerPaneData,
+  ResourceSchedulePanel,
+  ResourceLeasePanel,
+  ResourceOwnershipPanel,
 } from "@infrawrench/ui";
 import type {
   ArtifactEntry,
@@ -30,6 +39,7 @@ import type {
   CredentialExport,
   DetailViewSchema,
   FieldDefinition,
+  CostEstimate,
   KvListResult,
   LogsFetchParams,
   LogsFetchResult,
@@ -65,6 +75,10 @@ import { MongoDocumentBrowser } from "@/components/MongoDocumentBrowser";
 import { FirestoreDocumentBrowser } from "@/components/FirestoreDocumentBrowser";
 import { FirestoreMongoPeerBrowser } from "@/components/FirestoreMongoPeerBrowser";
 import { StorageBrowser } from "@/components/StorageBrowser";
+import { ResourceChangesPanel } from "@/components/ResourceChangesPanel";
+import { createWebSchedulesClient } from "@/lib/schedules-client";
+import { createWebLeasesClient } from "@/lib/leases-client";
+import { createWebOwnershipClient } from "@/lib/ownership-client";
 import { SftpBrowser } from "@/components/SftpBrowser";
 import { WebTerminal } from "@/components/WebTerminal";
 import { SshQuickConnectPanel } from "@/components/SshQuickConnectPanel";
@@ -151,6 +165,7 @@ interface Props {
   initialCommand?: string | undefined;
   initialCwd?: string | undefined;
   supportsMetrics?: boolean | undefined;
+  schedulable?: boolean | undefined;
   resourceFields?: Record<string, string | number | boolean> | undefined;
   parentResourceId?: string | undefined;
 }
@@ -198,14 +213,48 @@ export function ResourceDetailClient({
   initialCommand,
   initialCwd,
   supportsMetrics,
+  schedulable,
   resourceFields,
   parentResourceId,
 }: Props) {
   const navigate = useNavigate();
   const router = useRouter();
   const orgId = useOrgId();
+  const schedulesClient = useMemo(() => createWebSchedulesClient(orgId), [orgId]);
+  const leasesClient = useMemo(() => createWebLeasesClient(orgId), [orgId]);
+  const ownershipClient = useMemo(() => createWebOwnershipClient(orgId), [orgId]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+
+  // The resource's standing monthly estimate, from the plugin's
+  // `estimateCost`. Same call the create form makes, so the figure quoted
+  // here is the one the user was shown when they created it. Null whenever
+  // the plugin can't price this type, which is most of them — the header chip
+  // simply doesn't render.
+  const [costEstimate, setCostEstimate] = useState<CostEstimate | null>(null);
+  const loadCostEstimate = useCallback(
+    (fields: Record<string, string>) =>
+      apiPost<{ estimate: CostEstimate | null }>(`/api/org/${orgId}/resources/cost-estimate`, {
+        accountId,
+        resourceTypeId,
+        resourceId,
+        ...(Object.keys(fields).length > 0 ? { fields } : {}),
+      }).then(({ estimate }) => estimate),
+    [orgId, accountId, resourceTypeId, resourceId],
+  );
+  useEffect(() => {
+    let cancelled = false;
+    void loadCostEstimate({})
+      .then((estimate) => {
+        if (!cancelled) setCostEstimate(estimate);
+      })
+      .catch(() => {
+        if (!cancelled) setCostEstimate(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadCostEstimate]);
   const [showExportCredential, setShowExportCredential] = useState(false);
   const [showTerraformExport, setShowTerraformExport] = useState(false);
   const [metricSeries, setMetricSeries] = useState<MetricSeries[] | undefined>(undefined);
@@ -233,6 +282,51 @@ export function ResourceDetailClient({
       cancelled = true;
     };
   }, [supportsMetrics, orgId, pluginId, resourceTypeId, accountId, resourceId, parentResourceId]);
+
+  // Direct neighbors in the org's output-reference graph — drives the
+  // "Dependencies" tab. Best-effort: on failure the tab simply doesn't show.
+  const [dependencies, setDependencies] = useState<ResourceDependencies | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    function load() {
+      apiGet<DependencyGraphData>(
+        `/api/org/${orgId}/dependency-graph?resourceId=${encodeURIComponent(resourceId)}`,
+      )
+        .then((graph) => {
+          if (cancelled) return;
+          const model = buildDependencyGraph(graph.nodes, graph.edges);
+          setDependencies(directDependencies(model, resourceId));
+        })
+        .catch(() => {
+          if (!cancelled) setDependencies(null);
+        });
+    }
+    load();
+    // Switching a field to (or off) an output reference happens on this very
+    // page, so without this the tab keeps showing the pre-change neighbours
+    // until the user navigates away and back.
+    window.addEventListener(RESOURCES_CHANGED_EVENT, load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(RESOURCES_CHANGED_EVENT, load);
+    };
+  }, [orgId, resourceId]);
+  const handleOpenDependency = useCallback(
+    (node: DependencyGraphNode) => {
+      void navigate({
+        to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+        params: {
+          orgId,
+          pluginId: node.pluginId,
+          resourceTypeId: node.resourceTypeId,
+          resourceId: node.id,
+        },
+        search: { accountId: node.accountId },
+      });
+    },
+    [navigate, orgId],
+  );
+
   const [wsToken, setWsToken] = useState<string | null>(null);
   const [createTarget, setCreateTarget] = useState<ChildResourceGroup | null>(null);
   const [peerCreateTarget, setPeerCreateTarget] = useState<PeerPaneResourceGroup | null>(null);
@@ -1132,6 +1226,7 @@ export function ResourceDetailClient({
               schema={detailSchema}
               resourceId={resourceId}
               pluginLogoSvg={pluginLogoSvg}
+              costEstimate={costEstimate}
               {...(hasSqlEditor
                 ? {
                     onRunQuery: handleRunQuery,
@@ -1204,6 +1299,7 @@ export function ResourceDetailClient({
                   />
                 );
               }}
+              {...(dependencies ? { dependencies, onOpenDependency: handleOpenDependency } : {})}
               childResourceGroups={childResourceGroups}
               onChildClick={handleChildClick}
               onChildCreate={handleChildCreate}
@@ -1281,6 +1377,32 @@ export function ResourceDetailClient({
                   }
                 : {})}
               metricSeries={metricSeries}
+              renderChangesTab={() => (
+                <ResourceChangesPanel orgId={orgId} resourceId={resourceId} />
+              )}
+              {...(schedulable
+                ? {
+                    renderScheduleTab: () => (
+                      <ResourceSchedulePanel
+                        client={schedulesClient}
+                        target={{ resourceId, accountId, resourceName: resourceDisplayName }}
+                      />
+                    ),
+                  }
+                : {})}
+              renderLeaseTab={() => (
+                <ResourceLeasePanel
+                  client={leasesClient}
+                  target={{ resourceId, accountId, resourceName: resourceDisplayName }}
+                />
+              )}
+              renderOwnershipTab={() => (
+                <ResourceOwnershipPanel
+                  client={ownershipClient}
+                  resourceId={resourceId}
+                  resourceName={resourceDisplayName}
+                />
+              )}
             />
           </div>
         </div>
@@ -1389,6 +1511,7 @@ export function ResourceDetailClient({
             Object.entries(resourceFields ?? {}).map(([k, v]) => [k, String(v ?? "")]),
           )}
           onClose={() => setShowEditModal(false)}
+          loadCostEstimate={loadCostEstimate}
           onSubmit={async (changed) => {
             await handleUpdate(changed);
             // Server-rendered page: a full reload picks up the new fields.

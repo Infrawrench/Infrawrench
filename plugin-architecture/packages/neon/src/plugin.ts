@@ -1,5 +1,6 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { NeonClient } from "./client.js";
+import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { NeonProjectResourceType } from "./resources/project.js";
 import { NeonBranchResourceType } from "./resources/branch.js";
 import { NeonEndpointResourceType } from "./resources/endpoint.js";
@@ -41,6 +42,7 @@ const manifest: PluginManifest = {
   // Neon's published rates (estimate — plan allowances/discounts not
   // modeled). Daily granularity; Neon keeps 60 days of daily history.
   costs: { dimensions: ["service", "resource"], maxHistoryDays: 60 },
+  statusFeed,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -64,4 +66,5 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new NeonClient(credentials, services),
+  parseStatusFeed,
 };

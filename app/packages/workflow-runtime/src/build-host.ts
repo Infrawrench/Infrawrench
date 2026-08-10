@@ -24,10 +24,14 @@ import type {
   WorkflowHost,
 } from "./host.js";
 import type {
+  ApprovalResult,
+  ApprovalSpec,
   MetricValue,
   PageResult,
   PageSpec,
   PromptSpec,
+  WorkflowAiResult,
+  WorkflowAiSpec,
   WorkflowCostRow,
   WorkflowCostWriteResult,
   WorkflowFetchRequest,
@@ -99,10 +103,23 @@ export interface ClientHostDeps {
    */
   fetch?(request: WorkflowFetchRequest): Promise<WorkflowFetchResponse>;
 
+  /**
+   * Ask an AI model one already-validated question (powers `infra.ai`).
+   * Cloud-only: the call is made server-side with the deployment's API key and
+   * metered against the org's monthly AI spend cap.
+   */
+  ai?(spec: WorkflowAiSpec): Promise<WorkflowAiResult>;
+
   /** Deliver an alert and enforce its per-key cooldown (powers `infra.page`). */
   page?(spec: PageSpec): Promise<PageResult>;
   /** Re-arm a page key so the next page under it delivers immediately. */
   clearPage?(key: string): Promise<void>;
+
+  /**
+   * Block until a human approves (resolve) or denies / times out (reject) —
+   * powers `infra.waitForApproval`. Cloud-only.
+   */
+  waitForApproval?(spec: ApprovalSpec): Promise<ApprovalResult>;
 
   /** Debugger line hook (instrumented runs); may block to pause at a breakpoint. */
   line?(line: number): Promise<void>;
@@ -360,8 +377,10 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
     ...(deps.sftpDelete ? { sftpDelete: deps.sftpDelete } : {}),
     ...(deps.writeCosts ? { writeCosts: deps.writeCosts } : {}),
     ...(deps.fetch ? { fetch: deps.fetch } : {}),
+    ...(deps.ai ? { ai: deps.ai } : {}),
     ...(deps.page ? { page: deps.page } : {}),
     ...(deps.clearPage ? { clearPage: deps.clearPage } : {}),
+    ...(deps.waitForApproval ? { waitForApproval: deps.waitForApproval } : {}),
     ...(deps.line ? { line: deps.line } : {}),
   };
 }

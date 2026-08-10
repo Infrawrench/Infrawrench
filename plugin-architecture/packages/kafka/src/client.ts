@@ -364,9 +364,7 @@ export class KafkaClient implements PluginClient {
     const byName = new Map(metadata);
     return topicNames.map((name) => {
       const meta = byName.get(name) as
-        | { partitions?: Array<{ replicas?: unknown[] }> }
-        | null
-        | undefined;
+        { partitions?: Array<{ replicas?: unknown[] }> } | null | undefined;
       const partitions = Array.isArray(meta?.partitions) ? meta.partitions : [];
       const replicationFactor =
         partitions.length > 0 && Array.isArray(partitions[0]?.replicas)

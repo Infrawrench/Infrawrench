@@ -11,8 +11,30 @@ export const JobResourceType = rt({
     f("completions", "Completions", { required: false }),
     f("status", "Status", { required: false }),
     f("image", "Image", { required: false }),
+    f("cronJob", "CronJob", {
+      required: false,
+      description: "The CronJob that scheduled this Job, from its owner reference",
+    }),
   ],
   outputs: [],
+  dependsOn: [
+    // Namespaces report no external id; their identity is the bare name.
+    {
+      fieldKey: "namespace",
+      targetTypeId: "k8s-namespace",
+      targetKey: "name",
+      label: "in namespace",
+    },
+    // The owner reference carries only the bare CronJob name, which repeats
+    // across namespaces — compose the namespace back on before matching.
+    {
+      fieldKey: "cronJob",
+      targetTypeId: "k8s-cronjob",
+      targetKey: "qualifiedName",
+      matchTemplate: "{namespace}/{cronJob}",
+      label: "run by",
+    },
+  ],
   parentTypeId: "k8s-namespace",
   supportsCreate: true,
 });

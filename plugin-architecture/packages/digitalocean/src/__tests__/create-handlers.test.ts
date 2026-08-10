@@ -62,7 +62,7 @@ const PROJECTS = {
  */
 function routeFetch(path: string): unknown {
   if (path === "/regions") return REGIONS;
-  if (path === "/sizes") return SIZES;
+  if (path.startsWith("/sizes")) return SIZES;
   if (path.startsWith("/images")) return IMAGES;
   if (path === "/projects") return PROJECTS;
   if (path === "/kubernetes/options")
@@ -149,6 +149,7 @@ describe("doGetCreateConfig — every type produces fields", () => {
     "gen-ai-model-router",
     "dedicated-inference",
     "agent-api-key",
+    "vpc",
   ];
   for (const type of types) {
     it(`${type} returns a non-empty field list`, async () => {
@@ -775,6 +776,67 @@ describe("doCreateResource — REST create branches", () => {
     const ctx = { fetch: vi.fn(async () => ({})), credentials: {} } as DoCreateContext;
     await expect(doCreateResource(ctx, "agent-api-key", "acc", { name: "k" })).rejects.toThrow(
       /Agent UUID is required/,
+    );
+  });
+
+  it("creates a VPC, omitting the optional ip_range/description when blank", async () => {
+    const fetch = vi.fn(async (path: string) => {
+      if (path === "/vpcs")
+        return {
+          vpc: {
+            id: "vpc-new",
+            name: "prod",
+            region: "nyc3",
+            ip_range: "10.116.0.0/20",
+            description: "",
+            default: false,
+            created_at: "2026-02-02T00:00:00Z",
+          },
+        };
+      return {};
+    }) as Mock;
+    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const result = await doCreateResource(ctx, "vpc", "acc", { name: "prod", region: "nyc3" });
+    expect(fetch).toHaveBeenCalledWith(
+      "/vpcs",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ name: "prod", region: "nyc3" }),
+      }),
+    );
+    expect(result.resource.id).toBe("acc:vpc:vpc-new");
+    expect(result.resource.externalId).toBe("vpc-new");
+    expect(result.resource.fields).toMatchObject({
+      name: "prod",
+      region: "nyc3",
+      ipRange: "10.116.0.0/20",
+      isDefault: false,
+    });
+    expect(result.resource.resolvedOutputs).toEqual({ vpcId: "vpc-new" });
+  });
+
+  it("sends ip_range and description when the VPC form supplies them", async () => {
+    const fetch = vi.fn(async (path: string) => {
+      if (path === "/vpcs") return { vpc: { id: "vpc-2", name: "seg", region: "fra1" } };
+      return {};
+    }) as Mock;
+    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    await doCreateResource(ctx, "vpc", "acc", {
+      name: "seg",
+      region: "fra1",
+      ipRange: "10.10.10.0/24",
+      description: "segment",
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      "/vpcs",
+      expect.objectContaining({
+        body: JSON.stringify({
+          name: "seg",
+          region: "fra1",
+          ip_range: "10.10.10.0/24",
+          description: "segment",
+        }),
+      }),
     );
   });
 

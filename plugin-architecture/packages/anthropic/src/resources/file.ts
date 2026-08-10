@@ -28,6 +28,9 @@ export const FileResourceType = rt({
     }),
     o("filename", "Filename"),
   ],
+  // A workspace-scoped file carries that workspace's id in `scope.id`; any
+  // other scope simply matches no workspace and produces no edge.
+  dependsOn: [{ fieldKey: "scopeId", targetTypeId: "workspace", label: "in workspace" }],
   supportsCreate: false,
   supportsDelete: true,
   iconKey: "storage",

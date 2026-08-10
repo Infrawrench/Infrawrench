@@ -13,6 +13,18 @@ export const RDSClusterResourceType = rt({
     f("storageEncrypted", "Encrypted", { kind: "boolean", required: false }),
     f("allocatedStorage", "Storage (GB)", { kind: "number", required: false }),
     f("dbClusterMembers", "Members", { kind: "number", required: false }),
+    f("dbClusterMemberIds", "Member Instances", {
+      required: false,
+      description: "Comma-separated DB instance identifiers in this cluster",
+    }),
+    f("securityGroupIds", "Security Groups", {
+      required: false,
+      description: "Comma-separated VPC security group IDs attached to the cluster",
+    }),
+    f("dbSubnetGroupName", "DB Subnet Group", {
+      required: false,
+      description: "Name of the DB subnet group holding the cluster's VPC and subnets",
+    }),
   ],
   outputs: [
     o("endpoint", "Writer Endpoint"),
@@ -24,6 +36,17 @@ export const RDSClusterResourceType = rt({
       sensitive: true,
       description: "Database connection URI (constructed from endpoint + port)",
     }),
+  ],
+  // Cluster members are ordinary DB instances — DescribeDBInstances lists them
+  // under their own identifier, which is what `DBClusterMembers` names.
+  dependsOn: [
+    { fieldKey: "dbClusterMemberIds", targetTypeId: "rds-instance", label: "has member" },
+    { fieldKey: "securityGroupIds", targetTypeId: "security-group", label: "guarded by" },
+    {
+      fieldKey: "dbSubnetGroupName",
+      targetTypeId: "db-subnet-group",
+      label: "placed in",
+    },
   ],
   iconKey: "database",
   supportsCreate: true,
@@ -83,6 +106,17 @@ export const RDSClusterResourceType = rt({
         { envKey: "DB_PORT", outputKey: "port" },
         { envKey: "DB_USER", outputKey: "masterUsername" },
       ],
+    },
+  ],
+  postureChecks: [
+    {
+      id: "rds-cluster-unencrypted",
+      title: "Storage not encrypted",
+      severity: "medium",
+      category: "encryption",
+      conditions: [{ fieldKey: "storageEncrypted", when: "falsy" }],
+      reason:
+        "The cluster's storage is not encrypted at rest; enabling encryption later requires restoring into a new encrypted cluster.",
     },
   ],
 });

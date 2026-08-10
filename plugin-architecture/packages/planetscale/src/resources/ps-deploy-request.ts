@@ -22,6 +22,24 @@ export const PsDeployRequestResourceType = rt({
     o("sourceBranch", "Source Branch"),
     o("targetBranch", "Target Branch"),
   ],
+  // Both branch names are bare while a branch's external id is
+  // `{database}/{branch}`. A deploy request never crosses databases, so
+  // composing with `databaseName` names exactly one branch.
+  dependsOn: [
+    { fieldKey: "databaseName", targetTypeId: "ps-database", label: "in database" },
+    {
+      fieldKey: "branch",
+      targetTypeId: "ps-branch",
+      matchTemplate: "{databaseName}/{branch}",
+      label: "deploys from",
+    },
+    {
+      fieldKey: "intoBranch",
+      targetTypeId: "ps-branch",
+      matchTemplate: "{databaseName}/{intoBranch}",
+      label: "deploys into",
+    },
+  ],
   parentTypeId: "ps-database",
   iconKey: "planetscale",
 });

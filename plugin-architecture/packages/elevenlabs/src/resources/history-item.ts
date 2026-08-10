@@ -28,6 +28,12 @@ export const HistoryItemResourceType = rt({
       description: "GET this path on api.elevenlabs.io to download the clip",
     }),
   ],
+  // `voice_id` and `model_id` name the Voice and Model rows the clip was
+  // generated with.
+  dependsOn: [
+    { fieldKey: "voiceId", targetTypeId: "voice", label: "voiced by" },
+    { fieldKey: "modelId", targetTypeId: "model", label: "generated with" },
+  ],
   iconKey: "history",
   pinnable: false,
 });

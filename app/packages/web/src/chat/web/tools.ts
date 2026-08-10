@@ -18,11 +18,38 @@
  * endpoint, which is where the human gate for this surface lives.
  */
 import { z } from "zod";
+import {
+  AiSpendCapExceededError,
+  AI_SPEND_RESERVATION_TOUCH_MS,
+  estimateTokensFromChars,
+  releaseAiSpendReservation,
+  reserveAiSpend,
+  touchAiSpendReservation,
+} from "@infrawrench/server-core/billing/ai-usage";
 import type { ToolDefinition, ToolResult } from "../../tools/types";
 import { ok, err } from "../../tools/types";
 import { searchBackend, isWebSearchConfigured } from "./backend";
 import { fetchPage, isWebFetchConfigured, MAX_CONTENT_CHARS } from "./fetch";
 import { recordWebSearchUsage } from "../billing";
+import { computeCostMicros, computeSearchCostMicros } from "../pricing";
+
+/** Matches the backends' max_uses / fan-out ceiling (anthropic-search.ts). */
+const SEARCH_RESERVE_MAX_QUERIES = 5;
+/** Matches the backends' sub-model max_tokens. */
+const SEARCH_RESERVE_MAX_TOKENS = 4096;
+
+/** Upper-bound cost for one web_search tool call (query fees + sub-model tokens). */
+function estimateSearchCostMicros(backendId: string, query: string, model: string): number {
+  return (
+    computeSearchCostMicros(backendId, SEARCH_RESERVE_MAX_QUERIES) +
+    computeCostMicros(model, {
+      inputTokens: estimateTokensFromChars(query.length + 500),
+      outputTokens: SEARCH_RESERVE_MAX_TOKENS,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    })
+  );
+}
 
 export interface WebToolContext {
   organizationId: string;
@@ -71,49 +98,88 @@ async function runSearch(query: string, ctx: WebToolContext): Promise<ToolResult
     );
   }
 
-  const outcome = await backend.search(query);
-
-  // Bill before returning: the searches happened whether or not the agent
-  // finds the answer useful.
-  await recordWebSearchUsage({
-    organizationId: ctx.organizationId,
-    conversationId: ctx.conversationId,
-    messageId: ctx.messageId,
-    backend: backend.id,
-    model: outcome.model,
-    queries: outcome.queries,
-    usage: outcome.usage,
-  });
-
-  if (outcome.hits.length === 0 && !outcome.summary) {
-    return ok({ query, results: [], note: "The search returned no results." });
+  // Reserve against the shared AI pool before the sub-model runs — the parent
+  // chat turn already released its model-call hold, so without this a search
+  // near the cap could clear no check and bill past the line.
+  const reserveModel = backend.id === "vertex" ? "gemini-3.6-flash" : "claude-haiku-4-5";
+  let reservationId: string;
+  try {
+    reservationId = await reserveAiSpend(
+      ctx.organizationId,
+      estimateSearchCostMicros(backend.id, query, reserveModel),
+    );
+  } catch (e) {
+    if (e instanceof AiSpendCapExceededError) {
+      return err(
+        "Web search is unavailable: this organization has reached its monthly AI spend cap.",
+      );
+    }
+    throw e;
   }
 
-  const sources = outcome.hits.map((hit, index) => ({
-    n: index + 1,
-    title: hit.title,
-    url: hit.url,
-    ...(hit.age ? { age: hit.age } : {}),
-  }));
+  try {
+    const touchTimer = setInterval(() => {
+      void touchAiSpendReservation(reservationId).catch((touchErr) => {
+        console.error("[chat/web] failed to refresh AI spend reservation:", touchErr);
+      });
+    }, AI_SPEND_RESERVATION_TOUCH_MS);
+    if (typeof touchTimer.unref === "function") touchTimer.unref();
 
-  return {
-    content: [
-      {
-        type: "text",
-        text: untrusted(
-          "search_results",
-          [
-            `Query: ${query}`,
-            "",
-            outcome.summary,
-            "",
-            "Sources:",
-            ...sources.map((s) => `[${s.n}] ${s.title} — ${s.url}${s.age ? ` (${s.age})` : ""}`),
-          ].join("\n"),
-        ),
-      },
-    ],
-  };
+    try {
+      const outcome = await backend.search(query);
+
+      // Bill before returning: the searches happened whether or not the agent
+      // finds the answer useful. Record before releasing so the brief overlap
+      // is a conservative double-count rather than a gap.
+      await recordWebSearchUsage({
+        organizationId: ctx.organizationId,
+        conversationId: ctx.conversationId,
+        messageId: ctx.messageId,
+        backend: backend.id,
+        model: outcome.model,
+        queries: outcome.queries,
+        usage: outcome.usage,
+      });
+
+      if (outcome.hits.length === 0 && !outcome.summary) {
+        return ok({ query, results: [], note: "The search returned no results." });
+      }
+
+      const sources = outcome.hits.map((hit, index) => ({
+        n: index + 1,
+        title: hit.title,
+        url: hit.url,
+        ...(hit.age ? { age: hit.age } : {}),
+      }));
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: untrusted(
+              "search_results",
+              [
+                `Query: ${query}`,
+                "",
+                outcome.summary,
+                "",
+                "Sources:",
+                ...sources.map(
+                  (s) => `[${s.n}] ${s.title} — ${s.url}${s.age ? ` (${s.age})` : ""}`,
+                ),
+              ].join("\n"),
+            ),
+          },
+        ],
+      };
+    } finally {
+      clearInterval(touchTimer);
+    }
+  } finally {
+    await releaseAiSpendReservation(reservationId).catch((releaseErr) => {
+      console.error("[chat/web] failed to release AI spend reservation:", releaseErr);
+    });
+  }
 }
 
 async function runFetch(url: string): Promise<ToolResult> {

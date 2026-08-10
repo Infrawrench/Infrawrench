@@ -11,8 +11,7 @@
  * exactly (target ESNext, `lib: ["es2020"]`, non-strict) so the diagnostics an
  * agent sees are the diagnostics a human would see in the editor.
  */
-import ts from "typescript";
-import { createRequire } from "node:module";
+import ts from "@typescript/typescript6";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -64,9 +63,14 @@ let cachedLibDir: string | null | undefined;
 
 /**
  * Where to look for `lib.*.d.ts`, in order. Bundled services (esbuild) lose the
- * ability to resolve the `typescript` package at runtime — its lib files are
- * data, not code — so `scripts/copy-ts-libs.mjs` drops them next to the bundle
- * and candidate #2 finds them there.
+ * ability to resolve the TypeScript package at runtime — lib files are data,
+ * not code — so `scripts/copy-ts-libs.mjs` drops them next to the bundle and
+ * candidate #2 (sibling `ts-libs/`) finds them there.
+ *
+ * Note: `@typescript/typescript6` re-exports `typescript@^6` via
+ * `@typescript/old`; its package-root `lib/` only has JS stubs. Always use
+ * `getDefaultLibFilePath` (not `dirname(require.resolve(...))`) for the real
+ * `lib.*.d.ts` directory.
  */
 function libDirCandidates(): string[] {
   const out: string[] = [];
@@ -76,11 +80,6 @@ function libDirCandidates(): string[] {
     out.push(join(dirname(fileURLToPath(import.meta.url)), "ts-libs"));
   } catch {
     /* import.meta.url unavailable (CJS interop) — skip */
-  }
-  try {
-    out.push(dirname(createRequire(import.meta.url).resolve("typescript")));
-  } catch {
-    /* typescript not resolvable from here (bundled) — skip */
   }
   try {
     out.push(dirname(ts.getDefaultLibFilePath({})));

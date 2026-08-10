@@ -7,6 +7,11 @@ export const PrivateNetworkResourceType = rt({
   fields: [
     f("name", "Name"),
     f("regions", "Regions", { required: false }),
+    f("openstackIds", "OpenStack IDs", {
+      required: false,
+      description:
+        "Comma-separated per-region OpenStack network IDs. Instances and Kubernetes clusters reference the network by these, not by the pn-… project id.",
+    }),
     f("vlanId", "VLAN ID", { kind: "number", required: false }),
     f("status", "Status", { required: false }),
     f("type", "Type", { required: false }),

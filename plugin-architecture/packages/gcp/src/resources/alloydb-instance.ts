@@ -12,6 +12,20 @@ export const AlloyDbInstanceResourceType = rt({
     f("cpuCount", "CPU Count", { kind: "number", required: false }),
     f("ipAddress", "IP Address", { required: false }),
     f("availabilityType", "Availability Type", { required: false }),
+    f("cluster", "Cluster", {
+      required: false,
+      description: "Name of the AlloyDB cluster this instance belongs to",
+    }),
+  ],
+  // Clusters are keyed by their full resource path, so match the bare `name`
+  // field the lister writes on them.
+  dependsOn: [
+    {
+      fieldKey: "cluster",
+      targetTypeId: "alloydb-cluster",
+      targetKey: "name",
+      label: "in cluster",
+    },
   ],
   outputs: [
     o("ipAddress", "IP Address"),

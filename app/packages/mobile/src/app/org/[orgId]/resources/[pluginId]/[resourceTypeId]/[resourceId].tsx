@@ -18,6 +18,9 @@ import { SchemaNodeView } from "@/schema/SchemaRenderer";
 import { ActionDispatchProvider, type ActionHandlers } from "@/schema/ActionDispatchContext";
 import { PromptCommandSheet } from "@/components/PromptCommandSheet";
 import { DockerActionsCard } from "@/features/tools/DockerActionsCard";
+import { ResourceChangesCard } from "@/features/changes/ResourceChangesCard";
+import { ResourceCostEstimateCard } from "@/features/costs/ResourceCostEstimateCard";
+import { ResourceDependenciesCard } from "@/features/graph/ResourceDependenciesCard";
 import { colors } from "@/lib/theme";
 
 /**
@@ -340,6 +343,19 @@ export default function ResourceDetailScreen() {
             </RowGroup>
           </Card>
         )}
+
+        {/*
+          The two org-graph/timeline views web renders as detail tabs. Both are
+          self-guarding: each renders nothing when the resource has no wiring
+          and no recorded changes, and neither can fail the screen.
+        */}
+        <ResourceCostEstimateCard
+          accountId={data.accountId}
+          resourceTypeId={resourceTypeId}
+          resourceId={resourceId}
+        />
+        <ResourceDependenciesCard resourceId={resourceId} />
+        <ResourceChangesCard resourceId={resourceId} />
       </Screen>
 
       {prompt && (

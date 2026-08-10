@@ -238,8 +238,7 @@ export function customGraphTools(): ToolDefinition[] {
         if (denied) return denied;
         try {
           const controls = input["controls"] as
-            | Record<string, string | number | boolean>
-            | undefined;
+            Record<string, string | number | boolean> | undefined;
           const button = input["button"] as string | undefined;
           const trigger = input["trigger"] as "manual" | "refresh" | "interaction" | undefined;
           return ok(

@@ -12,6 +12,10 @@ export const ElastiCacheClusterResourceType = rt({
     f("numNodes", "Number of Nodes", { kind: "number" }),
     f("status", "Status"),
     f("availabilityZone", "Availability Zone", { required: false }),
+    f("securityGroupIds", "Security Groups", {
+      required: false,
+      description: "Comma-separated VPC security group IDs attached to the cluster",
+    }),
   ],
   outputs: [
     o("endpoint", "Endpoint"),
@@ -20,6 +24,9 @@ export const ElastiCacheClusterResourceType = rt({
       sensitive: true,
       description: "Redis/Memcached connection URI (constructed from endpoint + port)",
     }),
+  ],
+  dependsOn: [
+    { fieldKey: "securityGroupIds", targetTypeId: "security-group", label: "guarded by" },
   ],
   iconKey: "cache",
   supportsCreate: true,

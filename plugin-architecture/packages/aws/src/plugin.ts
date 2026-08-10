@@ -1,5 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { AWSClient } from "./client.js";
+import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { awsPreflight, buildAwsPolicyTemplate } from "./preflight.js";
 import { AWS_REGIONS } from "./constants.js";
 import { EC2InstanceResourceType } from "./resources/ec2-instance.js";
 import { EBSVolumeResourceType } from "./resources/ebs-volume.js";
@@ -51,6 +53,7 @@ import { CloudTrailTrailResourceType } from "./resources/cloudtrail-trail.js";
 import { MSKClusterResourceType } from "./resources/msk-cluster.js";
 import { NeptuneClusterResourceType } from "./resources/neptune-cluster.js";
 import { DocumentDBClusterResourceType } from "./resources/documentdb-cluster.js";
+import { DBSubnetGroupResourceType } from "./resources/db-subnet-group.js";
 import { MQBrokerResourceType } from "./resources/mq-broker.js";
 import { BatchJobQueueResourceType } from "./resources/batch-job-queue.js";
 import { SageMakerEndpointResourceType } from "./resources/sagemaker-endpoint.js";
@@ -101,6 +104,8 @@ const manifest: PluginManifest = {
   // granularity is intentionally omitted (CE keeps it 14 days only, and it
   // explodes cardinality). Needs the ce:GetCostAndUsage IAM action.
   costs: { dimensions: ["service", "region"], maxHistoryDays: 365, restatementDays: 3 },
+  statusFeed,
+  preflight: awsPreflight,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -125,6 +130,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   OpenSearchDomainResourceType,
   NeptuneClusterResourceType,
   DocumentDBClusterResourceType,
+  DBSubnetGroupResourceType,
   // Networking
   VPCResourceType,
   SubnetResourceType,
@@ -182,4 +188,6 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new AWSClient(credentials, resourceTypes, services),
+  parseStatusFeed,
+  policyTemplate: buildAwsPolicyTemplate,
 };

@@ -209,8 +209,114 @@ describe("worker", () => {
     expect(error.message).toMatch(/ENOTFOUND/);
   });
 
-  it("404s anything that isn't /fetch", async () => {
+  it("404s anything that isn't /fetch or /probe", async () => {
     const res = await worker.fetch(new Request("https://egress.infrawrench.com/"), env);
     expect(res.status).toBe(404);
+  });
+});
+
+/** POST /probe helper mirroring `post`. */
+function probe(body: unknown, token: string | null = "test-token"): Request {
+  return new Request("https://egress.infrawrench.com/probe", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+interface ProbeResult {
+  ok: boolean;
+  status?: number;
+  latencyMs: number;
+  error?: string;
+}
+
+/** Unwrap a probe envelope, failing loudly on an error envelope. */
+async function probed(res: Response): Promise<ProbeResult> {
+  const body = (await res.json()) as { result?: ProbeResult; error?: unknown };
+  if (!body.result) throw new Error(`expected a probe result, got ${JSON.stringify(body)}`);
+  return body.result;
+}
+
+describe("worker /probe", () => {
+  it("requires a bearer token", async () => {
+    const res = await worker.fetch(probe({ url: "https://example.com/" }, null), env);
+    expect(res.status).toBe(401);
+    expect((await proxyError(res)).code).toBe("unauthorized");
+  });
+
+  it("refuses a private host outright", async () => {
+    const res = await worker.fetch(probe({ url: "http://169.254.169.254/" }), env);
+    expect(res.status).toBe(400);
+    expect((await proxyError(res)).code).toBe("blocked_host");
+  });
+
+  it("reports a healthy endpoint with status and latency, discarding the body", async () => {
+    stubUpstream(new Response("a body nobody reads", { status: 200 }));
+    const res = await worker.fetch(probe({ url: "https://api.example.com/health" }), env);
+    expect(res.status).toBe(200);
+    const result = await probed(res);
+    expect(result.ok).toBe(true);
+    expect(result.status).toBe(200);
+    expect(typeof result.latencyMs).toBe("number");
+    expect(result).not.toHaveProperty("error");
+    // The body never comes back — the envelope carries only the verdict.
+    expect(JSON.stringify(result)).not.toContain("nobody reads");
+  });
+
+  it("treats a 4xx as up (answering) and a 5xx as down", async () => {
+    stubUpstream(new Response(null, { status: 401 }));
+    const authWalled = await probed(
+      await worker.fetch(probe({ url: "https://api.example.com/" }), env),
+    );
+    expect(authWalled).toMatchObject({ ok: true, status: 401 });
+
+    stubUpstream(new Response(null, { status: 503 }));
+    const failing = await probed(
+      await worker.fetch(probe({ url: "https://api.example.com/" }), env),
+    );
+    expect(failing).toMatchObject({ ok: false, status: 503 });
+  });
+
+  it("reports a network failure as data, not a proxy error", async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error("getaddrinfo ENOTFOUND")) as never;
+    const res = await worker.fetch(probe({ url: "https://nope.example.com/" }), env);
+    expect(res.status).toBe(200); // the probe ran; the endpoint failed
+    const result = await probed(res);
+    expect(result).toMatchObject({ ok: false, error: "request_failed" });
+  });
+
+  it("follows redirects, re-validating each hop", async () => {
+    stubUpstream(
+      new Response(null, { status: 301, headers: { location: "https://b.example.com/final" } }),
+      new Response(null, { status: 200 }),
+    );
+    const result = await probed(await worker.fetch(probe({ url: "https://a.example.com/" }), env));
+    expect(result).toMatchObject({ ok: true, status: 200 });
+  });
+
+  it("reports a redirect to a private host as a failed probe", async () => {
+    stubUpstream(
+      new Response(null, { status: 302, headers: { location: "http://169.254.169.254/token" } }),
+    );
+    const res = await worker.fetch(probe({ url: "https://redirector.example.com/" }), env);
+    expect(res.status).toBe(200);
+    expect(await probed(res)).toMatchObject({ ok: false, error: "blocked_redirect" });
+  });
+
+  it("clamps the timeout to the probe ceiling", async () => {
+    let seenSignal: AbortSignal | undefined;
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    globalThis.fetch = vi.fn().mockImplementation((_url, init) => {
+      seenSignal = (init as RequestInit).signal ?? undefined;
+      return Promise.resolve(new Response(null, { status: 200 }));
+    }) as never;
+
+    await worker.fetch(probe({ url: "https://api.example.com/", timeoutMs: 999_999 }), env);
+    expect(seenSignal).toBeDefined();
+    expect(timeoutSpy).toHaveBeenCalledWith(60_000);
   });
 });

@@ -9,10 +9,12 @@ import type {
   CreateResourceConfig,
   DashboardStat,
   MetricSeries,
+  CostEstimate,
   CostFetchRange,
   CostRow,
   CredentialExport,
   HostServices,
+  PreflightResult,
   ChatMessage,
   ChatStreamEvent,
   PublishMessagePayload,
@@ -73,6 +75,7 @@ import {
   listMSKClusters,
   listNeptuneClusters,
   listDocumentDBClusters,
+  listDBSubnetGroups,
   listMQBrokers,
   listBatchJobQueues,
   listSageMakerEndpoints,
@@ -110,7 +113,8 @@ import {
   fetchDashboardStats as fetchDashboardStatsImpl,
   fetchMetricSeries as fetchMetricSeriesImpl,
 } from "./dashboard-metrics.js";
-import { getCreateCostEstimate as getCreateCostEstimateImpl } from "./cost-estimate.js";
+import { estimateAwsCost } from "./cost-estimate.js";
+import { fetchEc2MonthlyPrices } from "./pricing.js";
 import { fetchAwsCostData } from "./cost-data.js";
 import { attachResource as attachResourceImpl } from "./attach-handlers.js";
 import { resolveOutput as resolveOutputImpl } from "./resolve-output.js";
@@ -119,6 +123,7 @@ import { executeFieldAction as executeFieldActionImpl } from "./field-actions.js
 import { executeDynamoDbCommand } from "./dynamodb-handlers.js";
 import { publishSqs, publishSns, publishKinesis, publishEventBridge } from "./publish-handlers.js";
 import { fetchSigned } from "./signed-request.js";
+import { runAwsPreflight } from "./preflight.js";
 
 export class AWSClient implements PluginClient {
   private readonly creds: AwsCredentials;
@@ -336,6 +341,7 @@ export class AWSClient implements PluginClient {
     "msk-cluster": listMSKClusters,
     "neptune-cluster": listNeptuneClusters,
     "documentdb-cluster": listDocumentDBClusters,
+    "db-subnet-group": listDBSubnetGroups,
     "mq-broker": listMQBrokers,
     "batch-job-queue": listBatchJobQueues,
     "sagemaker-endpoint": listSageMakerEndpoints,
@@ -344,6 +350,10 @@ export class AWSClient implements PluginClient {
     "cognito-user-pool": listCognitoUserPools,
     "backup-vault": listBackupVaults,
   };
+
+  async verifyCredentials(): Promise<PreflightResult> {
+    return runAwsPreflight(this.creds);
+  }
 
   async listResources(
     typeId: string,
@@ -599,14 +609,62 @@ export class AWSClient implements PluginClient {
         updatedAt: new Date().toISOString(),
       };
     }
+
+    if (typeId === "ec2-instance") {
+      // Edit = change instance type (the right-sizing apply path).
+      // ModifyInstanceAttribute requires the instance to be fully stopped;
+      // a running one gets EC2's IncorrectInstanceState, surfaced as-is.
+      const instanceType = fields["instanceType"];
+      if (!instanceType) {
+        throw new Error("AWS plugin: instanceType is the only editable EC2 instance field");
+      }
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const instanceId = String(resource.externalId ?? resource.fields["instanceId"] ?? "");
+      if (!instanceId) throw new Error("Cannot determine EC2 instance ID");
+      const region = String(resource.fields["region"] ?? this.creds.region);
+      await ec2Call(this.credsFor(region), "ModifyInstanceAttribute", {
+        InstanceId: instanceId,
+        "InstanceType.Value": instanceType,
+      });
+      // Return the resource already in hand with the new type overlaid rather
+      // than re-running the multi-region lookup: it halves the API fan-out,
+      // and EC2's eventual consistency means an immediate re-describe could
+      // still report the old type. The next sync reads the converged truth.
+      return {
+        ...resource,
+        fields: { ...resource.fields, instanceType },
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
     throw new Error(`AWS plugin: updateResource not supported for type "${typeId}"`);
   }
 
-  async getCreateCostEstimate(
+  /**
+   * Monthly cost estimate with line items, priced per region through the
+   * Price List Query API. Requires `pricing:GetProducts`; without it every
+   * rate resolves to null and no estimate is quoted at all.
+   */
+  async estimateCost(typeId: string, fields: Record<string, string>): Promise<CostEstimate | null> {
+    return estimateAwsCost(this.creds, typeId, fields);
+  }
+
+  /**
+   * Per-region monthly on-demand prices for the size picker, via the Price
+   * List Query API. Requires the `pricing:GetProducts` permission; without it
+   * the result is empty and the picker simply shows no price chips.
+   */
+  async getCreateSizePricing(
     typeId: string,
-    fields: Record<string, string>,
-  ): Promise<number | null> {
-    return getCreateCostEstimateImpl(typeId, fields);
+    request: { regionId?: string; sizes: Array<{ id: string }> },
+  ): Promise<Record<string, number>> {
+    if (typeId !== "ec2-instance") return {};
+    const region = request.regionId ?? this.creds.region;
+    return fetchEc2MonthlyPrices(
+      this.creds,
+      region,
+      request.sizes.map((s) => s.id),
+    );
   }
 
   async executeFieldAction(
@@ -668,6 +726,41 @@ export class AWSClient implements PluginClient {
       resourceId,
       accountId,
     );
+  }
+
+  async invokeAction(
+    typeId: string,
+    resourceId: string,
+    actionId: string,
+    accountId: string,
+  ): Promise<void> {
+    if (typeId === "ec2-instance" && (actionId === "start" || actionId === "stop")) {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const instanceId = String(resource.externalId ?? resource.fields["instanceId"] ?? "");
+      if (!instanceId) throw new Error("Cannot determine EC2 instance ID");
+      const region = String(resource.fields["region"] ?? this.creds.region);
+      await ec2Call(
+        this.credsFor(region),
+        actionId === "start" ? "StartInstances" : "StopInstances",
+        { "InstanceId.1": instanceId },
+      );
+      return;
+    }
+    if (typeId === "rds-instance" && (actionId === "start" || actionId === "stop")) {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const dbId = String(resource.externalId ?? resource.fields["dbInstanceId"] ?? "");
+      if (!dbId) throw new Error("Cannot determine RDS instance identifier");
+      const region = String(resource.fields["region"] ?? this.creds.region);
+      await queryPostCall(
+        this.credsFor(region),
+        "rds",
+        actionId === "start" ? "StartDBInstance" : "StopDBInstance",
+        "2014-10-31",
+        { DBInstanceIdentifier: dbId },
+      );
+      return;
+    }
+    throw new Error(`AWS plugin: invokeAction "${actionId}" not supported for type "${typeId}"`);
   }
 
   async executeNoSqlCommand(

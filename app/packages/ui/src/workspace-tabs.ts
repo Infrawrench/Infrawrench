@@ -29,6 +29,47 @@ export function workflowsTabTarget(workflowId?: string): WorkspaceTabTarget {
   return { kind: "workflows", ...(workflowId ? { workflowId } : {}) };
 }
 
+export function logsTabTarget(): WorkspaceTabTarget {
+  return { kind: "logs" };
+}
+
+export function changesTabTarget(): WorkspaceTabTarget {
+  return { kind: "changes" };
+}
+
+export function expiringTabTarget(): WorkspaceTabTarget {
+  return { kind: "expiring" };
+}
+
+export function postureTabTarget(): WorkspaceTabTarget {
+  return { kind: "posture" };
+}
+
+export function dnsTabTarget(): WorkspaceTabTarget {
+  return { kind: "dns" };
+}
+
+/**
+ * Environment diff. The two account ids are optional: opened from the sidebar
+ * the panel asks which environments to compare, and opening it again with a
+ * pair retargets the same tab.
+ */
+export function environmentDiffTabTarget(a?: string, b?: string): WorkspaceTabTarget {
+  return { kind: "environment-diff", ...(a ? { a } : {}), ...(b ? { b } : {}) };
+}
+
+export function sshFanoutTabTarget(): WorkspaceTabTarget {
+  return { kind: "ssh-fanout" };
+}
+
+export function metricAlertsTabTarget(): WorkspaceTabTarget {
+  return { kind: "metric-alerts" };
+}
+
+export function probesTabTarget(): WorkspaceTabTarget {
+  return { kind: "probes" };
+}
+
 export function deploymentsTabTarget(repo?: string): WorkspaceTabTarget {
   return { kind: "deployments", ...(repo ? { repo } : {}) };
 }
@@ -37,8 +78,16 @@ export function agentsTabTarget(): WorkspaceTabTarget {
   return { kind: "agents" };
 }
 
+export function settingsTabTarget(section?: string): WorkspaceTabTarget {
+  return { kind: "settings", ...(section ? { section } : {}) };
+}
+
 export function costsTabTarget(): WorkspaceTabTarget {
   return { kind: "costs" };
+}
+
+export function graphTabTarget(): WorkspaceTabTarget {
+  return { kind: "graph" };
 }
 
 export function chatTabTarget(conversationId?: string): WorkspaceTabTarget {

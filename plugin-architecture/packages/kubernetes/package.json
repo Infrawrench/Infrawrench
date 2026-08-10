@@ -22,15 +22,15 @@
     "dist"
   ],
   "scripts": {
-    "build": "rm -rf dist && tsup",
-    "dev": "tsup --watch",
-    "typecheck": "tsgo --noEmit",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "clean": "rm -rf dist"
   },
   "dependencies": {
     "@infrawrench/plugin-base": "workspace:*",
-    "js-yaml": "^4.3.0"
+    "js-yaml": "^4.3.1"
   },
   "peerDependencies": {
     "@kubernetes/client-node": "^1.4.0"
@@ -38,8 +38,8 @@
   "devDependencies": {
     "@kubernetes/client-node": "^1.4.0",
     "@types/js-yaml": "^4.0.9",
-    "tsup": "^8.3.5",
-    "typescript": "^5.7.3",
-    "vitest": "^4.1.8"
+    "tsdown": "^0.22.14",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   }
 }

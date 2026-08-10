@@ -172,6 +172,36 @@ describe("GenAI listers", () => {
     expect((await client.listResources("gen-ai-model-router", ACC))[0]!.fields.name).toBe("R1");
   });
 
+  it("records the attached knowledge-base uuids alongside the count", async () => {
+    installFetch((path) => {
+      if (path === "/gen-ai/agents?per_page=200")
+        return {
+          agents: [
+            {
+              uuid: "a-1",
+              name: "A1",
+              knowledge_bases: [{ uuid: "kb-1" }, { uuid: "kb-2" }, {}],
+            },
+          ],
+        };
+      return undefined;
+    });
+    const agent = (await client.listResources("gen-ai-agent", ACC))[0]!;
+    expect(agent.fields.knowledgeBaseCount).toBe(3);
+    expect(agent.fields.knowledgeBaseUuids).toBe("kb-1, kb-2");
+  });
+
+  it("records the owning agent uuid on each endpoint access key", async () => {
+    installFetch((path) => {
+      if (path === "/gen-ai/agents?per_page=200") return { agents: [{ uuid: "a-1", name: "A1" }] };
+      if (path.includes("/api_keys")) return { api_key_infos: [{ uuid: "ak-1", name: "ak" }] };
+      return undefined;
+    });
+    const key = (await client.listResources("agent-api-key", ACC))[0]!;
+    expect(key.fields.agentUuid).toBe("a-1");
+    expect(key.externalId).toBe("a-1/ak-1");
+  });
+
   it("lists dedicated inferences, inference batches, model & agent api keys (tolerating gaps)", async () => {
     installFetch((path) => {
       if (path.startsWith("/dedicated-inferences"))

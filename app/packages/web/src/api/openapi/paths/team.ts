@@ -65,7 +65,7 @@ const InviteRequest = strict({
   roleId: Uuid.optional(),
   addSeat: z.boolean().optional().openapi({
     description:
-      "When the paid plan is full (409 seat_limit_reached), retry with this set to buy one more seat and send the invitation. Requires billing:write.",
+      "When the paid plan is full (409 seat_limit_reached), retry with this set to buy one more monthly seat and send the invitation. Requires billing:write. Only works when the 409 reported `canAddSeat: true` — an org whose capacity is entirely prepaid capacity slots has no monthly seat to add.",
   }),
 }).openapi("InviteRequest");
 const InviteResponse = strict({ id: Uuid, token: z.string() }).openapi("InviteResponse");
@@ -73,11 +73,17 @@ const InviteResponse = strict({ id: Uuid, token: z.string() }).openapi("InviteRe
 const SeatLimitResponse = strict({
   error: z.string(),
   code: z.literal("seat_limit_reached"),
-  seatCount: z.number().int().openapi({ description: "Seats on the plan" }),
+  seatCount: z.number().int().openapi({
+    description: "Total capacity: monthly subscription seats plus prepaid capacity-slot seats",
+  }),
   seatsUsed: z
     .number()
     .int()
     .openapi({ description: "Members plus pending unexpired invitations" }),
+  canAddSeat: z.boolean().openapi({
+    description:
+      "Whether retrying with `addSeat: true` can succeed. False when the org's capacity is entirely prepaid capacity slots: there is no monthly seat to buy, so the only remedy is another capacity slot.",
+  }),
 }).openapi("SeatLimitResponse");
 
 const RoleChangeRequest = strict({
@@ -218,6 +224,12 @@ export function registerTeamPaths(ctx: BuildContext) {
     responses: {
       200: { description: "Invited", content: { "application/json": { schema: InviteResponse } } },
       402: ErrorResponses[402],
+      403: {
+        description:
+          "The role would grant permissions the caller does not hold, or the caller is not " +
+          "an owner and tried to invite an owner",
+        content: { "application/json": { schema: ErrorResponse } },
+      },
       409: {
         description: "All seats are in use; retry with addSeat to buy one more",
         content: { "application/json": { schema: SeatLimitResponse } },

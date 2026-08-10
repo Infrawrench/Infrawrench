@@ -47,6 +47,17 @@ describe("SYSTEM_ROLE_DEFINITIONS", () => {
     expect(perms).not.toContain("billing:write");
   });
 
+  it("member keeps the workflow access dashboards:write used to imply", () => {
+    // Workflows rode on `dashboards:*` until they got their own family.
+    // Members could write, run, and approve them, and still can — carving
+    // `workflows:approve` out of the default would 403 members who approve
+    // today. Custom roles are where the split earns its keep.
+    const perms = SYSTEM_ROLE_DEFINITIONS.member.permissions;
+    expect(perms).toContain("workflows:read");
+    expect(perms).toContain("workflows:write");
+    expect(perms).toContain("workflows:approve");
+  });
+
   it("member can use chat", () => {
     // `authenticateChat` enforces these. They were missing from the member
     // list while the endpoint checked membership only, so members could always

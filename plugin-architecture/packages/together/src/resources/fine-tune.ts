@@ -29,5 +29,13 @@ export const FineTuneResourceType = rt({
     }),
     o("status", "Status"),
   ],
+  // `model` on the job is the base model's `/models` id; the two file fields
+  // are `/files` ids. `outputName` is deliberately absent — it names the model
+  // the job produces, which is the reverse direction.
+  dependsOn: [
+    { fieldKey: "baseModel", targetTypeId: "model", label: "trained from" },
+    { fieldKey: "trainingFile", targetTypeId: "file", label: "trains on" },
+    { fieldKey: "validationFile", targetTypeId: "file", label: "validates on" },
+  ],
   iconKey: "model",
 });

@@ -156,6 +156,7 @@ describe("listResources dispatch + mappers", () => {
     expect((await client.listResources("image", ACC))[0]!.fields.name).toBe("myimg");
     expect((await client.listResources("managed-database", ACC))[0]!.fields.engine).toBe("pg");
     expect((await client.listResources("db-user", ACC))[0]!.fields.name).toBe("doadmin");
+    expect((await client.listResources("db-user", ACC))[0]!.fields.databaseId).toBe("db-1");
     expect((await client.listResources("doks-cluster", ACC))[0]!.fields.nodeCount).toBe(3);
     expect((await client.listResources("domain", ACC))[0]!.fields.name).toBe("example.com");
     expect((await client.listResources("dns-record", ACC))[0]!.fields.name).toBe("www.example.com");
@@ -168,6 +169,67 @@ describe("listResources dispatch + mappers", () => {
 
   it("returns [] for spaces-bucket without S3 credentials", async () => {
     expect(await newClient().listResources("spaces-bucket", ACC)).toEqual([]);
+  });
+});
+
+describe("vpc", () => {
+  const VPCS = {
+    vpcs: [
+      {
+        id: "5a4981aa-9653-4bd1-bef5-d6bff52042e4",
+        urn: "do:vpc:5a4981aa-9653-4bd1-bef5-d6bff52042e4",
+        name: "default-nyc3",
+        description: "shared",
+        region: "nyc3",
+        ip_range: "10.116.0.0/20",
+        default: true,
+        created_at: "2026-01-02T03:04:05Z",
+      },
+      { id: "vpc-2", name: "prod", region: "fra1", ip_range: "10.10.10.0/24" },
+    ],
+  };
+
+  it("lists VPCs with the uuid as externalId", async () => {
+    installFetch((path) => (path === "/vpcs?per_page=200" ? VPCS : undefined));
+    const list = await newClient().listResources("vpc", ACC);
+    expect(list).toHaveLength(2);
+    expect(list[0]!.id).toBe(`${ACC}:vpc:5a4981aa-9653-4bd1-bef5-d6bff52042e4`);
+    expect(list[0]!.externalId).toBe("5a4981aa-9653-4bd1-bef5-d6bff52042e4");
+    expect(list[0]!.displayName).toBe("default-nyc3");
+    expect(list[0]!.fields).toEqual({
+      name: "default-nyc3",
+      region: "nyc3",
+      ipRange: "10.116.0.0/20",
+      description: "shared",
+      isDefault: true,
+      createdAt: "2026-01-02T03:04:05Z",
+    });
+    expect(list[0]!.resolvedOutputs).toEqual({
+      vpcId: "5a4981aa-9653-4bd1-bef5-d6bff52042e4",
+    });
+    expect(list[0]!.createdAt).toBe("2026-01-02T03:04:05Z");
+    // Absent `default`/`description` must not become "undefined" strings.
+    expect(list[1]!.fields).toMatchObject({ description: "", isDefault: false });
+  });
+
+  it("tolerates a null vpcs array", async () => {
+    installFetch((path) => (path === "/vpcs?per_page=200" ? { vpcs: null } : undefined));
+    expect(await newClient().listResources("vpc", ACC)).toEqual([]);
+  });
+
+  it("resolves the vpcId output from the external id without a network call", async () => {
+    installFetch(() => undefined);
+    expect(await newClient().resolveOutput("vpc", `${ACC}:vpc:vpc-9`, "vpcId", ACC)).toBe("vpc-9");
+  });
+
+  it("DELETEs /vpcs/{id}", async () => {
+    const seen: Array<{ path: string; method: string }> = [];
+    installFetch((path, method) => {
+      seen.push({ path, method });
+      return {};
+    });
+    await newClient().deleteResource("vpc", `${ACC}:vpc:vpc-9`, ACC);
+    expect(seen).toEqual([{ path: "/vpcs/vpc-9", method: "DELETE" }]);
   });
 });
 
@@ -515,22 +577,24 @@ describe("invokeAction", () => {
   });
 });
 
-describe("getCreateConfig / getCreateCostEstimate / exportCredential / manifests", () => {
+describe("getCreateConfig / estimateCost / exportCredential / manifests", () => {
   it("getCreateConfig delegates to doGetCreateConfig", async () => {
     installFetch(() => undefined);
     const config = await newClient().getCreateConfig("project");
     expect(config.fields.some((f) => f.key === "name")).toBe(true);
   });
 
-  it("getCreateCostEstimate multiplies db per-node price by node count", async () => {
+  it("estimateCost multiplies db per-node price by node count", async () => {
     const client = newClient();
-    const est = await client.getCreateCostEstimate("managed-database", {
+    const est = await client.estimateCost("managed-database", {
       size: "db-s-2vcpu-4gb",
       nodeCount: "3",
     });
-    expect(est).toBeCloseTo(4 * 15.2 * 3);
-    expect(await client.getCreateCostEstimate("doks-cluster", {})).toBeNull();
-    expect(await client.getCreateCostEstimate("droplet", {})).toBeNull();
+    expect(est?.monthlyAmount).toBeCloseTo(4 * 15.2 * 3);
+    expect(est?.lineItems).toHaveLength(1);
+    expect(est?.lineItems[0]).toMatchObject({ quantity: 3, unit: "nodes" });
+    expect(await client.estimateCost("doks-cluster", {})).toBeNull();
+    expect(await client.estimateCost("droplet", {})).toBeNull();
   });
 
   it("exportCredential mints a bucket-scoped Spaces key", async () => {

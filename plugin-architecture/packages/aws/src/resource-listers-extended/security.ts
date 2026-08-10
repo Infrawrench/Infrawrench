@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { ensureArray } from "../xml.js";
-import type { ListerContext } from "../resource-listers.js";
+import { joinIds, type ListerContext } from "../resource-listers.js";
 
 export async function listIAMRoles(
   ctx: ListerContext,
@@ -75,6 +75,9 @@ export async function listACMCertificates(
           keyAlgorithm: String(c["KeyAlgorithm"] ?? ""),
           subjectAlternativeNames: sans?.join(", ") ?? "",
           inUseBy: inUseBy?.length ?? 0,
+          // The count stays; these are the ARNs it counts — load balancers and
+          // CloudFront distributions the certificate is installed on.
+          inUseByArns: joinIds(inUseBy ?? []),
         },
         resolvedOutputs: { certificateArn: arn },
         secretStates: [],
@@ -100,6 +103,7 @@ export async function listACMCertificates(
           keyAlgorithm: String(cert["KeyAlgorithm"] ?? ""),
           subjectAlternativeNames: "",
           inUseBy: 0,
+          inUseByArns: "",
         },
         resolvedOutputs: { certificateArn: arn },
         secretStates: [],

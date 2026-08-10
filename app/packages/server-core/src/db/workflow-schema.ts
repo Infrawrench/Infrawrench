@@ -157,6 +157,113 @@ export const workflowPages = pgTable(
 );
 
 /**
+ * A human-approval gate raised by `infra.waitForApproval(...)` inside a run.
+ *
+ * The run's worker inserts a `pending` row, notifies the org, and then polls
+ * this row until a decision lands or `expiresAt` passes (which counts as a
+ * denial). The decision endpoints flip `status` with a conditional UPDATE
+ * (`status = 'pending' AND expires_at > now()`), so two members racing the
+ * same request produce exactly one decision.
+ */
+export const workflowApprovals = pgTable(
+  "workflow_approvals",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workflowId: text("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
+    /** The run that is suspended on this request. */
+    runId: text("run_id")
+      .notNull()
+      .references(() => workflowRuns.id, { onDelete: "cascade" }),
+    /** Short headline for the approval card (defaults to the workflow name). */
+    title: text("title").notNull(),
+    /** What the approver is deciding. */
+    message: text("message").notNull(),
+    /** "pending" | "approved" | "denied" | "expired" */
+    status: text("status").notNull().default("pending"),
+    /** When the pending request is treated as denied. */
+    expiresAt: timestamp("expires_at").notNull(),
+    decidedAt: timestamp("decided_at"),
+    decidedByUserId: text("decided_by_user_id"),
+    /** Display name/email snapshot of the decider, for the run log and UI. */
+    decidedByName: text("decided_by_name"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgStatusIdx: index("workflow_approvals_org_status_idx").on(t.organizationId, t.status),
+    runIdx: index("workflow_approvals_run_idx").on(t.runId),
+    workflowIdx: index("workflow_approvals_workflow_idx").on(t.workflowId),
+  }),
+);
+
+/**
+ * One `infra.ai(...)` call's token usage and billable cost. The AI-chat
+ * equivalent is `chat_usage`; kept as its own table because chat rows hang off
+ * a conversation/message, which a workflow run doesn't have. The org's monthly
+ * AI spend cap sums both tables plus in-flight {@link aiSpendReservations}
+ * (see ../billing/ai-usage.ts).
+ *
+ * `workflow_id` and `run_id` are plain columns, not foreign keys, on purpose:
+ * these are billing records, and deleting a workflow (or pruning its runs) must
+ * not delete the spend it caused — an org could otherwise reset its free tier
+ * by deleting the workflow that spent it.
+ */
+export const workflowAiUsage = pgTable(
+  "workflow_ai_usage",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workflowId: text("workflow_id").notNull(),
+    runId: text("run_id"),
+    model: text("model").notNull(),
+    inputTokens: integer("input_tokens").notNull(),
+    outputTokens: integer("output_tokens").notNull(),
+    cacheReadTokens: integer("cache_read_tokens").notNull(),
+    cacheWriteTokens: integer("cache_write_tokens").notNull(),
+    /** Total billable cost in micro-dollars after markup. */
+    costMicros: integer("cost_micros").notNull(),
+    /** Stripe meter-event identifier once reported; null until reported. */
+    stripeUsageRecordId: text("stripe_usage_record_id"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgCreatedIdx: index("workflow_ai_usage_org_created_idx").on(t.organizationId, t.createdAt),
+    unreportedIdx: index("workflow_ai_usage_unreported_idx").on(t.stripeUsageRecordId),
+  }),
+);
+
+/**
+ * In-flight hold on an org's monthly AI spend pool. Chat turns and workflow
+ * `infra.ai()` calls both insert here under an org advisory lock before talking
+ * to a provider, so concurrent consumers cannot all clear the same below-cap
+ * check. `expiresAt` is pushed forward while the call is still running
+ * (see `touchAiSpendReservation`); a process that dies mid-call stops
+ * refreshing and the row is purged so it cannot permanently block the org.
+ */
+export const aiSpendReservations = pgTable(
+  "ai_spend_reservations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    estimatedCostMicros: integer("estimated_cost_micros").notNull(),
+    /** When this hold stops counting; refreshed by long-running callers. */
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgExpiresIdx: index("ai_spend_reservations_org_expires_idx").on(t.organizationId, t.expiresAt),
+  }),
+);
+
+/**
  * A GitHub App installation connected to an org. The github-watcher uses the
  * installation id to mint short-lived installation tokens (acting as the app /
  * bot) to list repos and read branch heads. Repos a workflow watches are stored

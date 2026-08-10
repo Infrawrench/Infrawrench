@@ -22,5 +22,15 @@ export const DeployedModelResourceType = rt({
       description: "Pass this as `model` to route inference at the add-on",
     }),
   ],
+  // Both hold full resource names, matched against the target's name output.
+  dependsOn: [
+    { fieldKey: "model", targetTypeId: "model", targetKey: "modelName", label: "serves" },
+    {
+      fieldKey: "deployment",
+      targetTypeId: "deployment",
+      targetKey: "deploymentName",
+      label: "loaded onto",
+    },
+  ],
   iconKey: "model",
 });

@@ -31,6 +31,7 @@ import {
   listOpenSearchDomains,
   listNeptuneClusters,
   listDocumentDBClusters,
+  listDBSubnetGroups,
   listEFSFileSystems,
   listCloudWatchAlarms,
   listCloudWatchLogGroups,
@@ -47,6 +48,7 @@ import {
   listGlueDatabases,
   listAPIGateways,
 } from "../resource-listers-extended.js";
+import { parseXml } from "../xml.js";
 
 interface MockResponses {
   ec2?: (action: string) => unknown;
@@ -54,6 +56,7 @@ interface MockResponses {
   jsonGet?: (service: string, path: string) => unknown;
   ec2Query?: (service: string, action: string) => unknown;
   restJson?: (service: string, path: string) => unknown;
+  xmlGet?: (service: string, path?: string) => unknown;
 }
 
 function makeCtx(r: MockResponses): ListerContext {
@@ -63,7 +66,7 @@ function makeCtx(r: MockResponses): ListerContext {
     jsonGet: vi.fn(async (service, path) => r.jsonGet?.(service, path) ?? {}) as never,
     restJson: vi.fn(async (service, path) => r.restJson?.(service, path) ?? {}) as never,
     ec2Query: vi.fn(async (service, action) => r.ec2Query?.(service, action) ?? {}) as never,
-    xmlGet: vi.fn(async () => ({})) as never,
+    xmlGet: vi.fn(async (service, path) => r.xmlGet?.(service, path) ?? {}) as never,
     id: (a, t, e) => `${a}:${t}:${e}`,
     now: () => "2020-01-01T00:00:00Z",
     region: "us-east-1",
@@ -73,54 +76,163 @@ function makeCtx(r: MockResponses): ListerContext {
 
 beforeEach(() => fetchSigned.mockReset());
 
+/**
+ * Route 53 is REST-XML. These listers used to call `jsonGet` and were tested
+ * with hand-written JSON that AWS never returns, so the suite passed while
+ * every real poll threw on the `<?xml` prefix. Everything here goes through the
+ * real `parseXml` against documented response shapes.
+ */
+const LIST_HOSTED_ZONES_XML = `<?xml version="1.0"?>
+<ListHostedZonesResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
+  <HostedZones>
+    <HostedZone>
+      <Id>/hostedzone/Z1</Id>
+      <Name>ex.com.</Name>
+      <CallerReference>ref-1</CallerReference>
+      <Config><Comment>c</Comment><PrivateZone>true</PrivateZone></Config>
+      <ResourceRecordSetCount>3</ResourceRecordSetCount>
+    </HostedZone>
+    <HostedZone>
+      <Id>/hostedzone/Z2</Id>
+      <Name>other.com.</Name>
+      <CallerReference>ref-2</CallerReference>
+      <Config><PrivateZone>false</PrivateZone></Config>
+      <ResourceRecordSetCount>1</ResourceRecordSetCount>
+    </HostedZone>
+  </HostedZones>
+  <IsTruncated>false</IsTruncated>
+  <MaxItems>100</MaxItems>
+</ListHostedZonesResponse>`;
+
+const LIST_RRSET_XML = `<?xml version="1.0"?>
+<ListResourceRecordSetsResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
+  <ResourceRecordSets>
+    <ResourceRecordSet>
+      <Name>a.ex.com.</Name>
+      <Type>A</Type>
+      <TTL>300</TTL>
+      <ResourceRecords>
+        <ResourceRecord><Value>1.2.3.4</Value></ResourceRecord>
+        <ResourceRecord><Value>5.6.7.8</Value></ResourceRecord>
+      </ResourceRecords>
+    </ResourceRecordSet>
+    <ResourceRecordSet>
+      <Name>solo.ex.com.</Name>
+      <Type>CNAME</Type>
+      <TTL>60</TTL>
+      <ResourceRecords>
+        <ResourceRecord><Value>target.example.net</Value></ResourceRecord>
+      </ResourceRecords>
+    </ResourceRecordSet>
+  </ResourceRecordSets>
+  <IsTruncated>false</IsTruncated>
+  <MaxItems>100</MaxItems>
+</ListResourceRecordSetsResponse>`;
+
+const LIST_HEALTH_CHECKS_XML = `<?xml version="1.0"?>
+<ListHealthChecksResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
+  <HealthChecks>
+    <HealthCheck>
+      <Id>hc1</Id>
+      <CallerReference>ref</CallerReference>
+      <HealthCheckConfig>
+        <Type>HTTP</Type>
+        <FullyQualifiedDomainName>ex.com</FullyQualifiedDomainName>
+        <Port>80</Port>
+        <RequestInterval>30</RequestInterval>
+        <FailureThreshold>3</FailureThreshold>
+      </HealthCheckConfig>
+    </HealthCheck>
+  </HealthChecks>
+  <IsTruncated>false</IsTruncated>
+  <MaxItems>100</MaxItems>
+</ListHealthChecksResponse>`;
+
 describe("dns listers", () => {
-  it("listRoute53HostedZones maps zones", async () => {
-    const ctx = makeCtx({
-      jsonGet: () => ({
-        HostedZones: [
-          {
-            Id: "/hostedzone/Z1",
-            Name: "ex.com.",
-            ResourceRecordSetCount: 3,
-            Config: { PrivateZone: true, Comment: "c" },
-          },
-        ],
-      }),
-    });
+  it("listRoute53HostedZones parses the XML response over xmlGet", async () => {
+    const ctx = makeCtx({ xmlGet: () => parseXml(LIST_HOSTED_ZONES_XML) });
     const out = await listRoute53HostedZones(ctx, "acct");
+
+    expect(out).toHaveLength(2);
     expect(out[0]!.externalId).toBe("Z1");
-    expect(out[0]!.fields.isPrivate).toBe(true);
+    expect(out[0]!.displayName).toBe("ex.com.");
+    expect(out[0]!.fields).toMatchObject({
+      hostedZoneId: "Z1",
+      recordCount: 3,
+      isPrivate: true,
+      comment: "c",
+    });
+    expect(out[1]!.fields.isPrivate).toBe(false);
+    // The bug: jsonGet against an XML API threw on every poll.
+    expect(ctx.jsonGet).not.toHaveBeenCalled();
+    expect(ctx.xmlGet).toHaveBeenCalledWith("route53", "/2013-04-01/hostedzone");
   });
-  it("listRoute53RecordSets lists records per zone and tolerates failures", async () => {
+
+  it("listRoute53HostedZones handles a single zone parsing as a bare object", async () => {
+    const singleXml = `<?xml version="1.0"?>
+<ListHostedZonesResponse><HostedZones><HostedZone>
+  <Id>/hostedzone/ZONLY</Id><Name>solo.com.</Name>
+  <Config><PrivateZone>false</PrivateZone></Config>
+  <ResourceRecordSetCount>0</ResourceRecordSetCount>
+</HostedZone></HostedZones></ListHostedZonesResponse>`;
+    const ctx = makeCtx({ xmlGet: () => parseXml(singleXml) });
+    const out = await listRoute53HostedZones(ctx, "acct");
+    expect(out.map((z) => z.externalId)).toEqual(["ZONLY"]);
+  });
+
+  it("listRoute53RecordSets joins multi-value records and unwraps single ones", async () => {
     const ctx = makeCtx({
-      jsonGet: (_s, path) => {
-        if (path === "/2013-04-01/hostedzone")
-          return { HostedZones: [{ Id: "/hostedzone/Z1", Name: "ex.com." }] };
-        if (path.endsWith("/rrset"))
-          return {
-            ResourceRecordSets: [
-              { Name: "a.ex.com.", Type: "A", TTL: 300, ResourceRecords: [{ Value: "1.2.3.4" }] },
-            ],
-          };
-        return {};
+      xmlGet: (_s, path) =>
+        path === "/2013-04-01/hostedzone"
+          ? parseXml(LIST_HOSTED_ZONES_XML)
+          : parseXml(LIST_RRSET_XML),
+    });
+    const out = await listRoute53RecordSets(ctx, "acct");
+
+    // Two zones × two records each.
+    expect(out).toHaveLength(4);
+    expect(out[0]!.fields).toMatchObject({
+      name: "a.ex.com.",
+      type: "A",
+      ttl: 300,
+      values: "1.2.3.4, 5.6.7.8",
+      hostedZoneId: "Z1",
+    });
+    expect(out[1]!.fields.values).toBe("target.example.net");
+  });
+
+  it("listRoute53RecordSets tolerates a zone whose records fail to list", async () => {
+    const ctx = makeCtx({
+      xmlGet: (_s, path) => {
+        if (path === "/2013-04-01/hostedzone") return parseXml(LIST_HOSTED_ZONES_XML);
+        if (path?.includes("Z1")) throw new Error("AccessDenied");
+        return parseXml(LIST_RRSET_XML);
       },
     });
     const out = await listRoute53RecordSets(ctx, "acct");
-    expect(out[0]!.fields.values).toBe("1.2.3.4");
+    expect(out.every((r) => r.fields.hostedZoneId === "Z2")).toBe(true);
+    expect(out).toHaveLength(2);
   });
-  it("listRoute53HealthChecks maps checks", async () => {
-    const ctx = makeCtx({
-      jsonGet: () => ({
-        HealthChecks: [
-          {
-            Id: "hc1",
-            HealthCheckConfig: { Type: "HTTP", FullyQualifiedDomainName: "ex.com", Port: 80 },
-          },
-        ],
-      }),
-    });
+
+  it("listRoute53HealthChecks parses the XML response", async () => {
+    const ctx = makeCtx({ xmlGet: () => parseXml(LIST_HEALTH_CHECKS_XML) });
     const out = await listRoute53HealthChecks(ctx, "acct");
-    expect(out[0]!.fields.type).toBe("HTTP");
+    expect(out[0]!.externalId).toBe("hc1");
+    expect(out[0]!.fields).toMatchObject({
+      type: "HTTP",
+      fqdn: "ex.com",
+      port: 80,
+      requestInterval: 30,
+      failureThreshold: 3,
+    });
+    expect(ctx.jsonGet).not.toHaveBeenCalled();
+  });
+
+  it("returns nothing for an empty hosted-zone response", async () => {
+    const emptyXml = `<?xml version="1.0"?>
+<ListHostedZonesResponse><HostedZones></HostedZones><IsTruncated>false</IsTruncated></ListHostedZonesResponse>`;
+    const ctx = makeCtx({ xmlGet: () => parseXml(emptyXml) });
+    expect(await listRoute53HostedZones(ctx, "acct")).toEqual([]);
   });
 });
 
@@ -420,6 +532,99 @@ describe("database extended listers", () => {
     const out = await listRDSClusters(ctx, "acct");
     expect(out[0]!.resolvedOutputs.connectionString).toBe("postgresql://u@h:5432");
     expect(out[0]!.fields.dbClusterMembers).toBe(2);
+  });
+  // Cluster describes carry the subnet group as a bare name string (instance
+  // describes inline the whole group instead). Storing it is what lets the
+  // `→ db-subnet-group` rule resolve.
+  it.each([
+    ["listRDSClusters", listRDSClusters, "aurora-postgresql"],
+    ["listNeptuneClusters", listNeptuneClusters, "neptune"],
+    ["listDocumentDBClusters", listDocumentDBClusters, "docdb"],
+  ] as const)("%s stores the DB subnet group name", async (_name, lister, engine) => {
+    const ctx = makeCtx({
+      ec2Query: () => ({
+        DescribeDBClustersResult: {
+          DBClusters: {
+            DBCluster: {
+              DBClusterIdentifier: "c",
+              Engine: engine,
+              DBSubnetGroup: "prod-db-subnets",
+            },
+          },
+        },
+      }),
+    });
+    const out = await lister(ctx, "acct");
+    expect(out[0]!.fields.dbSubnetGroupName).toBe("prod-db-subnets");
+  });
+  it("listDBSubnetGroups maps the DescribeDBSubnetGroups XML payload", async () => {
+    // Verbatim shape from the RDS API reference sample response.
+    const xml = `<DescribeDBSubnetGroupsResponse xmlns="http://rds.amazonaws.com/doc/2014-10-31/">
+  <DescribeDBSubnetGroupsResult>
+    <DBSubnetGroups>
+      <DBSubnetGroup>
+        <VpcId>vpc-e7abbdce</VpcId>
+        <SubnetGroupStatus>Complete</SubnetGroupStatus>
+        <DBSubnetGroupDescription>DB subnet group 1</DBSubnetGroupDescription>
+        <DBSubnetGroupName>mydbsubnetgroup1</DBSubnetGroupName>
+        <DBSubnetGroupArn>arn:aws:rds:us-west-2:123456789012:subgrp:mydbsubnetgroup1</DBSubnetGroupArn>
+        <Subnets>
+          <Subnet>
+            <SubnetStatus>Active</SubnetStatus>
+            <SubnetIdentifier>subnet-e8b3e5b1</SubnetIdentifier>
+            <SubnetAvailabilityZone><Name>us-west-2a</Name></SubnetAvailabilityZone>
+          </Subnet>
+          <Subnet>
+            <SubnetStatus>Active</SubnetStatus>
+            <SubnetIdentifier>subnet-44b2f22e</SubnetIdentifier>
+            <SubnetAvailabilityZone><Name>us-west-2b</Name></SubnetAvailabilityZone>
+          </Subnet>
+        </Subnets>
+      </DBSubnetGroup>
+      <DBSubnetGroup>
+        <VpcId>vpc-c1e17bb8</VpcId>
+        <SubnetGroupStatus>Complete</SubnetGroupStatus>
+        <DBSubnetGroupDescription>My DB subnet group 2</DBSubnetGroupDescription>
+        <DBSubnetGroupName>sub-grp-2</DBSubnetGroupName>
+        <Subnets>
+          <Subnet>
+            <SubnetStatus>Active</SubnetStatus>
+            <SubnetIdentifier>subnet-d281ef8a</SubnetIdentifier>
+          </Subnet>
+        </Subnets>
+      </DBSubnetGroup>
+    </DBSubnetGroups>
+  </DescribeDBSubnetGroupsResult>
+  <ResponseMetadata><RequestId>b783db3b</RequestId></ResponseMetadata>
+</DescribeDBSubnetGroupsResponse>`;
+    const ctx = makeCtx({ ec2Query: () => parseXml(xml) });
+    const out = await listDBSubnetGroups(ctx, "acct");
+
+    expect(out).toHaveLength(2);
+    const first = out[0]!;
+    // externalId is the group name, so the clusters' DBSubnetGroupName matches.
+    expect(first.externalId).toBe("mydbsubnetgroup1");
+    expect(first.id).toBe("acct:db-subnet-group:mydbsubnetgroup1");
+    expect(first.displayName).toBe("mydbsubnetgroup1");
+    expect(first.fields).toEqual({
+      name: "mydbsubnetgroup1",
+      region: "us-east-1",
+      vpcId: "vpc-e7abbdce",
+      subnetIds: "subnet-e8b3e5b1, subnet-44b2f22e",
+      status: "Complete",
+      description: "DB subnet group 1",
+    });
+    expect(first.resolvedOutputs.subnetGroupArn).toBe(
+      "arn:aws:rds:us-west-2:123456789012:subgrp:mydbsubnetgroup1",
+    );
+
+    // A lone <Subnet> parses to a bare object rather than an array.
+    expect(out[1]!.fields.subnetIds).toBe("subnet-d281ef8a");
+    expect(out[1]!.resolvedOutputs.subnetGroupArn).toBe("");
+  });
+  it("listDBSubnetGroups returns nothing when the account has no groups", async () => {
+    const ctx = makeCtx({ ec2Query: () => ({ DescribeDBSubnetGroupsResult: {} }) });
+    expect(await listDBSubnetGroups(ctx, "acct")).toEqual([]);
   });
   it("listOpenSearchDomains describes each domain", async () => {
     const ctx = makeCtx({

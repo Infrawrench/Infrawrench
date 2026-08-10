@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import workflowRoutes from "./routes/workflows.js";
+import workflowApprovalRoutes from "./routes/workflow-approvals.js";
 import deploymentRoutes from "./routes/deployments";
 import agentRoutes from "./routes/agents.js";
 import { HTTPException } from "hono/http-exception";
@@ -7,6 +8,7 @@ import { setCookie } from "hono/cookie";
 import { randomBytes, randomUUID } from "node:crypto";
 import { apiReference } from "@scalar/hono-api-reference";
 import { sessionMiddleware, orgMiddleware, permissionsMiddleware } from "./auth-middleware";
+import { securityHeaders } from "./security-headers";
 import { workos, clientId } from "../auth/workos";
 import { getPublicOpenApiDocument } from "./openapi/index";
 import {
@@ -30,10 +32,18 @@ import { adminRoutes } from "./routes/admin";
 
 import { dashboardRoutes } from "./routes/dashboards";
 import { costRoutes } from "./routes/costs";
+import { orphanRoutes } from "./routes/orphans";
+import { environmentDiffRoutes } from "./routes/environment-diff";
+import { rightsizingRoutes } from "./routes/rightsizing";
 import { costIngestRoutes } from "./routes/cost-ingest";
 import { pageRoutes } from "./routes/pages";
 import { budgetRoutes } from "./routes/budgets";
+import { metricAlertRoutes } from "./routes/metric-alerts";
+import { changeFreezeRoutes } from "./routes/change-freezes";
+import { tagPolicyRoutes } from "./routes/tag-policy";
+import { costCentreRoutes } from "./routes/cost-centres";
 import { customGraphRoutes } from "./routes/custom-graphs";
+import { orgConfigRoutes } from "./routes/org-config";
 import { accountRoutes } from "./routes/accounts";
 import { apiKeyRoutes } from "./routes/api-keys";
 import { teamRoutes } from "./routes/team";
@@ -41,20 +51,41 @@ import { billingRoutes } from "./routes/billing";
 import { auditRoutes } from "./routes/audit";
 import { connectionFeatureRoutes } from "./routes/connection-features";
 import { resourceDetailRoutes } from "./routes/resource-detail";
+import { resourceChangeRoutes } from "./routes/resource-changes";
+import { statusIncidentRoutes } from "./routes/status-incidents";
+import { expiringRoutes } from "./routes/expiring";
+import { postureRoutes } from "./routes/posture";
+import { dnsRoutes } from "./routes/dns";
+import { momentRoutes } from "./routes/moment";
+import { scheduleRoutes } from "./routes/schedules";
+import { leaseRoutes } from "./routes/leases";
+import { probeRoutes } from "./routes/probes";
+import { statusPageRoutes, publicStatusRoutes } from "./routes/status-pages";
+import { ownershipRoutes } from "./routes/ownership";
+import { logWorkspaceRoutes } from "./routes/log-workspaces";
 import { associationRoutes } from "./routes/associations";
+import { dependencyGraphRoutes } from "./routes/dependency-graph";
 import { wsTokenRoutes } from "./routes/ws-token";
 import { storageRoutes } from "./routes/storage";
 import { sftpRoutes } from "./routes/sftp";
 import { sshKeyRoutes } from "./routes/ssh-keys";
 import { sshHostKeyRoutes } from "./routes/ssh-host-keys";
+import sessionRecordingRoutes from "./routes/session-recordings.js";
+import accessRequestRoutes from "./routes/access-requests.js";
+import credentialHygieneRoutes from "./routes/credential-hygiene.js";
+import creditRoutes from "./routes/credits.js";
 import { searchRoutes } from "./routes/search";
 import { connectRoutes } from "./routes/connect";
 import { sshTunnelRoutes } from "./routes/ssh-tunnels";
+import { sshFanoutRoutes } from "./routes/ssh-fanout";
 import { bastionRoutes } from "./routes/bastions";
 import { twilioRoutes } from "./routes/twilio";
 import { slackRoutes, slackOauthRoute } from "./routes/slack";
+import { slackInboundRoutes } from "./routes/slack-inbound";
 import { msteamsRoutes } from "./routes/msteams";
+import { digestRoutes } from "./routes/digest";
 import { pushDeviceRoutes, pushOrgRoutes } from "./routes/push-devices";
+import alertRuleRoutes from "./routes/alert-rules";
 
 // API-key-authed; handles its own auth.
 import { syncRoutes } from "./routes/sync";
@@ -63,6 +94,11 @@ import { chatRoutes } from "./routes/chat";
 import { wellKnownRoutes } from "../mcp/well-known";
 
 const api = new Hono();
+
+// First middleware on the stack so every response below — including the ones
+// `onError` synthesizes — carries the baseline headers. `prodApp` in server.ts
+// mounts the same middleware for static and SPA responses.
+api.use("*", securityHeaders());
 
 api.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
@@ -84,6 +120,9 @@ api.route("/api", workflowGitWebhook);
 api.route("/api", githubSetupRoute);
 // Public Slack OAuth callback (no session; signed `state` binds the org).
 api.route("/api", slackOauthRoute);
+// Inbound Slack: slash commands + interactivity (signature-verified), and the
+// session-authed account-link landing (it bounces through sign-in itself).
+api.route("/api", slackInboundRoutes);
 api.route("/.well-known", wellKnownRoutes);
 
 /**
@@ -184,6 +223,13 @@ api.route("/api/org/:orgId/chat", chatRoutes);
 api.route("/api/org/:orgId/costs", costIngestRoutes);
 api.route("/api/org/:orgId/pages", pageRoutes);
 
+// Public status pages. Registered outside every auth layer *and* outside the
+// org tree, because the whole point is to answer callers with no account and
+// the URL deliberately contains no org id — only the page's slug, which is its
+// sole credential. The handler can reach nothing but the public payload
+// assembler (see routes/status-pages.ts).
+api.route("/api/status", publicStatusRoutes);
+
 const authed = new Hono();
 authed.use("*", sessionMiddleware);
 
@@ -206,9 +252,17 @@ orgScoped.use("*", permissionsMiddleware);
 
 orgScoped.route("/dashboards", dashboardRoutes);
 orgScoped.route("/costs", costRoutes);
+orgScoped.route("/orphans", orphanRoutes);
+orgScoped.route("/rightsizing", rightsizingRoutes);
 orgScoped.route("/budgets", budgetRoutes);
+orgScoped.route("/metric-alerts", metricAlertRoutes);
+orgScoped.route("/change-freezes", changeFreezeRoutes);
+orgScoped.route("/tag-policy", tagPolicyRoutes);
+orgScoped.route("/cost-centres", costCentreRoutes);
 orgScoped.route("/custom-graphs", customGraphRoutes);
+orgScoped.route("/config", orgConfigRoutes);
 orgScoped.route("/workflows", workflowRoutes);
+orgScoped.route("/workflow-approvals", workflowApprovalRoutes);
 orgScoped.route("/deployments", deploymentRoutes);
 orgScoped.route("/agents", agentRoutes);
 orgScoped.route("/github", githubRoutes);
@@ -219,20 +273,41 @@ orgScoped.route("/billing", billingRoutes);
 orgScoped.route("/audit-logs", auditRoutes);
 orgScoped.route("/", connectionFeatureRoutes);
 orgScoped.route("/resources", resourceDetailRoutes);
+orgScoped.route("/changes", resourceChangeRoutes);
+orgScoped.route("/status-incidents", statusIncidentRoutes);
+orgScoped.route("/expiring", expiringRoutes);
+orgScoped.route("/posture", postureRoutes);
+orgScoped.route("/dns", dnsRoutes);
+orgScoped.route("/environment-diff", environmentDiffRoutes);
+orgScoped.route("/moment", momentRoutes);
+orgScoped.route("/schedules", scheduleRoutes);
+orgScoped.route("/leases", leaseRoutes);
+orgScoped.route("/probes", probeRoutes);
+orgScoped.route("/status-pages", statusPageRoutes);
+orgScoped.route("/ownership", ownershipRoutes);
+orgScoped.route("/log-workspaces", logWorkspaceRoutes);
 orgScoped.route("/associations", associationRoutes);
+orgScoped.route("/dependency-graph", dependencyGraphRoutes);
 orgScoped.route("/ws-token", wsTokenRoutes);
 orgScoped.route("/v1/storage", storageRoutes);
 orgScoped.route("/v1/sftp", sftpRoutes);
 orgScoped.route("/ssh-keys", sshKeyRoutes);
 orgScoped.route("/ssh-host-keys", sshHostKeyRoutes);
+orgScoped.route("/session-recordings", sessionRecordingRoutes);
+orgScoped.route("/access-requests", accessRequestRoutes);
+orgScoped.route("/credential-hygiene", credentialHygieneRoutes);
+orgScoped.route("/credits", creditRoutes);
 orgScoped.route("/search", searchRoutes);
 orgScoped.route("/connect", connectRoutes);
 orgScoped.route("/ssh-tunnels", sshTunnelRoutes);
+orgScoped.route("/ssh-fanout", sshFanoutRoutes);
 orgScoped.route("/bastions", bastionRoutes);
 orgScoped.route("/twilio", twilioRoutes);
 orgScoped.route("/slack", slackRoutes);
 orgScoped.route("/msteams", msteamsRoutes);
+orgScoped.route("/digest", digestRoutes);
 orgScoped.route("/push", pushOrgRoutes);
+orgScoped.route("/alert-rules", alertRuleRoutes);
 
 api.route("/api/org/:orgId", orgScoped);
 

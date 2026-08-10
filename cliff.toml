@@ -87,3 +87,14 @@ topo_order_commits = true
 sort_commits = "oldest"
 # Process submodules commits
 recurse_submodules = false
+# Only include commits touching the desktop app or a workspace package it
+# (transitively) depends on: client-core, ui, workflow-runtime, and every
+# plugin-architecture package (plugin-base, all plugins, sftp-host,
+# ssh-tunnel-core). Recompute this list if desktop's workspace deps change.
+include_paths = [
+    "app/packages/desktop/**",
+    "app/packages/client-core/**",
+    "app/packages/ui/**",
+    "app/packages/workflow-runtime/**",
+    "plugin-architecture/**",
+]

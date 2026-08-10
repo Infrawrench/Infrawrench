@@ -1,5 +1,12 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { ARM, extractResourceGroup, type ListerContext } from "./shared.js";
+import {
+  ARM,
+  extractName,
+  extractResourceGroup,
+  extractVaultName,
+  subnetRef,
+  type ListerContext,
+} from "./shared.js";
 
 export async function listSQLDatabases(
   ctx: ListerContext,
@@ -100,6 +107,7 @@ export async function listCosmosDBAccounts(
         readLocations: readLocations?.map((l) => String(l["locationName"] ?? "")).join(", ") ?? "",
         writeLocations:
           writeLocations?.map((l) => String(l["locationName"] ?? "")).join(", ") ?? "",
+        keyVaultName: extractVaultName(String(props?.["keyVaultKeyUri"] ?? "")),
       },
       resolvedOutputs: {
         documentEndpoint: String(props?.["documentEndpoint"] ?? ""),
@@ -171,6 +179,8 @@ export async function listPostgresFlexibleServers(
     const storage = props?.["storage"] as Record<string, unknown> | undefined;
     const ha = props?.["highAvailability"] as Record<string, unknown> | undefined;
     const backup = props?.["backup"] as Record<string, unknown> | undefined;
+    const network = props?.["network"] as Record<string, unknown> | undefined;
+    const dataEncryption = props?.["dataEncryption"] as Record<string, unknown> | undefined;
 
     return {
       id: ctx.id(accountId, "azure-postgres-flexible", `${rg}/${name}`),
@@ -189,6 +199,14 @@ export async function listPostgresFlexibleServers(
         storageSizeGb: Number(storage?.["storageSizeGB"] ?? 0),
         haEnabled: String(ha?.["mode"] ?? "Disabled") !== "Disabled",
         backupRetentionDays: Number(backup?.["backupRetentionDays"] ?? 7),
+        delegatedSubnet: subnetRef(String(network?.["delegatedSubnetResourceId"] ?? "")),
+        // PostgreSQL spells it `…ArmResourceId`, MySQL `…ResourceId`.
+        privateDnsZone: extractName(
+          String(
+            network?.["privateDnsZoneArmResourceId"] ?? network?.["privateDnsZoneResourceId"] ?? "",
+          ),
+        ),
+        keyVaultName: extractVaultName(String(dataEncryption?.["primaryKeyURI"] ?? "")),
       },
       resolvedOutputs: {
         fqdn: String(props?.["fullyQualifiedDomainName"] ?? ""),
@@ -218,6 +236,8 @@ export async function listMySQLFlexibleServers(
     const storage = props?.["storage"] as Record<string, unknown> | undefined;
     const ha = props?.["highAvailability"] as Record<string, unknown> | undefined;
     const backup = props?.["backup"] as Record<string, unknown> | undefined;
+    const network = props?.["network"] as Record<string, unknown> | undefined;
+    const dataEncryption = props?.["dataEncryption"] as Record<string, unknown> | undefined;
 
     return {
       id: ctx.id(accountId, "azure-mysql-flexible", `${rg}/${name}`),
@@ -236,6 +256,14 @@ export async function listMySQLFlexibleServers(
         storageSizeGb: Number(storage?.["storageSizeGB"] ?? 0),
         haEnabled: String(ha?.["mode"] ?? "Disabled") !== "Disabled",
         backupRetentionDays: Number(backup?.["backupRetentionDays"] ?? 7),
+        delegatedSubnet: subnetRef(String(network?.["delegatedSubnetResourceId"] ?? "")),
+        // PostgreSQL spells it `…ArmResourceId`, MySQL `…ResourceId`.
+        privateDnsZone: extractName(
+          String(
+            network?.["privateDnsZoneArmResourceId"] ?? network?.["privateDnsZoneResourceId"] ?? "",
+          ),
+        ),
+        keyVaultName: extractVaultName(String(dataEncryption?.["primaryKeyURI"] ?? "")),
       },
       resolvedOutputs: {
         fqdn: String(props?.["fullyQualifiedDomainName"] ?? ""),

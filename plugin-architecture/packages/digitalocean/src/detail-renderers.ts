@@ -19,6 +19,7 @@ export {
   applyDatabaseUserDetail,
 } from "./detail-renderers/database.js";
 export { renderDomainDetail, renderDnsRecordDetail } from "./detail-renderers/dns.js";
+export { applyReservedIpDetail } from "./detail-renderers/networking.js";
 export { applyGenAiAgentDetail } from "./detail-renderers/genai-agent.js";
 export { applyGenAiKnowledgeBaseDetail } from "./detail-renderers/genai-knowledge-base.js";
 export { applyGenAiModelRouterDetail } from "./detail-renderers/genai-model-router.js";

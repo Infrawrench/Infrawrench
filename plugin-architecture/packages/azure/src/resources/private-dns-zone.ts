@@ -12,8 +12,17 @@ export const PrivateDNSZoneResourceType = rt({
     f("virtualNetworkLinkCount", "Virtual Network Links", { kind: "number", required: false }),
   ],
   outputs: [o("resourceId", "Resource ID")],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+  ],
   supportsMetrics: true,
   iconKey: "dns",
+  dnsRole: {
+    role: "zone",
+    domainKey: "name",
+    recordCountKey: "numberOfRecordSets",
+    isPrivate: true,
+  },
   attachTargets: [
     {
       pluginId: "azure",

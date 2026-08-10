@@ -15,6 +15,9 @@ export const KeyVaultResourceType = rt({
     f("enableRbacAuthorization", "RBAC Auth", { kind: "boolean", required: false }),
   ],
   outputs: [o("vaultUri", "Vault URI")],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+  ],
   iconKey: "secret",
   supportsCreate: true,
   supportsMetrics: true,
@@ -24,6 +27,17 @@ export const KeyVaultResourceType = rt({
       displayName: "Key Vault URI",
       description: "Vault URI for SDK / azure-cli access",
       entries: [{ envKey: "AZURE_KEY_VAULT_URI", outputKey: "vaultUri" }],
+    },
+  ],
+  postureChecks: [
+    {
+      id: "azure-key-vault-no-purge-protection",
+      title: "Purge protection disabled",
+      severity: "medium",
+      category: "data-protection",
+      conditions: [{ fieldKey: "enablePurgeProtection", when: "falsy" }],
+      reason:
+        "Without purge protection, a deleted vault or secret can be permanently purged before the soft-delete window ends — one compromised credential can destroy every secret irrecoverably.",
     },
   ],
 });

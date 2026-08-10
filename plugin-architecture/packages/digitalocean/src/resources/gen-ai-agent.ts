@@ -39,6 +39,11 @@ export const GenAiAgentResourceType = rt({
       required: false,
       editable: false,
     }),
+    f("knowledgeBaseUuids", "Knowledge Base UUIDs", {
+      required: false,
+      editable: false,
+      description: "Comma-separated UUIDs of the knowledge bases attached to this agent",
+    }),
     f("deploymentUrl", "Deployment URL", { required: false, editable: false }),
   ],
   outputs: [
@@ -46,6 +51,16 @@ export const GenAiAgentResourceType = rt({
     o("agentEndpoint", "Agent Endpoint", {
       description: "OpenAI-compatible base URL for this agent's inference endpoint",
     }),
+  ],
+  dependsOn: [
+    { fieldKey: "projectId", targetTypeId: "project", label: "in project" },
+    { fieldKey: "modelRouterUuid", targetTypeId: "gen-ai-model-router", label: "routes through" },
+    // Comma-joined KB uuids — one edge per attached knowledge base.
+    {
+      fieldKey: "knowledgeBaseUuids",
+      targetTypeId: "gen-ai-knowledge-base",
+      label: "retrieves from",
+    },
   ],
   supportsCreate: true,
   supportsUpdate: true,

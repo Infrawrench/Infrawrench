@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { asRecord, collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone, resolveZoneName } from "./shared.js";
 import type { JobCreateParams, JobUpdateParams } from "cloudflare/resources/logpush/jobs";
 
 /**
@@ -87,6 +87,7 @@ function mapLogpushJob(
   job: Record<string, unknown>,
   accountId: string,
   zoneId: string,
+  zoneName: string,
 ): ResourceInstance {
   const id = String(job["id"] ?? "");
   const name = String(job["name"] ?? "");
@@ -109,6 +110,7 @@ function mapLogpushJob(
       logpullOptions: String(job["logpull_options"] ?? ""),
       lastComplete: String(job["last_complete"] ?? ""),
       lastError: String(job["last_error"] ?? ""),
+      zoneName,
     },
     resolvedOutputs: {},
     secretStates: [],
@@ -125,11 +127,11 @@ export async function listAllLogpushJobs(
 ): Promise<ResourceInstance[]> {
   return collectPerZone(
     api,
-    async (zoneId) => {
+    async (zoneId, zoneName) => {
       const part: ResourceInstance[] = [];
       for await (const job of api.cf.logpush.jobs.list({ zone_id: zoneId })) {
         if (!job) continue;
-        part.push(mapLogpushJob(asRecord(job), accountId, zoneId));
+        part.push(mapLogpushJob(asRecord(job), accountId, zoneId, zoneName));
       }
       return part;
     },
@@ -156,7 +158,7 @@ export async function createLogpushJob(
   };
   const job = await api.cf.logpush.jobs.create(body);
   if (!job) throw new Error("Cloudflare plugin: failed to create logpush job (null response)");
-  return mapLogpushJob(asRecord(job), accountId, zoneId);
+  return mapLogpushJob(asRecord(job), accountId, zoneId, await resolveZoneName(api, zoneId));
 }
 
 export async function editLogpushJob(
@@ -180,7 +182,7 @@ export async function editLogpushJob(
   };
   const job = await api.cf.logpush.jobs.update(logpushJobId(jobId), body);
   if (!job) throw new Error("Cloudflare plugin: failed to update logpush job (null response)");
-  return mapLogpushJob(asRecord(job), accountId, zoneId);
+  return mapLogpushJob(asRecord(job), accountId, zoneId, await resolveZoneName(api, zoneId));
 }
 
 export async function deleteLogpushJob(api: CloudflareApi, externalId: string): Promise<void> {

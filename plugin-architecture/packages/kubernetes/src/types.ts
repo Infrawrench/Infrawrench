@@ -1,3 +1,11 @@
+export interface K8sOwnerReference {
+  apiVersion?: string;
+  kind?: string;
+  name?: string;
+  uid?: string;
+  controller?: boolean;
+}
+
 export interface K8sMeta {
   name: string;
   namespace?: string;
@@ -5,6 +13,8 @@ export interface K8sMeta {
   creationTimestamp: string;
   labels?: Record<string, string>;
   annotations?: Record<string, string>;
+  /** Set by the controller that created this object (a Job's CronJob, say). */
+  ownerReferences?: K8sOwnerReference[];
 }
 
 export interface K8sList<T> {
@@ -26,9 +36,46 @@ export interface K8sNode {
   };
 }
 
+export interface K8sPodContainer {
+  name: string;
+  image: string;
+  /** Whole-ConfigMap/Secret env imports. */
+  envFrom?: Array<{
+    configMapRef?: { name?: string };
+    secretRef?: { name?: string };
+  }>;
+  /** Single-key env imports. */
+  env?: Array<{
+    valueFrom?: {
+      configMapKeyRef?: { name?: string };
+      secretKeyRef?: { name?: string };
+    };
+  }>;
+}
+
+/**
+ * The parts of a PodSpec the listers read. Shared by pods and by the pod
+ * templates inside Deployments and StatefulSets, which carry the same shape.
+ */
+export interface K8sPodSpec {
+  containers: K8sPodContainer[];
+  initContainers?: K8sPodContainer[];
+  /** The node the scheduler placed the pod on — empty while still Pending. */
+  nodeName?: string;
+  serviceAccountName?: string;
+  imagePullSecrets?: Array<{ name?: string }>;
+  volumes?: Array<{
+    configMap?: { name?: string };
+    secret?: { secretName?: string };
+    projected?: {
+      sources?: Array<{ configMap?: { name?: string }; secret?: { name?: string } }>;
+    };
+  }>;
+}
+
 export interface K8sPod {
   metadata: K8sMeta;
-  spec: { containers: Array<{ name: string; image: string }> };
+  spec: K8sPodSpec;
   status: {
     phase: string;
     conditions?: Array<{ type: string; status: string; reason?: string; message?: string }>;
@@ -47,7 +94,7 @@ export interface K8sDeployment {
   metadata: K8sMeta;
   spec: {
     replicas?: number;
-    template: { spec: { containers: Array<{ name: string; image: string }> } };
+    template: { spec: K8sPodSpec };
   };
   status: {
     replicas?: number;
@@ -72,7 +119,7 @@ export interface K8sStatefulSet {
   metadata: K8sMeta;
   spec: {
     replicas?: number;
-    template: { spec: { containers: Array<{ name: string; image: string }> } };
+    template: { spec: K8sPodSpec };
   };
   status: { replicas?: number; readyReplicas?: number; currentReplicas?: number };
 }
@@ -117,11 +164,19 @@ export interface K8sCronJob {
   status: { lastScheduleTime?: string; lastSuccessfulTime?: string };
 }
 
+export interface K8sIngressBackend {
+  service?: { name?: string; port?: { number?: number; name?: string } };
+}
+
 export interface K8sIngress {
   metadata: K8sMeta;
   spec: {
     ingressClassName?: string;
-    rules?: Array<{ host?: string }>;
+    defaultBackend?: K8sIngressBackend;
+    rules?: Array<{
+      host?: string;
+      http?: { paths?: Array<{ path?: string; pathType?: string; backend?: K8sIngressBackend }> };
+    }>;
   };
   status: { loadBalancer?: { ingress?: Array<{ ip?: string; hostname?: string }> } };
 }

@@ -7,6 +7,7 @@ import { getRequestListener } from "@hono/node-server";
 import { parse } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
 import { api } from "./src/api/index";
+import { applySecurityHeaders, securityHeaders } from "./src/api/security-headers";
 import { handleSshSession } from "./src/services/ssh-proxy";
 import { handleSqlSession } from "./src/services/sql-proxy";
 import { handleK8sExecSession } from "./src/services/k8s-exec-proxy";
@@ -24,8 +25,15 @@ import { authenticateBastionAgent, handleBastionAgentUpgrade } from "./src/servi
 const dev = process.env["NODE_ENV"] !== "production";
 const port = parseInt(process.env["PORT"] ?? "3000", 10);
 
-/** Unauthenticated liveness/readiness endpoint for load balancers and k8s probes. */
+/**
+ * Unauthenticated liveness/readiness endpoint for load balancers and k8s probes.
+ *
+ * Like `/api/mcp`, this is answered ahead of the Hono listener and so has to
+ * set the security headers itself — both server modes route through here, so
+ * doing it in the one function covers both.
+ */
 function respondHealthz(res: import("node:http").ServerResponse): void {
+  applySecurityHeaders(res);
   res.statusCode = 200;
   res.setHeader("content-type", "text/plain");
   res.end("ok");
@@ -82,6 +90,11 @@ async function start() {
     const { serveStatic } = await import("@hono/node-server/serve-static");
     const { Hono } = await import("hono");
     const prodApp = new Hono();
+
+    // The SPA shell and every static asset are served by this app, not by
+    // `api`, so they need the headers mounted here too — the framing defence
+    // matters most on exactly the HTML document `api` never emits.
+    prodApp.use("*", securityHeaders());
 
     prodApp.route("/", api);
     prodApp.use("*", serveStatic({ root: "./dist/client" }));
@@ -383,7 +396,7 @@ async function start() {
               break;
             case "workflow:run":
               if (msg.workflowId) {
-                handleWorkflowSession(ws, auth.organizationId, msg.workflowId);
+                handleWorkflowSession(ws, auth.organizationId, msg.workflowId, auth.userId);
               }
               break;
             // Subsequent debugger messages are handled by the session's own

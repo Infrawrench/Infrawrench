@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { DigitalOceanClient } from "./client.js";
 import { digitaloceanTerraformExport } from "./terraform.js";
+import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { ProjectResourceType } from "./resources/project.js";
 import { DropletResourceType } from "./resources/droplet.js";
 import { DOKSClusterResourceType } from "./resources/doks-cluster.js";
@@ -11,6 +12,8 @@ import { ContainerRegistryResourceType } from "./resources/container-registry.js
 import { DomainResourceType } from "./resources/domain.js";
 import { DnsRecordResourceType } from "./resources/dns-record.js";
 import { VolumeResourceType } from "./resources/volume.js";
+import { VpcResourceType } from "./resources/vpc.js";
+import { ReservedIpResourceType } from "./resources/reserved-ip.js";
 import { SnapshotResourceType } from "./resources/snapshot.js";
 import { ImageResourceType } from "./resources/image.js";
 import { NfsShareResourceType } from "./resources/nfs-share.js";
@@ -66,6 +69,7 @@ const manifest: PluginManifest = {
   // per invoice line + region. Needs the `billing:read` token scope. Data
   // exists from 1 Dec 2025 onward; earlier backfill windows come back empty.
   costs: { dimensions: ["service", "region"], maxHistoryDays: 365, restatementDays: 3 },
+  statusFeed,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -79,6 +83,8 @@ const resourceTypes: ResourceTypeDefinition[] = [
   DomainResourceType,
   DnsRecordResourceType,
   VolumeResourceType,
+  VpcResourceType,
+  ReservedIpResourceType,
   SnapshotResourceType,
   ImageResourceType,
   NfsShareResourceType,
@@ -97,4 +103,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) =>
     new DigitalOceanClient(credentials, resourceTypes, services),
   terraformExport: digitaloceanTerraformExport,
+  parseStatusFeed,
 };

@@ -14,11 +14,6 @@ const SlackChannel = strict({
   channelId: z.string().openapi({ description: "Slack channel id (C…/G…)" }),
   channelName: z.string().openapi({ description: "Channel name without the leading #" }),
   isPrivate: z.boolean(),
-  syncIncidents: z.boolean(),
-  budgetAlerts: z.boolean(),
-  workflowPages: z
-    .boolean()
-    .openapi({ description: "Alerts raised by a workflow calling infra.page(...)" }),
 }).openapi("SlackChannel");
 
 const SlackStatus = strict({
@@ -40,17 +35,12 @@ const SlackChannelCreate = strict({
   channelId: z.string(),
   channelName: z.string(),
   isPrivate: z.boolean().optional(),
-  syncIncidents: z.boolean().optional(),
-  budgetAlerts: z.boolean().optional(),
-  workflowPages: z.boolean().optional(),
 }).openapi("SlackChannelCreate");
 
 // Registered under its own name — `.partial()` on a registered schema would
 // otherwise collapse back into the full $ref in the generated document.
 const SlackChannelUpdate = strict({
-  syncIncidents: z.boolean().optional(),
-  budgetAlerts: z.boolean().optional(),
-  workflowPages: z.boolean().optional(),
+  channelName: z.string(),
 }).openapi("SlackChannelUpdate");
 
 export function registerSlackPaths(ctx: BuildContext) {
@@ -136,9 +126,9 @@ export function registerSlackPaths(ctx: BuildContext) {
     method: "post",
     path: "/api/org/{orgId}/slack/channels",
     tags: ["Slack"],
-    summary: "Route alerts to a Slack channel",
+    summary: "Connect a Slack channel as an alert destination",
     description:
-      "Adds a channel, or updates the trigger opt-ins of one already added. Each trigger defaults to enabled.",
+      "Adds a channel as a possible destination, or refreshes the cached name of one already added. Which alerts reach it is decided by /alert-rules; an organization with no rules falls back to the default (everything except drift, everywhere), so a freshly added channel starts receiving alerts without a second step.",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: SlackChannelCreate } } },
@@ -157,7 +147,7 @@ export function registerSlackPaths(ctx: BuildContext) {
     method: "patch",
     path: "/api/org/{orgId}/slack/channels/{id}",
     tags: ["Slack"],
-    summary: "Change which alerts a channel receives",
+    summary: "Refresh a channel's cached name",
     request: {
       params: OrgIdParam.extend({
         id: z.string().openapi({ param: { name: "id", in: "path" } }),
@@ -177,7 +167,7 @@ export function registerSlackPaths(ctx: BuildContext) {
     method: "delete",
     path: "/api/org/{orgId}/slack/channels/{id}",
     tags: ["Slack"],
-    summary: "Stop routing alerts to a channel",
+    summary: "Disconnect a channel",
     request: {
       params: OrgIdParam.extend({
         id: z.string().openapi({ param: { name: "id", in: "path" } }),
@@ -189,13 +179,131 @@ export function registerSlackPaths(ctx: BuildContext) {
     },
   });
 
+  // --- Inbound Slack (public, signature-verified; internal in the published
+  // spec — these are called by Slack and the browser, never by API clients).
+
+  const slackSignatureHeaders = strict({
+    "x-slack-signature": z
+      .string()
+      .openapi({ description: "v0=<hex HMAC-SHA256 of `v0:<timestamp>:<raw body>`>" }),
+    "x-slack-request-timestamp": z
+      .string()
+      .openapi({ description: "Unix seconds; requests older than 5 minutes are rejected" }),
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/slack/commands",
+    tags: ["Slack"],
+    summary: "Slack slash-command endpoint (/infrawrench)",
+    description:
+      "Public; verified against the app's signing secret. Handles `costs`, `status <resource>`, `link`, `unlink` and `help`. Acknowledged immediately; the ephemeral reply is delivered through the payload's `response_url`. The Slack user must have linked their account (`/infrawrench link`) and hold the same permission the equivalent web surface requires (`costs:read`, `resources:read`).",
+    security: [],
+    request: {
+      headers: slackSignatureHeaders,
+      body: {
+        content: {
+          "application/x-www-form-urlencoded": {
+            schema: z.unknown().openapi({ description: "Slack's slash-command form payload" }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: { description: "Acknowledged; the reply is delivered through response_url" },
+      401: ErrorResponses[401],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/slack/interactions",
+    tags: ["Slack"],
+    summary: "Slack interactivity endpoint (Approve/Deny buttons)",
+    description:
+      "Public; verified against the app's signing secret. Receives `block_actions` payloads from the Approve/Deny buttons on approval messages and the status disambiguation picker. Button decisions resolve through the same code path as the web UI — the linked member needs `workflows:approve` (workflow approvals) or must own the conversation and hold `chat:write` (chat agent tool approvals).",
+    security: [],
+    request: {
+      headers: slackSignatureHeaders,
+      body: {
+        content: {
+          "application/x-www-form-urlencoded": {
+            schema: z
+              .unknown()
+              .openapi({ description: "`payload=<JSON>` interaction envelope from Slack" }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: { description: "Acknowledged; feedback rides response_url and message updates" },
+      401: ErrorResponses[401],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/slack/link",
+    tags: ["Slack"],
+    summary: "Confirm linking a Slack user to the signed-in member (browser)",
+    description:
+      "Landing for the signed link URL the slash-command endpoints hand to unknown Slack users. Requires a browser session (bounces through sign-in), verifies the short-lived token and membership of the token's organization, then renders a confirmation page naming the Slack user and organization. The write itself happens in the CSRF-guarded POST the page submits.",
+    security: [],
+    request: {
+      query: strict({
+        token: z.string().openapi({ description: "Signed link token from Slack (15-minute TTL)" }),
+      }),
+    },
+    responses: {
+      200: {
+        description: "Confirmation page (HTML form that POSTs back to this path)",
+        content: { "text/html": { schema: z.string() } },
+      },
+      302: { description: "Redirect to sign-in or an error toast" },
+      401: ErrorResponses[401],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/slack/link",
+    tags: ["Slack"],
+    summary: "Store the Slack-user ↔ member link (confirmation form target)",
+    description:
+      "Submitted by the confirmation page above. Requires the browser session, the signed link token, and the double-submit CSRF pair (cookie + form field) minted by the GET; on success stores the Slack-user ↔ member mapping and redirects to the notification settings page.",
+    security: [],
+    request: {
+      body: {
+        content: {
+          "application/x-www-form-urlencoded": {
+            schema: strict({
+              token: z
+                .string()
+                .openapi({ description: "Signed link token from Slack (15-minute TTL)" }),
+              csrf: z
+                .string()
+                .openapi({ description: "CSRF value matching the slack_link_csrf cookie" }),
+            }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      302: { description: "Redirect to the settings page (or an error toast)" },
+      401: ErrorResponses[401],
+    },
+  });
+
   registry.registerPath({
     method: "post",
     path: "/api/org/{orgId}/slack/test",
     tags: ["Slack"],
     summary: "Post a test message to every configured channel",
     description:
-      "Ignores trigger opt-ins — every channel gets the test. Fails with the Slack error when nothing could be delivered (`not_in_channel` means the bot needs inviting to a private channel).",
+      "Ignores routing rules — every channel gets the test. Fails with the Slack error when nothing could be delivered (`not_in_channel` means the bot needs inviting to a private channel).",
     request: { params: OrgIdParam },
     responses: {
       200: {

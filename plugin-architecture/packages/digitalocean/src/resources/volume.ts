@@ -19,10 +19,17 @@ export const VolumeResourceType = rt({
     }),
   ],
   outputs: [],
+  // Comma-joined droplet ids — one edge per Droplet the volume is attached to.
+  dependsOn: [{ fieldKey: "dropletIds", targetTypeId: "droplet", label: "attached to" }],
   parentTypeId: "project",
   showInSidebar: true,
   supportsCreate: true,
   iconKey: "volume",
+  // The lister always sets dropletIds (joined droplet_ids, "" when detached).
+  orphanRule: {
+    conditions: [{ fieldKey: "dropletIds", when: "empty" }],
+    reason: "Volume is not attached to any Droplet",
+  },
   attachTargets: [
     {
       pluginId: "digitalocean",

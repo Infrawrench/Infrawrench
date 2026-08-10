@@ -132,6 +132,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   ],
   together: ["api.together.ai", "api.together.xyz", "api-inference.together.ai"],
   xai: ["api.x.ai", "management-api.x.ai"],
+  workos: ["api.workos.com"],
   kubernetes: [], // kubeconfig-relative; v1 doesn't bastion-route Kubernetes
 };
 

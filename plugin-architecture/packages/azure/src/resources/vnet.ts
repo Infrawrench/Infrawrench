@@ -14,6 +14,9 @@ export const VNetResourceType = rt({
     f("enableDdosProtection", "DDoS Protection", { kind: "boolean", required: false }),
   ],
   outputs: [o("resourceId", "Resource ID")],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+  ],
   iconKey: "network",
   supportsCreate: true,
 });

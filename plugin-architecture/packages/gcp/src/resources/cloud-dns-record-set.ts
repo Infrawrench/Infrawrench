@@ -14,6 +14,9 @@ export const CloudDnsRecordSetResourceType = rt({
   ],
   outputs: [],
   parentTypeId: "cloud-dns-zone",
+  // `zoneName` is the managed zone's resource name, which is also its external
+  // id — the zone's `dnsName` is a different string, and the host tries both.
+  dnsRole: { role: "record", contentKey: "rrdatas", zoneKey: "zoneName" },
   iconKey: "dns-record",
   supportsCreate: true,
   supportsUpdate: true,

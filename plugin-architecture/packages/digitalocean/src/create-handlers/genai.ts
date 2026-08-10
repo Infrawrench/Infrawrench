@@ -538,6 +538,7 @@ export async function genaiCreateResource(args: DoCreateArgs): Promise<ResourceI
         k: 0,
         status: String(deployment?.["status"] ?? "provisioning"),
         knowledgeBaseCount: 0,
+        knowledgeBaseUuids: "",
         deploymentUrl,
       },
       resolvedOutputs: deploymentUrl ? { deploymentUrl, agentEndpoint: deploymentUrl } : {},
@@ -632,8 +633,7 @@ export async function genaiCreateResource(args: DoCreateArgs): Promise<ResourceI
     const uuid = String(r["uuid"] ?? "");
     const now = new Date().toISOString();
     const respConfig = r["config"] as
-      | { policies?: unknown[]; fallback_models?: unknown[] }
-      | undefined;
+      { policies?: unknown[]; fallback_models?: unknown[] } | undefined;
     const respFallback = Array.isArray(respConfig?.fallback_models)
       ? (respConfig.fallback_models as string[])
       : [];
@@ -741,6 +741,7 @@ export async function genaiCreateResource(args: DoCreateArgs): Promise<ResourceI
       fields: {
         name: String(info["name"] ?? fields["name"]),
         createdBy: String(info["created_by"] ?? ""),
+        agentUuid,
       },
       resolvedOutputs: secret ? { secretKey: secret } : {},
       secretStates: secret

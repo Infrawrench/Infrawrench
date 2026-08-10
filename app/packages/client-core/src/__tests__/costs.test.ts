@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   binForecast,
+  costAnomalyDeltaPercent,
   costQueryForConfig,
   emptyCostAccounts,
   failingCostAccounts,
@@ -9,6 +10,7 @@ import {
   resolveCostDateRange,
   totalPerBucket,
   type CostAccountStatus,
+  type CostAnomaly,
   type CostGraphConfig,
   type CostQuerySeries,
 } from "../costs";
@@ -202,5 +204,39 @@ describe("failingCostAccounts", () => {
         ]),
       ).toEqual([]);
     });
+  });
+});
+
+describe("costAnomalyDeltaPercent", () => {
+  const anomaly = (over: Partial<CostAnomaly>): CostAnomaly => ({
+    id: "a1",
+    day: "2026-07-28",
+    kind: "spike",
+    dimension: "provider",
+    dimensionKey: "aws",
+    currency: "USD",
+    actualCents: 3000,
+    baselineCents: 1000,
+    thresholdCents: 2000,
+    detectedAt: "2026-07-29T02:00:00.000Z",
+    notifiedAt: null,
+    ...over,
+  });
+
+  it("reports the rise over the baseline for a spike", () => {
+    expect(costAnomalyDeltaPercent(anomaly({}))).toBe("+200%");
+  });
+
+  it("never reports a percentage for a new spend source", () => {
+    // Even with a non-zero stored baseline: a window of sub-cent trial usage
+    // rounds to a cent, and 5000/1 is a meaningless six-figure percentage.
+    expect(costAnomalyDeltaPercent(anomaly({ kind: "new_source", baselineCents: 1 }))).toBeNull();
+    expect(costAnomalyDeltaPercent(anomaly({ kind: "new_source", baselineCents: 0 }))).toBeNull();
+  });
+
+  it("returns null rather than Infinity or NaN for a zero or negative baseline", () => {
+    expect(costAnomalyDeltaPercent(anomaly({ baselineCents: 0 }))).toBeNull();
+    expect(costAnomalyDeltaPercent(anomaly({ baselineCents: -100 }))).toBeNull();
+    expect(costAnomalyDeltaPercent(anomaly({ baselineCents: Number.NaN }))).toBeNull();
   });
 });

@@ -18,6 +18,9 @@ export const EventHubNamespaceResourceType = rt({
     o("serviceBusEndpoint", "Endpoint"),
     o("primaryConnectionString", "Connection String", { sensitive: true }),
   ],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+  ],
   iconKey: "topic",
   supportsCreate: true,
   supportsMetrics: true,

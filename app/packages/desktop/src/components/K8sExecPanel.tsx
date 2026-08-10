@@ -1,13 +1,16 @@
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import {
   attachAltBufferScrollHandler,
   attachTerminalClipboard,
+  createTerminalLinkHandler,
   getXtermTerminalOptions,
 } from "@infrawrench/ui";
 import { openK8sExec, type K8sSessionHandle } from "../lib/k8s-dispatch";
+import { invoke } from "../lib/invoke";
 
 interface K8sExecCloudContext {
   orgId: string;
@@ -37,10 +40,15 @@ export function K8sExecPanel({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const term = new Terminal(getXtermTerminalOptions());
+    // Same link policy as the SSH terminal — a pod shell prints URLs too.
+    const linkHandler = createTerminalLinkHandler({
+      openExternal: (url) => void invoke("open_external_url", { url }),
+    });
+    const term = new Terminal({ ...getXtermTerminalOptions(), linkHandler });
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
+    term.loadAddon(new WebLinksAddon((event, uri) => linkHandler.activate(event, uri)));
     term.open(containerRef.current);
 
     const clipboard = attachTerminalClipboard(term);

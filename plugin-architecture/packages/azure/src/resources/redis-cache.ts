@@ -21,6 +21,9 @@ export const RedisCacheResourceType = rt({
     o("primaryKey", "Primary Key", { sensitive: true }),
     o("connectionString", "Connection String", { sensitive: true }),
   ],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+  ],
   iconKey: "cache",
   supportsCreate: true,
   supportsMetrics: true,
@@ -42,6 +45,17 @@ export const RedisCacheResourceType = rt({
         { envKey: "REDIS_PASSWORD", outputKey: "primaryKey" },
         { envKey: "REDIS_URL", outputKey: "connectionString" },
       ],
+    },
+  ],
+  postureChecks: [
+    {
+      id: "azure-redis-non-ssl-port",
+      title: "Non-TLS port enabled",
+      severity: "high",
+      category: "encryption",
+      conditions: [{ fieldKey: "nonSslPort", when: "truthy" }],
+      reason:
+        "The cache accepts connections on the unencrypted 6379 port, so credentials and cached data cross the network in clear text.",
     },
   ],
 });

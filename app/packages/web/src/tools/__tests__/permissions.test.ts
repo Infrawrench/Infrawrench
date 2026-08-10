@@ -134,9 +134,27 @@ describe("tool registry permission declarations", () => {
     ["delete_budget", "budgets:write"],
     ["write_custom_graph", "dashboards:write"],
     ["delete_custom_graph", "dashboards:write"],
+    // Workflows have their own family now — custom graphs above deliberately
+    // stay on `dashboards:*` because they really are dashboard content.
+    ["list_workflows", "workflows:read"],
+    ["get_workflow", "workflows:read"],
+    ["get_workflow_typings", "workflows:read"],
+    ["check_workflow_source", "workflows:read"],
+    ["write_workflow", "workflows:write"],
+    ["run_workflow", "workflows:write"],
+    ["delete_workflow", "workflows:write"],
   ])("gates %s behind %s", async (name, permission) => {
     const tools = await getToolRegistry();
     expect(tools.find((t) => t.name === name)?.permission).toBe(permission);
+  });
+
+  it("leaves no workflow tool on the dashboards permissions", async () => {
+    const tools = await getToolRegistry();
+    const workflowTools = tools.filter((t) => t.name.includes("workflow"));
+    expect(workflowTools.length).toBeGreaterThan(0);
+    for (const tool of workflowTools) {
+      expect(tool.permission, tool.name).not.toMatch(/^dashboards:/);
+    }
   });
 
   it("gates every per-plugin create tool behind resources:write", async () => {

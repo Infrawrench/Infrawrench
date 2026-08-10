@@ -15,7 +15,10 @@
 import type { PromptSpec } from "@infrawrench/workflow-runtime/client";
 import type { GitRepoOption } from "@infrawrench/ui/workflows";
 import type {
+  ApprovalsClient,
   DebugSession,
+  WorkflowApprovalRow,
+  WorkflowApprovalStatus,
   WorkflowClient,
   WorkflowMetricRow,
   WorkflowRunResult,
@@ -57,8 +60,15 @@ export async function listCloudGithubRepos(orgId: string): Promise<GitRepoOption
   return invoke("cloud_github_repos", { orgId });
 }
 
-export async function getCloudGithubInstallUrl(orgId: string): Promise<string | null> {
-  return invoke("cloud_github_install_url", { orgId, returnTo: "workflows" });
+/**
+ * `returnTo` is where the GitHub App install flow sends the user back to —
+ * "workflows" for git triggers, "agents" for the session repo picker.
+ */
+export async function getCloudGithubInstallUrl(
+  orgId: string,
+  returnTo: "workflows" | "agents" = "workflows",
+): Promise<string | null> {
+  return invoke("cloud_github_install_url", { orgId, returnTo });
 }
 
 /**
@@ -155,6 +165,28 @@ async function runDebug(
   });
 }
 
+/**
+ * Org-wide approvals inbox transport. Same routes the browser hits, proxied
+ * over IPC — see `electron/cloud-data/workflows.ts`. Cloud-only: a local
+ * workflow runs in this renderer and has no suspended server-side run to
+ * approve, so local mode never constructs one.
+ */
+export function createCloudApprovalsClient(orgId: string): ApprovalsClient {
+  return {
+    list: (status?: WorkflowApprovalStatus) =>
+      invoke<WorkflowApprovalRow[]>("cloud_list_workflow_approvals", {
+        orgId,
+        ...(status ? { status } : {}),
+      }),
+    decide: (approvalId: string, decision: "approve" | "deny") =>
+      invoke<WorkflowApprovalRow>("cloud_decide_workflow_approval", {
+        orgId,
+        approvalId,
+        decision,
+      }),
+  };
+}
+
 export function createCloudWorkflowClient(orgId: string): WorkflowClient {
   return {
     list: () => listCloudWorkflows(orgId),
@@ -173,5 +205,17 @@ export function createCloudWorkflowClient(orgId: string): WorkflowClient {
       debug
         ? runDebug(orgId, id, debug)
         : invoke<{ runId: string; result: WorkflowRunResult }>("cloud_run_workflow", { orgId, id }),
+    listPendingApprovals: (workflowId: string) =>
+      invoke<WorkflowApprovalRow[]>("cloud_list_workflow_approvals", {
+        orgId,
+        status: "pending",
+        workflowId,
+      }),
+    decideApproval: (approvalId: string, decision: "approve" | "deny") =>
+      invoke<WorkflowApprovalRow>("cloud_decide_workflow_approval", {
+        orgId,
+        approvalId,
+        decision,
+      }),
   };
 }

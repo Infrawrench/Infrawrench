@@ -9,34 +9,32 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as WorkflowsRouteImport } from './routes/workflows'
-import { Route as DeploymentsRouteImport } from './routes/deployments'
-import { Route as CostsRouteImport } from './routes/costs'
-import { Route as ChatRouteImport } from './routes/chat'
-import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as DashboardDashboardIdRouteImport } from './routes/dashboard.$dashboardId'
+import { Route as AgentsRouteImport } from './routes/agents'
+import { Route as ChangesRouteImport } from './routes/changes'
+import { Route as ChatRouteImport } from './routes/chat'
+import { Route as CostsRouteImport } from './routes/costs'
+import { Route as DeploymentsRouteImport } from './routes/deployments'
+import { Route as DnsRouteImport } from './routes/dns'
+import { Route as EnvironmentDiffRouteImport } from './routes/environment-diff'
+import { Route as ExpiringRouteImport } from './routes/expiring'
+import { Route as GraphRouteImport } from './routes/graph'
+import { Route as LogsRouteImport } from './routes/logs'
+import { Route as MetricAlertsRouteImport } from './routes/metric-alerts'
+import { Route as MomentRouteImport } from './routes/moment'
+import { Route as PostureRouteImport } from './routes/posture'
+import { Route as ProbesRouteImport } from './routes/probes'
+import { Route as SavingsRouteImport } from './routes/savings'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as SshFanoutRouteImport } from './routes/ssh-fanout'
+import { Route as WorkflowsRouteImport } from './routes/workflows'
 import { Route as AccountsAccountIdRouteImport } from './routes/accounts.$accountId'
+import { Route as DashboardDashboardIdRouteImport } from './routes/dashboard.$dashboardId'
 import { Route as ResourceAccountIdResourceIdRouteImport } from './routes/resource.$accountId.$resourceId'
 
-const WorkflowsRoute = WorkflowsRouteImport.update({
-  id: '/workflows',
-  path: '/workflows',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DeploymentsRoute = DeploymentsRouteImport.update({
-  id: '/deployments',
-  path: '/deployments',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CostsRoute = CostsRouteImport.update({
-  id: '/costs',
-  path: '/costs',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ChatRoute = ChatRouteImport.update({
-  id: '/chat',
-  path: '/chat',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentsRoute = AgentsRouteImport.update({
@@ -44,19 +42,99 @@ const AgentsRoute = AgentsRouteImport.update({
   path: '/agents',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const ChangesRoute = ChangesRouteImport.update({
+  id: '/changes',
+  path: '/changes',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DashboardDashboardIdRoute = DashboardDashboardIdRouteImport.update({
-  id: '/dashboard/$dashboardId',
-  path: '/dashboard/$dashboardId',
+const ChatRoute = ChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CostsRoute = CostsRouteImport.update({
+  id: '/costs',
+  path: '/costs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeploymentsRoute = DeploymentsRouteImport.update({
+  id: '/deployments',
+  path: '/deployments',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DnsRoute = DnsRouteImport.update({
+  id: '/dns',
+  path: '/dns',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EnvironmentDiffRoute = EnvironmentDiffRouteImport.update({
+  id: '/environment-diff',
+  path: '/environment-diff',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExpiringRoute = ExpiringRouteImport.update({
+  id: '/expiring',
+  path: '/expiring',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GraphRoute = GraphRouteImport.update({
+  id: '/graph',
+  path: '/graph',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LogsRoute = LogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MetricAlertsRoute = MetricAlertsRouteImport.update({
+  id: '/metric-alerts',
+  path: '/metric-alerts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MomentRoute = MomentRouteImport.update({
+  id: '/moment',
+  path: '/moment',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PostureRoute = PostureRouteImport.update({
+  id: '/posture',
+  path: '/posture',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProbesRoute = ProbesRouteImport.update({
+  id: '/probes',
+  path: '/probes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SavingsRoute = SavingsRouteImport.update({
+  id: '/savings',
+  path: '/savings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SshFanoutRoute = SshFanoutRouteImport.update({
+  id: '/ssh-fanout',
+  path: '/ssh-fanout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WorkflowsRoute = WorkflowsRouteImport.update({
+  id: '/workflows',
+  path: '/workflows',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AccountsAccountIdRoute = AccountsAccountIdRouteImport.update({
   id: '/accounts/$accountId',
   path: '/accounts/$accountId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardDashboardIdRoute = DashboardDashboardIdRouteImport.update({
+  id: '/dashboard/$dashboardId',
+  path: '/dashboard/$dashboardId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResourceAccountIdResourceIdRoute =
@@ -69,9 +147,22 @@ const ResourceAccountIdResourceIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agents': typeof AgentsRoute
+  '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
   '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
+  '/dns': typeof DnsRoute
+  '/environment-diff': typeof EnvironmentDiffRoute
+  '/expiring': typeof ExpiringRoute
+  '/graph': typeof GraphRoute
+  '/logs': typeof LogsRoute
+  '/metric-alerts': typeof MetricAlertsRoute
+  '/moment': typeof MomentRoute
+  '/posture': typeof PostureRoute
+  '/probes': typeof ProbesRoute
+  '/savings': typeof SavingsRoute
+  '/settings': typeof SettingsRoute
+  '/ssh-fanout': typeof SshFanoutRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
   '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
@@ -80,9 +171,22 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agents': typeof AgentsRoute
+  '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
   '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
+  '/dns': typeof DnsRoute
+  '/environment-diff': typeof EnvironmentDiffRoute
+  '/expiring': typeof ExpiringRoute
+  '/graph': typeof GraphRoute
+  '/logs': typeof LogsRoute
+  '/metric-alerts': typeof MetricAlertsRoute
+  '/moment': typeof MomentRoute
+  '/posture': typeof PostureRoute
+  '/probes': typeof ProbesRoute
+  '/savings': typeof SavingsRoute
+  '/settings': typeof SettingsRoute
+  '/ssh-fanout': typeof SshFanoutRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
   '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
@@ -92,9 +196,22 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/agents': typeof AgentsRoute
+  '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
   '/costs': typeof CostsRoute
   '/deployments': typeof DeploymentsRoute
+  '/dns': typeof DnsRoute
+  '/environment-diff': typeof EnvironmentDiffRoute
+  '/expiring': typeof ExpiringRoute
+  '/graph': typeof GraphRoute
+  '/logs': typeof LogsRoute
+  '/metric-alerts': typeof MetricAlertsRoute
+  '/moment': typeof MomentRoute
+  '/posture': typeof PostureRoute
+  '/probes': typeof ProbesRoute
+  '/savings': typeof SavingsRoute
+  '/settings': typeof SettingsRoute
+  '/ssh-fanout': typeof SshFanoutRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
   '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
@@ -105,9 +222,22 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/agents'
+    | '/changes'
     | '/chat'
     | '/costs'
     | '/deployments'
+    | '/dns'
+    | '/environment-diff'
+    | '/expiring'
+    | '/graph'
+    | '/logs'
+    | '/metric-alerts'
+    | '/moment'
+    | '/posture'
+    | '/probes'
+    | '/savings'
+    | '/settings'
+    | '/ssh-fanout'
     | '/workflows'
     | '/accounts/$accountId'
     | '/dashboard/$dashboardId'
@@ -116,9 +246,22 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/agents'
+    | '/changes'
     | '/chat'
     | '/costs'
     | '/deployments'
+    | '/dns'
+    | '/environment-diff'
+    | '/expiring'
+    | '/graph'
+    | '/logs'
+    | '/metric-alerts'
+    | '/moment'
+    | '/posture'
+    | '/probes'
+    | '/savings'
+    | '/settings'
+    | '/ssh-fanout'
     | '/workflows'
     | '/accounts/$accountId'
     | '/dashboard/$dashboardId'
@@ -127,9 +270,22 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/agents'
+    | '/changes'
     | '/chat'
     | '/costs'
     | '/deployments'
+    | '/dns'
+    | '/environment-diff'
+    | '/expiring'
+    | '/graph'
+    | '/logs'
+    | '/metric-alerts'
+    | '/moment'
+    | '/posture'
+    | '/probes'
+    | '/savings'
+    | '/settings'
+    | '/ssh-fanout'
     | '/workflows'
     | '/accounts/$accountId'
     | '/dashboard/$dashboardId'
@@ -139,9 +295,22 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AgentsRoute: typeof AgentsRoute
+  ChangesRoute: typeof ChangesRoute
   ChatRoute: typeof ChatRoute
   CostsRoute: typeof CostsRoute
   DeploymentsRoute: typeof DeploymentsRoute
+  DnsRoute: typeof DnsRoute
+  EnvironmentDiffRoute: typeof EnvironmentDiffRoute
+  ExpiringRoute: typeof ExpiringRoute
+  GraphRoute: typeof GraphRoute
+  LogsRoute: typeof LogsRoute
+  MetricAlertsRoute: typeof MetricAlertsRoute
+  MomentRoute: typeof MomentRoute
+  PostureRoute: typeof PostureRoute
+  ProbesRoute: typeof ProbesRoute
+  SavingsRoute: typeof SavingsRoute
+  SettingsRoute: typeof SettingsRoute
+  SshFanoutRoute: typeof SshFanoutRoute
   WorkflowsRoute: typeof WorkflowsRoute
   AccountsAccountIdRoute: typeof AccountsAccountIdRoute
   DashboardDashboardIdRoute: typeof DashboardDashboardIdRoute
@@ -150,32 +319,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/workflows': {
-      id: '/workflows'
-      path: '/workflows'
-      fullPath: '/workflows'
-      preLoaderRoute: typeof WorkflowsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/deployments': {
-      id: '/deployments'
-      path: '/deployments'
-      fullPath: '/deployments'
-      preLoaderRoute: typeof DeploymentsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/costs': {
-      id: '/costs'
-      path: '/costs'
-      fullPath: '/costs'
-      preLoaderRoute: typeof CostsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/chat': {
-      id: '/chat'
-      path: '/chat'
-      fullPath: '/chat'
-      preLoaderRoute: typeof ChatRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/agents': {
@@ -185,18 +333,123 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/changes': {
+      id: '/changes'
+      path: '/changes'
+      fullPath: '/changes'
+      preLoaderRoute: typeof ChangesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/dashboard/$dashboardId': {
-      id: '/dashboard/$dashboardId'
-      path: '/dashboard/$dashboardId'
-      fullPath: '/dashboard/$dashboardId'
-      preLoaderRoute: typeof DashboardDashboardIdRouteImport
+    '/chat': {
+      id: '/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof ChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/costs': {
+      id: '/costs'
+      path: '/costs'
+      fullPath: '/costs'
+      preLoaderRoute: typeof CostsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/deployments': {
+      id: '/deployments'
+      path: '/deployments'
+      fullPath: '/deployments'
+      preLoaderRoute: typeof DeploymentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dns': {
+      id: '/dns'
+      path: '/dns'
+      fullPath: '/dns'
+      preLoaderRoute: typeof DnsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/environment-diff': {
+      id: '/environment-diff'
+      path: '/environment-diff'
+      fullPath: '/environment-diff'
+      preLoaderRoute: typeof EnvironmentDiffRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/expiring': {
+      id: '/expiring'
+      path: '/expiring'
+      fullPath: '/expiring'
+      preLoaderRoute: typeof ExpiringRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/graph': {
+      id: '/graph'
+      path: '/graph'
+      fullPath: '/graph'
+      preLoaderRoute: typeof GraphRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/logs': {
+      id: '/logs'
+      path: '/logs'
+      fullPath: '/logs'
+      preLoaderRoute: typeof LogsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/metric-alerts': {
+      id: '/metric-alerts'
+      path: '/metric-alerts'
+      fullPath: '/metric-alerts'
+      preLoaderRoute: typeof MetricAlertsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/moment': {
+      id: '/moment'
+      path: '/moment'
+      fullPath: '/moment'
+      preLoaderRoute: typeof MomentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/posture': {
+      id: '/posture'
+      path: '/posture'
+      fullPath: '/posture'
+      preLoaderRoute: typeof PostureRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/probes': {
+      id: '/probes'
+      path: '/probes'
+      fullPath: '/probes'
+      preLoaderRoute: typeof ProbesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/savings': {
+      id: '/savings'
+      path: '/savings'
+      fullPath: '/savings'
+      preLoaderRoute: typeof SavingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ssh-fanout': {
+      id: '/ssh-fanout'
+      path: '/ssh-fanout'
+      fullPath: '/ssh-fanout'
+      preLoaderRoute: typeof SshFanoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/workflows': {
+      id: '/workflows'
+      path: '/workflows'
+      fullPath: '/workflows'
+      preLoaderRoute: typeof WorkflowsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/accounts/$accountId': {
@@ -204,6 +457,13 @@ declare module '@tanstack/react-router' {
       path: '/accounts/$accountId'
       fullPath: '/accounts/$accountId'
       preLoaderRoute: typeof AccountsAccountIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard/$dashboardId': {
+      id: '/dashboard/$dashboardId'
+      path: '/dashboard/$dashboardId'
+      fullPath: '/dashboard/$dashboardId'
+      preLoaderRoute: typeof DashboardDashboardIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/resource/$accountId/$resourceId': {
@@ -219,9 +479,22 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgentsRoute: AgentsRoute,
+  ChangesRoute: ChangesRoute,
   ChatRoute: ChatRoute,
   CostsRoute: CostsRoute,
   DeploymentsRoute: DeploymentsRoute,
+  DnsRoute: DnsRoute,
+  EnvironmentDiffRoute: EnvironmentDiffRoute,
+  ExpiringRoute: ExpiringRoute,
+  GraphRoute: GraphRoute,
+  LogsRoute: LogsRoute,
+  MetricAlertsRoute: MetricAlertsRoute,
+  MomentRoute: MomentRoute,
+  PostureRoute: PostureRoute,
+  ProbesRoute: ProbesRoute,
+  SavingsRoute: SavingsRoute,
+  SettingsRoute: SettingsRoute,
+  SshFanoutRoute: SshFanoutRoute,
   WorkflowsRoute: WorkflowsRoute,
   AccountsAccountIdRoute: AccountsAccountIdRoute,
   DashboardDashboardIdRoute: DashboardDashboardIdRoute,

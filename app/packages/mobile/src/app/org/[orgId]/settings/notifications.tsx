@@ -14,20 +14,27 @@ import {
   sendSlackTestMessage,
   unregisterPushDevice,
   updatePushPreferences,
-  updateSlackChannel,
   addMsTeamsWebhook,
   getMsTeamsStatus,
   removeMsTeamsWebhook,
   sendMsTeamsTestMessage,
-  updateMsTeamsWebhook,
+  getDigestSettings,
+  listDigestRecipients,
+  sendDigestNow,
+  updateDigestSettings,
+  DEFAULT_MUTED_TRIGGERS,
+  PUSHABLE_TRIGGERS,
+  alertTriggerDef,
+  pushTriggerEnabled,
+  withPushTrigger,
   type PushDeviceSummary,
   type PushPreferences,
   type SlackChannel,
-  type SlackChannelTriggers,
   type SlackStatus,
   type MsTeamsStatus,
   type MsTeamsWebhook,
-  type MsTeamsWebhookTriggers,
+  type DigestSettings,
+  type DigestSettingsPatch,
 } from "@infrawrench/client-core";
 import type { CloudFetch } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
@@ -51,6 +58,16 @@ interface TestPushResult {
   attempted: number;
   succeeded: number;
 }
+
+/**
+ * A `react-query` `onError` handler that surfaces the failure as an alert.
+ *
+ * Module scope rather than inside each section: it closes over nothing but its
+ * own `title`, so rebuilding it every render is wasted work and hands memoized
+ * children a new function identity for no reason.
+ */
+const alertError = (title: string) => (e: unknown) =>
+  Alert.alert(title, e instanceof Error ? e.message : "Unknown error");
 
 export default function NotificationsScreen() {
   const { api, orgId } = useOrgApi();
@@ -111,7 +128,11 @@ export default function NotificationsScreen() {
     );
   }
 
-  const current = prefs.data ?? { syncIncidents: true, budgetAlerts: true, workflowPages: true };
+  const current: PushPreferences = prefs.data ?? {
+    // "No row means the shipped defaults", which is not the same as "nothing
+    // muted" — drift is a continuous feed where the others are exceptional.
+    mutedTriggers: [...DEFAULT_MUTED_TRIGGERS],
+  };
   const deviceList = devices.data ?? [];
 
   const confirmRemove = (d: PushDeviceSummary) => {
@@ -135,49 +156,35 @@ export default function NotificationsScreen() {
     >
       <SectionTitle>Push notifications for this org</SectionTitle>
       <Card>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
-              Sync incidents
-            </Text>
-            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              A provider account sync starts failing.
-            </Text>
-          </View>
-          <Switch
-            value={current.syncIncidents}
-            onValueChange={(v) => updatePrefs.mutate({ syncIncidents: v })}
-            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
-          />
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
-              Budget alerts
-            </Text>
-            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              A budget crosses an alert threshold.
-            </Text>
-          </View>
-          <Switch
-            value={current.budgetAlerts}
-            onValueChange={(v) => updatePrefs.mutate({ budgetAlerts: v })}
-            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
-          />
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>Pages</Text>
-            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              Your code raises an alert — infra.page() or POST /pages.
-            </Text>
-          </View>
-          <Switch
-            value={current.workflowPages}
-            onValueChange={(v) => updatePrefs.mutate({ workflowPages: v })}
-            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
-          />
-        </View>
+        {/*
+          Driven by the shared trigger registry rather than eleven hand-written
+          rows. A release that adds a trigger gets a row here for free — which
+          is the point of the routing refactor: the trigger list lives in one
+          place instead of being spelled out in every surface that shows it.
+        */}
+        {PUSHABLE_TRIGGERS.map((trigger) => {
+          const def = alertTriggerDef(trigger);
+          return (
+            <View
+              key={trigger}
+              style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}
+            >
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
+                  {def.label}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{def.description}</Text>
+              </View>
+              <Switch
+                value={pushTriggerEnabled(current, trigger)}
+                onValueChange={(v) =>
+                  updatePrefs.mutate({ mutedTriggers: withPushTrigger(current, trigger, v) })
+                }
+                trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
+              />
+            </View>
+          );
+        })}
       </Card>
 
       <SectionTitle>Your devices</SectionTitle>
@@ -213,15 +220,234 @@ export default function NotificationsScreen() {
       <SlackSection api={api} orgId={orgId} />
 
       <MsTeamsSection api={api} orgId={orgId} />
+
+      <WeeklyDigestSection api={api} orgId={orgId} />
     </Screen>
   );
 }
 
-const SLACK_TRIGGERS = [
-  { key: "syncIncidents", label: "Sync failures" },
-  { key: "budgetAlerts", label: "Budgets" },
-  { key: "workflowPages", label: "Pages" },
-] as const satisfies ReadonlyArray<{ key: keyof SlackChannelTriggers; label: string }>;
+/** ISO day numbers, as the digest API expresses them (1 = Monday). */
+const DIGEST_DAY_LABELS = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+] as const;
+
+function digestScheduleLine(settings: DigestSettings): string {
+  const day = DIGEST_DAY_LABELS[settings.sendDay - 1] ?? "Monday";
+  const hour = `${String(settings.sendHour).padStart(2, "0")}:00`;
+  return `Sends every ${day} at ${hour} ${settings.timezone}, covering the last complete Monday-to-Sunday week.`;
+}
+
+/**
+ * The outcome of the last delivery attempt, as a colour and a headline. This
+ * is the part of the digest that has to be on the phone: the digest is sent by
+ * a background poller, so without a surface for its failures a digest that
+ * quietly stopped arriving looks exactly like a quiet week.
+ */
+function digestStatusView(settings: DigestSettings): { color: string; headline: string } | null {
+  switch (settings.lastStatus) {
+    case "succeeded":
+      return { color: colors.success, headline: "Last digest delivered to every destination." };
+    case "partial":
+      return { color: colors.warning, headline: "Last digest only partly delivered." };
+    case "failed":
+      return { color: colors.danger, headline: "Last digest failed to send." };
+    case "no_targets":
+      return { color: colors.warning, headline: "The digest has nowhere to go." };
+    case "pending":
+      return { color: colors.textMuted, headline: "A digest is being sent…" };
+    default:
+      return null;
+  }
+}
+
+/**
+ * The weekly digest's org-level settings, as much of them as belongs on a
+ * phone: the on/off switch, the AI-narrative opt-in, Send now, and — the
+ * reason this section is more than a toggle — the status of the last delivery
+ * attempt, mirroring web's `WeeklyDigestSection`.
+ *
+ * Deliberately read-only here (see KNOWLEDGE.md's mobile omissions):
+ * - the **schedule** (day / hour / time zone) is shown as a sentence rather
+ *   than three pickers. Day and hour are easy enough, but the zone list is the
+ *   browser's whole tz database — a searchable ~600-row picker — and shipping
+ *   two thirds of a schedule editor is worse than none.
+ * - the **email recipient list** is shown, not edited. It is an org-wide
+ *   distribution list (a `finance@` alias, not a member opt-in), which is
+ *   admin configuration rather than something you retune from a phone.
+ *
+ * The whole section 403s for anyone without `org:settings:write` — the query
+ * simply fails and this renders nothing, the same shape as the Slack section.
+ */
+function WeeklyDigestSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
+  const queryClient = useQueryClient();
+  const settingsKey = ["digest-settings", orgId] as const;
+
+  const settings = useQuery({
+    queryKey: settingsKey,
+    queryFn: () => getDigestSettings(api, orgId),
+  });
+
+  const recipients = useQuery({
+    queryKey: ["digest-recipients", orgId],
+    queryFn: () => listDigestRecipients(api, orgId),
+    // Same permission as the settings themselves; don't ask until they load.
+    enabled: settings.isSuccess,
+  });
+
+  const update = useMutation({
+    mutationFn: (patch: DigestSettingsPatch) => updateDigestSettings(api, orgId, patch),
+    onMutate: async (patch) => {
+      await queryClient.cancelQueries({ queryKey: settingsKey });
+      const previous = queryClient.getQueryData<DigestSettings>(settingsKey);
+      if (previous) queryClient.setQueryData(settingsKey, { ...previous, ...patch });
+      return { previous };
+    },
+    onError: (e, _patch, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(settingsKey, ctx.previous);
+      Alert.alert("Update failed", e instanceof Error ? e.message : "Unknown error");
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: settingsKey }),
+  });
+
+  const sendNow = useMutation({
+    mutationFn: () => sendDigestNow(api, orgId),
+    onSuccess: (result) => {
+      Alert.alert(
+        "Weekly digest",
+        result
+          ? `Sent to ${result.succeeded} of ${result.attempted} destination(s) — Slack ${result.slack.succeeded}/${result.slack.attempted}, Teams ${result.teams.succeeded}/${result.teams.attempted}, email ${result.email.succeeded}/${result.email.attempted}.`
+          : "Digest sent.",
+      );
+      void queryClient.invalidateQueries({ queryKey: settingsKey });
+    },
+    onError: (e) => Alert.alert("Send failed", e instanceof Error ? e.message : "Unknown error"),
+  });
+
+  if (settings.isLoading || !settings.data) return null;
+
+  const current = settings.data;
+  const status = digestStatusView(current);
+  const recipientList = recipients.data ?? [];
+
+  return (
+    <>
+      <SectionTitle>Weekly digest</SectionTitle>
+      <Card>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
+              Send a weekly digest
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+              Last week&apos;s spend with week-over-week movers, sync incidents, and resource churn
+              — to the channels with &quot;Weekly digest&quot; on, plus the email recipients below.
+            </Text>
+          </View>
+          <Switch
+            value={current.enabled}
+            onValueChange={(v) => update.mutate({ enabled: v })}
+            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
+          />
+        </View>
+
+        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+          {digestScheduleLine(current)} Change the schedule from the web app.
+        </Text>
+
+        <Separator />
+
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
+              AI summary paragraph
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+              {current.narrativeAvailable
+                ? "A short paragraph above the numbers saying what changed and why it stands out. Only the digest's own figures are sent to the model — never resource or credential data."
+                : "Unavailable: this deployment has no LLM API key configured."}
+            </Text>
+          </View>
+          <Switch
+            value={current.narrativeEnabled}
+            disabled={!current.narrativeAvailable}
+            onValueChange={(v) => update.mutate({ narrativeEnabled: v })}
+            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
+          />
+        </View>
+      </Card>
+
+      <Card>
+        <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
+          Email recipients
+        </Text>
+        {!current.emailAvailable ? (
+          <Text style={{ color: colors.warning, fontSize: 12 }}>
+            This deployment has no mail provider configured, so email recipients receive nothing.
+          </Text>
+        ) : null}
+        {recipientList.length === 0 ? (
+          <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+            No email recipients. Add addresses from the web app — they don&apos;t have to belong to
+            Infrawrench users.
+          </Text>
+        ) : (
+          <>
+            {recipientList.map((r) => (
+              <Text key={r.id} style={{ color: colors.textSecondary, fontSize: 13 }}>
+                {r.email}
+              </Text>
+            ))}
+            <Text style={{ color: colors.textFaint, fontSize: 11 }}>Managed from the web app.</Text>
+          </>
+        )}
+      </Card>
+
+      <Card>
+        {status ? (
+          <>
+            <Text style={{ color: status.color, fontSize: 13, fontWeight: "500" }}>
+              {status.headline}
+            </Text>
+            {current.lastError ? (
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>{current.lastError}</Text>
+            ) : null}
+            <Text style={{ color: colors.textFaint, fontSize: 11 }}>
+              {current.lastAttemptAt
+                ? `Last attempt ${new Date(current.lastAttemptAt).toLocaleString()} (attempt ${current.attemptCount})`
+                : "No attempt yet"}
+              {current.lastSentWeekStart ? ` · week of ${current.lastSentWeekStart}` : ""}
+              {current.nextAttemptAt
+                ? ` · retrying ${new Date(current.nextAttemptAt).toLocaleString()}`
+                : ""}
+              .
+            </Text>
+          </>
+        ) : (
+          <Text style={{ color: colors.textFaint, fontSize: 11 }}>
+            {current.lastSentAt
+              ? `Last sent ${new Date(current.lastSentAt).toLocaleString()}${
+                  current.lastSentWeekStart ? ` (week of ${current.lastSentWeekStart})` : ""
+                }.`
+              : "No digest sent yet."}
+          </Text>
+        )}
+      </Card>
+
+      <Button
+        label={sendNow.isPending ? "Sending…" : "Send now"}
+        variant="secondary"
+        disabled={sendNow.isPending}
+        onPress={() => sendNow.mutate()}
+      />
+    </>
+  );
+}
 
 /**
  * Slack routing for the whole org — unlike the push toggles above, which are
@@ -248,8 +474,6 @@ function SlackSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
   });
 
   const refetchStatus = () => queryClient.invalidateQueries({ queryKey: statusKey });
-  const alertError = (title: string) => (e: unknown) =>
-    Alert.alert(title, e instanceof Error ? e.message : "Unknown error");
 
   const connect = useMutation({
     mutationFn: async () => {
@@ -265,27 +489,6 @@ function SlackSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
     mutationFn: (installationId: string) => disconnectSlackWorkspace(api, orgId, installationId),
     onSuccess: () => void refetchStatus(),
     onError: alertError("Disconnect failed"),
-  });
-
-  const toggle = useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Partial<SlackChannelTriggers> }) =>
-      updateSlackChannel(api, orgId, id, patch),
-    onMutate: async ({ id, patch }) => {
-      await queryClient.cancelQueries({ queryKey: statusKey });
-      const previous = queryClient.getQueryData<SlackStatus>(statusKey);
-      if (previous) {
-        queryClient.setQueryData<SlackStatus>(statusKey, {
-          ...previous,
-          channels: previous.channels.map((c) => (c.id === id ? { ...c, ...patch } : c)),
-        });
-      }
-      return { previous };
-    },
-    onError: (e, _vars, ctx) => {
-      if (ctx?.previous) queryClient.setQueryData(statusKey, ctx.previous);
-      alertError("Update failed")(e);
-    },
-    onSettled: () => void refetchStatus(),
   });
 
   const addChannel = useMutation({
@@ -399,7 +602,6 @@ function SlackSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
             <SlackChannelRow
               key={ch.id}
               channel={ch}
-              onToggle={(patch) => toggle.mutate({ id: ch.id, patch })}
               onRemove={() => removeChannel.mutate(ch.id)}
             />
           ))
@@ -460,49 +662,24 @@ function SlackSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
   );
 }
 
-function SlackChannelRow({
-  channel,
-  onToggle,
-  onRemove,
-}: {
-  channel: SlackChannel;
-  onToggle: (patch: Partial<SlackChannelTriggers>) => void;
-  onRemove: () => void;
-}) {
+/**
+ * A connected channel, with no per-trigger switches.
+ *
+ * Which alerts reach a channel is an org-wide routing rule now
+ * (`org:settings:write`), and the rules editor is a web/desktop surface — the
+ * same demotion drift-alert settings and the digest schedule already carry
+ * here. What the phone keeps is the part that is genuinely per-device: your own
+ * push mutes, above.
+ */
+function SlackChannelRow({ channel, onRemove }: { channel: SlackChannel; onRemove: () => void }) {
   return (
-    <View style={{ gap: spacing.sm }}>
-      <Row
-        title={`#${channel.channelName}`}
-        subtitle={channel.isPrivate ? "private" : undefined}
-        right={<Button label="Remove" variant="secondary" onPress={onRemove} />}
-      />
-      {SLACK_TRIGGERS.map((t) => (
-        <View
-          key={t.key}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: spacing.md,
-            paddingLeft: spacing.md,
-          }}
-        >
-          <Text style={{ color: colors.textMuted, fontSize: 13, flex: 1 }}>{t.label}</Text>
-          <Switch
-            value={channel[t.key]}
-            onValueChange={(v) => onToggle({ [t.key]: v })}
-            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
-          />
-        </View>
-      ))}
-    </View>
+    <Row
+      title={`#${channel.channelName}`}
+      subtitle={channel.isPrivate ? "private" : undefined}
+      right={<Button label="Remove" variant="secondary" onPress={onRemove} />}
+    />
   );
 }
-
-const MSTEAMS_TRIGGERS = [
-  { key: "syncIncidents", label: "Sync failures" },
-  { key: "budgetAlerts", label: "Budgets" },
-  { key: "workflowPages", label: "Pages" },
-] as const satisfies ReadonlyArray<{ key: keyof MsTeamsWebhookTriggers; label: string }>;
 
 /**
  * Microsoft Teams routing for the whole org. There is no "Add to Teams" button
@@ -524,29 +701,6 @@ function MsTeamsSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
   });
 
   const refetchStatus = () => queryClient.invalidateQueries({ queryKey: statusKey });
-  const alertError = (title: string) => (e: unknown) =>
-    Alert.alert(title, e instanceof Error ? e.message : "Unknown error");
-
-  const toggle = useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Partial<MsTeamsWebhookTriggers> }) =>
-      updateMsTeamsWebhook(api, orgId, id, patch),
-    onMutate: async ({ id, patch }) => {
-      await queryClient.cancelQueries({ queryKey: statusKey });
-      const previous = queryClient.getQueryData<MsTeamsStatus>(statusKey);
-      if (previous) {
-        queryClient.setQueryData<MsTeamsStatus>(statusKey, {
-          ...previous,
-          webhooks: previous.webhooks.map((w) => (w.id === id ? { ...w, ...patch } : w)),
-        });
-      }
-      return { previous };
-    },
-    onError: (e, _vars, ctx) => {
-      if (ctx?.previous) queryClient.setQueryData(statusKey, ctx.previous);
-      alertError("Update failed")(e);
-    },
-    onSettled: () => void refetchStatus(),
-  });
 
   const add = useMutation({
     mutationFn: () => addMsTeamsWebhook(api, orgId, { label, url }),
@@ -591,12 +745,7 @@ function MsTeamsSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
           </Text>
         ) : (
           webhooks.map((w) => (
-            <MsTeamsWebhookRow
-              key={w.id}
-              webhook={w}
-              onToggle={(patch) => toggle.mutate({ id: w.id, patch })}
-              onRemove={() => removeWebhook.mutate(w.id)}
-            />
+            <MsTeamsWebhookRow key={w.id} webhook={w} onRemove={() => removeWebhook.mutate(w.id)} />
           ))
         )}
       </Card>
@@ -651,41 +800,20 @@ function MsTeamsSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
   );
 }
 
+/** A connected Teams channel. Routing is a web/desktop surface — see `SlackChannelRow`. */
 function MsTeamsWebhookRow({
   webhook,
-  onToggle,
   onRemove,
 }: {
   webhook: MsTeamsWebhook;
-  onToggle: (patch: Partial<MsTeamsWebhookTriggers>) => void;
   onRemove: () => void;
 }) {
   return (
-    <View style={{ gap: spacing.sm }}>
-      <Row
-        title={webhook.label}
-        subtitle={webhook.urlHint}
-        right={<Button label="Remove" variant="secondary" onPress={onRemove} />}
-      />
-      {MSTEAMS_TRIGGERS.map((t) => (
-        <View
-          key={t.key}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: spacing.md,
-            paddingLeft: spacing.md,
-          }}
-        >
-          <Text style={{ color: colors.textMuted, fontSize: 13, flex: 1 }}>{t.label}</Text>
-          <Switch
-            value={webhook[t.key]}
-            onValueChange={(v) => onToggle({ [t.key]: v })}
-            trackColor={{ false: colors.surfaceOverlay, true: colors.accent }}
-          />
-        </View>
-      ))}
-    </View>
+    <Row
+      title={webhook.label}
+      subtitle={webhook.urlHint}
+      right={<Button label="Remove" variant="secondary" onPress={onRemove} />}
+    />
   );
 }
 

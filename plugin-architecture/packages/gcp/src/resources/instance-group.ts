@@ -15,6 +15,9 @@ export const InstanceGroupResourceType = rt({
     f("status", "Status", { required: false }),
   ],
   outputs: [],
+  dependsOn: [
+    { fieldKey: "instanceTemplate", targetTypeId: "instance-template", label: "from template" },
+  ],
   supportsCreate: true,
   attachTargets: [
     {

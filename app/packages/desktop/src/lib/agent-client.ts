@@ -12,12 +12,22 @@ import {
   AGENT_SETUP_FAILED_LOG_PREFIX,
   AGENT_SETUP_STEP_PREFIX,
   agentToolLabel,
+  bootstrapReportedComplete,
   buildAgentBootstrapCommand,
   buildAgentEnvFile,
   buildAgentLaunchCommand,
   buildAgentRepoSetupCommand,
   isCloneableGitRepo,
   resolveAgentEnvTemplate,
+} from "@infrawrench/ui/agents";
+import {
+  agentSurfaceOrDefault,
+  buildT3CodeBootstrapCommand,
+  buildT3CodeConnectCommand,
+  buildT3CodeLogoutCommand,
+  createT3CodeSetupPlan,
+  isT3CodeSurface,
+  T3_CODE_PROJECTS_DIR,
 } from "@infrawrench/ui/agents";
 import { dispatchResourcesChanged } from "@infrawrench/ui";
 import type {
@@ -38,6 +48,7 @@ const AGENT_SSH_KEY_NAME = "infrawrench-agent";
 const AGENT_SETUP_STARTED_LOG = "Preparing VM for coding session.";
 const AGENT_SETUP_WAIT_SSH_LOG = "Waiting for VM SSH to become available.";
 const AGENT_SETUP_BOOTSTRAP_LOG = "Installing coding tools and preparing workspace.";
+const AGENT_SETUP_T3_CODE_LOG = "Installing the T3 Code server and its agent CLI.";
 const AGENT_SETUP_REFRESH_LOG = "Refreshing agent workspace and tool configuration.";
 const AGENT_SETUP_COMPLETE_LOG = "Agent VM setup complete.";
 // Must exceed the bootstrap's own remote `timeout 420s` so a slow first
@@ -78,6 +89,7 @@ interface SettingsRow {
   plugin_id: string;
   resource_type_id: string;
   tool: "codex" | "claude-code";
+  surface: string | null;
   fields_json: string;
 }
 
@@ -90,6 +102,7 @@ interface SessionRow {
   plugin_id: string;
   resource_type_id: string;
   tool: "codex" | "claude-code";
+  surface: string | null;
   branch_name: string;
   status: AgentSession["status"];
   vm_resource_id: string | null;
@@ -161,6 +174,7 @@ function rowToSession(row: SessionRow): AgentSession {
     pluginId: row.plugin_id,
     resourceTypeId: row.resource_type_id,
     tool: row.tool,
+    surface: agentSurfaceOrDefault(row.surface),
     branchName: row.branch_name,
     status: row.status,
     vmResourceId: row.vm_resource_id,
@@ -216,6 +230,7 @@ export function createDesktopAgentClient(): AgentClient {
         pluginId: row.plugin_id,
         resourceTypeId: row.resource_type_id,
         tool: row.tool,
+        surface: agentSurfaceOrDefault(row.surface),
         fields: parseJson<Record<string, string>>(row.fields_json, {}),
       };
     },
@@ -223,13 +238,14 @@ export function createDesktopAgentClient(): AgentClient {
       const db = await getDb();
       await db.execute(
         `INSERT OR REPLACE INTO agent_settings
-         (id, account_id, plugin_id, resource_type_id, tool, fields_json, updated_at)
-         VALUES ('default', $1, $2, $3, $4, $5, datetime('now'))`,
+         (id, account_id, plugin_id, resource_type_id, tool, surface, fields_json, updated_at)
+         VALUES ('default', $1, $2, $3, $4, $5, $6, datetime('now'))`,
         [
           settings.accountId,
           settings.pluginId,
           settings.resourceTypeId,
           settings.tool,
+          agentSurfaceOrDefault(settings.surface),
           JSON.stringify(settings.fields),
         ],
       );
@@ -266,18 +282,23 @@ export function createDesktopAgentClient(): AgentClient {
     async createSession(body: AgentCreateBody): Promise<AgentSession> {
       const db = await getDb();
       const id = crypto.randomUUID();
-      const projectName = body.projectName?.trim() || projectNameFromRepo(body.repo);
-      const workspaceName =
-        body.workspaceName?.trim() || projectNameFromRepo(body.repo) || projectName;
-      const setupPlan = await createAgentSetupPlan(
-        body.repo,
-        body.settings.tool,
-        workspaceName,
-      ).catch((error) => {
-        throw new Error(`Agent setup plan failed: ${formatErrorMessage(error)}`);
-      });
+      const surface = agentSurfaceOrDefault(body.settings.surface);
+      // A T3 Code session provisions a bare server: T3 Code manages its own
+      // projects, so there is no repo to inspect, clone, or plan runtimes from.
+      const isT3Code = isT3CodeSurface(surface);
+      const repo = isT3Code ? "" : body.repo.trim();
+      const projectName =
+        body.projectName?.trim() || (repo ? projectNameFromRepo(repo) : "") || "t3-code";
+      const workspaceName = isT3Code
+        ? T3_CODE_PROJECTS_DIR
+        : body.workspaceName?.trim() || projectNameFromRepo(repo) || projectName;
+      const setupPlan = isT3Code
+        ? createT3CodeSetupPlan(body.settings.tool)
+        : await createAgentSetupPlan(repo, body.settings.tool, workspaceName).catch((error) => {
+            throw new Error(`Agent setup plan failed: ${formatErrorMessage(error)}`);
+          });
       const logs = [
-        "Agent session created.",
+        isT3Code ? "T3 Code server session created." : "Agent session created.",
         "Setup policy: conservative detection.",
         ...setupPlanLogLines(setupPlan),
         "Provisioning VM with selected provider defaults.",
@@ -337,17 +358,18 @@ export function createDesktopAgentClient(): AgentClient {
       const initialStatus = setupAwareStatusFromLogs(updatedLogs, initialVmStatus);
       await db.execute(
         `INSERT INTO agent_sessions
-         (id, repo, project_name, workspace_name, account_id, plugin_id, resource_type_id, tool, branch_name, status, vm_resource_id, logs_json, setup_plan_json)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+         (id, repo, project_name, workspace_name, account_id, plugin_id, resource_type_id, tool, surface, branch_name, status, vm_resource_id, logs_json, setup_plan_json)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
         [
           id,
-          body.repo.trim(),
+          repo,
           projectName,
           workspaceName,
           body.settings.accountId,
           body.settings.pluginId,
           body.settings.resourceTypeId,
           body.settings.tool,
+          surface,
           branchName(id),
           initialStatus,
           resource.id,
@@ -409,6 +431,18 @@ export function createDesktopAgentClient(): AgentClient {
       }).catch((error) => {
         console.warn(`Agent VM setup failed for ${id}`, error);
       });
+      // A T3 Code session's terminal is the one-off authorization flow, not
+      // an attached agent: T3 Code runs the agent, and its own tab is the
+      // session's main surface. Nothing is attached, so no launch-ready
+      // marker is waited on.
+      if (isT3CodeSurface(row.surface)) {
+        return {
+          command: buildT3CodeConnectCommand({ tool: row.tool }),
+          cwd: `~/${workspaceNameForRow(row)}`,
+          sshKeyId: agentKey.id,
+          sshKeyName: agentKey.name,
+        };
+      }
       return {
         command: buildAgentLaunchCommand({
           sessionId: row.id,
@@ -431,6 +465,13 @@ export function createDesktopAgentClient(): AgentClient {
       if (!(await refreshAgentSession(row))) {
         await db.execute("DELETE FROM agent_sessions WHERE id = $1", [id]);
         throw new Error("Agent VM no longer exists");
+      }
+      if (isT3CodeSurface(row.surface)) {
+        return {
+          branchName: row.branch_name,
+          message:
+            "T3 Code owns this server's projects and their branches — push from inside T3 Code. Infrawrench has nothing to reconcile.",
+        };
       }
       // Git-URL sessions have no local checkout to fetch into — reconciling
       // means pushing from the VM (it cloned the remote, so it has origin).
@@ -464,6 +505,15 @@ export function createDesktopAgentClient(): AgentClient {
       ]);
       const row = rows[0];
       if (!row) return;
+      // Revoke the T3 Connect relay link while the VM still exists — once it
+      // is destroyed there is no way to remove the environment from T3's side.
+      // Best effort: an unreachable VM must not block deletion of a machine
+      // that is still billing.
+      if (isT3CodeSurface(row.surface)) {
+        await revokeT3CodeLinkOnVm(row).catch((error) => {
+          console.warn(`Could not revoke the T3 Connect link for ${row.id}`, error);
+        });
+      }
       // Resources created from .infrawrench/agent.json (db branches etc.)
       // go first — same rule as the VM: gone upstream is success, any other
       // failure aborts so nothing keeps billing silently.
@@ -684,8 +734,17 @@ async function ensureAgentVmSetup(
   // bootstrap/sync pair (it is tiny).
   await uploadAgentEnvFile(row, target, privateKey, remoteHome);
 
-  const syncLocalRepo = shouldSyncLocalRepo(row, opts);
-  await appendAgentSessionLog(db, row.id, AGENT_SETUP_BOOTSTRAP_LOG, "setting-up");
+  const t3Code = isT3CodeSurface(row.surface);
+  // A T3 Code server has no Infrawrench-managed checkout to sync. Its local
+  // *tool config* sync still runs and still pays off: T3 Code drives the same
+  // CLI, so a synced credential is one interactive sign-in the user skips.
+  const syncLocalRepo = t3Code ? false : shouldSyncLocalRepo(row, opts);
+  await appendAgentSessionLog(
+    db,
+    row.id,
+    t3Code ? AGENT_SETUP_T3_CODE_LOG : AGENT_SETUP_BOOTSTRAP_LOG,
+    "setting-up",
+  );
   await appendAgentSessionLog(
     db,
     row.id,
@@ -706,13 +765,18 @@ async function ensureAgentVmSetup(
       return await runAgentSetupCommand(
         target,
         privateKey,
-        buildAgentBootstrapCommand({
-          tool: row.tool,
-          workspaceName: workspaceNameForRow(row),
-          branchName: row.branch_name,
-          repo: row.repo,
-          setupPlan: setupPlanForRow(row),
-        }),
+        t3Code
+          ? buildT3CodeBootstrapCommand({
+              tool: row.tool,
+              projectsDir: workspaceNameForRow(row),
+            })
+          : buildAgentBootstrapCommand({
+              tool: row.tool,
+              workspaceName: workspaceNameForRow(row),
+              branchName: row.branch_name,
+              repo: row.repo,
+              setupPlan: setupPlanForRow(row),
+            }),
         setupLogger,
       );
     } finally {
@@ -747,7 +811,7 @@ async function ensureAgentVmSetup(
       "setting-up",
     );
   }
-  if (!isCloneableGitRepo(row.repo) && syncResult.repoFiles > 0) {
+  if (!t3Code && !isCloneableGitRepo(row.repo) && syncResult.repoFiles > 0) {
     await checkoutAgentWorkspaceBranch(row, target, privateKey);
   }
   for (const syncWarning of syncResult.warnings.slice(0, 10)) {
@@ -756,11 +820,38 @@ async function ensureAgentVmSetup(
   // Repo-provided setup script — needs the workspace (sync) AND the
   // runtimes (bootstrap), so it runs after both. The bootstrap's own script
   // hook only fires on git-URL clones (web); desktop always runs it here.
-  await runAgentRepoSetupScript(db, row, target, privateKey);
+  if (!t3Code) await runAgentRepoSetupScript(db, row, target, privateKey);
   if (opts?.launchReadyToken) {
     await markAgentLaunchReady(target, privateKey, opts.launchReadyToken);
   }
   await appendAgentSessionLog(db, row.id, AGENT_SETUP_COMPLETE_LOG, "up");
+}
+
+/**
+ * Revoke a T3 Code session's relay link on its VM, before the VM is destroyed.
+ *
+ * Resolves the SSH endpoint without the retry loop `waitForAgentSshTarget`
+ * uses: teardown should not sit for fifteen minutes waiting on a VM that may
+ * already be gone. Every failure is swallowed by the caller — losing the
+ * revocation is recoverable, being unable to delete a billing VM is not.
+ */
+async function revokeT3CodeLinkOnVm(row: SessionRow): Promise<void> {
+  if (!row.vm_resource_id) return;
+  const resource = await loadAgentVmResource(row);
+  const target = await resolveAgentSshTarget(row, resource);
+  const agentKey = await ensureAgentSshKey();
+  const privateKey = await invoke<string>("ssh_key_get_private_key", { keyId: agentKey.id });
+  await agentSshExecCommand(
+    {
+      sshHost: target.host,
+      sshPort: target.port,
+      sshUser: target.username,
+      privateKey,
+    },
+    buildT3CodeLogoutCommand(),
+  );
+  const db = await getDb();
+  await appendAgentSessionLog(db, row.id, "Revoked the T3 Connect environment link.");
 }
 
 async function waitForAgentSshTarget(row: SessionRow): Promise<AgentSshTarget> {
@@ -804,6 +895,15 @@ async function runAgentSetupCommand(
         command,
         logger,
       );
+      // A bootstrap that announced completion did its job; a non-zero exit
+      // after that point (a dropped channel, a login shell's exit quirk) is
+      // not a setup failure and must not strand a ready VM in "failed".
+      if (result.code !== 0 && bootstrapReportedComplete(`${result.stderr}\n${result.stdout}`)) {
+        await logger.onData(
+          `${AGENT_SETUP_STEP_PREFIX}Bootstrap reported completion despite exit ${result.code}; treating the VM as set up.\n`,
+        );
+        return { ...result, code: 0 };
+      }
       if (result.code !== 0) {
         throw new Error(formatCommandFailure(result));
       }
@@ -1223,6 +1323,8 @@ function setupPlanForRow(row: SessionRow): AgentSetupPlan {
 }
 
 function defaultAgentSetupPlan(row: SessionRow): AgentSetupPlan {
+  // The repo-derived fallback can't describe a T3 Code server — it has no repo.
+  if (isT3CodeSurface(row.surface)) return createT3CodeSetupPlan(row.tool);
   return {
     source: isCloneableGitRepo(row.repo) ? "git-url" : "local-folder",
     workspaceName: workspaceNameForRow(row),

@@ -514,6 +514,9 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     supportsMetrics:
       ((resourceTypeDef?.supportsMetrics ?? false) && !!client.fetchMetricSeries) ||
       (resourceTypeDef?.peerIntegrations?.some((i) => i.exposeMetricsToParent) ?? false),
+    // Sleep/wake eligibility — discovered from the plugin's lifecycle
+    // declaration, never from provider names.
+    schedulable: !!resourceTypeDef?.lifecycle && !!client.invokeAction,
   });
 });
 

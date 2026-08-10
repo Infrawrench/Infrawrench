@@ -121,10 +121,27 @@ async function resolveOrganizations(api: Api<unknown>): Promise<Organization[]> 
   return orgs;
 }
 
+/**
+ * Oldest day the daily-granularity consumption API will accept. Neon retains
+ * 60 days measured from the current server time — not from day boundaries —
+ * and a `from` outside that window fails the whole request with 406 rather
+ * than returning a truncated result. A midnight-aligned start exactly 60
+ * days back is therefore already out of range for most of the day, which is
+ * why this clamps to 59: one day of slack keeps the request inside the
+ * window regardless of time of day (and of modest clock skew).
+ */
+function oldestQueryableDay(): string {
+  return new Date(Date.now() - 59 * 86_400_000).toISOString().slice(0, 10);
+}
+
 export async function fetchNeonCostData(
   api: Api<unknown>,
   range: CostFetchRange,
 ): Promise<CostRow[]> {
+  const floor = oldestQueryableDay();
+  if (range.toDate < floor) return []; // entirely outside Neon's retention
+  const fromDate = range.fromDate < floor ? floor : range.fromDate;
+
   const organizations = await resolveOrganizations(api);
   if (organizations.length === 0) {
     throw new Error(
@@ -149,7 +166,7 @@ export async function fetchNeonCostData(
         org_id: org.id,
         // `to` is rounded to day granularity; over-ask by using end-of-day and
         // filter rows back to the inclusive range below.
-        from: `${range.fromDate}T00:00:00Z`,
+        from: `${fromDate}T00:00:00Z`,
         to: `${range.toDate}T23:59:59Z`,
         granularity: ConsumptionHistoryGranularity.Daily,
         metrics: METRICS,

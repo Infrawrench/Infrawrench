@@ -5,6 +5,7 @@ import type {
   K8sNamespace,
   K8sNode,
   K8sPod,
+  K8sPodSpec,
   K8sDeployment,
   K8sService,
   K8sStatefulSet,
@@ -12,6 +13,7 @@ import type {
   K8sJob,
   K8sCronJob,
   K8sIngress,
+  K8sIngressBackend,
   K8sConfigMap,
   K8sSecret,
 } from "./types.js";
@@ -35,6 +37,59 @@ export const SYSTEM_NAMESPACES = new Set([
   "knative-serving",
   "gke-managed-filestorecsi",
 ]);
+
+/**
+ * `namespace/name` — the identity a namespaced object actually has.
+ *
+ * Cross-object references inside a namespaced spec (a pod's ConfigMap volume,
+ * an Ingress backend) name only the bare object, because Kubernetes resolves
+ * them within the referrer's own namespace. A bare `config` names a different
+ * ConfigMap in every namespace, so listers store the qualified form on both
+ * sides of a reference and the dependency graph matches those instead.
+ */
+function qualify(namespace: string | undefined, name: string): string {
+  return `${namespace ?? "default"}/${name}`;
+}
+
+/**
+ * The ConfigMaps and Secrets a pod spec names, namespace-qualified and joined
+ * for the graph (which splits comma-separated values into one edge each).
+ * Everything here is already on the object the list call returned — volumes
+ * (including projected sources), `envFrom` / `env.valueFrom` on every
+ * container, and image-pull secrets.
+ */
+function podReferences(
+  spec: K8sPodSpec,
+  namespace: string | undefined,
+): { configMaps: string; secrets: string } {
+  const configMaps = new Set<string>();
+  const secrets = new Set<string>();
+  const add = (into: Set<string>, name: string | undefined) => {
+    if (name) into.add(qualify(namespace, name));
+  };
+
+  for (const volume of spec.volumes ?? []) {
+    add(configMaps, volume.configMap?.name);
+    add(secrets, volume.secret?.secretName);
+    for (const source of volume.projected?.sources ?? []) {
+      add(configMaps, source.configMap?.name);
+      add(secrets, source.secret?.name);
+    }
+  }
+  for (const container of [...(spec.initContainers ?? []), ...(spec.containers ?? [])]) {
+    for (const from of container.envFrom ?? []) {
+      add(configMaps, from.configMapRef?.name);
+      add(secrets, from.secretRef?.name);
+    }
+    for (const entry of container.env ?? []) {
+      add(configMaps, entry.valueFrom?.configMapKeyRef?.name);
+      add(secrets, entry.valueFrom?.secretKeyRef?.name);
+    }
+  }
+  for (const pullSecret of spec.imagePullSecrets ?? []) add(secrets, pullSecret.name);
+
+  return { configMaps: [...configMaps].join(", "), secrets: [...secrets].join(", ") };
+}
 
 export async function listClusters(
   ctx: ListerContext,
@@ -172,6 +227,7 @@ export async function listPods(ctx: ListerContext, accountId: string): Promise<R
     const ttlSeconds = isEphemeral
       ? (pod.metadata.annotations?.["infrawrench.io/ttl-seconds"] ?? "")
       : "";
+    const { configMaps, secrets } = podReferences(pod.spec, pod.metadata.namespace);
 
     results.push({
       id: `${accountId}:k8s-pod:${pod.metadata.namespace}:${pod.metadata.name}`,
@@ -187,6 +243,9 @@ export async function listPods(ctx: ListerContext, accountId: string): Promise<R
         statusReason,
         containerName: container?.name ?? pod.metadata.name,
         restarts,
+        nodeName: pod.spec.nodeName ?? "",
+        configMaps,
+        secrets,
         ...(isEphemeral ? { ephemeral: "true", expiresAt, ttlSeconds } : {}),
       },
       resolvedOutputs: {},
@@ -222,6 +281,7 @@ export async function listDeployments(
           replicas: d.spec.replicas ?? 0,
           readyReplicas: d.status.readyReplicas ?? 0,
           image: container?.image ?? "",
+          serviceAccountName: d.spec.template.spec.serviceAccountName ?? "",
         },
         resolvedOutputs: {},
         secretStates: [],
@@ -264,6 +324,7 @@ export async function listServices(
         fields: {
           name: s.metadata.name,
           namespace: s.metadata.namespace ?? "default",
+          qualifiedName: qualify(s.metadata.namespace, s.metadata.name),
           type: s.spec.type,
           clusterIP: s.spec.clusterIP ?? "",
           externalIP,
@@ -301,6 +362,7 @@ export async function listStatefulSets(
           replicas: s.spec.replicas ?? 0,
           readyReplicas: s.status.readyReplicas ?? 0,
           image: container?.image ?? "",
+          serviceAccountName: s.spec.template.spec.serviceAccountName ?? "",
         },
         resolvedOutputs: {},
         secretStates: [],
@@ -359,6 +421,11 @@ export async function listJobs(ctx: ListerContext, accountId: string): Promise<R
       else if (failed > 0) status = "Failed";
       else if (active > 0) status = "Running";
       else status = "Pending";
+      // A scheduled Job carries its CronJob in `ownerReferences` — the one
+      // pointer that survives into the listing (the name alone is generated,
+      // e.g. "backup-28401120").
+      const cronJob =
+        (j.metadata.ownerReferences ?? []).find((ref) => ref.kind === "CronJob")?.name ?? "";
       return {
         id: `${accountId}:k8s-job:${j.metadata.namespace}:${j.metadata.name}`,
         pluginId: "kubernetes",
@@ -371,6 +438,7 @@ export async function listJobs(ctx: ListerContext, accountId: string): Promise<R
           completions: `${succeeded}/${completions}`,
           status,
           image: container?.image ?? "",
+          cronJob,
         },
         resolvedOutputs: {},
         secretStates: [],
@@ -398,6 +466,7 @@ export async function listCronJobs(
       fields: {
         name: c.metadata.name,
         namespace: c.metadata.namespace ?? "default",
+        qualifiedName: qualify(c.metadata.namespace, c.metadata.name),
         schedule: c.spec.schedule,
         suspended: String(c.spec.suspend ?? false),
         lastSchedule: c.status.lastScheduleTime ?? "",
@@ -425,6 +494,17 @@ export async function listIngresses(
         .map((lb) => lb.ip ?? lb.hostname ?? "")
         .filter(Boolean)
         .join(", ");
+      // Every path's backing Service. An Ingress can only route to Services in
+      // its own namespace, so the qualified name is exact.
+      const backends = new Set<string>();
+      const addBackend = (backend: K8sIngressBackend | undefined) => {
+        const serviceName = backend?.service?.name;
+        if (serviceName) backends.add(qualify(i.metadata.namespace, serviceName));
+      };
+      addBackend(i.spec.defaultBackend);
+      for (const rule of i.spec.rules ?? []) {
+        for (const path of rule.http?.paths ?? []) addBackend(path.backend);
+      }
       return {
         id: `${accountId}:k8s-ingress:${i.metadata.namespace}:${i.metadata.name}`,
         pluginId: "kubernetes",
@@ -437,6 +517,7 @@ export async function listIngresses(
           ingressClassName: i.spec.ingressClassName ?? "",
           hosts,
           address,
+          services: [...backends].join(", "),
         },
         resolvedOutputs: {},
         secretStates: [],
@@ -466,6 +547,7 @@ export async function listConfigMaps(
         fields: {
           name: cm.metadata.name,
           namespace: cm.metadata.namespace ?? "default",
+          qualifiedName: qualify(cm.metadata.namespace, cm.metadata.name),
           keys: keys.join(", "),
           dataCount: keys.length,
         },
@@ -500,6 +582,7 @@ export async function listSecrets(
           fields: {
             name: s.metadata.name,
             namespace: s.metadata.namespace ?? "default",
+            qualifiedName: qualify(s.metadata.namespace, s.metadata.name),
             type: s.type ?? "Opaque",
             keys: keys.join(", "),
             dataCount: keys.length,

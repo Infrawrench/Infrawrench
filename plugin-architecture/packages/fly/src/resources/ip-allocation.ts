@@ -14,5 +14,6 @@ export const IpAllocationResourceType = rt({
     f("private", "Private", { kind: "boolean", required: false }),
   ],
   outputs: [o("address", "Address")],
+  dependsOn: [{ fieldKey: "appName", targetTypeId: "app", label: "in app" }],
   iconKey: "network",
 });

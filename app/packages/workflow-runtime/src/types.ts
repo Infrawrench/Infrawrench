@@ -268,6 +268,47 @@ export interface PageResult {
   retryAt?: string;
 }
 
+/**
+ * Minutes a pending `infra.waitForApproval(...)` waits before it is denied
+ * and the run fails, when the author doesn't choose a timeout.
+ */
+export const DEFAULT_APPROVAL_TIMEOUT_MINUTES = 60;
+
+/** Ceiling for one approval wait — a day. Longer should be a second run. */
+export const MAX_APPROVAL_TIMEOUT_MINUTES = 24 * 60;
+
+/** Longest approval title/message we carry across the bridge. */
+export const MAX_APPROVAL_TITLE_LENGTH = 120;
+export const MAX_APPROVAL_MESSAGE_LENGTH = 2000;
+
+/**
+ * A human-approval gate raised by `infra.waitForApproval(...)`. The run
+ * suspends until an org member approves or denies it (or the timeout passes,
+ * which counts as a denial). Denial and timeout surface as a thrown error
+ * inside the workflow, so an unhandled deny fails the run.
+ */
+export interface ApprovalSpec {
+  /** Short headline for the approval card. Defaults to the workflow's name. */
+  title?: string;
+  /** What the approver is deciding. Required. */
+  message: string;
+  /**
+   * Minutes to wait for a decision before the request expires and is treated
+   * as denied. Defaults to {@link DEFAULT_APPROVAL_TIMEOUT_MINUTES}; clamped
+   * to {@link MAX_APPROVAL_TIMEOUT_MINUTES}.
+   */
+  timeoutMinutes?: number;
+}
+
+/** What `infra.waitForApproval(...)` resolves with — only ever an approval. */
+export interface ApprovalResult {
+  approved: true;
+  /** Display name (or email) of the org member who approved. */
+  decidedBy?: string;
+  /** ISO timestamp of the decision. */
+  decidedAt?: string;
+}
+
 /** Wall-clock budget for one `fetch(...)` when the caller doesn't set one. */
 export const DEFAULT_FETCH_TIMEOUT_MS = 30_000;
 
@@ -352,6 +393,65 @@ export interface WorkflowFetchResponse {
   bodyBase64: string;
   /** True when the response came from a followed redirect. */
   redirected: boolean;
+}
+
+/**
+ * Models `infra.ai(...)` may ask for. Kept to the chat picker's Claude models
+ * so pricing and the monthly AI spend cap ride the same rails (the codegen
+ * union in codegen.ts's AI_INTERFACES must list exactly these ids).
+ */
+export const WORKFLOW_AI_MODELS = ["claude-sonnet-5", "claude-haiku-4-5", "claude-opus-5"] as const;
+
+export type WorkflowAiModel = (typeof WORKFLOW_AI_MODELS)[number];
+
+/** Model used when the author doesn't choose one: capable, not the priciest. */
+export const DEFAULT_WORKFLOW_AI_MODEL: WorkflowAiModel = "claude-sonnet-5";
+
+/** Reply-length budget (tokens) when the caller doesn't set one. */
+export const DEFAULT_AI_MAX_TOKENS = 1024;
+
+/** Ceiling for `maxTokens`. A longer answer belongs in chat, not a run log. */
+export const MAX_AI_MAX_TOKENS = 8192;
+
+/**
+ * Longest prompt we carry across the bridge (characters). Generous because the
+ * point of the capability is handing the model real material — a log tail, a
+ * diff, a batch of alerts — but bounded because the whole prompt is buffered
+ * through the JSON bridge and billed as input tokens.
+ */
+export const MAX_AI_PROMPT_LENGTH = 200_000;
+
+/** Longest system prompt. Framing, not payload — the payload is the prompt. */
+export const MAX_AI_SYSTEM_LENGTH = 10_000;
+
+/**
+ * One `infra.ai(...)` call, normalized by {@link file://./host.ts} `dispatch`
+ * so every host receives the same validated shape (model checked against
+ * {@link WORKFLOW_AI_MODELS}, `maxTokens` clamped, blank prompt rejected).
+ */
+export interface WorkflowAiSpec {
+  /** What to ask. The model sees only this and `system` — nothing of the run. */
+  prompt: string;
+  /** Optional system prompt framing how the model should answer. */
+  system?: string;
+  /** A {@link WorkflowAiModel}; defaulted by dispatch. */
+  model: WorkflowAiModel;
+  /** Clamped to {@link MAX_AI_MAX_TOKENS}. */
+  maxTokens: number;
+}
+
+/** What `infra.ai(...)` resolves with. */
+export interface WorkflowAiResult {
+  /** The model's reply text. */
+  text: string;
+  /** The concrete model id that answered. */
+  model: string;
+  /** "end" when the model finished; "max_tokens" when it ran out of budget. */
+  stopReason: "end" | "max_tokens";
+  inputTokens: number;
+  outputTokens: number;
+  /** What the call cost in micro-dollars (1 USD = 1_000_000), after markup. */
+  costMicros: number;
 }
 
 /** Lightweight account descriptor exposed to the bridge + codegen. */

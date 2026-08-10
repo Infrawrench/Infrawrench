@@ -2,6 +2,17 @@ import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
 ipcMain.handle(
+  "cloud_dependency_graph",
+  async (_e, { orgId, resourceId }: { orgId: string; resourceId?: string }) =>
+    cloudFetch(
+      orgId,
+      resourceId
+        ? `/dependency-graph?resourceId=${encodeURIComponent(resourceId)}`
+        : "/dependency-graph",
+    ),
+);
+
+ipcMain.handle(
   "cloud_tunnel_ssh_attach",
   async (_e, { orgId, body }: { orgId: string; body: unknown }) =>
     cloudFetch(orgId, "/resources/tunnel-ssh-attach", {
@@ -164,7 +175,7 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
-  "cloud_get_create_cost_estimate",
+  "cloud_get_cost_estimate",
   async (
     _e,
     {
@@ -172,23 +183,26 @@ ipcMain.handle(
       accountId,
       resourceTypeId,
       fields,
+      resourceId,
       pluginId,
       parentResourceId,
     }: {
       orgId: string;
       accountId: string;
       resourceTypeId: string;
-      fields: Record<string, string>;
+      fields?: Record<string, string>;
+      resourceId?: string;
       pluginId?: string;
       parentResourceId?: string;
     },
   ) => {
-    return cloudFetch<{ estimate: unknown }>(orgId, `/resources/create-cost-estimate`, {
+    return cloudFetch<{ estimate: unknown }>(orgId, `/resources/cost-estimate`, {
       method: "POST",
       body: JSON.stringify({
         accountId,
         resourceTypeId,
-        fields,
+        ...(fields ? { fields } : {}),
+        ...(resourceId ? { resourceId } : {}),
         ...(pluginId ? { pluginId } : {}),
         ...(parentResourceId ? { parentResourceId } : {}),
       }),

@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { asRecord, collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone, resolveZoneName } from "./shared.js";
 
 /**
  * Actions the `http_request_firewall_custom` phase accepts.
@@ -46,6 +46,7 @@ function mapFirewallRule(
   rule: Record<string, unknown>,
   accountId: string,
   zoneId: string,
+  zoneName: string,
   rulesetId?: string,
 ): ResourceInstance {
   const id = String(rule["id"] ?? "");
@@ -63,6 +64,7 @@ function mapFirewallRule(
       action: String(rule["action"] ?? ""),
       enabled: Boolean(rule["enabled"] ?? true),
       ...(rule["priority"] !== undefined ? { priority: Number(rule["priority"]) } : {}),
+      zoneName,
     },
     resolvedOutputs: {},
     secretStates: [],
@@ -90,7 +92,7 @@ export async function listAllFirewallRules(
 ): Promise<ResourceInstance[]> {
   return collectPerZone(
     api,
-    async (zoneId) => {
+    async (zoneId, zoneName) => {
       const part: ResourceInstance[] = [];
       const customRuleset = await findCustomRuleset(api, zoneId);
       if (customRuleset) {
@@ -99,7 +101,7 @@ export async function listAllFirewallRules(
         const full = asRecord(fullRuleset);
         const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
         for (const rule of rules) {
-          part.push(mapFirewallRule(rule, accountId, zoneId, rsId));
+          part.push(mapFirewallRule(rule, accountId, zoneId, zoneName, rsId));
         }
       }
       return part;
@@ -156,7 +158,7 @@ export async function createFirewallRule(
     const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
     result = rules[0] ?? full;
   }
-  return mapFirewallRule(result, accountId, zoneId, rulesetId);
+  return mapFirewallRule(result, accountId, zoneId, await resolveZoneName(api, zoneId), rulesetId);
 }
 
 export async function editFirewallRule(
@@ -180,7 +182,7 @@ export async function editFirewallRule(
   const full = asRecord(ruleset);
   const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
   const updated = rules.find((r) => String(r["id"]) === ruleId) ?? { ...full, id: ruleId };
-  return mapFirewallRule(updated, accountId, zoneId, rulesetId);
+  return mapFirewallRule(updated, accountId, zoneId, await resolveZoneName(api, zoneId), rulesetId);
 }
 
 export async function deleteFirewallRule(api: CloudflareApi, externalId: string): Promise<void> {

@@ -14,6 +14,10 @@ export const NeonDataApiResourceType = rt({
     f("anonymousRole", "Anonymous Role", { required: false }),
   ],
   outputs: [o("url", "URL")],
+  dependsOn: [
+    { fieldKey: "projectId", targetTypeId: "neon-project", label: "in project" },
+    { fieldKey: "branchId", targetTypeId: "neon-branch", label: "on branch" },
+  ],
   parentTypeId: "neon-database",
   supportsCreate: true,
   iconKey: "neon",

@@ -1,14 +1,26 @@
 import { useUIStore } from "@infrawrench/ui";
-import type { BudgetInput, CostsClient, CostsPanelDashboard } from "@infrawrench/ui/cost";
+import type {
+  BudgetInput,
+  CostAnomalySettings,
+  CostsClient,
+  CostsPanelDashboard,
+} from "@infrawrench/ui/cost";
 import {
   createCloudBudget,
   createCloudWidget,
   deleteCloudBudget,
   deleteCloudWidget,
   listCloudBudgets,
+  listCloudCostAnomalies,
+  loadCloudAnomalySettings,
   loadCloudCostDimensionValues,
   loadCloudCostStatus,
+  loadCloudShowback,
+  loadCloudCreditBurndown,
+  loadCloudTagCompliance,
+  loadCloudUntaggedSpend,
   queryCloudCosts,
+  saveCloudAnomalySettings,
   updateCloudBudget,
 } from "./cloud-costs";
 import { listCloudDashboards } from "./cloud-dashboards";
@@ -39,6 +51,14 @@ export function createDesktopCostsClient(): CostsClient {
       return loadCloudCostStatus(orgId);
     },
     listBudgets: () => listCloudBudgets(requireOrgId()),
+    listAnomalies: (days?: number) => listCloudCostAnomalies(requireOrgId(), days),
+    // Desktop gets the tuning editor too: the Costs panel is the same
+    // component in both hosts, and the settings are org-level cloud state
+    // either way — leaving it out would make the desktop panel quietly less
+    // capable than the web one for no reason a user could work out.
+    getAnomalySettings: () => loadCloudAnomalySettings(requireOrgId()),
+    updateAnomalySettings: (settings: CostAnomalySettings) =>
+      saveCloudAnomalySettings(requireOrgId(), settings),
     listDashboards: async (): Promise<CostsPanelDashboard[]> => {
       const rows = await listCloudDashboards(requireOrgId());
       return rows.map((d) => ({ id: d.id, name: d.name }));
@@ -56,5 +76,12 @@ export function createDesktopCostsClient(): CostsClient {
       });
     },
     removeBudgetPlacement: (widgetId: string) => deleteCloudWidget(requireOrgId(), widgetId),
+    // The tag governance section is read-only in the shared panel, so desktop
+    // wires all three reads; policy and rule editing stays in web org settings.
+    getTagCompliance: () => loadCloudTagCompliance(requireOrgId()),
+    getUntaggedSpend: (from?: string, to?: string) =>
+      loadCloudUntaggedSpend(requireOrgId(), from, to),
+    getShowback: (from?: string, to?: string) => loadCloudShowback(requireOrgId(), from, to),
+    getCreditBurndown: () => loadCloudCreditBurndown(requireOrgId()),
   };
 }

@@ -7,6 +7,7 @@ import {
   dashboardCardSchema,
   detailViewSchema,
 } from "../validation/index.js";
+import { validatePreflightContract } from "../preflight.js";
 
 const validManifest = {
   id: "digitalocean",
@@ -67,6 +68,112 @@ describe("pluginManifestSchema", () => {
 
   it("rejects empty logoSvg", () => {
     expect(pluginManifestSchema.safeParse({ ...validManifest, logoSvg: "" }).success).toBe(false);
+  });
+
+  it("accepts a preflight declaration", () => {
+    const result = pluginManifestSchema.safeParse({
+      ...validManifest,
+      preflight: {
+        capabilities: [
+          {
+            id: "resources",
+            label: "Resource inventory",
+            description: "Read-only listing",
+            requiredPermissions: [{ id: "ec2:DescribeInstances", label: "List EC2 instances" }],
+            essential: true,
+          },
+        ],
+        templateFormat: { label: "AWS IAM policy (JSON)", language: "json" },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a preflight declaration with no capabilities or bad language", () => {
+    expect(
+      pluginManifestSchema.safeParse({ ...validManifest, preflight: { capabilities: [] } }).success,
+    ).toBe(false);
+    expect(
+      pluginManifestSchema.safeParse({
+        ...validManifest,
+        preflight: {
+          capabilities: [{ id: "resources", label: "R", requiredPermissions: [] }],
+          templateFormat: { label: "X", language: "toml" },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects duplicate preflight capability ids", () => {
+    const capability = {
+      id: "resources",
+      label: "Resource inventory",
+      requiredPermissions: [{ id: "ec2:DescribeInstances", label: "List EC2 instances" }],
+    };
+    expect(
+      pluginManifestSchema.safeParse({
+        ...validManifest,
+        preflight: { capabilities: [capability, { ...capability, label: "Duplicate" }] },
+      }).success,
+    ).toBe(false);
+    // Distinct ids stay accepted.
+    expect(
+      pluginManifestSchema.safeParse({
+        ...validManifest,
+        preflight: { capabilities: [capability, { ...capability, id: "metrics" }] },
+      }).success,
+    ).toBe(true);
+  });
+});
+
+describe("validatePreflightContract", () => {
+  const declaration = {
+    capabilities: [
+      {
+        id: "resources",
+        label: "Resource inventory",
+        requiredPermissions: [{ id: "ec2:DescribeInstances", label: "List EC2 instances" }],
+      },
+    ],
+  };
+
+  it("accepts plugins without a preflight declaration", () => {
+    expect(validatePreflightContract({ manifest: {} })).toBeNull();
+  });
+
+  it("accepts a declaration without templateFormat and no policyTemplate", () => {
+    expect(validatePreflightContract({ manifest: { preflight: declaration } })).toBeNull();
+  });
+
+  it("accepts templateFormat when policyTemplate is implemented", () => {
+    expect(
+      validatePreflightContract({
+        manifest: {
+          preflight: {
+            ...declaration,
+            templateFormat: { label: "AWS IAM policy (JSON)", language: "json" },
+          },
+        },
+        policyTemplate: () => ({
+          formatLabel: "AWS IAM policy (JSON)",
+          language: "json",
+          document: "{}",
+        }),
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects templateFormat without a policyTemplate implementation", () => {
+    expect(
+      validatePreflightContract({
+        manifest: {
+          preflight: {
+            ...declaration,
+            templateFormat: { label: "AWS IAM policy (JSON)", language: "json" },
+          },
+        },
+      }),
+    ).toContain("policyTemplate");
   });
 });
 
@@ -137,6 +244,114 @@ describe("resourceTypeDefinitionSchema", () => {
   it("rejects missing dashboardPinnable", () => {
     const { dashboardPinnable: _, ...noPinnable } = validResourceType;
     expect(resourceTypeDefinitionSchema.safeParse(noPinnable).success).toBe(false);
+  });
+
+  it("accepts a full rightsizing declaration", () => {
+    expect(
+      resourceTypeDefinitionSchema.safeParse({
+        ...validResourceType,
+        rightsizing: {
+          sizeFieldKey: "serverType",
+          createSizeFieldKey: "size",
+          regionFieldKey: "location",
+          diskFieldKey: "primaryDiskGb",
+          cpuMetric: { seriesLabel: "CPU Utilization", scale: "fraction" },
+          memoryMetric: { seriesLabel: "Memory Available", interpretation: "available-bytes" },
+          priceCurrency: "EUR",
+          sizeFamilyPattern: "^([a-z]+)",
+          resizeNote: "Power the server off first.",
+        },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects a rightsizing declaration without a CPU metric", () => {
+    expect(
+      resourceTypeDefinitionSchema.safeParse({
+        ...validResourceType,
+        rightsizing: { sizeFieldKey: "size" },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a rightsizing sizeFamilyPattern that doesn't compile", () => {
+    expect(
+      resourceTypeDefinitionSchema.safeParse({
+        ...validResourceType,
+        rightsizing: {
+          sizeFieldKey: "size",
+          cpuMetric: { seriesLabel: "CPU" },
+          sizeFamilyPattern: "([a-z", // unbalanced group — invalid regex
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a rightsizing sizeFamilyPattern without a capture group", () => {
+    expect(
+      resourceTypeDefinitionSchema.safeParse({
+        ...validResourceType,
+        rightsizing: {
+          sizeFieldKey: "size",
+          cpuMetric: { seriesLabel: "CPU" },
+          sizeFamilyPattern: "^(?:[a-z]+)",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a rightsizing sizeFamilyPattern whose only parens are a lookahead", () => {
+    // `(?=…)` contains "(" but captures nothing — a source scan for "("
+    // would wrongly accept it and the family guard would never constrain.
+    expect(
+      resourceTypeDefinitionSchema.safeParse({
+        ...validResourceType,
+        rightsizing: {
+          sizeFieldKey: "size",
+          cpuMetric: { seriesLabel: "CPU" },
+          sizeFamilyPattern: "^(?=[a-z])",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a rightsizing sizeFamilyPattern whose only paren is escaped", () => {
+    expect(
+      resourceTypeDefinitionSchema.safeParse({
+        ...validResourceType,
+        rightsizing: {
+          sizeFieldKey: "size",
+          cpuMetric: { seriesLabel: "CPU" },
+          sizeFamilyPattern: "^\\(size",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts a rightsizing sizeFamilyPattern with a named capture group", () => {
+    expect(
+      resourceTypeDefinitionSchema.safeParse({
+        ...validResourceType,
+        rightsizing: {
+          sizeFieldKey: "size",
+          cpuMetric: { seriesLabel: "CPU" },
+          sizeFamilyPattern: "^(?<family>[a-z]+)",
+        },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects a memory metric without an interpretation", () => {
+    expect(
+      resourceTypeDefinitionSchema.safeParse({
+        ...validResourceType,
+        rightsizing: {
+          sizeFieldKey: "size",
+          cpuMetric: { seriesLabel: "CPU" },
+          memoryMetric: { seriesLabel: "Memory" },
+        },
+      }).success,
+    ).toBe(false);
   });
 });
 

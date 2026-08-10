@@ -19,8 +19,18 @@ interface ApiAuthResult {
   scopes?: string[];
 }
 
-/** Map deprecated scope strings onto their new equivalents. */
-function migrateScopes(scopes: string[] | null | undefined): string[] {
+/**
+ * Map deprecated scope strings onto their new equivalents.
+ *
+ * This is a pure rename — `sync:read`/`sync:write` become
+ * `resources:read`/`resources:write` and the old strings disappear — which is
+ * why the result is safe to persist back onto the row (see
+ * {@link authenticateApiRequest}). Nothing else is expanded here: the one-off
+ * `dashboards:*` → `workflows:*` grandfathering was applied to stored scopes by
+ * migration `0055_grandfather_workflow_permissions`, so a key's stored array
+ * already says everything the key grants.
+ */
+export function migrateScopes(scopes: string[] | null | undefined): string[] {
   if (!scopes) return [];
   let changed = false;
   const out: string[] = [];
@@ -35,10 +45,12 @@ function migrateScopes(scopes: string[] | null | undefined): string[] {
       out.push(s);
     }
   }
-  // Deduplicate while preserving order.
+  if (!changed) return out;
+  // A rename can collide with a scope the key already held; deduplicate while
+  // preserving order. Untouched arrays are returned as-is so a key that stores
+  // duplicates is not rewritten for cosmetics.
   const seen = new Set<string>();
-  const deduped = out.filter((s) => (seen.has(s) ? false : (seen.add(s), true)));
-  return changed ? deduped : out;
+  return out.filter((s) => (seen.has(s) ? false : (seen.add(s), true)));
 }
 
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
@@ -142,6 +154,9 @@ export async function authenticateApiRequest(request: Request): Promise<ApiAuthR
       .limit(1);
     if (!membership) return null;
 
+    // Only a genuine rename ever lands back on the row: `migrateScopes` is a
+    // one-for-one substitution, so persisting it cannot widen the key beyond
+    // the scopes its creator ticked.
     const storedScopes = (key.scopes as string[]) ?? [];
     const migrated = migrateScopes(storedScopes);
     const scopesChanged =

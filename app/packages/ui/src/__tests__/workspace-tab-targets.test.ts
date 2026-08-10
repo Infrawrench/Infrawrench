@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   dashboardTabTarget,
   accountTabTarget,
+  postureTabTarget,
+  environmentDiffTabTarget,
+  probesTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -16,6 +19,23 @@ describe("tab target factories", () => {
 
   it("accountTabTarget", () => {
     expect(accountTabTarget("acc-1")).toEqual({ kind: "account", accountId: "acc-1" });
+  });
+
+  it("postureTabTarget", () => {
+    expect(postureTabTarget()).toEqual({ kind: "posture" });
+  });
+
+  it("environmentDiffTabTarget carries the pair when given, and omits it otherwise", () => {
+    expect(environmentDiffTabTarget()).toEqual({ kind: "environment-diff" });
+    expect(environmentDiffTabTarget("acc-a", "acc-b")).toEqual({
+      kind: "environment-diff",
+      a: "acc-a",
+      b: "acc-b",
+    });
+  });
+
+  it("probesTabTarget", () => {
+    expect(probesTabTarget()).toEqual({ kind: "probes" });
   });
 
   it("resourceTabTarget normalizes id and defaults to details view", () => {

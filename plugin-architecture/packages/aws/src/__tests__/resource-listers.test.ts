@@ -18,6 +18,7 @@ import {
   listCloudFrontDistributions,
   listIAMUsers,
 } from "../resource-listers.js";
+import { parseXml } from "../xml.js";
 
 interface MockResponses {
   ec2?: (action: string, params?: Record<string, string>) => unknown;
@@ -564,25 +565,120 @@ describe("listECRRepositories / listSecretsManagerSecrets / listCloudFrontDistri
     expect(out[0]!.fields.rotationEnabled).toBe(true);
   });
 
-  it("cloudfront", async () => {
-    const ctx = makeCtx({
-      jsonGet: () => ({
-        DistributionList: {
-          Items: [
-            {
-              Id: "D1",
-              DomainName: "d.cloudfront.net",
-              Status: "Deployed",
-              Enabled: true,
-              Comment: "site",
-            },
-          ],
-        },
-      }),
-    });
+  // CloudFront's `ListDistributions` is REST-XML — it has no JSON
+  // representation at all. Feeding the lister a hand-written JSON object used
+  // to hide the fact that it called `jsonGet` (i.e. `res.json()`) and threw on
+  // every real poll, so this drives the actual XML the API returns through the
+  // real `parseXml` and asserts on what comes out the far side.
+  const LIST_DISTRIBUTIONS_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<DistributionList xmlns="http://cloudfront.amazonaws.com/doc/2020-05-31/">
+  <Marker></Marker>
+  <MaxItems>100</MaxItems>
+  <IsTruncated>false</IsTruncated>
+  <Quantity>2</Quantity>
+  <Items>
+    <DistributionSummary>
+      <Id>E1AAAAAAAAAAAA</Id>
+      <ARN>arn:aws:cloudfront::123456789012:distribution/E1AAAAAAAAAAAA</ARN>
+      <Status>Deployed</Status>
+      <LastModifiedTime>2024-03-04T11:22:33.123Z</LastModifiedTime>
+      <DomainName>d111111abcdef8.cloudfront.net</DomainName>
+      <Comment>marketing site</Comment>
+      <PriceClass>PriceClass_All</PriceClass>
+      <Enabled>true</Enabled>
+      <HttpVersion>http2</HttpVersion>
+      <Origins>
+        <Quantity>2</Quantity>
+        <Items>
+          <Origin>
+            <Id>S3-assets</Id>
+            <DomainName>my-assets.s3.us-east-1.amazonaws.com</DomainName>
+            <OriginPath></OriginPath>
+          </Origin>
+          <Origin>
+            <Id>ELB-api</Id>
+            <DomainName>api-lb-1234567890.us-east-1.elb.amazonaws.com</DomainName>
+            <OriginPath></OriginPath>
+          </Origin>
+        </Items>
+      </Origins>
+    </DistributionSummary>
+    <DistributionSummary>
+      <Id>E2BBBBBBBBBBBB</Id>
+      <ARN>arn:aws:cloudfront::123456789012:distribution/E2BBBBBBBBBBBB</ARN>
+      <Status>InProgress</Status>
+      <LastModifiedTime>2024-05-06T09:08:07.000Z</LastModifiedTime>
+      <DomainName>d222222abcdef8.cloudfront.net</DomainName>
+      <Comment></Comment>
+      <PriceClass>PriceClass_100</PriceClass>
+      <Enabled>false</Enabled>
+      <HttpVersion>http1.1</HttpVersion>
+      <Origins>
+        <Quantity>1</Quantity>
+        <Items>
+          <Origin>
+            <Id>S3-legacy</Id>
+            <DomainName>legacy-bucket.s3.amazonaws.com</DomainName>
+          </Origin>
+        </Items>
+      </Origins>
+    </DistributionSummary>
+  </Items>
+</DistributionList>`;
+
+  it("cloudfront maps a real REST-XML ListDistributions payload", async () => {
+    const ctx = makeCtx({ xmlGet: () => parseXml(LIST_DISTRIBUTIONS_XML) });
     const out = await listCloudFrontDistributions(ctx, "acct");
-    expect(out[0]!.displayName).toBe("site");
-    expect(out[0]!.fields.enabled).toBe(true);
+
+    // The lister must use the XML transport — `jsonGet` would throw in prod.
+    expect(ctx.xmlGet).toHaveBeenCalledWith("cloudfront", "/2020-05-31/distribution");
+    expect(ctx.jsonGet).not.toHaveBeenCalled();
+
+    expect(out).toHaveLength(2);
+
+    const first = out[0]!;
+    expect(first.id).toBe("acct:cloudfront-distribution:E1AAAAAAAAAAAA");
+    expect(first.externalId).toBe("E1AAAAAAAAAAAA");
+    expect(first.displayName).toBe("marketing site");
+    expect(first.createdAt).toBe("2024-03-04T11:22:33.123Z");
+    expect(first.fields).toEqual({
+      distributionId: "E1AAAAAAAAAAAA",
+      domainName: "d111111abcdef8.cloudfront.net",
+      status: "Deployed",
+      // XML carries booleans as the strings "true"/"false".
+      enabled: true,
+      comment: "marketing site",
+      priceClass: "PriceClass_All",
+      httpVersion: "http2",
+      originDomains:
+        "my-assets.s3.us-east-1.amazonaws.com, api-lb-1234567890.us-east-1.elb.amazonaws.com",
+      // Only the S3 origin yields a bucket name; the ELB origin drops out.
+      originBucketNames: "my-assets",
+    });
+    expect(first.resolvedOutputs.distributionArn).toBe(
+      "arn:aws:cloudfront::123456789012:distribution/E1AAAAAAAAAAAA",
+    );
+
+    const second = out[1]!;
+    // No comment — display name falls back to the distribution id.
+    expect(second.displayName).toBe("E2BBBBBBBBBBBB");
+    expect(second.fields.enabled).toBe(false);
+    expect(second.fields.status).toBe("InProgress");
+    // A lone <Origin> parses to a bare object rather than an array.
+    expect(second.fields.originDomains).toBe("legacy-bucket.s3.amazonaws.com");
+    expect(second.fields.originBucketNames).toBe("legacy-bucket");
+  });
+
+  it("cloudfront returns nothing when the account has no distributions", async () => {
+    const emptyXml = `<?xml version="1.0" encoding="UTF-8"?>
+<DistributionList xmlns="http://cloudfront.amazonaws.com/doc/2020-05-31/">
+  <Marker></Marker>
+  <MaxItems>100</MaxItems>
+  <IsTruncated>false</IsTruncated>
+  <Quantity>0</Quantity>
+</DistributionList>`;
+    const ctx = makeCtx({ xmlGet: () => parseXml(emptyXml) });
+    expect(await listCloudFrontDistributions(ctx, "acct")).toEqual([]);
   });
 
   it("iam users", async () => {

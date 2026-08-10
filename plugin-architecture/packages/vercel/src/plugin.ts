@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { VercelClient } from "./client.js";
+import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { VercelProjectResourceType } from "./resources/project.js";
 import { VercelDeploymentResourceType } from "./resources/deployment.js";
 import { VercelDomainResourceType } from "./resources/domain.js";
@@ -42,6 +43,7 @@ const manifest: PluginManifest = {
   // granularity, ≤1-year window per request; works with the same access
   // token given a billing-capable team role.
   costs: { dimensions: ["service", "region", "tag"], maxHistoryDays: 365, restatementDays: 3 },
+  statusFeed,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -56,4 +58,5 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new VercelClient(credentials, services),
+  parseStatusFeed,
 };

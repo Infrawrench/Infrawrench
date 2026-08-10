@@ -13,6 +13,10 @@ export const NeonAiGatewayResourceType = rt({
   description: "A Neon AI Gateway endpoint — one OpenAI-compatible API for frontier models",
   fields: [f("baseUrl", "Base URL"), f("projectId", "Project ID"), f("branchId", "Branch ID")],
   outputs: [o("baseUrl", "Base URL")],
+  dependsOn: [
+    { fieldKey: "projectId", targetTypeId: "neon-project", label: "in project" },
+    { fieldKey: "branchId", targetTypeId: "neon-branch", label: "on branch" },
+  ],
   parentTypeId: "neon-branch",
   iconKey: "network",
   secretExportTemplates: [

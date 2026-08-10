@@ -13,5 +13,9 @@ export const TursoDatabaseInstanceResourceType = rt({
     f("hostname", "Hostname", { required: false }),
   ],
   outputs: [o("hostname", "Hostname"), o("instanceName", "Instance Name")],
+  dependsOn: [
+    { fieldKey: "database", targetTypeId: "turso-database", label: "instance of" },
+    { fieldKey: "region", targetTypeId: "turso-location", label: "in location" },
+  ],
   iconKey: "turso",
 });

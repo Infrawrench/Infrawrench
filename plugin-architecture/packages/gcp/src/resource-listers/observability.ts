@@ -12,6 +12,22 @@ export async function listLogSinks(
   const items = data.sinks ?? [];
   return items.map((sink) => {
     const name = String(sink["name"]);
+    // `destination` is a service-qualified URI — the target's own id is the tail
+    // of it, and matching is exact, so parse each supported form into the shape
+    // the destination resource is actually keyed by. Log buckets
+    // (`logging.googleapis.com/…`) are deliberately unparsed: Infrawrench does
+    // not sync them, so there is nothing to point at.
+    const destination = String(sink["destination"] ?? "");
+    const gcsPrefix = "storage.googleapis.com/";
+    const destinationBucket = destination.startsWith(gcsPrefix)
+      ? destination.slice(gcsPrefix.length)
+      : "";
+    const dataset = /^bigquery\.googleapis\.com\/projects\/([^/]+)\/datasets\/([^/]+)$/.exec(
+      destination,
+    );
+    const destinationDataset = dataset ? `${dataset[1]}:${dataset[2]}` : "";
+    const topic = /^pubsub\.googleapis\.com\/(projects\/[^/]+\/topics\/[^/]+)$/.exec(destination);
+    const destinationTopic = topic ? (topic[1] ?? "") : "";
     return {
       id: ctx.id(accountId, "log-sink", name),
       pluginId: "gcp",
@@ -20,7 +36,10 @@ export async function listLogSinks(
       displayName: name,
       fields: {
         name,
-        destination: String(sink["destination"] ?? ""),
+        destination,
+        destinationBucket,
+        destinationDataset,
+        destinationTopic,
         filter: String(sink["filter"] ?? ""),
         disabled: sink["disabled"] === true,
         writerIdentity: String(sink["writerIdentity"] ?? ""),

@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { asRecord, collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone, resolveZoneName } from "./shared.js";
 import type {
   ActionParam,
   MatcherParam,
@@ -35,6 +35,7 @@ function mapEmailRoutingRule(
   rule: Record<string, unknown>,
   accountId: string,
   zoneId: string,
+  zoneName: string,
 ): ResourceInstance {
   const tag = String(rule["tag"] ?? rule["id"] ?? "");
   const name = String(rule["name"] ?? "");
@@ -68,6 +69,7 @@ function mapEmailRoutingRule(
       matchers,
       actions,
       priority: Number(rule["priority"] ?? 0),
+      zoneName,
     },
     resolvedOutputs: {},
     secretStates: [],
@@ -84,10 +86,10 @@ export async function listAllEmailRoutingRules(
 ): Promise<ResourceInstance[]> {
   return collectPerZone(
     api,
-    async (zoneId) => {
+    async (zoneId, zoneName) => {
       const part: ResourceInstance[] = [];
       for await (const rule of api.cf.emailRouting.rules.list({ zone_id: zoneId })) {
-        part.push(mapEmailRoutingRule(asRecord(rule), accountId, zoneId));
+        part.push(mapEmailRoutingRule(asRecord(rule), accountId, zoneId, zoneName));
       }
       return part;
     },
@@ -123,7 +125,7 @@ export async function createEmailRoutingRule(
     ],
   };
   const rule = await api.cf.emailRouting.rules.create(body);
-  return mapEmailRoutingRule(asRecord(rule), accountId, zoneId);
+  return mapEmailRoutingRule(asRecord(rule), accountId, zoneId, await resolveZoneName(api, zoneId));
 }
 
 export async function editEmailRoutingRule(
@@ -148,5 +150,5 @@ export async function editEmailRoutingRule(
     actions: current.actions ?? [],
   };
   const rule = await api.cf.emailRouting.rules.update(tag, body);
-  return mapEmailRoutingRule(asRecord(rule), accountId, zoneId);
+  return mapEmailRoutingRule(asRecord(rule), accountId, zoneId, await resolveZoneName(api, zoneId));
 }

@@ -1,6 +1,6 @@
 ---
 title: Microsoft Teams alerts
-description: Route sync-failure incidents, budget alerts, and pages to Microsoft Teams channels, with a per-channel opt-in for each.
+description: Deliver Infrawrench alerts to Microsoft Teams channels by webhook URL, routed by your alert rules.
 sidebar_order: 17
 ---
 
@@ -38,7 +38,7 @@ Then, in Infrawrench, go to **Settings → Notifications**, find the **Microsoft
 
 Press **Add channel**. Add as many channels as you like; each gets its own row.
 
-<insert [Settings → Notifications Microsoft Teams section with two channels listed, each showing the three trigger checkboxes and the webhook hint underneath] here>
+<insert [Settings → Notifications Microsoft Teams section with two channels listed, each showing its label and webhook hint, and the note pointing at alert routing rules for what each channel receives] here>
 
 ### The URL is a credential
 
@@ -52,21 +52,21 @@ To change a channel's URL, remove the row and add it again.
 
 ## Choosing what each channel receives
 
-Each channel opts into the three alert triggers independently, so a `#finance` channel can take budget crossings without also getting every sync failure:
+Adding a channel makes it a **destination**; which alerts reach it is decided by your [alert routing rules](./alert-routing.md). That is what lets a `#finance` channel take budget crossings without also getting every sync failure — and, unlike the per-channel checkboxes this replaced, what lets it take only the crossings over $500 on the production account.
 
-| Trigger           | When it fires                                                                                                                                 |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Sync failures** | An account's background sync keeps failing and crosses the org's paging threshold                                                             |
-| **Budgets**       | A [budget threshold](./cloud-costs.md) is crossed                                                                                             |
-| **Pages**         | Your own code raises an alert — a [workflow](./workflows.md) calling `infra.page(...)`, or a [server calling `POST /pages`](./server-push.md) |
+Until you write a rule, an organization routes **everything except resource drift** to every connected channel, so a channel you add today starts receiving alerts immediately. Drift is the exception because it is a continuous feed rather than an exceptional event; what counts as drift, and how often a digest may go out, is configured once for the whole organization in **Settings → Notifications → Resource drift alerts**.
 
-All three default to on for a newly added channel. Unlike the mobile push toggles, which each member sets for themselves, Teams routing is org-wide — it takes the **Organization settings** permission to change.
+Unlike the mobile push toggles, which each member sets for themselves, routing is org-wide — it takes the **Organization settings** permission to change.
 
-Use **Send test message** to post to every channel you've added, ignoring the trigger opt-ins. If a send fails, the error from Microsoft is shown verbatim; an HTTP 404 almost always means the Workflow was deleted or switched off on the Teams side.
+Use **Send test message** to post to every channel you've added, ignoring the routing rules. If a send fails, the error from Microsoft is shown verbatim; an HTTP 404 almost always means the Workflow was deleted or switched off on the Teams side.
 
 ## What the messages look like
 
-Each alert is an Adaptive Card: the headline in bold, the alert text below it, a small context line, and — for budget alerts and pages — a **View in Infrawrench** button that deep-links to the budget, the workflow, or the org.
+Each alert is an Adaptive Card: the headline in bold, the alert text below it, a small context line, and — for budget alerts, drift digests, pages and approval requests — a **View in Infrawrench** button that deep-links to the budget, the change timeline, the workflow, or the approvals inbox.
+
+The body is plain text rather than markdown. Teams' card renderer treats `*` as markup, so the same message that reads as bold in Slack would show literal asterisks here; Infrawrench sends Teams the unmarked version instead.
+
+An **approval request** carries everything needed to decide without opening the app: what is being approved, the workflow and run that raised it, whether a person or a schedule started that run, when the request expires, and the fact that no decision counts as a denial. Its button lands on **Settings → Approvals**.
 
 ## Legacy Office 365 connectors
 

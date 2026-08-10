@@ -39,6 +39,13 @@ export const FineTuningJobResourceType = rt({
     }),
     o("trainingFile", "Training File ID"),
   ],
+  // `model` is the base model's `/v1/models` id; the two file fields are
+  // `file-…` ids from `/v1/files`.
+  dependsOn: [
+    { fieldKey: "model", targetTypeId: "model", label: "trained from" },
+    { fieldKey: "trainingFile", targetTypeId: "file", label: "trains on" },
+    { fieldKey: "validationFile", targetTypeId: "file", label: "validates on" },
+  ],
   iconKey: "pipeline",
   supportsCreate: true,
   supportsDelete: false,

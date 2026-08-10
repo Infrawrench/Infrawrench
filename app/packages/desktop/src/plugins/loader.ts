@@ -4,7 +4,7 @@
  * resource types (ENABLED_RESOURCE_TYPES).
  */
 import type { Plugin } from "@infrawrench/plugin-base";
-import { pluginManifestSchema } from "@infrawrench/plugin-base";
+import { pluginManifestSchema, validatePreflightContract } from "@infrawrench/plugin-base";
 
 import { DISABLED_PLUGINS, ENABLED_RESOURCE_TYPES } from "../../env";
 
@@ -56,6 +56,7 @@ const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-speechmatics"),
   () => import("@infrawrench/plugin-together"),
   () => import("@infrawrench/plugin-xai"),
+  () => import("@infrawrench/plugin-workos"),
 ];
 
 interface LoadedPlugin {
@@ -84,6 +85,14 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
     if (!result.success) {
       console.error(
         `[plugin-loader] Invalid manifest for "${mod.plugin.manifest?.id ?? "unknown"}"`,
+      );
+      continue;
+    }
+
+    const contractProblem = validatePreflightContract(mod.plugin);
+    if (contractProblem) {
+      console.error(
+        `[plugin-loader] Invalid preflight contract for "${mod.plugin.manifest.id}": ${contractProblem}`,
       );
       continue;
     }

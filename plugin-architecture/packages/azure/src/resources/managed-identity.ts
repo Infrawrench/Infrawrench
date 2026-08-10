@@ -11,6 +11,9 @@ export const ManagedIdentityResourceType = rt({
     o("principalId", "Principal ID"),
     o("tenantId", "Tenant ID"),
   ],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+  ],
   iconKey: "user",
   supportsCreate: true,
   attachTargets: [

@@ -106,6 +106,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   revai: { accessToken: "test-revai-access-token", region: "us" },
   together: { apiKey: "test-together-key" },
   xai: { apiKey: "xai-test-inference-key", managementKey: "xai-test-management-key" },
+  workos: { apiKey: "sk_test_workos_key" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {
@@ -300,6 +301,20 @@ export function runPluginContractTests(plugin: Plugin, credentials?: Record<stri
         it("resourceType.supportsTerminal → client has getSshConfig", () => {
           expect(typeof client.getSshConfig).toBe("function");
         });
+      }
+
+      if (plugin.manifest.preflight) {
+        // Not enforceable at registration (no client exists yet), so the
+        // bundled-plugin contract tests pin it down here instead.
+        it("manifest.preflight → client has verifyCredentials", () => {
+          expect(typeof client.verifyCredentials).toBe("function");
+        });
+
+        if (plugin.manifest.preflight.templateFormat) {
+          it("preflight.templateFormat → plugin has policyTemplate", () => {
+            expect(typeof plugin.policyTemplate).toBe("function");
+          });
+        }
       }
 
       const hasSupportsStorageBrowser = plugin.resourceTypes.some(

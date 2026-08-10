@@ -19,6 +19,14 @@ export const TursoDatabaseResourceType = rt({
     o("connectionString", "Connection String (libsql)", { sensitive: true }),
     o("dbName", "Database Name"),
   ],
+  dependsOn: [
+    { fieldKey: "group", targetTypeId: "turso-group", label: "in group" },
+    // Schema databases are named, so a child points at its parent by name.
+    { fieldKey: "schema", targetTypeId: "turso-database", label: "extends schema" },
+    { fieldKey: "primaryRegion", targetTypeId: "turso-location", label: "primary in" },
+    // Comma-joined location codes — one edge per replica location.
+    { fieldKey: "regions", targetTypeId: "turso-location", label: "replicated in" },
+  ],
   supportsCreate: true,
   iconKey: "turso",
   secretExportTemplates: [

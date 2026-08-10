@@ -14,26 +14,16 @@
     "doctor": "npx react-doctor@latest"
   },
   "devDependencies": {
-    "@typescript/native-preview": "7.0.0-dev.20260411.1",
-    "knip": "^6.4.1",
-    "prettier": "^3.4.2",
-    "react-doctor": "^0.2.9",
-    "turbo": "^2.9.16",
-    "typescript": "^5.7.3"
+    "knip": "^6.32.0",
+    "prettier": "^3.9.6",
+    "react-doctor": "^0.2.16",
+    "turbo": "^2.10.9",
+    "typescript": "^7.0.2",
+    "unrun": "^0.3.1"
   },
   "engines": {
     "node": ">=20",
     "pnpm": ">=9"
   },
-  "packageManager": "pnpm@9.15.4",
-  "pnpm": {
-    "overrides": {
-      "yaml": ">=2.8.3",
-      "@esbuild-kit/core-utils>esbuild": ">=0.25.0",
-      "tsup>esbuild": ">=0.28.1"
-    },
-    "patchedDependencies": {
-      "app-builder-lib@26.10.0": "patches/app-builder-lib@26.10.0.patch"
-    }
-  }
+  "packageManager": "pnpm@11.20.0"
 }

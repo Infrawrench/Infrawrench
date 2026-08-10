@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { asRecord, collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone, resolveZoneName } from "./shared.js";
 import type {
   LoadBalancerCreateParams,
   LoadBalancerEditParams,
@@ -32,6 +32,7 @@ function mapLoadBalancer(
   lb: Record<string, unknown>,
   accountId: string,
   zoneId: string,
+  zoneName: string,
 ): ResourceInstance {
   const id = String(lb["id"] ?? "");
   const name = String(lb["name"] ?? "");
@@ -54,6 +55,7 @@ function mapLoadBalancer(
       steeringPolicy: String(lb["steering_policy"] ?? ""),
       createdOn: String(lb["created_on"] ?? ""),
       modifiedOn: String(lb["modified_on"] ?? ""),
+      zoneName,
     },
     resolvedOutputs: {},
     secretStates: [],
@@ -70,10 +72,10 @@ export async function listAllLoadBalancers(
 ): Promise<ResourceInstance[]> {
   return collectPerZone(
     api,
-    async (zoneId) => {
+    async (zoneId, zoneName) => {
       const part: ResourceInstance[] = [];
       for await (const lb of api.cf.loadBalancers.list({ zone_id: zoneId })) {
-        part.push(mapLoadBalancer(asRecord(lb), accountId, zoneId));
+        part.push(mapLoadBalancer(asRecord(lb), accountId, zoneId, zoneName));
       }
       return part;
     },
@@ -101,7 +103,7 @@ export async function createLoadBalancer(
     default_pools: defaultPoolIds,
   };
   const lb = await api.cf.loadBalancers.create(params);
-  return mapLoadBalancer(asRecord(lb), accountId, zoneId);
+  return mapLoadBalancer(asRecord(lb), accountId, zoneId, await resolveZoneName(api, zoneId));
 }
 
 export async function editLoadBalancer(
@@ -133,7 +135,7 @@ export async function editLoadBalancer(
     ...(isSteeringPolicy(steeringPolicy) ? { steering_policy: steeringPolicy } : {}),
   };
   const lb = await api.cf.loadBalancers.edit(lbId, params);
-  return mapLoadBalancer(asRecord(lb), accountId, zoneId);
+  return mapLoadBalancer(asRecord(lb), accountId, zoneId, await resolveZoneName(api, zoneId));
 }
 
 export async function deleteLoadBalancer(api: CloudflareApi, externalId: string): Promise<void> {

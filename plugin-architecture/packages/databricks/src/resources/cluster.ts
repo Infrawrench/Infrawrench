@@ -33,6 +33,10 @@ export const ClusterResourceType = rt({
     o("sparkContextId", "Spark Context ID"),
     o("jdbcUrl", "JDBC URL"),
   ],
+  dependsOn: [
+    { fieldKey: "nodeTypeId", targetTypeId: "databricks-node-type", label: "workers on" },
+    { fieldKey: "driverNodeTypeId", targetTypeId: "databricks-node-type", label: "driver on" },
+  ],
   supportsCreate: true,
   iconKey: "compute",
 });

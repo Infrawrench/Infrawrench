@@ -70,6 +70,13 @@ app.get("/me", async (c) => {
         }
       : null,
     permissions: [...permissions],
+    /**
+     * Live break-glass grants, already included in `permissions`. Returned
+     * separately so the app can show what is temporary and when it lapses —
+     * an elevation the holder cannot see the clock on is one they will forget
+     * they have.
+     */
+    elevations: [...(c.get("elevations") ?? [])],
   });
 });
 
@@ -301,6 +308,7 @@ app.post("/invitations", async (c) => {
   // Prefer roleId; fall back to mapping the legacy text role to a system role.
   let resolvedRoleId: string | null = null;
   let legacyRole = "member";
+  let targetRolePerms: readonly string[] = [];
   if (body.roleId) {
     const [r] = await db
       .select()
@@ -310,12 +318,30 @@ app.post("/invitations", async (c) => {
     if (!r) return c.json({ error: "Role not found" }, 404);
     resolvedRoleId = r.id;
     legacyRole = isSystemRoleKey(r.systemKey) ? r.systemKey : "member";
+    targetRolePerms =
+      r.isSystem && isSystemRoleKey(r.systemKey)
+        ? (systemRolePermissions(r.systemKey) ?? [])
+        : ((r.permissions as string[]) ?? []);
   } else if (body.role) {
     legacyRole = body.role;
     if (isSystemRoleKey(body.role)) {
       const sys = await getSystemRole(organizationId, body.role);
       resolvedRoleId = sys.id;
+      targetRolePerms = sys.permissions;
     }
+  }
+
+  // Privilege-escalation guards, identical to PATCH /members/:id/role. Without
+  // them an invitation is a way around that route's checks: `team:invite` is
+  // held by every admin, so an admin could invite an address they control as
+  // an owner and accept their way to `*` — picking up billing:write and
+  // org:settings:write, the two permissions the admin role exists to withhold.
+  const callerPerms = c.get("permissions") ?? [];
+  if (!isSubsetOfCallerPerms(targetRolePerms, callerPerms)) {
+    return c.json({ error: "Cannot invite with a role granting permissions you do not hold" }, 403);
+  }
+  if (legacyRole === "owner" && c.get("role")?.systemKey !== "owner") {
+    return c.json({ error: "Only an owner can invite someone as an owner" }, 403);
   }
 
   // Seat gate: on a paid plan every member and pending invite occupies a
@@ -324,6 +350,25 @@ app.post("/invitations", async (c) => {
   const seatLimit = await checkSeatAvailability(organizationId);
   let seatAdded = false;
   if (seatLimit) {
+    // An org whose capacity is entirely prepaid capacity slots has no monthly
+    // subscription item to increment, so there is no seat to opt into here —
+    // it has to buy another slot from the billing page first. Refusing before
+    // reading `addSeat` keeps that a clear 409 instead of a confusing 502 from
+    // `addSeat` finding nothing to grow.
+    if (!seatLimit.canAddSeat) {
+      return c.json(
+        {
+          error:
+            `All ${seatLimit.seatCount} prepaid seats are in use. ` +
+            `Buy another capacity slot under Settings → Billing to invite more teammates.`,
+          code: "seat_limit_reached",
+          seatCount: seatLimit.seatCount,
+          seatsUsed: seatLimit.seatsUsed,
+          canAddSeat: false,
+        },
+        409,
+      );
+    }
     if (!body.addSeat) {
       return c.json(
         {
@@ -331,6 +376,7 @@ app.post("/invitations", async (c) => {
           code: "seat_limit_reached",
           seatCount: seatLimit.seatCount,
           seatsUsed: seatLimit.seatsUsed,
+          canAddSeat: true,
         },
         409,
       );

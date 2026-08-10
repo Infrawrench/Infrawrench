@@ -280,6 +280,47 @@ In a **local** desktop workflow there's no cluster and no proxy: the request is 
 
 A run can make up to 250 requests, and time spent in `fetch` counts against the run's execution budget (unlike SSH waits, which are excluded) — so a loop that polls an API can't outlive the run.
 
+### Asking a model for help
+
+> **Cloud feature** — the call is made server-side with the deployment's API key, so it's unavailable in local desktop workflows, and it's metered like [AI chat](./ai-chat.md).
+
+Some steps need judgement rather than a rule: is this log tail alarming, which of these errors are the same incident, what should the page actually say. `infra.ai(...)` sends one prompt to a model and resolves with its reply:
+
+```ts
+// Cron: hourly. Let the model read the log tail before waking anyone up.
+const cluster = infra.accounts.kubernetes.getByName("prod");
+for (const pod of await cluster.pods.list()) {
+  const restarts = Number(pod.fields.restarts ?? 0);
+  if (restarts <= 5) continue;
+  const { text } = await pod
+    .logs({ tailLines: 200 })
+    .then((l) =>
+      infra.ai(
+        `These are the last 200 log lines of a crash-looping pod. In two sentences, what is failing and does it look self-inflicted (bad config, OOM) or external (dependency down)?\n\n${l.text}`,
+      ),
+    );
+  await infra.page(`${pod.displayName} restarted ${restarts} times. ${text}`, {
+    key: pod.displayName,
+  });
+}
+```
+
+**The model sees only what you pass it.** Unlike [writing workflows with an AI client](#writing-workflows-with-an-ai-client), `infra.ai` is not an agent: it has no tools, no access to your accounts or resources, and no memory between calls. Paste the material you want it to work from — a log tail, a diff, a list of alerts — into the prompt.
+
+| Option      | Default             | What it does                                                                          |
+| ----------- | ------------------- | ------------------------------------------------------------------------------------- |
+| `model`     | `"claude-sonnet-5"` | Also `"claude-haiku-4-5"` (fastest, cheapest) or `"claude-opus-5"` (most capable).    |
+| `system`    | none                | A system prompt framing how to answer ("Reply with one word: PAGE or IGNORE.").       |
+| `maxTokens` | `1024`              | Cap on the reply length, up to 8192. Check `stopReason === "max_tokens"` for cutoffs. |
+
+The result carries `text`, the concrete `model` that answered, `stopReason` (`"end"` or `"max_tokens"`), the token counts, and `costMicros` — what the call cost in millionths of a dollar.
+
+**Billing.** Calls are metered exactly like [AI chat](./ai-chat.md) and draw from the **same monthly AI spend pool**: the org's configured cap, or the $5/month free tier for orgs without a paid plan. Once the pool is spent, `infra.ai` throws (and so does chat) until the cap is raised or the month rolls over. Chat turns and workflow runs share one reservation lock before each model call so concurrent consumers cannot all clear the same below-cap check; in-flight holds are refreshed while the call runs and expire within minutes if a process dies mid-call. Stopping a run cancels an in-flight request and drops its reservation. A prompt is billed as input tokens, so mind what a cron loop feeds it — an hourly workflow that sends 200k characters to Opus adds up.
+
+Limits: 20 calls per run, prompts up to 200,000 characters, and a per-call timeout of two minutes. Time spent waiting on the model does not count against the run's execution budget (like SSH waits, unlike `fetch`) — the call cap is what bounds an `infra.ai` loop.
+
+If the model declines to answer (a safety refusal), the call throws rather than resolving with an empty string, so a branch on the reply can't silently take the wrong arm — catch it if you have a fallback.
+
 ### Paging a human
 
 A workflow that finds a problem can wake someone up. `infra.page(...)` delivers to the same recipients as [sync-failure incidents and budget alerts](./mobile-push-notifications.md): SMS (and optionally a voice call) through your org's Twilio credentials, mobile push to everyone who has the app installed, and any [Slack](./slack-alerts.md) or [Microsoft Teams](./teams-alerts.md) channels opted into pages. Configure who receives them under **Settings → Notifications**.
@@ -324,6 +365,71 @@ if (result.suppressed) infra.log(`already paged; quiet until ${result.retryAt}`)
 A server that runs outside Infrawrench can raise the same page over HTTP — see [Push from your own servers](./server-push.md). Keys and cooldowns are scoped per source there, so an API caller and a workflow never throttle each other.
 
 In a **local** desktop workflow there are no Twilio, push, Slack, or Teams recipients — those connections are org-level things the cloud holds — so a page becomes a native OS notification on the machine running the workflow. The key and cooldown behave exactly the same. An organization's workflows page the full set of transports whether you run them from the web or the desktop app.
+
+### Pausing for a human approval
+
+Some steps shouldn't run just because a script reached them. `infra.waitForApproval(...)` suspends the run mid-flight until a member of your organization approves or denies it:
+
+```ts
+// Cron: nightly cleanup, but a human signs off before anything is deleted.
+const gcp = infra.accounts.gcp.getByName("production");
+const stale = (await gcp.gkeClusters.list()).filter((c) => c.displayName.startsWith("dev-"));
+
+if (stale.length > 0) {
+  await infra.waitForApproval(`Delete ${stale.length} dev cluster(s)?`, {
+    title: "Nightly dev cleanup",
+    timeoutMinutes: 120,
+  });
+  for (const cluster of stale) await cluster.delete();
+}
+```
+
+While the run is suspended, the request shows up as a **pending approval card on the workflow's run view** with **Approve** and **Deny** buttons, and it is announced on every channel the organization has set up (see below). Approving lets the run continue within a few seconds; the call resolves with `{ approved: true, decidedBy, decidedAt }` so you can log who signed off.
+
+<insert [Screenshot of the Workflows tab with a run suspended on an approval: the amber pending-approval card above the run log showing the request title, message, expiry time, and Approve/Deny buttons] here>
+
+**Denial and timeout throw.** If someone denies the request — or nobody decides before the timeout (60 minutes by default, up to 24 hours) — the `waitForApproval` call throws and the run fails, unless you catch the error to take a fallback path. There is no "approve by silence": an unattended request is always treated as denied.
+
+| Option           | Default             | What it does                                               |
+| ---------------- | ------------------- | ---------------------------------------------------------- |
+| `title`          | the workflow's name | Headline of the approval card and of every notification.   |
+| `timeoutMinutes` | `60`                | How long to wait before the request expires and is denied. |
+
+Time spent waiting for a decision doesn't count against the run's execution budget (like SSH waits and `infra.prompt`), so a run can wait out a long approval without hitting its timeout.
+
+##### Who hears about it
+
+An approval request goes out over every transport the organization has configured — mobile push, any [Slack](./slack-alerts.md) or [Microsoft Teams](./teams-alerts.md) channel opted into **Pages**, and SMS to the Twilio recipient list when credentials are set up. It shares the **Pages** opt-in rather than having one of its own, because an approval is a workflow asking for a human just as `infra.page(...)` is, and nobody wants to discover they opted out of one but not the other.
+
+The message carries enough to decide on: what is being approved, the workflow and the run id, whether a person or a schedule started that run, when the request expires, and the fact that no decision counts as a denial. Slack and Teams also get a button straight to the approvals inbox.
+
+SMS is included for the same reason it is included for pages and excluded for [drift digests](./change-timeline.md): a blocked production run is a thing that should interrupt someone. It is SMS-only, never a voice call — `infra.page` rings a phone only when the author asks for `voice: true`, and an approval has no such knob.
+
+**Only the SMS is throttled**, at most one text per workflow every 15 minutes. A workflow can call `waitForApproval` in a loop — once per item in a list, or on every retry — and without a cooldown that is one text message to everybody's phone per turn of the loop. Push, Slack and Teams stay one message per request: each approval is a separate decision that blocks the run until somebody makes it, so collapsing those would leave requests nobody goes and decides. The first request is never suppressed, a second workflow's approval has its own cooldown, and the approvals inbox always lists every pending request no matter what was delivered.
+
+Approvals can also be listed and decided over the HTTP API — `GET /api/org/{orgId}/workflow-approvals?status=pending` and `POST /api/org/{orgId}/workflow-approvals/{id}/approve` (or `/deny`) — so a chat-ops bot or an external tool can land the decision. Listing needs `workflows:read`; deciding needs `workflows:approve` (see [Roles and permissions](../team-and-billing/roles-and-permissions.md)).
+
+Approvals are org-level records with notifications, so they're **cloud-only**: `infra.waitForApproval` is unavailable in the desktop app's local workflows, and the generated types mark it as such so you catch it while editing.
+
+#### The approvals inbox
+
+The card on a workflow's run view answers "what is this workflow waiting for". The person doing the approving usually has the opposite question — "what is waiting on me" — so **Settings → Approvals** lists every pending request across the organization in one place: what is being approved, which workflow and run raised it, when it was requested, when it expires, and **Approve** / **Deny** inline.
+
+<insert [Settings → Approvals page listing two pending approval requests from different workflows, each showing the request title, message, workflow name, run id, countdown to expiry, and the Approve/Deny buttons] here>
+
+The page is visible to anyone with `workflows:read`; the Approve and Deny buttons appear only with `workflows:approve`. It refreshes itself every few seconds, and a request that someone else decides first reports the conflict rather than silently overwriting their decision.
+
+In the desktop app the same inbox appears as a banner above the Workflows tab whenever the selected organization has pending requests, and disappears when it doesn't.
+
+#### Deciding from your phone
+
+The [mobile app](./mobile-app.md) has the same inbox under **Settings → Approvals**, and tapping an approval push notification opens it with that request pulled to the top and marked as the one you were notified about. Each card carries what the notification carried: the request, the workflow and run it blocks, when it was requested, the countdown to expiry, and the reminder that no decision counts as a denial.
+
+Deciding on a phone takes **two taps, never one**. **Approve** and **Deny** open a confirmation that names the request, the workflow, the run, and the deadline, and spells out what the decision does — approving releases a run against your real infrastructure; denying fails it at that step and cannot be undone. Only the confirmation sends the decision, so nothing lands from a pocket.
+
+Everything else matches the web page: the list is visible with `workflows:read`, the buttons appear only with `workflows:approve`, it refreshes on its own and on pull-to-refresh, and a request someone else decided first comes back as **"Already decided"** with the list refreshed — never as a silent overwrite. If the request your notification was about has already been decided or expired, the screen says so rather than leaving you hunting for it.
+
+<insert [Mobile Settings → Approvals screen opened from a push notification: the deep-linked request highlighted at the top with its workflow, run id and expiry countdown, and the Approve confirmation dialog naming the request and its deadline] here>
 
 ### Reporting your own cost data
 
@@ -392,7 +498,7 @@ A workflow belongs either to your machine or to an organization, and the **deskt
 
 Switching orgs swaps the list; nothing is copied between the two. A workflow written locally stays local until you recreate it in the org (copy the source across — the `infra` object is the same shape on both sides, as long as the org has accounts for the providers it names).
 
-Two things follow from where a workflow lives. Its **capabilities** differ slightly: local workflows have no cost store, so `infra.costs` is unavailable, and `infra.page` becomes a native OS notification instead of fanning out to SMS, push, Slack, and Teams. And its **automated triggers** differ — see the trigger table below.
+Two things follow from where a workflow lives. Its **capabilities** differ slightly: local workflows have no cost store, so `infra.costs` is unavailable; `infra.ai` and `infra.waitForApproval` are cloud-only too; and `infra.page` becomes a native OS notification instead of fanning out to SMS, push, Slack, and Teams. And its **automated triggers** differ — see the trigger table below.
 
 ## Pinning a workflow to a dashboard
 
@@ -407,7 +513,7 @@ A pin never crosses the local/cloud boundary: in Local mode you pin local workfl
 Open the trigger settings to choose how a workflow runs:
 
 - **Manual** — run on demand from the UI. The only mode that allows `infra.prompt`. Available everywhere (desktop, web, proxy).
-- **Cron** — run on a schedule. Pick a preset (every 15 minutes, daily at 9am, weekly…) or type a raw 5-field cron expression; the editor shows a plain-English summary of what you entered.
+- **Cron** — run on a schedule. Pick a preset (every 15 minutes, daily at 9am, weekly…) or type a raw 5-field cron expression; see [Cron schedules](#cron-schedules) below.
 - **Git** — run on each new commit to a branch. **Connect GitHub**, choose a repository from the picker, and set the branch — the Infrawrench GitHub App watches that repo as a bot and runs the workflow when the branch head changes. Needs an organization: a local workflow has no always-on host to watch a repo.
 - **Budget** — run when a [cost budget](./cloud-costs.md) crosses a threshold. Pick a budget, a percentage of its monthly amount, and whether to compare **spend so far** or the **forecast** month-end total. Needs an organization (budgets are a cloud feature).
 
@@ -421,6 +527,18 @@ Open the trigger settings to choose how a workflow runs:
 | Budget  | —                 | ✅            | ✅  | ✅        |
 
 Organization workflows run their cron and git triggers on an always-on cloud host, whichever app created them. **Local** workflows are run by the desktop app itself: while at least one local cron workflow is enabled, Infrawrench keeps running in the background after you close the window (just like active metric-ping alerts) so the schedule keeps firing. \*It can't fire while the app is fully quit — quit it and the local schedule pauses until you reopen. For schedules that must run 24/7 regardless, put the workflow in an organization or use the [web proxy](../core-concepts/desktop-vs-web.md).
+
+### Cron schedules
+
+The cron trigger takes a standard **5-field expression** (minute, hour, day of month, month, day of week) supporting `*`, lists (`1,15`), ranges (`9-17`), steps (`*/5`, `9-17/2`), and 3-letter month/weekday names (`JAN`, `MON`); `7` works as Sunday. When both day fields are restricted, a date matches if _either_ does — `0 0 13 * 5` is "the 13th, or any Friday", the classic cron behaviour.
+
+Next to the expression is an optional **timezone** field taking an IANA name like `Europe/London`. Leave it empty for UTC. Wall times are evaluated in that zone, so `0 9 * * *` in `America/New_York` keeps firing at 9am local across daylight-saving changes; a wall time skipped by spring-forward simply doesn't fire that day, and during fall-back's repeated hour the schedule fires once, at the first occurrence.
+
+As you type, the editor validates the expression (a typo shows the parse error instead of saving something that would never fire), summarises it in plain English, and previews the **next few run times** — computed by exactly the same code the scheduler uses, so what you see is what will run. Saving never fires the workflow immediately: the first run happens at the schedule's next occurrence. The enable toggle on the workflow pauses the schedule without losing it, and each schedule fires **exactly once** per occurrence no matter how many scheduler replicas are running.
+
+<insert [Screenshot of the cron trigger settings showing the preset picker, the 5-field expression input, the timezone field, and the plain-English summary with the next three run times] here>
+
+A workflow's schedule is also a small API surface of its own — `GET`/`PUT`/`DELETE /api/org/{orgId}/workflows/{id}/schedule` — so an SDK or script can manage when a workflow runs (or pause it) without round-tripping the whole workflow. See the [API docs](../team-and-billing/openapi.md).
 
 ### Connecting GitHub
 
@@ -493,13 +611,49 @@ Asking for a recurring check is a single request too — "check my Kubernetes cl
 
 `get_workflow_typings` is the important one. The `infra` API is generated per organization — account names, which resource groups exist, which fields `create()` takes, which peers a cluster or database exposes — so a model that writes from memory guesses wrong. Handing it the real declaration file first is what makes the generated code compile against _your_ setup. It also reflects the trigger: a budget-triggered workflow gets `infra.event` typed as the crossing payload, and only manual workflows get `infra.prompt`.
 
+The tool also keeps the model's context small: an organization with many connected plugins can have a very large `infra.d.ts`, so instead of returning the whole file the tool sends the global scope (the `infra` object and everything it references by name) plus an index of the named per-plugin interfaces, and the model fetches just the ones it needs — `typeNames: ["aws"]` pulls every AWS interface, or individual names like `Account_aws` can be requested as they are encountered. Small organizations still get the whole file in one call, and `scope: "full"` always returns everything.
+
 The typings are the whole truth about `infra`: what isn't declared there doesn't exist at run time either. That makes `check_workflow_source` the right way to test a guess. Probing by saving a draft and running it is slower and can mislead — reading a property that doesn't exist yields `undefined` rather than throwing, so a run that quietly did nothing looks like a run that succeeded.
 
 `write_workflow` then runs the same type check the editor runs and returns the diagnostics (`line:column`, TypeScript error code, message) instead of saving a broken workflow — so the model can fix its own mistakes before anything is persisted. Pass `skipTypecheck` to override that deliberately.
 
-Workflow tools need the same `dashboards:read` / `dashboards:write` [permissions](../team-and-billing/roles-and-permissions.md) as the Workflows tab, and `write_workflow`, `run_workflow`, and `delete_workflow` are all audit-logged. `run_workflow` and `delete_workflow` are **destructive tools** — in chat they wait for your approval before running. Running a workflow executes arbitrary code that can create or delete infrastructure, which is why it needs the same confirmation as deleting one.
+Workflow tools need the same `workflows:read` / `workflows:write` [permissions](../team-and-billing/roles-and-permissions.md) as the Workflows tab, and `write_workflow`, `run_workflow`, and `delete_workflow` are all audit-logged. `run_workflow` and `delete_workflow` are **destructive tools** — in chat they wait for your approval before running. Running a workflow executes arbitrary code that can create or delete infrastructure, which is why it needs the same confirmation as deleting one.
 
 A workflow's code runs with your account credentials. Read the source of anything you didn't write before you enable it or hand it to `run_workflow`.
+
+## What a run is allowed to do
+
+`workflows:write` lets you start a run. It does not decide what the run may do once it starts.
+
+Every operation the sandbox performs is checked against the permissions of the user the run acts for, using the same permission strings as the rest of the product — so a workflow is not a way around a role:
+
+| Operation                                                   | Needs               |
+| ----------------------------------------------------------- | ------------------- |
+| Listing, reading, describing, logs, metrics, manifests      | `resources:read`    |
+| Reading a resource output (`resolveOutput`)                 | `secrets:read`      |
+| `create()`, `update()`, applying a manifest, importing YAML | `resources:write`   |
+| `delete()`                                                  | `resources:delete`  |
+| `.ssh()`, `.query()`, the KV helpers, NoSQL                 | `resources:execute` |
+| Object and SFTP **reads**                                   | `storage:read`      |
+| Object and SFTP **writes**                                  | `storage:write`     |
+| `infra.costs.write`                                         | `costs:write`       |
+
+Reading a resource output needs `secrets:read` rather than `resources:read` because an output can be a connection string or a generated password — the same rule the `get_resource_outputs` tool follows.
+
+Logging, `infra.output`, metrics, `infra.fetch`, `infra.ai`, paging and approvals need no permission: they touch nothing outside the run — an AI call's spend is bounded by the org's [monthly AI cap](./ai-chat.md), which is billing policy rather than a role.
+
+Who a run acts for depends on how it started:
+
+| Trigger                             | Acts for              |
+| ----------------------------------- | --------------------- |
+| Run button, debugger, HTTP, AI chat | Whoever started it    |
+| Cron schedule                       | The workflow's author |
+| Git push                            | The workflow's author |
+| Budget threshold crossing           | The workflow's author |
+
+Scheduling a workflow therefore cannot give it authority its author lacks, and a workflow whose author has left the organization stops being able to do anything privileged — its next run fails on the first such call rather than continuing to act with a departed colleague's access. If you inherit a workflow like that, re-save it under your own account or ask an owner to.
+
+A refused operation throws inside the workflow and names the permission it needed, so you can catch it like any other error — or read it off the failed run and ask an admin for the right role.
 
 ## The isolate sandbox
 

@@ -12,6 +12,20 @@ export const MemorystoreRedisResourceType = rt({
     f("memorySizeGb", "Memory (GB)", { kind: "number", required: false }),
     f("redisVersion", "Redis Version", { required: false }),
     f("state", "State", { required: false }),
+    f("authorizedNetwork", "Authorized Network", {
+      required: false,
+      description: "Name of the VPC network the instance is connected to",
+    }),
+  ],
+  // The API returns the full network name; the lister keeps its last segment,
+  // which is what a vpc-network's `name` field holds.
+  dependsOn: [
+    {
+      fieldKey: "authorizedNetwork",
+      targetTypeId: "vpc-network",
+      targetKey: "name",
+      label: "in network",
+    },
   ],
   outputs: [
     o("host", "Host"),

@@ -14,6 +14,9 @@ export const CloudNatResourceType = rt({
     f("status", "Status", { required: false }),
   ],
   outputs: [],
+  dependsOn: [
+    { fieldKey: "router", targetTypeId: "cloud-router", targetKey: "name", label: "on router" },
+  ],
   supportsCreate: true,
   supportsMetrics: true,
   attachTargets: [

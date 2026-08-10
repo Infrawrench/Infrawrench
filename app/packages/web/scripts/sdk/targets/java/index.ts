@@ -331,9 +331,7 @@ interface ConstantsModel {
 }
 
 type Representation =
-  | { kind: "record"; name: string }
-  | { kind: "constants"; name: string }
-  | { kind: "alias" };
+  { kind: "record"; name: string } | { kind: "constants"; name: string } | { kind: "alias" };
 
 /**
  * Decides what each spec schema becomes in Java, and manufactures a named record

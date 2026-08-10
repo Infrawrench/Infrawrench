@@ -15,6 +15,9 @@ export const PublicIPResourceType = rt({
     f("ipVersion", "IP Version", { required: false }),
   ],
   outputs: [o("ipAddress", "IP Address"), o("fqdn", "FQDN")],
+  dependsOn: [
+    { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
+  ],
   iconKey: "network",
   supportsCreate: true,
   supportsMetrics: true,

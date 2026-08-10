@@ -2,6 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CreateFieldConfig } from "@infrawrench/plugin-base";
 import { FieldRenderer } from "../components/create-resource/FieldRenderer.js";
 import { AGENT_SETUP_FAILED_LOG_PREFIX } from "./launch-command.js";
+import { closeSshTabsForAgentTarget, openAgentSshTerminalTab } from "./open-ssh-tab.js";
+import {
+  agentSurfaceOrDefault,
+  agentSurfaceRequiresRepo,
+  isT3CodeSurface,
+  T3_CODE_PROJECTS_DIR,
+} from "./t3-code.js";
 import { resourceSshTabTarget } from "../workspace-tabs.js";
 import { useUIStore } from "../store/ui.store.js";
 import type { GitIntegration, GitRepoOption } from "../workflows/types.js";
@@ -9,6 +16,7 @@ import type {
   AgentClient,
   AgentSession,
   AgentSettings,
+  AgentSurface,
   AgentTool,
   AgentVmAccount,
 } from "./types.js";
@@ -41,7 +49,6 @@ function statusLabel(status: AgentSession["status"]): string {
 }
 
 export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: AgentsPanelProps) {
-  const createWorkspaceTabInstance = useUIStore((s) => s.createWorkspaceTabInstance);
   const [accounts, setAccounts] = useState<AgentVmAccount[]>([]);
   const [settings, setSettings] = useState<AgentSettings | null>(null);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
@@ -134,13 +141,15 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
 
   const configSummary = useMemo(() => {
     const parts = [
-      toolLabel(settings?.tool ?? "codex"),
+      isT3CodeSurface(settings?.surface)
+        ? `T3 Code + ${toolLabel(settings?.tool ?? "codex")}`
+        : toolLabel(settings?.tool ?? "codex"),
       ...visibleFields
         .slice(0, 3)
         .map(([key, value]) => formatFieldSummary(fieldLabel(selectedAccount, key), key, value)),
     ].filter(Boolean);
     return parts.join(" · ");
-  }, [selectedAccount, settings?.tool, visibleFields]);
+  }, [selectedAccount, settings?.tool, settings?.surface, visibleFields]);
 
   const gitRepoOptions = useMemo<GitRepoOption[]>(
     () => (gitIntegration?.configured ? gitIntegration.repos : []),
@@ -189,10 +198,32 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
     [],
   );
 
+  // Which agent runs (`tool`) and how you talk to it (`surface`) are separate
+  // choices: T3 Code is a control surface that drives the tool's CLI, not an
+  // agent of its own, so a T3 Code session still installs Codex or Claude Code.
+  const surfaceField = useMemo<CreateFieldConfig>(
+    () => ({
+      key: "surface",
+      label: "Interface",
+      kind: "select",
+      required: true,
+      options: [
+        { id: "terminal", label: "Terminal (SSH)" },
+        { id: "t3-code", label: "T3 Code" },
+      ],
+    }),
+    [],
+  );
+
+  const selectedSurface = agentSurfaceOrDefault(settings?.surface);
+  // T3 Code manages its own projects, so these sessions provision a bare
+  // server: no repo field, no clone, no branch.
+  const needsRepo = agentSurfaceRequiresRepo(selectedSurface);
+
   async function updateAccount(value: string) {
     const account = accounts.find((a) => accountKey(a) === value);
     if (!account) return;
-    const nextSettings = defaultSettings(account, settings?.tool ?? "codex");
+    const nextSettings = defaultSettings(account, settings?.tool ?? "codex", selectedSurface);
     if (!nextSettings) return;
     setSettings(nextSettings);
     setSaveNotice(false);
@@ -226,15 +257,16 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
   }
 
   async function createSession() {
-    if (!settings || !agentName.trim() || !repo.trim()) return;
+    if (!settings || !agentName.trim()) return;
+    if (needsRepo && !repo.trim()) return;
     setBusy(true);
     setMessage(null);
     setSaveNotice(false);
     try {
       const created = await client.createSession({
-        repo: repo.trim(),
+        repo: needsRepo ? repo.trim() : "",
         projectName: agentName.trim(),
-        workspaceName: workspaceNameFromRepo(repo.trim()),
+        workspaceName: needsRepo ? workspaceNameFromRepo(repo.trim()) : T3_CODE_PROJECTS_DIR,
         settings,
       });
       if (sessionHasVm(created)) {
@@ -269,30 +301,25 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
     // Opening re-kicks setup with forceSync when it never completed, so a
     // failed setup can be retried through the same path.
     if (session.status !== "up" && !sessionSetupFailed(session)) return;
+    const t3Code = isT3CodeSurface(session.surface);
     setOpeningSessionId(session.id);
-    setMessage(`Opening ${session.projectName}... preparing SSH session.`);
+    setMessage(
+      t3Code
+        ? `Opening the setup terminal for ${session.projectName}...`
+        : `Opening ${session.projectName}... preparing SSH session.`,
+    );
     try {
-      const result = await client.openSession(session.id);
-      const tabOptions = {
-        agentSessionId: session.id,
-        ...(result.sshKeyId ? { sshKeyId: result.sshKeyId } : {}),
-        ...(result.sshKeyName ? { sshKeyName: result.sshKeyName } : {}),
-        initialCommand: result.command,
-        initialCwd: result.cwd,
-      };
-      const target = resourceSshTabTarget(
-        session.accountId,
-        session.vmResourceId,
-        session.pluginId,
-        session.resourceTypeId,
-        tabOptions,
-      );
-      const title = `${toolCommandLabel(session.tool)} · ${session.projectName}`;
-      closeSshTabsForAgentTarget(target);
-      createWorkspaceTabInstance(target, title);
-      if (openWorkspaceTarget) {
-        openWorkspaceTarget(target, title);
-      }
+      // T3 Code servers open the interactive authorization terminal — the
+      // rest of the session lives in T3 Code's own app, which the user
+      // reaches from their browser once the server is linked.
+      await openAgentSshTerminalTab({
+        client,
+        session,
+        title: t3Code
+          ? `T3 Code setup · ${session.projectName}`
+          : `${toolCommandLabel(session.tool)} · ${session.projectName}`,
+        ...(openWorkspaceTarget ? { openWorkspaceTarget } : {}),
+      });
       const nextSessions = await client.listSessions().catch(() => null);
       if (nextSessions) setSessions(nextSessions.filter(sessionHasVm));
       setMessage(null);
@@ -390,6 +417,22 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                         settings && setSettings({ ...settings, tool: value as AgentTool })
                       }
                     />
+                    <FieldRenderer
+                      field={surfaceField}
+                      value={selectedSurface}
+                      onChange={(value) =>
+                        settings && setSettings({ ...settings, surface: value as AgentSurface })
+                      }
+                    />
+                    {isT3CodeSurface(selectedSurface) && (
+                      <p className="text-xs text-on-surface-muted">
+                        T3 Code runs as a server on the VM and drives{" "}
+                        {toolLabel(settings?.tool ?? "codex")}, which is installed alongside it.
+                        Open runs the one-off authorization steps over SSH; after that you use the
+                        server from T3 Code itself. No repository checkout — add projects from
+                        inside T3 Code.
+                      </p>
+                    )}
                     {visibleFields.map(([key, value]) => (
                       <FieldRenderer
                         key={key}
@@ -435,115 +478,121 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                   <input
                     value={agentName}
                     onChange={(e) => setAgentName(e.target.value)}
-                    placeholder="Agent name"
-                    aria-label="Agent name"
+                    placeholder={needsRepo ? "Agent name" : "Server name"}
+                    aria-label={needsRepo ? "Agent name" : "Server name"}
                     className="min-w-0 flex-1 rounded border border-border bg-surface px-2 py-1.5 text-sm"
                   />
                   <button
                     type="button"
-                    disabled={busy || !settings || !agentName.trim() || !repo.trim()}
+                    disabled={busy || !settings || !agentName.trim() || (needsRepo && !repo.trim())}
                     onClick={() => void createSession()}
                     className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white disabled:opacity-50"
                   >
                     Create
                   </button>
                 </div>
-                <div className="flex flex-col gap-2 md:flex-row">
-                  <div className="flex shrink-0 rounded-md border border-border-strong bg-surface p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setRepoSource("git-url")}
-                      className={`rounded px-3 py-1.5 text-xs font-medium ${
-                        repoSource === "git-url"
-                          ? "bg-accent-muted text-accent-on-muted"
-                          : "text-on-surface-muted hover:text-on-surface"
-                      }`}
-                    >
-                      Git URL
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!client.pickLocalRepoPath}
-                      onClick={() => {
-                        setRepoSource("local-path");
-                        if (!repo && client.pickLocalRepoPath) void browseLocalRepo();
-                      }}
-                      className={`rounded px-3 py-1.5 text-xs font-medium disabled:opacity-40 ${
-                        repoSource === "local-path"
-                          ? "bg-accent-muted text-accent-on-muted"
-                          : "text-on-surface-muted hover:text-on-surface"
-                      }`}
-                    >
-                      Local folder
-                    </button>
-                  </div>
-                  {showRepoPicker && (
-                    <select
-                      value={repoPickerValue}
-                      onChange={(e) => pickGitRepo(e.target.value)}
-                      aria-label="Repository"
-                      className={`min-w-0 rounded border border-border bg-surface px-2 py-1.5 text-sm ${
-                        repoPickerValue === "custom" ? "md:w-56 md:flex-none" : "flex-1"
-                      }`}
-                    >
-                      <option value="">Select a repository…</option>
-                      {gitRepoOptions.map((option) => (
-                        <option
-                          key={`${option.installationId}:${option.fullName}`}
-                          value={option.fullName}
-                        >
-                          {option.fullName}
-                          {option.private ? " (private)" : ""}
-                        </option>
-                      ))}
-                      <option value="custom">Custom Git URL…</option>
-                    </select>
-                  )}
-                  {(!showRepoPicker || repoPickerValue === "custom") && (
-                    <input
-                      value={repo}
-                      onChange={(e) => setRepo(e.target.value)}
-                      placeholder={
-                        repoSource === "git-url"
-                          ? "https://github.com/org/repo.git"
-                          : client.pickLocalRepoPath
-                            ? "/path/to/local/repo"
-                            : "Local folders are available in the desktop app"
-                      }
-                      className="min-w-0 flex-1 rounded border border-border bg-surface px-2 py-1.5 text-sm"
-                    />
-                  )}
-                  {repoSource === "git-url" &&
-                    gitIntegration?.configured &&
-                    gitRepoOptions.length === 0 && (
+                {/* A T3 Code server has no Infrawrench-managed checkout, so
+                    the repository controls don't apply to it. Left out of the
+                    tree rather than hidden with CSS — a hidden-but-focusable
+                    URL field is still reachable by keyboard. */}
+                {needsRepo && (
+                  <div className="flex flex-col gap-2 md:flex-row">
+                    <div className="flex shrink-0 rounded-md border border-border-strong bg-surface p-0.5">
                       <button
                         type="button"
-                        onClick={gitIntegration.onConnect}
-                        className="rounded border border-border-strong px-3 py-1.5 text-sm text-on-surface-secondary hover:bg-surface-sunken"
+                        onClick={() => setRepoSource("git-url")}
+                        className={`rounded px-3 py-1.5 text-xs font-medium ${
+                          repoSource === "git-url"
+                            ? "bg-accent-muted text-accent-on-muted"
+                            : "text-on-surface-muted hover:text-on-surface"
+                        }`}
                       >
-                        {gitIntegration.loading ? "Loading repos…" : "Connect GitHub"}
+                        Git URL
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!client.pickLocalRepoPath}
+                        onClick={() => {
+                          setRepoSource("local-path");
+                          if (!repo && client.pickLocalRepoPath) void browseLocalRepo();
+                        }}
+                        className={`rounded px-3 py-1.5 text-xs font-medium disabled:opacity-40 ${
+                          repoSource === "local-path"
+                            ? "bg-accent-muted text-accent-on-muted"
+                            : "text-on-surface-muted hover:text-on-surface"
+                        }`}
+                      >
+                        Local folder
+                      </button>
+                    </div>
+                    {showRepoPicker && (
+                      <select
+                        value={repoPickerValue}
+                        onChange={(e) => pickGitRepo(e.target.value)}
+                        aria-label="Repository"
+                        className={`min-w-0 rounded border border-border bg-surface px-2 py-1.5 text-sm ${
+                          repoPickerValue === "custom" ? "md:w-56 md:flex-none" : "flex-1"
+                        }`}
+                      >
+                        <option value="">Select a repository…</option>
+                        {gitRepoOptions.map((option) => (
+                          <option
+                            key={`${option.installationId}:${option.fullName}`}
+                            value={option.fullName}
+                          >
+                            {option.fullName}
+                            {option.private ? " (private)" : ""}
+                          </option>
+                        ))}
+                        <option value="custom">Custom Git URL…</option>
+                      </select>
+                    )}
+                    {(!showRepoPicker || repoPickerValue === "custom") && (
+                      <input
+                        value={repo}
+                        onChange={(e) => setRepo(e.target.value)}
+                        placeholder={
+                          repoSource === "git-url"
+                            ? "https://github.com/org/repo.git"
+                            : client.pickLocalRepoPath
+                              ? "/path/to/local/repo"
+                              : "Local folders are available in the desktop app"
+                        }
+                        className="min-w-0 flex-1 rounded border border-border bg-surface px-2 py-1.5 text-sm"
+                      />
+                    )}
+                    {repoSource === "git-url" &&
+                      gitIntegration?.configured &&
+                      gitRepoOptions.length === 0 && (
+                        <button
+                          type="button"
+                          onClick={gitIntegration.onConnect}
+                          className="rounded border border-border-strong px-3 py-1.5 text-sm text-on-surface-secondary hover:bg-surface-sunken"
+                        >
+                          {gitIntegration.loading ? "Loading repos…" : "Connect GitHub"}
+                        </button>
+                      )}
+                    {showRepoPicker && (
+                      <button
+                        type="button"
+                        onClick={gitIntegration?.onConnect}
+                        title="Add or remove repositories on GitHub"
+                        className="shrink-0 rounded border border-border-strong px-3 py-1.5 text-sm text-on-surface-secondary hover:bg-surface-sunken"
+                      >
+                        + repos
                       </button>
                     )}
-                  {showRepoPicker && (
-                    <button
-                      type="button"
-                      onClick={gitIntegration?.onConnect}
-                      title="Add or remove repositories on GitHub"
-                      className="shrink-0 rounded border border-border-strong px-3 py-1.5 text-sm text-on-surface-secondary hover:bg-surface-sunken"
-                    >
-                      + repos
-                    </button>
-                  )}
-                  {repoSource === "local-path" && client.pickLocalRepoPath && (
-                    <button
-                      type="button"
-                      onClick={() => void browseLocalRepo()}
-                      className="rounded border border-border-strong px-3 py-1.5 text-sm text-on-surface-secondary hover:bg-surface-sunken"
-                    >
-                      Browse
-                    </button>
-                  )}
-                </div>
+                    {repoSource === "local-path" && client.pickLocalRepoPath && (
+                      <button
+                        type="button"
+                        onClick={() => void browseLocalRepo()}
+                        className="rounded border border-border-strong px-3 py-1.5 text-sm text-on-surface-secondary hover:bg-surface-sunken"
+                      >
+                        Browse
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -577,12 +626,21 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                               {statusLabel(session.status)}
                             </span>
                           </div>
-                          <div className="mt-1 text-xs text-on-surface-muted truncate">
-                            {session.repo}
-                          </div>
-                          <div className="mt-1 text-xs font-mono text-on-surface-tertiary">
-                            {session.branchName}
-                          </div>
+                          {isT3CodeSurface(session.surface) ? (
+                            <div className="mt-1 text-xs text-on-surface-muted">
+                              T3 Code server driving {toolLabel(session.tool)} · projects managed in
+                              T3 Code
+                            </div>
+                          ) : (
+                            <>
+                              <div className="mt-1 text-xs text-on-surface-muted truncate">
+                                {session.repo}
+                              </div>
+                              <div className="mt-1 text-xs font-mono text-on-surface-tertiary">
+                                {session.branchName}
+                              </div>
+                            </>
+                          )}
                           <div className="mt-1 text-xs text-on-surface-tertiary truncate">
                             {sessionLocationLabel(session, sessionAccount)}
                           </div>
@@ -594,9 +652,18 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                               disabled={!!openingSessionId || !session.vmResourceId}
                               onClick={() => void openSession(session)}
                               aria-busy={openingSessionId === session.id}
+                              title={
+                                isT3CodeSurface(session.surface)
+                                  ? "Run the T3 Connect and provider sign-in steps over SSH"
+                                  : undefined
+                              }
                               className="px-2 py-1 rounded border border-border text-xs disabled:opacity-50"
                             >
-                              {openingSessionId === session.id ? "Opening..." : "Open"}
+                              {openingSessionId === session.id
+                                ? "Opening..."
+                                : isT3CodeSurface(session.surface)
+                                  ? "Authorize server"
+                                  : "Open"}
                             </button>
                           )}
                           {sessionSetupFailed(session) && (
@@ -610,7 +677,10 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                               {openingSessionId === session.id ? "Retrying..." : "Retry setup"}
                             </button>
                           )}
-                          {!sessionIsSettingUp(session) && (
+                          {/* Reconcile pushes the session branch back; a T3
+                              Code server has no Infrawrench-managed checkout
+                              to reconcile. */}
+                          {!sessionIsSettingUp(session) && !isT3CodeSurface(session.surface) && (
                             <button
                               type="button"
                               onClick={() => void reconcileSession(session.id)}
@@ -814,13 +884,18 @@ function reconcileSettings(
   return { ...saved, fields };
 }
 
-function defaultSettings(account: AgentVmAccount | undefined, tool: AgentTool = "codex") {
+function defaultSettings(
+  account: AgentVmAccount | undefined,
+  tool: AgentTool = "codex",
+  surface: AgentSurface = "terminal",
+) {
   if (!account) return null;
   return {
     accountId: account.accountId,
     pluginId: account.pluginId,
     resourceTypeId: account.resourceTypeId,
     tool,
+    surface,
     fields: { ...account.defaultFields },
   };
 }
@@ -834,18 +909,4 @@ function workspaceNameFromRepo(repo: string): string {
   if (!trimmed) return "project";
   const last = trimmed.split(/[\\/]/).pop() ?? "project";
   return last.replace(/\.git$/i, "") || "project";
-}
-
-function closeSshTabsForAgentTarget(target: ReturnType<typeof resourceSshTabTarget>) {
-  if (target.kind !== "resource") return;
-  const state = useUIStore.getState();
-  const tabIds = state.workspaceTabs.flatMap((tab) => {
-    const existing = tab.target;
-    if (existing.kind !== "resource") return [];
-    if (existing.view !== "ssh") return [];
-    if (existing.accountId !== target.accountId) return [];
-    if (existing.resourceId !== target.resourceId) return [];
-    return [tab.id];
-  });
-  if (tabIds.length > 0) state.removeWorkspaceTabs(tabIds);
 }
