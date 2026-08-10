@@ -49,6 +49,28 @@ import {
   type TagPolicy,
   SAVED_COST_FILTER_LIMITS,
   type SavedCostFilterInput,
+  COST_SCENARIO_ADJUSTMENT_KINDS,
+  COST_SCENARIO_LIMITS,
+  COST_SCENARIO_PERIODS,
+  type CostScenarioAdjustment,
+  type CostScenarioModelInput,
+  BILLING_RULE_KINDS,
+  BILLING_RULE_FIXED_PERIODS,
+  BILLING_RULE_TARGET_KINDS,
+  BILLING_RULE_LIMITS,
+  type BillingRuleAdjustment,
+  type BillingRuleInput,
+  type BillingRuleMatch,
+  BUSINESS_METRIC_KEY_PATTERN,
+  BUSINESS_METRIC_KINDS,
+  BUSINESS_METRIC_LIMITS,
+  UNIT_COST_MODES,
+  type BusinessMetricInput,
+  type BusinessMetricValueInput,
+  type UnitCostQueryRequest,
+  MANAGED_ACCOUNT_LIMITS,
+  MANAGED_INVOICE_LIMITS,
+  type ManagedInvoiceUpdate,
 } from "@infrawrench/client-core";
 
 export {
@@ -419,9 +441,21 @@ export const budgetInputSchema = z.object({
    * full replaces.
    */
   savedFilterId: z.string().min(1).optional(),
+  /**
+   * Opt this budget's **forecast** thresholds into a scenario model. Absent —
+   * the default — keeps them on the bare trend. A PUT that omits it clears the
+   * opt-in, which is the safe direction.
+   */
+  scenarioModelId: z.string().min(1).optional(),
   thresholds: z.array(budgetThresholdSchema).min(1).max(10),
   /** Which number the budget tracks; absent is cash. */
   costBasis: z.enum(COST_BASES).optional(),
+  /**
+   * Measure this budget against billing-rule-adjusted spend. Absent — the
+   * default, and every budget nobody opted in — measures what the providers
+   * charged. A PUT that omits it clears the opt-in, the safe direction.
+   */
+  useAdjustedSpend: z.boolean().optional(),
 });
 
 /**
@@ -608,6 +642,72 @@ export const costQueryRequestSchema = z.object({
    * this field existed — gets the unconverted per-currency answer it expects.
    */
   displayCurrency: z.string().regex(CURRENCY_CODE_PATTERN).optional(),
+  /**
+   * Apply the org's billing rules. Absent — the default and what every
+   * unattended reader sends — is raw collected spend. Present, the response
+   * carries `adjustment` with the collected totals beside the adjusted ones,
+   * so no client can render an adjusted figure without being handed what it
+   * needs to label it.
+   */
+  adjusted: z.boolean().optional(),
+});
+
+/* ------------------------------------------------------------------ *
+ * Billing rules — POST/PUT /billing-rules.
+ * ------------------------------------------------------------------ */
+
+/**
+ * The allocation match vocabulary plus `chargeType`. Shape-only, deliberately:
+ * the cross-field rules (a percentage rule cannot carry an amount, a
+ * reallocation rule must name a target) live in `billingRuleInputError` in
+ * client-core, so the settings form and the API refuse in identical words.
+ */
+export const billingRuleMatchSchema = z
+  .object({
+    tagKey: z.string().min(1).max(TAG_POLICY_LIMITS.maxKeyLength).optional(),
+    tagValue: z.string().max(TAG_POLICY_LIMITS.maxValueLength).optional(),
+    accountId: z.string().min(1).optional(),
+    pluginId: z.string().min(1).optional(),
+    service: z.string().min(1).optional(),
+    chargeType: z.enum(COST_CHARGE_TYPES).optional(),
+  })
+  .refine((m) => !m.tagValue?.trim() || !!m.tagKey?.trim(), {
+    message: "tagValue requires tagKey",
+    path: ["tagValue"],
+  });
+
+/**
+ * Every kind-specific field is `.nullable().default(null)` so a PUT round-trip
+ * of a rule this client did not create still parses — the same rule
+ * `costScenarioAdjustmentSchema` follows.
+ */
+export const billingRuleAdjustmentSchema = z.object({
+  kind: z.enum(BILLING_RULE_KINDS),
+  percent: z
+    .number()
+    .min(BILLING_RULE_LIMITS.minPercent)
+    .max(BILLING_RULE_LIMITS.maxPercent)
+    .nullable()
+    .default(null),
+  amount: z
+    .number()
+    .min(-BILLING_RULE_LIMITS.maxFixedAmount)
+    .max(BILLING_RULE_LIMITS.maxFixedAmount)
+    .nullable()
+    .default(null),
+  currency: z.string().regex(CURRENCY_CODE_PATTERN).nullable().default(null),
+  period: z.enum(BILLING_RULE_FIXED_PERIODS).nullable().default(null),
+  targetKind: z.enum(BILLING_RULE_TARGET_KINDS).nullable().default(null),
+  targetId: z.string().min(1).nullable().default(null),
+});
+
+export const billingRuleInputSchema = z.object({
+  name: z.string().min(1).max(BILLING_RULE_LIMITS.maxNameLength),
+  description: z.string().max(BILLING_RULE_LIMITS.maxDescriptionLength).nullable().default(null),
+  enabled: z.boolean().default(true),
+  priority: z.number().int().min(0).max(100_000),
+  match: billingRuleMatchSchema,
+  adjustment: billingRuleAdjustmentSchema,
 });
 
 /* ------------------------------------------------------------------ *

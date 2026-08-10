@@ -77,6 +77,8 @@ async function toBudgetWithStatus(
     undefined,
     costBasis,
     b.savedFilterId,
+    b.scenarioModelId,
+    b.useAdjustedSpend,
   );
   const events = await db
     .select()
@@ -193,6 +195,8 @@ export async function createBudget(
       // insert doesn't depend on which of the two defaults applies.
       costBasis: input.costBasis ?? "cash",
       savedFilterId: input.savedFilterId ?? null,
+      scenarioModelId: input.scenarioModelId ?? null,
+      useAdjustedSpend: input.useAdjustedSpend ?? false,
       createdByUserId,
     })
     .returning();
@@ -221,6 +225,12 @@ export async function updateBudget(
       // A PUT is a full replace, so absent clears the reference — the editor
       // always sends the whole object, including the chip it still shows.
       savedFilterId: input.savedFilterId ?? null,
+      // Absent clears the opt-in, which is the safe direction: a budget stops
+      // measuring somebody's assumptions and goes back to the bare trend.
+      scenarioModelId: input.scenarioModelId ?? null,
+      // Same rule, same safe direction: absent clears the opt-in and the budget
+      // goes back to measuring what the providers actually charged.
+      useAdjustedSpend: input.useAdjustedSpend ?? false,
       updatedAt: new Date(),
     })
     .where(

@@ -1,4 +1,5 @@
 import type {
+  BillingRule,
   BudgetWithStatus,
   CostAccountStatus,
   CostAlert,
@@ -191,6 +192,21 @@ export interface CostsClient extends CostApi {
   getUntaggedSpend?(from?: string, to?: string): Promise<UntaggedSpendReport>;
   /** Spend grouped by cost centre through the org's allocation rules. */
   getShowback?(from?: string, to?: string): Promise<ShowbackReport>;
+  /**
+   * The org's billing rules — read-only here, on purpose.
+   *
+   * The panel only needs to know **whether any rule is in force**, so it can
+   * decide whether offering an "Apply billing rules" toggle over the overview
+   * chart means anything. Management lives in Settings → Billing Rules, behind
+   * `org:settings:write`: a markup changes every figure the org reports about
+   * itself, which is a governance act rather than a cost-object edit, and two
+   * editors for one thing is how the two disagree.
+   *
+   * Optional like every other method here — a host that hasn't wired it simply
+   * never shows the toggle, and the panel shows collected spend. That is the
+   * safe direction to degrade in.
+   */
+  listBillingRules?(): Promise<BillingRule[]>;
   /**
    * Prepaid credit balances with their burn rate and runway. Optional the way
    * `listAnomalies` is: a host that hasn't wired it simply doesn't render the

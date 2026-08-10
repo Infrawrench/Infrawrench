@@ -19,14 +19,14 @@ import { Route as OrgOrgIdIndexRouteImport } from './routes/org.$orgId.index'
 import { Route as OrgOrgIdAgentsRouteImport } from './routes/org.$orgId.agents'
 import { Route as OrgOrgIdChangesRouteImport } from './routes/org.$orgId.changes'
 import { Route as OrgOrgIdChatRouteImport } from './routes/org.$orgId.chat'
-import { Route as OrgOrgIdCostsRouteImport } from './routes/org.$orgId.costs'
 import { Route as OrgOrgIdCostReportsRouteImport } from './routes/org.$orgId.cost-reports'
-import { Route as OrgOrgIdCostReportsReportIdRouteImport } from './routes/org.$orgId.cost-reports.$reportId'
+import { Route as OrgOrgIdCostsRouteImport } from './routes/org.$orgId.costs'
 import { Route as OrgOrgIdDeploymentsRouteImport } from './routes/org.$orgId.deployments'
 import { Route as OrgOrgIdDnsRouteImport } from './routes/org.$orgId.dns'
 import { Route as OrgOrgIdEnvironmentDiffRouteImport } from './routes/org.$orgId.environment-diff'
 import { Route as OrgOrgIdExpiringRouteImport } from './routes/org.$orgId.expiring'
 import { Route as OrgOrgIdGraphRouteImport } from './routes/org.$orgId.graph'
+import { Route as OrgOrgIdInvoicesRouteImport } from './routes/org.$orgId.invoices'
 import { Route as OrgOrgIdLogsRouteImport } from './routes/org.$orgId.logs'
 import { Route as OrgOrgIdMetricAlertsRouteImport } from './routes/org.$orgId.metric-alerts'
 import { Route as OrgOrgIdMomentRouteImport } from './routes/org.$orgId.moment'
@@ -39,7 +39,9 @@ import { Route as OrgOrgIdWorkflowsRouteImport } from './routes/org.$orgId.workf
 import { Route as OrgOrgIdAccountsAccountIdRouteImport } from './routes/org.$orgId.accounts.$accountId'
 import { Route as OrgOrgIdChatIndexRouteImport } from './routes/org.$orgId.chat.index'
 import { Route as OrgOrgIdChatConversationIdRouteImport } from './routes/org.$orgId.chat.$conversationId'
+import { Route as OrgOrgIdCostReportsReportIdRouteImport } from './routes/org.$orgId.cost-reports.$reportId'
 import { Route as OrgOrgIdDashboardDashboardIdRouteImport } from './routes/org.$orgId.dashboard.$dashboardId'
+import { Route as OrgOrgIdInvoicesInvoiceIdRouteImport } from './routes/org.$orgId.invoices.$invoiceId'
 import { Route as OrgOrgIdSettingsIndexRouteImport } from './routes/org.$orgId.settings.index'
 import { Route as OrgOrgIdSettingsAccessRequestsRouteImport } from './routes/org.$orgId.settings.access-requests'
 import { Route as OrgOrgIdSettingsApiKeysRouteImport } from './routes/org.$orgId.settings.api-keys'
@@ -47,19 +49,21 @@ import { Route as OrgOrgIdSettingsApprovalsRouteImport } from './routes/org.$org
 import { Route as OrgOrgIdSettingsAuditLogRouteImport } from './routes/org.$orgId.settings.audit-log'
 import { Route as OrgOrgIdSettingsBastionsRouteImport } from './routes/org.$orgId.settings.bastions'
 import { Route as OrgOrgIdSettingsBillingRouteImport } from './routes/org.$orgId.settings.billing'
+import { Route as OrgOrgIdSettingsBillingRulesRouteImport } from './routes/org.$orgId.settings.billing-rules'
 import { Route as OrgOrgIdSettingsConfigRouteImport } from './routes/org.$orgId.settings.config'
+import { Route as OrgOrgIdSettingsCostCentresRouteImport } from './routes/org.$orgId.settings.cost-centres'
+import { Route as OrgOrgIdSettingsCostExportsRouteImport } from './routes/org.$orgId.settings.cost-exports'
 import { Route as OrgOrgIdSettingsCredentialHygieneRouteImport } from './routes/org.$orgId.settings.credential-hygiene'
+import { Route as OrgOrgIdSettingsCurrencyRouteImport } from './routes/org.$orgId.settings.currency'
 import { Route as OrgOrgIdSettingsFreezesRouteImport } from './routes/org.$orgId.settings.freezes'
+import { Route as OrgOrgIdSettingsJiraRouteImport } from './routes/org.$orgId.settings.jira'
+import { Route as OrgOrgIdSettingsLinearRouteImport } from './routes/org.$orgId.settings.linear'
 import { Route as OrgOrgIdSettingsPagingRouteImport } from './routes/org.$orgId.settings.paging'
 import { Route as OrgOrgIdSettingsRolesRouteImport } from './routes/org.$orgId.settings.roles'
 import { Route as OrgOrgIdSettingsSessionRecordingsRouteImport } from './routes/org.$orgId.settings.session-recordings'
 import { Route as OrgOrgIdSettingsSshHostKeysRouteImport } from './routes/org.$orgId.settings.ssh-host-keys'
 import { Route as OrgOrgIdSettingsSshKeysRouteImport } from './routes/org.$orgId.settings.ssh-keys'
 import { Route as OrgOrgIdSettingsTagPolicyRouteImport } from './routes/org.$orgId.settings.tag-policy'
-import { Route as OrgOrgIdSettingsJiraRouteImport } from './routes/org.$orgId.settings.jira'
-import { Route as OrgOrgIdSettingsLinearRouteImport } from './routes/org.$orgId.settings.linear'
-import { Route as OrgOrgIdSettingsCurrencyRouteImport } from './routes/org.$orgId.settings.currency'
-import { Route as OrgOrgIdSettingsCostExportsRouteImport } from './routes/org.$orgId.settings.cost-exports'
 import { Route as OrgOrgIdSettingsTeamRouteImport } from './routes/org.$orgId.settings.team'
 import { Route as OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRouteImport } from './routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId'
 
@@ -113,22 +117,16 @@ const OrgOrgIdChatRoute = OrgOrgIdChatRouteImport.update({
   path: '/chat',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
-const OrgOrgIdCostsRoute = OrgOrgIdCostsRouteImport.update({
-  id: '/costs',
-  path: '/costs',
-  getParentRoute: () => OrgOrgIdRoute,
-} as any)
 const OrgOrgIdCostReportsRoute = OrgOrgIdCostReportsRouteImport.update({
   id: '/cost-reports',
   path: '/cost-reports',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
-const OrgOrgIdCostReportsReportIdRoute =
-  OrgOrgIdCostReportsReportIdRouteImport.update({
-    id: '/$reportId',
-    path: '/$reportId',
-    getParentRoute: () => OrgOrgIdCostReportsRoute,
-  } as any)
+const OrgOrgIdCostsRoute = OrgOrgIdCostsRouteImport.update({
+  id: '/costs',
+  path: '/costs',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
 const OrgOrgIdDeploymentsRoute = OrgOrgIdDeploymentsRouteImport.update({
   id: '/deployments',
   path: '/deployments',
@@ -152,6 +150,11 @@ const OrgOrgIdExpiringRoute = OrgOrgIdExpiringRouteImport.update({
 const OrgOrgIdGraphRoute = OrgOrgIdGraphRouteImport.update({
   id: '/graph',
   path: '/graph',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdInvoicesRoute = OrgOrgIdInvoicesRouteImport.update({
+  id: '/invoices',
+  path: '/invoices',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdLogsRoute = OrgOrgIdLogsRouteImport.update({
@@ -216,11 +219,23 @@ const OrgOrgIdChatConversationIdRoute =
     path: '/$conversationId',
     getParentRoute: () => OrgOrgIdChatRoute,
   } as any)
+const OrgOrgIdCostReportsReportIdRoute =
+  OrgOrgIdCostReportsReportIdRouteImport.update({
+    id: '/$reportId',
+    path: '/$reportId',
+    getParentRoute: () => OrgOrgIdCostReportsRoute,
+  } as any)
 const OrgOrgIdDashboardDashboardIdRoute =
   OrgOrgIdDashboardDashboardIdRouteImport.update({
     id: '/dashboard/$dashboardId',
     path: '/dashboard/$dashboardId',
     getParentRoute: () => OrgOrgIdRoute,
+  } as any)
+const OrgOrgIdInvoicesInvoiceIdRoute =
+  OrgOrgIdInvoicesInvoiceIdRouteImport.update({
+    id: '/$invoiceId',
+    path: '/$invoiceId',
+    getParentRoute: () => OrgOrgIdInvoicesRoute,
   } as any)
 const OrgOrgIdSettingsIndexRoute = OrgOrgIdSettingsIndexRouteImport.update({
   id: '/',
@@ -261,20 +276,54 @@ const OrgOrgIdSettingsBillingRoute = OrgOrgIdSettingsBillingRouteImport.update({
   path: '/billing',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsBillingRulesRoute =
+  OrgOrgIdSettingsBillingRulesRouteImport.update({
+    id: '/billing-rules',
+    path: '/billing-rules',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsConfigRoute = OrgOrgIdSettingsConfigRouteImport.update({
   id: '/config',
   path: '/config',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsCostCentresRoute =
+  OrgOrgIdSettingsCostCentresRouteImport.update({
+    id: '/cost-centres',
+    path: '/cost-centres',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
+const OrgOrgIdSettingsCostExportsRoute =
+  OrgOrgIdSettingsCostExportsRouteImport.update({
+    id: '/cost-exports',
+    path: '/cost-exports',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsCredentialHygieneRoute =
   OrgOrgIdSettingsCredentialHygieneRouteImport.update({
     id: '/credential-hygiene',
     path: '/credential-hygiene',
     getParentRoute: () => OrgOrgIdSettingsRoute,
   } as any)
+const OrgOrgIdSettingsCurrencyRoute =
+  OrgOrgIdSettingsCurrencyRouteImport.update({
+    id: '/currency',
+    path: '/currency',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsFreezesRoute = OrgOrgIdSettingsFreezesRouteImport.update({
   id: '/freezes',
   path: '/freezes',
+  getParentRoute: () => OrgOrgIdSettingsRoute,
+} as any)
+const OrgOrgIdSettingsJiraRoute = OrgOrgIdSettingsJiraRouteImport.update({
+  id: '/jira',
+  path: '/jira',
+  getParentRoute: () => OrgOrgIdSettingsRoute,
+} as any)
+const OrgOrgIdSettingsLinearRoute = OrgOrgIdSettingsLinearRouteImport.update({
+  id: '/linear',
+  path: '/linear',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
 const OrgOrgIdSettingsPagingRoute = OrgOrgIdSettingsPagingRouteImport.update({
@@ -310,32 +359,6 @@ const OrgOrgIdSettingsTagPolicyRoute =
     path: '/tag-policy',
     getParentRoute: () => OrgOrgIdSettingsRoute,
   } as any)
-
-const OrgOrgIdSettingsJiraRoute =
-  OrgOrgIdSettingsJiraRouteImport.update({
-    id: '/jira',
-    path: '/jira',
-    getParentRoute: () => OrgOrgIdSettingsRoute,
-  } as any)
-
-const OrgOrgIdSettingsLinearRoute =
-  OrgOrgIdSettingsLinearRouteImport.update({
-    id: '/linear',
-    path: '/linear',
-    getParentRoute: () => OrgOrgIdSettingsRoute,
-  } as any)
-const OrgOrgIdSettingsCurrencyRoute =
-  OrgOrgIdSettingsCurrencyRouteImport.update({
-    id: '/currency',
-    path: '/currency',
-    getParentRoute: () => OrgOrgIdSettingsRoute,
-  } as any)
-const OrgOrgIdSettingsCostExportsRoute =
-  OrgOrgIdSettingsCostExportsRouteImport.update({
-    id: '/cost-exports',
-    path: '/cost-exports',
-    getParentRoute: () => OrgOrgIdSettingsRoute,
-  } as any)
 const OrgOrgIdSettingsTeamRoute = OrgOrgIdSettingsTeamRouteImport.update({
   id: '/team',
   path: '/team',
@@ -358,14 +381,14 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
-  '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
-  '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
+  '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/invoices': typeof OrgOrgIdInvoicesRouteWithChildren
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
@@ -378,26 +401,30 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
+  '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
+  '/org/$orgId/settings/billing-rules': typeof OrgOrgIdSettingsBillingRulesRoute
   '/org/$orgId/settings/config': typeof OrgOrgIdSettingsConfigRoute
+  '/org/$orgId/settings/cost-centres': typeof OrgOrgIdSettingsCostCentresRoute
+  '/org/$orgId/settings/cost-exports': typeof OrgOrgIdSettingsCostExportsRoute
   '/org/$orgId/settings/credential-hygiene': typeof OrgOrgIdSettingsCredentialHygieneRoute
+  '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
+  '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
+  '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
   '/org/$orgId/settings/session-recordings': typeof OrgOrgIdSettingsSessionRecordingsRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
-  '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
-  '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
-  '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
-  '/org/$orgId/settings/cost-exports': typeof OrgOrgIdSettingsCostExportsRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/chat/': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
@@ -411,14 +438,14 @@ export interface FileRoutesByTo {
   '/status/$slug': typeof StatusSlugRoute
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
-  '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
-  '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
+  '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/invoices': typeof OrgOrgIdInvoicesRouteWithChildren
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
@@ -430,26 +457,30 @@ export interface FileRoutesByTo {
   '/org/$orgId': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
+  '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
+  '/org/$orgId/settings/billing-rules': typeof OrgOrgIdSettingsBillingRulesRoute
   '/org/$orgId/settings/config': typeof OrgOrgIdSettingsConfigRoute
+  '/org/$orgId/settings/cost-centres': typeof OrgOrgIdSettingsCostCentresRoute
+  '/org/$orgId/settings/cost-exports': typeof OrgOrgIdSettingsCostExportsRoute
   '/org/$orgId/settings/credential-hygiene': typeof OrgOrgIdSettingsCredentialHygieneRoute
+  '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
+  '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
+  '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
   '/org/$orgId/settings/session-recordings': typeof OrgOrgIdSettingsSessionRecordingsRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
-  '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
-  '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
-  '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
-  '/org/$orgId/settings/cost-exports': typeof OrgOrgIdSettingsCostExportsRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsIndexRoute
@@ -466,14 +497,14 @@ export interface FileRoutesById {
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
-  '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
-  '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
+  '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/invoices': typeof OrgOrgIdInvoicesRouteWithChildren
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
@@ -486,26 +517,30 @@ export interface FileRoutesById {
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
+  '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
+  '/org/$orgId/settings/billing-rules': typeof OrgOrgIdSettingsBillingRulesRoute
   '/org/$orgId/settings/config': typeof OrgOrgIdSettingsConfigRoute
+  '/org/$orgId/settings/cost-centres': typeof OrgOrgIdSettingsCostCentresRoute
+  '/org/$orgId/settings/cost-exports': typeof OrgOrgIdSettingsCostExportsRoute
   '/org/$orgId/settings/credential-hygiene': typeof OrgOrgIdSettingsCredentialHygieneRoute
+  '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
+  '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
+  '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
   '/org/$orgId/settings/session-recordings': typeof OrgOrgIdSettingsSessionRecordingsRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
-  '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
-  '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
-  '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
-  '/org/$orgId/settings/cost-exports': typeof OrgOrgIdSettingsCostExportsRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/chat/': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
@@ -523,14 +558,14 @@ export interface FileRouteTypes {
     | '/org/$orgId/agents'
     | '/org/$orgId/changes'
     | '/org/$orgId/chat'
-    | '/org/$orgId/costs'
     | '/org/$orgId/cost-reports'
-    | '/org/$orgId/cost-reports/$reportId'
+    | '/org/$orgId/costs'
     | '/org/$orgId/deployments'
     | '/org/$orgId/dns'
     | '/org/$orgId/environment-diff'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/invoices'
     | '/org/$orgId/logs'
     | '/org/$orgId/metric-alerts'
     | '/org/$orgId/moment'
@@ -543,16 +578,24 @@ export interface FileRouteTypes {
     | '/org/$orgId/'
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
+    | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/invoices/$invoiceId'
     | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
+    | '/org/$orgId/settings/billing-rules'
     | '/org/$orgId/settings/config'
+    | '/org/$orgId/settings/cost-centres'
+    | '/org/$orgId/settings/cost-exports'
     | '/org/$orgId/settings/credential-hygiene'
+    | '/org/$orgId/settings/currency'
     | '/org/$orgId/settings/freezes'
+    | '/org/$orgId/settings/jira'
+    | '/org/$orgId/settings/linear'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
     | '/org/$orgId/settings/session-recordings'
@@ -572,14 +615,14 @@ export interface FileRouteTypes {
     | '/status/$slug'
     | '/org/$orgId/agents'
     | '/org/$orgId/changes'
-    | '/org/$orgId/costs'
     | '/org/$orgId/cost-reports'
-    | '/org/$orgId/cost-reports/$reportId'
+    | '/org/$orgId/costs'
     | '/org/$orgId/deployments'
     | '/org/$orgId/dns'
     | '/org/$orgId/environment-diff'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/invoices'
     | '/org/$orgId/logs'
     | '/org/$orgId/metric-alerts'
     | '/org/$orgId/moment'
@@ -591,16 +634,24 @@ export interface FileRouteTypes {
     | '/org/$orgId'
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
+    | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/invoices/$invoiceId'
     | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
+    | '/org/$orgId/settings/billing-rules'
     | '/org/$orgId/settings/config'
+    | '/org/$orgId/settings/cost-centres'
+    | '/org/$orgId/settings/cost-exports'
     | '/org/$orgId/settings/credential-hygiene'
+    | '/org/$orgId/settings/currency'
     | '/org/$orgId/settings/freezes'
+    | '/org/$orgId/settings/jira'
+    | '/org/$orgId/settings/linear'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
     | '/org/$orgId/settings/session-recordings'
@@ -622,14 +673,14 @@ export interface FileRouteTypes {
     | '/org/$orgId/agents'
     | '/org/$orgId/changes'
     | '/org/$orgId/chat'
-    | '/org/$orgId/costs'
     | '/org/$orgId/cost-reports'
-    | '/org/$orgId/cost-reports/$reportId'
+    | '/org/$orgId/costs'
     | '/org/$orgId/deployments'
     | '/org/$orgId/dns'
     | '/org/$orgId/environment-diff'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/invoices'
     | '/org/$orgId/logs'
     | '/org/$orgId/metric-alerts'
     | '/org/$orgId/moment'
@@ -642,16 +693,24 @@ export interface FileRouteTypes {
     | '/org/$orgId/'
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
+    | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/invoices/$invoiceId'
     | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
+    | '/org/$orgId/settings/billing-rules'
     | '/org/$orgId/settings/config'
+    | '/org/$orgId/settings/cost-centres'
+    | '/org/$orgId/settings/cost-exports'
     | '/org/$orgId/settings/credential-hygiene'
+    | '/org/$orgId/settings/currency'
     | '/org/$orgId/settings/freezes'
+    | '/org/$orgId/settings/jira'
+    | '/org/$orgId/settings/linear'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
     | '/org/$orgId/settings/session-recordings'
@@ -745,13 +804,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdChatRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
-    '/org/$orgId/costs': {
-      id: '/org/$orgId/costs'
-      path: '/costs'
-      fullPath: '/org/$orgId/costs'
-      preLoaderRoute: typeof OrgOrgIdCostsRouteImport
-      parentRoute: typeof OrgOrgIdRoute
-    }
     '/org/$orgId/cost-reports': {
       id: '/org/$orgId/cost-reports'
       path: '/cost-reports'
@@ -759,12 +811,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdCostReportsRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
-    '/org/$orgId/cost-reports/$reportId': {
-      id: '/org/$orgId/cost-reports/$reportId'
-      path: '/$reportId'
-      fullPath: '/org/$orgId/cost-reports/$reportId'
-      preLoaderRoute: typeof OrgOrgIdCostReportsReportIdRouteImport
-      parentRoute: typeof OrgOrgIdCostReportsRoute
+    '/org/$orgId/costs': {
+      id: '/org/$orgId/costs'
+      path: '/costs'
+      fullPath: '/org/$orgId/costs'
+      preLoaderRoute: typeof OrgOrgIdCostsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/deployments': {
       id: '/org/$orgId/deployments'
@@ -799,6 +851,13 @@ declare module '@tanstack/react-router' {
       path: '/graph'
       fullPath: '/org/$orgId/graph'
       preLoaderRoute: typeof OrgOrgIdGraphRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/invoices': {
+      id: '/org/$orgId/invoices'
+      path: '/invoices'
+      fullPath: '/org/$orgId/invoices'
+      preLoaderRoute: typeof OrgOrgIdInvoicesRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/logs': {
@@ -885,12 +944,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdChatConversationIdRouteImport
       parentRoute: typeof OrgOrgIdChatRoute
     }
+    '/org/$orgId/cost-reports/$reportId': {
+      id: '/org/$orgId/cost-reports/$reportId'
+      path: '/$reportId'
+      fullPath: '/org/$orgId/cost-reports/$reportId'
+      preLoaderRoute: typeof OrgOrgIdCostReportsReportIdRouteImport
+      parentRoute: typeof OrgOrgIdCostReportsRoute
+    }
     '/org/$orgId/dashboard/$dashboardId': {
       id: '/org/$orgId/dashboard/$dashboardId'
       path: '/dashboard/$dashboardId'
       fullPath: '/org/$orgId/dashboard/$dashboardId'
       preLoaderRoute: typeof OrgOrgIdDashboardDashboardIdRouteImport
       parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/invoices/$invoiceId': {
+      id: '/org/$orgId/invoices/$invoiceId'
+      path: '/$invoiceId'
+      fullPath: '/org/$orgId/invoices/$invoiceId'
+      preLoaderRoute: typeof OrgOrgIdInvoicesInvoiceIdRouteImport
+      parentRoute: typeof OrgOrgIdInvoicesRoute
     }
     '/org/$orgId/settings/': {
       id: '/org/$orgId/settings/'
@@ -904,34 +977,6 @@ declare module '@tanstack/react-router' {
       path: '/access-requests'
       fullPath: '/org/$orgId/settings/access-requests'
       preLoaderRoute: typeof OrgOrgIdSettingsAccessRequestsRouteImport
-      parentRoute: typeof OrgOrgIdSettingsRoute
-    }
-    '/org/$orgId/settings/jira': {
-      id: '/org/$orgId/settings/jira'
-      path: '/jira'
-      fullPath: '/org/$orgId/settings/jira'
-      preLoaderRoute: typeof OrgOrgIdSettingsJiraRouteImport
-      parentRoute: typeof OrgOrgIdSettingsRoute
-    }
-    '/org/$orgId/settings/linear': {
-      id: '/org/$orgId/settings/linear'
-      path: '/linear'
-      fullPath: '/org/$orgId/settings/linear'
-      preLoaderRoute: typeof OrgOrgIdSettingsLinearRouteImport
-      parentRoute: typeof OrgOrgIdSettingsRoute
-    }
-    '/org/$orgId/settings/currency': {
-      id: '/org/$orgId/settings/currency'
-      path: '/currency'
-      fullPath: '/org/$orgId/settings/currency'
-      preLoaderRoute: typeof OrgOrgIdSettingsCurrencyRouteImport
-      parentRoute: typeof OrgOrgIdSettingsRoute
-    }
-    '/org/$orgId/settings/cost-exports': {
-      id: '/org/$orgId/settings/cost-exports'
-      path: '/cost-exports'
-      fullPath: '/org/$orgId/settings/cost-exports'
-      preLoaderRoute: typeof OrgOrgIdSettingsCostExportsRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
     '/org/$orgId/settings/api-keys': {
@@ -969,11 +1014,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsBillingRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/billing-rules': {
+      id: '/org/$orgId/settings/billing-rules'
+      path: '/billing-rules'
+      fullPath: '/org/$orgId/settings/billing-rules'
+      preLoaderRoute: typeof OrgOrgIdSettingsBillingRulesRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/config': {
       id: '/org/$orgId/settings/config'
       path: '/config'
       fullPath: '/org/$orgId/settings/config'
       preLoaderRoute: typeof OrgOrgIdSettingsConfigRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
+    '/org/$orgId/settings/cost-centres': {
+      id: '/org/$orgId/settings/cost-centres'
+      path: '/cost-centres'
+      fullPath: '/org/$orgId/settings/cost-centres'
+      preLoaderRoute: typeof OrgOrgIdSettingsCostCentresRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
+    '/org/$orgId/settings/cost-exports': {
+      id: '/org/$orgId/settings/cost-exports'
+      path: '/cost-exports'
+      fullPath: '/org/$orgId/settings/cost-exports'
+      preLoaderRoute: typeof OrgOrgIdSettingsCostExportsRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
     '/org/$orgId/settings/credential-hygiene': {
@@ -983,11 +1049,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsCredentialHygieneRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/currency': {
+      id: '/org/$orgId/settings/currency'
+      path: '/currency'
+      fullPath: '/org/$orgId/settings/currency'
+      preLoaderRoute: typeof OrgOrgIdSettingsCurrencyRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/freezes': {
       id: '/org/$orgId/settings/freezes'
       path: '/freezes'
       fullPath: '/org/$orgId/settings/freezes'
       preLoaderRoute: typeof OrgOrgIdSettingsFreezesRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
+    '/org/$orgId/settings/jira': {
+      id: '/org/$orgId/settings/jira'
+      path: '/jira'
+      fullPath: '/org/$orgId/settings/jira'
+      preLoaderRoute: typeof OrgOrgIdSettingsJiraRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
+    '/org/$orgId/settings/linear': {
+      id: '/org/$orgId/settings/linear'
+      path: '/linear'
+      fullPath: '/org/$orgId/settings/linear'
+      preLoaderRoute: typeof OrgOrgIdSettingsLinearRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
     '/org/$orgId/settings/paging': {
@@ -1063,60 +1150,6 @@ const OrgOrgIdChatRouteWithChildren = OrgOrgIdChatRoute._addFileChildren(
   OrgOrgIdChatRouteChildren,
 )
 
-interface OrgOrgIdSettingsRouteChildren {
-  OrgOrgIdSettingsAccessRequestsRoute: typeof OrgOrgIdSettingsAccessRequestsRoute
-  OrgOrgIdSettingsApiKeysRoute: typeof OrgOrgIdSettingsApiKeysRoute
-  OrgOrgIdSettingsApprovalsRoute: typeof OrgOrgIdSettingsApprovalsRoute
-  OrgOrgIdSettingsAuditLogRoute: typeof OrgOrgIdSettingsAuditLogRoute
-  OrgOrgIdSettingsBastionsRoute: typeof OrgOrgIdSettingsBastionsRoute
-  OrgOrgIdSettingsBillingRoute: typeof OrgOrgIdSettingsBillingRoute
-  OrgOrgIdSettingsConfigRoute: typeof OrgOrgIdSettingsConfigRoute
-  OrgOrgIdSettingsCredentialHygieneRoute: typeof OrgOrgIdSettingsCredentialHygieneRoute
-  OrgOrgIdSettingsFreezesRoute: typeof OrgOrgIdSettingsFreezesRoute
-  OrgOrgIdSettingsPagingRoute: typeof OrgOrgIdSettingsPagingRoute
-  OrgOrgIdSettingsRolesRoute: typeof OrgOrgIdSettingsRolesRoute
-  OrgOrgIdSettingsSessionRecordingsRoute: typeof OrgOrgIdSettingsSessionRecordingsRoute
-  OrgOrgIdSettingsSshHostKeysRoute: typeof OrgOrgIdSettingsSshHostKeysRoute
-  OrgOrgIdSettingsSshKeysRoute: typeof OrgOrgIdSettingsSshKeysRoute
-  OrgOrgIdSettingsTagPolicyRoute: typeof OrgOrgIdSettingsTagPolicyRoute
-  OrgOrgIdSettingsJiraRoute: typeof OrgOrgIdSettingsJiraRoute
-  OrgOrgIdSettingsLinearRoute: typeof OrgOrgIdSettingsLinearRoute
-  OrgOrgIdSettingsCurrencyRoute: typeof OrgOrgIdSettingsCurrencyRoute
-  OrgOrgIdSettingsCostExportsRoute: typeof OrgOrgIdSettingsCostExportsRoute
-  OrgOrgIdSettingsTeamRoute: typeof OrgOrgIdSettingsTeamRoute
-  OrgOrgIdSettingsIndexRoute: typeof OrgOrgIdSettingsIndexRoute
-}
-
-const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
-  OrgOrgIdSettingsAccessRequestsRoute: OrgOrgIdSettingsAccessRequestsRoute,
-  OrgOrgIdSettingsApiKeysRoute: OrgOrgIdSettingsApiKeysRoute,
-  OrgOrgIdSettingsApprovalsRoute: OrgOrgIdSettingsApprovalsRoute,
-  OrgOrgIdSettingsAuditLogRoute: OrgOrgIdSettingsAuditLogRoute,
-  OrgOrgIdSettingsBastionsRoute: OrgOrgIdSettingsBastionsRoute,
-  OrgOrgIdSettingsBillingRoute: OrgOrgIdSettingsBillingRoute,
-  OrgOrgIdSettingsConfigRoute: OrgOrgIdSettingsConfigRoute,
-  OrgOrgIdSettingsCredentialHygieneRoute:
-    OrgOrgIdSettingsCredentialHygieneRoute,
-  OrgOrgIdSettingsFreezesRoute: OrgOrgIdSettingsFreezesRoute,
-  OrgOrgIdSettingsPagingRoute: OrgOrgIdSettingsPagingRoute,
-  OrgOrgIdSettingsRolesRoute: OrgOrgIdSettingsRolesRoute,
-  OrgOrgIdSettingsSessionRecordingsRoute:
-    OrgOrgIdSettingsSessionRecordingsRoute,
-  OrgOrgIdSettingsSshHostKeysRoute: OrgOrgIdSettingsSshHostKeysRoute,
-  OrgOrgIdSettingsSshKeysRoute: OrgOrgIdSettingsSshKeysRoute,
-  OrgOrgIdSettingsTagPolicyRoute: OrgOrgIdSettingsTagPolicyRoute,
-  OrgOrgIdSettingsJiraRoute: OrgOrgIdSettingsJiraRoute,
-  OrgOrgIdSettingsLinearRoute: OrgOrgIdSettingsLinearRoute,
-  OrgOrgIdSettingsCurrencyRoute: OrgOrgIdSettingsCurrencyRoute,
-  OrgOrgIdSettingsCostExportsRoute: OrgOrgIdSettingsCostExportsRoute,
-  OrgOrgIdSettingsTeamRoute: OrgOrgIdSettingsTeamRoute,
-  OrgOrgIdSettingsIndexRoute: OrgOrgIdSettingsIndexRoute,
-}
-
-const OrgOrgIdSettingsRouteWithChildren =
-  OrgOrgIdSettingsRoute._addFileChildren(OrgOrgIdSettingsRouteChildren)
-
-
 interface OrgOrgIdCostReportsRouteChildren {
   OrgOrgIdCostReportsReportIdRoute: typeof OrgOrgIdCostReportsReportIdRoute
 }
@@ -1128,19 +1161,86 @@ const OrgOrgIdCostReportsRouteChildren: OrgOrgIdCostReportsRouteChildren = {
 const OrgOrgIdCostReportsRouteWithChildren =
   OrgOrgIdCostReportsRoute._addFileChildren(OrgOrgIdCostReportsRouteChildren)
 
+interface OrgOrgIdInvoicesRouteChildren {
+  OrgOrgIdInvoicesInvoiceIdRoute: typeof OrgOrgIdInvoicesInvoiceIdRoute
+}
+
+const OrgOrgIdInvoicesRouteChildren: OrgOrgIdInvoicesRouteChildren = {
+  OrgOrgIdInvoicesInvoiceIdRoute: OrgOrgIdInvoicesInvoiceIdRoute,
+}
+
+const OrgOrgIdInvoicesRouteWithChildren =
+  OrgOrgIdInvoicesRoute._addFileChildren(OrgOrgIdInvoicesRouteChildren)
+
+interface OrgOrgIdSettingsRouteChildren {
+  OrgOrgIdSettingsAccessRequestsRoute: typeof OrgOrgIdSettingsAccessRequestsRoute
+  OrgOrgIdSettingsApiKeysRoute: typeof OrgOrgIdSettingsApiKeysRoute
+  OrgOrgIdSettingsApprovalsRoute: typeof OrgOrgIdSettingsApprovalsRoute
+  OrgOrgIdSettingsAuditLogRoute: typeof OrgOrgIdSettingsAuditLogRoute
+  OrgOrgIdSettingsBastionsRoute: typeof OrgOrgIdSettingsBastionsRoute
+  OrgOrgIdSettingsBillingRoute: typeof OrgOrgIdSettingsBillingRoute
+  OrgOrgIdSettingsBillingRulesRoute: typeof OrgOrgIdSettingsBillingRulesRoute
+  OrgOrgIdSettingsConfigRoute: typeof OrgOrgIdSettingsConfigRoute
+  OrgOrgIdSettingsCostCentresRoute: typeof OrgOrgIdSettingsCostCentresRoute
+  OrgOrgIdSettingsCostExportsRoute: typeof OrgOrgIdSettingsCostExportsRoute
+  OrgOrgIdSettingsCredentialHygieneRoute: typeof OrgOrgIdSettingsCredentialHygieneRoute
+  OrgOrgIdSettingsCurrencyRoute: typeof OrgOrgIdSettingsCurrencyRoute
+  OrgOrgIdSettingsFreezesRoute: typeof OrgOrgIdSettingsFreezesRoute
+  OrgOrgIdSettingsJiraRoute: typeof OrgOrgIdSettingsJiraRoute
+  OrgOrgIdSettingsLinearRoute: typeof OrgOrgIdSettingsLinearRoute
+  OrgOrgIdSettingsPagingRoute: typeof OrgOrgIdSettingsPagingRoute
+  OrgOrgIdSettingsRolesRoute: typeof OrgOrgIdSettingsRolesRoute
+  OrgOrgIdSettingsSessionRecordingsRoute: typeof OrgOrgIdSettingsSessionRecordingsRoute
+  OrgOrgIdSettingsSshHostKeysRoute: typeof OrgOrgIdSettingsSshHostKeysRoute
+  OrgOrgIdSettingsSshKeysRoute: typeof OrgOrgIdSettingsSshKeysRoute
+  OrgOrgIdSettingsTagPolicyRoute: typeof OrgOrgIdSettingsTagPolicyRoute
+  OrgOrgIdSettingsTeamRoute: typeof OrgOrgIdSettingsTeamRoute
+  OrgOrgIdSettingsIndexRoute: typeof OrgOrgIdSettingsIndexRoute
+}
+
+const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
+  OrgOrgIdSettingsAccessRequestsRoute: OrgOrgIdSettingsAccessRequestsRoute,
+  OrgOrgIdSettingsApiKeysRoute: OrgOrgIdSettingsApiKeysRoute,
+  OrgOrgIdSettingsApprovalsRoute: OrgOrgIdSettingsApprovalsRoute,
+  OrgOrgIdSettingsAuditLogRoute: OrgOrgIdSettingsAuditLogRoute,
+  OrgOrgIdSettingsBastionsRoute: OrgOrgIdSettingsBastionsRoute,
+  OrgOrgIdSettingsBillingRoute: OrgOrgIdSettingsBillingRoute,
+  OrgOrgIdSettingsBillingRulesRoute: OrgOrgIdSettingsBillingRulesRoute,
+  OrgOrgIdSettingsConfigRoute: OrgOrgIdSettingsConfigRoute,
+  OrgOrgIdSettingsCostCentresRoute: OrgOrgIdSettingsCostCentresRoute,
+  OrgOrgIdSettingsCostExportsRoute: OrgOrgIdSettingsCostExportsRoute,
+  OrgOrgIdSettingsCredentialHygieneRoute:
+    OrgOrgIdSettingsCredentialHygieneRoute,
+  OrgOrgIdSettingsCurrencyRoute: OrgOrgIdSettingsCurrencyRoute,
+  OrgOrgIdSettingsFreezesRoute: OrgOrgIdSettingsFreezesRoute,
+  OrgOrgIdSettingsJiraRoute: OrgOrgIdSettingsJiraRoute,
+  OrgOrgIdSettingsLinearRoute: OrgOrgIdSettingsLinearRoute,
+  OrgOrgIdSettingsPagingRoute: OrgOrgIdSettingsPagingRoute,
+  OrgOrgIdSettingsRolesRoute: OrgOrgIdSettingsRolesRoute,
+  OrgOrgIdSettingsSessionRecordingsRoute:
+    OrgOrgIdSettingsSessionRecordingsRoute,
+  OrgOrgIdSettingsSshHostKeysRoute: OrgOrgIdSettingsSshHostKeysRoute,
+  OrgOrgIdSettingsSshKeysRoute: OrgOrgIdSettingsSshKeysRoute,
+  OrgOrgIdSettingsTagPolicyRoute: OrgOrgIdSettingsTagPolicyRoute,
+  OrgOrgIdSettingsTeamRoute: OrgOrgIdSettingsTeamRoute,
+  OrgOrgIdSettingsIndexRoute: OrgOrgIdSettingsIndexRoute,
+}
+
+const OrgOrgIdSettingsRouteWithChildren =
+  OrgOrgIdSettingsRoute._addFileChildren(OrgOrgIdSettingsRouteChildren)
 
 interface OrgOrgIdRouteChildren {
   OrgOrgIdAgentsRoute: typeof OrgOrgIdAgentsRoute
   OrgOrgIdChangesRoute: typeof OrgOrgIdChangesRoute
   OrgOrgIdChatRoute: typeof OrgOrgIdChatRouteWithChildren
-  OrgOrgIdCostsRoute: typeof OrgOrgIdCostsRoute
   OrgOrgIdCostReportsRoute: typeof OrgOrgIdCostReportsRouteWithChildren
-  OrgOrgIdCostReportsReportIdRoute: typeof OrgOrgIdCostReportsReportIdRoute
+  OrgOrgIdCostsRoute: typeof OrgOrgIdCostsRoute
   OrgOrgIdDeploymentsRoute: typeof OrgOrgIdDeploymentsRoute
   OrgOrgIdDnsRoute: typeof OrgOrgIdDnsRoute
   OrgOrgIdEnvironmentDiffRoute: typeof OrgOrgIdEnvironmentDiffRoute
   OrgOrgIdExpiringRoute: typeof OrgOrgIdExpiringRoute
   OrgOrgIdGraphRoute: typeof OrgOrgIdGraphRoute
+  OrgOrgIdInvoicesRoute: typeof OrgOrgIdInvoicesRouteWithChildren
   OrgOrgIdLogsRoute: typeof OrgOrgIdLogsRoute
   OrgOrgIdMetricAlertsRoute: typeof OrgOrgIdMetricAlertsRoute
   OrgOrgIdMomentRoute: typeof OrgOrgIdMomentRoute
@@ -1160,13 +1260,14 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdAgentsRoute: OrgOrgIdAgentsRoute,
   OrgOrgIdChangesRoute: OrgOrgIdChangesRoute,
   OrgOrgIdChatRoute: OrgOrgIdChatRouteWithChildren,
-  OrgOrgIdCostsRoute: OrgOrgIdCostsRoute,
   OrgOrgIdCostReportsRoute: OrgOrgIdCostReportsRouteWithChildren,
+  OrgOrgIdCostsRoute: OrgOrgIdCostsRoute,
   OrgOrgIdDeploymentsRoute: OrgOrgIdDeploymentsRoute,
   OrgOrgIdDnsRoute: OrgOrgIdDnsRoute,
   OrgOrgIdEnvironmentDiffRoute: OrgOrgIdEnvironmentDiffRoute,
   OrgOrgIdExpiringRoute: OrgOrgIdExpiringRoute,
   OrgOrgIdGraphRoute: OrgOrgIdGraphRoute,
+  OrgOrgIdInvoicesRoute: OrgOrgIdInvoicesRouteWithChildren,
   OrgOrgIdLogsRoute: OrgOrgIdLogsRoute,
   OrgOrgIdMetricAlertsRoute: OrgOrgIdMetricAlertsRoute,
   OrgOrgIdMomentRoute: OrgOrgIdMomentRoute,

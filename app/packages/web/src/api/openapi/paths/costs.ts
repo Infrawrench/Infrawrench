@@ -1,6 +1,9 @@
 import { z } from "../zod";
 import { strict, ErrorResponses, OrgIdParam, Uuid, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
+// One definition of the shape that keeps the collected figure visible — see
+// `paths/billing-rules.ts`.
+import { CostAdjustmentSummary } from "./billing-rules";
 
 const IsoDate = z
   .string()

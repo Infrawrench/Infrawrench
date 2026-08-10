@@ -1,6 +1,8 @@
 import { z } from "../zod";
 import { strict, ErrorResponses, Ok, OrgIdParam, Uuid, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
+// One definition of the raw-vs-adjusted shape, shared with the cost query.
+import { CostAdjustmentSummary } from "./billing-rules";
 
 const IsoDate = z
   .string()

@@ -17,6 +17,8 @@ import { sql } from "drizzle-orm";
 import type {
   AlertCondition,
   AlertDestination,
+  BillingRuleAdjustment,
+  BillingRuleMatch,
   EscalationPolicy,
   QuietHours,
 } from "@infrawrench/client-core";

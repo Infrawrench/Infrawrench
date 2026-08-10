@@ -162,19 +162,58 @@ function foldTopN(groups: CostSeriesGroup[], topN: number): CostSeriesGroup[] {
     const rest = ranked.slice(topN);
     if (rest.length > 0) {
       const folded = new Map<string, number>();
+      // Folded alongside `points`, not dropped: `rawTotals` is the sum of every
+      // group's collected figure, so an "Other" that lost its raw half would
+      // understate collected spend by exactly the tail the chart hid.
+      const foldedRaw = new Map<string, number>();
+      let anyRaw = false;
       for (const g of rest) {
         for (const p of g.points) folded.set(p.bucket, (folded.get(p.bucket) ?? 0) + p.amount);
+        if (g.rawPoints) {
+          anyRaw = true;
+          for (const p of g.rawPoints) {
+            foldedRaw.set(p.bucket, (foldedRaw.get(p.bucket) ?? 0) + p.amount);
+          }
+        }
       }
+      const toPoints = (m: Map<string, number>) =>
+        [...m.entries()]
+          .sort(([a], [b]) => (a < b ? -1 : 1))
+          .map(([bucket, amount]) => ({ bucket, amount }));
       result.push({
         key: OTHER_GROUP_KEY,
         currency,
-        points: [...folded.entries()]
-          .sort(([a], [b]) => (a < b ? -1 : 1))
-          .map(([bucket, amount]) => ({ bucket, amount })),
+        points: toPoints(folded),
+        ...(anyRaw ? { rawPoints: toPoints(foldedRaw) } : {}),
       });
     }
   }
   return result;
+}
+
+/**
+ * Per-currency totals of the *collected* amounts a set of groups carries.
+ *
+ * Summed over every point rather than read off the last one the way
+ * {@link totalsOf} does for cumulative binning: `rawPoints` is a partition of
+ * the collected money by adjusted group, and the only thing it is ever read as
+ * is its sum. Doing the cumulative special-case here too would be correct but
+ * would imply a per-series reading the wire shape deliberately refuses.
+ */
+function rawTotalsOf(
+  groups: CostSeriesGroup[],
+  binning: CostQueryRequest["binning"],
+): Record<string, number> {
+  const totals: Record<string, number> = {};
+  for (const g of groups) {
+    if (!g.rawPoints) continue;
+    const sum =
+      binning === "cumulative"
+        ? (g.rawPoints[g.rawPoints.length - 1]?.amount ?? 0)
+        : g.rawPoints.reduce((s, p) => s + p.amount, 0);
+    totals[g.currency] = (totals[g.currency] ?? 0) + sum;
+  }
+  return totals;
 }
 
 /**
@@ -288,12 +327,43 @@ export async function runCostQuery(
     }
   }
 
+  // The org's billing rules, resolved here for exactly the reason saved
+  // filters are: one resolver, so the HTTP API, MCP, chat and the CLI all get
+  // the same adjusted number. Resolved only when asked — an unadjusted query
+  // does not read the rules table at all, so the common path is unchanged.
+  //
+  // A rule set is always produced when `adjusted` is set, even when the org has
+  // no rules: `adjustment`'s presence on the response is the *only* signal that
+  // a number is adjusted, so an org with no rules must not be able to return an
+  // adjusted-looking response without it.
+  let adjustments: CompiledBillingAdjustments | undefined;
+  let adjustmentSummary: CostAdjustmentSummary | undefined;
+  if (q.adjusted) {
+    const resolved = await resolveBillingAdjustments(organizationId);
+    adjustments = resolved.adjustments;
+    adjustmentSummary = {
+      rules: resolved.rules,
+      rawTotals: {},
+      // Fixed amounts are arithmetic over the range, not a scan: they have no
+      // cost row, no day and no provider behind them. Computed once here and
+      // reported separately — never folded into `totals`, which is the sum of
+      // the series and has to stay that way for every existing client.
+      fixedTotals: fixedTotalsForRange(resolved.adjustments.fixed, q.from, q.to),
+    };
+  }
+
   const baseQuery = {
     from: q.from,
     to: q.to,
     binning: q.binning,
     groupBy: q.groupBy,
     filters,
+    // Passed into the reader rather than applied to its output: the factors and
+    // the reallocation compile into the statement that was going to run anyway,
+    // and `sum(raw)` rides along as a second aggregate over the same scan.
+    // Skipped entirely when the org has no rules in force, so "adjusted" in an
+    // org with no rules costs nothing and returns the collected numbers.
+    ...(adjustments && !billingAdjustmentsAreEmpty(adjustments) ? { adjustments } : {}),
     ...(q.groupByTagKey ? { groupByTagKey: q.groupByTagKey } : {}),
     // Carried on the base query so the comparison period is measured on the
     // same basis and the same charge types — a cash previous period against an
@@ -332,6 +402,18 @@ export async function runCostQuery(
   // Only set when something was actually converted. Its absence is how a client
   // knows the per-currency numbers are the literal collected ones.
   if (conversion) response.conversion = conversion;
+
+  // The raw-vs-adjusted contract, honoured here and nowhere else: an adjusted
+  // response cannot leave this function without the collected totals and the
+  // rules that moved them. When no rule was in force the reader never emitted
+  // `rawPoints`, and the collected totals are the totals — which is the true
+  // answer, not a placeholder.
+  if (adjustmentSummary) {
+    const rawTotals = rawTotalsOf(grouped, q.binning);
+    adjustmentSummary.rawTotals =
+      Object.keys(rawTotals).length > 0 ? rawTotals : { ...response.totals };
+    response.adjustment = adjustmentSummary;
+  }
 
   if (q.comparePreviousPeriod) {
     const span = daySpan(q.from, q.to);

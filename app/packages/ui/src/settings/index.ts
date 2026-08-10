@@ -18,6 +18,8 @@ export { ApiKeysSection } from "./ApiKeysSection.js";
 export { CredentialHygieneSection } from "./CredentialHygieneSection.js";
 export { FreezesSection } from "./FreezesSection.js";
 export { TagPolicySection } from "./TagPolicySection.js";
+export { BillingRulesSection } from "./BillingRulesSection.js";
+export { CostCentresSection } from "./CostCentresSection.js";
 export { ConfigAsCodeSection } from "./ConfigAsCodeSection.js";
 export { CurrencySection } from "./CurrencySection.js";
 export { CostExportsSection } from "./CostExportsSection.js";

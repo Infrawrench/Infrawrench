@@ -91,6 +91,49 @@ function formatCents(cents: number, currency: string): string {
  * currency really is excluded from a total — and it is reported rather than
  * hidden, so the budget card can say the figure is short.
  */
+/*
+ * ## Scenario models and budget thresholds
+ *
+ * `scenarioModelId` is **opt-in per budget, and null by default.** With it null
+ * — which is every budget that existed before scenarios, and every budget
+ * nobody deliberately opts in — this function returns exactly what it always
+ * returned, and `forecastCents` is the bare trend.
+ *
+ * That default is a deliberate refusal, not an oversight. A scenario model is a
+ * hypothesis somebody typed into a form; budget forecast thresholds decide when
+ * a real person is paged. Letting the first silently move the second would mean
+ * anyone with `costs:write` could change an on-call rota by editing an object
+ * two screens away, and the page (or the missing page) would carry no evidence
+ * of why.
+ *
+ * When a budget *does* opt in, three things keep it visible: `forecastCents`
+ * stays the unadjusted trend so both numbers can be shown side by side, the
+ * adjusted figure comes back separately as `scenarioForecastCents`, and the
+ * model's name is carried out so the card and the alert body can name it.
+ * `actual` thresholds are never affected — they measure money already spent,
+ * which no scenario can touch.
+ *
+ * ## Billing rules and budget thresholds
+ *
+ * `useAdjustedSpend` is the same refusal, and it follows the same precedent:
+ * **false by default, opt-in per budget.** With it false — every budget that
+ * existed before billing rules, and every budget nobody deliberately opts in —
+ * this function does not read the rules table and returns exactly what it
+ * always returned.
+ *
+ * The reason is sharper than the scenario one. A markup is org policy that
+ * changes every number the org reports; a budget threshold decides when a real
+ * person is paged. If a markup silently raised measured spend, adding one
+ * settings row would move every on-call rota in the org at once, and every
+ * resulting page would be for money nobody actually spent.
+ *
+ * Unlike a scenario this affects `actual` thresholds too, and must: an opted-in
+ * budget is measuring the *internal* figure, and month-to-date internal spend is
+ * as marked up as the forecast is. Judging actual on collected spend and
+ * forecast on adjusted spend would be a budget measuring two different things.
+ * `rawActualCents` comes back beside it so the card and the alert can always
+ * show what was collected.
+ */
 export async function budgetMonthStatus(
   organizationId: string,
   filters: CostFilter[],
@@ -133,6 +176,13 @@ export async function budgetMonthStatus(
   const effectiveFilters = savedFilterId
     ? [...(await resolveSavedCostFilters(organizationId, savedFilterId)), ...filters]
     : filters;
+
+  // Read only for a budget that opted in — an un-opted budget never touches the
+  // rules table, so a markup cannot reach a threshold it was not invited to.
+  const billing = useAdjustedSpend ? await resolveBillingAdjustments(organizationId) : null;
+  const adjustments =
+    billing && !billingAdjustmentsAreEmpty(billing.adjustments) ? billing.adjustments : undefined;
+
   const groups = await queryCosts(organizationId, {
     from: addDays(today, -59),
     to: today,
@@ -318,6 +368,8 @@ export async function evaluateBudgetsForOrg(
         now,
         (budget.costBasis ?? undefined) as CostBasis | undefined,
         budget.savedFilterId,
+        budget.scenarioModelId,
+        budget.useAdjustedSpend,
       );
 
       if (watchers.length > 0) {

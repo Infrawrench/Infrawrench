@@ -11,6 +11,8 @@ import { ApiKeysSection } from "./ApiKeysSection.js";
 import { CredentialHygieneSection } from "./CredentialHygieneSection.js";
 import { FreezesSection } from "./FreezesSection.js";
 import { TagPolicySection } from "./TagPolicySection.js";
+import { BillingRulesSection } from "./BillingRulesSection.js";
+import { CostCentresSection } from "./CostCentresSection.js";
 import { ConfigAsCodeSection } from "./ConfigAsCodeSection.js";
 import { CurrencySection } from "./CurrencySection.js";
 import { CostExportsSection } from "./CostExportsSection.js";
@@ -53,6 +55,10 @@ export function SettingsSectionBody({ section }: { section: string }): ReactNode
       return <FreezesSection />;
     case "tag-policy":
       return <TagPolicySection />;
+    case "cost-centres":
+      return <CostCentresSection />;
+    case "billing-rules":
+      return <BillingRulesSection />;
     case "config":
       return <ConfigAsCodeSection />;
     case "currency":

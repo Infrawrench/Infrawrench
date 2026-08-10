@@ -35,7 +35,7 @@ import type { BudgetWithStatus, CostsClient, CostsPanelDashboard } from "./types
  */
 const OVERVIEW_GROUP_BYS: CostDimensionId[] = ["provider", "account", "service"];
 
-function overviewConfig(groupBy: CostDimensionId): CostGraphConfig {
+function overviewConfig(groupBy: CostDimensionId, adjusted: boolean): CostGraphConfig {
   return {
     ...DEFAULT_COST_GRAPH_CONFIG,
     chartType: "stacked_bar",
@@ -43,6 +43,10 @@ function overviewConfig(groupBy: CostDimensionId): CostGraphConfig {
     dateRange: { kind: "relative", preset: "mtd" },
     groupBy,
     showForecast: true,
+    // Omitted rather than sent as `false`: the request an unadjusted overview
+    // issues stays byte-identical to the one it always issued, and the card's
+    // "Adjusted" caption is driven by the response, not by this flag.
+    ...(adjusted ? { adjusted: true } : {}),
   };
 }
 
@@ -132,6 +136,15 @@ export function CostsPanel({
   const [statuses, setStatuses] = useState<CostAccountStatus[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [groupBy, setGroupBy] = useState<CostDimensionId>("provider");
+  /**
+   * Raw by default, always. The overview is the number people quote, and the
+   * one they check against an invoice; showing it marked up because somebody in
+   * Settings wrote a rule would make it a number nobody could reconcile. The
+   * toggle only appears for an org that actually has rules — an org with none
+   * would be offered a switch between two identical figures.
+   */
+  const [adjusted, setAdjusted] = useState(false);
+  const [hasBillingRules, setHasBillingRules] = useState(false);
   const [editing, setEditing] = useState<{ budget: BudgetWithStatus | null } | null>(null);
   const [placing, setPlacing] = useState<BudgetWithStatus | null>(null);
 
@@ -155,6 +168,22 @@ export function CostsPanel({
   }, [refresh]);
 
   useEffect(() => {
+    if (!client.listBillingRules) return;
+    let cancelled = false;
+    client
+      .listBillingRules()
+      .then((next) => {
+        if (!cancelled) setHasBillingRules(next.some((r) => r.enabled));
+      })
+      // Advisory only: without it the toggle stays hidden and the panel shows
+      // collected spend, which is the safe direction to fail in.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
+
+  useEffect(() => {
     let cancelled = false;
     client
       .loadCostStatus()
@@ -171,7 +200,7 @@ export function CostsPanel({
     };
   }, [client]);
 
-  const overview = useMemo(() => overviewConfig(groupBy), [groupBy]);
+  const overview = useMemo(() => overviewConfig(groupBy, adjusted), [groupBy, adjusted]);
 
   async function saveBudget(input: BudgetInput) {
     if (editing?.budget) await client.updateBudget?.(editing.budget.id, input);
@@ -201,6 +230,17 @@ export function CostsPanel({
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-on-surface">This month</h2>
             <div className="flex items-center gap-2">
+              {hasBillingRules && (
+                <label className="flex items-center gap-1.5 text-xs font-medium text-on-surface-secondary">
+                  <input
+                    type="checkbox"
+                    checked={adjusted}
+                    onChange={(e) => setAdjusted(e.target.checked)}
+                    className="accent-amber-500"
+                  />
+                  Apply billing rules
+                </label>
+              )}
               <label
                 htmlFor={`${uid}-groupby`}
                 className="text-xs font-medium text-on-surface-secondary"

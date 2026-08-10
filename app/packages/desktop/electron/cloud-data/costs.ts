@@ -82,6 +82,15 @@ ipcMain.handle(
 );
 
 /**
+ * The org's billing rules, read-only. The Costs panel uses this to decide
+ * whether to offer the "Apply billing rules" toggle at all; editing goes
+ * through the settings proxy, which enforces `org:settings:write` server-side.
+ */
+ipcMain.handle("cloud_billing_rules", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetch(orgId, "/billing-rules");
+});
+
+/**
  * Prepaid credit balances with their burn rate and runway. Cloud-only, like
  * every other read here — the burn is derived from a server-side series of
  * readings, and a local-only workspace has no series to derive it from.

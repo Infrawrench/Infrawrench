@@ -85,6 +85,12 @@ export const AUDIT_ACTION_PERMISSION: Readonly<Record<string, string>> = {
   "cost_allocation_rule.update": "costs:write",
   "cost_allocation_rule.delete": "costs:write",
   "cost_allocation_rule.swap": "costs:write",
+  // Billing rules ride `org:settings:write`, not `costs:write` — a markup
+  // changes every figure the org reports about itself, which is a governance
+  // act rather than a cost-object edit. See `api/routes/billing-rules.ts`.
+  "billing_rule.create": "org:settings:write",
+  "billing_rule.update": "org:settings:write",
+  "billing_rule.delete": "org:settings:write",
   "costs.push": "costs:write",
 
   // People and keys.

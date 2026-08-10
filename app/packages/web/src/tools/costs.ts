@@ -84,7 +84,16 @@ export function costTools(): ToolDefinition[] {
         "AND-composed with whichever of `filters`/`query` is present. Prefer it when the user " +
         "names a scope they have saved ('prod only') — it is guaranteed to mean exactly what " +
         "that name means in their graphs, reports and budgets. An id that no longer resolves " +
-        "is an error, never an unfiltered result.",
+        "is an error, never an unfiltered result." +
+        "\n\n`adjusted: true` applies the organization's billing rules (see " +
+        "list_billing_rules) — markups, discounts, reallocations. Omitted is raw collected " +
+        "spend, which is what you should quote unless the user explicitly asks for their " +
+        "internal or charged-back figure. When set, the response carries `adjustment` with " +
+        "`rawTotals` (what the providers actually charged for exactly these rows) and the rules " +
+        "that moved the number: **always state both, and say which is which.** An adjusted " +
+        "total reported as if it were the bill is a number nobody can reconcile against an " +
+        "invoice. `adjustment.fixedTotals` are flat per-period charges that are deliberately " +
+        "not included in `totals` — the internal figure is the total plus those.",
       inputSchema: costQueryRequestSchema.shape,
       risk: "read",
       permission: "costs:read",

@@ -13,6 +13,7 @@
  * support for free; nothing provider-specific lives in the host.
  */
 import type { CostConversion } from "./costs";
+import type { CostAdjustmentSummary } from "./billing-rules";
 
 export interface RequiredTag {
   /** The tag key every resource must carry, e.g. "owner" or "env". */

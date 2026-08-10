@@ -124,6 +124,11 @@ export async function loadCloudShowback(
   });
 }
 
+/** The org's billing rules, read-only — see `CostsClient.listBillingRules`. */
+export async function loadCloudBillingRules(orgId: string): Promise<BillingRule[]> {
+  return invoke("cloud_billing_rules", { orgId });
+}
+
 export async function loadCloudCreditBurndown(orgId: string): Promise<CreditBurndown> {
   return invoke("cloud_credit_burndown", { orgId });
 }

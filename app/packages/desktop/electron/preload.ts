@@ -148,6 +148,7 @@ const INVOKE_CHANNELS = [
   "cloud_tag_compliance",
   "cloud_costs_untagged",
   "cloud_costs_showback",
+  "cloud_billing_rules",
   "cloud_credit_burndown",
   "cloud_commitments",
   "cloud_metric_alerts_list",

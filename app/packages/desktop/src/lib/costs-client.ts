@@ -29,6 +29,7 @@ import {
   loadCloudAnomalySettings,
   loadCloudCostDimensionValues,
   loadCloudCostStatus,
+  loadCloudBillingRules,
   loadCloudShowback,
   loadCloudCommitments,
   loadCloudCreditBurndown,
@@ -182,6 +183,10 @@ export function createDesktopCostsClient(): CostsClient {
     getUntaggedSpend: (from?: string, to?: string) =>
       loadCloudUntaggedSpend(requireOrgId(), from, to),
     getShowback: (from?: string, to?: string) => loadCloudShowback(requireOrgId(), from, to),
+    // Read-only here for the same reason the tag rules are: the panel only
+    // needs to know whether any rule is in force. Editing stays in Settings →
+    // Billing Rules, behind `org:settings:write`.
+    listBillingRules: () => loadCloudBillingRules(requireOrgId()),
     getCreditBurndown: () => loadCloudCreditBurndown(requireOrgId()),
     getCommitments: () => loadCloudCommitments(requireOrgId()),
   };

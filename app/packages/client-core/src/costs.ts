@@ -371,6 +371,21 @@ export interface BudgetInput {
    * the rest of the term, which is the opposite of an alert being useful.
    */
   costBasis?: CostBasis | undefined;
+  /**
+   * Measure this budget against **billing-rule-adjusted** spend — the internal
+   * figure — instead of what the providers charged.
+   *
+   * Absent (false) on every budget until somebody says otherwise, for the same
+   * reason `scenarioModelId` is: a markup is org policy and a budget threshold
+   * pages a real person, so one settings row must not be able to move every
+   * on-call rota in the org. Unlike a scenario this affects `actual` thresholds
+   * too — an opted-in budget is measuring the internal number, and
+   * month-to-date internal spend is as marked up as the forecast is.
+   *
+   * The alert body says the figure is adjusted and names the collected one; a
+   * PUT that omits this clears it.
+   */
+  useAdjustedSpend?: boolean | undefined;
 }
 
 /** One selectable value in a dimension picker (GET /costs/dimensions). */
@@ -491,10 +506,45 @@ export interface BudgetWithStatus {
    * still renders the row.
    */
   savedFilterId?: string | null | undefined;
+  /**
+   * The scenario model this budget's forecast thresholds are measured against,
+   * or null for the bare trend (the default, and what every budget did before
+   * scenarios existed). Optional so a client a release ahead of its server
+   * still renders the row.
+   */
+  scenarioModelId?: string | null | undefined;
+  /** That model's name, so a card can say which assumptions are in the number. */
+  scenarioModelName?: string | null | undefined;
+  /**
+   * True when every figure on this row has the org's billing rules applied —
+   * the internal number rather than the collected one. False (the default) on
+   * every budget nobody opted in.
+   */
+  useAdjustedSpend?: boolean | undefined;
+  /**
+   * Month-to-date **collected** spend, non-null only when `useAdjustedSpend`.
+   *
+   * Null on an unadjusted budget rather than a copy of `actualCents`: "there is
+   * no separate collected figure because this one is it" and "the collected
+   * figure happens to equal the adjusted one" are different facts, and a card
+   * captioning every budget in the org would make the adjusted ones invisible.
+   */
+  rawActualCents?: number | null | undefined;
   /** Month the status covers, YYYY-MM. */
   month: string;
   actualCents: number;
+  /**
+   * The **unadjusted trend** forecast for the month. This stays the trend even
+   * for a budget that opted into a scenario, so the two numbers are always
+   * comparable and a card can show what the scenario moved.
+   */
   forecastCents: number | null;
+  /**
+   * The scenario-adjusted month forecast — set only for a budget that opted
+   * into a model, and the number its forecast thresholds are actually judged
+   * against. Null (or absent) means the thresholds used `forecastCents`.
+   */
+  scenarioForecastCents?: number | null | undefined;
   currentMonthEvents: Array<{
     id: string;
     thresholdType: "actual" | "forecast";
@@ -1130,6 +1180,16 @@ export interface CostQueryResponse {
    * total that does not say so is worse than two unconverted totals.
    */
   conversion?: CostConversion;
+  /**
+   * Set when the request asked to be `adjusted`. Absent means every number
+   * above is exactly as collected.
+   *
+   * This is the whole raw-vs-adjusted contract in one field: an adjusted
+   * response can never arrive without the collected totals (`rawTotals`) and
+   * the list of rules that moved them, so no surface can render an adjusted
+   * figure without being handed what it needs to label it.
+   */
+  adjustment?: CostAdjustmentSummary;
 }
 
 /** Sentinel group key for the folded "Other" series. */

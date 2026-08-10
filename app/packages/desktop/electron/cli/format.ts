@@ -161,3 +161,152 @@ export function formatMetricAlertSelector(rule: {
   if (rule.tagKey) parts.push(rule.tagValue ? `${rule.tagKey}=${rule.tagValue}` : rule.tagKey);
   return parts.length > 0 ? parts.join(" · ") : "all resources";
 }
+
+/**
+ * A unit-cost ratio for a terminal, or an em dash for a gap.
+ *
+ * Pure and here rather than in the command so `cli-format.test.ts` can reach
+ * it, and because the gap rule is the one piece of this feature that must be
+ * identical everywhere: `null` prints as "—", never as "0" or "0.00". A CLI
+ * that printed a zero for an unmeasured period would be believed exactly as
+ * readily as a chart that drew one.
+ *
+ * Unit costs are routinely sub-cent (cost per API request), so this keeps
+ * significant digits rather than rounding a real number to `0.00` — which is
+ * the same lie by a different route.
+ */
+export function formatUnitCostRatio(value: number | null, mode: "unit_cost" | "margin"): string {
+  if (value === null || !Number.isFinite(value)) return "—";
+  if (mode === "margin") return `${(value * 100).toFixed(1)}%`;
+  const magnitude = Math.abs(value);
+  if (magnitude === 0) return "0";
+  if (magnitude >= 100) return value.toFixed(0);
+  if (magnitude >= 1) return value.toFixed(2);
+  if (magnitude >= 0.01) return value.toFixed(4);
+  return value.toPrecision(3);
+}
+
+/** The column header a ratio belongs under: "USD/customer", or "margin". */
+export function unitCostRatioLabel(
+  mode: "unit_cost" | "margin",
+  currency: string,
+  unit: string,
+): string {
+  return mode === "margin" ? "margin" : `${currency}/${unit || "unit"}`;
+}
+
+/**
+ * A billing rule as one line — "+15% on tag team=platform", "1000 USD/month →
+ * cost centre <id>", "move to account <id> on service AmazonEKS".
+ *
+ * Duplicated here rather than imported from `describeBillingRule` in
+ * client-core for the reason every wire type in this CLI is imported type-only:
+ * the CLI is CJS and client-core is ESM, so a *runtime* import would be a
+ * `await import(...)` in a formatter that has to stay synchronous and pure.
+ * Pure and here means `cli-format.test.ts` can reach it, which is the only way
+ * any of this rendering gets tested at all — command modules drag in Electron
+ * through `../context` and cannot be unit tested.
+ *
+ * The structural type is deliberately minimal: it is exactly what this function
+ * reads, so a `BillingRule` from client-core satisfies it and a change to a
+ * field this uses is still a build error at the call site.
+ */
+export function formatBillingRule(rule: {
+  match: {
+    tagKey?: string | undefined;
+    tagValue?: string | undefined;
+    accountId?: string | undefined;
+    pluginId?: string | undefined;
+    service?: string | undefined;
+    chargeType?: string | undefined;
+  };
+  adjustment: {
+    kind: string;
+    percent?: number | null | undefined;
+    amount?: number | null | undefined;
+    currency?: string | null | undefined;
+    period?: string | null | undefined;
+    targetKind?: string | null | undefined;
+    targetId?: string | null | undefined;
+  };
+}): string {
+  const m = rule.match;
+  const parts: string[] = [];
+  if (m.tagKey) {
+    parts.push(m.tagValue !== undefined ? `tag ${m.tagKey}=${m.tagValue}` : `has tag ${m.tagKey}`);
+  }
+  if (m.accountId) parts.push(`account ${m.accountId}`);
+  if (m.pluginId) parts.push(`provider ${m.pluginId}`);
+  if (m.service) parts.push(`service ${m.service}`);
+  if (m.chargeType) parts.push(`charge type ${m.chargeType}`);
+  const scope = parts.length > 0 ? parts.join(" and ") : "all spend";
+
+  const a = rule.adjustment;
+  let what: string;
+  if (a.kind === "percentage") {
+    const percent = a.percent ?? 0;
+    what = `${percent > 0 ? "+" : ""}${percent}%`;
+  } else if (a.kind === "fixed") {
+    const per = a.period === "daily" ? "day" : "month";
+    what = `${a.amount ?? 0} ${a.currency ?? ""}/${per}`.trim();
+  } else {
+    what = `move to ${a.targetKind === "account" ? "account" : "cost centre"} ${a.targetId ?? "?"}`;
+  }
+  // A fixed rule can also name where it is booked; a percentage rule never can.
+  const target =
+    a.kind === "fixed" && a.targetId
+      ? ` → ${a.targetKind === "account" ? "account" : "cost centre"} ${a.targetId}`
+      : "";
+  return `${what}${target} on ${scope}`;
+}
+
+/**
+ * The one-line status an invoice row shows — the status word plus, for a frozen
+ * invoice, when it was frozen.
+ *
+ * Pure so it can be tested without the cloud. The distinction it draws is the
+ * one the whole feature rests on: a draft's figures are recomputed on every
+ * read and will keep moving, while an approved or sent invoice is a document
+ * whose numbers cannot change. Printing them identically would let someone
+ * quote a draft to a customer.
+ */
+export function formatInvoiceStatus(invoice: {
+  status: string;
+  issuedAt?: string | null | undefined;
+  sentAt?: string | null | undefined;
+  voidedAt?: string | null | undefined;
+}): string {
+  switch (invoice.status) {
+    case "draft":
+      return "draft (recomputes)";
+    case "approved":
+      return invoice.issuedAt ? `approved ${invoice.issuedAt.slice(0, 10)}` : "approved";
+    case "sent":
+      return invoice.sentAt ? `sent ${invoice.sentAt.slice(0, 10)}` : "sent";
+    case "void":
+      return invoice.voidedAt ? `void ${invoice.voidedAt.slice(0, 10)}` : "void";
+    default:
+      return invoice.status;
+  }
+}
+
+/**
+ * An invoice's billed total as one string, or "not computed" for a draft in a
+ * list response.
+ *
+ * `null` totals are deliberate on the wire — a draft's figures are recomputed
+ * on read and the list endpoint does not recompute — so this must never fall
+ * back to `0.00`, which is a number a reader would act on.
+ */
+export function formatInvoiceTotal(
+  totals: { billed: Record<string, number> } | null | undefined,
+  currency: string,
+): string {
+  if (!totals) return "not computed";
+  const entries = Object.entries(totals.billed).filter(([, amount]) => amount !== 0);
+  if (entries.length === 0) return `0.00 ${currency}`;
+  return entries
+    .sort(([a], [b]) => (a === currency ? -1 : b === currency ? 1 : a.localeCompare(b)))
+    .map(([code, amount]) => `${amount.toFixed(2)} ${code}`)
+    .join(" + ");
+}
