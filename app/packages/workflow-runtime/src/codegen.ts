@@ -771,8 +771,30 @@ function collectResourceInterfaces(
   }
 }
 
-/** Build the full `infra.d.ts` source string. */
-export function generateInfraDts(input: GenerateInfraDtsInput): string {
+/** One named interface from the generated typings, e.g. `Account_aws`. */
+export interface InfraDtsNamedType {
+  name: string;
+  dts: string;
+}
+
+/**
+ * The generated typings split into a global scope and the per-plugin named
+ * interfaces, so context-priced callers (the MCP/chat tools) can send the
+ * global scope first and hand out named interfaces on demand. `full` is the
+ * complete file — {@link generateInfraDts} returns exactly it — and `global`
+ * is everything except the named interfaces, which it references by name
+ * (`InfraAccounts` → `AccountGroup_<plugin>` → `Account_<plugin>` →
+ * `Resource_<plugin>_<type>`), so the omitted names are discoverable.
+ */
+export interface InfraDtsParts {
+  full: string;
+  global: string;
+  /** Named interfaces in the order they appear in `full`. */
+  types: InfraDtsNamedType[];
+}
+
+/** Build the `infra.d.ts` source, whole and split into named parts. */
+export function generateInfraDtsParts(input: GenerateInfraDtsInput): InfraDtsParts {
   const readOnly = input.readOnly ?? false;
   const plugins = readOnly ? stripMutations(input.plugins) : input.plugins;
   const interactive = input.interactive ?? true;
@@ -790,9 +812,23 @@ export function generateInfraDts(input: GenerateInfraDtsInput): string {
       readOnly,
     );
   }
+  const accountTypes = plugins.map((p) => ({
+    name: accountInterfaceName(p.pluginId),
+    dts: renderAccountInterface(p, sshKeyNames),
+  }));
+  const groupTypes = plugins.map((p) => ({
+    name: groupInterfaceName(p.pluginId),
+    dts: renderGroupInterface(p),
+  }));
+  const namedTypes: InfraDtsNamedType[] = [
+    ...[...resourceByName].map(([name, dts]) => ({ name, dts })),
+    ...[...sidecarByName].map(([name, dts]) => ({ name, dts })),
+    ...accountTypes,
+    ...groupTypes,
+  ];
   const resourceInterfaces = [...resourceByName.values(), ...sidecarByName.values()].join("\n\n");
-  const accountInterfaces = plugins.map((p) => renderAccountInterface(p, sshKeyNames)).join("\n\n");
-  const groupInterfaces = plugins.map(renderGroupInterface).join("\n\n");
+  const accountInterfaces = accountTypes.map((t) => t.dts).join("\n\n");
+  const groupInterfaces = groupTypes.map((t) => t.dts).join("\n\n");
 
   const accountsProps = plugins
     .map(
@@ -828,7 +864,7 @@ export function generateInfraDts(input: GenerateInfraDtsInput): string {
    */
   readonly waitForApproval: InfraWaitForApproval;`;
 
-  return `${STATIC_PREAMBLE}
+  const head = `${STATIC_PREAMBLE}
 
 ${renderEventType(input.triggerKind ?? "manual")}
 
@@ -840,15 +876,9 @@ ${PAGE_INTERFACE}
 
 ${FETCH_INTERFACES}
 
-${renderSshExecOptions(sshKeyNames)}
+${renderSshExecOptions(sshKeyNames)}`;
 
-${resourceInterfaces}
-
-${accountInterfaces || "// (no accounts connected yet)"}
-
-${groupInterfaces}
-
-interface InfraAccounts {
+  const tail = `interface InfraAccounts {
 ${accountsProps || "  [pluginId: string]: never;"}
 }
 
@@ -884,4 +914,20 @@ declare const infra: InfraApi;
  */
 declare function fetch(url: string, init?: FetchInit): Promise<FetchResponse>;
 `;
+
+  const namedSection = [
+    resourceInterfaces,
+    accountInterfaces || "// (no accounts connected yet)",
+    groupInterfaces,
+  ].join("\n\n");
+  return {
+    full: `${head}\n\n${namedSection}\n\n${tail}`,
+    global: `${head}\n\n${tail}`,
+    types: namedTypes,
+  };
+}
+
+/** Build the full `infra.d.ts` source string. */
+export function generateInfraDts(input: GenerateInfraDtsInput): string {
+  return generateInfraDtsParts(input).full;
 }

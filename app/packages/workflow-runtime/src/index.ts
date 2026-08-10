@@ -1,7 +1,13 @@
 export * from "./types.js";
 export * from "./host.js";
 export { runWorkflow, type RunWorkflowOptions } from "./sandbox.js";
-export { generateInfraDts, type GenerateInfraDtsInput } from "./codegen.js";
+export {
+  generateInfraDts,
+  generateInfraDtsParts,
+  type GenerateInfraDtsInput,
+  type InfraDtsNamedType,
+  type InfraDtsParts,
+} from "./codegen.js";
 export { transpileWorkflow, type TranspileResult } from "./transpile.js";
 export {
   typecheckWorkflow,
