@@ -46,6 +46,15 @@ function money(amount: number, currency: string): string {
   }
 }
 
+/**
+ * Add or remove `id`, keeping the list itself as the source of truth: click
+ * order is what gets sent and stored, so membership is tested against a set
+ * built from the list rather than the list being rebuilt from a set.
+ */
+function toggle(list: string[], id: string): string[] {
+  return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+}
+
 /** The last complete calendar month — the period an invoice almost always covers. */
 function lastMonth(): { from: string; to: string } {
   const now = new Date();
@@ -358,8 +367,10 @@ function CustomerModal({
   // as two unrelated names that happen to sort together.
   const paths = useMemo(() => costCentrePaths(centres), [centres]);
 
-  const toggle = (list: string[], id: string) =>
-    list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+  // Membership only — the arrays stay authoritative because the order a
+  // customer's scope was picked in is what is persisted and sent back.
+  const centreIdSet = useMemo(() => new Set(centreIds), [centreIds]);
+  const accountIdSet = useMemo(() => new Set(accountIds), [accountIds]);
 
   async function submit() {
     setSaving(true);
@@ -469,7 +480,7 @@ function CustomerModal({
                 >
                   <input
                     type="checkbox"
-                    checked={centreIds.includes(row.id)}
+                    checked={centreIdSet.has(row.id)}
                     onChange={() => setCentreIds((ids) => toggle(ids, row.id))}
                   />
                   {row.name}
@@ -494,7 +505,7 @@ function CustomerModal({
                 >
                   <input
                     type="checkbox"
-                    checked={accountIds.includes(a.id)}
+                    checked={accountIdSet.has(a.id)}
                     onChange={() => setAccountIds((ids) => toggle(ids, a.id))}
                   />
                   {a.displayName}
@@ -908,6 +919,16 @@ function LineTable({ invoice }: { invoice: ManagedInvoice }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
+              {/* `kind:refId:currency` is a true key for the cost-centre and
+                  account lines — one line per scope entry per collected
+                  currency. It is not one for a fixed charge, whose `refId` is
+                  the rule's *target*, not the rule: two fixed rules billing the
+                  same centre in the same currency are two lines with one
+                  composite key, and the line carries no rule id to tell them
+                  apart. The index is the tie-break that keeps those two rows
+                  distinct rather than colliding; it costs nothing here because
+                  the rows hold no state and the server sends them pre-sorted
+                  (this table never filters or re-sorts). */}
               {invoice.lines.map((line, i) => (
                 <tr key={`${line.kind}:${line.refId ?? ""}:${line.currency}:${i}`}>
                   <td className="px-3 py-2 text-on-surface">

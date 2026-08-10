@@ -560,9 +560,17 @@ function SpendGraphCard({
           <h3 className="text-base font-semibold text-on-surface leading-tight truncate">
             {title || "Costs"}
           </h3>
-          {total && (
+          {/*
+            A ternary rather than `total && …`: this slot sits next to money, so
+            a falsy left-hand side that React can render — a `0`, an empty
+            string — would print beside the title and read as a real figure.
+            `total` is the joined per-currency string and is `""` for a response
+            with no totals at all, which must draw nothing rather than an empty
+            amount.
+          */}
+          {total ? (
             <span className="text-sm text-on-surface-secondary flex-shrink-0">{total}</span>
-          )}
+          ) : null}
           {adjustment && (
             <span
               className="text-[10px] uppercase tracking-wide text-amber-500 border border-amber-500/40 rounded px-1 py-px flex-shrink-0"

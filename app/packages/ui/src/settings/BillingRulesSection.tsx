@@ -26,6 +26,11 @@ import { useSettingsHost, type SettingsApi } from "./host.js";
 const selectClass =
   "px-2.5 py-1.5 text-sm bg-surface border border-border rounded-lg focus:outline-none focus:border-border-strong";
 
+/** A dimension value as its picker label, falling back to the raw id. */
+function labelFor(options: CostDimensionOption[], value: string): string {
+  return options.find((o) => o.value === value)?.label ?? value;
+}
+
 /**
  * Settings → Billing Rules.
  *
@@ -94,8 +99,6 @@ export function BillingRulesSection() {
   }, [api, orgId, canRead, load]);
 
   const centrePaths = useMemo(() => costCentrePaths(centres), [centres]);
-  const labelFor = (options: CostDimensionOption[], value: string) =>
-    options.find((o) => o.value === value)?.label ?? value;
 
   /** The rule's target as a name rather than a uuid. */
   function targetLabel(rule: BillingRule): string | null {

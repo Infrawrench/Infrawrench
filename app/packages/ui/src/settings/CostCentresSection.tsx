@@ -34,8 +34,6 @@ export function CostCentresSection() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const [newName, setNewName] = useState("");
-  const [newParentId, setNewParentId] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
 
@@ -78,19 +76,16 @@ export function CostCentresSection() {
     return counts;
   }, [centres]);
 
-  async function addCentre() {
-    const name = newName.trim();
-    if (!name) return;
+  /** Resolves true only when the centre was created — the form clears on that. */
+  async function addCentre(name: string, parentId: string | null): Promise<boolean> {
     setBusyId("__new__");
     try {
-      await api.post(`/api/org/${orgId}/cost-centres`, {
-        name,
-        parentId: newParentId || null,
-      });
-      setNewName("");
+      await api.post(`/api/org/${orgId}/cost-centres`, { name, parentId });
       await load();
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create cost centre");
+      return false;
     } finally {
       setBusyId(null);
     }
@@ -300,54 +295,93 @@ export function CostCentresSection() {
           </div>
 
           {canEdit && (
-            <div className="border border-border rounded-xl p-4 space-y-3 bg-surface-raised/50">
-              <h2 className="text-sm font-semibold">Add a cost centre</h2>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="text"
-                  value={newName}
-                  maxLength={COST_CENTRE_LIMITS.maxNameLength}
-                  onChange={(e) => setNewName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void addCentre();
-                  }}
-                  placeholder="e.g. Platform"
-                  aria-label="Cost centre name"
-                  className={selectClass}
-                />
-                <span className="text-sm text-on-surface-muted">under</span>
-                <select
-                  value={newParentId}
-                  onChange={(e) => setNewParentId(e.target.value)}
-                  aria-label="Parent cost centre"
-                  className={selectClass}
-                >
-                  <option value="">Top level</option>
-                  {tree.map(({ id, path }) => (
-                    <option
-                      key={id}
-                      value={id}
-                      // A new centre is a leaf, so it fits exactly when its
-                      // parent is not already on the bottom level.
-                      disabled={(depths.get(id) ?? 0) + 2 > COST_CENTRE_LIMITS.maxDepth}
-                    >
-                      {path}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => void addCentre()}
-                  disabled={busyId === "__new__" || newName.trim().length === 0}
-                  className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
-                >
-                  Add
-                </button>
-              </div>
-            </div>
+            <AddCentreForm
+              tree={tree}
+              depths={depths}
+              busy={busyId === "__new__"}
+              className={selectClass}
+              onAdd={addCentre}
+            />
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The create form, which owns the two fields nothing else on the page reads.
+ * The draft name survives a failed create — a rejected POST leaves what you
+ * typed where it was — so the form clears only on the `true` the section
+ * returns when the centre actually exists.
+ */
+function AddCentreForm({
+  tree,
+  depths,
+  busy,
+  className,
+  onAdd,
+}: {
+  tree: CostCentrePathRow[];
+  depths: Map<string, number>;
+  busy: boolean;
+  className: string;
+  onAdd: (name: string, parentId: string | null) => Promise<boolean>;
+}) {
+  const [name, setName] = useState("");
+  const [parentId, setParentId] = useState("");
+
+  async function submit() {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    if (await onAdd(trimmed, parentId || null)) setName("");
+  }
+
+  return (
+    <div className="border border-border rounded-xl p-4 space-y-3 bg-surface-raised/50">
+      <h2 className="text-sm font-semibold">Add a cost centre</h2>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="text"
+          value={name}
+          maxLength={COST_CENTRE_LIMITS.maxNameLength}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void submit();
+          }}
+          placeholder="e.g. Platform"
+          aria-label="Cost centre name"
+          className={className}
+        />
+        <span className="text-sm text-on-surface-muted">under</span>
+        <select
+          value={parentId}
+          onChange={(e) => setParentId(e.target.value)}
+          aria-label="Parent cost centre"
+          className={className}
+        >
+          <option value="">Top level</option>
+          {tree.map(({ id, path }) => (
+            <option
+              key={id}
+              value={id}
+              // A new centre is a leaf, so it fits exactly when its parent is
+              // not already on the bottom level.
+              disabled={(depths.get(id) ?? 0) + 2 > COST_CENTRE_LIMITS.maxDepth}
+            >
+              {path}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => void submit()}
+          disabled={busy || name.trim().length === 0}
+          className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+        >
+          Add
+        </button>
+      </div>
     </div>
   );
 }
@@ -382,21 +416,20 @@ function MoveSelect({
       className={`${className} max-w-44`}
     >
       <option value="">Top level</option>
-      {tree
-        .filter((row) => row.id !== centre.id)
-        .map((row) => {
-          const blocked = costCentreMoveBlocker(centres, centre.id, row.id);
-          return (
-            <option
-              key={row.id}
-              value={row.id}
-              disabled={blocked !== null}
-              title={blocked ?? undefined}
-            >
-              {row.path}
-            </option>
-          );
-        })}
+      {tree.map((row) => {
+        if (row.id === centre.id) return null;
+        const blocked = costCentreMoveBlocker(centres, centre.id, row.id);
+        return (
+          <option
+            key={row.id}
+            value={row.id}
+            disabled={blocked !== null}
+            title={blocked ?? undefined}
+          >
+            {row.path}
+          </option>
+        );
+      })}
     </select>
   );
 }

@@ -113,9 +113,14 @@ export function UnitCostCard({
    * headline reports each one, rather than silently picking the biggest.
    */
   const series = response?.series ?? [];
+  // One pass: format and drop the un-formattable in the same step. A series
+  // with no period value formats to the em dash and is left out entirely —
+  // printing it would put a dash in the headline next to a real ratio.
   const headline = series
-    .map((s) => formatUnitCostValue(s.overallValue, mode))
-    .filter((v) => v !== "—")
+    .flatMap((s) => {
+      const value = formatUnitCostValue(s.overallValue, mode);
+      return value === "—" ? [] : [value];
+    })
     .join(" · ");
 
   const unitLabels = series.map((s) =>
@@ -223,19 +228,21 @@ export function UnitCostCard({
               real but reads high, and a reader deserves to see which points
               those are rather than only a count under the title. */}
           {series.flatMap((s, i) =>
-            s.points
-              .filter(isPartialUnitCostPoint)
-              .map((p) => (
-                <ReferenceDot
-                  key={`${s.currency}-${p.bucket}`}
-                  x={p.bucket}
-                  y={p.value ?? 0}
-                  r={4}
-                  fill="none"
-                  stroke={chart.colors[i % chart.colors.length] ?? "#60a5fa"}
-                  strokeWidth={2}
-                />
-              )),
+            s.points.flatMap((p) =>
+              isPartialUnitCostPoint(p)
+                ? [
+                    <ReferenceDot
+                      key={`${s.currency}-${p.bucket}`}
+                      x={p.bucket}
+                      y={p.value ?? 0}
+                      r={4}
+                      fill="none"
+                      stroke={chart.colors[i % chart.colors.length] ?? "#60a5fa"}
+                      strokeWidth={2}
+                    />,
+                  ]
+                : [],
+            ),
           )}
         </LineChart>
       </ResponsiveContainer>
@@ -244,11 +251,14 @@ export function UnitCostCard({
 
   const gapSummary = useMemo(() => {
     if (!response) return null;
+    // `flatMap` over the points rather than map-then-filter: one pass, and the
+    // set comes out typed as the reasons themselves, so the label lookup needs
+    // no non-null assertion.
     const reasons = new Set(
-      response.series.flatMap((s) => s.points.map((p) => p.gap).filter(Boolean)),
+      response.series.flatMap((s) => s.points.flatMap((p) => (p.gap ? [p.gap] : []))),
     );
     if (reasons.size === 0) return null;
-    return [...reasons].map((r) => UNIT_COST_GAP_REASON_LABELS[r!]).join("; ");
+    return [...reasons].map((r) => UNIT_COST_GAP_REASON_LABELS[r]).join("; ");
   }, [response]);
 
   return (

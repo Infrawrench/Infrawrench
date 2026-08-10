@@ -21,6 +21,12 @@ import {
   type CostScenarioReferent,
 } from "./config.js";
 import type { CostsClient } from "./types.js";
+// The same guard the cost-export settings use for `<input type="number">`, and
+// deliberately the only copy of it: "cleared" and "half-typed" have to mean the
+// same thing everywhere a typed number becomes a stored one. It belongs in a
+// shared module rather than in a settings section — imported from where it
+// already lives until somebody moves it there.
+import { parseNumericInputValue } from "../settings/CostExportsSection.js";
 
 const inputClass =
   "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
@@ -267,25 +273,6 @@ function ScenarioModelEditModal({
     setAdjustments((rows) => rows.map((r, i) => (i === index ? { ...r, ...over } : r)));
   };
 
-  /**
-   * Changing the kind clears the fields the new kind cannot carry, rather than
-   * leaving them set and letting the API refuse the save. A percent left over
-   * from a rate change would otherwise sit invisibly on a one-off.
-   */
-  const changeKind = (index: number, kind: CostScenarioAdjustmentKind) => {
-    patch(index, {
-      kind,
-      amountCents: kind === "rate_change" ? null : 0,
-      currency: kind === "rate_change" ? null : currency,
-      period: kind === "recurring" ? "monthly" : null,
-      percent: kind === "rate_change" ? -10 : null,
-      // Cleared on every kind change, not just into `one_off`: an end date set
-      // for a recurring cost rarely means the same thing for a rate change, and
-      // an invisible leftover is worse than re-picking it.
-      endDate: null,
-    });
-  };
-
   const save = async () => {
     const code = currency.trim().toUpperCase();
     const input: CostScenarioModelInput = {
@@ -386,131 +373,15 @@ function ScenarioModelEditModal({
               Adjustments
             </span>
             {adjustments.map((adjustment, index) => (
-              <div
+              <AdjustmentRow
                 key={adjustment.id}
-                className="rounded-lg border border-border bg-surface-sunken p-3 flex flex-col gap-2"
-              >
-                <div className="flex items-start gap-2">
-                  <input
-                    className={inputClass}
-                    aria-label={`Adjustment ${index + 1} label`}
-                    placeholder="What this is — e.g. Annual Datadog licence"
-                    value={adjustment.label}
-                    onChange={(e) => patch(index, { label: e.target.value })}
-                  />
-                  <button
-                    type="button"
-                    aria-label={`Remove adjustment ${index + 1}`}
-                    onClick={() => setAdjustments((rows) => rows.filter((_, i) => i !== index))}
-                    className="shrink-0 rounded-lg px-2 py-1.5 text-sm text-on-surface-faint hover:text-red-400"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                <div className="flex flex-wrap items-end gap-2">
-                  <label className="flex flex-col text-xs text-on-surface-faint">
-                    Kind
-                    <select
-                      className={inputClass}
-                      value={adjustment.kind}
-                      onChange={(e) =>
-                        changeKind(index, e.target.value as CostScenarioAdjustmentKind)
-                      }
-                    >
-                      {COST_SCENARIO_ADJUSTMENT_KINDS.map((kind) => (
-                        <option key={kind} value={kind}>
-                          {COST_SCENARIO_ADJUSTMENT_KIND_LABELS[kind]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  {adjustment.kind === "rate_change" ? (
-                    <label className="flex flex-col text-xs text-on-surface-faint">
-                      Percent
-                      <input
-                        type="number"
-                        className={inputClass}
-                        min={COST_SCENARIO_LIMITS.minPercent}
-                        max={COST_SCENARIO_LIMITS.maxPercent}
-                        value={adjustment.percent ?? 0}
-                        onChange={(e) => patch(index, { percent: Number(e.target.value) })}
-                      />
-                    </label>
-                  ) : (
-                    <label className="flex flex-col text-xs text-on-surface-faint">
-                      Amount ({currency})
-                      <input
-                        type="number"
-                        className={inputClass}
-                        value={(adjustment.amountCents ?? 0) / 100}
-                        onChange={(e) =>
-                          patch(index, { amountCents: Math.round(Number(e.target.value) * 100) })
-                        }
-                      />
-                    </label>
-                  )}
-
-                  {adjustment.kind === "recurring" && (
-                    <label className="flex flex-col text-xs text-on-surface-faint">
-                      Every
-                      <select
-                        className={inputClass}
-                        value={adjustment.period ?? "monthly"}
-                        onChange={(e) =>
-                          patch(index, {
-                            period: e.target.value as CostScenarioAdjustment["period"],
-                          })
-                        }
-                      >
-                        {COST_SCENARIO_PERIODS.map((period) => (
-                          <option key={period} value={period}>
-                            {COST_SCENARIO_PERIOD_LABELS[period]}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-
-                  <label className="flex flex-col text-xs text-on-surface-faint">
-                    {adjustment.kind === "one_off" ? "On" : "From"}
-                    <input
-                      type="date"
-                      className={inputClass}
-                      value={adjustment.startDate}
-                      onChange={(e) => patch(index, { startDate: e.target.value })}
-                    />
-                  </label>
-
-                  {adjustment.kind !== "one_off" && (
-                    <label className="flex flex-col text-xs text-on-surface-faint">
-                      Until (optional)
-                      <input
-                        type="date"
-                        className={inputClass}
-                        value={adjustment.endDate ?? ""}
-                        onChange={(e) => patch(index, { endDate: e.target.value || null })}
-                      />
-                    </label>
-                  )}
-                </div>
-
-                <p className="text-[11px] text-on-surface-faint">
-                  {COST_SCENARIO_ADJUSTMENT_KIND_DESCRIPTIONS[adjustment.kind]}
-                </p>
-
-                <div>
-                  <span className={labelClass}>
-                    Scope (optional &mdash; empty is the whole organization)
-                  </span>
-                  <CostFilterEditor
-                    filters={adjustment.scope}
-                    onChange={(scope: CostFilter[]) => patch(index, { scope })}
-                    api={client}
-                  />
-                </div>
-              </div>
+                adjustment={adjustment}
+                index={index}
+                currency={currency}
+                client={client}
+                onChange={(over) => patch(index, over)}
+                onRemove={() => setAdjustments((rows) => rows.filter((_, i) => i !== index))}
+              />
             ))}
             <button
               type="button"
@@ -547,5 +418,185 @@ function ScenarioModelEditModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * One adjustment inside the editor: the row that says *what* the org already
+ * knows is coming, how much of it, when, and to which slice of spend.
+ *
+ * Split out of the modal because the row is genuinely self-contained — it is
+ * fully controlled, holds no state of its own, and everything it needs is the
+ * adjustment plus the model's currency. The kind-change rules live here rather
+ * than in the parent for the same reason: which fields a kind can carry is a
+ * fact about this row, not about the model.
+ */
+function AdjustmentRow({
+  adjustment,
+  index,
+  currency,
+  client,
+  onChange,
+  onRemove,
+}: {
+  adjustment: CostScenarioAdjustment;
+  /** Position in the list — used only to name the row's controls. */
+  index: number;
+  /** The model's currency; amount rows never carry their own. */
+  currency: string;
+  client: CostsClient;
+  onChange: (over: Partial<CostScenarioAdjustment>) => void;
+  onRemove: () => void;
+}) {
+  /**
+   * Changing the kind clears the fields the new kind cannot carry, rather than
+   * leaving them set and letting the API refuse the save. A percent left over
+   * from a rate change would otherwise sit invisibly on a one-off.
+   */
+  const changeKind = (kind: CostScenarioAdjustmentKind) => {
+    onChange({
+      kind,
+      amountCents: kind === "rate_change" ? null : 0,
+      currency: kind === "rate_change" ? null : currency,
+      period: kind === "recurring" ? "monthly" : null,
+      percent: kind === "rate_change" ? -10 : null,
+      // Cleared on every kind change, not just into `one_off`: an end date set
+      // for a recurring cost rarely means the same thing for a rate change, and
+      // an invisible leftover is worse than re-picking it.
+      endDate: null,
+    });
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-surface-sunken p-3 flex flex-col gap-2">
+      <div className="flex items-start gap-2">
+        <input
+          className={inputClass}
+          aria-label={`Adjustment ${index + 1} label`}
+          placeholder="What this is — e.g. Annual Datadog licence"
+          value={adjustment.label}
+          onChange={(e) => onChange({ label: e.target.value })}
+        />
+        <button
+          type="button"
+          aria-label={`Remove adjustment ${index + 1}`}
+          onClick={onRemove}
+          className="shrink-0 rounded-lg px-2 py-1.5 text-sm text-on-surface-faint hover:text-red-400"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col text-xs text-on-surface-faint">
+          Kind
+          <select
+            className={inputClass}
+            value={adjustment.kind}
+            onChange={(e) => changeKind(e.target.value as CostScenarioAdjustmentKind)}
+          >
+            {COST_SCENARIO_ADJUSTMENT_KINDS.map((kind) => (
+              <option key={kind} value={kind}>
+                {COST_SCENARIO_ADJUSTMENT_KIND_LABELS[kind]}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {adjustment.kind === "rate_change" ? (
+          <label className="flex flex-col text-xs text-on-surface-faint">
+            Percent
+            <input
+              type="number"
+              className={inputClass}
+              min={COST_SCENARIO_LIMITS.minPercent}
+              max={COST_SCENARIO_LIMITS.maxPercent}
+              value={adjustment.percent ?? 0}
+              onChange={(e) => {
+                // A cleared or half-typed field keeps what is stored. Coercing
+                // it would write an assumption nobody made — `Number("")` is a
+                // silent "no change at all", `Number("-")` is a NaN that
+                // travels into the request body — while a deliberate 0 still
+                // parses and still saves.
+                const percent = parseNumericInputValue(e.target.value);
+                if (percent === null) return;
+                onChange({ percent });
+              }}
+            />
+          </label>
+        ) : (
+          <label className="flex flex-col text-xs text-on-surface-faint">
+            Amount ({currency})
+            <input
+              type="number"
+              className={inputClass}
+              value={(adjustment.amountCents ?? 0) / 100}
+              onChange={(e) => {
+                // Same guard as the percent field: an amount cleared mid-edit
+                // would otherwise persist as an adjustment of zero, which is a
+                // scenario line that quietly does nothing.
+                const amount = parseNumericInputValue(e.target.value);
+                if (amount === null) return;
+                onChange({ amountCents: Math.round(amount * 100) });
+              }}
+            />
+          </label>
+        )}
+
+        {adjustment.kind === "recurring" && (
+          <label className="flex flex-col text-xs text-on-surface-faint">
+            Every
+            <select
+              className={inputClass}
+              value={adjustment.period ?? "monthly"}
+              onChange={(e) =>
+                onChange({ period: e.target.value as CostScenarioAdjustment["period"] })
+              }
+            >
+              {COST_SCENARIO_PERIODS.map((period) => (
+                <option key={period} value={period}>
+                  {COST_SCENARIO_PERIOD_LABELS[period]}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        <label className="flex flex-col text-xs text-on-surface-faint">
+          {adjustment.kind === "one_off" ? "On" : "From"}
+          <input
+            type="date"
+            className={inputClass}
+            value={adjustment.startDate}
+            onChange={(e) => onChange({ startDate: e.target.value })}
+          />
+        </label>
+
+        {adjustment.kind !== "one_off" && (
+          <label className="flex flex-col text-xs text-on-surface-faint">
+            Until (optional)
+            <input
+              type="date"
+              className={inputClass}
+              value={adjustment.endDate ?? ""}
+              onChange={(e) => onChange({ endDate: e.target.value || null })}
+            />
+          </label>
+        )}
+      </div>
+
+      <p className="text-[11px] text-on-surface-faint">
+        {COST_SCENARIO_ADJUSTMENT_KIND_DESCRIPTIONS[adjustment.kind]}
+      </p>
+
+      <div>
+        <span className={labelClass}>Scope (optional &mdash; empty is the whole organization)</span>
+        <CostFilterEditor
+          filters={adjustment.scope}
+          onChange={(scope: CostFilter[]) => onChange({ scope })}
+          api={client}
+        />
+      </div>
+    </div>
   );
 }

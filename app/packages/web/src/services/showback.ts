@@ -77,9 +77,9 @@ export async function getShowbackReport(
   // resolves each row to exactly one centre in a single scan of `cost_daily`,
   // and the tree is assembled from the resulting sums below. A per-segment
   // query would be one scan per node of the tree for the same answer.
-  const orderedRules = rules
-    .filter((r) => centreIds.has(r.costCentreId))
-    .map((r) => ({ costCentreId: r.costCentreId, match: r.match }));
+  const orderedRules = rules.flatMap((r) =>
+    centreIds.has(r.costCentreId) ? [{ costCentreId: r.costCentreId, match: r.match }] : [],
+  );
 
   // Follows the caller's basis. Charging a team the full cash value of a
   // three-year commitment in the month it was signed is not a chargeback

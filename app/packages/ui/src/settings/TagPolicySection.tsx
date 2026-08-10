@@ -38,6 +38,11 @@ function fromRows(rows: PolicyRow[], enforceOnCreate: boolean): TagPolicy {
   return { requiredTags, enforceOnCreate };
 }
 
+/** A dimension value as its picker label, falling back to the raw id. */
+function labelFor(options: CostDimensionOption[], value: string | undefined): string | null {
+  return value === undefined ? null : (options.find((o) => o.value === value)?.label ?? value);
+}
+
 export function TagPolicySection() {
   const { orgId, api, has, openSection } = useSettingsHost();
   const canEditPolicy = has("org:settings:write");
@@ -369,9 +374,6 @@ function AllocationSection({
   // reads as the same bucket as "Platform" under Data.
   const centrePaths = useMemo(() => costCentrePaths(centres), [centres]);
   const pathFor = (id: string) => centrePaths.find((row) => row.id === id)?.path;
-
-  const labelFor = (options: CostDimensionOption[], value: string | undefined) =>
-    value === undefined ? null : (options.find((o) => o.value === value)?.label ?? value);
 
   return (
     <section className="space-y-3">

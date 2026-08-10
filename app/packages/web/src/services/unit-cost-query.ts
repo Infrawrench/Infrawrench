@@ -208,13 +208,15 @@ export async function runUnitCostQuery(
     );
   }
 
-  const filters = await resolveNumeratorFilters(organizationId, metric, request);
-  const { displayCurrency, rates } = await resolveConversion(
-    organizationId,
-    metric,
-    mode,
-    request.displayCurrency,
-  );
+  // Independent reads: the filter set is never an input to the conversion
+  // context, and vice versa. Serialising them doubled the latency of every
+  // unit-cost query for nothing. Error reporting is unaffected — only
+  // `resolveNumeratorFilters` raises a `CostQueryError`, and `resolveConversion`
+  // is a settings read that either answers or fails the whole request.
+  const [filters, { displayCurrency, rates }] = await Promise.all([
+    resolveNumeratorFilters(organizationId, metric, request),
+    resolveConversion(organizationId, metric, mode, request.displayCurrency),
+  ]);
 
   const [rawGroups, values] = await Promise.all([
     queryCosts(organizationId, {
