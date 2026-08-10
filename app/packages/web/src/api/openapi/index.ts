@@ -256,6 +256,55 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
           "by id without the caller reassembling the query.",
       },
       {
+        name: "Cost annotations",
+        description:
+          'Dated notes drawn over cost charts — "we migrated to Graviton here". A note carries ' +
+          "a start day and an optional end day, because a deploy is a moment and a migration is " +
+          "a week. With no report id it is org-wide and appears on every cost chart; with one it " +
+          "belongs to that report alone. Annotations are an overlay: they never change a series, " +
+          "a total, or an axis.",
+      },
+      {
+        name: "Scenario models",
+        description:
+          "Named, reusable sets of adjustments overlaid on a cost forecast. A trend fit can " +
+          "only extrapolate what already happened; a scenario is where an organization writes " +
+          "down what it already knows is coming — a purchase next quarter, a team starting in " +
+          "September, a migration that takes a fifth off compute. Applying one never replaces " +
+          "the trend: the query returns both, the adjusted line is labelled with the model's " +
+          "name, and recorded history is never touched. Budgets opt in per budget, never " +
+          "globally, so a hypothesis cannot silently change when people get paged.",
+      },
+      {
+        name: "Billing Rules",
+        description:
+          "The organization's own adjustments to collected spend: a markup that recovers " +
+          "shared overhead, a discount negotiated outside the provider's pricing, a fixed " +
+          "charge per period, or a reallocation that moves a shared cluster's cost onto the " +
+          "teams that use it.\n\n" +
+          "Adjustments are applied **at query time and never written into stored cost data**, " +
+          "so collected spend remains exactly what the provider reported and can still be " +
+          "reconciled against an invoice. Every adjusted answer carries the collected totals " +
+          "beside the adjusted ones and names the rules that moved them, so an adjusted figure " +
+          "can never be read without knowing it is adjusted. Anything that pages a human " +
+          "(budgets, anomaly detection, change alerts, the digest) measures collected spend " +
+          "unless it opts in per object; cost exports are always raw, because they are the " +
+          "audit trail.\n\n" +
+          "Percentage rules compose — two 10% markups are 21%, not 20% — while reallocation is " +
+          "first-match-wins, so a row moves exactly once and total spend is conserved.",
+      },
+      {
+        name: "Business metrics",
+        description:
+          "The denominators unit costs divide by — customers, requests, GB processed, revenue — " +
+          "reported by the organization itself, plus the query that divides spend by them. A " +
+          "unit cost is computed at the bucket asked for from a summed numerator and a summed " +
+          "denominator (a daily ratio averaged over a month is not the monthly ratio), a period " +
+          "with no reported value comes back as an explicit gap rather than as zero, and " +
+          "currencies are never merged. Margin is offered only for a metric declared " +
+          "revenue-shaped, in its own currency.",
+      },
+      {
         name: "Cost alerts",
         description:
           "Change-based cost alerts: fire when spend on a chosen scope moves more than a " +
@@ -663,6 +712,61 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /currency/rates": "org:settings:write",
   "DELETE /currency/rates/{rateId}": "org:settings:write",
   // cost centres & allocation rules
+  // billing rules — the org's own adjustments to collected spend.
+  //
+  // Reads ride `costs:read` like every other cost surface: a rule is part of
+  // the explanation for a number, and hiding it from the people who read the
+  // number would make every adjusted figure unauditable.
+  //
+  // Writes are `org:settings:write`, deliberately **not** `costs:write`.
+  // `costs:write` is the "name a report, define a cost centre, save a filter"
+  // scope — acts that add a view of the org's spend. A billing rule is not a
+  // view: a markup changes what every internal figure in the organisation
+  // says, including an opted-in budget's thresholds and the chargeback
+  // statements finance sends to other departments. Same reasoning as
+  // `PUT /currency` (stating a rate restates every total) and
+  // `POST /cost-exports` (standing authorisation to ship the billing history),
+  // which puts all three "this changes the org's money story" acts behind one
+  // scope.
+  "GET /billing-rules": "costs:read",
+  "GET /billing-rules/{id}": "costs:read",
+  "POST /billing-rules": "org:settings:write",
+  "PUT /billing-rules/{id}": "org:settings:write",
+  "DELETE /billing-rules/{id}": "org:settings:write",
+  // managed accounts & invoices — the managed-service-provider surface.
+  //
+  // Its own family rather than more `costs:*`. Every other cost surface is the
+  // organisation looking at its own spend; a managed account holds a customer's
+  // contact details and the price that customer was quoted, which is commercial
+  // information about a third party — so reads are `invoices:read`, not
+  // `costs:read`.
+  //
+  // Writes split two ways because generating and issuing are different risks.
+  // `invoices:write` prepares (add a customer, raise a draft, edit a period,
+  // delete a draft) and is entirely revisable. `invoices:issue` is the
+  // irreversible half: approving freezes the numbers a customer will be sent,
+  // sending states that they have them, voiding withdraws a document already in
+  // their hands. The split is what makes maker-checker expressible — a billing
+  // clerk prepares the month, a finance lead issues it.
+  //
+  // Deliberately not `org:settings:write` (where billing rules and exchange
+  // rates ride): those restate the org's own figures once, while raising
+  // invoices is monthly operational work that must not require handing someone
+  // SSO, seats and the org's whole money story.
+  "GET /managed-accounts": "invoices:read",
+  "GET /managed-accounts/{id}": "invoices:read",
+  "POST /managed-accounts": "invoices:write",
+  "PUT /managed-accounts/{id}": "invoices:write",
+  "DELETE /managed-accounts/{id}": "invoices:write",
+  "GET /invoices": "invoices:read",
+  "GET /invoices/{id}": "invoices:read",
+  "GET /invoices/{id}/export": "invoices:read",
+  "POST /invoices": "invoices:write",
+  "PUT /invoices/{id}": "invoices:write",
+  "DELETE /invoices/{id}": "invoices:write",
+  "POST /invoices/{id}/approve": "invoices:issue",
+  "POST /invoices/{id}/send": "invoices:issue",
+  "POST /invoices/{id}/void": "invoices:issue",
   "GET /cost-centres": "costs:read",
   "POST /cost-centres": "costs:write",
   "PUT /cost-centres/{id}": "costs:write",
@@ -749,6 +853,13 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "DELETE /cost-reports/{id}/notifications/{notificationId}": "org:settings:write",
   "POST /cost-reports/{id}/notifications/{notificationId}/send": "org:settings:write",
   "GET /cost-report-notifications": "costs:read",
+  // cost annotations — dated notes drawn over a chart. Reads ride costs:read
+  // and writes costs:write, exactly as reports do: a note about spend is cost
+  // data with words on it, not dashboard furniture.
+  "GET /cost-annotations": "costs:read",
+  "POST /cost-annotations": "costs:write",
+  "PUT /cost-annotations/{id}": "costs:write",
+  "DELETE /cost-annotations/{id}": "costs:write",
   // change-based cost alerts — a cost-scoped alert config, so it rides the
   // cost scopes the way reports do.
   "GET /cost-alerts": "costs:read",

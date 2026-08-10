@@ -6,6 +6,7 @@ import {
   agentsTabTarget,
   costsTabTarget,
   costReportsTabTarget,
+  invoicesTabTarget,
   graphTabTarget,
   logsTabTarget,
   changesTabTarget,
@@ -34,6 +35,7 @@ export {
   agentsTabTarget,
   costsTabTarget,
   costReportsTabTarget,
+  invoicesTabTarget,
   graphTabTarget,
   logsTabTarget,
   changesTabTarget,
@@ -95,6 +97,14 @@ export function getWorkspaceNavigateArgs(
       return {
         to: "/cost-reports",
         search: target.reportId ? { report: target.reportId } : {},
+        ...(replace ? { replace: true } : {}),
+      };
+    // Same always-pass-`search` rule as Cost reports: omitting the key makes
+    // TanStack retain ?invoice= when navigating from an invoice to the list.
+    case "invoices":
+      return {
+        to: "/invoices",
+        search: target.invoiceId ? { invoice: target.invoiceId } : {},
         ...(replace ? { replace: true } : {}),
       };
     case "graph":
@@ -221,6 +231,10 @@ export function syncWorkspaceRouteFromPath(
   if (segments[0] === "cost-reports") {
     const params = new URLSearchParams(search ?? "");
     return costReportsTabTarget(params.get("report") ?? undefined);
+  }
+  if (segments[0] === "invoices") {
+    const params = new URLSearchParams(search ?? "");
+    return invoicesTabTarget(params.get("invoice") ?? undefined);
   }
   if (segments[0] === "graph") {
     return graphTabTarget();

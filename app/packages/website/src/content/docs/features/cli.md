@@ -221,6 +221,29 @@ infrawrench showback              # spend by cost centre; unmatched spend is "un
 
 <insert [Terminal showing `infrawrench tags` output with the compliance table (green/yellow/red score column) and the untagged-spend bar chart below] here>
 
+And the organization's own adjustments to collected spend — the answer to "why doesn't this total match the invoice":
+
+```
+infrawrench billing-rules                 # every rule, in the order it evaluates
+infrawrench billing-rules "Platform overhead"
+infrawrench billing-rules --json
+```
+
+Read-only: writing a markup changes every figure the organization reports about itself, and rides `org:settings:write` with an audit entry behind it. See [Billing rules](./billing-rules.md).
+
+And, if you bill customers for the infrastructure you run for them, the documents themselves:
+
+```
+infrawrench invoices                      # every invoice, newest period first
+infrawrench invoices customers            # the managed accounts and their scope
+infrawrench invoices INV-2026-0004        # one invoice, with its full derivation
+infrawrench invoices northwind --json     # by customer name
+```
+
+The detail view prints what was collected, what your billing rules added, the exchange rate and the day it was read, and the final figure — the whole chain, next to `infrawrench showback` for the same period. A draft says so in the status column and its total prints as `not computed` in the list rather than `0.00`, because a draft's figures are recomputed on read and the list does not recompute.
+
+Read-only, like billing rules: approving an invoice freezes what a customer will be sent and rides `invoices:issue` with an audit entry naming a person. See [Managed accounts & invoices](./managed-accounts.md).
+
 ## What changed, and what depends on what
 
 Four read commands over the organization's own history and topology:

@@ -101,6 +101,21 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       // Infrawrench — an org that wants members filing grants `linear:write`
       // through a custom role.
       "linear:read",
+      // `invoices:*` is deliberately absent — all three of them.
+      //
+      // Members get `costs:read` because the org's own spend is something the
+      // people spending it should be able to see. A managed account is not
+      // that: it holds a customer's contact details and the price that customer
+      // was quoted, which is commercial information about a third party rather
+      // than an internal figure. Same call as `session-recordings:read`.
+      //
+      // `invoices:write` and `invoices:issue` follow for the obvious reason —
+      // an invoice is a document sent to somebody outside the organisation.
+      // Admins and owners get all three for free (their sets are
+      // catalog-derived); an org whose billing clerk is a member grants
+      // `invoices:read`/`invoices:write` through a custom role and keeps
+      // `invoices:issue` with the finance lead, which is the whole reason the
+      // family is split three ways.
     ],
   },
 };

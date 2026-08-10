@@ -747,6 +747,12 @@ export const orgTagPolicies = pgTable("org_tag_policies", {
  * Named cost centres spend is allocated to for showback ("Platform", "Data",
  * "Growth"…). Purely org-defined labels — the mapping from spend to centre is
  * the allocation rules table below.
+ *
+ * Centres nest: a division holds teams, a team holds products. Nesting is a
+ * *reporting* structure only — allocation still resolves every cost row to
+ * exactly one centre, and the parent's subtree total is assembled from those
+ * leaf numbers afterwards. An org that never sets a parent is a flat list of
+ * roots and behaves exactly as it did before the column existed.
  */
 export const costCentres = pgTable(
   "cost_centres",
@@ -812,6 +818,227 @@ export const costAllocationRules = pgTable(
   (t) => ({
     orgIdx: index("cost_allocation_rules_org_idx").on(t.organizationId),
     centreIdx: index("cost_allocation_rules_centre_idx").on(t.costCentreId),
+  }),
+);
+
+/**
+ * Billing rules — the org's own adjustments to collected spend: a markup that
+ * recovers shared overhead, a discount negotiated outside the provider's
+ * pricing, a shared cluster reallocated onto the teams that use it.
+ *
+ * **Nothing here is ever written into `cost_daily`.** These rows are compiled
+ * into the cost query at read time (`clickhouse/cost-readers.ts`), so collected
+ * spend stays exactly what the provider reported — the number an invoice
+ * reconciles against — and editing or deleting a rule restates nothing. That is
+ * the whole reason this is a rule table and not an ingestion step.
+ *
+ * `match` is the allocation vocabulary plus `chargeType`, deliberately reusing
+ * `cost_allocation_rules`' shape rather than inventing a second dialect over
+ * the same columns. `adjustment` is stored inline as jsonb like
+ * `cost_scenario_models.adjustments`: it is created, edited and reasoned about
+ * as one object with its rule, nothing queries across it, and which of its
+ * fields are meaningful follows from `kind`.
+ *
+ * Evaluation order is ascending `priority`, then `created_at`, then `id`.
+ * Within it, percentage rules **all** apply (two 10% markups compound to 21%)
+ * while reallocation is first-match-wins, so a row moves at most once and the
+ * organisation's total is conserved. See `client-core/src/billing-rules.ts`.
+ */
+export const costBillingRules = pgTable(
+  "cost_billing_rules",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    /**
+     * Disabled rules are kept, not deleted — a markup switched off for a
+     * quarter and back on for the next is the normal life of these objects, and
+     * deleting it would lose the wording finance agreed to.
+     */
+    enabled: boolean("enabled").notNull().default(true),
+    /** Lower fires first. */
+    priority: integer("priority").notNull().default(0),
+    match: jsonb("match").$type<BillingRuleMatch>().notNull().default({}),
+    adjustment: jsonb("adjustment").$type<BillingRuleAdjustment>().notNull(),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("cost_billing_rules_org_idx").on(t.organizationId),
+    /**
+     * Names address a rule from the CLI and from the "these rules are in force"
+     * caption, so they must be unambiguous within an org. Hard-deleted rather
+     * than soft, so no partial predicate is needed: a deleted rule is gone and
+     * nothing references it — every number it ever affected is recomputed from
+     * the rules that exist now, because none of it was ever stored.
+     */
+    orgNameUnique: uniqueIndex("cost_billing_rules_org_name_unique").on(t.organizationId, t.name),
+  }),
+);
+
+/**
+ * Managed accounts — the customers a managed service provider bills.
+ *
+ * Scope is stored as two id arrays rather than a join table for the same reason
+ * `report_notifications` keeps its Slack channel ids inline: nothing queries
+ * across them, they are edited as one object with the customer, and the
+ * exclusivity rule ("a cost centre belongs to at most one customer") needs an
+ * error message that names the *other* customer, which a unique constraint
+ * cannot produce. See `managedAccountScopeConflicts` in client-core.
+ *
+ * There is deliberately **no match/rule column here.** Which spend belongs to a
+ * customer is already answered by `cost_allocation_rules`; a second vocabulary
+ * over the same `cost_daily` columns would eventually disagree with the first,
+ * and the day it did, an invoice would stop reconciling against the showback
+ * report the customer was shown.
+ *
+ * Soft-deleted, because an issued invoice names its customer and that name must
+ * keep resolving for as long as the invoice does.
+ */
+export const managedAccounts = pgTable(
+  "managed_accounts",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    contactName: text("contact_name"),
+    contactEmail: text("contact_email"),
+    billingAddress: text("billing_address"),
+    /** ISO 4217 the customer is invoiced in. */
+    billingCurrency: text("billing_currency").notNull(),
+    /**
+     * Amortized by default: charging a customer the whole cash value of a
+     * three-year commitment in the month it was signed is not a bill anyone can
+     * budget against.
+     */
+    costBasis: text("cost_basis").$type<"cash" | "amortized">().notNull().default("amortized"),
+    /** Off means a pass-through contract — billed exactly what providers charged. */
+    applyBillingRules: boolean("apply_billing_rules").notNull().default(true),
+    notes: text("notes"),
+    costCentreIds: jsonb("cost_centre_ids").$type<string[]>().notNull().default([]),
+    accountIds: jsonb("account_ids").$type<string[]>().notNull().default([]),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("managed_accounts_org_idx").on(t.organizationId),
+    /**
+     * Names address a customer from the CLI and head an invoice, so they must
+     * be unambiguous within an org. Partial on the live rows: a deleted
+     * customer must not reserve its name forever.
+     */
+    orgNameUnique: uniqueIndex("managed_accounts_org_name_unique")
+      .on(t.organizationId, t.name)
+      .where(sql`deleted_at is null`),
+  }),
+);
+
+/**
+ * Invoices raised against a managed account.
+ *
+ * ## Why the figures are columns and not a query
+ *
+ * Collected spend restates for days after the fact. An invoice that silently
+ * changed after it was sent to a customer is the single worst outcome this
+ * feature could produce, so `lines`, `totals` and `derivation` are **written on
+ * approval** and read back verbatim ever after. A `draft` leaves them null and
+ * recomputes on every read; that is the only status that ever touches
+ * ClickHouse for its numbers.
+ *
+ * `derivation` carries the exchange rates and the day they were read, the
+ * billing rules in force, and the names everything in scope had at the time.
+ * A later rate change, rename or rule edit therefore cannot restate history —
+ * which is the entire point of storing it rather than joining to it.
+ *
+ * ## Void, never delete
+ *
+ * There is no delete path for an issued invoice and no update path either
+ * (`cost/invoices.ts` refuses both through `managedInvoiceBlocker`). A wrong
+ * invoice is voided with a reason and superseded by a corrective one; the pair
+ * link through `supersedes_invoice_id` / `superseded_by_invoice_id` so the
+ * correction is discoverable from either end.
+ */
+export const managedInvoices = pgTable(
+  "managed_invoices",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /**
+     * Restrict, not cascade: an issued invoice outlives the customer record's
+     * usefulness. `managed_accounts` soft-deletes, so this never fires in
+     * practice — it is the backstop that makes that non-negotiable.
+     */
+    managedAccountId: text("managed_account_id")
+      .notNull()
+      .references(() => managedAccounts.id, { onDelete: "restrict" }),
+    /** The customer's name at issue time; frozen with the figures. */
+    managedAccountName: text("managed_account_name").notNull(),
+    /**
+     * `INV-2026-0001`. Null while draft — numbers are assigned at approval so a
+     * deleted draft cannot leave a gap in the sequence.
+     */
+    number: text("number"),
+    status: text("status").$type<"draft" | "approved" | "sent" | "void">().notNull(),
+    periodFrom: date("period_from").notNull(),
+    periodTo: date("period_to").notNull(),
+    /** Frozen from the customer's billing currency when the draft is raised. */
+    currency: text("currency").notNull(),
+    notes: text("notes"),
+    /** Null while draft; written once, at approval. */
+    lines: jsonb("lines"),
+    totals: jsonb("totals"),
+    derivation: jsonb("derivation"),
+    /** When the frozen figures were computed — the moment of approval. */
+    computedAt: timestamp("computed_at"),
+    issuedAt: timestamp("issued_at"),
+    approvedByUserId: text("approved_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    sentAt: timestamp("sent_at"),
+    sentByUserId: text("sent_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    voidedAt: timestamp("voided_at"),
+    voidedByUserId: text("voided_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    voidReason: text("void_reason"),
+    supersedesInvoiceId: text("supersedes_invoice_id").references(
+      (): AnyPgColumn => managedInvoices.id,
+      { onDelete: "set null" },
+    ),
+    supersededByInvoiceId: text("superseded_by_invoice_id").references(
+      (): AnyPgColumn => managedInvoices.id,
+      { onDelete: "set null" },
+    ),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("managed_invoices_org_idx").on(t.organizationId),
+    accountIdx: index("managed_invoices_account_idx").on(t.managedAccountId),
+    /**
+     * An invoice number is quoted in a customer's remittance advice, so it must
+     * identify exactly one document in the org. Partial because drafts have no
+     * number yet and Postgres would otherwise treat every null as distinct
+     * anyway — stating it keeps the intent readable.
+     */
+    orgNumberUnique: uniqueIndex("managed_invoices_org_number_unique")
+      .on(t.organizationId, t.number)
+      .where(sql`number is not null`),
   }),
 );
 

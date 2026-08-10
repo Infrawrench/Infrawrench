@@ -132,6 +132,22 @@ describe("tool registry permission declarations", () => {
     ["delete_ssh_key", "ssh-keys:write"],
     ["trust_ssh_host", "accounts:write"],
     ["delete_budget", "budgets:write"],
+    // Business metrics are cost data, not budgets: reads are costs:read and
+    // writes costs:write, matching saved filters and the cost push endpoint.
+    ["list_business_metrics", "costs:read"],
+    ["query_unit_costs", "costs:read"],
+    ["create_business_metric", "costs:write"],
+    ["write_business_metric_values", "costs:write"],
+    ["delete_business_metric", "costs:write"],
+    // Invoices are their own family, not `costs:*`: a managed account holds a
+    // customer's contact details and the price that customer was quoted, which
+    // is commercial information about a third party rather than the org's own
+    // spend. Every invoice tool is read-only — approving and sending are acts a
+    // person takes, with their name on the audit entry.
+    ["list_managed_accounts", "invoices:read"],
+    ["get_managed_account", "invoices:read"],
+    ["list_invoices", "invoices:read"],
+    ["get_invoice", "invoices:read"],
     ["write_custom_graph", "dashboards:write"],
     ["delete_custom_graph", "dashboards:write"],
     // Workflows have their own family now — custom graphs above deliberately

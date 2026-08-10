@@ -3,6 +3,7 @@ import {
   dashboardTabTarget,
   accountTabTarget,
   costReportsTabTarget,
+  invoicesTabTarget,
   deploymentsTabTarget,
   probesTabTarget,
   resourceTabTarget,
@@ -169,6 +170,19 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns invoices route args, clearing the invoice param for the list", () => {
+    // Same reason as cost-reports: navigating back to the list must CLEAR
+    // ?invoice=, or the route resolves straight back into the open invoice.
+    expect(getWorkspaceNavigateArgs(invoicesTabTarget())).toEqual({
+      to: "/invoices",
+      search: {},
+    });
+    expect(getWorkspaceNavigateArgs(invoicesTabTarget("i1"))).toEqual({
+      to: "/invoices",
+      search: { invoice: "i1" },
+    });
+  });
+
   it("returns settings route args, clearing the section param for General", () => {
     expect(getWorkspaceNavigateArgs({ kind: "settings" })).toEqual({
       to: "/settings",
@@ -230,6 +244,14 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/cost-reports", undefined, "report=r1")).toEqual({
       kind: "cost-reports",
       reportId: "r1",
+    });
+  });
+
+  it("parses the invoices path with its invoice param", () => {
+    expect(syncWorkspaceRouteFromPath("/invoices")).toEqual({ kind: "invoices" });
+    expect(syncWorkspaceRouteFromPath("/invoices", undefined, "invoice=i1")).toEqual({
+      kind: "invoices",
+      invoiceId: "i1",
     });
   });
 

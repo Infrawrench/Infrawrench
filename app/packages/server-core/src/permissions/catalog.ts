@@ -111,6 +111,32 @@ export const ALL_PERMISSIONS = [
   // under the org's shared credential and cannot be retracted from here.
   "linear:read",
   "linear:write",
+  // Managed accounts and their invoices — the managed-service-provider surface.
+  //
+  // Its own family rather than more `costs:*` because the acts are of a
+  // different kind. `costs:write` is "name a report, define a cost centre, save
+  // a filter": internal views of the org's own spend, all of them revisable and
+  // none of them leaving the building. An invoice is a commercial document
+  // raised against a third party, and `invoices:read` carries a customer's
+  // contact details and what they were charged, which is not something every
+  // member who can read a cost graph should see by default.
+  //
+  // Three, not two, because generating and issuing are genuinely different
+  // risks and the split is exactly what an org will want to express. `write`
+  // prepares: create a customer, raise a draft, edit a period. `issue` is the
+  // irreversible half — approving freezes the numbers, sending states that the
+  // customer has them, and voiding withdraws a document already in their hands.
+  // A billing clerk can hold `write` and prepare a month's invoices while only
+  // the finance lead holds `issue`; collapsing them would make maker-checker
+  // inexpressible, which is the one control this domain most obviously needs.
+  //
+  // Deliberately not `org:settings:write` (where billing rules and exchange
+  // rates ride): those are configuration acts that restate the org's own
+  // figures, and issuing an invoice every month is operational work that should
+  // not require handing someone SSO, seats and the org's whole money story.
+  "invoices:read",
+  "invoices:write",
+  "invoices:issue",
   "pages:write",
   "org:settings:write",
 ] as const;
