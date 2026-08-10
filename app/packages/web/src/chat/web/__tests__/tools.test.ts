@@ -18,6 +18,8 @@ vi.mock("@infrawrench/server-core/billing/ai-usage", () => ({
     }),
   reserveAiSpend: () => Promise.resolve("res-test"),
   releaseAiSpendReservation: () => Promise.resolve(),
+  touchAiSpendReservation: () => Promise.resolve(),
+  AI_SPEND_RESERVATION_TOUCH_MS: 60_000,
   AiSpendCapExceededError: class AiSpendCapExceededError extends Error {},
   estimateTokensFromChars: (n: number) => Math.max(1, Math.ceil(n / 4)),
 }));

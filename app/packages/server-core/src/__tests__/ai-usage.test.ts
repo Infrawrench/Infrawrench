@@ -28,6 +28,7 @@ vi.mock("../db/schema", () => ({
     id: "id",
     organizationId: "org",
     estimatedCostMicros: "est",
+    expiresAt: "expires",
     createdAt: "ts",
   },
   organizations: { id: "id", chatMonthlyCapMicros: "cap", complimentary: "complimentary" },
@@ -45,8 +46,10 @@ const {
   recordWorkflowAiUsage,
   reserveAiSpend,
   releaseAiSpendReservation,
+  touchAiSpendReservation,
   estimateTokensFromChars,
   AiSpendCapExceededError,
+  AI_SPEND_RESERVATION_TTL_MS,
 } = await import("../billing/ai-usage");
 
 describe("getAiSpendStatus", () => {
@@ -293,7 +296,12 @@ describe("reserve / release AI spend", () => {
       expect.objectContaining({
         organizationId: "o1",
         estimatedCostMicros: 50_000,
+        expiresAt: expect.any(Date),
       }),
+    );
+    const inserted = values.mock.calls[0]?.[0] as { expiresAt: Date };
+    expect(inserted.expiresAt.getTime()).toBeGreaterThan(
+      Date.now() + AI_SPEND_RESERVATION_TTL_MS - 5_000,
     );
   });
 
@@ -334,6 +342,14 @@ describe("reserve / release AI spend", () => {
     await releaseAiSpendReservation("res-1");
     expect(mockDelete).toHaveBeenCalled();
     expect(where).toHaveBeenCalled();
+  });
+
+  it("refreshes a reservation's expiry", async () => {
+    const where = vi.fn().mockResolvedValue(undefined);
+    const set = vi.fn().mockReturnValue({ where });
+    mockUpdate.mockReturnValue({ set });
+    await touchAiSpendReservation("res-1");
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ expiresAt: expect.any(Date) }));
   });
 
   it("estimates tokens from character length", () => {

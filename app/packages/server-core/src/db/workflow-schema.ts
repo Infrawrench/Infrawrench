@@ -242,8 +242,9 @@ export const workflowAiUsage = pgTable(
  * In-flight hold on an org's monthly AI spend pool. Chat turns and workflow
  * `infra.ai()` calls both insert here under an org advisory lock before talking
  * to a provider, so concurrent consumers cannot all clear the same below-cap
- * check. Rows older than the TTL in billing/ai-usage.ts are purged and ignored
- * — a process that dies mid-call must not permanently block the org.
+ * check. `expiresAt` is pushed forward while the call is still running
+ * (see `touchAiSpendReservation`); a process that dies mid-call stops
+ * refreshing and the row is purged so it cannot permanently block the org.
  */
 export const aiSpendReservations = pgTable(
   "ai_spend_reservations",
@@ -253,10 +254,12 @@ export const aiSpendReservations = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
     estimatedCostMicros: integer("estimated_cost_micros").notNull(),
+    /** When this hold stops counting; refreshed by long-running callers. */
+    expiresAt: timestamp("expires_at").notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({
-    orgCreatedIdx: index("ai_spend_reservations_org_created_idx").on(t.organizationId, t.createdAt),
+    orgExpiresIdx: index("ai_spend_reservations_org_expires_idx").on(t.organizationId, t.expiresAt),
   }),
 );
 

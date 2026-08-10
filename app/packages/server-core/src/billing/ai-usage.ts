@@ -14,11 +14,12 @@
  *
  * Before a provider call, both surfaces {@link reserveAiSpend} under an
  * org-scoped advisory lock so concurrent consumers see each other's hold.
- * Reservations older than {@link AI_SPEND_RESERVATION_TTL_MS} are purged and
- * ignored, so a crashed process cannot permanently block the org. On success
- * the caller records real usage first, then {@link releaseAiSpendReservation}
- * (brief double-count is conservative for the cap); on failure or Stop they
- * release without recording.
+ * Each reservation carries an {@link AI_SPEND_RESERVATION_TTL_MS} expiry that
+ * long-running callers refresh via {@link touchAiSpendReservation}; expired
+ * rows are purged and ignored so a crashed process cannot permanently block
+ * the org. On success the caller records real usage first, then
+ * {@link releaseAiSpendReservation} (brief double-count is conservative for
+ * the cap); on failure or Stop they release without recording.
  *
  * Workflow usage reports to the same Stripe chat meter (micro-dollar unit)
  * with the same plain-fetch approach as `./build-meter.ts` — server-core does
@@ -52,11 +53,16 @@ function monthStart(): Date {
 const FREE_TIER_CAP_MICROS = 5_000_000;
 
 /**
- * How long an in-flight reservation counts toward the cap. Past the workflow
- * AI timeout (2 min) and long enough for a chat model call; short enough that
- * a dead process stops blocking the org within minutes.
+ * How long an in-flight reservation keeps counting without a refresh. Past the
+ * workflow AI timeout (2 min); chat streams push this forward via
+ * {@link touchAiSpendReservation} so a long provider call cannot fall out of
+ * the pool mid-flight. Short enough that a dead process stops blocking the
+ * org within minutes of its last heartbeat.
  */
 export const AI_SPEND_RESERVATION_TTL_MS = 10 * 60 * 1000;
+
+/** Interval at which long-running callers should {@link touchAiSpendReservation}. */
+export const AI_SPEND_RESERVATION_TOUCH_MS = Math.floor(AI_SPEND_RESERVATION_TTL_MS / 3);
 
 /** Structurally identical to `SpendStatus` in @infrawrench/ui. */
 export interface AiSpendStatus {
@@ -85,25 +91,25 @@ export class AiSpendCapExceededError extends Error {
 /** Anything that can run the selects `getAiSpendStatus` needs — `db` or a tx. */
 type SpendQueryable = Pick<typeof db, "select">;
 
-function reservationCutoff(): Date {
-  return new Date(Date.now() - AI_SPEND_RESERVATION_TTL_MS);
+function reservationExpiry(from = Date.now()): Date {
+  return new Date(from + AI_SPEND_RESERVATION_TTL_MS);
 }
 
-/** Drop reservations past the TTL so a crashed holder cannot block the org. */
+/** Drop reservations past their expiry so a crashed holder cannot block the org. */
 async function purgeExpiredReservations(
   queryable: { delete: typeof db.delete },
   organizationId?: string,
 ): Promise<void> {
-  const cutoff = reservationCutoff();
+  const now = new Date();
   await queryable
     .delete(aiSpendReservations)
     .where(
       organizationId
         ? and(
             eq(aiSpendReservations.organizationId, organizationId),
-            lt(aiSpendReservations.createdAt, cutoff),
+            lt(aiSpendReservations.expiresAt, now),
           )
-        : lt(aiSpendReservations.createdAt, cutoff),
+        : lt(aiSpendReservations.expiresAt, now),
     );
 }
 
@@ -162,7 +168,7 @@ export async function getAiSpendStatus(
     .where(
       and(
         eq(aiSpendReservations.organizationId, organizationId),
-        gte(aiSpendReservations.createdAt, reservationCutoff()),
+        gte(aiSpendReservations.expiresAt, new Date()),
       ),
     );
 
@@ -243,9 +249,22 @@ export async function reserveAiSpend(
       id,
       organizationId,
       estimatedCostMicros: estimate,
+      expiresAt: reservationExpiry(),
     });
   });
   return id;
+}
+
+/**
+ * Push a reservation's expiry forward by another {@link AI_SPEND_RESERVATION_TTL_MS}.
+ * Long-running chat streams call this on an interval so an in-flight hold cannot
+ * age out and free the same budget for a concurrent caller.
+ */
+export async function touchAiSpendReservation(reservationId: string): Promise<void> {
+  await db
+    .update(aiSpendReservations)
+    .set({ expiresAt: reservationExpiry() })
+    .where(eq(aiSpendReservations.id, reservationId));
 }
 
 /** Drop an in-flight reservation so its estimate stops counting toward the cap. */

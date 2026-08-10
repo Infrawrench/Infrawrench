@@ -20,9 +20,11 @@
 import { z } from "zod";
 import {
   AiSpendCapExceededError,
+  AI_SPEND_RESERVATION_TOUCH_MS,
   estimateTokensFromChars,
   releaseAiSpendReservation,
   reserveAiSpend,
+  touchAiSpendReservation,
 } from "@infrawrench/server-core/billing/ai-usage";
 import type { ToolDefinition, ToolResult } from "../../tools/types";
 import { ok, err } from "../../tools/types";
@@ -116,50 +118,63 @@ async function runSearch(query: string, ctx: WebToolContext): Promise<ToolResult
   }
 
   try {
-    const outcome = await backend.search(query);
+    const touchTimer = setInterval(() => {
+      void touchAiSpendReservation(reservationId).catch((touchErr) => {
+        console.error("[chat/web] failed to refresh AI spend reservation:", touchErr);
+      });
+    }, AI_SPEND_RESERVATION_TOUCH_MS);
+    if (typeof touchTimer.unref === "function") touchTimer.unref();
 
-    // Bill before returning: the searches happened whether or not the agent
-    // finds the answer useful. Record before releasing so the brief overlap
-    // is a conservative double-count rather than a gap.
-    await recordWebSearchUsage({
-      organizationId: ctx.organizationId,
-      conversationId: ctx.conversationId,
-      messageId: ctx.messageId,
-      backend: backend.id,
-      model: outcome.model,
-      queries: outcome.queries,
-      usage: outcome.usage,
-    });
+    try {
+      const outcome = await backend.search(query);
 
-    if (outcome.hits.length === 0 && !outcome.summary) {
-      return ok({ query, results: [], note: "The search returned no results." });
+      // Bill before returning: the searches happened whether or not the agent
+      // finds the answer useful. Record before releasing so the brief overlap
+      // is a conservative double-count rather than a gap.
+      await recordWebSearchUsage({
+        organizationId: ctx.organizationId,
+        conversationId: ctx.conversationId,
+        messageId: ctx.messageId,
+        backend: backend.id,
+        model: outcome.model,
+        queries: outcome.queries,
+        usage: outcome.usage,
+      });
+
+      if (outcome.hits.length === 0 && !outcome.summary) {
+        return ok({ query, results: [], note: "The search returned no results." });
+      }
+
+      const sources = outcome.hits.map((hit, index) => ({
+        n: index + 1,
+        title: hit.title,
+        url: hit.url,
+        ...(hit.age ? { age: hit.age } : {}),
+      }));
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: untrusted(
+              "search_results",
+              [
+                `Query: ${query}`,
+                "",
+                outcome.summary,
+                "",
+                "Sources:",
+                ...sources.map(
+                  (s) => `[${s.n}] ${s.title} — ${s.url}${s.age ? ` (${s.age})` : ""}`,
+                ),
+              ].join("\n"),
+            ),
+          },
+        ],
+      };
+    } finally {
+      clearInterval(touchTimer);
     }
-
-    const sources = outcome.hits.map((hit, index) => ({
-      n: index + 1,
-      title: hit.title,
-      url: hit.url,
-      ...(hit.age ? { age: hit.age } : {}),
-    }));
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: untrusted(
-            "search_results",
-            [
-              `Query: ${query}`,
-              "",
-              outcome.summary,
-              "",
-              "Sources:",
-              ...sources.map((s) => `[${s.n}] ${s.title} — ${s.url}${s.age ? ` (${s.age})` : ""}`),
-            ].join("\n"),
-          ),
-        },
-      ],
-    };
   } finally {
     await releaseAiSpendReservation(reservationId).catch((releaseErr) => {
       console.error("[chat/web] failed to release AI spend reservation:", releaseErr);

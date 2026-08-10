@@ -25,9 +25,11 @@ import {
 } from "@infrawrench/ui";
 import {
   AiSpendCapExceededError,
+  AI_SPEND_RESERVATION_TOUCH_MS,
   estimateTokensFromChars,
   releaseAiSpendReservation,
   reserveAiSpend,
+  touchAiSpendReservation,
 } from "@infrawrench/server-core/billing/ai-usage";
 import { computeCostMicros } from "./pricing";
 import { recordUsage } from "./billing";
@@ -345,55 +347,69 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
     let costMicros = 0;
 
     try {
+      // Keep the hold alive for the whole stream — a 32k-token turn can outlast
+      // the base reservation TTL, and without a refresh concurrent callers would
+      // see the budget as free mid-call.
+      const touchTimer = setInterval(() => {
+        void touchAiSpendReservation(reservationId).catch((touchErr) => {
+          console.error("[chat/agent] failed to refresh AI spend reservation:", touchErr);
+        });
+      }, AI_SPEND_RESERVATION_TOUCH_MS);
+      if (typeof touchTimer.unref === "function") touchTimer.unref();
+
       try {
-        for await (const ev of provider.streamTurn({
-          model: activeModel,
-          system: SYSTEM_PROMPT,
-          tools: providerTools,
-          messages: apiMessages,
-          maxTokens: MAX_TOKENS,
-        })) {
-          if (ev.type === "done") {
-            collectedBlocks = ev.blocks;
-            stopReason = ev.stopReason;
-            inputTokens = ev.usage.inputTokens;
-            outputTokens = ev.usage.outputTokens;
-            cacheReadTokens = ev.usage.cacheReadTokens;
-            cacheWriteTokens = ev.usage.cacheWriteTokens;
-          } else {
-            yield ev;
+        try {
+          for await (const ev of provider.streamTurn({
+            model: activeModel,
+            system: SYSTEM_PROMPT,
+            tools: providerTools,
+            messages: apiMessages,
+            maxTokens: MAX_TOKENS,
+          })) {
+            if (ev.type === "done") {
+              collectedBlocks = ev.blocks;
+              stopReason = ev.stopReason;
+              inputTokens = ev.usage.inputTokens;
+              outputTokens = ev.usage.outputTokens;
+              cacheReadTokens = ev.usage.cacheReadTokens;
+              cacheWriteTokens = ev.usage.cacheWriteTokens;
+            } else {
+              yield ev;
+            }
           }
+        } catch (e) {
+          yield {
+            type: "error",
+            message: e instanceof Error ? e.message : `${provider.label} request failed`,
+          };
+          return;
         }
-      } catch (e) {
-        yield {
-          type: "error",
-          message: e instanceof Error ? e.message : `${provider.label} request failed`,
-        };
-        return;
+
+        // Persist the assistant message.
+        await db.insert(chatMessages).values({
+          id: assistantMessageId,
+          conversationId,
+          role: "assistant",
+          content: collectedBlocks,
+          stopReason,
+          inputTokens,
+          outputTokens,
+          cacheReadTokens,
+          cacheWriteTokens,
+        });
+
+        // Record real usage before the finally-release so the brief overlap is a
+        // conservative double-count rather than a gap concurrent callers could use.
+        costMicros = await recordUsage({
+          organizationId: auth.organizationId,
+          conversationId,
+          messageId: assistantMessageId,
+          model: activeModel,
+          usage: { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens },
+        });
+      } finally {
+        clearInterval(touchTimer);
       }
-
-      // Persist the assistant message.
-      await db.insert(chatMessages).values({
-        id: assistantMessageId,
-        conversationId,
-        role: "assistant",
-        content: collectedBlocks,
-        stopReason,
-        inputTokens,
-        outputTokens,
-        cacheReadTokens,
-        cacheWriteTokens,
-      });
-
-      // Record real usage before the finally-release so the brief overlap is a
-      // conservative double-count rather than a gap concurrent callers could use.
-      costMicros = await recordUsage({
-        organizationId: auth.organizationId,
-        conversationId,
-        messageId: assistantMessageId,
-        model: activeModel,
-        usage: { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens },
-      });
     } finally {
       await releaseAiSpendReservation(reservationId).catch((releaseErr) => {
         console.error("[chat/agent] failed to release AI spend reservation:", releaseErr);

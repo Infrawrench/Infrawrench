@@ -13,8 +13,9 @@
 -- `ai_spend_reservations` holds estimated cost while a provider call is in
 -- flight (chat or workflow). Concurrent callers take an org advisory lock,
 -- purge expired rows, and insert here so they see each other's hold on the
--- shared pool. Rows older than the TTL are ignored and deleted — a crashed
--- process cannot permanently block an org.
+-- shared pool. `expires_at` is refreshed while the call is still running; a
+-- crashed process stops refreshing and the row ages out so it cannot
+-- permanently block an org.
 
 --> statement-breakpoint
 CREATE TABLE "workflow_ai_usage" (
@@ -40,7 +41,8 @@ CREATE TABLE "ai_spend_reservations" (
   "id" text PRIMARY KEY NOT NULL,
   "organization_id" text NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
   "estimated_cost_micros" integer NOT NULL,
+  "expires_at" timestamp NOT NULL,
   "created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE INDEX "ai_spend_reservations_org_created_idx" ON "ai_spend_reservations" ("organization_id", "created_at");
+CREATE INDEX "ai_spend_reservations_org_expires_idx" ON "ai_spend_reservations" ("organization_id", "expires_at");
