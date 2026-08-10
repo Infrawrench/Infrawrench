@@ -55,6 +55,51 @@ Azure subscriptions feed [cost graphs & budgets](../features/cloud-costs.md) via
 
 - The service principal needs the **Cost Management Reader** role on the subscription — plain **Reader** is not enough.
 
+### Charge types
+
+Cost rows are split by **charge type**, so a month with a reservation purchase in it doesn't read as a month of runaway consumption. Azure's charge types map onto the breakdown you see in cost graphs like this:
+
+| Azure charge type                                     | Shown as                 |
+| ----------------------------------------------------- | ------------------------ |
+| Usage, billed on demand                               | Usage                    |
+| Usage, covered by a reservation or savings plan       | Commitment-covered usage |
+| Purchase, when a reservation or savings plan backs it | Commitment fee           |
+| Purchase, otherwise (Marketplace, support)            | Other                    |
+| Refund                                                | Refund                   |
+| Credit                                                | Credit                   |
+| Tax                                                   | Tax                      |
+| RoundingAdjustment                                    | Adjustment               |
+
+Things worth knowing about the numbers:
+
+- **Non-usage rows have no service and no region.** Azure's query API allows only two groupings per query, so the charge-type pass spends both on the charge type and the commitment. Nothing is lost by it: Azure reports purchases with "No service name" and "No resource location" regardless.
+- **Which charge types you actually see depends on your agreement.** Reservation and savings-plan purchases and refunds are billing-account records, so a subscription rarely carries them; pay-as-you-go subscriptions never do. Enterprise Agreement accounts don't get refund rows at all.
+- **If your subscription doesn't support the breakdown, collection still works.** Azure only exposes the benefit column on Enterprise Agreement and Microsoft Customer Agreement accounts. When it refuses the query, Infrawrench falls back to the previous single-query collection and every row is recorded as usage.
+- **Amortized amounts are collected too, where Azure serves them.** See below.
+
+### Amortized cost, and how coverage is measured
+
+Azure serves cost data as two datasets. **Actual cost** is the bank statement: a reservation purchase lands whole on the day it was charged, and usage the reservation covers costs **zero**, because you paid for it when you bought the reservation. **Amortized cost** spreads the purchase across the term it buys, so the covered hours are priced at what they are actually worth.
+
+Infrawrench queries both, with the same grouping, and the gap between them for a given service and region is exactly what your commitments delivered there. That cell is then recorded as two rows: on-demand consumption, and commitment-covered consumption worth nothing in cash and its amortized value on the amortized [cost basis](../features/cloud-costs.md#cash-and-amortized).
+
+This is what makes the [Commitments](../features/commitments.md) coverage figure work for Azure. It needs no Enterprise Agreement, because it never asks which reservation covered an hour — only whether one did.
+
+Two things follow from it:
+
+- **A reservation purchase is worth zero on the amortized basis**, deliberately. Its money has been redistributed to the covered hours, and counting it again on its purchase day would show the purchase at full price alongside every amortized slice of it.
+- **Amortized totals exclude unused commitment hours.** Azure reports those as their own charge types in the amortized dataset only, and this pass does not collect them. Cash totals and coverage are unaffected; an amortized grand total is short by exactly the money a reservation wasted.
+
+**If your subscription doesn't serve amortized data, nothing breaks.** Cost Analysis "doesn't support viewing amortized reservation costs for a pay-as-you-go subscription", and Microsoft Online Services Agreement accounts have no commitment purchases at all. Where the pass is refused, each cell is recorded as one undifferentiated usage row with no amortized figure, and the amortized view falls back to cash for it.
+
+### Upgrading from an earlier version
+
+Nothing is required of you. Days collected by an older version were stored with every row typed as usage, and re-collection replaces them: a usage row keeps exactly the identity it always had. Where it cannot — a service and region whose spend was _only_ a purchase, tax, or refund, so nothing new lands on the old row's identity — every collection compares what it is about to write against what is already stored for the same days and supersedes anything left over. Stale rows are cleared by the next collection that touches their day.
+
+Earlier builds documented a manual `ALTER TABLE cost_daily DELETE` here. It is no longer needed and should not be run.
+
+<insert [Cost graph for an Azure subscription grouped by charge type, showing a Usage series alongside a Commitment fee spike on a reservation purchase day] here>
+
 ## Commitments
 
 Azure accounts feed the [Commitments](../features/commitments.md) section with **reservations**, listed daily from the tenant-level `Microsoft.Capacity/reservations` API.
@@ -62,3 +107,5 @@ Azure accounts feed the [Commitments](../features/commitments.md) section with *
 - The service principal needs **Reader** on the reservations (or the **Reservations Reader** role at tenant scope) — reservation access is granted separately from subscription roles.
 - Azure's list API reports **no purchase price**, so reservation rows show "price not reported" rather than a dollar figure — the price lives on the reservation order's billing records, not here.
 - Azure is the only provider that reports its **own utilization** (1, 7 and 30-day figures). Those are shown labelled as provider-reported, alongside — never blended with — the utilization Infrawrench derives from your cost rows.
+- **Coverage is measured on amortized figures**, because on the cash figures Azure reports, usage covered by a reservation costs nothing and every account would read 0% however well covered it is. See [Amortized cost, and how coverage is measured](#amortized-cost-and-how-coverage-is-measured) above. Subscriptions that do not serve amortized data contribute no covered spend, and are named as excluded rather than counted as 0%.
+- **Per-reservation utilization needs an Enterprise Agreement or Microsoft Customer Agreement**, because the benefit column that names the specific reservation only exists there. Coverage does not — it only asks whether an hour was covered. The provider-reported utilization figures above are always available.

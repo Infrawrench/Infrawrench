@@ -12,7 +12,7 @@ import type {
   CommitmentRecord,
   CostEstimate,
   CostFetchRange,
-  CostRow,
+  CostFetchResult,
   CredentialExport,
   HostServices,
   PreflightResult,
@@ -512,7 +512,7 @@ export class AWSClient implements PluginClient {
     return fetchMetricSeriesImpl(this.credsFor(region), resource, resourceTypeId, timeRange);
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostFetchResult> {
     return fetchAwsCostData(this.creds, range);
   }
 

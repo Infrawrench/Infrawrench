@@ -73,6 +73,30 @@ interface AzureReservationListResponse {
 }
 
 /**
+ * Canonical form of a commitment id, applied to **both** sides of the join.
+ *
+ * `CostRow.commitmentId` is matched against `CommitmentRecord.id` by string
+ * equality in the host's ClickHouse queries, and the two ids come from
+ * different Azure surfaces that do not agree on case: the reservation list
+ * returns resource ids spelled `/providers/microsoft.capacity/…`, while the
+ * `BenefitId` column in cost data is documented only via a *case-insensitive*
+ * provider-segment test (`if BenefitId contains '/microsoft.capacity/'
+ * (case-insensitive)` — https://learn.microsoft.com/en-us/cloud-computing/finops/focus/convert),
+ * which is Microsoft telling us the casing is not stable. ARM resource ids are
+ * case-insensitive by construction, so lower-casing loses nothing and is the
+ * only way the join is reliable.
+ *
+ * Changing the id this function returns changes the upsert identity of stored
+ * commitment records — which is safe here only because the host's collection
+ * is a full snapshot that sweeps records it did not see
+ * (`server-core/src/commitments/collect.ts`), so a re-cased record replaces
+ * rather than duplicates its predecessor on the next pass.
+ */
+export function normalizeAzureCommitmentId(id: string): string {
+  return id.trim().toLowerCase();
+}
+
+/**
  * Azure's provisioning-state zoo, folded to three answers. Succeeded is the
  * only state in which the discount is being applied. The Creating /
  * PendingBilling / ConfirmedBilling family is a purchase in flight. Split and
@@ -129,7 +153,9 @@ function utilization(
 }
 
 export function mapAzureReservation(reservation: AzureReservation): CommitmentRecord | null {
-  const id = reservation.id ?? "";
+  // Canonicalised so cost rows stamped from the BenefitId column join against
+  // it — see normalizeAzureCommitmentId.
+  const id = normalizeAzureCommitmentId(reservation.id ?? "");
   if (!id) return null;
   const props = reservation.properties ?? {};
   const termDays = termToDays(props.term);

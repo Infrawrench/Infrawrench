@@ -3,8 +3,9 @@ import type {
   PublishMessageResult,
   ResourceInstance,
 } from "@infrawrench/plugin-base";
+import { azureRequest, type AzureHttpTransport } from "./http.js";
 
-interface PublishContext {
+interface PublishContext extends AzureHttpTransport {
   /** AAD token scoped to `https://servicebus.azure.net/.default`. */
   serviceBusToken: () => Promise<string>;
 }
@@ -59,7 +60,7 @@ export async function publishServiceBus(
   }
 
   const url = `https://${host}/${encodeURIComponent(entity)}/messages`;
-  const res = await fetch(url, { method: "POST", headers, body: payload.body });
+  const res = await azureRequest(ctx.http, url, { method: "POST", headers, body: payload.body });
   if (!res.ok) {
     throw new Error(`Service Bus send ${res.status}: ${await res.text()}`);
   }
@@ -86,7 +87,7 @@ export async function publishEventHub(
   }
 
   const url = `https://${host}/${encodeURIComponent(hub)}/messages`;
-  const res = await fetch(url, { method: "POST", headers, body: payload.body });
+  const res = await azureRequest(ctx.http, url, { method: "POST", headers, body: payload.body });
   if (!res.ok) {
     throw new Error(`Event Hub send ${res.status}: ${await res.text()}`);
   }

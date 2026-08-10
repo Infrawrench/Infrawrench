@@ -80,11 +80,29 @@ const manifest: PluginManifest = {
     },
   ],
   rateLimit: { capacity: 100, refillPerSecond: 5 },
-  // Cost Management Query API (ActualCost, Daily) at subscription scope,
-  // grouped by ServiceName + ResourceLocation. Needs the "Cost Management
-  // Reader" role — plain "Reader" is not enough. Azure serves ~13 months
-  // of cost history.
-  costs: { dimensions: ["service", "region"], maxHistoryDays: 395, restatementDays: 3 },
+  // Cost Management Query API (Daily) at subscription scope, in three passes:
+  // consumption grouped by ServiceName + ResourceLocation over ActualCost, the
+  // same over AmortizedCost, and everything else grouped by ChargeType +
+  // BenefitId. Needs the "Cost Management Reader" role — plain "Reader" is not
+  // enough. Azure serves ~13 months of cost history.
+  //
+  // `chargeTypes` is declared because the third pass makes the distinction
+  // real: purchases, refunds, tax and rounding adjustments are told apart from
+  // consumption and, where Azure reports a benefit, attributed to it.
+  //
+  // `amortization` is declared because the two consumption passes are paired:
+  // the gap between them is what commitments delivered, which is also the only
+  // way Azure prices reservation-covered usage at anything but zero. The pass
+  // is optional per subscription (pay-as-you-go scopes may refuse it), and a
+  // refusal degrades to unamortized cash rows rather than failing collection —
+  // exactly the fallback this flag's contract describes for a mixed estate.
+  costs: {
+    dimensions: ["service", "region"],
+    maxHistoryDays: 395,
+    restatementDays: 3,
+    chargeTypes: true,
+    amortization: true,
+  },
   // Tenant-level Microsoft.Capacity reservation list. Needs the service
   // principal to hold Reader (or Reservations Reader) on the reservations —
   // surfaced in the plugin docs.

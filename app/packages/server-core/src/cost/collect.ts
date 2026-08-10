@@ -1,9 +1,10 @@
-import type { CostCapabilityDeclaration } from "@infrawrench/plugin-base";
+import { normalizeCostFetchResult, type CostCapabilityDeclaration } from "@infrawrench/plugin-base";
 import { eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts } from "../db/schema";
 import { loadAccountClient } from "../sync-resources";
 import { insertCostRows, toCostDailyRows } from "../clickhouse/cost-writers";
+import { reconcileCollectedChunk } from "../clickhouse/cost-reconcile";
 
 import { addDays, isoDay, monthChunks } from "./dates";
 
@@ -51,9 +52,34 @@ export async function collectAccountCosts(
   const meta = { organizationId, accountId, pluginId: account.pluginId };
   let rowCount = 0;
   for (const chunk of monthChunks(fromDate, today)) {
-    const rows = await client.fetchCostData(accountId, chunk);
+    // A plugin may answer with a bare array or with a `CostFetchResult` that
+    // says something about the pass as well — absent means "not degraded", so
+    // every plugin that has not opted in behaves exactly as before.
+    const { rows, degraded } = normalizeCostFetchResult(
+      await client.fetchCostData(accountId, chunk),
+    );
     if (rows.length > 0) {
-      await insertCostRows(toCostDailyRows(meta, rows));
+      const mapped = toCostDailyRows(meta, rows);
+      // Rows this account has stored for these days that the collection is not
+      // rewriting are superseded — a cell the provider restated away, or one
+      // whose key moved when the plugin started stamping charge types. They are
+      // zeroed in the same insert, so that hazard needs no operator DELETE
+      // against ClickHouse. See `clickhouse/cost-reconcile.ts` for the guards
+      // that keep this from firing on a merely-incomplete fetch, and for what
+      // it does not repair.
+      //
+      // A pass the plugin flagged degraded is the fourth guard, and it lives
+      // here rather than in that module because only the plugin can know it:
+      // the rows are correct in total but written at a *coarser* key space
+      // than usual (AWS and Azure both fall back to an unattributed query when
+      // the provider refuses the attributed shape). Reconciling against them
+      // would zero every attribution row for the chunk, and a backfilled
+      // account only re-fetches `restatementDays` of history — so a transient
+      // refusal that ages past that window would destroy the attribution for
+      // good. Skipping reconciliation leaves the stored rows exactly as they
+      // were, which is what happened before reconciliation existed.
+      const tombstones = degraded ? [] : await reconcileCollectedChunk(meta, chunk, mapped);
+      await insertCostRows([...mapped, ...tombstones]);
       rowCount += rows.length;
     }
   }

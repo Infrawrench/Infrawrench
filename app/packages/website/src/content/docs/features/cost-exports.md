@@ -59,6 +59,12 @@ Every object also carries `day`, `currency`, `amount`, `usage_amount` and `usage
 
 Filters use the same [cost filters](./cloud-costs.md) the graphs and budgets do, so "filtered to account X" means one thing everywhere.
 
+### If you restrict an export to particular charge types
+
+An export can be narrowed to specific [charge types](./cloud-costs.md). One thing to know when you do: **consumption is two charge types, not one.** `Usage` is what a provider billed on demand, and `Commitment-covered usage` is consumption a reservation or savings plan paid for. Selecting only `Usage` excludes everything your commitments covered, which on a heavily committed estate is most of the compute bill.
+
+Exports created before commitment-covered usage existed had `Usage` meaning "all consumption", so they were updated in place to select both — nothing that was already in your warehouse stopped arriving. From here on the two are separate choices and are taken literally.
+
 ### Destination: S3-compatible object storage
 
 One setting covers **AWS S3, Cloudflare R2, DigitalOcean Spaces, Scaleway Object Storage, Backblaze B2 and MinIO** — they differ only in endpoint and region, and all of them speak SigV4.

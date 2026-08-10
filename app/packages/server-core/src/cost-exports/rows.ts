@@ -22,6 +22,7 @@
  */
 import type { CostBasis, CostChargeType, CostFilter } from "@infrawrench/client-core";
 import { getClickHouseClient, isClickHouseConfigured } from "../clickhouse/client";
+import { amortizedAmountExpr } from "../clickhouse/cost-readers";
 
 /** The column set an export emits, in order. Drives both the header and each row. */
 export interface CostExportColumns {
@@ -82,9 +83,17 @@ function dimensionColumn(dimension: string): string {
   return dimension === "provider" ? "provider" : dimension;
 }
 
-/** The amount expression, matching `cost-readers.ts#amountExpr` exactly. */
+/**
+ * The amount expression. Imported from `cost-readers.ts` rather than restated:
+ * an export is the artefact someone reconciles a graph against, so the two must
+ * be the same arithmetic by construction. A restated copy silently drifted once
+ * already — it kept the pre-`amortized_reported` form, which reads a commitment
+ * purchase's honest amortized zero as "not reported" and falls back to full
+ * cash, so an amortized export double-counted every purchase against its own
+ * amortized slices while the graph beside it did not.
+ */
 function amountExpr(basis: CostBasis | undefined): string {
-  return basis === "amortized" ? "if(amortized_amount != 0, amortized_amount, amount)" : "amount";
+  return basis === "amortized" ? amortizedAmountExpr() : "amount";
 }
 
 /** Sanitise a tag key into a column name a CSV header and a warehouse both accept. */

@@ -2,9 +2,12 @@
  * Savings planner: which uncovered, steady workloads could a commitment
  * cover, and what would committing be worth?
  *
- * Pure and db-free. Callers aggregate uncovered usage spend per
+ * Pure and db-free. Callers aggregate uncovered consumption per
  * `(pluginId, service, region)` cell per day over a trailing window (90 days
- * nominal, 60 minimum) and hand the series over.
+ * nominal, 60 minimum) and hand the series over. The amounts are **amortized**,
+ * the same basis coverage's denominator uses — the two numbers describe the
+ * same uncovered spend and sit on the same screen, so computing them on
+ * different bases would put two contradictory figures side by side.
  *
  * The recommendation sizes at **p10 of daily uncovered spend**, nearest-rank
  * (not interpolated): commit to the floor the workload almost never dips

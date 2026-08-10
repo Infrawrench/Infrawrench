@@ -53,7 +53,9 @@ describe("mapAzureReservation", () => {
   it("maps term, billing plan, scope and utilization — and no money", () => {
     const record = mapAzureReservation(reservation)!;
     expect(record.kind).toBe("reservation");
-    expect(record.id).toBe("/providers/microsoft.capacity/reservationOrders/o1/reservations/r1");
+    // Lower-cased: the id is a join key against the BenefitId column in cost
+    // data, and Azure does not agree with itself on the casing of either.
+    expect(record.id).toBe("/providers/microsoft.capacity/reservationorders/o1/reservations/r1");
     // Term from the provider's own P3Y, never from the dates (Azure splits
     // and merges reservations on exchange, which moves the dates).
     expect(record.termDays).toBe(1095);

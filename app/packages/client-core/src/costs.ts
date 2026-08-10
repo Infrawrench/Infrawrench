@@ -136,9 +136,16 @@ export type CostDimensionId = (typeof COST_DIMENSIONS)[number];
  * Rows collected before charge types existed, and every plugin that cannot tell
  * one kind of charge from another, read as `usage`. That is the honest default:
  * it is what those rows were always assumed to be.
+ *
+ * `commitment_covered_usage` is consumption a reservation or savings plan
+ * covered — still consumption, so it sits next to `usage` rather than next to
+ * `commitment_discount`. It is separated out because it is what commitment
+ * coverage is measured from: most providers can say *that* an hour was covered
+ * without saying *which* commitment covered it.
  */
 export const COST_CHARGE_TYPES = [
   "usage",
+  "commitment_covered_usage",
   "commitment_fee",
   "commitment_discount",
   "credit",
@@ -152,6 +159,7 @@ export type CostChargeType = (typeof COST_CHARGE_TYPES)[number];
 
 export const COST_CHARGE_TYPE_LABELS: Record<CostChargeType, string> = {
   usage: "Usage",
+  commitment_covered_usage: "Commitment-covered usage",
   commitment_fee: "Commitment fee",
   commitment_discount: "Commitment discount",
   credit: "Credit",

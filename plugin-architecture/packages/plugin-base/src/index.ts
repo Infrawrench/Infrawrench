@@ -35,10 +35,16 @@ export type {
   CostEstimateLineItem,
   CostChargeType,
   CostFetchRange,
+  CostFetchResult,
   CostHelpLink,
   CostRow,
 } from "./cost.js";
-export { buildCostEstimate, costEstimateDelta, CostSetupError } from "./cost.js";
+export {
+  buildCostEstimate,
+  costEstimateDelta,
+  CostSetupError,
+  normalizeCostFetchResult,
+} from "./cost.js";
 export type { CreditBalance, CreditsCapabilityDeclaration } from "./credits.js";
 export { CreditAccessError } from "./credits.js";
 

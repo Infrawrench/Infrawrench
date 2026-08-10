@@ -17,5 +17,6 @@
  * Adding or removing a plugin changes the `pluginId` / `resourceTypeId` enums,
  * which is a real change to the published surface — that counts.
  */
-// 1.6.0: Linear issue filing alongside Jira (new routes and permissions).
-export const API_VERSION = "1.6.0";
+// 1.7.0: new `commitment_covered_usage` member on the CostChargeType enum
+// (additive enum widening, on cost queries and cost exports).
+export const API_VERSION = "1.7.0";

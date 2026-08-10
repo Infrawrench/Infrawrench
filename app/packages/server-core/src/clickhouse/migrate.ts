@@ -151,10 +151,27 @@ const STATEMENTS: string[] = [
   `ALTER TABLE cost_daily ADD COLUMN IF NOT EXISTS charge_type LowCardinality(String) DEFAULT 'usage'`,
 
   // The same money spread over the period it covers, when the provider reports
-  // one. 0 means "not reported" and readers fall back to `amount` — see
+  // one. Readers fall back to `amount` when it was not reported — see
   // `cost-readers.ts`, where that fallback is the difference between an
   // amortized query and a query that silently drops non-amortizing providers.
   `ALTER TABLE cost_daily ADD COLUMN IF NOT EXISTS amortized_amount Float64 DEFAULT 0`,
+
+  // Whether `amortized_amount` was reported at all, as opposed to defaulted.
+  //
+  // The pair is needed because **0 is a meaningful amortized amount**: a
+  // commitment purchase's honest amortized value on its purchase day is zero
+  // (the cash landed there, the value belongs to the days it buys). Without
+  // this flag the reader's `amortized_amount != 0` test reads that honest zero
+  // as "not reported" and falls back to the full cash amount — so the amortized
+  // view would show the purchase at full price *and* every amortized slice of
+  // it, double-counting the exact thing amortization exists to smooth.
+  //
+  // DEFAULT 0 is what makes it safe on the back catalogue: every row written
+  // before this column existed reads as "not reported", which drops it onto the
+  // legacy `amortized_amount != 0` branch and reproduces today's behaviour
+  // exactly — including rows a provider genuinely amortized, whose non-zero
+  // `amortized_amount` still wins. Nothing pre-existing changes value.
+  `ALTER TABLE cost_daily ADD COLUMN IF NOT EXISTS amortized_reported UInt8 DEFAULT 0`,
 
   // Provider-native id of the reservation / savings plan / committed-use
   // discount a row is attributable to. Empty for everything else.

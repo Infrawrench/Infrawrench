@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.6.0",
+    "version": "1.7.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -3203,6 +3203,7 @@
         "type": "string",
         "enum": [
           "usage",
+          "commitment_covered_usage",
           "commitment_fee",
           "commitment_discount",
           "credit",
@@ -4406,6 +4407,7 @@
               "type": "string",
               "enum": [
                 "usage",
+                "commitment_covered_usage",
                 "commitment_fee",
                 "commitment_discount",
                 "credit",

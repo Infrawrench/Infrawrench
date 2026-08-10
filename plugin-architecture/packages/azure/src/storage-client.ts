@@ -6,8 +6,9 @@
  * against the XML enumeration response.
  */
 import type { StorageObject } from "@infrawrench/plugin-base";
+import { azureRequest, type AzureHttpTransport } from "./http.js";
 
-interface StorageContext {
+interface StorageContext extends AzureHttpTransport {
   /** Returns a valid AAD token scoped to `storage.azure.com`. */
   storageToken(): Promise<string>;
 }
@@ -26,7 +27,9 @@ export async function listStorageObjects(
     delimiter,
   });
   const url = `https://${bucket}.blob.core.windows.net/?${params}`;
-  const res = await fetch(url, {
+  // The enumeration response is XML, which crosses the host boundary as text
+  // just as happily as JSON — `azureRequest` never assumes a JSON body.
+  const res = await azureRequest(ctx.http, url, {
     headers: {
       Authorization: `Bearer ${tok}`,
       "x-ms-version": "2023-11-03",
@@ -89,8 +92,11 @@ export async function uploadStorageObject(
   const containerName = key.split("/")[0] ?? "$root";
   const blobName = key.split("/").slice(1).join("/") || key;
   const url = `https://${bucket}.blob.core.windows.net/${containerName}/${blobName}`;
-  const arrayBuffer = await file.arrayBuffer();
-  const res = await fetch(url, {
+  // Bytes, not a stream: `File.arrayBuffer()` already buffers the whole blob
+  // in memory, so handing the host a Uint8Array costs one more copy and no
+  // additional peak — and it is the only body shape the host accepts.
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const res = await azureRequest(ctx.http, url, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${tok}`,
@@ -98,7 +104,7 @@ export async function uploadStorageObject(
       "x-ms-blob-type": "BlockBlob",
       "Content-Type": file.type || "application/octet-stream",
     },
-    body: arrayBuffer,
+    body: bytes,
   });
   if (!res.ok) throw new Error(`Azure Blob upload failed: ${res.status}`);
 }
@@ -113,7 +119,7 @@ export async function makeStorageFolder(
   const containerName = key.split("/")[0] ?? "$root";
   const folderKey = key.split("/").slice(1).join("/") || key;
   const url = `https://${bucket}.blob.core.windows.net/${containerName}/${folderKey}`;
-  const res = await fetch(url, {
+  const res = await azureRequest(ctx.http, url, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${tok}`,
@@ -143,7 +149,7 @@ export async function deleteStorageObject(
     const containerName = key.split("/")[0] ?? "$root";
     const blobName = key.split("/").slice(1).join("/") || key;
     const url = `https://${bucket}.blob.core.windows.net/${containerName}/${blobName}`;
-    const res = await fetch(url, {
+    const res = await azureRequest(ctx.http, url, {
       method: "DELETE",
       headers: {
         Authorization: `Bearer ${tok}`,

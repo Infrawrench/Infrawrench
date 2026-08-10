@@ -409,8 +409,13 @@ export interface PluginClient {
    * history backfill in month-sized chunks) — implementations should stay
    * within the provider's billing-API budget and go through `services.http`
    * so bastion routing and custom CAs keep working.
+   *
+   * Return a bare array unless the pass has something to say about itself: a
+   * collector with an attribution fallback returns a {@link CostFetchResult}
+   * so it can flag a degraded pass, which stops the host from treating the
+   * coarser rows as evidence that the finer ones are gone.
    */
-  fetchCostData?(accountId: string, range: CostFetchRange): Promise<CostRow[]>;
+  fetchCostData?(accountId: string, range: CostFetchRange): Promise<CostRow[] | CostFetchResult>;
   /**
    * List every commitment the provider reports for this account — active,
    * queued, and expired alike. Only called when the manifest declares
@@ -925,6 +930,7 @@ import type {
   CostCapabilityDeclaration,
   CostEstimate,
   CostFetchRange,
+  CostFetchResult,
   CostRow,
 } from "./cost.js";
 import type { CreditBalance, CreditsCapabilityDeclaration } from "./credits.js";

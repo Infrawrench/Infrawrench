@@ -63,10 +63,13 @@ export function costTools(): ToolDefinition[] {
         "charged it; 'amortized' spreads a commitment's up-front fee across the term it buys, " +
         "which is the right number for an org holding reservations or savings plans. Providers " +
         "that report no amortized amount fall back to their cash amount rather than dropping " +
-        "out. chargeTypes narrows to particular kinds of charge (usage, commitment_fee, " +
-        "commitment_discount, credit, tax, refund, adjustment, support, other); omitting it " +
-        "includes all of them, which is what makes a total net rather than gross — filter to " +
-        "['usage'] to see whether consumption is growing underneath a credit that is masking it." +
+        "out. chargeTypes narrows to particular kinds of charge (usage, " +
+        "commitment_covered_usage, commitment_fee, commitment_discount, credit, tax, refund, " +
+        "adjustment, support, other); omitting it includes all of them, which is what makes a " +
+        "total net rather than gross — filter to ['usage','commitment_covered_usage'] to see " +
+        "whether consumption is growing underneath a credit that is masking it. Note that " +
+        "commitment-covered usage is priced at zero on the cash basis by both AWS and Azure, " +
+        "so pair it with costBasis 'amortized' to see what those hours are worth." +
         "\n\nThe filter can also be written as text in the cost query language via `query`, " +
         "which is usually easier than assembling `filters` by hand: " +
         "`provider = 'aws' AND service IN ('AmazonEC2','AmazonS3') AND tag['env'] != 'dev'`. " +

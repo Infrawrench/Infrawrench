@@ -17,8 +17,14 @@ export interface CostDailyRow {
   usage_unit: string;
   /** What kind of charge this is; "usage" for everything that doesn't say. */
   charge_type: string;
-  /** Cash spread over the period it covers; 0 means the provider reported none. */
+  /** Cash spread over the period it covers. Only meaningful when reported. */
   amortized_amount: number;
+  /**
+   * 1 when the plugin reported an amortized amount, 0 when it said nothing.
+   * Distinguishes a reported 0 (a purchase row, which amortizes to nothing on
+   * its purchase day) from an absent one (readers fall back to `amount`).
+   */
+  amortized_reported: number;
   /** Reservation / savings plan / CUD this row belongs to; "" when none. */
   commitment_id: string;
 }
@@ -69,6 +75,15 @@ export interface CostRowKeyExtras {
  * a day *replace* the rows already stored for it instead of doubling every
  * historical number the first time a restatement window is re-fetched. Do not
  * "simplify" this by always appending the charge type.
+ *
+ * **The synthetic entries go into the hash only — never into the `tags` column
+ * {@link toCostDailyRows} writes — and something depends on that.**
+ * `clickhouse/cost-reconcile.ts` distinguishes a collector's rows from rows a
+ * user pushed by looking for a reserved key in the *stored* `tags`, so if these
+ * entries were also stored, every attribution row a collector writes would look
+ * pushed, and reconciliation would skip exactly the rows it exists to fix —
+ * silently, since it would still run and still find nothing. The two ends are
+ * cross-referenced; change neither alone.
  */
 export function hashTags(
   tags: Record<string, string> | undefined,
@@ -122,9 +137,13 @@ export function toCostDailyRows(
       usage_amount: r.usageAmount ?? 0,
       usage_unit: r.usageUnit ?? "",
       charge_type: chargeType,
-      // 0 is the stored form of "this provider reports no amortized amount";
-      // readers fall back to `amount` for those rows.
+      // Absent and zero are different answers and must stay different: a
+      // commitment purchase amortizes to *zero* on its purchase day, while a
+      // provider with no amortized data at all has *no* answer and readers fall
+      // back to `amount`. Collapsing the two shows the purchase at full cash
+      // alongside all of its amortized slices.
       amortized_amount: r.amortizedAmount ?? 0,
+      amortized_reported: r.amortizedAmount === undefined ? 0 : 1,
       commitment_id: commitmentId,
     };
   });
