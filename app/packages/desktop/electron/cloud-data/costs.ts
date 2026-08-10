@@ -118,6 +118,53 @@ ipcMain.handle(
   },
 );
 
+/* ------------------------------------------------------------------ *
+ * Change-based cost alerts — "spend moved more than X% (or $Y) vs the
+ * prior period". Cloud-mode only like everything above: evaluation and
+ * the fired events live server-side.
+ * ------------------------------------------------------------------ */
+
+ipcMain.handle("cloud_list_cost_alerts", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetch(orgId, "/cost-alerts");
+});
+
+ipcMain.handle(
+  "cloud_list_cost_alert_events",
+  async (_e, { orgId, alertId, limit }: { orgId: string; alertId?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (alertId) params.set("alertId", alertId);
+    if (limit !== undefined) params.set("limit", String(limit));
+    const qs = params.toString();
+    return cloudFetch(orgId, `/cost-alerts/events${qs ? `?${qs}` : ""}`);
+  },
+);
+
+ipcMain.handle(
+  "cloud_create_cost_alert",
+  async (_e, { orgId, input }: { orgId: string; input: unknown }) => {
+    return cloudFetch(orgId, "/cost-alerts", { method: "POST", body: JSON.stringify(input) });
+  },
+);
+
+ipcMain.handle(
+  "cloud_update_cost_alert",
+  async (_e, { orgId, alertId, input }: { orgId: string; alertId: string; input: unknown }) => {
+    return cloudFetch(orgId, `/cost-alerts/${encodeURIComponent(alertId)}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_delete_cost_alert",
+  async (_e, { orgId, alertId }: { orgId: string; alertId: string }) => {
+    return cloudFetch(orgId, `/cost-alerts/${encodeURIComponent(alertId)}`, {
+      method: "DELETE",
+    });
+  },
+);
+
 ipcMain.handle(
   "cloud_create_widget",
   async (_e, { orgId, request }: { orgId: string; request: unknown }) => {

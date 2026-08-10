@@ -24,6 +24,11 @@ vi.mock("../cost-reports", () => ({
     { name: "cr1", title: "CR1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
   ],
 }));
+vi.mock("../cost-alerts", () => ({
+  costAlertTools: () => [
+    { name: "ca1", title: "CA1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
 vi.mock("../schedules", () => ({
   scheduleTools: () => [
     { name: "sc1", title: "SC1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
@@ -92,6 +97,7 @@ describe("getToolRegistry", () => {
     expect(names).toContain("c1");
     expect(names).toContain("k1");
     expect(names).toContain("cr1");
+    expect(names).toContain("ca1");
     expect(names).toContain("m1");
     expect(names).toContain("w1");
     expect(names).toContain("cg1");

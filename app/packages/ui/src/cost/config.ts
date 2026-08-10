@@ -9,9 +9,13 @@
  */
 import { z } from "zod";
 import {
+  COST_ALERT_LIMITS,
   COST_ANOMALY_LIMITS,
   COST_ANOMALY_SMS_MODES,
   COST_BASES,
+  COST_CHANGE_CADENCES,
+  COST_CHANGE_DIRECTIONS,
+  type CostAlertInput,
   COST_BINNINGS,
   COST_CHARGE_TYPES,
   COST_CHART_TYPES,
@@ -69,6 +73,19 @@ export {
   COST_ANOMALY_LIMITS,
   COST_ANOMALY_SMS_MODES,
   COST_ANOMALY_SMS_MODE_LABELS,
+  COST_ALERT_LIMITS,
+  COST_CHANGE_CADENCES,
+  COST_CHANGE_CADENCE_LABELS,
+  COST_CHANGE_CADENCE_DESCRIPTIONS,
+  COST_CHANGE_DIRECTIONS,
+  COST_CHANGE_DIRECTION_LABELS,
+  DEFAULT_COST_ALERT_INPUT,
+  costAlertEventDeltaLabel,
+  type CostAlert,
+  type CostAlertEvent,
+  type CostAlertInput,
+  type CostChangeCadence,
+  type CostChangeDirection,
   DASHBOARD_WIDGET_KINDS,
   OTHER_GROUP_KEY,
   DEFAULT_COST_GRAPH_CONFIG,
@@ -253,10 +270,53 @@ export const budgetInputSchema = z.object({
   amountCents: z.number().int().positive(),
   currency: z.string().length(3).default("USD"),
   filters: z.array(costFilterSchema).default([]),
+  /**
+   * A saved cost filter applied by reference and AND-composed with `filters`
+   * at evaluation time. A PUT that omits it clears it — budget updates are
+   * full replaces.
+   */
+  savedFilterId: z.string().min(1).optional(),
   thresholds: z.array(budgetThresholdSchema).min(1).max(10),
   /** Which number the budget tracks; absent is cash. */
   costBasis: z.enum(COST_BASES).optional(),
 });
+
+/**
+ * Create/update body for a change-based cost alert (POST/PUT /cost-alerts).
+ *
+ * The refinements are the contract, not decoration: an alert with no
+ * threshold at all would fire on every wobble (or never — either way it is a
+ * mis-set form, and the evaluator additionally refuses to judge such a row),
+ * and a tag grouping without a tag key has nothing to group on.
+ */
+export const costAlertInputSchema = z
+  .object({
+    name: z.string().min(1).max(COST_ALERT_LIMITS.maxNameLength),
+    filters: z.array(costFilterSchema).default([]),
+    /** Null watches one total; a dimension watches each group separately. */
+    groupBy: z.enum(COST_DIMENSIONS).nullable().default(null),
+    /** Required when groupBy === "tag". */
+    groupByTagKey: z.string().min(1).optional(),
+    cadence: z.enum(COST_CHANGE_CADENCES),
+    thresholdPercent: z
+      .number()
+      .int()
+      .min(COST_ALERT_LIMITS.minPercent)
+      .max(COST_ALERT_LIMITS.maxPercent)
+      .nullable()
+      .default(null),
+    thresholdAmountCents: z.number().int().positive().nullable().default(null),
+    direction: z.enum(COST_CHANGE_DIRECTIONS),
+    enabled: z.boolean().default(true),
+  })
+  .refine((v) => v.thresholdPercent !== null || v.thresholdAmountCents !== null, {
+    message: "Set a percent threshold, an amount threshold, or both",
+    path: ["thresholdPercent"],
+  })
+  .refine((v) => v.groupBy !== "tag" || !!v.groupByTagKey?.trim(), {
+    message: "groupByTagKey is required when groupBy is tag",
+    path: ["groupByTagKey"],
+  });
 
 /**
  * Per-org anomaly tuning (PUT /costs/anomaly-settings).
@@ -468,8 +528,10 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof budgetWidgetConfigSchema>, BudgetWidgetConfig>,
   Exact<z.infer<typeof costReportWidgetConfigSchema>, CostReportWidgetConfig>,
   Exact<z.infer<typeof costReportInputSchema>, CostReportInput>,
+  Exact<z.infer<typeof costReportFolderInputSchema>, CostReportFolderInput>,
   Exact<z.infer<typeof budgetThresholdSchema>, BudgetThreshold>,
   Exact<z.infer<typeof budgetInputSchema>, BudgetInput>,
+  Exact<z.infer<typeof costAlertInputSchema>, CostAlertInput>,
   Exact<z.infer<typeof costAnomalySettingsSchema>, CostAnomalySettings>,
   Exact<z.infer<typeof costQueryRequestSchema>, CostQueryRequest>,
   Exact<z.infer<typeof customGraphWidgetConfigSchema>, CustomGraphWidgetConfig>,

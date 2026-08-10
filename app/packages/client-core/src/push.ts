@@ -59,6 +59,23 @@ export type PushNotificationData =
     }
   | {
       /**
+       * A change-based cost alert fired: spend on the alert's scope moved
+       * past its configured threshold versus the prior period (see
+       * server-core `cost/change-eval.ts`).
+       *
+       * Target route: the Costs tab, where the change alerts section lists
+       * the fired events.
+       */
+      type: "cost_change";
+      orgId: string;
+      alertId: string;
+      /** The cadence period that fired, e.g. "2026-08-09" / "2026-W32" / "2026-08". */
+      periodKey: string;
+      /** The offending group; "" when the alert watches one total. */
+      groupKey: string;
+    }
+  | {
+      /**
        * A metric threshold alert rule fired (or recovered) on one resource —
        * "CPU > 90% for 15 minutes" (see server-core `metric-alerts/eval.ts`).
        *

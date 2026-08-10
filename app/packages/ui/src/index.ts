@@ -828,8 +828,13 @@ export type {
 // another path — desktop/web then fail to resolve them from `@infrawrench/ui`.
 export type {
   CostAccountStatus,
+  CostAlert,
+  CostAlertEvent,
+  CostAlertInput,
   CostAnomalySettings,
   CostAnomalySettingsView,
+  CostChangeCadence,
+  CostChangeDirection,
   CostDimensionOption,
   CustomGraphWidgetConfig,
 } from "@infrawrench/client-core";

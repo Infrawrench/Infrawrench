@@ -2,6 +2,9 @@ import type {
   BudgetInput,
   BudgetWithStatus,
   CostAccountStatus,
+  CostAlert,
+  CostAlertEvent,
+  CostAlertInput,
   CostAnomaly,
   CostAnomalySettings,
   CostAnomalySettingsView,
@@ -74,6 +77,40 @@ export function createWebCostsClient(orgId: string): CostsClient {
       apiGet<CostAnomalySettingsView>(`/api/org/${orgId}/costs/anomaly-settings`),
     updateAnomalySettings: (settings: CostAnomalySettings) =>
       apiPut<CostAnomalySettingsView>(`/api/org/${orgId}/costs/anomaly-settings`, settings),
+    listCostAlerts: async () => {
+      const res = await apiGet<{ alerts: CostAlert[] }>(`/api/org/${orgId}/cost-alerts`);
+      return res.alerts;
+    },
+    listCostAlertEvents: async (options?: { alertId?: string; limit?: number }) => {
+      const params = new URLSearchParams();
+      if (options?.alertId) params.set("alertId", options.alertId);
+      if (options?.limit !== undefined) params.set("limit", String(options.limit));
+      const qs = params.toString();
+      const res = await apiGet<{ events: CostAlertEvent[] }>(
+        `/api/org/${orgId}/cost-alerts/events${qs ? `?${qs}` : ""}`,
+      );
+      return res.events;
+    },
+    createCostAlert: (input: CostAlertInput) =>
+      apiPost<CostAlert>(`/api/org/${orgId}/cost-alerts`, input),
+    updateCostAlert: (alertId: string, input: CostAlertInput) =>
+      apiPut<CostAlert>(`/api/org/${orgId}/cost-alerts/${alertId}`, input),
+    deleteCostAlert: async (alertId: string) => {
+      await apiDelete(`/api/org/${orgId}/cost-alerts/${alertId}`);
+    },
+    updateSavedFilter: (savedFilterId: string, input: SavedCostFilterInput) =>
+      apiPut<SavedCostFilter>(`/api/org/${orgId}/saved-cost-filters/${savedFilterId}`, input),
+    // A 409 here is the deliberate refusal: the filter is still referenced,
+    // and the error message names the referents (apiDelete surfaces the body).
+    deleteSavedFilter: async (savedFilterId: string) => {
+      await apiDelete(`/api/org/${orgId}/saved-cost-filters/${savedFilterId}`);
+    },
+    getSavedFilterReferents: async (savedFilterId: string) => {
+      const res = await apiGet<{ referents: SavedCostFilterReferent[] }>(
+        `/api/org/${orgId}/saved-cost-filters/${savedFilterId}/referents`,
+      );
+      return res.referents;
+    },
     listDashboards: () => apiGet<CostsPanelDashboard[]>(`/api/org/${orgId}/dashboards`),
     createBudget: (input: BudgetInput) =>
       apiPost<{ id: string }>(`/api/org/${orgId}/budgets`, input),

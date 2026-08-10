@@ -117,6 +117,18 @@ export const ALERT_TRIGGERS = [
     defaultSeverity: "warning",
   },
   {
+    // The third cost family: budgets are an absolute monthly total you chose,
+    // anomalies are unconfigured statistical outliers, and this is a
+    // *configured relative change* — "this scope moved more than X% (or $Y)
+    // versus the prior period" on a cadence the user picked.
+    id: "costChangeAlerts",
+    label: "Cost changes",
+    description: "Spend on a watched scope moved past its change threshold vs the prior period.",
+    pushDefaultMuted: false,
+    channelOnly: false,
+    defaultSeverity: "warning",
+  },
+  {
     id: "metricAlerts",
     label: "Metric alerts",
     description: "A metric threshold rule fired or recovered.",

@@ -726,6 +726,146 @@ export const costAnomalies = pgTable(
 );
 
 /**
+ * Change-based cost alerts — the third cost-alert family, distinct from the
+ * other two on purpose:
+ *
+ * - **Budgets** (`budgets`) alert on an *absolute monthly total* you chose.
+ * - **Anomalies** (`cost_anomalies`) alert on unconfigured *statistical
+ *   outliers* against a learned baseline.
+ * - **Change alerts** (this table) alert on a *configured relative change*:
+ *   "tell me when spend on this scope moves more than X% (or $Y) versus the
+ *   prior period", on a scope and cadence the user chose.
+ *
+ * Evaluated after each cost collection pass (`cost/change-eval.ts`), same
+ * trigger point as budgets and anomalies; fired events land in
+ * `cost_alert_events` and notify through the alert routing layer under the
+ * `costChangeAlerts` trigger.
+ */
+export const costAlerts = pgTable(
+  "cost_alerts",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /**
+     * Which cost rows count — a `CostFilter[]` from `@infrawrench/client-core`,
+     * the same jsonb vocabulary `budgets.filters` uses.
+     */
+    filters: jsonb("filters").notNull().default([]),
+    /**
+     * Optional per-group fan-out: a `CostDimensionId` (or null for one total).
+     * With a groupBy set, each group's spend is compared to its own prior
+     * window and each offending group fires its own event — "watch each
+     * service" rather than "watch the sum".
+     */
+    groupBy: text("group_by"),
+    /** Required when `groupBy === "tag"`; the tag key to group on. */
+    groupByTagKey: text("group_by_tag_key"),
+    /**
+     * Comparison cadence — which window is compared to which (exact
+     * definitions in `cost/change-detect.ts`):
+     * - `daily`: one complete UTC day vs the same weekday one week earlier.
+     * - `weekly`: the last 7 complete UTC days vs the 7 before them.
+     * - `monthly`: month-to-date (complete days) vs the *same-length* window
+     *   at the start of the prior month — never MTD vs the full prior month.
+     */
+    cadence: text("cadence").$type<"daily" | "weekly" | "monthly">().notNull(),
+    /**
+     * Fire when spend moved by at least this percent of the prior window.
+     * Null means no percent condition. At least one of the two thresholds is
+     * always set (API-enforced); when **both** are set, **both** must hold —
+     * a 50% jump on $2 of spend clears no absolute floor and stays quiet.
+     */
+    thresholdPercent: integer("threshold_percent"),
+    /** Fire when spend moved by at least this many cents. Null = no floor. */
+    thresholdAmountCents: integer("threshold_amount_cents"),
+    /** Which direction of movement matters. */
+    direction: text("direction").$type<"increase" | "decrease" | "both">().notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    /** Stamped by each evaluation pass, fired or not — "is this alert live". */
+    lastEvaluatedAt: timestamp("last_evaluated_at"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /** Soft delete, matching `budgets` — set, never cleared. */
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("cost_alerts_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
+ * Fired cost-change-alert events. The unique index makes each (alert, period,
+ * group, currency) fire at most once — the `budget_alert_events`
+ * once-per-month unique is the precedent: evaluation inserts with
+ * `onConflictDoNothing` and only a fresh insert can notify, so re-evaluating
+ * a window inside the restatement horizon re-fires nothing.
+ *
+ * `periodKey` is the cadence period the current window belongs to, not the
+ * exact span: the day for `daily`, the ISO week (`2026-W32`) of the window's
+ * end for `weekly`, the month (`2026-08`) for `monthly`. Weekly and monthly
+ * windows grow/slide day by day as complete days accrue, and keying on the
+ * exact span would fire a sustained change once per day; keying on the period
+ * fires it once per cadence period, which is what a cadence means.
+ */
+export const costAlertEvents = pgTable(
+  "cost_alert_events",
+  {
+    id: text("id").primaryKey(),
+    alertId: text("alert_id")
+      .notNull()
+      .references(() => costAlerts.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Dedup key — see the table comment. */
+    periodKey: text("period_key").notNull(),
+    /** Current window, inclusive UTC days. */
+    windowFrom: text("window_from").notNull(),
+    windowTo: text("window_to").notNull(),
+    /** Prior window the current one was compared against, inclusive UTC days. */
+    previousFrom: text("previous_from").notNull(),
+    previousTo: text("previous_to").notNull(),
+    /** The offending group's key; "" when the alert watches one total. */
+    groupKey: text("group_key").notNull().default(""),
+    /**
+     * Currency both amounts are in. Comparison is per currency — or in the
+     * org display currency when the org configured one and stated rates; a
+     * currency with no rate is compared in its own currency, never dropped.
+     */
+    currency: text("currency").notNull(),
+    previousAmountCents: integer("previous_amount_cents").notNull(),
+    currentAmountCents: integer("current_amount_cents").notNull(),
+    /**
+     * Signed percent change, rounded. Null when the prior window had no spend
+     * (new spend — the change is infinite, not a number); -100 when the group
+     * vanished entirely.
+     */
+    changePercent: integer("change_percent"),
+    /** Which way spend moved — what the alert's `direction` matched. */
+    direction: text("direction").$type<"increase" | "decrease">().notNull(),
+    firedAt: timestamp("fired_at").notNull().defaultNow(),
+    /** Null until some transport (or a quiet-hours hold) took the alert. */
+    notifiedAt: timestamp("notified_at"),
+  },
+  (t) => ({
+    onceUnique: uniqueIndex("cost_alert_events_once_unique").on(
+      t.alertId,
+      t.periodKey,
+      t.groupKey,
+      t.currency,
+    ),
+    orgIdx: index("cost_alert_events_org_idx").on(t.organizationId),
+    alertIdx: index("cost_alert_events_alert_idx").on(t.alertId),
+  }),
+);
+
+/**
  * Metric threshold alert rules — "CPU > 90% for 15 minutes on these
  * resources". Resources are selected by *query* (plugin + resource type +
  * tag), never by id list, so a rule automatically covers resources created

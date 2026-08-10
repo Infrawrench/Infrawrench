@@ -13,7 +13,9 @@ import {
   Screen,
   SectionTitle,
 } from "@/components/ui";
+import { CommitmentsSection } from "@/features/costs/CommitmentsSection";
 import { CostAnomaliesSection } from "@/features/costs/CostAnomaliesSection";
+import { CostChangeAlertsSection } from "@/features/costs/CostChangeAlertsSection";
 import { TagGovernanceSection } from "@/features/costs/TagGovernanceSection";
 import { BudgetCard } from "@/features/dashboard/BudgetCard";
 import { CostGraphCard } from "@/features/dashboard/CostGraphCard";
@@ -68,6 +70,9 @@ export default function CostsScreen() {
         void queryClient.invalidateQueries({ queryKey: ["cost-status"] });
         void queryClient.invalidateQueries({ queryKey: ["cost-query"] });
         void queryClient.invalidateQueries({ queryKey: ["cost-anomalies"] });
+        void queryClient.invalidateQueries({ queryKey: ["cost-alerts"] });
+        void queryClient.invalidateQueries({ queryKey: ["cost-alert-events"] });
+        void queryClient.invalidateQueries({ queryKey: ["commitments"] });
         void queryClient.invalidateQueries({ queryKey: ["tag-compliance"] });
         void queryClient.invalidateQueries({ queryKey: ["untagged-spend"] });
         void queryClient.invalidateQueries({ queryKey: ["orphans"] });

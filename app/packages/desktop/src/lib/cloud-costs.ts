@@ -7,6 +7,9 @@ import type {
   BudgetInput,
   BudgetWithStatus,
   CostAccountStatus,
+  CostAlert,
+  CostAlertEvent,
+  CostAlertInput,
   CostAnomaly,
   CostAnomalySettings,
   CostAnomalySettingsView,
@@ -121,6 +124,46 @@ export async function updateCloudBudget(
 
 export async function deleteCloudBudget(orgId: string, budgetId: string): Promise<void> {
   await invoke("cloud_delete_budget", { orgId, budgetId });
+}
+
+/* ------------------------------------------------------------------ *
+ * Change-based cost alerts — configured relative change on a scope.
+ * ------------------------------------------------------------------ */
+
+export async function listCloudCostAlerts(orgId: string): Promise<CostAlert[]> {
+  const res = await invoke<{ alerts: CostAlert[] }>("cloud_list_cost_alerts", { orgId });
+  return res?.alerts ?? [];
+}
+
+export async function listCloudCostAlertEvents(
+  orgId: string,
+  options: { alertId?: string; limit?: number } = {},
+): Promise<CostAlertEvent[]> {
+  const res = await invoke<{ events: CostAlertEvent[] }>("cloud_list_cost_alert_events", {
+    orgId,
+    ...(options.alertId ? { alertId: options.alertId } : {}),
+    ...(options.limit !== undefined ? { limit: options.limit } : {}),
+  });
+  return res?.events ?? [];
+}
+
+export async function createCloudCostAlert(
+  orgId: string,
+  input: CostAlertInput,
+): Promise<CostAlert> {
+  return invoke("cloud_create_cost_alert", { orgId, input });
+}
+
+export async function updateCloudCostAlert(
+  orgId: string,
+  alertId: string,
+  input: CostAlertInput,
+): Promise<CostAlert> {
+  return invoke("cloud_update_cost_alert", { orgId, alertId, input });
+}
+
+export async function deleteCloudCostAlert(orgId: string, alertId: string): Promise<void> {
+  await invoke("cloud_delete_cost_alert", { orgId, alertId });
 }
 
 export async function createCloudWidget(

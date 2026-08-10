@@ -101,6 +101,19 @@ export interface CostsClient extends CostApi {
    * failing on save — the same rule the budget half of this client follows.
    */
   updateAnomalySettings?(settings: CostAnomalySettings): Promise<CostAnomalySettingsView>;
+  /**
+   * Change-based cost alerts — the third alert family (configured relative
+   * change on a chosen scope and cadence, vs budgets' absolute totals and
+   * anomalies' unconfigured outliers). Optional like `listAnomalies`: a host
+   * that hasn't wired it doesn't render the change-alerts section, and a
+   * viewer without `costs:write` gets the list without the editing half.
+   */
+  listCostAlerts?(): Promise<CostAlert[]>;
+  /** Recently fired change-alert events, newest first. */
+  listCostAlertEvents?(options?: { alertId?: string; limit?: number }): Promise<CostAlertEvent[]>;
+  createCostAlert?(input: CostAlertInput): Promise<CostAlert>;
+  updateCostAlert?(alertId: string, input: CostAlertInput): Promise<CostAlert>;
+  deleteCostAlert?(alertId: string): Promise<void>;
   listDashboards(): Promise<CostsPanelDashboard[]>;
   createBudget?(input: BudgetInput): Promise<{ id: string }>;
   updateBudget?(budgetId: string, input: BudgetInput): Promise<void>;

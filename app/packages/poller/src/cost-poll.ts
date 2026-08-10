@@ -4,6 +4,7 @@ import { accounts } from "@infrawrench/server-core/db/schema";
 import { collectAccountCosts, describeCostFailure } from "@infrawrench/server-core/cost/collect";
 import { evaluateBudgetsForOrg } from "@infrawrench/server-core/cost/budget-eval";
 import { detectCostAnomaliesForOrg } from "@infrawrench/server-core/cost/anomaly-eval";
+import { evaluateCostChangeAlertsForOrg } from "@infrawrench/server-core/cost/change-eval";
 import type { PollAccountRow } from "./poll-account";
 
 /**
@@ -49,6 +50,12 @@ export async function pollAccountCosts(account: PollAccountRow): Promise<void> {
     // rate-limits itself per org and returns immediately when called again
     // inside that window.
     await detectCostAnomaliesForOrg(account.organizationId);
+
+    // Change-based cost alerts ride the same trigger: configured relative
+    // change on a chosen scope and cadence (vs budgets' absolute monthly
+    // total and anomalies' unconfigured statistical outliers). Also
+    // rate-limited per org internally, and its errors are swallowed too.
+    await evaluateCostChangeAlertsForOrg(account.organizationId);
   } catch (e) {
     console.error(`[poller] cost collection for ${account.id} (${account.pluginId}) failed:`, e);
     const failures = account.pollFailureCount + 1;

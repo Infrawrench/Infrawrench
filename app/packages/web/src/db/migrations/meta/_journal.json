@@ -617,6 +617,13 @@
       "when": 1786338069511,
       "tag": "0086_saved_cost_filters",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1786354288407,
+      "tag": "0087_cost_change_alerts",
+      "breakpoints": true
     }
   ]
 }

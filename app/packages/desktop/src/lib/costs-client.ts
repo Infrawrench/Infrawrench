@@ -84,6 +84,15 @@ export function createDesktopCostsClient(): CostsClient {
     getAnomalySettings: () => loadCloudAnomalySettings(requireOrgId()),
     updateAnomalySettings: (settings: CostAnomalySettings) =>
       saveCloudAnomalySettings(requireOrgId(), settings),
+    // Change-based cost alerts are org-level cloud state like anomaly
+    // settings, so desktop wires the full editing surface too.
+    listCostAlerts: () => listCloudCostAlerts(requireOrgId()),
+    listCostAlertEvents: (options?: { alertId?: string; limit?: number }) =>
+      listCloudCostAlertEvents(requireOrgId(), options),
+    createCostAlert: (input: CostAlertInput) => createCloudCostAlert(requireOrgId(), input),
+    updateCostAlert: (alertId: string, input: CostAlertInput) =>
+      updateCloudCostAlert(requireOrgId(), alertId, input),
+    deleteCostAlert: (alertId: string) => deleteCloudCostAlert(requireOrgId(), alertId),
     listDashboards: async (): Promise<CostsPanelDashboard[]> => {
       const rows = await listCloudDashboards(requireOrgId());
       return rows.map((d) => ({ id: d.id, name: d.name }));

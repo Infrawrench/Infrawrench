@@ -15,8 +15,8 @@ import { cmdOrgs, cmdAccounts, cmdResources, cmdResource } from "./commands/list
 import { cmdMetrics } from "./commands/metrics";
 import { cmdExport } from "./commands/export";
 import { cmdEstimate } from "./commands/estimate";
-import { cmdCosts, cmdCostAnomalies } from "./commands/costs";
-import { cmdReports, cmdRunReport } from "./commands/reports";
+import { cmdCosts, cmdCostAnomalies, cmdCostAlerts } from "./commands/costs";
+import { cmdReports, cmdRunReport, cmdSendReport } from "./commands/reports";
 import { cmdExports, cmdRunExport } from "./commands/exports";
 import { cmdTags, cmdShowback } from "./commands/tags";
 import { cmdOrphans } from "./commands/orphans";
@@ -334,11 +334,23 @@ export async function runCli(): Promise<void> {
           await cmdCostAnomalies(ctx, parsed.range);
           break;
         }
+        if (parsed.alerts) {
+          await cmdCostAlerts(ctx, parsed.range);
+          break;
+        }
         await cmdCosts(ctx, parsed.range);
         break;
       case "reports":
-        // `infrawrench reports <name|id>` runs one; bare `reports` lists them.
-        // A name is the point of the object, so the positional accepts either.
+        // `reports send <name|id>` delivers one to its schedules — behind an
+        // explicit verb like `exports run`, because it posts into channels
+        // and inboxes. (A report literally named "send" stays reachable by
+        // id.) Otherwise `infrawrench reports <name|id>` runs one and bare
+        // `reports` lists them — a name is the point of the object, so the
+        // positional accepts either.
+        if (rest[0] === "send") {
+          await cmdSendReport(ctx, rest.slice(1).join(" "));
+          break;
+        }
         if (rest.length > 0) {
           await cmdRunReport(ctx, rest.join(" "));
           break;

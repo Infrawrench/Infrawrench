@@ -8,6 +8,8 @@
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
 import type {
   CostAccountStatus,
+  CostAlert,
+  CostAlertEvent,
   CostAnomaly,
   CostBasis,
   CostChargeType,
@@ -494,6 +496,146 @@ export async function cmdCostAnomalies(ctx: CliContext, range: RangeFlags): Prom
   println(
     c.dim(
       "Baseline is the trailing 28-day mean for that provider or service; a day clears the bar at mean + N standard deviations. Rows marked [new source] had no spend at all across that window and cleared an absolute floor instead. Both thresholds are per-org, tuned from the Costs panel. Un-notified rows were detected while no alert channel was connected, or inside another anomaly's cooldown.",
+    ),
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * `infrawrench costs --alerts`
+ * ------------------------------------------------------------------ */
+
+/** How many recent firings the text listing shows; `--limit` overrides. */
+const DEFAULT_ALERT_EVENTS = 20;
+const MAX_ALERT_EVENTS = 200;
+
+const CADENCE_WINDOWS: Record<CostAlert["cadence"], string> = {
+  daily: "yesterday vs same day last week",
+  weekly: "last 7 complete days vs prior 7",
+  monthly: "month-to-date vs same days last month",
+};
+
+/** "+173%", "-42%", or "new" when the prior window had no spend at all. */
+function alertDeltaLabel(event: CostAlertEvent): string {
+  if (event.changePercent === null) return "new";
+  return `${event.changePercent > 0 ? "+" : ""}${event.changePercent}%`;
+}
+
+/** The firing condition, compactly: "≥25% and ≥$100 up". */
+function alertThresholdLabel(alert: CostAlert): string {
+  const parts: string[] = [];
+  if (alert.thresholdPercent !== null) parts.push(`≥${alert.thresholdPercent}%`);
+  if (alert.thresholdAmountCents !== null) {
+    parts.push(`≥${formatMoney(alert.thresholdAmountCents / 100, "USD")}`);
+  }
+  const direction =
+    alert.direction === "both" ? "either way" : alert.direction === "increase" ? "up" : "down";
+  return `${parts.join(" and ")} ${direction}`;
+}
+
+/**
+ * Change-based cost alerts and their recent firings — the third cost-alert
+ * family alongside budgets (absolute monthly total) and anomalies
+ * (statistical outliers): a configured "spend on this scope moved more than
+ * X% (or $Y) versus the prior period". Evaluation runs server-side after
+ * each cost collection; alerts are managed from the Costs panel.
+ */
+export async function cmdCostAlerts(ctx: CliContext, range: RangeFlags): Promise<void> {
+  if (ctx.flags.local) {
+    throw new CliError(
+      "Change alerts evaluate on Infrawrench Cloud over your org's collected spend — there is no local cost history.",
+    );
+  }
+  const org = await resolveOrg(ctx);
+  const limit = Math.min(range.limit ?? DEFAULT_ALERT_EVENTS, MAX_ALERT_EVENTS);
+
+  const [{ alerts }, { events }] = await Promise.all([
+    orgFetch<{ alerts: CostAlert[] }>(org.id, "/cost-alerts"),
+    orgFetch<{ events: CostAlertEvent[] }>(org.id, `/cost-alerts/events?limit=${limit}`),
+  ]);
+
+  if (ctx.flags.output === "json") {
+    printJson({ org: org.id, alerts, events });
+    return;
+  }
+
+  println(`${c.bold(org.displayName)} ${c.dim("· change-based cost alerts")}`);
+  println();
+
+  if (alerts.length === 0) {
+    println(
+      c.dim(
+        "No change alerts. A change alert fires when spend on a scope you choose moves more than a threshold you choose versus the prior period — distinct from budgets (an absolute monthly total) and anomaly detection (statistical outliers). Create one from the Costs panel.",
+      ),
+    );
+    return;
+  }
+
+  printTable(alerts, [
+    {
+      header: "name",
+      value: (a) => (a.enabled ? c.bold(a.name) : `${c.bold(a.name)} ${c.dim("[paused]")}`),
+    },
+    { header: "cadence", value: (a) => c.dim(CADENCE_WINDOWS[a.cadence]) },
+    { header: "fires when", value: (a) => alertThresholdLabel(a) },
+    {
+      header: "watching",
+      value: (a) =>
+        c.dim(
+          `${a.groupBy === null ? "one total" : `each ${a.groupBy}${a.groupBy === "tag" && a.groupByTagKey ? `[${a.groupByTagKey}]` : ""}`}${a.filters.length > 0 ? ` · ${a.filters.length} filter${a.filters.length === 1 ? "" : "s"}` : ""}`,
+        ),
+    },
+    {
+      header: "last fired",
+      value: (a) => c.dim(a.lastFiredAt ? a.lastFiredAt.slice(0, 10) : "never"),
+    },
+  ]);
+
+  println();
+  if (events.length === 0) {
+    println(c.dim("No firings yet."));
+    return;
+  }
+
+  println(c.dim(`recent firings (newest first, up to ${limit})`));
+  printTable(events, [
+    { header: "fired", value: (e) => e.firedAt.slice(0, 10) },
+    {
+      header: "alert",
+      value: (e) =>
+        e.groupKey === ""
+          ? c.bold(e.alertName)
+          : `${c.bold(e.alertName)} ${c.dim(`· ${e.groupKey}`)}`,
+    },
+    {
+      header: "window",
+      value: (e) =>
+        c.dim(e.windowFrom === e.windowTo ? e.windowTo : `${e.windowFrom}..${e.windowTo}`),
+    },
+    {
+      header: "previous",
+      value: (e) => c.dim(formatMoney(e.previousAmountCents / 100, e.currency)),
+      align: "right",
+    },
+    {
+      header: "current",
+      value: (e) => formatMoney(e.currentAmountCents / 100, e.currency),
+      align: "right",
+    },
+    {
+      header: "change",
+      value: (e) => {
+        const label = alertDeltaLabel(e);
+        if (e.changePercent === null) return c.yellow(label);
+        return e.direction === "increase" ? c.red(label) : c.green(label);
+      },
+      align: "right",
+    },
+  ]);
+
+  println();
+  println(
+    c.dim(
+      "Windows are complete UTC days: daily compares one day to the same weekday a week earlier, weekly the last 7 complete days to the prior 7, monthly the month-to-date to the same number of days at the start of last month. Each cadence period fires at most once per watched group and currency; 'new' means the prior window had no spend at all.",
     ),
   );
 }
