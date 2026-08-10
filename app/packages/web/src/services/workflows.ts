@@ -18,7 +18,10 @@ import {
 import {
   DEFAULT_BUDGET_TRIGGER_PERCENT,
   generateInfraDts,
+  generateInfraDtsParts,
   typecheckWorkflow,
+  type GenerateInfraDtsInput,
+  type InfraDtsParts,
   type MetricDef,
   type TypecheckResult,
   type WorkflowTrigger,
@@ -380,14 +383,14 @@ export async function listWorkflowMetrics(workflowId: string) {
 }
 
 /**
- * Build the ambient `infra.d.ts` a workflow's source is written and checked
- * against. Enrichment and SSH-key listing are best-effort niceties — never let
- * them fail the whole thing (which would drop the caller back to `infra: any`).
+ * Gather the org-specific inputs for typings generation. Enrichment and
+ * SSH-key listing are best-effort niceties — never let them fail the whole
+ * thing (which would drop the caller back to `infra: any`).
  */
-export async function generateWorkflowTypings(
+async function workflowTypingsInput(
   organizationId: string,
-  opts: { metrics?: MetricDef[]; triggerKind?: WorkflowTrigger["kind"] } = {},
-): Promise<string> {
+  opts: { metrics?: MetricDef[]; triggerKind?: WorkflowTrigger["kind"] },
+): Promise<GenerateInfraDtsInput> {
   const [plugins, sshKeyNames] = await Promise.all([
     listOrgPlugins(organizationId, { enrichCreateFields: true }).catch(() =>
       listOrgPlugins(organizationId),
@@ -395,7 +398,7 @@ export async function generateWorkflowTypings(
     listOrgSshKeyNames(organizationId).catch(() => [] as string[]),
   ]);
   const triggerKind = opts.triggerKind ?? "manual";
-  return generateInfraDts({
+  return {
     plugins,
     metrics: opts.metrics ?? [],
     interactive: triggerKind === "manual",
@@ -405,7 +408,30 @@ export async function generateWorkflowTypings(
     // Cloud runs have the approvals surface, so `infra.waitForApproval` is available.
     approvals: true,
     sshKeyNames,
-  });
+  };
+}
+
+/**
+ * Build the ambient `infra.d.ts` a workflow's source is written and checked
+ * against.
+ */
+export async function generateWorkflowTypings(
+  organizationId: string,
+  opts: { metrics?: MetricDef[]; triggerKind?: WorkflowTrigger["kind"] } = {},
+): Promise<string> {
+  return generateInfraDts(await workflowTypingsInput(organizationId, opts));
+}
+
+/**
+ * The same typings split into a global scope plus named per-plugin interfaces,
+ * so the MCP/chat tool can hand out the file in parts instead of one large
+ * blob. `parts.full` is byte-identical to {@link generateWorkflowTypings}.
+ */
+export async function generateWorkflowTypingsParts(
+  organizationId: string,
+  opts: { metrics?: MetricDef[]; triggerKind?: WorkflowTrigger["kind"] } = {},
+): Promise<InfraDtsParts> {
+  return generateInfraDtsParts(await workflowTypingsInput(organizationId, opts));
 }
 
 /** Type-check a source against typings generated for the same org/trigger. */
