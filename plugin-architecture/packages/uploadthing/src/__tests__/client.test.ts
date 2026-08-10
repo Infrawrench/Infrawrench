@@ -391,6 +391,67 @@ describe("createResource", () => {
       customId: "cid-1",
       acl: "private",
     });
+
+    const put = calls.find((c) => c.url.startsWith("https://sea1.ingest.uploadthing.com/"));
+    const putHeaders = put?.init?.headers as Record<string, string> | undefined;
+    expect(putHeaders?.["Content-Type"]).toMatch(/^multipart\/form-data; boundary=/);
+    expect(put?.init?.body).toBeInstanceOf(Uint8Array);
+  });
+
+  it("PUTs the ingest body through the host HTTP service when one is available", async () => {
+    // Without this, an account bound to a bastion would prepareUpload through
+    // the tunnel and then leak the file bytes out the host's default network.
+    installReadFetch((url) => {
+      if (url === "https://example.com/pic.png") {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ "content-type": "image/png" }),
+          blob: async () => new Blob([new Uint8Array(4)], { type: "image/png" }),
+        } as unknown as Response;
+      }
+      return undefined;
+    });
+
+    const request = vi.fn(async (req: { url: string; method: string; body?: unknown }) => {
+      if (req.url.endsWith("/v7/getAppInfo")) {
+        return { status: 200, headers: {}, body: JSON.stringify(APP_INFO) };
+      }
+      if (req.url.endsWith("/v7/prepareUpload")) {
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({
+            key: "new-key",
+            url: "https://sea1.ingest.uploadthing.com/new-key",
+          }),
+        };
+      }
+      if (req.url.startsWith("https://sea1.ingest.uploadthing.com/") && req.method === "PUT") {
+        expect(req.body).toBeInstanceOf(Uint8Array);
+        return { status: 200, headers: {}, body: "" };
+      }
+      throw new Error(`unrouted host http: ${req.method} ${req.url}`);
+    });
+
+    const c = new UploadThingClient({ apiKey: "sk_live_test" }, {
+      http: { request },
+    } as unknown as ConstructorParameters<typeof UploadThingClient>[1]);
+
+    const created = await c.createResource("ut-file", ACCOUNT, {
+      sourceUrl: "https://example.com/pic.png",
+    });
+    expect(created.id).toBe(`${ACCOUNT}:ut-file:new-key`);
+    expect(
+      request.mock.calls.some(
+        ([req]) =>
+          typeof req === "object" &&
+          req !== null &&
+          "url" in req &&
+          String((req as { url: string }).url).startsWith("https://sea1.ingest.uploadthing.com/"),
+      ),
+    ).toBe(true);
+    expect(calls.some((c) => c.url.startsWith("https://sea1.ingest.uploadthing.com/"))).toBe(false);
   });
 
   it("refuses a private, loopback or link-local source", async () => {

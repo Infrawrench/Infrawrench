@@ -12,6 +12,7 @@ import type {
   StorageObject,
 } from "@infrawrench/plugin-base";
 import { base64ToUtf8, formatBytes, jsonRestFetch } from "@infrawrench/plugin-base";
+import { buildMultipartFileBody } from "./multipart.js";
 
 /**
  * UploadThing plugin client.
@@ -756,19 +757,43 @@ export class UploadThingClient implements PluginClient {
       ...(opts.acl ? { acl: opts.acl } : {}),
     });
 
-    // UploadThing's own docs use multipart FormData for this PUT
-    // (https://docs.uploadthing.com/uploading-files). The presigned URL carries
-    // its own signature; sending the API key here would be wrong, and setting
-    // Content-Type by hand would strip the multipart boundary fetch generates.
-    const form = new FormData();
-    form.append("file", blob, name);
-    const res = await fetch(prepared.url, {
-      method: "PUT",
-      body: form,
-      signal: AbortSignal.timeout(URL_UPLOAD_TIMEOUT_MS),
+    // UploadThing's docs use multipart FormData for this PUT
+    // (https://docs.uploadthing.com/uploading-files). FormData can't go through
+    // `services.http` (the host bridge only accepts string | Uint8Array), so we
+    // encode the same shape as bytes and prefer the host path — that's what
+    // picks up bastion egress for ingest hosts on the allowlist.
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const multipart = buildMultipartFileBody({
+      name: "file",
+      fileName: name,
+      contentType: contentType || "application/octet-stream",
+      data: bytes,
     });
-    if (!res.ok) {
-      throw new Error(`UploadThing upload failed: HTTP ${res.status} ${await res.text()}`);
+    const headers = { "Content-Type": multipart.contentType };
+
+    if (this.services?.http) {
+      const result = await this.services.http.request({
+        url: prepared.url,
+        method: "PUT",
+        headers,
+        body: multipart.body,
+        ...(this.caCert ? { caCert: this.caCert } : {}),
+      });
+      if (result.status < 200 || result.status >= 300) {
+        throw new Error(
+          `UploadThing upload failed: HTTP ${result.status} ${result.body.slice(0, 400)}`,
+        );
+      }
+    } else {
+      const res = await fetch(prepared.url, {
+        method: "PUT",
+        headers,
+        body: multipart.body as BodyInit,
+        signal: AbortSignal.timeout(URL_UPLOAD_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        throw new Error(`UploadThing upload failed: HTTP ${res.status} ${await res.text()}`);
+      }
     }
     this.invalidateFiles();
     return prepared.key;
