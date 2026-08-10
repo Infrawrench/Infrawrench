@@ -249,16 +249,65 @@ export function costTools(): ToolDefinition[] {
         "Spend grouped by cost centre through the organization's allocation rules " +
         "(first-match-wins on tag key/value, account, provider, service). Spend no rule claims " +
         'lands in the "Unallocated" bucket. Dates are inclusive YYYY-MM-DD, defaulting to the ' +
-        "trailing 30 days.",
-      inputSchema: { from: isoDay.optional(), to: isoDay.optional() },
+        "trailing 30 days.\n\n" +
+        "Cost centres nest, so `centres` is a depth-first tree: each entry carries `parentId` " +
+        "and `depth` alongside two sets of amounts. `totals` is spend allocated **directly** to " +
+        "that centre — a cost row is allocated exactly once, so summing `totals` across every " +
+        "entry equals the organization's spend for the period. `subtreeTotals` is that centre " +
+        'plus every descendant, which is the number to quote for "what does Engineering cost"; ' +
+        "never sum `subtreeTotals` across entries, because parents already contain their " +
+        "children. For a flat organization, and for every leaf, the two are equal.",
+      inputSchema: {
+        from: isoDay.optional(),
+        to: isoDay.optional(),
+        adjusted: z.boolean().optional(),
+      },
       risk: "read",
       permission: "costs:read",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:read");
         if (denied) return denied;
-        const range = toolRange(input as Record<string, unknown>);
+        const args = input as Record<string, unknown>;
+        const range = toolRange(args);
         if (!range) return err("from must not be after to");
-        return ok(await getShowbackReport(auth.organizationId, range.from, range.to));
+        return ok(
+          await getShowbackReport(
+            auth.organizationId,
+            range.from,
+            range.to,
+            undefined,
+            undefined,
+            args["adjusted"] === true,
+          ),
+        );
+      },
+    },
+
+    {
+      name: "list_billing_rules",
+      title: "List billing rules",
+      description:
+        "The organization's billing rules — its own adjustments to collected spend. A rule " +
+        "matches spend (tag key/value, account, provider, service, charge type) and adjusts " +
+        "it: a percentage markup or discount, a fixed amount per day or month, or a " +
+        "reallocation that moves the spend onto another cost centre or account.\n\n" +
+        "**Nothing here is ever written into the stored cost data.** Rules are applied at " +
+        "query time, so collected spend is always still exactly what the provider reported. " +
+        "Use this to explain a discrepancy: when an adjusted total does not match an invoice, " +
+        "these rules are the reason, and each row's `summary` says what it does to which " +
+        "spend.\n\n" +
+        "Ordering matters and works in two different ways. Every matching percentage rule " +
+        "applies, so two 10% markups compound to 21% rather than 20%. Reallocation is " +
+        "first-match-wins by ascending priority, so a row moves exactly once and the " +
+        "organization's total is unchanged by any reallocation. Disabled rules are listed but " +
+        "affect nothing.",
+      inputSchema: {},
+      risk: "read",
+      permission: "costs:read",
+      handler: async (_input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:read");
+        if (denied) return denied;
+        return ok(await listBillingRulesForOrg(auth.organizationId));
       },
     },
 

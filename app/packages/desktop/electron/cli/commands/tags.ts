@@ -141,21 +141,37 @@ export async function cmdShowback(ctx: CliContext, range: RangeFlags): Promise<v
   if (report.centres.length === 0) {
     println(
       c.dim(
-        "No cost centres defined. Create centres and allocation rules under Settings → Tag Policy in the web app; unmatched spend reports as Unallocated.",
+        "No cost centres defined. Build the centre tree under Settings → Cost Centres and map spend onto it with allocation rules under Settings → Tag Policy in the web app; unmatched spend reports as Unallocated.",
       ),
     );
     return;
   }
 
-  // One bar per (centre, currency); mixed-currency orgs get one bar each.
-  const items = report.centres.flatMap((centre) =>
-    Object.entries(centre.totals).map(([currency, amount]) => ({
-      label: centre.costCentreId === null ? c.dim("unallocated") : centre.name,
-      value: amount,
-      display: formatMoney(amount, currency),
-      colorIndex: centre.costCentreId === null ? 7 : report.centres.indexOf(centre),
-    })),
-  );
+  // Cost centres nest, so the bars are indented into the tree the report
+  // already comes back in (depth-first, Unallocated last). A parent's bar is
+  // its **subtree** total — the number someone runs `showback` to read — and
+  // its own directly-allocated spend is noted after it when the two differ, so
+  // "Engineering, of which the division itself" stays legible. Bars therefore
+  // deliberately do not sum to the org total; the leaves do.
+  const hasChildren = (id: string | null) =>
+    id !== null && report.centres.some((other) => other.parentId === id);
+
+  const items = report.centres.flatMap((centre, index) => {
+    const rolled = hasChildren(centre.costCentreId);
+    const primary = rolled ? centre.subtreeTotals : centre.totals;
+    const indent = "  ".repeat(centre.depth);
+    return Object.entries(primary).map(([currency, amount]) => {
+      const own = centre.totals[currency] ?? 0;
+      const suffix = rolled && own !== amount ? c.dim(` (own ${formatMoney(own, currency)})`) : "";
+      const name = centre.costCentreId === null ? c.dim("unallocated") : `${centre.name}${suffix}`;
+      return {
+        label: `${indent}${name}`,
+        value: amount,
+        display: formatMoney(amount, currency),
+        colorIndex: centre.costCentreId === null ? 7 : index,
+      };
+    });
+  });
   if (items.length === 0) {
     println(c.dim("No spend collected in this period."));
     return;

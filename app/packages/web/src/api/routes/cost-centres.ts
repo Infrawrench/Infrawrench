@@ -11,6 +11,7 @@ import {
   swapAllocationRulePriorities,
   updateAllocationRule,
   updateCostCentre,
+  CostCentreError,
 } from "@infrawrench/server-core/cost/allocation";
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
@@ -35,13 +36,19 @@ declare module "hono" {
  */
 const app = new Hono();
 
-/** GET /api/org/:orgId/cost-centres — centres, name-sorted. */
+/**
+ * GET /api/org/:orgId/cost-centres — centres, name-sorted.
+ *
+ * Flat on the wire, with `parentId` on each row: clients build the tree
+ * themselves, exactly like cost-report folders. A nested payload would make
+ * "list the centres for a picker" the hard case.
+ */
 app.get("/", async (c) => {
   requirePermission(c, "costs:read");
   return c.json(await listCostCentres(c.get("organizationId")));
 });
 
-/** POST /api/org/:orgId/cost-centres — create a centre. */
+/** POST /api/org/:orgId/cost-centres — create a centre, optionally nested. */
 app.post("/", async (c) => {
   requirePermission(c, "costs:write");
   const organizationId = c.get("organizationId");
@@ -52,19 +59,32 @@ app.post("/", async (c) => {
     return c.json({ error: "Invalid cost centre", issues: parsed.error.issues }, 400);
   }
 
-  const centre = await createCostCentre(organizationId, parsed.data);
+  let centre;
+  try {
+    centre = await createCostCentre(organizationId, parsed.data);
+  } catch (e) {
+    // A rejected placement (unknown parent, past the depth cap) is the caller's
+    // mistake and carries the same message the UI greys the option out with.
+    if (e instanceof CostCentreError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
   void logAudit({
     organizationId,
     userId: session.userId,
     action: "cost_centre.create",
     entityType: "cost_centre",
     entityId: centre.id,
-    metadata: { name: centre.name },
+    metadata: { name: centre.name, parentId: centre.parentId },
   });
   return c.json(centre);
 });
 
-/** PUT /api/org/:orgId/cost-centres/:id — rename / redescribe a centre. */
+/**
+ * PUT /api/org/:orgId/cost-centres/:id — rename / redescribe / move a centre.
+ *
+ * A move is this same update with a different `parentId`; omitting the field
+ * leaves the centre where it is.
+ */
 app.put("/:id", async (c) => {
   requirePermission(c, "costs:write");
   const organizationId = c.get("organizationId");
@@ -75,7 +95,13 @@ app.put("/:id", async (c) => {
     return c.json({ error: "Invalid cost centre", issues: parsed.error.issues }, 400);
   }
 
-  const centre = await updateCostCentre(organizationId, c.req.param("id"), parsed.data);
+  let centre;
+  try {
+    centre = await updateCostCentre(organizationId, c.req.param("id"), parsed.data);
+  } catch (e) {
+    if (e instanceof CostCentreError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
   if (!centre) return c.json({ error: "Not found" }, 404);
   void logAudit({
     organizationId,
@@ -83,12 +109,17 @@ app.put("/:id", async (c) => {
     action: "cost_centre.update",
     entityType: "cost_centre",
     entityId: centre.id,
-    metadata: { name: centre.name },
+    metadata: { name: centre.name, parentId: centre.parentId },
   });
   return c.json(centre);
 });
 
-/** DELETE /api/org/:orgId/cost-centres/:id — delete a centre and its rules. */
+/**
+ * DELETE /api/org/:orgId/cost-centres/:id — delete a centre and its rules.
+ *
+ * Children are re-parented onto the deleted centre's own parent, never deleted
+ * and never promoted to the root; spend history is untouched.
+ */
 app.delete("/:id", async (c) => {
   requirePermission(c, "costs:write");
   const organizationId = c.get("organizationId");

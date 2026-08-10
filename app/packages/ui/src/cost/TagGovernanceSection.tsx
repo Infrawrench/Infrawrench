@@ -8,6 +8,13 @@ import type {
 } from "@infrawrench/client-core";
 import type { CostsClient } from "./types.js";
 
+/** "$1,234 + €900", or an em dash when the bucket is empty. */
+function formatTotals(totals: Record<string, number>): string {
+  const entries = Object.entries(totals);
+  if (entries.length === 0) return "—";
+  return entries.map(([currency, amount]) => formatMoney(amount, currency)).join(" + ");
+}
+
 /**
  * Tag governance on the Costs panel: per-account compliance with the org's
  * tag policy, spend not carrying the required keys, and the showback split by
@@ -75,8 +82,9 @@ export function TagGovernanceSection({ client }: { client: CostsClient }) {
         <p className="text-sm text-on-surface-faint">
           No tag policy or cost centres configured. An org admin can require tags like{" "}
           <code className="text-on-surface-secondary">owner</code> and{" "}
-          <code className="text-on-surface-secondary">env</code> on every resource, and map spend to
-          cost centres, under Settings → Tag Policy.
+          <code className="text-on-surface-secondary">env</code> on every resource under Settings →
+          Tag Policy, and build the cost centre tree spend is allocated to under Settings → Cost
+          Centres.
         </p>
       )}
 
@@ -176,29 +184,47 @@ export function TagGovernanceSection({ client }: { client: CostsClient }) {
             <span className="text-xs text-on-surface-faint">last 30 days</span>
           </div>
           <ul className="flex flex-col gap-1.5">
-            {showback.centres.map((centre) => (
-              <li
-                key={centre.costCentreId ?? "__unallocated__"}
-                className="flex items-baseline justify-between gap-3 text-sm"
-              >
-                <span
-                  className={
-                    centre.costCentreId === null
-                      ? "text-on-surface-faint italic"
-                      : "text-on-surface"
-                  }
+            {showback.centres.map((centre) => {
+              // A parent shows the subtree total — "what does Engineering
+              // cost" is the number people came for — with its own directly
+              // allocated spend beside it, so "of which the division itself"
+              // is legible instead of hidden inside the rollup. A leaf has one
+              // number and prints one.
+              const hasChildren = showback.centres.some(
+                (other) => other.parentId === centre.costCentreId,
+              );
+              const primary = hasChildren ? centre.subtreeTotals : centre.totals;
+              return (
+                <li
+                  key={centre.costCentreId ?? "__unallocated__"}
+                  className="flex items-baseline justify-between gap-3 text-sm"
+                  style={{ paddingLeft: `${centre.depth * 16}px` }}
                 >
-                  {centre.name}
-                </span>
-                <span className="text-on-surface-secondary">
-                  {Object.keys(centre.totals).length === 0
-                    ? "—"
-                    : Object.entries(centre.totals)
-                        .map(([currency, amount]) => formatMoney(amount, currency))
-                        .join(" + ")}
-                </span>
-              </li>
-            ))}
+                  <span
+                    className={
+                      centre.costCentreId === null
+                        ? "text-on-surface-faint italic"
+                        : "text-on-surface"
+                    }
+                  >
+                    {centre.depth > 0 && (
+                      <span aria-hidden className="text-on-surface-faint mr-1.5">
+                        └
+                      </span>
+                    )}
+                    {centre.name}
+                  </span>
+                  <span className="text-on-surface-secondary text-right">
+                    {formatTotals(primary)}
+                    {hasChildren && (
+                      <span className="block text-xs text-on-surface-faint">
+                        own {formatTotals(centre.totals)}
+                      </span>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

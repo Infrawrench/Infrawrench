@@ -12509,128 +12509,532 @@
             "format": "uuid",
             "example": "00000000-0000-0000-0000-000000000000"
           },
-          "accountName": {
+          "pluginId": {
             "type": "string"
           },
-          "resourceCount": {
-            "type": "integer",
-            "description": "Resources compared on this side."
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "parentResourceId": {
+            "$ref": "#/components/schemas/ResourceId"
           }
         },
         "required": [
           "accountId",
-          "accountName",
-          "resourceCount"
+          "pluginId",
+          "resourceTypeId",
+          "fields"
         ],
         "additionalProperties": false
       },
-      "EnvironmentDiffTypeSummary": {
+      "UpdateResourceResponse": {
         "type": "object",
         "properties": {
-          "resourceTypeId": {
+          "id": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "displayName": {
             "type": "string"
           },
-          "resourceTypeName": {
-            "type": "string"
-          },
-          "countA": {
-            "type": "integer"
-          },
-          "countB": {
-            "type": "integer"
-          },
-          "delta": {
-            "type": "integer",
-            "description": "`countB - countA`."
-          },
-          "onlyInA": {
-            "type": "integer"
-          },
-          "onlyInB": {
-            "type": "integer"
-          },
-          "changed": {
-            "type": "integer",
-            "description": "Matched pairs that disagree on at least one field."
-          },
-          "identical": {
-            "type": "integer",
-            "description": "Matched pairs with no visible divergence."
-          },
-          "missingFrom": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "enum": [
-              "a",
-              "b"
-            ],
-            "description": "Set when the resource type is absent from that side entirely."
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
           }
         },
         "required": [
-          "resourceTypeId",
-          "resourceTypeName",
-          "countA",
-          "countB",
-          "delta",
-          "onlyInA",
-          "onlyInB",
-          "changed",
-          "identical",
-          "missingFrom"
+          "id",
+          "displayName",
+          "fields"
         ],
         "additionalProperties": false
       },
-      "EnvironmentDiffResourceRef": {
-        "type": [
-          "object",
-          "null"
-        ],
+      "UpdateResourceRequest": {
+        "type": "object",
         "properties": {
-          "resourceId": {
+          "accountId": {
             "type": "string",
-            "description": "Infrawrench resource id."
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "parentResourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          }
+        },
+        "required": [
+          "accountId",
+          "pluginId",
+          "resourceTypeId",
+          "resourceId",
+          "fields"
+        ],
+        "additionalProperties": false
+      },
+      "CreateConfigRequest": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "parentResourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          }
+        },
+        "required": [
+          "accountId",
+          "resourceTypeId"
+        ],
+        "additionalProperties": false
+      },
+      "PickerResource": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "label": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
           },
           "accountId": {
             "type": "string",
             "format": "uuid",
             "example": "00000000-0000-0000-0000-000000000000"
           },
-          "displayName": {
+          "outputKey": {
             "type": "string"
           },
-          "externalId": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Provider-native id, when known."
+          "outputValue": {
+            "type": "string"
           }
         },
         "required": [
-          "resourceId",
+          "id",
+          "label",
+          "pluginId",
+          "resourceTypeId",
           "accountId",
-          "displayName",
-          "externalId"
+          "outputKey",
+          "outputValue"
         ],
-        "additionalProperties": false,
-        "description": "Null when the resource exists only on B."
+        "additionalProperties": false
       },
-      "EnvironmentDiffFieldChange": {
+      "PickerResourcesRequest": {
+        "type": "object",
+        "properties": {
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "pluginId": {
+                  "type": "string"
+                },
+                "resourceTypeId": {
+                  "type": "string"
+                },
+                "outputKey": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "pluginId",
+                "resourceTypeId",
+                "outputKey"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "regionHint": {
+            "type": "string"
+          },
+          "crossAccount": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sources",
+          "accountId"
+        ],
+        "additionalProperties": false
+      },
+      "CreatePricingRequest": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "regionId": {
+            "type": "string"
+          },
+          "sizes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "vcpus": {
+                  "type": "number"
+                },
+                "memoryMb": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "vcpus",
+                "memoryMb"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "parentResourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          }
+        },
+        "required": [
+          "accountId",
+          "resourceTypeId",
+          "sizes"
+        ],
+        "additionalProperties": false
+      },
+      "FieldActionResponse": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "option": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "label"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "FieldActionRequest": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "fieldKey": {
+            "type": "string"
+          },
+          "actionId": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "actionFields": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "parentResourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          }
+        },
+        "required": [
+          "accountId",
+          "resourceTypeId",
+          "fieldKey",
+          "actionId",
+          "fields"
+        ],
+        "additionalProperties": false
+      },
+      "CostEstimateLineItem": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "monthlyAmount": {
+            "type": "number"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unit": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "monthlyAmount"
+        ],
+        "additionalProperties": false
+      },
+      "CostEstimate": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "monthlyAmount": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "lineItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostEstimateLineItem"
+            }
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "monthlyAmount",
+          "currency",
+          "lineItems"
+        ],
+        "additionalProperties": false
+      },
+      "CostEstimateRequest": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "resourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "parentResourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          }
+        },
+        "required": [
+          "accountId",
+          "resourceTypeId"
+        ],
+        "additionalProperties": false
+      },
+      "PeerPanesRequest": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "resourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "parentResourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          }
+        },
+        "required": [
+          "accountId",
+          "resourceId"
+        ],
+        "additionalProperties": false
+      },
+      "MetricSeries": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "timestamp": {
+                  "type": "number",
+                  "description": "Unix epoch milliseconds."
+                },
+                "value": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "timestamp",
+                "value"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "label",
+          "points"
+        ],
+        "additionalProperties": false
+      },
+      "MetricsResponse": {
+        "type": "object",
+        "properties": {
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricSeries"
+            }
+          }
+        },
+        "required": [
+          "series"
+        ],
+        "additionalProperties": false
+      },
+      "MetricsRequest": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "resourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "startMs": {
+            "type": "integer"
+          },
+          "endMs": {
+            "type": "integer"
+          },
+          "parentResourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          }
+        },
+        "required": [
+          "accountId",
+          "resourceId"
+        ],
+        "additionalProperties": false
+      },
+      "ResourceChangeKind": {
+        "type": "string",
+        "enum": [
+          "created",
+          "updated",
+          "deleted"
+        ],
+        "description": "What happened between two consecutive syncs: the resource appeared, a stored field changed, or the resource disappeared upstream."
+      },
+      "ResourceFieldChange": {
         "type": "object",
         "properties": {
           "field": {
             "type": "string",
-            "description": "Field key; resolved-output keys are prefixed `outputs.`.",
-            "example": "instanceClass"
+            "description": "Top-level field key that changed. Resolved-output keys are prefixed `outputs.`."
           },
-          "a": {
-            "description": "Value on side A; null when the key is absent there."
+          "from": {
+            "description": "Previous value (null when the field was absent)."
           },
-          "b": {
-            "description": "Value on side B."
+          "to": {
+            "description": "New value."
           }
         },
         "required": [
@@ -12638,485 +13042,7 @@
         ],
         "additionalProperties": false
       },
-      "EnvironmentDiffEntry": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string",
-            "description": "The pairing key both sides matched on — the resource type plus the resource name with environment words removed. Stable across runs.",
-            "example": "droplet api#0"
-          },
-          "resourceTypeId": {
-            "type": "string"
-          },
-          "resourceTypeName": {
-            "type": "string",
-            "example": "Droplet"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "only-in-a",
-              "only-in-b",
-              "changed"
-            ],
-            "description": "Whether the slot exists on side A only, side B only, or on both with a field divergence. Matched pairs that agree are counted in the type summary rather than listed."
-          },
-          "a": {
-            "$ref": "#/components/schemas/EnvironmentDiffResourceRef"
-          },
-          "b": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/EnvironmentDiffResourceRef"
-              },
-              {
-                "description": "Null when the resource exists only on A."
-              }
-            ]
-          },
-          "changes": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/EnvironmentDiffFieldChange"
-            },
-            "description": "Field divergences. Empty unless `status` is `changed`."
-          },
-          "suppressedCount": {
-            "type": "integer",
-            "description": "Divergences hidden by the identity filter (ids, links, addresses, timestamps). Always 0 when `includeIdentityFields` was requested."
-          }
-        },
-        "required": [
-          "key",
-          "resourceTypeId",
-          "resourceTypeName",
-          "status",
-          "a",
-          "b",
-          "changes",
-          "suppressedCount"
-        ],
-        "additionalProperties": false
-      },
-      "EnvironmentDiffTotals": {
-        "type": "object",
-        "properties": {
-          "onlyInA": {
-            "type": "integer"
-          },
-          "onlyInB": {
-            "type": "integer"
-          },
-          "changed": {
-            "type": "integer"
-          },
-          "identical": {
-            "type": "integer"
-          },
-          "typesOnlyInA": {
-            "type": "integer"
-          },
-          "typesOnlyInB": {
-            "type": "integer"
-          },
-          "suppressedFieldChanges": {
-            "type": "integer",
-            "description": "Field divergences the identity filter hid across every pair."
-          }
-        },
-        "required": [
-          "onlyInA",
-          "onlyInB",
-          "changed",
-          "identical",
-          "typesOnlyInA",
-          "typesOnlyInB",
-          "suppressedFieldChanges"
-        ],
-        "additionalProperties": false
-      },
-      "EnvironmentDiffUnavailableType": {
-        "type": "object",
-        "properties": {
-          "resourceTypeId": {
-            "type": "string"
-          },
-          "resourceTypeName": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string",
-            "description": "The provider's complaint, as the lister reported it."
-          }
-        },
-        "required": [
-          "resourceTypeId",
-          "resourceTypeName",
-          "message"
-        ],
-        "additionalProperties": false
-      },
-      "EnvironmentDiffResponse": {
-        "type": "object",
-        "properties": {
-          "a": {
-            "$ref": "#/components/schemas/EnvironmentDiffSideSummary"
-          },
-          "b": {
-            "$ref": "#/components/schemas/EnvironmentDiffSideSummary"
-          },
-          "pluginId": {
-            "$ref": "#/components/schemas/PluginId"
-          },
-          "pluginName": {
-            "type": "string",
-            "example": "DigitalOcean"
-          },
-          "types": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/EnvironmentDiffTypeSummary"
-            },
-            "description": "Every resource type present on either side, most-divergent first."
-          },
-          "entries": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/EnvironmentDiffEntry"
-            },
-            "description": "Only the slots that differ; identical pairs are counted, not listed."
-          },
-          "totals": {
-            "$ref": "#/components/schemas/EnvironmentDiffTotals"
-          },
-          "unavailableTypes": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/EnvironmentDiffUnavailableType"
-            },
-            "description": "Resource types excluded because they could not be listed. Always empty over this API — it reads already-synced rows, which cannot half-fail — and populated only by the desktop and CLI local modes, which list live."
-          },
-          "includeIdentityFields": {
-            "type": "boolean"
-          },
-          "generatedAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "a",
-          "b",
-          "pluginId",
-          "pluginName",
-          "types",
-          "entries",
-          "totals",
-          "unavailableTypes",
-          "includeIdentityFields",
-          "generatedAt"
-        ],
-        "additionalProperties": false
-      },
-      "MomentFeedId": {
-        "type": "string",
-        "enum": [
-          "changes",
-          "statusIncidents",
-          "costAnomalies",
-          "workflowRuns",
-          "deployments",
-          "audit",
-          "freezes",
-          "driftAlerts",
-          "expiryAlerts"
-        ],
-        "description": "One of the indexed feeds the moment union draws from."
-      },
-      "MomentFeedStatus": {
-        "type": "object",
-        "properties": {
-          "feed": {
-            "$ref": "#/components/schemas/MomentFeedId"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "ok",
-              "omitted",
-              "error"
-            ],
-            "description": "`omitted` = the caller lacks the feed's read permission; `error` = the feed's query failed but the rest of the response is still valid (partial-failure tolerance)."
-          },
-          "error": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Short failure reason when `status` is `error`."
-          },
-          "truncated": {
-            "type": "boolean",
-            "description": "True when the feed hit its row cap and events were dropped."
-          }
-        },
-        "required": [
-          "feed",
-          "status"
-        ],
-        "additionalProperties": false
-      },
-      "MomentSeverity": {
-        "type": "string",
-        "enum": [
-          "info",
-          "warning",
-          "critical"
-        ]
-      },
-      "MomentEventLink": {
-        "type": [
-          "object",
-          "null"
-        ],
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "resource",
-              "changes",
-              "incident",
-              "costs",
-              "workflow-run",
-              "deployment",
-              "audit",
-              "freeze",
-              "expiring"
-            ],
-            "description": "Which native screen the event deep-links to."
-          },
-          "id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Target id where the kind needs one (resource id, run id, freeze id…)."
-          },
-          "parentId": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Parent id where the target needs one (workflow id for a run)."
-          },
-          "url": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Absolute external URL — a provider's incident page. Wins when present."
-          }
-        },
-        "required": [
-          "kind"
-        ],
-        "additionalProperties": false
-      },
-      "MomentEvent": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "Stable synthetic id, unique within a response (`feed:rowId[:phase]`)."
-          },
-          "feed": {
-            "$ref": "#/components/schemas/MomentFeedId"
-          },
-          "kind": {
-            "type": "string",
-            "description": "Fine-grained `<noun>.<verb>` kind, e.g. `change.created`, `incident.started`, `workflow-run.failed`, `deployment.finished`, `freeze.started`, `drift-alert.sent`. Open set — render unknown kinds generically."
-          },
-          "timestamp": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "title": {
-            "type": "string",
-            "description": "One-line headline."
-          },
-          "detail": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional second line — diff summary, actor, error text."
-          },
-          "severity": {
-            "$ref": "#/components/schemas/MomentSeverity"
-          },
-          "pluginId": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "accountId": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "accountName": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "resourceId": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "resourceTypeId": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "resourceName": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "link": {
-            "$ref": "#/components/schemas/MomentEventLink"
-          }
-        },
-        "required": [
-          "id",
-          "feed",
-          "kind",
-          "timestamp",
-          "title",
-          "severity"
-        ],
-        "additionalProperties": false
-      },
-      "MomentIncidentSpan": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "pluginId": {
-            "type": "string"
-          },
-          "pluginName": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "impact": {
-            "type": "string",
-            "enum": [
-              "maintenance",
-              "minor",
-              "major",
-              "critical"
-            ]
-          },
-          "startedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "resolvedAt": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
-          "url": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "pluginId",
-          "pluginName",
-          "title",
-          "impact",
-          "startedAt"
-        ],
-        "additionalProperties": false,
-        "description": "A provider incident whose span overlaps the window — returned alongside the events so clients can badge events that fall inside it (\"during DigitalOcean incident\")."
-      },
-      "MomentResponse": {
-        "type": "object",
-        "properties": {
-          "at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "The centre timestamp, normalized to ISO."
-          },
-          "from": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "to": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "windowMinutes": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "description": "The half-window actually applied, after clamping to 1–4320 minutes."
-          },
-          "generatedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "feeds": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MomentFeedStatus"
-            },
-            "description": "One entry per feed, in canonical order — including omitted and errored feeds."
-          },
-          "events": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MomentEvent"
-            },
-            "description": "Chronological, oldest first."
-          },
-          "incidents": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MomentIncidentSpan"
-            }
-          }
-        },
-        "required": [
-          "at",
-          "from",
-          "to",
-          "windowMinutes",
-          "generatedAt",
-          "feeds",
-          "events",
-          "incidents"
-        ],
-        "additionalProperties": false
-      },
-      "SleepSchedule": {
+      "ResourceChangeEntry": {
         "type": "object",
         "properties": {
           "id": {
@@ -13125,8 +13051,7 @@
             "example": "00000000-0000-0000-0000-000000000000"
           },
           "resourceId": {
-            "type": "string",
-            "description": "Infrawrench resource id the schedule powers on and off."
+            "$ref": "#/components/schemas/ResourceId"
           },
           "accountId": {
             "type": "string",
@@ -14385,125 +14310,179 @@
           "accountName": {
             "type": "string"
           },
-          "pluginId": {
-            "$ref": "#/components/schemas/PluginId"
+          "zoneResourceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Owning zone's resource id, or null when the record could not be attributed."
           },
-          "capabilityLabel": {
-            "type": "string",
-            "description": "The provider's own word for this pot — \"Credits\", \"Balance\"."
-          },
-          "topUpUrl": {
+          "zoneDomain": {
             "type": [
               "string",
               "null"
             ]
           },
-          "potKey": {
+          "name": {
             "type": "string",
-            "description": "Stable identity for this pot within the account — a currency code, a project id — so successive readings line up into a series."
+            "description": "Fully qualified, lowercased, no trailing dot."
+          },
+          "type": {
+            "type": "string",
+            "example": "CNAME"
+          },
+          "ttl": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "priority": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "proxied": {
+            "type": "boolean",
+            "description": "Whether the provider proxies the record (Cloudflare's orange cloud)."
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DnsRecordTarget"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "owned",
+              "dangling",
+              "external",
+              "not-analysed"
+            ],
+            "description": "Worst classification across `targets`."
+          }
+        },
+        "required": [
+          "resourceId",
+          "pluginId",
+          "pluginName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "accountId",
+          "accountName",
+          "zoneResourceId",
+          "zoneDomain",
+          "name",
+          "type",
+          "ttl",
+          "priority",
+          "proxied",
+          "targets",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "DnsInventoryCounts": {
+        "type": "object",
+        "properties": {
+          "zones": {
+            "type": "integer"
+          },
+          "records": {
+            "type": "integer"
+          },
+          "owned": {
+            "type": "integer"
+          },
+          "dangling": {
+            "type": "integer"
+          },
+          "external": {
+            "type": "integer"
+          },
+          "notAnalysed": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "zones",
+          "records",
+          "owned",
+          "dangling",
+          "external",
+          "notAnalysed"
+        ],
+        "additionalProperties": false,
+        "description": "Record counts per status; zones counted separately."
+      },
+      "DnsSkippedNamespace": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
           },
           "label": {
             "type": "string"
           },
-          "remaining": {
-            "type": "number"
-          },
-          "currency": {
+          "reason": {
             "type": "string"
-          },
-          "granted": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "description": "What was granted, when the provider reports it."
-          },
-          "creditExpiresAt": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Hard expiry on the credit itself, independent of burn."
-          },
-          "observedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "burnPerDay": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "description": "Spend per day over the observed span. **Null means there is not enough history to say** — never 0, which would read as 'nothing is being spent'."
-          },
-          "burnSpanDays": {
-            "type": "number"
-          },
-          "observations": {
-            "type": "integer"
-          },
-          "topUps": {
-            "type": "integer",
-            "description": "Increases seen between consecutive readings. A top-up is recorded, never netted off the burn — subtracting the endpoints of a window containing one reports a negative burn and an infinite runway."
-          },
-          "runwayDays": {
-            "type": [
-              "number",
-              "null"
-            ]
-          },
-          "exhaustedAt": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
-          "neverEmpties": {
-            "type": "boolean",
-            "description": "Nothing has been spent over the observed span."
-          },
-          "limitedByExpiry": {
-            "type": "boolean",
-            "description": "The credit's own expiry, not the burn rate, is the binding deadline."
-          },
-          "urgency": {
-            "type": "string",
-            "enum": [
-              "critical",
-              "warning",
-              "ok",
-              "unknown"
-            ]
           }
         },
         "required": [
-          "accountId",
-          "accountName",
           "pluginId",
-          "capabilityLabel",
-          "topUpUrl",
-          "potKey",
+          "pluginName",
           "label",
-          "remaining",
-          "currency",
-          "granted",
-          "creditExpiresAt",
-          "observedAt",
-          "burnPerDay",
-          "burnSpanDays",
-          "observations",
-          "topUps",
-          "runwayDays",
-          "exhaustedAt",
-          "neverEmpties",
-          "limitedByExpiry",
-          "urgency"
+          "reason"
         ],
         "additionalProperties": false
       },
-      "CreditPollFailure": {
+      "DnsInventoryResponse": {
+        "type": "object",
+        "properties": {
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DnsZone"
+            },
+            "description": "Sorted by domain, then account name."
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DnsRecord"
+            },
+            "description": "Sorted worst status first, then by name."
+          },
+          "counts": {
+            "$ref": "#/components/schemas/DnsInventoryCounts"
+          },
+          "skippedNamespaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DnsSkippedNamespace"
+            },
+            "description": "Provider namespaces that were declared but not evaluated, and why — either no account for the plugin is connected, or no claimant resource has synced. Both are missing data rather than a clean bill of health, so they are reported rather than hidden."
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "zones",
+          "records",
+          "counts",
+          "skippedNamespaces",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentDiffSideSummary": {
         "type": "object",
         "properties": {
           "accountId": {
@@ -14514,699 +14493,471 @@
           "accountName": {
             "type": "string"
           },
+          "resourceCount": {
+            "type": "integer",
+            "description": "Resources compared on this side."
+          }
+        },
+        "required": [
+          "accountId",
+          "accountName",
+          "resourceCount"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentDiffTypeSummary": {
+        "type": "object",
+        "properties": {
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string"
+          },
+          "countA": {
+            "type": "integer"
+          },
+          "countB": {
+            "type": "integer"
+          },
+          "delta": {
+            "type": "integer",
+            "description": "`countB - countA`."
+          },
+          "onlyInA": {
+            "type": "integer"
+          },
+          "onlyInB": {
+            "type": "integer"
+          },
+          "changed": {
+            "type": "integer",
+            "description": "Matched pairs that disagree on at least one field."
+          },
+          "identical": {
+            "type": "integer",
+            "description": "Matched pairs with no visible divergence."
+          },
+          "missingFrom": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "a",
+              "b"
+            ],
+            "description": "Set when the resource type is absent from that side entirely."
+          }
+        },
+        "required": [
+          "resourceTypeId",
+          "resourceTypeName",
+          "countA",
+          "countB",
+          "delta",
+          "onlyInA",
+          "onlyInB",
+          "changed",
+          "identical",
+          "missingFrom"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentDiffResourceRef": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "resourceId": {
+            "type": "string",
+            "description": "Infrawrench resource id."
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider-native id, when known."
+          }
+        },
+        "required": [
+          "resourceId",
+          "accountId",
+          "displayName",
+          "externalId"
+        ],
+        "additionalProperties": false,
+        "description": "Null when the resource exists only on B."
+      },
+      "EnvironmentDiffFieldChange": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "Field key; resolved-output keys are prefixed `outputs.`.",
+            "example": "instanceClass"
+          },
+          "a": {
+            "description": "Value on side A; null when the key is absent there."
+          },
+          "b": {
+            "description": "Value on side B."
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentDiffEntry": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The pairing key both sides matched on — the resource type plus the resource name with environment words removed. Stable across runs.",
+            "example": "droplet api#0"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string",
+            "example": "Droplet"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "only-in-a",
+              "only-in-b",
+              "changed"
+            ],
+            "description": "Whether the slot exists on side A only, side B only, or on both with a field divergence. Matched pairs that agree are counted in the type summary rather than listed."
+          },
+          "a": {
+            "$ref": "#/components/schemas/EnvironmentDiffResourceRef"
+          },
+          "b": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EnvironmentDiffResourceRef"
+              },
+              {
+                "description": "Null when the resource exists only on A."
+              }
+            ]
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentDiffFieldChange"
+            },
+            "description": "Field divergences. Empty unless `status` is `changed`."
+          },
+          "suppressedCount": {
+            "type": "integer",
+            "description": "Divergences hidden by the identity filter (ids, links, addresses, timestamps). Always 0 when `includeIdentityFields` was requested."
+          }
+        },
+        "required": [
+          "key",
+          "resourceTypeId",
+          "resourceTypeName",
+          "status",
+          "a",
+          "b",
+          "changes",
+          "suppressedCount"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentDiffTotals": {
+        "type": "object",
+        "properties": {
+          "onlyInA": {
+            "type": "integer"
+          },
+          "onlyInB": {
+            "type": "integer"
+          },
+          "changed": {
+            "type": "integer"
+          },
+          "identical": {
+            "type": "integer"
+          },
+          "typesOnlyInA": {
+            "type": "integer"
+          },
+          "typesOnlyInB": {
+            "type": "integer"
+          },
+          "suppressedFieldChanges": {
+            "type": "integer",
+            "description": "Field divergences the identity filter hid across every pair."
+          }
+        },
+        "required": [
+          "onlyInA",
+          "onlyInB",
+          "changed",
+          "identical",
+          "typesOnlyInA",
+          "typesOnlyInB",
+          "suppressedFieldChanges"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentDiffUnavailableType": {
+        "type": "object",
+        "properties": {
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string",
+            "description": "The provider's complaint, as the lister reported it."
+          }
+        },
+        "required": [
+          "resourceTypeId",
+          "resourceTypeName",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentDiffResponse": {
+        "type": "object",
+        "properties": {
+          "a": {
+            "$ref": "#/components/schemas/EnvironmentDiffSideSummary"
+          },
+          "b": {
+            "$ref": "#/components/schemas/EnvironmentDiffSideSummary"
+          },
           "pluginId": {
             "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string",
+            "example": "DigitalOcean"
+          },
+          "types": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentDiffTypeSummary"
+            },
+            "description": "Every resource type present on either side, most-divergent first."
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentDiffEntry"
+            },
+            "description": "Only the slots that differ; identical pairs are counted, not listed."
+          },
+          "totals": {
+            "$ref": "#/components/schemas/EnvironmentDiffTotals"
+          },
+          "unavailableTypes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentDiffUnavailableType"
+            },
+            "description": "Resource types excluded because they could not be listed. Always empty over this API — it reads already-synced rows, which cannot half-fail — and populated only by the desktop and CLI local modes, which list live."
+          },
+          "includeIdentityFields": {
+            "type": "boolean"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "a",
+          "b",
+          "pluginId",
+          "pluginName",
+          "types",
+          "entries",
+          "totals",
+          "unavailableTypes",
+          "includeIdentityFields",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "MomentFeedId": {
+        "type": "string",
+        "enum": [
+          "changes",
+          "statusIncidents",
+          "costAnomalies",
+          "workflowRuns",
+          "deployments",
+          "audit",
+          "freezes",
+          "driftAlerts",
+          "expiryAlerts"
+        ],
+        "description": "One of the indexed feeds the moment union draws from."
+      },
+      "MomentFeedStatus": {
+        "type": "object",
+        "properties": {
+          "feed": {
+            "$ref": "#/components/schemas/MomentFeedId"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "omitted",
+              "error"
+            ],
+            "description": "`omitted` = the caller lacks the feed's read permission; `error` = the feed's query failed but the rest of the response is still valid (partial-failure tolerance)."
           },
           "error": {
-            "type": "string"
-          },
-          "helpLabel": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "helpUrl": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Set when the plugin reported a permission gap rather than an outage."
+            "description": "Short failure reason when `status` is `error`."
           },
-          "failureCount": {
-            "type": "integer"
+          "truncated": {
+            "type": "boolean",
+            "description": "True when the feed hit its row cap and events were dropped."
           }
         },
         "required": [
-          "accountId",
-          "accountName",
-          "pluginId",
-          "error",
-          "helpLabel",
-          "helpUrl",
-          "failureCount"
+          "feed",
+          "status"
         ],
         "additionalProperties": false
       },
-      "CreditBurndown": {
-        "type": "object",
-        "properties": {
-          "pots": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CreditPot"
-            }
-          },
-          "failures": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CreditPollFailure"
-            }
-          },
-          "pendingAccountIds": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid",
-              "example": "00000000-0000-0000-0000-000000000000"
-            },
-            "description": "Credit-capable accounts never yet collected — named rather than omitted."
-          },
-          "burnWindowDays": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "pots",
-          "failures",
-          "pendingAccountIds",
-          "burnWindowDays"
-        ],
-        "additionalProperties": false
+      "MomentSeverity": {
+        "type": "string",
+        "enum": [
+          "info",
+          "warning",
+          "critical"
+        ]
       },
-      "CommitmentUnitAmount": {
-        "type": "object",
-        "properties": {
-          "unit": {
-            "type": "string",
-            "description": "Provider-native unit label, untranslated — \"VCPU\", \"MEMORY_MB\", \"LOCAL_SSD_GB\"."
-          },
-          "amount": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "unit",
-          "amount"
+      "MomentEventLink": {
+        "type": [
+          "object",
+          "null"
         ],
-        "additionalProperties": false
-      },
-      "CommitmentProviderUtilization": {
-        "type": "object",
         "properties": {
-          "grainDays": {
-            "type": "integer",
-            "description": "Trailing window the aggregate covers (1, 7, 30)."
-          },
-          "percentage": {
-            "type": "number",
-            "description": "Utilization percentage 0–100, exactly as the provider reports it."
-          }
-        },
-        "required": [
-          "grainDays",
-          "percentage"
-        ],
-        "additionalProperties": false
-      },
-      "CommitmentUtilization": {
-        "type": "object",
-        "properties": {
-          "utilization": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "description": "delivered ÷ obligation, unclamped (values above 1 mean spend past the commitment). **Null means not measurable** — never 0, which would read as 'unused'; the reason field says why."
-          },
-          "reason": {
-            "type": "string",
-            "enum": [
-              "unit_denominated",
-              "no_active_days",
-              "no_data_days",
-              "unattributed_rows"
-            ],
-            "description": "Why utilization is null: `unit_denominated` — the commitment is in resource units (GCP CUDs) and cost rows cannot say how many ran; `no_active_days` — the term does not intersect the window; `no_data_days` — no cost data was collected on any active day; `unattributed_rows` — the account's plugin does not stamp commitment ids onto cost rows, so delivered spend would falsely read as zero."
-          },
-          "obligationAmount": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "description": "hourlyCommitmentAmount × 24 × measuredDays, in the commitment's currency."
-          },
-          "deliveredAmount": {
-            "type": "number"
-          },
-          "activeDays": {
-            "type": "integer",
-            "description": "Days of the window the commitment was active."
-          },
-          "measuredDays": {
-            "type": "integer",
-            "description": "Active days with cost data — the only days in the obligation. Counting a day the collection never ran would make a fully-used plan read as under-utilized."
-          },
-          "missingDays": {
-            "type": "integer",
-            "description": "Active days without cost data, reported rather than silently counted."
-          },
-          "windowDays": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "utilization",
-          "obligationAmount",
-          "deliveredAmount",
-          "activeDays",
-          "measuredDays",
-          "missingDays",
-          "windowDays"
-        ],
-        "additionalProperties": false
-      },
-      "CommitmentHolding": {
-        "type": "object",
-        "properties": {
-          "accountId": {
-            "type": "string",
-            "format": "uuid",
-            "example": "00000000-0000-0000-0000-000000000000"
-          },
-          "accountName": {
-            "type": "string"
-          },
-          "pluginId": {
-            "$ref": "#/components/schemas/PluginId"
-          },
-          "commitmentId": {
-            "type": "string",
-            "description": "Provider-native id — the join key against cost rows' commitment dimension (an ARN where billing data carries ARNs, the bare id where it does not)."
-          },
           "kind": {
             "type": "string",
             "enum": [
-              "reservation",
-              "savings_plan",
-              "committed_use"
-            ]
+              "resource",
+              "changes",
+              "incident",
+              "costs",
+              "workflow-run",
+              "deployment",
+              "audit",
+              "freeze",
+              "expiring"
+            ],
+            "description": "Which native screen the event deep-links to."
           },
-          "description": {
-            "type": "string"
-          },
-          "scope": {
+          "id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Provider scope qualifier — an AZ, an instance family, 'Shared'."
+            "description": "Target id where the kind needs one (resource id, run id, freeze id…)."
           },
-          "region": {
+          "parentId": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Null means the commitment applies across regions (an AWS Compute Savings Plan) — a real state, rendered as 'All regions', not missing data."
+            "description": "Parent id where the target needs one (workflow id for a run)."
           },
-          "startDate": {
+          "url": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
-          },
-          "endDate": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
-          "termDays": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "description": "Provider-reported term length — never derived from the dates, which stop spanning the term once a commitment is split or merged."
-          },
-          "paymentOption": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "enum": [
-              "all_upfront",
-              "partial_upfront",
-              "no_upfront",
-              "monthly"
-            ]
-          },
-          "currency": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Null when the provider reports no money at all for this record."
-          },
-          "upfrontAmount": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "description": "Null means the provider did not report a price (Azure's list API reports none) — 'not reported', never rendered as 'free'."
-          },
-          "recurringAmount": {
-            "type": [
-              "number",
-              "null"
-            ]
-          },
-          "recurringPeriod": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "enum": [
-              "hour",
-              "month"
-            ],
-            "description": "Atomic with recurringAmount: an amount without a period is a 730× ambiguity."
-          },
-          "hourlyCommitmentAmount": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "description": "Committed spend per hour — what utilization is measured against."
-          },
-          "unitCommitments": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "$ref": "#/components/schemas/CommitmentUnitAmount"
-            },
-            "description": "Committed resource quantities for unit-denominated commitments (GCP CUDs). A record has either this or hourlyCommitmentAmount — the split decides which utilization question is even askable."
-          },
-          "state": {
-            "type": "string",
-            "enum": [
-              "active",
-              "expired",
-              "queued"
-            ]
-          },
-          "providerUtilization": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "$ref": "#/components/schemas/CommitmentProviderUtilization"
-            },
-            "description": "The provider's own utilization aggregates (Azure reservations only), verbatim — never blended with the derived utilization below."
-          },
-          "lastSeenAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "utilization": {
-            "$ref": "#/components/schemas/CommitmentUtilization"
+            "description": "Absolute external URL — a provider's incident page. Wins when present."
           }
         },
         "required": [
-          "accountId",
-          "accountName",
-          "pluginId",
-          "commitmentId",
-          "kind",
-          "description",
-          "scope",
-          "region",
-          "startDate",
-          "endDate",
-          "termDays",
-          "paymentOption",
-          "currency",
-          "upfrontAmount",
-          "recurringAmount",
-          "recurringPeriod",
-          "hourlyCommitmentAmount",
-          "unitCommitments",
-          "state",
-          "providerUtilization",
-          "lastSeenAt",
-          "utilization"
+          "kind"
         ],
         "additionalProperties": false
       },
-      "CommitmentCoverageCurrency": {
-        "type": "object",
-        "properties": {
-          "currency": {
-            "type": "string"
-          },
-          "coveredAmount": {
-            "type": "number",
-            "description": "Usage spend on rows stamped with a commitment id."
-          },
-          "uncoveredAmount": {
-            "type": "number"
-          },
-          "uncoveredEligibleAmount": {
-            "type": "number",
-            "description": "Uncovered usage in cells where a commitment landed in the window — provider evidence of committability, not a hand-maintained service table."
-          },
-          "broadRatio": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "description": "Lower bound: covered ÷ (covered + all uncovered usage)."
-          },
-          "narrowRatio": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "description": "Upper bound: covered ÷ (covered + uncovered usage in eligible cells)."
-          }
-        },
-        "required": [
-          "currency",
-          "coveredAmount",
-          "uncoveredAmount",
-          "uncoveredEligibleAmount",
-          "broadRatio",
-          "narrowRatio"
-        ],
-        "additionalProperties": false
-      },
-      "CommitmentCoverage": {
-        "type": "object",
-        "properties": {
-          "available": {
-            "type": "boolean",
-            "description": "False when every in-scope account was excluded — 'we cannot tell' reported as unavailable, never as 0%."
-          },
-          "currencies": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CommitmentCoverageCurrency"
-            }
-          },
-          "excludedAccountIds": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid",
-              "example": "00000000-0000-0000-0000-000000000000"
-            },
-            "description": "Accounts whose plugin cannot tell usage from other charge types; their rows would drag coverage down for reasons unrelated to purchasing."
-          }
-        },
-        "required": [
-          "available",
-          "currencies",
-          "excludedAccountIds"
-        ],
-        "additionalProperties": false
-      },
-      "CommitmentRecommendation": {
-        "type": "object",
-        "properties": {
-          "pluginId": {
-            "$ref": "#/components/schemas/PluginId"
-          },
-          "service": {
-            "type": "string"
-          },
-          "region": {
-            "type": "string"
-          },
-          "currency": {
-            "type": "string"
-          },
-          "recommendedDailyCommitment": {
-            "type": "number",
-            "description": "p10 of daily uncovered usage spend, nearest-rank — the floor, not the average."
-          },
-          "recommendedHourlyCommitment": {
-            "type": "number"
-          },
-          "annualCommitment": {
-            "type": "number"
-          },
-          "p50DailySpend": {
-            "type": "number"
-          },
-          "savingBasis": {
-            "type": "string",
-            "enum": [
-              "range",
-              "upper_bound"
-            ],
-            "description": "Published discounts are \"up to\" figures. `range` renders \"$X–$Y\"; `upper_bound` renders \"up to $Y\" — never a bare \"$Y\"."
-          },
-          "discountRateMin": {
-            "type": "number"
-          },
-          "discountRateMax": {
-            "type": "number"
-          },
-          "estimatedAnnualSavingMin": {
-            "type": "number"
-          },
-          "estimatedAnnualSavingMax": {
-            "type": "number"
-          },
-          "breakEvenUtilization": {
-            "type": "number",
-            "description": "1 − discount: below this utilization the commitment loses to on-demand. Equivalently, the workload can shrink by the discount before committing was a mistake."
-          },
-          "annualLossIfUsageHalves": {
-            "type": "number",
-            "description": "max(0, annualCommitment × (0.5 − discount)) at the shallow end of the published discount — a ceiling on regret where no floor rate is published."
-          }
-        },
-        "required": [
-          "pluginId",
-          "service",
-          "region",
-          "currency",
-          "recommendedDailyCommitment",
-          "recommendedHourlyCommitment",
-          "annualCommitment",
-          "p50DailySpend",
-          "savingBasis",
-          "discountRateMax",
-          "estimatedAnnualSavingMax",
-          "breakEvenUtilization",
-          "annualLossIfUsageHalves"
-        ],
-        "additionalProperties": false
-      },
-      "CommitmentRejectedCell": {
-        "type": "object",
-        "properties": {
-          "pluginId": {
-            "$ref": "#/components/schemas/PluginId"
-          },
-          "service": {
-            "type": "string"
-          },
-          "region": {
-            "type": "string"
-          },
-          "currency": {
-            "type": "string"
-          },
-          "gate": {
-            "type": "string",
-            "enum": [
-              "presence",
-              "not_in_decline",
-              "floor",
-              "materiality"
-            ],
-            "description": "First gate the cell failed, in evaluation order — the most actionable objection."
-          }
-        },
-        "required": [
-          "pluginId",
-          "service",
-          "region",
-          "currency",
-          "gate"
-        ],
-        "additionalProperties": false
-      },
-      "CommitmentPlanner": {
-        "type": "object",
-        "properties": {
-          "available": {
-            "type": "boolean",
-            "description": "False when the data window is under the 60-day minimum."
-          },
-          "windowDayCount": {
-            "type": "integer"
-          },
-          "recommendations": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CommitmentRecommendation"
-            }
-          },
-          "rejected": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CommitmentRejectedCell"
-            }
-          }
-        },
-        "required": [
-          "available",
-          "windowDayCount",
-          "recommendations",
-          "rejected"
-        ],
-        "additionalProperties": false
-      },
-      "CommitmentPollFailure": {
-        "type": "object",
-        "properties": {
-          "accountId": {
-            "type": "string",
-            "format": "uuid",
-            "example": "00000000-0000-0000-0000-000000000000"
-          },
-          "accountName": {
-            "type": "string"
-          },
-          "pluginId": {
-            "$ref": "#/components/schemas/PluginId"
-          },
-          "message": {
-            "type": "string"
-          },
-          "failureCount": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "accountId",
-          "accountName",
-          "pluginId",
-          "message",
-          "failureCount"
-        ],
-        "additionalProperties": false
-      },
-      "CommitmentsFeed": {
-        "type": "object",
-        "properties": {
-          "holdings": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CommitmentHolding"
-            }
-          },
-          "coverage": {
-            "$ref": "#/components/schemas/CommitmentCoverage"
-          },
-          "planner": {
-            "$ref": "#/components/schemas/CommitmentPlanner"
-          },
-          "failures": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CommitmentPollFailure"
-            }
-          },
-          "pendingAccountIds": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid",
-              "example": "00000000-0000-0000-0000-000000000000"
-            },
-            "description": "Commitment-capable accounts never yet collected — named rather than omitted."
-          },
-          "utilizationWindowDays": {
-            "type": "integer"
-          },
-          "plannerWindowDays": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "holdings",
-          "coverage",
-          "planner",
-          "failures",
-          "pendingAccountIds",
-          "utilizationWindowDays",
-          "plannerWindowDays"
-        ],
-        "additionalProperties": false
-      },
-      "SyntheticProbe": {
+      "MomentEvent": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
-            "format": "uuid",
-            "example": "00000000-0000-0000-0000-000000000000"
+            "description": "Stable synthetic id, unique within a response (`feed:rowId[:phase]`)."
           },
-          "name": {
-            "type": "string"
+          "feed": {
+            "$ref": "#/components/schemas/MomentFeedId"
           },
-          "url": {
+          "kind": {
             "type": "string",
-            "description": "Absolute http(s) URL the check hits from the edge proxy."
+            "description": "Fine-grained `<noun>.<verb>` kind, e.g. `change.created`, `incident.started`, `workflow-run.failed`, `deployment.finished`, `freeze.started`, `drift-alert.sent`. Open set — render unknown kinds generically."
           },
-          "method": {
+          "timestamp": {
             "type": "string",
-            "description": "HTTP method the probe uses — GET, HEAD or OPTIONS. Unknown values become GET.",
-            "example": "GET"
+            "format": "date-time"
           },
-          "intervalSeconds": {
-            "type": "integer",
-            "description": "Seconds between checks. Clamped server-side to 60–86400.",
-            "example": 60
+          "title": {
+            "type": "string",
+            "description": "One-line headline."
           },
-          "timeoutMs": {
-            "type": "integer",
-            "description": "Per-check timeout in milliseconds. Clamped server-side to 1000–60000.",
-            "example": 10000
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional second line — diff summary, actor, error text."
           },
-          "failureThreshold": {
-            "type": "integer",
-            "description": "Consecutive failures before the probe flips to `down` and notifies. Clamped 1–20.",
-            "example": 3
+          "severity": {
+            "$ref": "#/components/schemas/MomentSeverity"
           },
-          "enabled": {
-            "type": "boolean"
+          "pluginId": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "accountId": {
             "type": [
               "string",
               "null"
-            ],
-            "format": "uuid",
-            "description": "Account of the linked resource, when the URL came from one.",
-            "example": "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "resourceId": {
             "type": [
               "string",
               "null"
-            ],
-            "description": "Linked resource id; advisory, not a foreign key."
-          },
-          "pluginId": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/PluginId"
-              },
-              {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
             ]
           },
           "resourceTypeId": {
@@ -15215,65 +14966,275 @@
               "null"
             ]
           },
-          "outputKey": {
+          "resourceName": {
             "type": [
               "string",
               "null"
-            ],
-            "description": "The resource output/field key the URL was suggested from."
+            ]
           },
-          "status": {
+          "link": {
+            "$ref": "#/components/schemas/MomentEventLink"
+          }
+        },
+        "required": [
+          "id",
+          "feed",
+          "kind",
+          "timestamp",
+          "title",
+          "severity"
+        ],
+        "additionalProperties": false
+      },
+      "MomentIncidentSpan": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "impact": {
             "type": "string",
             "enum": [
-              "up",
-              "down",
-              "unknown"
-            ],
-            "description": "The probe's state machine: `unknown` until the first result, `down` after `failureThreshold` consecutive failures, `up` on any success."
+              "maintenance",
+              "minor",
+              "major",
+              "critical"
+            ]
           },
-          "consecutiveFailures": {
-            "type": "integer"
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
           },
-          "lastProbeAt": {
+          "resolvedAt": {
             "type": [
               "string",
               "null"
             ],
             "format": "date-time"
           },
-          "lastStatusCode": {
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "lastLatencyMs": {
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "lastError": {
+          "url": {
             "type": [
               "string",
               "null"
-            ],
-            "description": "Failure detail; null after a success."
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "pluginId",
+          "pluginName",
+          "title",
+          "impact",
+          "startedAt"
+        ],
+        "additionalProperties": false,
+        "description": "A provider incident whose span overlaps the window — returned alongside the events so clients can badge events that fall inside it (\"during DigitalOcean incident\")."
+      },
+      "MomentResponse": {
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The centre timestamp, normalized to ISO."
           },
-          "lastStateChangeAt": {
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "windowMinutes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "The half-window actually applied, after clamping to 1–4320 minutes."
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "feeds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MomentFeedStatus"
+            },
+            "description": "One entry per feed, in canonical order — including omitted and errored feeds."
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MomentEvent"
+            },
+            "description": "Chronological, oldest first."
+          },
+          "incidents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MomentIncidentSpan"
+            }
+          }
+        },
+        "required": [
+          "at",
+          "from",
+          "to",
+          "windowMinutes",
+          "generatedAt",
+          "feeds",
+          "events",
+          "incidents"
+        ],
+        "additionalProperties": false
+      },
+      "SleepSchedule": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "resourceId": {
+            "type": "string",
+            "description": "Infrawrench resource id the schedule powers on and off."
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceName": {
+            "type": "string",
+            "description": "Resource display name at read time."
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "daysOfWeek": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 7
+            },
+            "minItems": 1,
+            "maxItems": 7,
+            "description": "ISO weekdays the resource is worked on: 1 = Monday … 7 = Sunday.",
+            "example": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ]
+          },
+          "stopTime": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "description": "Wall-clock time of day, 24-hour `\"HH:MM\"`, in the schedule's timezone.",
+            "example": "19:00"
+          },
+          "startTime": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "description": "Wall-clock time of day, 24-hour `\"HH:MM\"`, in the schedule's timezone.",
+            "example": "19:00"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone the wall-clock times are computed in (DST-safe).",
+            "example": "Europe/London"
+          },
+          "paused": {
+            "type": "boolean",
+            "description": "Paused schedules keep their timing but never fire."
+          },
+          "nextTransitionAt": {
             "type": [
               "string",
               "null"
             ],
             "format": "date-time",
-            "description": "When status last flipped up/down."
+            "description": "Next due transition; null while paused."
           },
-          "uptime24h": {
+          "nextTransitionAction": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "stop",
+              "start"
+            ],
+            "description": "A schedule transition: `stop` powers the resource off, `start` powers it on."
+          },
+          "lastRunAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastRunAction": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "stop",
+              "start"
+            ],
+            "description": "A schedule transition: `stop` powers the resource off, `start` powers it on."
+          },
+          "lastRunStatus": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "ok",
+              "failed",
+              "skipped_freeze"
+            ],
+            "description": "Outcome of the last executed transition: `ok`, `failed` (see `lastRunError`), or `skipped_freeze` (an org change freeze was in effect, so the transition was skipped)."
+          },
+          "lastRunError": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Failure detail for a failed run."
+          },
+          "projectedMonthlySaving": {
             "type": [
               "number",
               "null"
             ],
-            "description": "Fraction (0–1) of the trailing 24h the endpoint was up, from the recorded series; null before the first result lands in the metric store."
+            "description": "Projected monthly saving from trailing per-resource spend × the weekly off-hours fraction; null when billing holds no rows for the resource."
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Currency of the projection, when present."
           },
           "createdAt": {
             "type": "string",
@@ -27367,25 +27328,20 @@
                 }
               }
             }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         },
-        "operationId": "putOrgOrgIdBudgetsId"
-      },
-      "delete": {
+        "operationId": "postOrgOrgIdCostCentres",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
+      }
+    },
+    "/api/org/{orgId}/cost-centres/{id}": {
+      "put": {
         "tags": [
-          "Budgets"
+          "Cost Centres"
         ],
-        "summary": "Delete a budget",
+        "summary": "Update or move a cost centre",
+        "description": "Renames, redescribes, and/or moves a centre. Moving is `parentId` changing; omitting the field leaves the centre where it is. 400 when the move would cycle or breach the depth cap.\n\n_Requires permission: `costs:write`._",
         "parameters": [
           {
             "schema": {
@@ -27925,14 +27881,18 @@
             }
           }
         },
-        "operationId": "putOrgOrgIdMetricAlertsId"
-      },
-      "delete": {
+        "operationId": "deleteOrgOrgIdCostCentresRulesId",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
+      }
+    },
+    "/api/org/{orgId}/costs/showback": {
+      "get": {
         "tags": [
-          "Metric alerts"
+          "Costs"
         ],
-        "summary": "Delete a metric alert rule",
-        "description": "Soft delete. The rule's firing history stays readable via /metric-alerts/events.",
+        "summary": "Spend grouped by cost centre (showback)",
+        "description": "Runs the org's allocation rules over collected spend and sums per cost centre and currency. Spend no rule claims comes back as the \"Unallocated\" bucket; every defined centre appears even with zero spend.\n\nCost centres nest, so the list is a depth-first tree. Each entry carries `totals` (spend allocated directly to it) and `subtreeTotals` (its own plus every descendant's) — \"Engineering, of which Platform\" needs both. Rules still evaluate first-match-wins by ascending priority against a flat list, so a row is allocated exactly once even when a rule targets a parent and another targets its child; at equal priority the more deeply nested centre wins.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -27948,27 +27908,65 @@
           {
             "schema": {
               "type": "string",
-              "format": "uuid",
-              "example": "00000000-0000-0000-0000-000000000000"
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Defaults to 30 days ago.",
+              "example": "2026-07-01"
             },
-            "required": true,
-            "name": "id",
-            "in": "path"
+            "required": false,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Defaults to today.",
+              "example": "2026-07-01"
+            },
+            "required": false,
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cash",
+                "amortized"
+              ],
+              "description": "Which money to sum. `cash` (the default) is what the provider charged on the day it charged it; `amortized` spreads a commitment's up-front fee across the term it buys. Providers that report no amortized amount fall back to their cash amount."
+            },
+            "required": false,
+            "name": "basis",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "description": "Apply the organization's billing rules (see /billing-rules): markups multiply, and a reallocation moves a centre's spend onto another centre. Off by default — a chargeback report that silently showed marked-up numbers is one the receiving team could not reconcile. On, the response carries `adjustment` with the collected totals beside the adjusted ones. Fixed-amount rules are booked onto the cost centre they name (or \"Unallocated\" when they name none), pro-rated across the period."
+            },
+            "required": false,
+            "name": "adjusted",
+            "in": "query"
           }
         ],
         "responses": {
           "200": {
-            "description": "Deleted",
+            "description": "Showback report",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Ok"
+                  "$ref": "#/components/schemas/ShowbackReport"
                 }
               }
             }
           },
-          "404": {
-            "description": "Not found",
+          "400": {
+            "description": "Bad request",
             "content": {
               "application/json": {
                 "schema": {

@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { costCentrePaths } from "@infrawrench/client-core";
 import type {
   AccountTagCompliance,
   AllocationRule,
   CostCentre,
+  CostCentrePathRow,
   CostDimensionOption,
   RequiredTag,
   TagPolicy,
@@ -37,7 +39,7 @@ function fromRows(rows: PolicyRow[], enforceOnCreate: boolean): TagPolicy {
 }
 
 export function TagPolicySection() {
-  const { orgId, api, has } = useSettingsHost();
+  const { orgId, api, has, openSection } = useSettingsHost();
   const canEditPolicy = has("org:settings:write");
   const canReadAllocation = has("costs:read");
   const canEditAllocation = has("costs:write");
@@ -267,7 +269,12 @@ export function TagPolicySection() {
           </section>
 
           {canReadAllocation && (
-            <AllocationSection api={api} orgId={orgId} canEdit={canEditAllocation} />
+            <AllocationSection
+              api={api}
+              orgId={orgId}
+              canEdit={canEditAllocation}
+              openSection={openSection}
+            />
           )}
         </div>
       )}
@@ -284,10 +291,12 @@ function AllocationSection({
   api,
   orgId,
   canEdit,
+  openSection,
 }: {
   api: SettingsApi;
   orgId: string;
   canEdit: boolean;
+  openSection: (section: string) => void;
 }) {
   const [centres, setCentres] = useState<CostCentre[]>([]);
   const [rules, setRules] = useState<AllocationRule[]>([]);
@@ -296,7 +305,6 @@ function AllocationSection({
   const [services, setServices] = useState<CostDimensionOption[]>([]);
   const [tagKeys, setTagKeys] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [newCentreName, setNewCentreName] = useState("");
 
   const load = useCallback(async () => {
     setError(null);
@@ -330,30 +338,6 @@ function AllocationSection({
     );
   }, [api, orgId, load]);
 
-  async function addCentre() {
-    const name = newCentreName.trim();
-    if (!name) return;
-    try {
-      await api.post(`/api/org/${orgId}/cost-centres`, { name });
-      setNewCentreName("");
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create cost centre");
-    }
-  }
-
-  async function removeCentre(centre: CostCentre) {
-    const ruleCount = rules.filter((r) => r.costCentreId === centre.id).length;
-    const suffix = ruleCount > 0 ? ` Its ${ruleCount} allocation rule(s) go with it.` : "";
-    if (!window.confirm(`Delete cost centre "${centre.name}"?${suffix}`)) return;
-    try {
-      await api.delete(`/api/org/${orgId}/cost-centres/${centre.id}`);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete cost centre");
-    }
-  }
-
   async function removeRule(rule: AllocationRule) {
     try {
       await api.delete(`/api/org/${orgId}/cost-centres/rules/${rule.id}`);
@@ -381,6 +365,11 @@ function AllocationSection({
     }
   }
 
+  // Centre labels carry the full path so "Platform" under Engineering never
+  // reads as the same bucket as "Platform" under Data.
+  const centrePaths = useMemo(() => costCentrePaths(centres), [centres]);
+  const pathFor = (id: string) => centrePaths.find((row) => row.id === id)?.path;
+
   const labelFor = (options: CostDimensionOption[], value: string | undefined) =>
     value === undefined ? null : (options.find((o) => o.value === value)?.label ?? value);
 
@@ -388,9 +377,11 @@ function AllocationSection({
     <section className="space-y-3">
       <h2 className="text-sm font-semibold">Cost centres &amp; showback</h2>
       <p className="text-xs text-on-surface-muted">
-        Map spend to named cost centres for showback. Rules match on tag, account, provider, or
-        service and evaluate top-down — the first match wins; unmatched spend reports as
-        &ldquo;Unallocated&rdquo; on the Costs page.
+        Map spend to cost centres for showback. Rules match on tag, account, provider, or service
+        and evaluate top-down — the first match wins, so every cost row is allocated exactly once;
+        unmatched spend reports as &ldquo;Unallocated&rdquo; on the Costs page. Centres nest, and a
+        rule may target a parent or a child freely: at the same priority the more deeply nested
+        centre claims the row, and the parent still counts it in its subtree total.
       </p>
 
       {error && (
@@ -400,50 +391,35 @@ function AllocationSection({
       )}
 
       <div className="border border-border rounded-xl p-4 space-y-2 bg-surface-raised/50">
-        <h3 className="text-xs font-semibold text-on-surface-secondary">Centres</h3>
-        {centres.length === 0 && (
-          <p className="text-sm text-on-surface-muted">No cost centres yet.</p>
-        )}
-        <ul className="flex flex-wrap gap-2">
-          {centres.map((centre) => (
-            <li
-              key={centre.id}
-              className="flex items-center gap-2 px-2.5 py-1 rounded-full border border-border text-sm text-on-surface-secondary"
-            >
-              {centre.name}
-              {canEdit && (
-                <button
-                  type="button"
-                  onClick={() => void removeCentre(centre)}
-                  aria-label={`Delete ${centre.name}`}
-                  className="text-on-surface-muted hover:text-red-500"
-                >
-                  ×
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-        {canEdit && (
-          <div className="flex gap-2 pt-1">
-            <input
-              type="text"
-              value={newCentreName}
-              onChange={(e) => setNewCentreName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void addCentre();
-              }}
-              placeholder="New cost centre, e.g. Platform"
-              className="px-3 py-1.5 text-sm bg-surface border border-border rounded-lg focus:outline-none focus:border-border-strong"
-            />
-            <button
-              type="button"
-              onClick={() => void addCentre()}
-              className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
-            >
-              Add
-            </button>
-          </div>
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className="text-xs font-semibold text-on-surface-secondary">Centres</h3>
+          <button
+            type="button"
+            onClick={() => openSection("cost-centres")}
+            className="text-xs text-blue-500 hover:text-blue-400"
+          >
+            Manage cost centres →
+          </button>
+        </div>
+        {centres.length === 0 ? (
+          <p className="text-sm text-on-surface-muted">
+            No cost centres yet. Create them under Settings → Cost Centres, then point rules at them
+            here.
+          </p>
+        ) : (
+          // Read-only here on purpose: centres are a tree with move and depth
+          // rules of their own, and two editors for one thing is how the two
+          // disagree. This is the picker's vocabulary, spelled out.
+          <ul className="flex flex-wrap gap-2">
+            {centrePaths.map(({ id, path }) => (
+              <li
+                key={id}
+                className="px-2.5 py-1 rounded-full border border-border text-sm text-on-surface-secondary"
+              >
+                {path}
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 
@@ -456,7 +432,6 @@ function AllocationSection({
         )}
         <ul className="space-y-1.5">
           {rules.map((rule) => {
-            const centre = centres.find((c) => c.id === rule.costCentreId);
             const parts: string[] = [];
             if (rule.match.tagKey) {
               parts.push(
@@ -477,7 +452,7 @@ function AllocationSection({
                 <span className="flex-1 truncate text-on-surface-secondary">
                   {parts.length > 0 ? parts.join(" and ") : "everything"}
                   <span className="text-on-surface-muted"> → </span>
-                  {centre?.name ?? "?"}
+                  {pathFor(rule.costCentreId) ?? "?"}
                 </span>
                 {canEdit && (
                   <span className="flex items-center gap-1 shrink-0">
@@ -516,7 +491,7 @@ function AllocationSection({
           <NewRuleForm
             api={api}
             orgId={orgId}
-            centres={centres}
+            centres={centrePaths}
             accounts={accounts}
             providers={providers}
             services={services}
@@ -545,7 +520,7 @@ function NewRuleForm({
 }: {
   api: SettingsApi;
   orgId: string;
-  centres: CostCentre[];
+  centres: CostCentrePathRow[];
   accounts: CostDimensionOption[];
   providers: CostDimensionOption[];
   services: CostDimensionOption[];
@@ -670,7 +645,7 @@ function NewRuleForm({
       >
         {centres.map((c) => (
           <option key={c.id} value={c.id}>
-            {c.name}
+            {c.path}
           </option>
         ))}
       </select>

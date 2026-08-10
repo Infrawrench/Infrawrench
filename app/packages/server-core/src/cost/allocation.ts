@@ -3,11 +3,23 @@
  * named cost centres that powers the showback report. CRUD only; the actual
  * allocation happens in `clickhouse/cost-readers.ts` (`getShowbackSpend`),
  * which compiles the ordered rule list into one `multiIf` over `cost_daily`.
+ *
+ * Centres nest (`parentId`), so "what does Engineering cost" can be answered
+ * with a subtree rather than a single bucket. Nesting is presentation and
+ * rollup only — matching is untouched, every row still resolves to exactly one
+ * centre in that one pass, and an org that never sets a parent behaves exactly
+ * as it did before the column existed. The tree rules (depth cap over the whole
+ * subtree being moved, no move into your own descendants) live in
+ * `costCentreMoveBlocker` in client-core so the move picker greys out exactly
+ * what these functions reject with a 400.
  */
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import {
   ALLOCATION_RULE_LIMITS,
+  COST_CENTRE_LIMITS,
+  costCentreMoveBlocker,
+  orderAllocationRules,
   type AllocationRule,
   type AllocationRuleInput,
   type AllocationRuleMatch,
@@ -17,13 +29,24 @@ import { db } from "../db/client";
 import { costAllocationRules, costCentres } from "../db/schema";
 
 export type { AllocationRule, AllocationRuleInput, AllocationRuleMatch, CostCentre };
-export { ALLOCATION_RULE_LIMITS };
+export { ALLOCATION_RULE_LIMITS, COST_CENTRE_LIMITS };
+
+/** A cost-centre write the API should refuse with a 400 and this message. */
+export class CostCentreError extends Error {}
+
+export interface CostCentreWriteInput {
+  name: string;
+  description?: string | undefined;
+  /** Centre to nest under; null (or absent) is the top level. */
+  parentId?: string | null | undefined;
+}
 
 function centreToWire(row: typeof costCentres.$inferSelect): CostCentre {
   return {
     id: row.id,
     name: row.name,
     description: row.description,
+    parentId: row.parentId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -61,10 +84,21 @@ export async function listCostCentres(organizationId: string): Promise<CostCentr
   return rows.map(centreToWire);
 }
 
+/**
+ * Create a centre, optionally nested under `parentId`. Throws
+ * {@link CostCentreError} when the placement would breach the depth cap or
+ * name an unknown parent — the same check the move picker runs client-side.
+ */
 export async function createCostCentre(
   organizationId: string,
-  input: { name: string; description?: string | undefined },
+  input: CostCentreWriteInput,
 ): Promise<CostCentre> {
+  const parentId = input.parentId ?? null;
+  if (parentId !== null) {
+    const blocked = costCentreMoveBlocker(await listCostCentres(organizationId), null, parentId);
+    if (blocked) throw new CostCentreError(blocked);
+  }
+
   const [row] = await db
     .insert(costCentres)
     .values({
@@ -72,42 +106,110 @@ export async function createCostCentre(
       organizationId,
       name: input.name,
       description: input.description ?? null,
+      parentId,
     })
     .returning();
   if (!row) throw new Error("Failed to create cost centre");
   return centreToWire(row);
 }
 
+/**
+ * Rename, redescribe, and/or move a centre. A move is this same update with a
+ * different `parentId` — there is no separate endpoint, the same way filing a
+ * report in a folder is an edit of where it is filed.
+ *
+ * Throws {@link CostCentreError} when the move would nest past
+ * {@link COST_CENTRE_LIMITS.maxDepth} (measured over the *whole* subtree being
+ * moved, not just this centre) or place the centre inside its own subtree.
+ */
 export async function updateCostCentre(
   organizationId: string,
   id: string,
-  input: { name: string; description?: string | undefined },
+  input: CostCentreWriteInput,
 ): Promise<CostCentre | null> {
+  const centres = await listCostCentres(organizationId);
+  const current = centres.find((c) => c.id === id);
+  if (!current) return null;
+
+  // Absent `parentId` leaves the centre where it is, so a plain rename from a
+  // client that has never heard of nesting cannot silently promote it to root.
+  const parentId = input.parentId === undefined ? current.parentId : input.parentId;
+  if (parentId !== current.parentId) {
+    const blocked = costCentreMoveBlocker(centres, id, parentId);
+    if (blocked) throw new CostCentreError(blocked);
+  }
+
   const [row] = await db
     .update(costCentres)
-    .set({ name: input.name, description: input.description ?? null, updatedAt: new Date() })
+    .set({
+      name: input.name,
+      description: input.description ?? null,
+      parentId,
+      updatedAt: new Date(),
+    })
     .where(and(eq(costCentres.id, id), eq(costCentres.organizationId, organizationId)))
     .returning();
   return row ? centreToWire(row) : null;
 }
 
-/** Deleting a centre cascades to its rules (FK `on delete cascade`). */
+/**
+ * Delete a centre. False when not found.
+ *
+ * Children are **re-parented onto the deleted centre's own parent**, never
+ * deleted and never promoted to the root. Deleting "Platform" out of
+ * Engineering → Platform → Search has to leave Search under Engineering: that
+ * is what the org chart still says, and promoting to root would quietly move
+ * Search's spend out of Engineering's subtree total — a chargeback number
+ * changing because someone tidied up a middle row is exactly the surprise this
+ * avoids. A root delete leaves its children as roots, which is the same rule
+ * with a null parent.
+ *
+ * Spend history is untouched: amounts live in ClickHouse and are recomputed
+ * from the rules on every read. The centre's own rules do go with it (FK
+ * `on delete cascade`), so the spend they claimed falls through to whatever
+ * rule is next — often "Unallocated", which stays a first-class row.
+ */
 export async function deleteCostCentre(organizationId: string, id: string): Promise<boolean> {
-  const deleted = await db
-    .delete(costCentres)
-    .where(and(eq(costCentres.id, id), eq(costCentres.organizationId, organizationId)))
-    .returning({ id: costCentres.id });
-  return deleted.length > 0;
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ id: costCentres.id, parentId: costCentres.parentId })
+      .from(costCentres)
+      .where(and(eq(costCentres.id, id), eq(costCentres.organizationId, organizationId)))
+      .limit(1);
+    if (!row) return false;
+
+    await tx
+      .update(costCentres)
+      .set({ parentId: row.parentId, updatedAt: new Date() })
+      .where(and(eq(costCentres.parentId, id), eq(costCentres.organizationId, organizationId)));
+
+    const deleted = await tx
+      .delete(costCentres)
+      .where(and(eq(costCentres.id, id), eq(costCentres.organizationId, organizationId)))
+      .returning({ id: costCentres.id });
+    return deleted.length > 0;
+  });
 }
 
-/** Rules in evaluation order: ascending priority, then creation time. */
+/**
+ * Rules in evaluation order — the order the showback reader compiles into its
+ * single `multiIf`, and the order the settings UI renders so "first match wins"
+ * means what the list shows.
+ *
+ * Ascending priority, then (for ties) the more deeply nested centre first, then
+ * creation time; see `orderAllocationRules`. A flat org has every centre at
+ * depth 0, so this is exactly the old `ORDER BY priority, created_at`.
+ */
 export async function listAllocationRules(organizationId: string): Promise<AllocationRule[]> {
-  const rows = await db
-    .select()
-    .from(costAllocationRules)
-    .where(eq(costAllocationRules.organizationId, organizationId))
-    .orderBy(asc(costAllocationRules.priority), asc(costAllocationRules.createdAt));
-  return rows.map(ruleToWire);
+  const [rows, centres] = await Promise.all([
+    db
+      .select()
+      .from(costAllocationRules)
+      .where(eq(costAllocationRules.organizationId, organizationId))
+      .orderBy(asc(costAllocationRules.priority), asc(costAllocationRules.createdAt)),
+    listCostCentres(organizationId),
+  ]);
+  return orderAllocationRules(rows.map(ruleToWire), centres);
 }
 
 export async function createAllocationRule(
@@ -243,11 +345,16 @@ export async function swapAllocationRulePriorities(
         ),
       );
 
-    const updated = await tx
-      .select()
-      .from(costAllocationRules)
-      .where(eq(costAllocationRules.organizationId, organizationId))
-      .orderBy(asc(costAllocationRules.priority), asc(costAllocationRules.createdAt));
-    return updated.map(ruleToWire);
+    // Re-listed in evaluation order (the depth tie-break included) so the UI
+    // renders exactly the order the showback query will compile.
+    const [updated, centreRows] = await Promise.all([
+      tx
+        .select()
+        .from(costAllocationRules)
+        .where(eq(costAllocationRules.organizationId, organizationId))
+        .orderBy(asc(costAllocationRules.priority), asc(costAllocationRules.createdAt)),
+      tx.select().from(costCentres).where(eq(costCentres.organizationId, organizationId)),
+    ]);
+    return orderAllocationRules(updated.map(ruleToWire), centreRows.map(centreToWire));
   });
 }

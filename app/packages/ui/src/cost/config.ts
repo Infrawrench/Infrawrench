@@ -151,6 +151,15 @@ export {
   type CustomGraphWidgetConfig,
   TAG_POLICY_LIMITS,
   ALLOCATION_RULE_LIMITS,
+  // Cost centres nest; the tree rules are shared so the UI disables exactly
+  // what the server rejects, and the rollup is one implementation.
+  COST_CENTRE_LIMITS,
+  costCentreDepths,
+  costCentrePaths,
+  costCentreMoveBlocker,
+  orderAllocationRules,
+  buildShowbackCentres,
+  type CostCentrePathRow,
   UNALLOCATED_KEY,
   taggedSpendPercent,
   type RequiredTag,
@@ -391,6 +400,12 @@ export const tagPolicySchema = z.object({
 export const costCentreInputSchema = z.object({
   name: z.string().min(1).max(120),
   description: z.string().max(2000).optional(),
+  /**
+   * Nest this centre under another. `null` is the top level; **omitting** it on
+   * an update leaves the centre where it is, so a client that predates nesting
+   * cannot promote a centre to the root just by renaming it.
+   */
+  parentId: z.string().min(1).nullable().optional(),
 });
 
 /** All set fields must match; an empty match is a catch-all. */

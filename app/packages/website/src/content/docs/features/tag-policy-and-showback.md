@@ -6,7 +6,7 @@ sidebar_order: 3
 
 A **tag policy** is an org-level rule of the form "every resource carries `owner` and `env`". Infrawrench scores each account's compliance with it, reports the spend that doesn't carry the required tags, and — when you switch enforcement on — rejects resource creation that would violate it. **Allocation rules** then map spend onto named **cost centres** for a showback report.
 
-> **Cloud only.** The policy, compliance scores, and both reports are org-level cloud state. The desktop app shows the same tag governance section on its Costs panel when signed into a cloud org; policy and rule editing lives in the web app's org settings.
+> **Cloud only.** The policy, compliance scores, and both reports are org-level cloud state. The desktop app shows the same tag governance section on its Costs panel when signed into a cloud org, and the mobile app shows the showback tree read-only; policy, cost centre and rule editing lives in the web app's org settings.
 
 ## Defining the policy
 
@@ -59,7 +59,44 @@ The payoff for the policy is on the money side: the **Tags & allocation** sectio
 - a **provider**,
 - a **service**.
 
-Rules evaluate top-down by priority and the first match wins, so put specific rules (this one account's `team=data` spend → Data) above broad ones (everything on GCP → Platform). Spend no rule claims reports as **Unallocated** — it never disappears. Centres and rules are edited in **Settings → Tag Policy**; the report renders on the Costs panel and answers "what did each team's infrastructure cost this month" without touching a spreadsheet.
+Rules evaluate top-down by priority and the first match wins, so put specific rules (this one account's `team=data` spend → Data) above broad ones (everything on GCP → Platform). Spend no rule claims reports as **Unallocated** — it never disappears. Rules are edited in **Settings → Tag Policy**; the report renders on the Costs panel and answers "what did each team's infrastructure cost this month" without touching a spreadsheet.
+
+### Nesting: a tree, not a flat list
+
+Cost centres **nest**. A division holds teams, a team holds products, and "what does Engineering cost" is answered by the whole subtree rather than by one bucket. The tree is built in **Settings → Cost Centres** (create, rename, move, delete) and is at most **four levels** deep.
+
+<insert [Settings → Cost Centres page showing a three-level tree — Engineering containing Platform and Data, Platform containing Search — with the move dropdown open on one row and the deeper targets greyed out] here>
+
+Every centre reports **two** numbers on the Costs panel and in the API:
+
+| Field           | Means                                              |
+| --------------- | -------------------------------------------------- |
+| `totals`        | Spend allocated **directly** to this centre        |
+| `subtreeTotals` | This centre **plus every descendant** — the rollup |
+
+Both matter, because "Engineering $40k, of which Platform $12k" is the shape a budget conversation actually takes. A leaf's two numbers are equal, as are every centre's in an org that doesn't nest.
+
+If you already had flat cost centres, **nothing changes**: they are all roots, `subtreeTotals` equals `totals` everywhere, and every existing report reads exactly as it did. Nesting is opt-in, one centre at a time.
+
+### Parent and child rules
+
+Nesting is a reporting structure — it changes nothing about **matching**. A cost row is still allocated to exactly one centre, so no amount is ever counted twice:
+
+- Rules are one ordered list regardless of where their centres sit in the tree. **Lower priority number fires first, first match wins** — the rule that has always applied.
+- Where a rule targets a parent and another targets its child at the **same priority**, the **more deeply nested centre wins**. A parent-level catch-all ("everything on GCP → Engineering") therefore doesn't quietly swallow spend a child rule ("tag `team=search` → Search") was written for. The parent still gets that spend back through its subtree total.
+
+`Unallocated` stays a first-class row at the bottom of the tree; it is never folded into a parent.
+
+### Deleting a centre
+
+Deleting a centre **never deletes its children and never touches spend history**:
+
+- Child centres are **re-parented onto the deleted centre's own parent** — delete "Platform" out of Engineering → Platform → Search and Search stays under Engineering. (Deleting a top-level centre leaves its children at the top level.) Promoting everything to the root instead would silently move spend out of an ancestor's subtree total, which is the last thing a chargeback number should do when someone tidies up a middle row.
+- The centre's own **allocation rules are deleted with it**, so the spend they claimed falls through to the next matching rule — often "Unallocated".
+
+The confirmation dialog spells out both, along with how many children and rules are affected.
+
+<insert [Costs panel "Tags & allocation" section showing the showback tree indented two levels, with a parent row displaying its subtree total and a smaller "own" figure beneath it, and the italic Unallocated row last] here>
 
 ## CLI
 
@@ -72,16 +109,18 @@ infrawrench showback              # spend by cost centre, last 30 days
 infrawrench showback --from 2026-07-01 --to 2026-07-31
 ```
 
+`showback` prints the centre tree indented. A parent's bar is its **subtree** total with its own directly-allocated spend noted beside it, so the bars deliberately don't sum to the org total — the leaves do. `--json` returns the wire report, `totals` and `subtreeTotals` and all.
+
 ## MCP & AI chat
 
-Three read-only tools expose the same data to [MCP clients and the AI assistant](./mcp.md): `get_tag_compliance`, `query_untagged_spend`, and `query_showback` — so "which team's spend grew last month" and "how much of our spend is untagged" are answerable in chat.
+Three read-only tools expose the same data to [MCP clients and the AI assistant](./mcp.md): `get_tag_compliance`, `query_untagged_spend`, and `query_showback` — so "which team's spend grew last month" and "how much of our spend is untagged" are answerable in chat. `query_showback` returns the same tree as the panel: quote `subtreeTotals` for a division, `totals` for what that division spends itself, and never add `subtreeTotals` up across entries.
 
 ## Permissions
 
-| Permission            | Grants                                         | Default roles |
-| --------------------- | ---------------------------------------------- | ------------- |
-| `resources:read`      | See the policy and compliance scores           | all roles     |
-| `org:settings:write`  | Edit the policy and enforcement                | Owner         |
-| `costs:read`          | Untagged spend & showback reports              | all roles     |
-| `costs:write`         | Manage cost centres and allocation rules       | Admin, Owner  |
-| `tag-policy:override` | Create a resource past the policy, per request | Admin, Owner  |
+| Permission            | Grants                                           | Default roles |
+| --------------------- | ------------------------------------------------ | ------------- |
+| `resources:read`      | See the policy and compliance scores             | all roles     |
+| `org:settings:write`  | Edit the policy and enforcement                  | Owner         |
+| `costs:read`          | Untagged spend & showback reports                | all roles     |
+| `costs:write`         | Manage the cost centre tree and allocation rules | Admin, Owner  |
+| `tag-policy:override` | Create a resource past the policy, per request   | Admin, Owner  |

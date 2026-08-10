@@ -611,11 +611,22 @@ export const costCentres = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     description: text("description"),
+    /**
+     * Self-reference for nesting; null is a top-level centre. SET NULL is a
+     * backstop only — `deleteCostCentre` re-parents children onto the deleted
+     * centre's own parent inside the delete transaction, so a subtree keeps
+     * its shape instead of being flattened to the root.
+     */
+    parentId: text("parent_id").references((): AnyPgColumn => costCentres.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => ({
     orgIdx: index("cost_centres_org_idx").on(t.organizationId),
+    /** Children-of lookups when a delete re-parents a subtree. */
+    parentIdx: index("cost_centres_parent_idx").on(t.parentId),
   }),
 );
 
