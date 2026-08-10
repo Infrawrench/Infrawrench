@@ -25,7 +25,7 @@ export interface BudgetConfigModalProps {
 export function BudgetConfigModal({ initialInput, api, onSave, onClose }: BudgetConfigModalProps) {
   const uid = useId();
   const [input, setInput] = useState<BudgetInput>(initialInput);
-  const [amountText, setAmountText] = useState((initialInput.amountCents / 100).toString());
+  const [amountText, setAmountText] = useState(() => (initialInput.amountCents / 100).toString());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /**

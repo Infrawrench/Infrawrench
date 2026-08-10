@@ -312,44 +312,65 @@ export function JiraSection() {
             </div>
           )}
 
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold">Filed issues</h2>
-            {!integration ? (
-              <p className="text-sm text-on-surface-muted">
-                Connect Jira to start filing findings.
-              </p>
-            ) : links.length === 0 ? (
-              <p className="text-sm text-on-surface-muted">
-                Nothing filed yet. The &ldquo;File a Jira issue&rdquo; button appears on cost
-                anomalies, savings findings, and posture findings.
-              </p>
-            ) : (
-              <ul className="border border-border rounded-xl divide-y divide-border/50">
-                {links.map((link) => (
-                  <li key={link.id} className="flex items-center gap-3 px-4 py-2 text-sm">
-                    <button
-                      type="button"
-                      onClick={() => openExternal(link.issueUrl)}
-                      className="text-blue-500 hover:text-blue-400 font-medium"
-                    >
-                      {link.issueKey}
-                    </button>
-                    <span className="text-xs text-on-surface-muted">
-                      {link.sourceKind.replace(/_/g, " ")}
-                    </span>
-                    <span className="flex-1 truncate text-xs text-on-surface-tertiary">
-                      {link.sourceId}
-                    </span>
-                    <span className="text-xs text-on-surface-muted shrink-0">
-                      {new Date(link.createdAt).toLocaleDateString()}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          <FiledIssuesList
+            connected={integration !== null}
+            links={links}
+            openExternal={openExternal}
+          />
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * What has already been filed into Jira. Read-only, and self-contained: it
+ * needs the links, whether a connection exists at all (an empty list means
+ * two different things either side of that), and a way to open an issue.
+ */
+function FiledIssuesList({
+  connected,
+  links,
+  openExternal,
+}: {
+  connected: boolean;
+  links: JiraIssueLink[];
+  openExternal: (url: string) => void;
+}) {
+  return (
+    <section className="space-y-3">
+      <h2 className="text-sm font-semibold">Filed issues</h2>
+      {!connected ? (
+        <p className="text-sm text-on-surface-muted">Connect Jira to start filing findings.</p>
+      ) : links.length === 0 ? (
+        <p className="text-sm text-on-surface-muted">
+          Nothing filed yet. The &ldquo;File a Jira issue&rdquo; button appears on cost anomalies,
+          savings findings, and posture findings.
+        </p>
+      ) : (
+        <ul className="border border-border rounded-xl divide-y divide-border/50">
+          {links.map((link) => (
+            <li key={link.id} className="flex items-center gap-3 px-4 py-2 text-sm">
+              <button
+                type="button"
+                onClick={() => openExternal(link.issueUrl)}
+                className="text-blue-500 hover:text-blue-400 font-medium"
+              >
+                {link.issueKey}
+              </button>
+              <span className="text-xs text-on-surface-muted">
+                {link.sourceKind.replace(/_/g, " ")}
+              </span>
+              <span className="flex-1 truncate text-xs text-on-surface-tertiary">
+                {link.sourceId}
+              </span>
+              <span className="text-xs text-on-surface-muted shrink-0">
+                {new Date(link.createdAt).toLocaleDateString()}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

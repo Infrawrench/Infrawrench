@@ -11,7 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *  - **aborting a failed multipart upload**, since an abandoned one is
  *    billable storage forever on most providers;
  *  - **URL construction**, where path-style vs virtual-hosted addressing is
- *    the difference between working on MinIO and working on AWS;
+ *    the difference between working on MinIO and working on AWS — and, for
+ *    HTTPS, where any mutation of a pre-signed URL is a total upload outage;
  *  - **error text**, because "403" is not something a user can act on and
  *    S3's own `<Message>` is.
  */
@@ -321,13 +322,48 @@ describe("HTTPS upload", () => {
 
     expect(result.byteCount).toBe(6);
     expect(seenInit.method).toBe("POST");
-    expect(seenUrl).toContain("sig=abcd");
-    expect(seenUrl).toContain("key=cost-export");
+    expect(seenUrl).toBe("https://wh.example.com/ingest?sig=abcd");
     expect(seenInit.headers).toMatchObject({
       "x-infrawrench-object-key": "cost-export/exp-1/daily/2026-08-07.ndjson",
       "x-infrawrench-collection-watermark": "2026-08-06",
     });
     expect((seenInit as { duplex?: string }).duplex).toBe("half");
+    fetchSpy.mockRestore();
+  });
+
+  /**
+   * The regression this guards: appending `?key=` to the destination URL. A
+   * pre-signed URL signs its query string, so one extra parameter makes the
+   * receiver reject every upload — and the key is already in a header.
+   */
+  it.each([
+    // AWS SigV4 (also R2, Spaces, Scaleway).
+    "https://bucket.s3.eu-central-1.amazonaws.com/costs/2026-08-07.csv?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA%2F20260807%2Feu-central-1%2Fs3%2Faws4_request&X-Amz-Date=20260807T000000Z&X-Amz-Expires=900&X-Amz-SignedHeaders=host&X-Amz-Signature=deadbeef",
+    // GCS V4.
+    "https://storage.googleapis.com/finance/2026-08-07.csv?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Signature=abc123",
+    // Azure SAS.
+    "https://acct.blob.core.windows.net/costs/2026-08-07.csv?sv=2023-11-03&sig=Zm9vYmFy%3D&se=2026-08-08T00%3A00%3A00Z",
+    // An ingest endpoint whose token happens not to be called anything we know,
+    // and which already uses a `key` parameter of its own.
+    "https://ingest.example.com/v1/drop?token=opaque&key=theirs",
+  ])("sends a pre-signed URL byte-for-byte: %s", async (url) => {
+    let seenUrl: unknown = null;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (target: unknown) => {
+      seenUrl = target;
+      return new Response("", { status: 200 });
+    });
+
+    await uploadCostExportObject({
+      destination: { kind: "http", method: "PUT", urlHint: "x" },
+      credentials: { kind: "http", url },
+      key: "cost-export/exp-1/daily/2026-08-07.csv",
+      contentType: "text/csv",
+      body: body("x"),
+      stamp,
+    });
+
+    // A string, not a URL object: nothing here re-serialises the credential.
+    expect(seenUrl).toBe(url);
     fetchSpy.mockRestore();
   });
 

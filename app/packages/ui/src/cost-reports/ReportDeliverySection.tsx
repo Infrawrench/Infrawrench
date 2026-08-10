@@ -257,6 +257,11 @@ export function ReportDeliverySection({ reportId, client }: ReportDeliverySectio
   );
 }
 
+/** Add or drop a destination id from a checkbox-backed selection. */
+function toggleSelection(list: string[], set: (v: string[]) => void, id: string) {
+  set(list.includes(id) ? list.filter((v) => v !== id) : [...list, id]);
+}
+
 function defaultTimezone(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -291,7 +296,9 @@ function ScheduleEditorModal({
   const [timezone, setTimezone] = useState<string>(notification?.timezone ?? defaultTimezone());
   const [slackIds, setSlackIds] = useState<string[]>(notification?.slackChannelIds ?? []);
   const [teamsIds, setTeamsIds] = useState<string[]>(notification?.teamsWebhookIds ?? []);
-  const [emails, setEmails] = useState<string>(notification?.emailRecipients.join(", ") ?? "");
+  const [emails, setEmails] = useState<string>(
+    () => notification?.emailRecipients.join(", ") ?? "",
+  );
   const [enabled, setEnabled] = useState<boolean>(notification?.enabled ?? true);
 
   useEffect(() => {
@@ -310,9 +317,10 @@ function ScheduleEditorModal({
     [emails],
   );
 
-  const toggle = (list: string[], set: (v: string[]) => void, id: string) => {
-    set(list.includes(id) ? list.filter((v) => v !== id) : [...list, id]);
-  };
+  // One membership set per list per render, so the checkbox rows below don't
+  // rescan the selection array for every destination they draw.
+  const slackSelected = new Set(slackIds);
+  const teamsSelected = new Set(teamsIds);
 
   async function save() {
     setBusy(true);
@@ -450,8 +458,8 @@ function ScheduleEditorModal({
                   <label key={ch.id} className="flex items-center gap-2 text-sm text-on-surface">
                     <input
                       type="checkbox"
-                      checked={slackIds.includes(ch.id)}
-                      onChange={() => toggle(slackIds, setSlackIds, ch.id)}
+                      checked={slackSelected.has(ch.id)}
+                      onChange={() => toggleSelection(slackIds, setSlackIds, ch.id)}
                     />
                     <span className="truncate">{ch.label}</span>
                   </label>
@@ -468,8 +476,8 @@ function ScheduleEditorModal({
                   <label key={w.id} className="flex items-center gap-2 text-sm text-on-surface">
                     <input
                       type="checkbox"
-                      checked={teamsIds.includes(w.id)}
-                      onChange={() => toggle(teamsIds, setTeamsIds, w.id)}
+                      checked={teamsSelected.has(w.id)}
+                      onChange={() => toggleSelection(teamsIds, setTeamsIds, w.id)}
                     />
                     <span className="truncate">{w.label}</span>
                   </label>

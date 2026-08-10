@@ -484,6 +484,47 @@ export async function deleteCostExport(organizationId: string, id: string): Prom
   return !!row;
 }
 
+/* ------------------------------------------------------------------ *
+ * In-flight marker
+ * ------------------------------------------------------------------ */
+
+/**
+ * Prefix of the marker written to `last_error` while a run is delivering to a
+ * destination that cannot absorb a duplicate, and the string a later claim
+ * matches on to recognise one. See `run.ts` for the protocol.
+ *
+ * It is a sentence rather than a magic token because it is also what an
+ * operator reading the row (or the settings UI, when the previous run failed)
+ * will see; `last_error` already exists to carry exactly that kind of text, and
+ * `last_status` has a fixed three-value enum that this must not widen.
+ */
+export const COST_EXPORT_IN_FLIGHT_PREFIX = "A delivery attempt started at ";
+
+export function costExportInFlightMarker(startedAt: Date): string {
+  return `${COST_EXPORT_IN_FLIGHT_PREFIX}${startedAt.toISOString()} and has not recorded its outcome.`;
+}
+
+/** Whether a row's `last_error` is an in-flight marker rather than a real failure. */
+export function isCostExportInFlight(lastError: string | null): boolean {
+  return lastError !== null && lastError.startsWith(COST_EXPORT_IN_FLIGHT_PREFIX);
+}
+
+/**
+ * Stamp the in-flight marker, before a single byte has been delivered.
+ *
+ * Only `last_error` moves: `last_status` deliberately keeps the previous run's
+ * verdict, because a run takes minutes and flashing "failed" at anyone who
+ * opens Settings during the nightly window would be a worse lie than a stale
+ * "succeeded" — the marker's job is to be found by the *next* claim, not to
+ * report progress.
+ */
+export async function markCostExportRunInFlight(id: string, startedAt: Date): Promise<void> {
+  await db
+    .update(costExports)
+    .set({ lastError: costExportInFlightMarker(startedAt), updatedAt: new Date() })
+    .where(eq(costExports.id, id));
+}
+
 /** Record the outcome of a run and set the next fire time. */
 export async function recordCostExportRun(
   id: string,

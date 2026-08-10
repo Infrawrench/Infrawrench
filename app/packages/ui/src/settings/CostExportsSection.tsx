@@ -9,8 +9,11 @@ import {
   DEFAULT_COST_EXPORT_INPUT,
   type CostDimensionId,
   type CostExport,
+  type CostExportHttpDestination,
   type CostExportInput,
+  type CostExportQuery,
   type CostExportRunResult,
+  type CostExportS3Destination,
 } from "@infrawrench/client-core";
 import { Modal } from "../components/Modal.js";
 import { useSettingsHost } from "./host.js";
@@ -36,6 +39,22 @@ import { CARD, INPUT, LABEL, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./styles.j
 
 /** Which dimensions the column picker offers. `tag` is handled by the tag-key list. */
 const PICKABLE_DIMENSIONS = COST_DIMENSIONS.filter((d) => d !== "tag");
+
+/**
+ * A number typed into an `<input type="number">`, or `null` when there is
+ * nothing the user has actually chosen yet.
+ *
+ * `Number("")` is `0` and `Number("-")` is `NaN`, so coercing the raw value
+ * writes a *setting* the user never picked: clearing the restatement field to
+ * retype it would silently store "restate 0 days", and a half-typed value
+ * would store `NaN` and travel into the request body. Both cases mean "keep
+ * what is there and wait for the rest of the keystrokes".
+ */
+export function parseNumericInputValue(raw: string): number | null {
+  if (raw.trim() === "") return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 function statusTone(exp: CostExport): string {
   if (exp.lastStatus === "failed") return "text-red-400";
@@ -299,7 +318,6 @@ function CostExportEditor({
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
   const [url, setUrl] = useState("");
-  const [tagKeyDraft, setTagKeyDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -321,21 +339,6 @@ function CostExportEditor({
           }
         : { ...f, destination: { kind: "http", method: "POST", urlHint: "" } },
     );
-  }
-
-  function toggleDimension(dimension: CostDimensionId) {
-    setForm((f) => {
-      const has = f.query.dimensions.includes(dimension);
-      return {
-        ...f,
-        query: {
-          ...f.query,
-          dimensions: has
-            ? f.query.dimensions.filter((d) => d !== dimension)
-            : [...f.query.dimensions, dimension],
-        },
-      };
-    });
   }
 
   async function save() {
@@ -469,93 +472,19 @@ function CostExportEditor({
               min={0}
               max={90}
               value={form.restatementDays}
-              onChange={(e) => setForm({ ...form, restatementDays: Number(e.target.value) })}
+              onChange={(e) => {
+                // Empty or half-typed keeps the stored window; 0 is a real
+                // setting ("never restate") and must be chosen, not fallen into.
+                const days = parseNumericInputValue(e.target.value);
+                if (days === null) return;
+                setForm({ ...form, restatementDays: days });
+              }}
               className={INPUT}
             />
           </label>
         </section>
 
-        <section className="space-y-2">
-          <h3 className="text-sm font-semibold">Columns</h3>
-          <p className="text-xs text-on-surface-muted">
-            Which identity columns survive into the output. Leaving one out aggregates over it — a
-            provider + service export is a fraction of the size of a per-resource one. Day,
-            currency, amount and usage always come along.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {PICKABLE_DIMENSIONS.map((dimension) => {
-              const selected = form.query.dimensions.includes(dimension);
-              return (
-                <button
-                  key={dimension}
-                  type="button"
-                  onClick={() => toggleDimension(dimension)}
-                  className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
-                    selected
-                      ? "border-blue-500 bg-blue-600/20 text-on-surface"
-                      : "border-border text-on-surface-muted hover:bg-surface-overlay"
-                  }`}
-                >
-                  {COST_DIMENSION_LABELS[dimension]}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="pt-2">
-            <span className={LABEL}>Tag columns</span>
-            <div className="flex flex-wrap gap-2 mb-2">
-              {form.query.tagKeys.map((key) => (
-                <span
-                  key={key}
-                  className="px-2 py-0.5 text-xs rounded bg-surface-overlay text-on-surface-secondary"
-                >
-                  {key}
-                  <button
-                    type="button"
-                    aria-label={`Remove tag column ${key}`}
-                    onClick={() =>
-                      setForm({
-                        ...form,
-                        query: {
-                          ...form.query,
-                          tagKeys: form.query.tagKeys.filter((k) => k !== key),
-                        },
-                      })
-                    }
-                    className="ml-1.5 text-on-surface-faint hover:text-red-400"
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={tagKeyDraft}
-                onChange={(e) => setTagKeyDraft(e.target.value)}
-                placeholder="team"
-                className={INPUT}
-              />
-              <button
-                type="button"
-                className={SECONDARY_BUTTON}
-                onClick={() => {
-                  const key = tagKeyDraft.trim();
-                  if (!key || form.query.tagKeys.includes(key)) return;
-                  setForm({
-                    ...form,
-                    query: { ...form.query, tagKeys: [...form.query.tagKeys, key] },
-                  });
-                  setTagKeyDraft("");
-                }}
-              >
-                Add
-              </button>
-            </div>
-          </div>
-        </section>
+        <ColumnPicker query={form.query} onChange={(query) => setForm((f) => ({ ...f, query }))} />
 
         <section className="space-y-3">
           <h3 className="text-sm font-semibold">Destination</h3>
@@ -577,161 +506,23 @@ function CostExportEditor({
           </div>
 
           {form.destination.kind === "s3" ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <p className="sm:col-span-2 text-xs text-on-surface-muted">
-                One setting covers AWS S3, Cloudflare R2, DigitalOcean Spaces, Scaleway, Backblaze
-                B2 and MinIO — leave the endpoint blank for AWS, otherwise paste the
-                provider&rsquo;s S3 API origin.
-              </p>
-              <label className="block">
-                <span className={LABEL}>Bucket</span>
-                <input
-                  type="text"
-                  value={form.destination.bucket}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      destination: { ...form.destination, kind: "s3", bucket: e.target.value },
-                    } as CostExportInput)
-                  }
-                  className={INPUT}
-                />
-              </label>
-              <label className="block">
-                <span className={LABEL}>Key prefix</span>
-                <input
-                  type="text"
-                  value={form.destination.prefix}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      destination: { ...form.destination, kind: "s3", prefix: e.target.value },
-                    } as CostExportInput)
-                  }
-                  placeholder="infrawrench"
-                  className={INPUT}
-                />
-              </label>
-              <label className="block">
-                <span className={LABEL}>Region</span>
-                <input
-                  type="text"
-                  value={form.destination.region}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      destination: { ...form.destination, kind: "s3", region: e.target.value },
-                    } as CostExportInput)
-                  }
-                  placeholder="us-east-1 (R2: auto)"
-                  className={INPUT}
-                />
-              </label>
-              <label className="block">
-                <span className={LABEL}>Endpoint (blank = AWS S3)</span>
-                <input
-                  type="text"
-                  value={form.destination.endpoint}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      destination: { ...form.destination, kind: "s3", endpoint: e.target.value },
-                    } as CostExportInput)
-                  }
-                  placeholder="https://<account>.r2.cloudflarestorage.com"
-                  className={INPUT}
-                />
-              </label>
-              <label className="flex items-center gap-2 text-sm sm:col-span-2">
-                <input
-                  type="checkbox"
-                  checked={form.destination.forcePathStyle}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      destination: {
-                        ...form.destination,
-                        kind: "s3",
-                        forcePathStyle: e.target.checked,
-                      },
-                    } as CostExportInput)
-                  }
-                />
-                <span className="text-on-surface-secondary">
-                  Path-style addressing (needed by MinIO and most self-hosted gateways)
-                </span>
-              </label>
-              <label className="block">
-                <span className={LABEL}>Access key id</span>
-                <input
-                  type="text"
-                  value={accessKeyId}
-                  onChange={(e) => setAccessKeyId(e.target.value)}
-                  autoComplete="off"
-                  placeholder={
-                    existing?.hasCredentials ? `Stored: ${existing.credentialHint ?? "…"}` : "AKIA…"
-                  }
-                  className={INPUT}
-                />
-              </label>
-              <label className="block">
-                <span className={LABEL}>Secret access key</span>
-                <input
-                  type="password"
-                  value={secretAccessKey}
-                  onChange={(e) => setSecretAccessKey(e.target.value)}
-                  autoComplete="new-password"
-                  placeholder={
-                    existing?.hasCredentials ? "Leave blank to keep the stored key" : "Secret"
-                  }
-                  className={INPUT}
-                />
-              </label>
-            </div>
+            <S3DestinationFields
+              destination={form.destination}
+              onChange={(destination) => setForm((f) => ({ ...f, destination }))}
+              existing={existing}
+              accessKeyId={accessKeyId}
+              onAccessKeyIdChange={setAccessKeyId}
+              secretAccessKey={secretAccessKey}
+              onSecretAccessKeyChange={setSecretAccessKey}
+            />
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <p className="sm:col-span-2 text-xs text-on-surface-muted">
-                Each object is sent as the request body, with the object key in the
-                <code> X-Infrawrench-Object-Key</code> header. The URL is treated as a credential —
-                a pre-signed URL carries its own signature — so it is encrypted and never shown
-                again.
-              </p>
-              <label className="block">
-                <span className={LABEL}>Method</span>
-                <select
-                  value={form.destination.method}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      destination: {
-                        ...form.destination,
-                        kind: "http",
-                        method: e.target.value as "POST" | "PUT",
-                      },
-                    } as CostExportInput)
-                  }
-                  className={INPUT}
-                >
-                  <option value="POST">POST</option>
-                  <option value="PUT">PUT</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className={LABEL}>URL</span>
-                <input
-                  type="password"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  autoComplete="new-password"
-                  placeholder={
-                    existing?.hasCredentials
-                      ? `Stored: ${existing.credentialHint ?? "…"}`
-                      : "https://…"
-                  }
-                  className={INPUT}
-                />
-              </label>
-            </div>
+            <HttpDestinationFields
+              destination={form.destination}
+              onChange={(destination) => setForm((f) => ({ ...f, destination }))}
+              existing={existing}
+              url={url}
+              onUrlChange={setUrl}
+            />
           )}
         </section>
 
@@ -761,5 +552,264 @@ function CostExportEditor({
         </div>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * "Which columns survive into the output" — the dimension toggles and the tag
+ * key list, the only part of the editor that touches `query` and nothing else.
+ *
+ * The half-typed tag key lives here rather than in the editor: it is a draft
+ * that never reaches the request body, and keeping it next to the field that
+ * owns it is one fewer piece of state the save path has to ignore.
+ */
+function ColumnPicker({
+  query,
+  onChange,
+}: {
+  query: CostExportQuery;
+  onChange: (query: CostExportQuery) => void;
+}) {
+  const [tagKeyDraft, setTagKeyDraft] = useState("");
+
+  function toggleDimension(dimension: CostDimensionId) {
+    const selected = query.dimensions.includes(dimension);
+    onChange({
+      ...query,
+      dimensions: selected
+        ? query.dimensions.filter((d) => d !== dimension)
+        : [...query.dimensions, dimension],
+    });
+  }
+
+  function addTagKey() {
+    const key = tagKeyDraft.trim();
+    if (!key || query.tagKeys.includes(key)) return;
+    onChange({ ...query, tagKeys: [...query.tagKeys, key] });
+    setTagKeyDraft("");
+  }
+
+  return (
+    <section className="space-y-2">
+      <h3 className="text-sm font-semibold">Columns</h3>
+      <p className="text-xs text-on-surface-muted">
+        Which identity columns survive into the output. Leaving one out aggregates over it — a
+        provider + service export is a fraction of the size of a per-resource one. Day, currency,
+        amount and usage always come along.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {PICKABLE_DIMENSIONS.map((dimension) => {
+          const selected = query.dimensions.includes(dimension);
+          return (
+            <button
+              key={dimension}
+              type="button"
+              onClick={() => toggleDimension(dimension)}
+              className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                selected
+                  ? "border-blue-500 bg-blue-600/20 text-on-surface"
+                  : "border-border text-on-surface-muted hover:bg-surface-overlay"
+              }`}
+            >
+              {COST_DIMENSION_LABELS[dimension]}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="pt-2">
+        <span className={LABEL}>Tag columns</span>
+        <div className="flex flex-wrap gap-2 mb-2">
+          {query.tagKeys.map((key) => (
+            <span
+              key={key}
+              className="px-2 py-0.5 text-xs rounded bg-surface-overlay text-on-surface-secondary"
+            >
+              {key}
+              <button
+                type="button"
+                aria-label={`Remove tag column ${key}`}
+                onClick={() =>
+                  onChange({ ...query, tagKeys: query.tagKeys.filter((k) => k !== key) })
+                }
+                className="ml-1.5 text-on-surface-faint hover:text-red-400"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+        <div className="flex items-end gap-2">
+          <label className="block flex-1">
+            <span className={LABEL}>Tag key</span>
+            <input
+              type="text"
+              value={tagKeyDraft}
+              onChange={(e) => setTagKeyDraft(e.target.value)}
+              placeholder="team"
+              className={INPUT}
+            />
+          </label>
+          <button type="button" className={SECONDARY_BUTTON} onClick={addTagKey}>
+            Add
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Everything about writing to an S3-compatible bucket, including the
+ * write-only credential pair. One implementation covers AWS S3, R2, Spaces,
+ * Scaleway, B2 and MinIO — see `CostExportS3Destination`.
+ */
+function S3DestinationFields({
+  destination,
+  onChange,
+  existing,
+  accessKeyId,
+  onAccessKeyIdChange,
+  secretAccessKey,
+  onSecretAccessKeyChange,
+}: {
+  destination: CostExportS3Destination;
+  onChange: (destination: CostExportS3Destination) => void;
+  existing: CostExport | null;
+  accessKeyId: string;
+  onAccessKeyIdChange: (value: string) => void;
+  secretAccessKey: string;
+  onSecretAccessKeyChange: (value: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <p className="sm:col-span-2 text-xs text-on-surface-muted">
+        One setting covers AWS S3, Cloudflare R2, DigitalOcean Spaces, Scaleway, Backblaze B2 and
+        MinIO — leave the endpoint blank for AWS, otherwise paste the provider&rsquo;s S3 API
+        origin.
+      </p>
+      <label className="block">
+        <span className={LABEL}>Bucket</span>
+        <input
+          type="text"
+          value={destination.bucket}
+          onChange={(e) => onChange({ ...destination, bucket: e.target.value })}
+          className={INPUT}
+        />
+      </label>
+      <label className="block">
+        <span className={LABEL}>Key prefix</span>
+        <input
+          type="text"
+          value={destination.prefix}
+          onChange={(e) => onChange({ ...destination, prefix: e.target.value })}
+          placeholder="infrawrench"
+          className={INPUT}
+        />
+      </label>
+      <label className="block">
+        <span className={LABEL}>Region</span>
+        <input
+          type="text"
+          value={destination.region}
+          onChange={(e) => onChange({ ...destination, region: e.target.value })}
+          placeholder="us-east-1 (R2: auto)"
+          className={INPUT}
+        />
+      </label>
+      <label className="block">
+        <span className={LABEL}>Endpoint (blank = AWS S3)</span>
+        <input
+          type="text"
+          value={destination.endpoint}
+          onChange={(e) => onChange({ ...destination, endpoint: e.target.value })}
+          placeholder="https://<account>.r2.cloudflarestorage.com"
+          className={INPUT}
+        />
+      </label>
+      <label className="flex items-center gap-2 text-sm sm:col-span-2">
+        <input
+          type="checkbox"
+          checked={destination.forcePathStyle}
+          onChange={(e) => onChange({ ...destination, forcePathStyle: e.target.checked })}
+        />
+        <span className="text-on-surface-secondary">
+          Path-style addressing (needed by MinIO and most self-hosted gateways)
+        </span>
+      </label>
+      <label className="block">
+        <span className={LABEL}>Access key id</span>
+        <input
+          type="text"
+          value={accessKeyId}
+          onChange={(e) => onAccessKeyIdChange(e.target.value)}
+          autoComplete="off"
+          placeholder={
+            existing?.hasCredentials ? `Stored: ${existing.credentialHint ?? "…"}` : "AKIA…"
+          }
+          className={INPUT}
+        />
+      </label>
+      <label className="block">
+        <span className={LABEL}>Secret access key</span>
+        <input
+          type="password"
+          value={secretAccessKey}
+          onChange={(e) => onSecretAccessKeyChange(e.target.value)}
+          autoComplete="new-password"
+          placeholder={existing?.hasCredentials ? "Leave blank to keep the stored key" : "Secret"}
+          className={INPUT}
+        />
+      </label>
+    </div>
+  );
+}
+
+/** Everything about POSTing each object to an HTTPS endpoint. */
+function HttpDestinationFields({
+  destination,
+  onChange,
+  existing,
+  url,
+  onUrlChange,
+}: {
+  destination: CostExportHttpDestination;
+  onChange: (destination: CostExportHttpDestination) => void;
+  existing: CostExport | null;
+  url: string;
+  onUrlChange: (value: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <p className="sm:col-span-2 text-xs text-on-surface-muted">
+        Each object is sent as the request body, with the object key in the
+        <code> X-Infrawrench-Object-Key</code> header. The URL is treated as a credential — a
+        pre-signed URL carries its own signature — so it is encrypted and never shown again.
+      </p>
+      <label className="block">
+        <span className={LABEL}>Method</span>
+        <select
+          value={destination.method}
+          onChange={(e) => onChange({ ...destination, method: e.target.value as "POST" | "PUT" })}
+          className={INPUT}
+        >
+          <option value="POST">POST</option>
+          <option value="PUT">PUT</option>
+        </select>
+      </label>
+      <label className="block">
+        <span className={LABEL}>URL</span>
+        <input
+          type="password"
+          value={url}
+          onChange={(e) => onUrlChange(e.target.value)}
+          autoComplete="new-password"
+          placeholder={
+            existing?.hasCredentials ? `Stored: ${existing.credentialHint ?? "…"}` : "https://…"
+          }
+          className={INPUT}
+        />
+      </label>
+    </div>
   );
 }

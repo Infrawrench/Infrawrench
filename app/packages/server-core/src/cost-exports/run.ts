@@ -44,7 +44,13 @@ import { uploadCostExportObject, CostExportUploadError } from "./destinations";
 import { nextCostExportRunAt, periodsToExport, type CostExportCadence } from "./periods";
 import { resolveColumns, streamCostExportRows, type CostExportRow } from "./rows";
 import { serializeRows } from "./serialize";
-import { loadCredentials, recordCostExportRun, type CostExportRecord } from "./store";
+import {
+  isCostExportInFlight,
+  loadCredentials,
+  markCostExportRunInFlight,
+  recordCostExportRun,
+  type CostExportRecord,
+} from "./store";
 
 /**
  * The newest day every cost-reporting account in the org has data for.
@@ -90,6 +96,71 @@ export function costExportObjectKey(args: {
 export interface RunCostExportOptions {
   /** Overridable for tests; defaults to the wall clock. */
   now?: Date;
+  /** Overridable for tests; defaults to {@link PERSIST_RETRY_DELAYS_MS}. */
+  persistRetryDelaysMs?: readonly number[];
+}
+
+/**
+ * Backoff between attempts to write a run's outcome. Four attempts over ~7s.
+ *
+ * The window this has to cover is a database blip — a failover, a dropped
+ * connection, a pool exhausted by a neighbouring pass — not an outage, and it
+ * has to stay far inside `COST_EXPORT_LEASE_MS` (30 minutes) so a retrying run
+ * can never still be holding the lease when it expires.
+ */
+const PERSIST_RETRY_DELAYS_MS = [500, 2_000, 5_000] as const;
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Write the run's outcome, retrying a failed write. Returns null on success, or
+ * the final error's message when every attempt failed.
+ *
+ * This is the write that ends the lease: until it lands, `next_run_at` is still
+ * claim-time + lease, so an abandoned write means the export is re-claimed and
+ * re-run half an hour later. That is harmless for S3 (the same period is
+ * overwritten at the same key) and *not* harmless for HTTPS, which is why the
+ * marker protocol in {@link runCostExport} exists on top of this.
+ */
+async function persistRunOutcome(
+  exportId: string,
+  outcome: Parameters<typeof recordCostExportRun>[1],
+  delays: readonly number[],
+): Promise<string | null> {
+  let lastError: unknown = null;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await recordCostExportRun(exportId, outcome);
+      return null;
+    } catch (e) {
+      lastError = e;
+      const delay = delays[attempt];
+      if (delay === undefined) break;
+      console.warn(
+        `[cost-export] ${exportId} could not record run outcome (attempt ${attempt + 1}), retrying in ${delay}ms:`,
+        e,
+      );
+      await sleep(delay);
+    }
+  }
+  console.error(
+    `[cost-export] ${exportId} could not record run outcome after ${delays.length + 1} attempts; the row still holds a lease and stale status:`,
+    lastError,
+  );
+  return lastError instanceof Error ? lastError.message : String(lastError);
+}
+
+/**
+ * Whether re-running this destination is free of consequence.
+ *
+ * S3 writes each period to a key derived from the period start alone, so a
+ * second run of the same periods overwrites the first — that is already the
+ * mechanism restatements rely on. An HTTPS `POST`/`PUT` to somebody else's
+ * endpoint carries no such promise: it is an append as far as we know, and a
+ * duplicate is a duplicate row in their warehouse.
+ */
+function toleratesRedelivery(destination: CostExportDestination): boolean {
+  return destination.kind === "s3";
 }
 
 /**
@@ -100,16 +171,85 @@ export interface RunCostExportOptions {
  * data so it can render it). The failure is written to `lastStatus`/`lastError`
  * and returned, which is what makes a silently-failing nightly export
  * impossible — the settings UI reads exactly those columns.
+ *
+ * ## Delivering exactly once to an endpoint that cannot absorb a duplicate
+ *
+ * The claim leases the row by pushing `next_run_at` out (`pass.ts`), and the
+ * outcome write is what replaces that lease with the real schedule. So a run
+ * that delivers and then fails to persist is a run that gets claimed again when
+ * the lease expires — and delivers again. For S3 that is a no-op overwrite. For
+ * HTTPS it is a second POST to a warehouse that has already ingested the first,
+ * repeating every 30 minutes for as long as the database stays unhappy.
+ *
+ * Two mechanisms, because they cover different failures:
+ *
+ *   1. **The outcome write is retried** ({@link persistRunOutcome}). A dropped
+ *      connection or a failover is the realistic cause, and a few seconds of
+ *      backoff resolves it long before the lease expires.
+ *   2. **A marker is written before the first byte is delivered**, for
+ *      destinations that cannot tolerate a duplicate. If a later run finds the
+ *      marker still in place, an earlier attempt delivered (or may have) and
+ *      never recorded it: that run refuses to deliver and writes the situation
+ *      to `lastStatus`/`lastError` instead.
+ *
+ * The order matters. A marker write that fails happens *before* any delivery,
+ * so it simply fails the run — nothing was sent, and the export retries on its
+ * normal schedule. Every unsafe outcome is therefore either prevented or
+ * announced; the one thing that cannot happen is a silent duplicate.
+ *
+ * The recovery run is where the visibility actually lands, and it is reliable
+ * precisely because it only runs after a claim has succeeded — which proves the
+ * database is answering again. It also costs the export one cycle: the skip is
+ * recorded as a failure with a message saying so, and the next scheduled run
+ * proceeds normally. A "Run now" click behaves the same way, and clicking it a
+ * second time runs the export, which is the right shape for a decision only a
+ * human can make ("has my endpoint already got this?").
  */
 export async function runCostExport(
   row: CostExportRecord,
   opts: RunCostExportOptions = {},
 ): Promise<CostExportRunResult> {
   const now = opts.now ?? new Date();
+  const retryDelays = opts.persistRetryDelaysMs ?? PERSIST_RETRY_DELAYS_MS;
   const cadence = row.cadence as CostExportCadence;
   const format = row.format === "ndjson" ? "ndjson" : "csv";
   const query = row.query as unknown as CostExportQuery;
   const destination = row.destination as unknown as CostExportDestination;
+  const guarded = !toleratesRedelivery(destination);
+
+  // Rescheduled from the wall clock at the end of the run, not from `now`: a
+  // long run must not land its next fire time in the past.
+  const rescheduled = (): Date | null =>
+    row.enabled ? nextCostExportRunAt(cadence, row.hour, row.timezone, new Date()) : null;
+
+  if (guarded && isCostExportInFlight(row.lastError)) {
+    const message =
+      `A previous run of this export started delivering to the HTTPS destination and never recorded ` +
+      `its outcome (${row.lastError}). This run was skipped rather than risk sending the endpoint ` +
+      `the same objects twice — an HTTPS delivery, unlike an S3 object, cannot be overwritten. ` +
+      `Check whether the destination received the last export; the next scheduled run will proceed ` +
+      `normally, or use "Run now" to force one.`;
+    console.error(`[cost-export] ${row.id} skipped: ${message}`);
+    await persistRunOutcome(
+      row.id,
+      {
+        status: "failed",
+        error: message,
+        objectCount: null,
+        rowCount: null,
+        nextRunAt: rescheduled(),
+      },
+      retryDelays,
+    );
+    return {
+      exportId: row.id,
+      status: "failed",
+      objects: [],
+      rowCount: 0,
+      collectionWatermark: null,
+      error: message,
+    };
+  }
 
   const objects: CostExportObject[] = [];
   let totalRows = 0;
@@ -138,6 +278,10 @@ export async function runCostExport(
       restatementDays: row.restatementDays,
       now,
     });
+
+    // Before the first delivery, never after: a failure here throws into the
+    // catch below with nothing yet sent, which is the safe half of the trade.
+    if (guarded) await markCostExportRunInFlight(row.id, now);
 
     for (const period of periods) {
       const key = costExportObjectKey({
@@ -207,21 +351,32 @@ export async function runCostExport(
   }
 
   const status = error === null ? "succeeded" : "failed";
-  await recordCostExportRun(row.id, {
-    status,
-    error,
-    objectCount: error === null ? objects.length : null,
-    rowCount: error === null ? totalRows : null,
-    // A failed run reschedules on the normal cadence rather than backing off.
-    // The cadence is already at least a day, the failure is now visible in the
-    // UI, and a backoff on top of a daily schedule only delays the recovery
-    // once someone has fixed the credential.
-    nextRunAt: row.enabled
-      ? nextCostExportRunAt(cadence, row.hour, row.timezone, new Date())
-      : null,
-  }).catch((e) => {
-    console.error(`[cost-export] ${row.id} failed to record run outcome:`, e);
-  });
+  const persistError = await persistRunOutcome(
+    row.id,
+    {
+      status,
+      error,
+      objectCount: error === null ? objects.length : null,
+      rowCount: error === null ? totalRows : null,
+      // A failed run reschedules on the normal cadence rather than backing off.
+      // The cadence is already at least a day, the failure is now visible in the
+      // UI, and a backoff on top of a daily schedule only delays the recovery
+      // once someone has fixed the credential.
+      nextRunAt: rescheduled(),
+    },
+    retryDelays,
+  );
+
+  if (persistError !== null) {
+    // Loud on purpose: the row now says something other than what happened, and
+    // for a guarded destination the next claim will refuse to deliver until a
+    // human has looked. This line is the operator's only hint before that.
+    console.error(
+      `[cost-export] ${row.id} ${status} with ${objects.length} object(s) delivered, but the outcome could not be recorded. ` +
+        `The row keeps its lease and its previous status until the lease expires` +
+        (guarded ? "; the next run will skip delivery to avoid duplicating it." : "."),
+    );
+  }
 
   return {
     exportId: row.id,
@@ -229,6 +384,14 @@ export async function runCostExport(
     objects,
     rowCount: totalRows,
     collectionWatermark: watermark || null,
-    error,
+    // `status` describes the delivery. A non-null `error` on a succeeded run
+    // means the delivery happened but the record of it did not — the caller
+    // ("Run now") has to be told that, or the inconsistency is invisible until
+    // somebody notices the settings page disagreeing with their warehouse.
+    error:
+      error ??
+      (persistError === null
+        ? null
+        : `Delivered ${objects.length} object(s), but this run's outcome could not be recorded: ${persistError}`),
   };
 }

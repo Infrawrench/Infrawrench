@@ -35,6 +35,14 @@ const selectBaseClass =
 const selectClass = `w-full ${selectBaseClass}`;
 const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 
+/** Rows/Query tab button styling — one string per state, no component state. */
+const tabClass = (active: boolean) =>
+  `rounded-md px-2 py-0.5 text-xs transition-colors ${
+    active
+      ? "bg-surface-sunken text-on-surface"
+      : "text-on-surface-faint hover:text-on-surface-secondary"
+  }`;
+
 interface FilterRowEditorProps {
   filters: CostFilter[];
   onChange: (filters: CostFilter[]) => void;
@@ -479,9 +487,13 @@ export function CostFilterEditor({
   );
 
   // A mode the host never sees an error from: leaving text mode clears it.
-  useEffect(() => {
-    if (mode === "rows") report(null);
-  }, [mode, report]);
+  // Done in the click that changes the mode rather than in an effect — an
+  // effect would tell the host about the change one render late (and would fire
+  // once on mount, for an error that cannot exist yet).
+  const toRows = () => {
+    if (mode === "text") report(null);
+    setMode("rows");
+  };
 
   const toText = () => {
     try {
@@ -506,13 +518,6 @@ export function CostFilterEditor({
       report(e instanceof CostQueryParseError ? e.annotated() : "Invalid query.");
     }
   };
-
-  const tabClass = (active: boolean) =>
-    `rounded-md px-2 py-0.5 text-xs transition-colors ${
-      active
-        ? "bg-surface-sunken text-on-surface"
-        : "text-on-surface-faint hover:text-on-surface-secondary"
-    }`;
 
   // The saved-filter UI needs both a place to write the reference and a host
   // API that can list filters — absent either, this editor is exactly the
@@ -539,7 +544,7 @@ export function CostFilterEditor({
           // parsed, so switching now would throw away what is in the box.
           disabled={mode === "text" && error !== null}
           className={`${tabClass(mode === "rows")} disabled:opacity-40`}
-          onClick={() => setMode("rows")}
+          onClick={toRows}
           title={
             mode === "text" && error !== null
               ? "Fix the query first — switching now would discard it"

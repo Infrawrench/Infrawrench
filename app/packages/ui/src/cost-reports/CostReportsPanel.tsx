@@ -263,18 +263,18 @@ export function CostReportsPanel({
         blocked: currentParent === null ? "Already here" : undefined,
       },
     ];
-    for (const row of folderTree) {
+    for (const { folder, depth } of folderTree) {
       // A report can go in any folder; a folder move obeys the same rule the
       // server enforces, so nothing pickable here can come back as a 400.
       const blocked =
         moving.kind === "folder"
-          ? (costReportFolderMoveBlocker(folders, subjectFolderId, row.folder.id) ?? undefined)
+          ? (costReportFolderMoveBlocker(folders, subjectFolderId, folder.id) ?? undefined)
           : undefined;
       targets.push({
-        folderId: row.folder.id,
-        label: row.folder.name,
-        depth: row.depth + 1,
-        blocked: row.folder.id === currentParent ? "Already here" : blocked,
+        folderId: folder.id,
+        label: folder.name,
+        depth: depth + 1,
+        blocked: folder.id === currentParent ? "Already here" : blocked,
       });
     }
     return targets;

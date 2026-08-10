@@ -62,9 +62,14 @@ export default function CostReportsRoute() {
     list.push(report);
     byFolder.set(key, list);
   }
-  const sections = flattenCostReportFolderTree(folderRows)
-    .map((row) => ({ path: row.path, reports: byFolder.get(row.folder.id) ?? [] }))
-    .filter((s) => s.reports.length > 0);
+  // Empty folders are omitted, so build and filter in the same pass.
+  const sections: { path: string; reports: CostReport[] }[] = [];
+  for (const row of flattenCostReportFolderTree(folderRows)) {
+    const folderReports = byFolder.get(row.folder.id);
+    if (folderReports && folderReports.length > 0) {
+      sections.push({ path: row.path, reports: folderReports });
+    }
+  }
   const unfiled = byFolder.get(null) ?? [];
 
   const reportRow = (report: CostReport) => (

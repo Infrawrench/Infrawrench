@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   buildJiraIssueDraft,
   type BuildJiraIssueDraftArgs,
@@ -59,9 +59,17 @@ export function FileIssueSheet({
   const teams = useLinearTeams(visible && tracker === "linear");
   const prefill = buildJiraIssueDraft({ sourceKind, ...draft });
 
-  const [projectKey, setProjectKey] = useState(jiraIntegration.data?.defaultProjectKey ?? "");
-  const [issueTypeId, setIssueTypeId] = useState(jiraIntegration.data?.defaultIssueTypeId ?? "");
-  const [teamId, setTeamId] = useState(linearIntegration.data?.defaultTeamId ?? "");
+  // Null means "the user has not chosen yet", so the organization's saved
+  // default can still apply. Seeding these from `integration.data` instead
+  // would silently discard those defaults: this sheet stays mounted and is
+  // toggled with `visible`, so its initializers run at the parent's first
+  // render — long before the integration query resolves. (The web modal does
+  // not have this problem: its button only renders once the integration has
+  // loaded, so by the time it mounts the defaults are already there.)
+  const [projectChoice, setProjectChoice] = useState<string | null>(null);
+  const [issueTypeChoice, setIssueTypeChoice] = useState<string | null>(null);
+  const [teamChoice, setTeamChoice] = useState<string | null>(null);
+  const projectKey = projectChoice ?? jiraIntegration.data?.defaultProjectKey ?? "";
   const [summary, setSummary] = useState(prefill.summary);
   const [description, setDescription] = useState(prefill.description);
   const [error, setError] = useState<string | null>(null);
@@ -69,24 +77,31 @@ export function FileIssueSheet({
   const fileJira = useFileJiraIssue();
   const fileLinear = useFileLinearIssue();
 
+  // Both destinations are *derived* from the loaded rows rather than corrected
+  // by an effect after they arrive: an effect renders the stale choice once
+  // before fixing it, and on a phone that one frame is a visible flicker of
+  // the wrong project's issue type.
+
   // Issue types are per-project: a type carried over from another project
   // would fail the create, so fall back to the first this project offers.
-  useEffect(() => {
-    const rows = issueTypes.data;
-    if (!rows) return;
-    setIssueTypeId((current) =>
-      rows.some((t) => t.id === current) ? current : (rows[0]?.id ?? ""),
-    );
-  }, [issueTypes.data]);
+  const issueTypeRows = issueTypes.data;
+  const issueTypeSeed = issueTypeChoice ?? jiraIntegration.data?.defaultIssueTypeId ?? "";
+  const issueTypeId = !issueTypeRows
+    ? issueTypeSeed
+    : issueTypeRows.some((t) => t.id === issueTypeSeed)
+      ? issueTypeSeed
+      : (issueTypeRows[0]?.id ?? "");
 
   // A workspace with one team should not make the user pick it.
-  useEffect(() => {
-    const rows = teams.data;
-    if (!rows) return;
-    setTeamId((current) =>
-      rows.some((t) => t.id === current) ? current : rows.length === 1 ? (rows[0]?.id ?? "") : "",
-    );
-  }, [teams.data]);
+  const teamRows = teams.data;
+  const teamSeed = teamChoice ?? linearIntegration.data?.defaultTeamId ?? "";
+  const teamId = !teamRows
+    ? teamSeed
+    : teamRows.some((t) => t.id === teamSeed)
+      ? teamSeed
+      : teamRows.length === 1
+        ? (teamRows[0]?.id ?? "")
+        : "";
 
   async function submit() {
     setError(null);
@@ -175,16 +190,18 @@ export function FileIssueSheet({
             }))}
             value={projectKey || null}
             onChange={(key) => {
-              setProjectKey(key);
-              setIssueTypeId("");
+              setProjectChoice(key);
+              // Empty string, not null: null would re-apply the organization's
+              // default issue type, which belongs to the project just left.
+              setIssueTypeChoice("");
             }}
           />
           <ChipSelect
             label="Issue type"
             hint={!projectKey ? "Pick a project first" : undefined}
-            options={(issueTypes.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
+            options={(issueTypeRows ?? []).map((t) => ({ value: t.id, label: t.name }))}
             value={issueTypeId || null}
-            onChange={setIssueTypeId}
+            onChange={setIssueTypeChoice}
           />
         </>
       )}
@@ -192,9 +209,9 @@ export function FileIssueSheet({
         <ChipSelect
           label="Team"
           hint={teams.isLoading ? "Loading teams…" : undefined}
-          options={(teams.data ?? []).map((t) => ({ value: t.id, label: `${t.name} (${t.key})` }))}
+          options={(teamRows ?? []).map((t) => ({ value: t.id, label: `${t.name} (${t.key})` }))}
           value={teamId || null}
-          onChange={setTeamId}
+          onChange={setTeamChoice}
         />
       )}
       {tracker && (

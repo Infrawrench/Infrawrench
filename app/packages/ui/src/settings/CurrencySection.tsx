@@ -295,14 +295,17 @@ function NewRateForm({
   onError: (message: string) => void;
 }) {
   const [fromCurrency, setFromCurrency] = useState("");
-  const [toCurrency, setToCurrency] = useState(defaultTo);
+  /**
+   * `null` until the user types a destination, so the field tracks the org's
+   * display currency while it is still loading and stops the moment they take
+   * it over. Derived rather than synced by an effect: the effect version
+   * rendered once with the stale value before correcting itself.
+   */
+  const [toCurrencyDraft, setToCurrencyDraft] = useState<string | null>(null);
+  const toCurrency = toCurrencyDraft ?? defaultTo;
   const [rate, setRate] = useState("");
   const [effectiveFrom, setEffectiveFrom] = useState("");
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    setToCurrency((prev) => (prev === "" ? defaultTo : prev));
-  }, [defaultTo]);
 
   const inputClass =
     "px-2.5 py-1.5 text-sm bg-surface border border-border rounded-lg focus:outline-none focus:border-border-strong";
@@ -346,7 +349,7 @@ function NewRateForm({
           type="text"
           value={toCurrency}
           maxLength={3}
-          onChange={(e) => setToCurrency(e.target.value.toUpperCase())}
+          onChange={(e) => setToCurrencyDraft(e.target.value.toUpperCase())}
           placeholder="USD"
           className={`${inputClass} w-20 uppercase`}
         />

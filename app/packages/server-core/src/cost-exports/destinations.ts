@@ -22,7 +22,8 @@
  *
  * **HTTPS** posts the body as a streamed request. The URL is treated as a
  * bearer credential (a pre-signed URL carries its own signature), so it is
- * stored encrypted and never returned.
+ * stored encrypted, never returned, and sent byte-for-byte as stored — see
+ * {@link uploadToHttp} for why nothing may be appended to its query string.
  */
 import { Readable } from "node:stream";
 import { signedS3Fetch } from "@infrawrench/plugin-base";
@@ -302,13 +303,6 @@ async function uploadToHttp(req: UploadRequest): Promise<UploadResult> {
     })(),
   );
 
-  const url = new URL(creds.url);
-  // The key rides in the URL rather than the body so the receiving endpoint can
-  // route on it, and so a signed URL for a fixed object still works: a signed
-  // URL already names its object, and appending a query parameter it did not
-  // sign would break the signature — hence a header as well.
-  url.searchParams.set("key", req.key);
-
   const init = {
     method: dest.method === "PUT" ? "PUT" : "POST",
     headers: {
@@ -323,7 +317,25 @@ async function uploadToHttp(req: UploadRequest): Promise<UploadResult> {
     duplex: "half",
   } as unknown as Parameters<typeof fetch>[1];
 
-  const res = await fetch(url, init);
+  // The stored URL is sent exactly as it was given to us — nothing is appended
+  // to its query string, and it is not even round-tripped through `new URL`.
+  //
+  // The object key travels in `x-infrawrench-object-key` (and its period in the
+  // stamp headers), which is everything a receiver needs to route on. A `?key=`
+  // parameter would be a second copy of that same fact, bought by mutating a
+  // URL we do not own — and a pre-signed URL signs its query string, so one
+  // extra parameter turns every single upload into a rejection: `X-Amz-Signature`
+  // (S3/R2/Spaces), `X-Goog-Signature` (GCS), `sig` (an Azure SAS), or whatever
+  // opaque `token=` an ingest endpoint issues.
+  //
+  // Detecting those parameter names instead was considered and rejected. The
+  // set of signature spellings is open-ended, so a blocklist is wrong exactly
+  // in the case that matters — a destination nobody here has seen — and the
+  // failure it produces is a silent, total upload outage on a nightly job.
+  // Even for an unsigned URL, quietly overwriting a `key` parameter the user
+  // deliberately put in their endpoint is a surprise nobody debugs quickly.
+  // Never append to this URL.
+  const res = await fetch(creds.url, init);
 
   if (!res.ok) throw await failure(res, `HTTP ${dest.method}`);
   await res.body?.cancel().catch(() => {});

@@ -173,14 +173,17 @@ export async function getUntaggedSpendReport(
       topUntagged: [],
     };
   }
-  // Follows the caller's basis: this report's number is a share of total spend,
-  // and it has to be a share of the same total the graphs above it draw.
-  const rows = await getUntaggedSpend(organizationId, requiredKeys, from, to, costBasis);
-
-  const accountRows = await db
-    .select({ id: accounts.id, displayName: accounts.displayName })
-    .from(accounts)
-    .where(eq(accounts.organizationId, organizationId));
+  // Two independent reads — ClickHouse spend and the Postgres account labels
+  // it is joined against — so they go out together rather than one after the
+  // other. Follows the caller's basis: this report's number is a share of total
+  // spend, and it has to be a share of the same total the graphs above it draw.
+  const [rows, accountRows] = await Promise.all([
+    getUntaggedSpend(organizationId, requiredKeys, from, to, costBasis),
+    db
+      .select({ id: accounts.id, displayName: accounts.displayName })
+      .from(accounts)
+      .where(eq(accounts.organizationId, organizationId)),
+  ]);
   const accountNames = new Map(accountRows.map((r) => [r.id, r.displayName]));
 
   const totals: Record<string, number> = {};
@@ -226,25 +229,26 @@ export async function getUntaggedSpendReport(
 export async function getAccountTagCompliance(
   organizationId: string,
 ): Promise<AccountTagCompliance[]> {
-  const policy = await getOrgTagPolicy(organizationId);
-
-  const accountRows = await db
-    .select({
-      id: accounts.id,
-      pluginId: accounts.pluginId,
-      displayName: accounts.displayName,
-    })
-    .from(accounts)
-    .where(and(eq(accounts.organizationId, organizationId), isNull(accounts.deletedAt)));
-
-  const resourceRows = await db
-    .select({
-      accountId: resources.accountId,
-      fieldsJson: resources.fieldsJson,
-      outputsJson: resources.outputsJson,
-    })
-    .from(resources)
-    .where(and(eq(resources.organizationId, organizationId), isNull(resources.deletedAt)));
+  // Three independent reads; none of them feeds another's query.
+  const [policy, accountRows, resourceRows] = await Promise.all([
+    getOrgTagPolicy(organizationId),
+    db
+      .select({
+        id: accounts.id,
+        pluginId: accounts.pluginId,
+        displayName: accounts.displayName,
+      })
+      .from(accounts)
+      .where(and(eq(accounts.organizationId, organizationId), isNull(accounts.deletedAt))),
+    db
+      .select({
+        accountId: resources.accountId,
+        fieldsJson: resources.fieldsJson,
+        outputsJson: resources.outputsJson,
+      })
+      .from(resources)
+      .where(and(eq(resources.organizationId, organizationId), isNull(resources.deletedAt))),
+  ]);
 
   const byAccount = new Map<string, { total: number; evaluated: number; compliant: number }>();
   for (const row of resourceRows) {
