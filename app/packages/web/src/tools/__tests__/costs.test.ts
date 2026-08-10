@@ -13,9 +13,19 @@ const mockGetOrgCostStatus = vi.fn();
 vi.mock("../../services/saved-cost-filters", () => ({
   listSavedCostFilters: vi.fn().mockResolvedValue([]),
 }));
+vi.mock("../../services/cost-scenarios", () => ({
+  listCostScenarioModels: vi.fn().mockResolvedValue([]),
+}));
 vi.mock("@infrawrench/server-core/commitments/feed", () => ({
   getCommitmentsFeed: vi.fn().mockResolvedValue([]),
 }));
+// The billing-rule resolver reaches Postgres at import time. Nothing here asks
+// for an adjusted answer, so it is never called — it only has to exist.
+vi.mock("@infrawrench/server-core/cost/billing-rules", () => ({
+  resolveBillingAdjustments: vi.fn(),
+  listBillingRules: vi.fn(async () => []),
+}));
+
 vi.mock("@infrawrench/server-core/cost/tag-policy", () => ({
   getOrgTagPolicy: vi.fn().mockResolvedValue(null),
   setOrgTagPolicy: vi.fn(),

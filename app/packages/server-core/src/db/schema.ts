@@ -349,6 +349,43 @@ export const budgets = pgTable(
      * rather than silently widening it to all spend.
      */
     savedFilterId: text("saved_filter_id"),
+    /**
+     * A `cost_scenario_models` row this budget's **forecast** thresholds are
+     * measured against; null — the default, and the value for every budget
+     * nobody deliberately opts in — means the bare trend.
+     *
+     * Nullable rather than defaulted for exactly the reason the column exists:
+     * a scenario is somebody's hypothesis about the future, and a hypothesis
+     * must never quietly change when a real person gets paged. Opting in is a
+     * per-budget act, it is shown on the card, and it is named in the alert
+     * body. `actual` thresholds ignore this entirely — they measure money
+     * already spent.
+     *
+     * No foreign key, for the same reason `saved_filter_id` has none: deletion
+     * of a referenced model is refused above the database, and a reference that
+     * fails to resolve anyway errors the evaluation rather than silently
+     * dropping the assumptions the budget was set against.
+     */
+    scenarioModelId: text("scenario_model_id"),
+    /**
+     * Measure this budget against **billing-rule-adjusted** spend rather than
+     * collected spend. False for every budget, always, until somebody says
+     * otherwise.
+     *
+     * The same refusal `scenario_model_id` encodes, for a sharper reason. A
+     * billing rule is org policy — a markup that recovers overhead, a
+     * negotiated discount — and a budget threshold decides when a real person
+     * is paged. Letting a markup silently raise every budget's measured spend
+     * would mean editing one settings page moves an on-call rota, and the page
+     * (or the missing page) would carry no evidence of why. Opting in is a
+     * per-budget act, it is shown on the card, and the alert body says the
+     * figure is adjusted.
+     *
+     * Unlike scenarios this affects `actual` thresholds too, and must: an
+     * adjusted budget is measuring the internal figure, and month-to-date
+     * internal spend is exactly as marked up as the forecast is.
+     */
+    useAdjustedSpend: boolean("use_adjusted_spend").notNull().default(false),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -358,6 +395,57 @@ export const budgets = pgTable(
   },
   (t) => ({
     orgIdx: index("budgets_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
+ * Scenario models — named, reusable sets of adjustments an org overlays on a
+ * cost forecast.
+ *
+ * The trend forecast is a least-squares fit over trailing daily totals: it can
+ * only ever extrapolate what already happened. Everything an org *knows* is
+ * coming — a reserved-instance purchase next quarter, a team starting in
+ * September, a migration that takes a fifth off compute — is invisible to it.
+ * This table is where those facts are written down, so a projection can include
+ * them without anybody hand-editing a chart.
+ *
+ * The adjustments live inline as jsonb rather than in a child table: they are
+ * created, edited and reasoned about as one object (like `saved_cost_filters`'
+ * `filters`), nothing ever queries across them, and a model is meaningless
+ * without all of its rows.
+ */
+export const costScenarioModels = pgTable(
+  "cost_scenario_models",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    /**
+     * The one currency every amount in this model is denominated in. A model
+     * that could hold two would produce a projection that is the sum of two
+     * kinds of money, so the write path refuses it rather than converting
+     * behind the user's back at a rate they may not have stated.
+     */
+    currency: text("currency").notNull().default("USD"),
+    /** A non-empty `CostScenarioAdjustment[]`. */
+    adjustments: jsonb("adjustments").notNull().default([]),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /** Soft delete, matching `budgets` and `saved_cost_filters`. */
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("cost_scenario_models_org_idx").on(t.organizationId),
+    /** Names address the model from the CLI and from a chart's label. */
+    orgNameUnique: uniqueIndex("cost_scenario_models_org_name_unique")
+      .on(t.organizationId, t.name)
+      .where(sql`deleted_at IS NULL`),
   }),
 );
 

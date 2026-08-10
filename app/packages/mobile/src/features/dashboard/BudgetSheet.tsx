@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui";
 import { CostBasisChips } from "./CostBasisChips";
 import { CostFilterEditor } from "./CostFilterEditor";
+import { ScenarioChip } from "./ScenarioChip";
 import { SavedFilterChip } from "./SavedFilterChip";
 
 /**
@@ -124,6 +125,8 @@ export function BudgetSheet({
       {/* Read-only on purpose; the reference round-trips through `input`
           untouched, so saving here never widens the budget. */}
       <SavedFilterChip savedFilterId={input.savedFilterId} />
+
+      <ScenarioChip scenarioModelId={input.scenarioModelId} />
       <CostFilterEditor
         label="Scope"
         hint={

@@ -13,10 +13,13 @@ import type { BudgetThreshold } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { budgetAlertEvents, budgets } from "../db/schema";
 import { queryCosts, type CostBasis, type CostFilter } from "../clickhouse/cost-readers";
+import { billingAdjustmentsAreEmpty } from "@infrawrench/client-core";
+import { resolveBillingAdjustments } from "./billing-rules";
 import { convertGroups } from "./currency-convert";
 import { getOrgCurrencySettings, listOrgExchangeRates } from "./currency-settings";
-import { forecastMonthTotal, type DailyPoint } from "./forecast";
+import { forecastDaily, forecastMonthTotal, type DailyPoint } from "./forecast";
 import { resolveSavedCostFilters } from "./saved-filters";
+import { forecastWithScenario, resolveCostScenarioModel } from "./scenario-forecast";
 import { sendBudgetAlertPage } from "../twilio-pager";
 import { alertReached, routeAlert } from "../alerts/route";
 import {
@@ -95,10 +98,27 @@ export async function budgetMonthStatus(
   now = new Date(),
   costBasis?: CostBasis,
   savedFilterId?: string | null,
+  scenarioModelId?: string | null,
+  useAdjustedSpend?: boolean,
 ): Promise<{
   month: string;
   actualCents: number;
+  /**
+   * Month-to-date **collected** spend, set only for a budget measuring adjusted
+   * spend. Null otherwise, where `actualCents` already is the collected figure.
+   */
+  rawActualCents: number | null;
+  /** True when every figure here has the org's billing rules applied. */
+  adjustedSpend: boolean;
+  /** The **unadjusted trend** forecast, whether or not a scenario is applied. */
   forecastCents: number | null;
+  /**
+   * The scenario-adjusted month forecast, set only when this budget opted into
+   * a model. Null means forecast thresholds are judged on `forecastCents`.
+   */
+  scenarioForecastCents: number | null;
+  /** The opted-into model's name, for the card and the alert body. */
+  scenarioModelName: string | null;
   /** Currencies present in scope that could not be converted, so were excluded. */
   unconvertedCurrencies: string[];
   /** True when spend in other currencies was folded in at the org's rates. */
@@ -120,6 +140,7 @@ export async function budgetMonthStatus(
     groupBy: "none",
     filters: effectiveFilters,
     ...(costBasis ? { costBasis } : {}),
+    ...(adjustments ? { adjustments } : {}),
   });
 
   // Conversion is attempted only when the budget is denominated in the org's
@@ -132,22 +153,75 @@ export async function budgetMonthStatus(
   const { groups: usable, conversion } = convertGroups(groups, target, rates);
 
   const daily = new Map<string, number>();
+  // The collected series rides along from the same scan, converted through the
+  // same rates, so "adjusted $12,400 (collected $10,800)" is two readings of
+  // one pass rather than two queries that could disagree.
+  const rawDaily = new Map<string, number>();
   for (const g of usable) {
     if (g.currency !== currency) continue;
     for (const p of g.points) daily.set(p.bucket, (daily.get(p.bucket) ?? 0) + p.amount);
+    for (const p of g.rawPoints ?? []) {
+      rawDaily.set(p.bucket, (rawDaily.get(p.bucket) ?? 0) + p.amount);
+    }
   }
   const points: DailyPoint[] = [...daily.entries()]
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .map(([day, amount]) => ({ day, amount }));
 
-  const actual = points
-    .filter((p) => p.day.startsWith(`${month}-`))
-    .reduce((sum, p) => sum + p.amount, 0);
+  const inMonth = (day: string) => day.startsWith(`${month}-`);
+  const actual = points.filter((p) => inMonth(p.day)).reduce((sum, p) => sum + p.amount, 0);
+  const rawActual = [...rawDaily.entries()]
+    .filter(([day]) => inMonth(day))
+    .reduce((sum, [, amount]) => sum + amount, 0);
   const forecast = forecastMonthTotal(points, month);
+
+  // The scenario overlay, computed *in addition to* the trend above and never
+  // in place of it. Nothing below runs for a budget that did not opt in, so an
+  // un-opted budget's numbers are byte-identical to what they have always been.
+  let scenarioForecastCents: number | null = null;
+  let scenarioModelName: string | null = null;
+  if (scenarioModelId) {
+    // Throws out to the caller when the model no longer resolves — the budget's
+    // evaluation is skipped and logged rather than quietly falling back to the
+    // trend, which would change which thresholds fire with no evidence at all.
+    const model = await resolveCostScenarioModel(organizationId, scenarioModelId);
+    scenarioModelName = model.name;
+    const remaining = remainingDaysInMonth(points, month);
+    const baseline = remaining > 0 ? monthBaselineProjection(points, month, remaining) : [];
+    if (baseline.length === 0) {
+      // Nothing left to project (the month is over, or there is no history to
+      // fit): the adjusted figure is the trend figure, by construction.
+      scenarioForecastCents = forecast === null ? null : Math.round(forecast * 100);
+    } else {
+      const projection = await forecastWithScenario({
+        organizationId,
+        model,
+        baseline,
+        filters: effectiveFilters,
+        fitTo: today,
+        ...(costBasis ? { costBasis } : {}),
+        baselineCurrency: currency,
+        displayCurrency: target,
+        rates,
+      });
+      const projected = projection.points.reduce((sum, p) => sum + p.amount, 0);
+      scenarioForecastCents = Math.round((actual + projected) * 100);
+    }
+  }
+
   return {
     month,
     actualCents: Math.round(actual * 100),
+    // Null rather than a copy of `actualCents` for an un-opted budget: "there
+    // is no separate collected figure because this one is it" and "the
+    // collected figure happens to equal the adjusted one" are different facts,
+    // and a card that showed "(collected $X)" under every budget in the org
+    // would make the ones that really are adjusted invisible.
+    rawActualCents: adjustments ? Math.round(rawActual * 100) : null,
+    adjustedSpend: Boolean(useAdjustedSpend),
     forecastCents: forecast === null ? null : Math.round(forecast * 100),
+    scenarioForecastCents,
+    scenarioModelName,
     // Currencies with no rate are excluded from the figure above, so name them.
     // Without conversion on, every other currency was always excluded and
     // saying so would be new noise about long-standing behaviour — hence the
@@ -155,6 +229,50 @@ export async function budgetMonthStatus(
     unconvertedCurrencies: conversion?.unconverted ?? [],
     converted: (conversion?.converted.length ?? 0) > 0,
   };
+}
+
+/**
+ * Days of `month` still to come after the last observed day — the region a
+ * scenario may touch, and nothing else. Zero once the month is complete, which
+ * is what makes "a scenario never alters recorded history" true for budgets as
+ * well as for charts.
+ */
+function remainingDaysInMonth(points: DailyPoint[], month: string): number {
+  const monthPoints = points.filter((p) => p.day.startsWith(`${month}-`));
+  const lastDay = monthPoints[monthPoints.length - 1]?.day;
+  if (!lastDay) return 0;
+  const d = new Date(`${lastDay}T00:00:00.000Z`);
+  const daysInMonth = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  return Math.max(0, daysInMonth - d.getUTCDate());
+}
+
+/**
+ * The trend projection for the rest of the month, in the same shape a chart's
+ * forecast has.
+ *
+ * Mirrors `forecastMonthTotal` exactly — the fit first, the month-to-date daily
+ * average as the fallback — so that a scenario with no adjustments active would
+ * reproduce the trend figure rather than a differently-derived one. Nothing
+ * would be more confusing on a budget card than two "forecasts" that disagree
+ * before any assumption has been applied.
+ */
+function monthBaselineProjection(
+  points: DailyPoint[],
+  month: string,
+  remaining: number,
+): DailyPoint[] {
+  const projected = forecastDaily(points, remaining);
+  if (projected.length > 0) return projected;
+
+  const monthPoints = points.filter((p) => p.day.startsWith(`${month}-`));
+  if (monthPoints.length === 0) return [];
+  const mtd = monthPoints.reduce((sum, p) => sum + p.amount, 0);
+  const dailyAvg = mtd / monthPoints.length;
+  const lastDay = monthPoints[monthPoints.length - 1]!.day;
+  return Array.from({ length: remaining }, (_, i) => ({
+    day: addDays(lastDay, i + 1),
+    amount: dailyAvg,
+  }));
 }
 
 /**
@@ -218,8 +336,14 @@ export async function evaluateBudgetsForOrg(
 
       for (const threshold of thresholds) {
         const limitCents = Math.round((budget.amountCents * threshold.percent) / 100);
+        // `actual` is money already spent, which no scenario can touch.
+        // `forecast` uses the adjusted figure **only** for a budget that opted
+        // into a model — `scenarioForecastCents` is null for every other one,
+        // so this reads as the bare trend exactly as it always did.
         const observedCents =
-          threshold.type === "actual" ? status.actualCents : (status.forecastCents ?? 0);
+          threshold.type === "actual"
+            ? status.actualCents
+            : (status.scenarioForecastCents ?? status.forecastCents ?? 0);
         if (observedCents < limitCents || observedCents === 0) continue;
 
         const [inserted] = await db
@@ -244,6 +368,23 @@ export async function evaluateBudgetsForOrg(
         // quietly folded in three currencies at rates somebody set months ago
         // is not a number to page on without the caveat attached.
         const caveats = [
+          // A threshold crossed on a scenario-adjusted number must say whose
+          // assumptions moved it. This is often the only place the figure is
+          // ever read, and "why was I paged" has to be answerable from the
+          // message itself.
+          ...(threshold.type === "forecast" && status.scenarioModelName
+            ? [`includes scenario "${status.scenarioModelName}"`]
+            : []),
+          // A page fired on a marked-up number must say so, and say what was
+          // actually collected. Without this the recipient is looking at money
+          // the organisation charged itself and has no way to tell.
+          ...(status.adjustedSpend
+            ? [
+                status.rawActualCents === null
+                  ? "billing rules applied"
+                  : `billing rules applied — collected spend ${formatCents(status.rawActualCents, budget.currency)}`,
+              ]
+            : []),
           ...(status.converted
             ? ["converted to the org display currency at your stated rates"]
             : []),

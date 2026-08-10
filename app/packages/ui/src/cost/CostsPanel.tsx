@@ -18,6 +18,8 @@ import { CostAnomaliesSection } from "./CostAnomaliesSection.js";
 import { CostChangeAlertsSection } from "./CostChangeAlertsSection.js";
 import { TagGovernanceSection } from "./TagGovernanceSection.js";
 import { SavedFiltersSection } from "./SavedFiltersSection.js";
+import { ScenarioModelsSection } from "./ScenarioModelsSection.js";
+import { UnitCostsSection } from "./UnitCostsSection.js";
 import { BudgetConfigModal, DEFAULT_BUDGET_INPUT } from "./BudgetConfigModal.js";
 import { CostGraphCard } from "./CostGraphCard.js";
 import { CostCollectionNotice } from "./CostCollectionNotice.js";
@@ -307,6 +309,19 @@ export function CostsPanel({
             referents of a saved filter, and the section's edit modal names
             them before a re-scope is saved. */}
         {client.listSavedFilters && <SavedFiltersSection client={client} />}
+
+        {/* Next to saved filters, and for the same reason: a scenario model is
+            a named cost object the graphs above apply by reference, not a
+            preference. It also sits within sight of Budgets, which is where a
+            model's sharpest consequence lives — a budget can opt its forecast
+            thresholds into one. */}
+        {client.listScenarioModels && <ScenarioModelsSection client={client} />}
+
+        {/* Directly under saved filters, and above tag governance, because a
+            business metric is the same kind of object: a named declaration the
+            cost graphs above apply by reference. It is also the section a user
+            has to visit before "cost per customer" means anything anywhere. */}
+        <UnitCostsSection client={client} />
 
         <TagGovernanceSection client={client} />
 

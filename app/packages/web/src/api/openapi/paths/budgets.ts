@@ -47,14 +47,40 @@ const BudgetSavedFilterId = z
       "evaluation rather than silently measuring all spend.",
   );
 
+const BudgetScenarioModelId = z
+  .string()
+  .describe(
+    "A scenario model (see /cost-scenarios) this budget's **forecast** thresholds are measured " +
+      "against. Null — the default, and the value for every budget nobody deliberately opts " +
+      "in — keeps them on the bare trend. Opting in is per-budget on purpose: a hypothesis " +
+      "somebody typed into a form must not silently change when real people get paged. " +
+      "`actual` thresholds are never affected; they measure money already spent. Updates are " +
+      "full replaces, so omitting it on PUT clears the opt-in.",
+  );
+
+const BudgetUseAdjustedSpend = z
+  .boolean()
+  .describe(
+    "Measure this budget against billing-rule-adjusted spend — the internal figure — instead " +
+      "of what the providers charged. False by default, and for every budget nobody opted in. " +
+      "The default is a deliberate refusal: a markup is organisation policy and a budget " +
+      "threshold pages a real person, so adding one settings row must not be able to move " +
+      "every on-call rota at once. Unlike a scenario this affects `actual` thresholds too — an " +
+      "opted-in budget is measuring the internal number, and month-to-date internal spend is " +
+      "as marked up as the forecast is. The alert body says the figure is adjusted and names " +
+      "the collected one. Updates are full replaces, so omitting it on PUT clears the opt-in.",
+  );
+
 const BudgetInput = strict({
   name: z.string().min(1).max(120),
   amountCents: z.number().int().positive(),
   currency: z.string().length(3).optional(),
   filters: z.array(CostFilterRef).optional(),
   savedFilterId: BudgetSavedFilterId.optional(),
+  scenarioModelId: BudgetScenarioModelId.optional(),
   thresholds: z.array(BudgetThreshold).min(1).max(10),
   costBasis: BudgetCostBasis.optional(),
+  useAdjustedSpend: BudgetUseAdjustedSpend.optional(),
 }).openapi("BudgetInput");
 
 const BudgetFull = strict({
@@ -65,8 +91,10 @@ const BudgetFull = strict({
   currency: z.string(),
   filters: z.array(CostFilterRef),
   savedFilterId: BudgetSavedFilterId.nullable(),
+  scenarioModelId: BudgetScenarioModelId.nullable(),
   thresholds: z.array(BudgetThreshold),
   costBasis: BudgetCostBasis,
+  useAdjustedSpend: BudgetUseAdjustedSpend,
   createdByUserId: z.string().nullable(),
   deletedAt: IsoDateTime.nullable(),
   createdAt: IsoDateTime,
@@ -94,9 +122,44 @@ const BudgetWithStatus = strict({
     "The basis `actualCents` and `forecastCents` were measured on.",
   ),
   savedFilterId: BudgetSavedFilterId.nullable(),
+  scenarioModelId: BudgetScenarioModelId.nullable(),
+  scenarioModelName: z
+    .string()
+    .nullable()
+    .describe(
+      "The opted-into model's name, so a card can say whose assumptions are in the number.",
+    ),
+  useAdjustedSpend: BudgetUseAdjustedSpend,
+  rawActualCents: z
+    .number()
+    .int()
+    .nullable()
+    .describe(
+      "Month-to-date **collected** spend, non-null only for a budget measuring adjusted spend. " +
+        'Null on an unadjusted budget rather than a copy of `actualCents`: "there is no ' +
+        'separate collected figure because this one is it" and "the collected figure happens ' +
+        'to equal the adjusted one" are different facts, and captioning every budget in the ' +
+        "organisation would make the adjusted ones invisible.",
+    ),
   month: Month,
   actualCents: z.number().int(),
-  forecastCents: z.number().int().nullable(),
+  forecastCents: z
+    .number()
+    .int()
+    .nullable()
+    .describe(
+      "The **unadjusted trend** forecast, whether or not a scenario is applied — so both " +
+        "numbers are always comparable.",
+    ),
+  scenarioForecastCents: z
+    .number()
+    .int()
+    .nullable()
+    .describe(
+      "The scenario-adjusted month forecast, set only for a budget that opted into a model, " +
+        "and the number its forecast thresholds are judged against. Null means the thresholds " +
+        "used `forecastCents`.",
+    ),
   currentMonthEvents: z.array(
     strict({
       id: Uuid,

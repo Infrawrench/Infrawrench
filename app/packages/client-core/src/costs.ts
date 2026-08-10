@@ -20,6 +20,14 @@ import type { CostCapabilityDeclaration } from "@infrawrench/plugin-base";
 import type { CostReportWidgetConfig } from "./cost-reports";
 import type { CloudFetch } from "./fetch";
 import type { CustomGraphWidgetConfig } from "./custom-graphs";
+// Type-only, and deliberately one-way at runtime: `cost-scenarios.ts` is the
+// module that knows what a scenario *is*, this one only knows that a query can
+// carry one and a response can come back with one.
+import type { CostScenarioProjection } from "./cost-scenarios";
+// Same one-way, type-only relationship: `billing-rules.ts` is the module that
+// knows what an adjustment *is*, this one only knows a query can ask for one
+// and a response can come back describing what it did.
+import type { CostAdjustmentSummary } from "./billing-rules";
 
 /** Why an account's last cost collection failed, as stored by the poller. */
 export interface CostPollError {
@@ -339,6 +347,21 @@ export interface BudgetInput {
    */
   savedFilterId?: string | undefined;
   thresholds: BudgetThreshold[];
+  /**
+   * Opt this budget's **forecast** thresholds into a scenario model.
+   *
+   * Absent — and it is absent on every budget that existed before scenarios,
+   * and on every budget nobody deliberately opts in — forecast thresholds keep
+   * measuring the bare trend, exactly as they always have. That default is the
+   * point: a hypothetical somebody typed into a scenario must not change when
+   * real people get paged. Opting in is a deliberate act on this budget, it is
+   * shown on the budget card and named in the alert body, and `actual`
+   * thresholds are never affected at all — those measure money already spent,
+   * which no scenario can touch.
+   *
+   * A PUT that omits it clears it; budget updates are full replaces.
+   */
+  scenarioModelId?: string | undefined;
   /**
    * Which number the budget tracks. Absent is `cash`, so every budget written
    * before this existed keeps measuring what it was measuring.
@@ -969,6 +992,15 @@ export interface CostQueryRequest {
   topN: number;
   comparePreviousPeriod: boolean;
   forecast: boolean;
+  /**
+   * Apply a scenario model to the forecast, returning the adjusted projection
+   * in `CostQueryResponse.scenario` **alongside** the untouched `forecast`.
+   *
+   * Requires `forecast: true` — sending a scenario with no forecast is a 400,
+   * not a no-op. A caller who asked for assumptions to be applied and silently
+   * got none back is the failure this feature is built to avoid.
+   */
+  scenarioModelId?: string | undefined;
   /** Which number to sum; absent is `cash`. */
   costBasis?: CostBasis | undefined;
   /**
@@ -988,6 +1020,21 @@ export interface CostQueryRequest {
    * entry and is named in `CostQueryResponse.conversion.unconverted`.
    */
   displayCurrency?: string | undefined;
+  /**
+   * Apply the org's [billing rules](./billing-rules.ts) — markups, discounts,
+   * reallocations — to this answer.
+   *
+   * **Absent (the default) is raw collected spend**, byte-identical to what a
+   * server that never heard of billing rules returns. Every unattended reader
+   * — budgets, anomaly detection, change alerts, the digest, cost exports —
+   * leaves it absent, because the safe default for anything that can page a
+   * human is the number the provider actually billed.
+   *
+   * Present, the response carries `adjustment` with the collected totals beside
+   * the adjusted ones and the rules that moved them. It is set even when the
+   * org has no rules: its absence must mean "unadjusted" and nothing else.
+   */
+  adjusted?: boolean | undefined;
 }
 
 export interface CostSeriesPoint {
@@ -1062,6 +1109,16 @@ export interface CostQueryResponse {
   comparison?: CostQuerySeries[];
   /** Projected daily totals beyond the last observed day, when requested. */
   forecast?: CostSeriesPoint[];
+  /**
+   * The same projection with a scenario model applied — set only when the
+   * request named one.
+   *
+   * Deliberately a *second* field rather than a replacement for `forecast`.
+   * Both are returned together so a reader can always see what the trend said
+   * before somebody's assumptions touched it; a response that quietly replaced
+   * the trend with a hypothetical would be worse than no projection at all.
+   */
+  scenario?: CostScenarioProjection;
   /** Distinct currencies present — length > 1 means mixed-currency display. */
   currencies: string[];
   /** Period total per currency. */
@@ -1135,10 +1192,21 @@ export function costQueryForConfig(config: CostGraphConfig, today = new Date()):
     topN: config.topN,
     comparePreviousPeriod: config.comparePreviousPeriod,
     forecast: config.showForecast,
+    // Dropped when the forecast is off: there is no projected region to adjust,
+    // and the server rejects the combination rather than pretending otherwise.
+    // The editor keeps the two in step, so this only fires for a config edited
+    // by hand or by an older client.
+    ...(config.showForecast && config.scenarioModelId
+      ? { scenarioModelId: config.scenarioModelId }
+      : {}),
     // Omitted rather than defaulted to "cash": the server's default is the same
     // value, and sending it would make every pre-existing widget's request
     // differ from the one it used to send for no behavioural reason.
     ...(config.costBasis ? { costBasis: config.costBasis } : {}),
+    // Same rule: omitted rather than sent as `false`, so a card that never
+    // asked for adjustments issues byte-identical requests to the ones it
+    // always has.
+    ...(config.adjusted ? { adjusted: true } : {}),
   };
 }
 
@@ -1191,14 +1259,7 @@ export function binForecast(
       return { bucket: p.bucket, amount: running };
     });
   }
-  const bucketOf = (day: string): string => {
-    if (binning === "monthly") return `${day.slice(0, 7)}-01`;
-    // Weekly, Monday-start — matches toStartOfWeek(day, 1) server-side.
-    const d = new Date(`${day}T00:00:00.000Z`);
-    const dow = (d.getUTCDay() + 6) % 7;
-    d.setUTCDate(d.getUTCDate() - dow);
-    return d.toISOString().slice(0, 10);
-  };
+  const bucketOf = (day: string): string => costBucketStart(day, binning);
   const map = new Map<string, number>();
   for (const p of forecast)
     map.set(bucketOf(p.bucket), (map.get(bucketOf(p.bucket)) ?? 0) + p.amount);

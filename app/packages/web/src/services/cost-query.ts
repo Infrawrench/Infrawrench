@@ -36,6 +36,16 @@ import {
   SavedCostFilterResolutionError,
   resolveSavedCostFilters,
 } from "@infrawrench/server-core/cost/saved-filters";
+import { resolveBillingAdjustments } from "@infrawrench/server-core/cost/billing-rules";
+import {
+  billingAdjustmentsAreEmpty,
+  fixedTotalsForRange,
+  type CompiledBillingAdjustments,
+  type CostAdjustmentSummary,
+} from "@infrawrench/client-core";
+// The scenario overlay lives in its own module rather than growing this
+// function: everything it needs is already computed by the time it runs.
+import { CostScenarioError, attachCostScenario } from "./cost-scenario-query";
 // The db-free id module, not the writer — importing the writer here would drag
 // its db/ClickHouse imports into every cost read path (and its tests).
 import {
@@ -242,6 +252,15 @@ export async function runCostQuery(
   }
   if (q.from > q.to) throw new CostQueryError("from must not be after to");
   if (daySpan(q.from, q.to) > 1100) throw new CostQueryError("Date range too large");
+  // A scenario adjusts the projected region, so with no projection there is
+  // nothing for it to adjust. Refused rather than ignored: a caller who asked
+  // for assumptions and silently got none back is the failure the feature
+  // exists to prevent.
+  if (q.scenarioModelId && !q.forecast) {
+    throw new CostQueryError(
+      "scenarioModelId requires forecast: true — there is nothing to adjust otherwise",
+    );
+  }
 
   // Text queries are compiled to the structured filter here and nowhere else.
   // Everything below — and everything in `cost-readers.ts` — sees only
@@ -349,6 +368,10 @@ export async function runCostQuery(
       // one-off commitment purchase forecasts a month-end total that cannot
       // happen, which is the whole reason the amortized basis exists.
       ...(q.costBasis ? { costBasis: q.costBasis } : {}),
+      // Same rule for adjustments: a forecast drawn under an adjusted chart has
+      // to trend the line it sits under, or the projection visibly starts at a
+      // different level from the last bar it continues.
+      ...(adjustments && !billingAdjustmentsAreEmpty(adjustments) ? { adjustments } : {}),
       ...(q.chargeTypes && q.chargeTypes.length > 0 ? { chargeTypes: q.chargeTypes } : {}),
     });
     // The fit sums across currencies, so converting first is what makes the
@@ -373,6 +396,31 @@ export async function runCostQuery(
         amount: p.amount,
       }));
       if (projected.length > 0) response.forecast = projected;
+    }
+  }
+
+  // The scenario overlay. Deliberately the last thing that happens, on top of
+  // an already-complete response: `response.forecast` is the trend and stays
+  // the trend, and `response.scenario` is the same days with the model applied.
+  // Both are returned, always — see `client-core/cost-scenarios.ts`.
+  if (q.scenarioModelId) {
+    try {
+      const scenario = await attachCostScenario({
+        organizationId,
+        scenarioModelId: q.scenarioModelId,
+        forecast: response.forecast,
+        filters,
+        fitTo: q.to,
+        ...(q.costBasis ? { costBasis: q.costBasis } : {}),
+        ...(q.chargeTypes && q.chargeTypes.length > 0 ? { chargeTypes: q.chargeTypes } : {}),
+        currencies: response.currencies,
+        displayCurrency,
+        rates,
+      });
+      if (scenario) response.scenario = scenario;
+    } catch (e) {
+      if (e instanceof CostScenarioError) throw new CostQueryError(e.message);
+      throw e;
     }
   }
 

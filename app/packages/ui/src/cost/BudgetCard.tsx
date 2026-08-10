@@ -16,7 +16,22 @@ export interface BudgetCardProps {
 export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
   const amount = budget.amountCents / 100;
   const actual = budget.actualCents / 100;
-  const forecast = budget.forecastCents === null ? null : budget.forecastCents / 100;
+  /**
+   * The number the budget's forecast thresholds are actually judged against.
+   *
+   * For a budget that opted into a scenario model that is the adjusted figure,
+   * not the bare trend — a marker that showed the trend while the alert fired
+   * on something else would be the single most confusing thing this card could
+   * do. `scenarioForecastCents` is null for every budget that did not opt in,
+   * so this reads as the trend exactly as it always has.
+   */
+  const judgedForecastCents = budget.scenarioForecastCents ?? budget.forecastCents;
+  const forecast = judgedForecastCents === null ? null : judgedForecastCents / 100;
+  /** The unadjusted trend, shown alongside so both numbers stay comparable. */
+  const trendForecast =
+    budget.scenarioForecastCents != null && budget.forecastCents !== null
+      ? budget.forecastCents / 100
+      : null;
 
   const actualPct = amount > 0 ? (actual / amount) * 100 : 0;
   const forecastPct = forecast !== null && amount > 0 ? (forecast / amount) * 100 : null;
@@ -108,9 +123,25 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
           <div className="flex items-center justify-between mt-1.5 text-[11px] text-on-surface-faint">
             <span>{actualPct.toFixed(0)}% used</span>
             {forecast !== null && (
-              <span title="Projected month-end total based on the recent trend">
+              <span
+                title={
+                  budget.scenarioModelName
+                    ? `Projected month-end total, including scenario "${budget.scenarioModelName}". Trend alone: ${trendForecast !== null ? formatMoney(trendForecast, budget.currency) : "—"}`
+                    : "Projected month-end total based on the recent trend"
+                }
+              >
                 Forecast {formatMoney(forecast, budget.currency)}
                 {amount > 0 && ` (${((forecast / amount) * 100).toFixed(0)}%)`}
+              </span>
+            )}
+            {/* Named on the card, not just in the tooltip: the figure the
+                thresholds fire on contains somebody's assumptions, and that
+                has to be visible without hovering. */}
+            {budget.scenarioModelName && (
+              <span className="text-amber-500">
+                incl. scenario &ldquo;{budget.scenarioModelName}&rdquo;
+                {trendForecast !== null &&
+                  ` · trend ${formatMoney(trendForecast, budget.currency)}`}
               </span>
             )}
           </div>

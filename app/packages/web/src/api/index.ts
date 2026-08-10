@@ -38,9 +38,12 @@ import {
   orgReportNotificationRoutes,
 } from "./routes/cost-report-notifications";
 import { costReportFolderRoutes } from "./routes/cost-report-folders";
+import { costAnnotationRoutes } from "./routes/cost-annotations";
 import { costExportRoutes } from "./routes/cost-exports";
 import { costAlertRoutes } from "./routes/cost-alerts";
 import { savedFilterRoutes } from "./routes/saved-filters";
+import { costScenarioRoutes } from "./routes/cost-scenarios";
+import { businessMetricRoutes } from "./routes/business-metrics";
 import { orphanRoutes } from "./routes/orphans";
 import { environmentDiffRoutes } from "./routes/environment-diff";
 import { rightsizingRoutes } from "./routes/rightsizing";
@@ -272,9 +275,15 @@ orgScoped.route("/cost-reports", costReportRoutes);
 orgScoped.route("/cost-reports", costReportNotificationRoutes);
 orgScoped.route("/cost-report-notifications", orgReportNotificationRoutes);
 orgScoped.route("/cost-report-folders", costReportFolderRoutes);
+// Dated notes drawn over cost charts. Its own prefix rather than a child of
+// /cost-reports: an annotation with no report id is org-wide and belongs to
+// every chart, so it is not a sub-resource of any one report.
+orgScoped.route("/cost-annotations", costAnnotationRoutes);
 orgScoped.route("/cost-exports", costExportRoutes);
 orgScoped.route("/cost-alerts", costAlertRoutes);
 orgScoped.route("/saved-cost-filters", savedFilterRoutes);
+orgScoped.route("/cost-scenarios", costScenarioRoutes);
+orgScoped.route("/business-metrics", businessMetricRoutes);
 orgScoped.route("/orphans", orphanRoutes);
 orgScoped.route("/rightsizing", rightsizingRoutes);
 orgScoped.route("/budgets", budgetRoutes);

@@ -44,9 +44,26 @@ vi.mock("@infrawrench/server-core/cost/currency-settings", () => ({
 // import time. Its behaviour (AND-composition, error on a dangling reference)
 // is covered in services/__tests__/cost-query-saved-filters.test.ts; requests
 // in this file never set savedFilterId, so the mock is never called.
+// The billing-rule resolver reaches Postgres at import time. Nothing here asks
+// for an adjusted answer, so it is never called — it only has to exist.
+vi.mock("@infrawrench/server-core/cost/billing-rules", () => ({
+  resolveBillingAdjustments: vi.fn(),
+  listBillingRules: vi.fn(async () => []),
+}));
+
 vi.mock("@infrawrench/server-core/cost/saved-filters", () => ({
   SavedCostFilterResolutionError: class extends Error {},
   resolveSavedCostFilters: vi.fn(),
+}));
+
+// Kept out of these tests' import graph: the scenario resolver reaches
+// Postgres, and none of these cases apply a scenario.
+vi.mock("@infrawrench/server-core/cost/scenario-forecast", () => ({
+  CostScenarioResolutionError: class extends Error {},
+  CostScenarioApplicationError: class extends Error {},
+  resolveCostScenarioModel: vi.fn(),
+  forecastWithScenario: vi.fn(),
+  toCostScenarioModel: vi.fn(),
 }));
 
 const mockGetAnomalySettings = vi.fn();

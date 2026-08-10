@@ -32,9 +32,26 @@ class FakeResolutionError extends Error {
   }
 }
 const mockResolve = vi.fn();
+// The billing-rule resolver reaches Postgres at import time. None of these
+// cases asks for an adjusted query, so it is never called — it only has to
+// exist for the module graph to load.
+vi.mock("@infrawrench/server-core/cost/billing-rules", () => ({
+  resolveBillingAdjustments: vi.fn(),
+}));
+
 vi.mock("@infrawrench/server-core/cost/saved-filters", () => ({
   SavedCostFilterResolutionError: FakeResolutionError,
   resolveSavedCostFilters: (...args: unknown[]) => mockResolve(...args),
+}));
+
+// Kept out of these tests' import graph: the scenario resolver reaches
+// Postgres, and none of these cases apply a scenario.
+vi.mock("@infrawrench/server-core/cost/scenario-forecast", () => ({
+  CostScenarioResolutionError: class extends Error {},
+  CostScenarioApplicationError: class extends Error {},
+  resolveCostScenarioModel: vi.fn(),
+  forecastWithScenario: vi.fn(),
+  toCostScenarioModel: vi.fn(),
 }));
 
 vi.mock("@infrawrench/server-core/cost/currency-settings", () => ({

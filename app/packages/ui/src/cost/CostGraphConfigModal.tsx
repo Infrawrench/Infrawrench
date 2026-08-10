@@ -18,8 +18,12 @@ import {
   parseCostQuery,
   type CostBasis,
   type CostFilter,
+  type BusinessMetric,
   type CostGraphConfig,
+  UNIT_COST_MODES,
+  UNIT_COST_MODE_LABELS,
   type SavedCostFilter,
+  type CostScenarioModel,
 } from "./config.js";
 import type { CostDimensionOption } from "./config.js";
 import type { CostApi } from "./types.js";
@@ -1008,6 +1012,19 @@ export function CostGraphConfigModal({
             </label>
           </div>
 
+          {/* The scenario picker. Only offered alongside the forecast, because
+              a scenario adjusts the projected region and there is nothing to
+              adjust without one — and clearing the forecast clears the model
+              rather than storing a selection that would never be drawn. */}
+          <ScenarioModelPicker
+            api={api}
+            value={config.scenarioModelId ?? null}
+            enabled={config.showForecast}
+            onChange={(scenarioModelId) =>
+              set(scenarioModelId ? { scenarioModelId } : { scenarioModelId: undefined })
+            }
+          />
+
           {error && <p className="text-sm text-red-400">{error}</p>}
 
           <div className="flex justify-end gap-2 pt-2">
@@ -1029,6 +1046,87 @@ export function CostGraphConfigModal({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Pick a scenario model to overlay on this graph's forecast.
+ *
+ * Rendered only when the host wired `listScenarioModels` *and* the org has at
+ * least one model: an empty picker reads as "this feature is broken" rather
+ * than "you have not made one yet", and the Costs panel is where models are
+ * made.
+ *
+ * Disabled — and cleared — when the forecast is off. Storing a model on a graph
+ * that draws no projection would be a setting with no effect, and a setting
+ * with no effect is a setting somebody will later swear was applied.
+ */
+function ScenarioModelPicker({
+  api,
+  value,
+  enabled,
+  onChange,
+}: {
+  api: CostApi;
+  value: string | null;
+  enabled: boolean;
+  onChange: (scenarioModelId: string | null) => void;
+}) {
+  const uid = useId();
+  const [models, setModels] = useState<CostScenarioModel[] | null>(null);
+  const load = api.listScenarioModels;
+
+  useEffect(() => {
+    if (!load) return;
+    let cancelled = false;
+    load()
+      .then((next) => {
+        if (!cancelled) setModels(next);
+      })
+      .catch(() => {
+        if (!cancelled) setModels([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [load]);
+
+  // Clearing the forecast clears the selection, so the stored config never
+  // carries a model the card would not draw.
+  useEffect(() => {
+    if (!enabled && value) onChange(null);
+  }, [enabled, value, onChange]);
+
+  if (!load || !models || models.length === 0) return null;
+  const selected = models.find((m) => m.id === value) ?? null;
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={`${uid}-scenario`} className="text-xs text-on-surface-secondary">
+        Scenario
+      </label>
+      <select
+        id={`${uid}-scenario`}
+        className={selectBaseClass}
+        disabled={!enabled}
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value || null)}
+      >
+        <option value="">None — trend only</option>
+        {models.map((model) => (
+          <option key={model.id} value={model.id}>
+            {model.name}
+          </option>
+        ))}
+      </select>
+      <p className="text-[11px] text-on-surface-faint">
+        {!enabled
+          ? "Turn on Forecast to overlay a scenario — there is no projection to adjust otherwise."
+          : selected
+            ? `The card draws the trend and "${selected.name}" as two separate dashed lines, and says so under its title.`
+            : "Known future cost the trend can\u2019t see, drawn beside the forecast rather than instead of it."}
+      </p>
     </div>
   );
 }

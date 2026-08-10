@@ -13,7 +13,14 @@ import { colors, radii, spacing } from "@/lib/theme";
 export function BudgetCard({ budget }: { budget: BudgetWithStatus }) {
   const amount = budget.amountCents / 100;
   const actual = budget.actualCents / 100;
-  const forecast = budget.forecastCents === null ? null : budget.forecastCents / 100;
+  // The number the thresholds are actually judged against — the adjusted one
+  // for a budget that opted into a scenario, the bare trend for every other.
+  const judgedForecastCents = budget.scenarioForecastCents ?? budget.forecastCents;
+  const forecast = judgedForecastCents === null ? null : judgedForecastCents / 100;
+  const trendForecast =
+    budget.scenarioForecastCents != null && budget.forecastCents !== null
+      ? budget.forecastCents / 100
+      : null;
 
   const actualPct = amount > 0 ? (actual / amount) * 100 : 0;
   const forecastPct = forecast !== null && amount > 0 ? (forecast / amount) * 100 : null;
@@ -69,6 +76,15 @@ export function BudgetCard({ budget }: { budget: BudgetWithStatus }) {
           </Text>
         )}
       </View>
+      {/* Named on the card rather than hidden in a tooltip a phone has no way
+          to show: the figure the thresholds fire on contains assumptions
+          somebody wrote down, and the trend it was measured against. */}
+      {budget.scenarioModelName && (
+        <Text style={styles.scenarioFoot}>
+          incl. scenario “{budget.scenarioModelName}”
+          {trendForecast !== null ? ` · trend ${formatMoney(trendForecast, budget.currency)}` : ""}
+        </Text>
+      )}
     </Card>
   );
 }
@@ -93,6 +109,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   fill: { position: "absolute", top: 0, bottom: 0, left: 0, borderRadius: 5 },
+  scenarioFoot: { color: colors.warning, fontSize: 11 },
   forecastMark: {
     position: "absolute",
     top: 0,

@@ -105,6 +105,17 @@ const CostQueryRequest = strict({
   topN: z.number().int().min(1).max(15).optional(),
   comparePreviousPeriod: z.boolean().optional(),
   forecast: z.boolean().optional(),
+  scenarioModelId: z
+    .string()
+    .optional()
+    .describe(
+      "Apply a scenario model (see /cost-scenarios) to the projection: known future cost the " +
+        "trend cannot see. Requires `forecast: true` — sending it without one is a 400, not a " +
+        "no-op, because a caller who asked for assumptions and silently got none back is the " +
+        "failure this feature exists to prevent. The adjusted projection comes back as " +
+        "`scenario`, **alongside** the untouched `forecast`, never instead of it. An id that " +
+        "does not resolve is a 400.",
+    ),
   costBasis: CostBasis.optional(),
   chargeTypes: z
     .array(CostChargeType)
@@ -114,6 +125,17 @@ const CostQueryRequest = strict({
         "unfiltered total net rather than gross — credits, refunds and commitment discounts are " +
         "included. Rows collected before charge types existed, and rows from providers that " +
         "cannot distinguish them, are `usage`.",
+    ),
+  adjusted: z
+    .boolean()
+    .optional()
+    .describe(
+      "Apply the organization's billing rules (see /billing-rules) — markups, discounts, " +
+        "reallocations. Omitted (the default, and what every unattended reader sends) is raw " +
+        "collected spend. Present, the response carries `adjustment` with the collected totals " +
+        "beside the adjusted ones and the rules that moved them; it is set even for an " +
+        "organization with no rules, because the absence of that field is the only signal that " +
+        "a figure is unadjusted.",
     ),
 }).openapi("CostQueryRequest");
 
@@ -134,13 +156,62 @@ const CostQuerySeries = strict({
  * with the same component rather than registering a second copy under a
  * near-identical name — running a report returns exactly a cost query result.
  */
+const CostScenarioResult = strict({
+  modelId: Uuid,
+  modelName: z.string(),
+  currency: z.string(),
+  points: z
+    .array(CostSeriesPoint)
+    .describe(
+      "The adjusted projection — exactly the same days as `forecast`, never one more or fewer. " +
+        "A scenario modifies the projected region; it does not extend it, and it can never " +
+        "touch a day that already has recorded spend behind it.",
+    ),
+  contributions: z
+    .array(
+      strict({
+        adjustmentId: z.string(),
+        label: z.string(),
+        kind: z.enum(["one_off", "recurring", "rate_change"]),
+        amount: z.number(),
+      }),
+    )
+    .describe("Signed total each adjustment added across the horizon, in model order."),
+  totalDelta: z.number().describe("Signed difference from the baseline across the horizon."),
+  convertedFrom: z
+    .string()
+    .optional()
+    .describe("Set when the model's amounts were converted at the org's stated rates."),
+  outOfScope: z
+    .array(z.string())
+    .describe(
+      "Adjustments this chart's own filters exclude, by label — a GCP commitment on an " +
+        "AWS-filtered chart is correctly left out, and saying so is what makes the number " +
+        "trustworthy rather than quietly assumed broken.",
+    ),
+}).openapi("CostScenarioResult");
+
 export const CostQueryResponse = strict({
   series: z.array(CostQuerySeries),
   comparison: z.array(CostQuerySeries).optional(),
-  forecast: z.array(CostSeriesPoint).optional(),
+  forecast: z
+    .array(CostSeriesPoint)
+    .optional()
+    .describe(
+      "The **unadjusted trend** projection. Stays the trend even when a scenario is applied, " +
+        "so a reader can always see what the fit said before anybody's assumptions touched it.",
+    ),
+  scenario: CostScenarioResult.optional(),
   currencies: z.array(z.string()),
-  totals: z.record(z.number()),
+  totals: z
+    .record(z.number())
+    .describe(
+      "Period total per currency, and always exactly the sum of `series`. Fixed-amount " +
+        "billing-rule charges are deliberately **not** folded in here — they have no series " +
+        "behind them and are reported in `adjustment.fixedTotals` instead.",
+    ),
   previousTotals: z.record(z.number()).optional(),
+  adjustment: CostAdjustmentSummary.optional(),
 }).openapi("CostQueryResponse");
 
 const CostDimensionValues = strict({

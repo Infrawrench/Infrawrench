@@ -3119,7 +3119,11 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CostSeriesPoint"
-            }
+            },
+            "description": "The **unadjusted trend** projection. Stays the trend even when a scenario is applied, so a reader can always see what the fit said before anybody's assumptions touched it."
+          },
+          "scenario": {
+            "$ref": "#/components/schemas/CostScenarioResult"
           },
           "currencies": {
             "type": "array",
@@ -3279,6 +3283,10 @@
           },
           "forecast": {
             "type": "boolean"
+          },
+          "scenarioModelId": {
+            "type": "string",
+            "description": "Apply a scenario model (see /cost-scenarios) to the projection: known future cost the trend cannot see. Requires `forecast: true` — sending it without one is a 400, not a no-op, because a caller who asked for assumptions and silently got none back is the failure this feature exists to prevent. The adjusted projection comes back as `scenario`, **alongside** the untouched `forecast`, never instead of it. An id that does not resolve is a 400."
           },
           "costBasis": {
             "$ref": "#/components/schemas/CostBasis"
@@ -3785,6 +3793,10 @@
           },
           "showForecast": {
             "type": "boolean"
+          },
+          "scenarioModelId": {
+            "type": "string",
+            "description": "A scenario model (see /cost-scenarios) overlaid on the forecast — known future cost the trend cannot see, drawn as a second dashed line beside the trend rather than instead of it. Only meaningful alongside `showForecast`."
           },
           "costBasis": {
             "type": "string",
@@ -5302,414 +5314,270 @@
         ],
         "additionalProperties": false
       },
-      "OrphanCostAnnotation": {
-        "type": [
-          "object",
-          "null"
-        ],
+      "CostScenarioScopeTerm": {
+        "type": "object",
         "properties": {
-          "amount": {
-            "type": "number",
-            "description": "Spend over the trailing cost window."
-          },
-          "currency": {
+          "dimension": {
             "type": "string",
-            "example": "USD"
-          }
-        },
-        "required": [
-          "amount",
-          "currency"
-        ],
-        "additionalProperties": false,
-        "description": "Best-effort trailing spend matched from collected per-resource cost rows; null when the provider reports no per-resource cost. The flag itself never depends on billing data."
-      },
-      "ResourceOwnerAnnotation": {
-        "type": [
-          "object",
-          "null"
-        ],
-        "properties": {
-          "userId": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid",
-            "description": "Set when a routable org member owns it.",
-            "example": "00000000-0000-0000-0000-000000000000"
-          },
-          "displayName": {
-            "type": "string",
-            "description": "The member's name, or the free-text owner."
-          },
-          "isLabel": {
-            "type": "boolean",
-            "description": "True when the owner is free text — nothing can be routed to it."
-          },
-          "ticketUrl": {
-            "type": [
-              "string",
-              "null"
+            "enum": [
+              "provider",
+              "account",
+              "service",
+              "region",
+              "resource",
+              "tag",
+              "charge_type",
+              "commitment"
             ]
           },
-          "purpose": {
-            "type": [
-              "string",
-              "null"
+          "op": {
+            "type": "string",
+            "enum": [
+              "in",
+              "not_in"
             ]
-          }
-        },
-        "required": [
-          "userId",
-          "displayName",
-          "isLabel",
-          "ticketUrl",
-          "purpose"
-        ],
-        "additionalProperties": false,
-        "description": "Who owns this resource, or null when nobody has claimed it. Present only when the owner can be named: a resource carrying a purpose but no owner reads as null, because the question this answers is who to tell."
-      },
-      "OrphanedResource": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "Infrawrench resource id."
           },
-          "pluginId": {
-            "$ref": "#/components/schemas/PluginId"
-          },
-          "resourceTypeId": {
-            "type": "string"
-          },
-          "resourceTypeName": {
-            "type": "string",
-            "example": "EBS Volume"
-          },
-          "displayName": {
-            "type": "string"
-          },
-          "externalId": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Provider-native id, when known."
-          },
-          "reason": {
-            "type": "string",
-            "description": "Plugin-authored explanation of why this resource looks wasted.",
-            "example": "Volume is not attached to any Droplet"
-          },
-          "cost": {
-            "$ref": "#/components/schemas/OrphanCostAnnotation"
-          },
-          "owner": {
-            "$ref": "#/components/schemas/ResourceOwnerAnnotation"
-          },
-          "lastSyncedAt": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "id",
-          "pluginId",
-          "resourceTypeId",
-          "resourceTypeName",
-          "displayName",
-          "externalId",
-          "reason",
-          "cost",
-          "owner",
-          "lastSyncedAt"
-        ],
-        "additionalProperties": false
-      },
-      "OrphanAccountGroup": {
-        "type": "object",
-        "properties": {
-          "accountId": {
-            "type": "string",
-            "format": "uuid",
-            "example": "00000000-0000-0000-0000-000000000000"
-          },
-          "accountName": {
-            "type": "string"
-          },
-          "pluginId": {
-            "$ref": "#/components/schemas/PluginId"
-          },
-          "pluginName": {
-            "type": "string",
-            "example": "DigitalOcean"
-          },
-          "resources": {
+          "values": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/OrphanedResource"
-            }
-          }
-        },
-        "required": [
-          "accountId",
-          "accountName",
-          "pluginId",
-          "pluginName",
-          "resources"
-        ],
-        "additionalProperties": false
-      },
-      "OrphanListResponse": {
-        "type": "object",
-        "properties": {
-          "accounts": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OrphanAccountGroup"
+              "type": "string"
             },
-            "description": "Groups sorted by account name."
+            "minItems": 1
           },
-          "totalCount": {
-            "type": "integer"
-          },
-          "unownedCount": {
-            "type": "integer",
-            "description": "Flagged resources with no recorded owner — the 'nobody to ask' count."
-          },
-          "costWindowDays": {
-            "type": "integer",
-            "description": "Days of trailing spend the annotations cover."
-          },
-          "generatedAt": {
-            "type": "string",
-            "format": "date-time"
+          "tagKey": {
+            "type": "string"
           }
         },
         "required": [
-          "accounts",
-          "totalCount",
-          "unownedCount",
-          "costWindowDays",
-          "generatedAt"
+          "dimension",
+          "op",
+          "values"
         ],
         "additionalProperties": false
       },
-      "OversizedSizeSummary": {
+      "CostScenarioAdjustment": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
-            "example": "cx32"
+            "description": "Stable within the model; also the key of its per-adjustment total."
           },
           "label": {
-            "type": "string"
+            "type": "string",
+            "description": "What this adjustment is. Named on the chart whenever the scenario moves a number."
           },
-          "vcpus": {
-            "type": "integer"
+          "kind": {
+            "type": "string",
+            "enum": [
+              "one_off",
+              "recurring",
+              "rate_change"
+            ],
+            "description": "`one_off` is a single amount on a single day; `recurring` is an amount every period from a date; `rate_change` is ±X% of the trend from a date. The split between an amount and a percentage of the trend is what fixes the composition order — see the `scenario` field on the cost query response."
           },
-          "memoryMb": {
-            "type": "integer"
+          "startDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-09-01"
           },
-          "priceMonthly": {
+          "endDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Inclusive last day, or null for indefinitely. Refused for `one_off`, which is one day.",
+            "example": "2026-09-01"
+          },
+          "amountCents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Minor units of the model's currency, for the amount kinds; null for `rate_change`. May be negative — turning off an old cluster is as real a known future cost as buying a new one."
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Always the model's own currency; a model that held two would sum two kinds of money."
+          },
+          "period": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "daily",
+              "monthly"
+            ],
+            "description": "How often a `recurring` amount charges. A monthly amount is spread evenly across each calendar month it covers rather than landing as a spike on the 1st, so a month the scenario only partly covers costs proportionally less."
+          },
+          "percent": {
             "type": [
               "number",
               "null"
             ],
-            "description": "Monthly catalog price in `currency`; null when unpriced."
+            "description": "Percent change to the trend, for `rate_change`. -20 is a fifth cheaper."
+          },
+          "scope": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostScenarioScopeTerm"
+            },
+            "description": "Which spend this adjustment describes; empty is the whole organization. For a rate change the scope is what the percentage is *of*. For an amount it decides whether the adjustment applies to a given chart at all — a GCP commitment does not belong on a chart filtered to AWS, and one that is excluded is named in `scenario.outOfScope`."
           }
         },
         "required": [
           "id",
           "label",
-          "vcpus",
-          "memoryMb",
-          "priceMonthly"
+          "kind",
+          "startDate",
+          "endDate",
+          "amountCents",
+          "currency",
+          "period",
+          "percent",
+          "scope"
         ],
         "additionalProperties": false
       },
-      "OversizedResource": {
+      "CostScenarioModel": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
-            "description": "Infrawrench resource id."
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
           },
-          "pluginId": {
-            "$ref": "#/components/schemas/PluginId"
-          },
-          "resourceTypeId": {
+          "name": {
             "type": "string"
           },
-          "resourceTypeName": {
-            "type": "string",
-            "example": "Server"
-          },
-          "displayName": {
-            "type": "string"
-          },
-          "externalId": {
+          "description": {
             "type": [
               "string",
               "null"
-            ],
-            "description": "Provider-native id, when known."
-          },
-          "sizeFieldKey": {
-            "type": "string",
-            "description": "Field to submit through the resource-update endpoint to apply the recommended size.",
-            "example": "serverType"
-          },
-          "region": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Provider region/zone/location the resource lives in."
-          },
-          "currentSize": {
-            "$ref": "#/components/schemas/OversizedSizeSummary"
-          },
-          "recommendedSize": {
-            "$ref": "#/components/schemas/OversizedSizeSummary"
-          },
-          "cpuP95": {
-            "type": "number",
-            "description": "p95 CPU utilisation over the window, percent of the current size."
-          },
-          "memoryP95": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "description": "p95 memory utilisation, percent of the current size; null when unmeasured."
-          },
-          "memoryMeasured": {
-            "type": "boolean",
-            "description": "False when the provider stores no memory series for this resource."
-          },
-          "projectedCpuP95": {
-            "type": "number",
-            "description": "Projected p95 CPU on the recommended size, for the confirm dialog."
+            ]
           },
           "currency": {
             "type": "string",
-            "description": "ISO 4217 code the size prices are quoted in.",
-            "example": "USD"
+            "description": "The one currency every amount in this model is denominated in."
           },
-          "monthlySaving": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "description": "Current minus recommended monthly price; null when either side is unpriced."
+          "adjustments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostScenarioAdjustment"
+            }
           },
-          "resizeNote": {
+          "createdByUserId": {
             "type": [
               "string",
               "null"
-            ],
-            "description": "Plugin-authored caveat (e.g. the provider requires the machine stopped)."
+            ]
           },
-          "lastSyncedAt": {
-            "type": [
-              "string",
-              "null"
-            ],
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
             "format": "date-time"
           }
         },
         "required": [
           "id",
-          "pluginId",
-          "resourceTypeId",
-          "resourceTypeName",
-          "displayName",
-          "externalId",
-          "sizeFieldKey",
-          "region",
-          "currentSize",
-          "recommendedSize",
-          "cpuP95",
-          "memoryP95",
-          "memoryMeasured",
-          "projectedCpuP95",
+          "name",
+          "description",
           "currency",
-          "monthlySaving",
-          "resizeNote",
-          "lastSyncedAt"
+          "adjustments",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
         ],
         "additionalProperties": false
       },
-      "OversizedAccountGroup": {
+      "CostScenarioModelInput": {
         "type": "object",
         "properties": {
-          "accountId": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "currency": {
+            "type": "string",
+            "description": "Three-letter code. Every amount in the model must be in it — a model that mixed two would produce a projection that is the sum of two kinds of money, so this is refused rather than converted behind the caller's back.",
+            "example": "USD"
+          },
+          "adjustments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostScenarioAdjustment"
+            },
+            "minItems": 1,
+            "maxItems": 50
+          }
+        },
+        "required": [
+          "name",
+          "currency",
+          "adjustments"
+        ],
+        "additionalProperties": false
+      },
+      "CostScenarioReferent": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "budget",
+              "cost_report",
+              "cost_graph_widget"
+            ]
+          },
+          "id": {
             "type": "string",
             "format": "uuid",
+            "description": "Budget id, report id, or dashboard-widget id.",
             "example": "00000000-0000-0000-0000-000000000000"
           },
-          "accountName": {
+          "name": {
             "type": "string"
           },
-          "pluginId": {
-            "$ref": "#/components/schemas/PluginId"
-          },
-          "pluginName": {
+          "dashboardId": {
             "type": "string",
-            "example": "Hetzner"
+            "format": "uuid",
+            "description": "Set for `cost_graph_widget` referents.",
+            "example": "00000000-0000-0000-0000-000000000000"
           },
-          "resources": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OversizedResource"
-            }
+          "dashboardName": {
+            "type": "string"
           }
         },
         "required": [
-          "accountId",
-          "accountName",
-          "pluginId",
-          "pluginName",
-          "resources"
+          "kind",
+          "id",
+          "name"
         ],
         "additionalProperties": false
       },
-      "RightsizingListResponse": {
-        "type": "object",
-        "properties": {
-          "accounts": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OversizedAccountGroup"
-            },
-            "description": "Groups sorted by account name."
-          },
-          "totalCount": {
-            "type": "integer"
-          },
-          "windowDays": {
-            "type": "integer",
-            "description": "Days of stored metrics the percentiles cover."
-          },
-          "generatedAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "accounts",
-          "totalCount",
-          "windowDays",
-          "generatedAt"
+      "BusinessMetricKind": {
+        "type": "string",
+        "enum": [
+          "count",
+          "currency"
         ],
-        "additionalProperties": false
+        "description": "What the metric's numbers are. `count` is a unit-less quantity (customers, requests, GB) and supports unit cost only. `currency` is money the business took in, denominated in the metric's own `currency`, and is the only kind margin can be computed against — `(revenue − cost) ÷ revenue` subtracts money from money and is undefined otherwise."
       },
-      "BudgetCostFilter": {
+      "BusinessMetricScopeTerm": {
         "type": "object",
         "properties": {
           "dimension": {
@@ -24946,42 +24814,63 @@
             "required": true,
             "name": "orgId",
             "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
           }
         ],
         "responses": {
           "200": {
-            "description": "Status",
+            "description": "Referents (empty when nothing references the filter)",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "accounts": {
+                    "referents": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/CostAccountStatus"
+                        "$ref": "#/components/schemas/SavedCostFilterReferent"
                       }
                     }
                   },
                   "required": [
-                    "accounts"
+                    "referents"
                   ],
                   "additionalProperties": false
                 }
               }
             }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
-        "operationId": "getOrgOrgIdCostsStatus",
+        "operationId": "getOrgOrgIdSavedCostFiltersIdReferents",
         "x-required-permission": "costs:read"
       }
     },
-    "/api/org/{orgId}/cost-reports": {
+    "/api/org/{orgId}/cost-scenarios": {
       "get": {
         "tags": [
-          "Cost reports"
+          "Scenario models"
         ],
-        "summary": "List saved cost reports",
+        "summary": "List scenario models",
+        "description": "Named, reusable sets of adjustments an organization overlays on a cost forecast — the **known future cost a trend fit cannot see**. Pass an id as `POST /costs/query`'s `scenarioModelId` (alongside `forecast: true`) to get the adjusted projection back *beside* the unadjusted one, never instead of it.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -24997,28 +24886,37 @@
         ],
         "responses": {
           "200": {
-            "description": "Reports",
+            "description": "Scenario models, alphabetically",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/CostReport"
-                  }
+                  "type": "object",
+                  "properties": {
+                    "models": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CostScenarioModel"
+                      }
+                    }
+                  },
+                  "required": [
+                    "models"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
           }
         },
-        "operationId": "getOrgOrgIdCostReports",
-        "x-required-permission": "costs:read",
-        "description": "_Requires permission: `costs:read`._"
+        "operationId": "getOrgOrgIdCostScenarios",
+        "x-required-permission": "costs:read"
       },
       "post": {
         "tags": [
-          "Cost reports"
+          "Scenario models"
         ],
-        "summary": "Create a cost report",
+        "summary": "Create a scenario model",
+        "description": "Names must be unique per organization (case-insensitively) — the name is what a chart prints under its scenario line and what the CLI's `--scenario <name>` addresses, so two models sharing one would make both meaningless. A model needs at least one adjustment: an empty model changes nothing, which is the same as applying no scenario.\n\n_Requires permission: `costs:write`._",
         "parameters": [
           {
             "schema": {
@@ -25037,7 +24935,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CostReportInput"
+                "$ref": "#/components/schemas/CostScenarioModelInput"
               }
             }
           }
@@ -25048,7 +24946,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CostReport"
+                  "$ref": "#/components/schemas/CostScenarioModel"
                 }
               }
             }
@@ -25062,19 +24960,37 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "A live scenario model already uses this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
           }
         },
-        "operationId": "postOrgOrgIdCostReports",
-        "x-required-permission": "costs:write",
-        "description": "_Requires permission: `costs:write`._"
+        "operationId": "postOrgOrgIdCostScenarios",
+        "x-required-permission": "costs:write"
       }
     },
-    "/api/org/{orgId}/cost-reports/{id}": {
+    "/api/org/{orgId}/cost-scenarios/{id}": {
       "get": {
         "tags": [
-          "Cost reports"
+          "Scenario models"
         ],
-        "summary": "Get a cost report",
+        "summary": "Get a scenario model",
         "parameters": [
           {
             "schema": {
@@ -25100,11 +25016,11 @@
         ],
         "responses": {
           "200": {
-            "description": "Report",
+            "description": "Scenario model",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CostReport"
+                  "$ref": "#/components/schemas/CostScenarioModel"
                 }
               }
             }
@@ -25120,16 +25036,16 @@
             }
           }
         },
-        "operationId": "getOrgOrgIdCostReportsId",
+        "operationId": "getOrgOrgIdCostScenariosId",
         "x-required-permission": "costs:read",
         "description": "_Requires permission: `costs:read`._"
       },
       "put": {
         "tags": [
-          "Cost reports"
+          "Scenario models"
         ],
-        "summary": "Update a cost report",
-        "description": "Replaces the report's name, description, config and folder. Every dashboard showing the report picks up the new config — that is what referencing a report by id buys.\n\n_Requires permission: `costs:write`._",
+        "summary": "Update a scenario model",
+        "description": "Replaces the whole model. This is the high-leverage write: every chart drawing it, and **every budget whose forecast thresholds are measured against it**, uses the new numbers on its next evaluation — which for a budget can change which alerts fire. `GET /{id}/referents` names what a change will touch.\n\n_Requires permission: `costs:write`._",
         "parameters": [
           {
             "schema": {
@@ -25158,7 +25074,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CostReportInput"
+                "$ref": "#/components/schemas/CostScenarioModelInput"
               }
             }
           }
@@ -25169,7 +25085,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CostReport"
+                  "$ref": "#/components/schemas/CostScenarioModel"
                 }
               }
             }
@@ -25193,17 +25109,36 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "A live scenario model already uses this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
           }
         },
-        "operationId": "putOrgOrgIdCostReportsId",
+        "operationId": "putOrgOrgIdCostScenariosId",
         "x-required-permission": "costs:write"
       },
       "delete": {
         "tags": [
-          "Cost reports"
+          "Scenario models"
         ],
-        "summary": "Delete a cost report",
-        "description": "Soft delete. Every dashboard card pointing at the report is removed with it — a card whose report is gone could only ever render as an unavailable tile.\n\n_Requires permission: `costs:write`._",
+        "summary": "Delete a scenario model",
+        "description": "Soft delete — **refused with a 409 while anything references the model**, with the referents in the body. For a chart, deleting would silently drop the assumptions from a projection somebody is reading; for a budget it would move the forecast thresholds back to the bare trend, changing when people get paged. Detaching the referents is a deliberate step, never a side effect of deletion.\n\n_Requires permission: `costs:write`._",
         "parameters": [
           {
             "schema": {
@@ -25247,19 +25182,45 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Still referenced — the body lists every referent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "referents": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CostScenarioReferent"
+                      }
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "referents"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
           }
         },
-        "operationId": "deleteOrgOrgIdCostReportsId",
+        "operationId": "deleteOrgOrgIdCostScenariosId",
         "x-required-permission": "costs:write"
       }
     },
-    "/api/org/{orgId}/cost-reports/{id}/run": {
-      "post": {
+    "/api/org/{orgId}/cost-scenarios/{id}/referents": {
+      "get": {
         "tags": [
-          "Cost reports"
+          "Scenario models"
         ],
-        "summary": "Run a cost report",
-        "description": "Executes the report's saved config and returns the series, along with the inclusive window a relative preset resolved to. Takes no body: the report *is* the query, so a caller never has to reassemble its config to get the numbers.\n\n_Requires permission: `costs:read`._",
+        "summary": "List a scenario model's referents",
+        "description": "Every budget, cost report and dashboard cost graph referencing this model — what an edit will change, and what a delete would be refused over. Budgets come first: they are the referents that page people.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -25285,21 +25246,23 @@
         ],
         "responses": {
           "200": {
-            "description": "Result",
+            "description": "Referents (empty when nothing references the model)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CostReportRunResult"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "type": "object",
+                  "properties": {
+                    "referents": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CostScenarioReferent"
+                      }
+                    }
+                  },
+                  "required": [
+                    "referents"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -25315,16 +25278,17 @@
             }
           }
         },
-        "operationId": "postOrgOrgIdCostReportsIdRun",
+        "operationId": "getOrgOrgIdCostScenariosIdReferents",
         "x-required-permission": "costs:read"
       }
     },
-    "/api/org/{orgId}/cost-reports/{id}/notifications": {
+    "/api/org/{orgId}/business-metrics": {
       "get": {
         "tags": [
-          "Cost reports"
+          "Business metrics"
         ],
-        "summary": "List a report's delivery schedules",
+        "summary": "List business metrics",
+        "description": "The organization's declared denominators, by key, each with the range of days it has values for.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {

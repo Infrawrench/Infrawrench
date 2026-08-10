@@ -27,9 +27,11 @@ import {
   updateBudget,
 } from "../services/budgets";
 import { listSavedCostFilters as listSavedCostFiltersForOrg } from "../services/saved-cost-filters";
+import { listCostScenarioModels as listCostScenarioModelsForOrg } from "../services/cost-scenarios";
 import { logAudit } from "../services/audit";
 import { getAccountTagCompliance, getUntaggedSpendReport } from "../services/tag-policy";
 import { getShowbackReport } from "../services/showback";
+import { listBillingRules as listBillingRulesForOrg } from "@infrawrench/server-core/cost/billing-rules";
 import { getOrgTagPolicy } from "@infrawrench/server-core/cost/tag-policy";
 import { getCommitmentsFeed } from "@infrawrench/server-core/commitments/feed";
 import { denyUnlessPermitted } from "./permissions";
@@ -116,6 +118,84 @@ export function costTools(): ToolDefinition[] {
         const denied = await denyUnlessPermitted(auth, "costs:read");
         if (denied) return denied;
         return ok(await listSavedCostFiltersForOrg(auth.organizationId));
+      },
+    },
+
+    {
+      name: "list_scenario_models",
+      title: "List scenario models",
+      description:
+        "The organization's scenario models — named, reusable sets of adjustments overlaid on a " +
+        "cost forecast. A forecast is a least-squares fit over trailing daily totals, so it can " +
+        "only extrapolate what already happened; a scenario is where the org has written down " +
+        "what it already *knows* is coming: a purchase next quarter, a team starting in " +
+        "September, a migration that takes a fifth off compute.\n\n" +
+        "Each row carries its adjustments (one-off amounts, recurring amounts, and ±% step " +
+        "changes in rate, each optionally scoped by a cost filter) and the single currency the " +
+        "model's amounts are in. Use an id from here as apply_scenario_forecast's " +
+        "scenarioModelId, or as query_costs' scenarioModelId alongside forecast: true.",
+      inputSchema: {},
+      risk: "read",
+      permission: "costs:read",
+      handler: async (_input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:read");
+        if (denied) return denied;
+        return ok(await listCostScenarioModelsForOrg(auth.organizationId));
+      },
+    },
+
+    {
+      name: "apply_scenario_forecast",
+      title: "Apply a scenario model to a cost forecast",
+      description:
+        "Run a cost query with a scenario model applied, and get back **both** projections: " +
+        "`forecast` is the untouched trend, `scenario.points` is the same days with the model's " +
+        "adjustments applied. Never report only one of them — the whole point of a scenario is " +
+        "that a reader can see what the trend said before somebody's assumptions touched it.\n\n" +
+        "Everything else is a normal query_costs call (same dates, filters, binning, basis), " +
+        "and `forecast` is forced on because there is nothing to adjust otherwise.\n\n" +
+        "How to read the result. `scenario.contributions` gives the signed total each " +
+        "adjustment added over the horizon, so 'the line moved because of X' is answerable " +
+        "without re-reading the model. `scenario.outOfScope` names adjustments this query's own " +
+        "filters excluded — a GCP commitment on an AWS-filtered chart is correctly left out, " +
+        "and you should say so rather than let the reader assume it was counted. " +
+        "`scenario.convertedFrom` means the amounts were converted at the org's stated rates, " +
+        "which is a caveat worth repeating next to the number.\n\n" +
+        "A scenario never alters recorded history — only days after the last observed one — and " +
+        "it does **not** change any budget's alerting unless that budget separately opted into " +
+        "the same model (see list_budgets' scenarioModelId).",
+      inputSchema: {
+        ...costQueryRequestSchema.shape,
+        // Overrides the shared schema's optional field: on this tool the model
+        // is the whole subject, so it is required rather than a modifier.
+        scenarioModelId: z
+          .string()
+          .describe("From list_scenario_models. An id that does not resolve is an error."),
+      },
+      risk: "read",
+      permission: "costs:read",
+      handler: async (input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:read");
+        if (denied) return denied;
+        const parsed = costQueryRequestSchema.safeParse(input);
+        if (!parsed.success) return err(`Invalid query: ${parsed.error.message}`);
+        // `scenarioModelId` is part of the shared query schema, so it is
+        // already parsed; this tool only insists it was actually sent.
+        if (!parsed.data.scenarioModelId) return err("scenarioModelId is required");
+        try {
+          return ok(
+            await runCostQuery(auth.organizationId, {
+              ...parsed.data,
+              // Forced rather than validated: a caller reaching for this tool
+              // has asked for a scenario, and refusing them over a flag they
+              // never had to think about would be pedantry.
+              forecast: true,
+            }),
+          );
+        } catch (e) {
+          if (e instanceof CostQueryError) return err(e.message);
+          throw e;
+        }
       },
     },
 

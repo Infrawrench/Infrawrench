@@ -68,6 +68,14 @@ const CostGraphConfig = strict({
   topN: z.number().int().min(1).max(15).optional(),
   comparePreviousPeriod: z.boolean().optional(),
   showForecast: z.boolean().optional(),
+  scenarioModelId: z
+    .string()
+    .optional()
+    .describe(
+      "A scenario model (see /cost-scenarios) overlaid on the forecast — known future cost the " +
+        "trend cannot see, drawn as a second dashed line beside the trend rather than instead " +
+        "of it. Only meaningful alongside `showForecast`.",
+    ),
   costBasis: z.enum(["cash", "amortized"]).optional(),
 })
   .describe(

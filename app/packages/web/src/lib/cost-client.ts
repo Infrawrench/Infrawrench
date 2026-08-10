@@ -27,6 +27,9 @@ import type {
   SavedCostFilter,
   SavedCostFilterInput,
   SavedCostFilterReferent,
+  CostScenarioModel,
+  CostScenarioModelInput,
+  CostScenarioReferent,
   CommitmentsFeed,
   CreditBurndown,
   ShowbackReport,
@@ -127,6 +130,21 @@ export function createWebCostsClient(orgId: string): CostsClient {
     // and the error message names the referents (apiDelete surfaces the body).
     deleteSavedFilter: async (savedFilterId: string) => {
       await apiDelete(`/api/org/${orgId}/saved-cost-filters/${savedFilterId}`);
+    },
+    createScenarioModel: (input: CostScenarioModelInput) =>
+      apiPost<CostScenarioModel>(`/api/org/${orgId}/cost-scenarios`, input),
+    updateScenarioModel: (modelId: string, input: CostScenarioModelInput) =>
+      apiPut<CostScenarioModel>(`/api/org/${orgId}/cost-scenarios/${modelId}`, input),
+    // A 409 here is the deliberate refusal: something still references the
+    // model, and the error message names it (apiDelete surfaces the body).
+    deleteScenarioModel: async (modelId: string) => {
+      await apiDelete(`/api/org/${orgId}/cost-scenarios/${modelId}`);
+    },
+    getScenarioModelReferents: async (modelId: string) => {
+      const res = await apiGet<{ referents: CostScenarioReferent[] }>(
+        `/api/org/${orgId}/cost-scenarios/${modelId}/referents`,
+      );
+      return res.referents;
     },
     getSavedFilterReferents: async (savedFilterId: string) => {
       const res = await apiGet<{ referents: SavedCostFilterReferent[] }>(

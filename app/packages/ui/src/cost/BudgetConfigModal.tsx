@@ -1,5 +1,10 @@
-import { useId, useState } from "react";
-import { budgetInputSchema, type BudgetInput, type CostFilter } from "./config.js";
+import { useEffect, useId, useState } from "react";
+import {
+  budgetInputSchema,
+  type BudgetInput,
+  type CostFilter,
+  type CostScenarioModel,
+} from "./config.js";
 import {
   COST_BASIS_UNAVAILABLE_HINT,
   CostBasisField,
@@ -151,6 +156,16 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
             />
           </div>
 
+          <BudgetScenarioField
+            id={`${uid}-scenario`}
+            api={api}
+            value={input.scenarioModelId ?? null}
+            hasForecastThreshold={input.thresholds.some((t) => t.type === "forecast")}
+            onChange={(scenarioModelId) =>
+              set(scenarioModelId ? { scenarioModelId } : { scenarioModelId: undefined })
+            }
+          />
+
           <div role="group" aria-labelledby={`${uid}-thresholds-label`}>
             <span id={`${uid}-thresholds-label`} className={labelClass}>
               Alert thresholds
@@ -244,6 +259,87 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Opt this budget's **forecast** thresholds into a scenario model.
+ *
+ * The control exists at all because the opt-in has to be visible on the object
+ * it changes. A scenario is somebody's hypothesis; a forecast threshold decides
+ * when a person is paged. Making that connection a per-budget checkbox — rather
+ * than something a scenario does to every budget in the org — is the whole
+ * decision, and it is worth stating in the form rather than only in the docs.
+ *
+ * Rendered only when the host wired `listScenarioModels` and the org has at
+ * least one model: an empty picker reads as "broken" rather than "none yet".
+ */
+function BudgetScenarioField({
+  id,
+  api,
+  value,
+  hasForecastThreshold,
+  onChange,
+}: {
+  id: string;
+  api: CostApi;
+  value: string | null;
+  hasForecastThreshold: boolean;
+  onChange: (scenarioModelId: string | null) => void;
+}) {
+  const [models, setModels] = useState<CostScenarioModel[] | null>(null);
+  const load = api.listScenarioModels;
+
+  useEffect(() => {
+    if (!load) return;
+    let cancelled = false;
+    load()
+      .then((next) => {
+        if (!cancelled) setModels(next);
+      })
+      .catch(() => {
+        if (!cancelled) setModels([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [load]);
+
+  if (!load || !models || models.length === 0) return null;
+  const selected = models.find((m) => m.id === value) ?? null;
+
+  return (
+    <div>
+      <label htmlFor={id} className={labelClass}>
+        Scenario (forecast thresholds only)
+      </label>
+      <select
+        id={id}
+        className={inputClass}
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value || null)}
+      >
+        <option value="">None — measure the bare trend</option>
+        {models.map((model) => (
+          <option key={model.id} value={model.id}>
+            {model.name}
+          </option>
+        ))}
+      </select>
+      <p className="mt-1 text-[11px] text-on-surface-faint">
+        {selected ? (
+          <>
+            Forecast thresholds are judged against the trend <strong>plus</strong> “{selected.name}
+            ”, and alerts say so. Actual-spend thresholds are unaffected — they measure money
+            already spent.
+            {!hasForecastThreshold &&
+              " This budget has no forecast threshold, so nothing uses it yet."}
+          </>
+        ) : (
+          "Forecast thresholds measure the unadjusted trend. Pick a model to have this budget — and only this budget — alert on assumptions you have written down."
+        )}
+      </p>
     </div>
   );
 }

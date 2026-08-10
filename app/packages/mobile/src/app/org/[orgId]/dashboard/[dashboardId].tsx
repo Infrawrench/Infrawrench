@@ -340,6 +340,10 @@ function ConfigureBudget({
         // Same rule for the saved filter scoping the budget: mobile renders it
         // read-only, but dropping it on save would silently widen the budget.
         ...(budget.savedFilterId ? { savedFilterId: budget.savedFilterId } : {}),
+        // And for the scenario opt-in. Dropping it on save would move the
+        // budget's forecast thresholds back to the bare trend — an
+        // alert-changing edit nobody made.
+        ...(budget.scenarioModelId ? { scenarioModelId: budget.scenarioModelId } : {}),
       }}
       onClose={onClose}
       onSave={(input) => onSave(budgetId, input)}

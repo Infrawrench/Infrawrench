@@ -17,9 +17,12 @@ import { registerCostPaths } from "./paths/costs";
 import { registerCostReportPaths } from "./paths/cost-reports";
 import { registerCostReportNotificationPaths } from "./paths/cost-report-notifications";
 import { registerCostReportFolderPaths } from "./paths/cost-report-folders";
+import { registerCostAnnotationPaths } from "./paths/cost-annotations";
 import { registerCostExportPaths } from "./paths/cost-exports";
 import { registerCostAlertPaths } from "./paths/cost-alerts";
 import { registerSavedFilterPaths } from "./paths/saved-filters";
+import { registerCostScenarioPaths } from "./paths/cost-scenarios";
+import { registerBusinessMetricPaths } from "./paths/business-metrics";
 import { registerOrphanPaths } from "./paths/orphans";
 import { registerEnvironmentDiffPaths } from "./paths/environment-diff";
 import { registerRightsizingPaths } from "./paths/rightsizing";
@@ -130,9 +133,12 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerCostReportPaths(ctx);
   registerCostReportNotificationPaths(ctx);
   registerCostReportFolderPaths(ctx);
+  registerCostAnnotationPaths(ctx);
   registerCostExportPaths(ctx);
   registerCostAlertPaths(ctx);
   registerSavedFilterPaths(ctx);
+  registerCostScenarioPaths(ctx);
+  registerBusinessMetricPaths(ctx);
   registerOrphanPaths(ctx);
   registerRightsizingPaths(ctx);
   registerBudgetPaths(ctx);
@@ -756,6 +762,25 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /saved-cost-filters/{id}": "costs:write",
   "DELETE /saved-cost-filters/{id}": "costs:write",
   "GET /saved-cost-filters/{id}/referents": "costs:read",
+  "GET /cost-scenarios": "costs:read",
+  "POST /cost-scenarios": "costs:write",
+  "GET /cost-scenarios/{id}": "costs:read",
+  "PUT /cost-scenarios/{id}": "costs:write",
+  "DELETE /cost-scenarios/{id}": "costs:write",
+  "GET /cost-scenarios/{id}/referents": "costs:read",
+  // business metrics — the denominators unit costs divide by. Reads are
+  // costs:read and writes costs:write, matching saved filters and the cost
+  // push endpoint: a metric is a statement about cost data, not dashboard
+  // furniture. The unit-cost query is a POST but computes nothing stored,
+  // so it reads.
+  "GET /business-metrics": "costs:read",
+  "POST /business-metrics": "costs:write",
+  "GET /business-metrics/{id}": "costs:read",
+  "PUT /business-metrics/{id}": "costs:write",
+  "DELETE /business-metrics/{id}": "costs:write",
+  "GET /business-metrics/{id}/values": "costs:read",
+  "POST /business-metrics/{id}/values": "costs:write",
+  "POST /business-metrics/{id}/unit-costs": "costs:read",
   // cost-report folders organize the Reports list and nothing else, so they
   // ride the same scopes the reports do.
   "GET /cost-report-folders": "costs:read",

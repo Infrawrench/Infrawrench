@@ -560,6 +560,12 @@ export const costQueryRequestSchema = z.object({
   topN: z.number().int().min(1).max(15).default(5),
   comparePreviousPeriod: z.boolean().default(false),
   forecast: z.boolean().default(false),
+  /**
+   * Apply a scenario model to the projection, returning it alongside the
+   * untouched trend. Requires `forecast: true` — the server refuses the
+   * combination rather than silently returning no scenario.
+   */
+  scenarioModelId: z.string().min(1).optional(),
   /** Which number to sum; absent is cash, the basis every older client sends. */
   costBasis: z.enum(COST_BASES).optional(),
   /** Restrict to these charge types; absent is all of them. */
@@ -618,6 +624,48 @@ export const savedCostFilterInputSchema = z.object({
   filters: z.array(costFilterSchema).max(SAVED_COST_FILTER_LIMITS.maxFilters).default([]),
   /** The same filter as query text — an alternative spelling of `filters`. */
   query: z.string().max(COST_QUERY_MAX_LENGTH).optional(),
+});
+
+/**
+ * One adjustment inside a scenario model.
+ *
+ * Shape-only, deliberately: the semantic rules — which fields each `kind` may
+ * carry, that a model holds one currency, that an end date is not before its
+ * start — live in `costScenarioModelInputError` (client-core), which both the
+ * editors and the service run. Keeping them out of the schema means a form
+ * refuses exactly what the API refuses, in the same words, rather than
+ * rendering a zod union's account of three failed branches.
+ *
+ * Every kind-specific field is `.nullable().default(null)`: each of the three
+ * kinds leaves most of them unset, so "unset" and "explicitly null" must both
+ * parse (a client round-tripping a stored model through a PUT sends nulls) —
+ * and defaulting rather than merely allowing `undefined` is what makes the
+ * parsed output exactly `CostScenarioAdjustment`, which the assertion at the
+ * bottom of this file checks.
+ */
+export const costScenarioAdjustmentSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1).max(COST_SCENARIO_LIMITS.maxLabelLength),
+  kind: z.enum(COST_SCENARIO_ADJUSTMENT_KINDS),
+  startDate: isoDate,
+  endDate: isoDate.nullable().default(null),
+  amountCents: z.number().int().nullable().default(null),
+  currency: z.string().regex(CURRENCY_CODE_PATTERN).nullable().default(null),
+  period: z.enum(COST_SCENARIO_PERIODS).nullable().default(null),
+  percent: z.number().finite().nullable().default(null),
+  scope: z.array(costFilterSchema).max(COST_SCENARIO_LIMITS.maxScopeFilters).default([]),
+});
+
+/** Create/update body for a scenario model (POST/PUT /cost-scenarios). */
+export const costScenarioModelInputSchema = z.object({
+  name: z.string().min(1).max(COST_SCENARIO_LIMITS.maxNameLength),
+  description: z.string().max(COST_SCENARIO_LIMITS.maxDescriptionLength).optional(),
+  /** The one currency every amount in the model is denominated in. */
+  currency: z.string().regex(CURRENCY_CODE_PATTERN),
+  adjustments: z
+    .array(costScenarioAdjustmentSchema)
+    .max(COST_SCENARIO_LIMITS.maxAdjustments)
+    .default([]),
 });
 
 export const exchangeRateInputSchema = z.object({

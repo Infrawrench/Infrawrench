@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 import type { BudgetPlacement, BudgetWithStatus } from "@infrawrench/ui/cost";
 import type { BudgetInput, CostBasis, CostFilter } from "@infrawrench/ui/cost/config";
 import { budgetMonthStatus } from "@infrawrench/server-core/cost/budget-eval";
+import { resolveCostScenarioModel } from "@infrawrench/server-core/cost/scenario-forecast";
 import { resolveSavedCostFilters } from "@infrawrench/server-core/cost/saved-filters";
 import { db } from "../db/client";
 import { budgetAlertEvents, budgets, dashboardWidgets, dashboards } from "../db/schema";
@@ -92,9 +93,19 @@ async function toBudgetWithStatus(
     thresholds: b.thresholds as BudgetWithStatus["thresholds"],
     costBasis,
     savedFilterId: b.savedFilterId,
+    // Both numbers, always: `forecastCents` is the bare trend even for a budget
+    // that opted into a scenario, so a card can show what the model moved.
+    scenarioModelId: b.scenarioModelId,
+    scenarioModelName: status.scenarioModelName,
+    // Both numbers again, for the same reason: `rawActualCents` is the
+    // collected figure and is non-null only for a budget measuring adjusted
+    // spend, so a card can never render an adjusted amount without it.
+    useAdjustedSpend: b.useAdjustedSpend,
+    rawActualCents: status.rawActualCents,
     month: status.month,
     actualCents: status.actualCents,
     forecastCents: status.forecastCents,
+    scenarioForecastCents: status.scenarioForecastCents,
     currentMonthEvents: events.map((e) => ({
       id: e.id,
       thresholdType: e.thresholdType,
@@ -161,6 +172,13 @@ export async function createBudget(
   // → 400 in the route): a budget born pointing at nothing would error every
   // evaluation from its first day.
   if (input.savedFilterId) await resolveSavedCostFilters(organizationId, input.savedFilterId);
+  // Same rule for a scenario reference, and for a sharper reason: a budget born
+  // pointing at a model that does not exist would error every evaluation from
+  // its first day, and a budget is the one object where a failed evaluation
+  // means an alert nobody receives.
+  if (input.scenarioModelId) {
+    await resolveCostScenarioModel(organizationId, input.scenarioModelId);
+  }
   const [created] = await db
     .insert(budgets)
     .values({
@@ -188,6 +206,9 @@ export async function updateBudget(
   input: BudgetInput,
 ): Promise<BudgetRow | null> {
   if (input.savedFilterId) await resolveSavedCostFilters(organizationId, input.savedFilterId);
+  if (input.scenarioModelId) {
+    await resolveCostScenarioModel(organizationId, input.scenarioModelId);
+  }
   const [updated] = await db
     .update(budgets)
     .set({
