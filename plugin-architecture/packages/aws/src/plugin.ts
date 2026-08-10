@@ -105,6 +105,10 @@ const manifest: PluginManifest = {
   // granularity is intentionally omitted (CE keeps it 14 days only, and it
   // explodes cardinality). Needs the ce:GetCostAndUsage IAM action.
   costs: { dimensions: ["service", "region"], maxHistoryDays: 365, restatementDays: 3 },
+  // EC2 + RDS Reserved Instances and Savings Plans. Needs
+  // ec2:DescribeReservedInstances, rds:DescribeReservedDBInstances and
+  // savingsplans:DescribeSavingsPlans — surfaced in the plugin docs.
+  commitments: { kinds: ["reservation", "savings_plan"] },
   statusFeed,
   preflight: awsPreflight,
 };

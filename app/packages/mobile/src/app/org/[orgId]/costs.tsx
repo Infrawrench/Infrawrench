@@ -116,6 +116,12 @@ export default function CostsScreen() {
 
       <CostAnomaliesSection />
 
+      <CostChangeAlertsSection />
+
+      {/* First of the savings-shaped sections, matching web/desktop:
+          commitments are the largest single lever on a big bill. */}
+      <CommitmentsSection />
+
       <SavingsSection />
 
       <OversizedSection />

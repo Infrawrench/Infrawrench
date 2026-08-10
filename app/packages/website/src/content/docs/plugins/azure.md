@@ -54,3 +54,11 @@ A **Metrics** tab reports the plan-wide CPU and memory percentage, disk and HTTP
 Azure subscriptions feed [cost graphs & budgets](../features/cloud-costs.md) via the Cost Management Query API, collected daily with service and region breakdowns (13 months of history).
 
 - The service principal needs the **Cost Management Reader** role on the subscription — plain **Reader** is not enough.
+
+## Commitments
+
+Azure accounts feed the [Commitments](../features/commitments.md) section with **reservations**, listed daily from the tenant-level `Microsoft.Capacity/reservations` API.
+
+- The service principal needs **Reader** on the reservations (or the **Reservations Reader** role at tenant scope) — reservation access is granted separately from subscription roles.
+- Azure's list API reports **no purchase price**, so reservation rows show "price not reported" rather than a dollar figure — the price lives on the reservation order's billing records, not here.
+- Azure is the only provider that reports its **own utilization** (1, 7 and 30-day figures). Those are shown labelled as provider-reported, alongside — never blended with — the utilization Infrawrench derives from your cost rows.

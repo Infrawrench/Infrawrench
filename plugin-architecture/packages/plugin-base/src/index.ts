@@ -23,6 +23,13 @@ export type {
 } from "./manifest.js";
 
 export type {
+  CommitmentKind,
+  CommitmentPaymentOption,
+  CommitmentProviderUtilization,
+  CommitmentRecord,
+  CommitmentsCapabilityDeclaration,
+  CommitmentState,
+  CommitmentUnitAmount,
   CostCapabilityDeclaration,
   CostEstimate,
   CostEstimateLineItem,

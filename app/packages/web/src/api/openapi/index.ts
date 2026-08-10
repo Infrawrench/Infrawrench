@@ -48,6 +48,7 @@ import { registerSessionRecordingPaths } from "./paths/session-recordings";
 import { registerAccessRequestPaths } from "./paths/access-requests";
 import { registerCredentialHygienePaths } from "./paths/credential-hygiene";
 import { registerCreditPaths } from "./paths/credits";
+import { registerCommitmentPaths } from "./paths/commitments";
 import { registerProbePaths } from "./paths/probes";
 import { registerStatusPagePaths } from "./paths/status-pages";
 import { registerOwnershipPaths } from "./paths/ownership";
@@ -159,6 +160,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerAccessRequestPaths(ctx);
   registerCredentialHygienePaths(ctx);
   registerCreditPaths(ctx);
+  registerCommitmentPaths(ctx);
   registerProbePaths(ctx);
   registerStatusPagePaths(ctx);
   registerOwnershipPaths(ctx);
@@ -217,6 +219,22 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       {
         name: "Custom graphs",
         description: "Script-defined dashboard charts run in a server-side sandbox.",
+      },
+      {
+        name: "Costs",
+        description:
+          "Actual spend, collected from provider billing APIs into daily rows and queried by " +
+          "dimension, plus pushed rows for systems without a plugin. Totals are net — credits, " +
+          "refunds and tax included — unless a charge-type filter narrows them.",
+      },
+      {
+        name: "Commitments",
+        description:
+          "Reserved instances, savings plans and committed-use discounts: the inventory of what " +
+          "was purchased, how much of the usage bill it covers (reported as a range — there is " +
+          "no single honest denominator), utilization measured only over days with collected " +
+          "cost data, and a planner that recommends commitment sizes at the p10 floor of " +
+          "uncovered spend. Read-only: nothing here ever purchases.",
       },
       {
         name: "Cost reports",
@@ -562,6 +580,7 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   // and the permission that already governs "what is this costing us" is the
   // one that should govern "how much is left".
   "GET /credits": "costs:read",
+  "GET /commitments": "costs:read",
   "GET /credential-hygiene": "audit:read",
   "GET /access-requests": "access:read",
   "GET /access-requests/catalog": "access:read",

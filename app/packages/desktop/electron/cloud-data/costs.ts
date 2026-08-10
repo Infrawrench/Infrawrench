@@ -90,6 +90,16 @@ ipcMain.handle("cloud_credit_burndown", async (_e, { orgId }: { orgId: string })
   return cloudFetch(orgId, "/credits");
 });
 
+/**
+ * Commitments — reservations, savings plans, committed-use discounts — with
+ * coverage, utilization and planner recommendations. Cloud-only: the
+ * inventory is collected server-side and joined against server-side cost
+ * rows; a local-only workspace has neither.
+ */
+ipcMain.handle("cloud_commitments", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetch(orgId, "/commitments");
+});
+
 ipcMain.handle("cloud_list_budgets", async (_e, { orgId }: { orgId: string }) => {
   return (await cloudFetch(orgId, "/budgets")) ?? [];
 });

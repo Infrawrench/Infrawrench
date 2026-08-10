@@ -85,6 +85,10 @@ const manifest: PluginManifest = {
   // Reader" role — plain "Reader" is not enough. Azure serves ~13 months
   // of cost history.
   costs: { dimensions: ["service", "region"], maxHistoryDays: 395, restatementDays: 3 },
+  // Tenant-level Microsoft.Capacity reservation list. Needs the service
+  // principal to hold Reader (or Reservations Reader) on the reservations —
+  // surfaced in the plugin docs.
+  commitments: { kinds: ["reservation"] },
   statusFeed,
 };
 
@@ -126,7 +130,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new AzureClient(credentials, resourceTypes),
+  createClient: (credentials, services) => new AzureClient(credentials, resourceTypes, services),
   parseStatusFeed,
   terraformExport: azureTerraformExport,
 };

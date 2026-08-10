@@ -62,6 +62,15 @@ export interface RangeFlags {
    * caret, which a generic flag error here could not do.
    */
   where?: string | undefined;
+  /**
+   * `costs --filter <name|id>` — a saved cost filter, applied by reference.
+   *
+   * Left a raw string: the command resolves it against the org's saved
+   * filters (by id, then case-insensitive name) and sends the *id*, so the
+   * server resolves the rows at query time exactly as it does for a graph or
+   * budget referencing the same filter. Combines with `--where` by AND.
+   */
+  filter?: string | undefined;
 }
 
 /** Flags for the push-up commands (`page`, `costs push`). */
@@ -123,6 +132,8 @@ export interface ParsedCli {
   version: boolean;
   /** `costs --anomalies` — the spend-spike list instead of the spend chart. */
   anomalies: boolean;
+  /** `costs --alerts` — the change-alert list + recent firings instead of the chart. */
+  alerts: boolean;
 }
 
 export function parseCliArgs(argv: string[]): ParsedCli {
@@ -160,10 +171,14 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         currency: { type: "string" },
         // `costs --where "<cost query>"` — the filter, as text.
         where: { type: "string" },
+        // `costs --filter <name|id>` — a saved filter, applied by reference.
+        filter: { type: "string" },
         // Repeatable: one --charge-type per kind to keep.
         "charge-type": { type: "string", multiple: true },
         // `costs --anomalies` — same command, different question.
         anomalies: { type: "boolean", default: false },
+        // `costs --alerts` — the third cost question: configured change alerts.
+        alerts: { type: "boolean", default: false },
         // `posture dismiss` — why the finding is an accepted risk.
         reason: { type: "string" },
         // Push-up flags (`page`, `costs push`).
@@ -279,6 +294,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       basis: str("basis"),
       currency: str("currency"),
       where: str("where"),
+      filter: str("filter"),
       chargeTypes: Array.isArray(multi["charge-type"]) ? multi["charge-type"] : [],
     },
     deploy: {
@@ -325,6 +341,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     positionals: parsed.positionals,
     version: values.version === true,
     anomalies: values.anomalies === true,
+    alerts: values.alerts === true,
   };
 }
 

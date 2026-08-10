@@ -23,6 +23,7 @@ import type {
   PublishMessageResult,
   CostEstimate,
   CostEstimateLineItem,
+  CommitmentRecord,
   CostFetchRange,
   CostRow,
 } from "@infrawrench/plugin-base";
@@ -95,6 +96,7 @@ import type { CloudArmorContext } from "./cloud-armor-handlers.js";
 import { executeCloudArmorCommand } from "./cloud-armor-handlers.js";
 import { publishPubsubTopic, publishCloudTasksQueue } from "./publish-handlers.js";
 import { fetchGcpCostData } from "./cost-data.js";
+import { fetchGcpCommitments } from "./commitments.js";
 
 import type { GcpClientContext } from "./shared.js";
 import { deleteResource as runDeleteResource } from "./delete-client.js";
@@ -981,6 +983,10 @@ export class GcpClient implements PluginClient {
       },
       range,
     );
+  }
+
+  async fetchCommitments(_accountId: string): Promise<CommitmentRecord[]> {
+    return fetchGcpCommitments({ project: this.project, get: this.get.bind(this) });
   }
 
   async getLogs(

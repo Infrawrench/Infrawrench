@@ -171,6 +171,33 @@ export function costTools(): ToolDefinition[] {
     },
 
     {
+      name: "get_commitments",
+      title: "Get commitments and savings planner",
+      description:
+        "The org's purchased commitments — reserved instances, savings plans, committed-use " +
+        "discounts — with coverage, utilization, and commitment-size recommendations.\n\n" +
+        "Read the numbers as documented, they are deliberately conservative: coverage is a " +
+        "*range* (broadRatio is a lower bound over all usage; narrowRatio an upper bound over " +
+        "commitment-eligible cells) and accounts whose plugin cannot distinguish charge types " +
+        "are excluded (`excludedAccountIds`) rather than dragging the ratio down. Utilization " +
+        "is measured only over days with collected cost data — `missingDays` are reported, " +
+        "never counted as idle — and null utilization means 'not measurable' (see `reason`), " +
+        "never 0%. Planner savings are quoted against published 'up to' discount rates; " +
+        "respect `savingBasis` when reporting them ('up to $X', not '$X'). Every " +
+        "recommendation carries its own break-even: at discount d the workload can shrink by d " +
+        "before the commitment loses money. Never suggest an automatic purchase — there is no " +
+        "purchase surface, by design.",
+      inputSchema: {},
+      risk: "read",
+      permission: "costs:read",
+      handler: async (_input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:read");
+        if (denied) return denied;
+        return ok(await getCommitmentsFeed(auth.organizationId));
+      },
+    },
+
+    {
       name: "get_tag_compliance",
       title: "Get tag compliance",
       description:

@@ -114,6 +114,9 @@ const manifest: PluginManifest = {
     maxHistoryDays: 365,
     restatementDays: 5,
   },
+  // Committed-use discounts via compute.regionCommitments.aggregatedList.
+  // Needs compute.commitments.list (in roles/compute.viewer).
+  commitments: { kinds: ["committed_use"] },
   statusFeed,
   preflight: gcpPreflight,
 };

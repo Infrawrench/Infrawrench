@@ -174,6 +174,71 @@ export async function claimDueCreditAccounts(
   });
 }
 
+/**
+ * Claim up to `limit` accounts due a commitment-inventory read.
+ *
+ * The credit claim's protocol verbatim, keyed off `account_commitment_polls`:
+ * commitment-capable plugins are the same small minority, the LEFT JOIN lets
+ * an account with no poll row yet come due immediately, and the upsert IS the
+ * lease.
+ */
+export async function claimDueCommitmentAccounts(
+  limit: number,
+  commitmentCapablePluginIds: string[],
+): Promise<PollAccountRow[]> {
+  if (commitmentCapablePluginIds.length === 0) return [];
+  const rows = await db.execute(sql`
+    INSERT INTO account_commitment_polls (account_id, organization_id, next_poll_at)
+    SELECT a.id, a.organization_id,
+           now() + ${COST_LEASE_MS}::float8 * interval '1 millisecond'
+    FROM accounts a
+    LEFT JOIN account_commitment_polls p ON p.account_id = a.id
+    WHERE a.deleted_at IS NULL
+      -- IN, not = ANY(): see the note on claimDueCostAccounts.
+      AND a.plugin_id IN ${commitmentCapablePluginIds}
+      AND (p.account_id IS NULL OR p.next_poll_at IS NULL OR p.next_poll_at <= now())
+    ORDER BY p.last_polled_at ASC NULLS FIRST, a.id ASC
+    LIMIT ${limit}
+    ON CONFLICT (account_id) DO UPDATE
+      SET next_poll_at = now() + ${COST_LEASE_MS}::float8 * interval '1 millisecond'
+    RETURNING account_id, organization_id, failure_count
+  `);
+
+  const claimed = Array.from(rows as Iterable<Record<string, unknown>>, (r) => ({
+    id: String(r["account_id"]),
+    organizationId: String(r["organization_id"]),
+    failureCount: Number(r["failure_count"]),
+  }));
+  if (claimed.length === 0) return [];
+
+  // Same follow-up read as the credit claim: the poll row carries no plugin
+  // id or display name, and denormalizing them would go stale on a rename.
+  const details = await db.execute(sql`
+    SELECT id, plugin_id, display_name FROM accounts
+    WHERE id IN ${claimed.map((c) => c.id)}
+  `);
+  const byId = new Map(
+    Array.from(details as Iterable<Record<string, unknown>>, (r) => [
+      String(r["id"]),
+      { pluginId: String(r["plugin_id"]), displayName: String(r["display_name"]) },
+    ]),
+  );
+
+  return claimed.flatMap((c) => {
+    const detail = byId.get(c.id);
+    if (!detail) return [];
+    return [
+      {
+        id: c.id,
+        organizationId: c.organizationId,
+        pluginId: detail.pluginId,
+        displayName: detail.displayName,
+        pollFailureCount: c.failureCount,
+      },
+    ];
+  });
+}
+
 /** Claim up to `limit` due cron workflows, leasing each for {@link WORKFLOW_LEASE_MS}. */
 export async function claimDueWorkflows(limit: number): Promise<DueWorkflowRow[]> {
   const rows = await db.execute(sql`

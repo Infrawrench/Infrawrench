@@ -80,6 +80,11 @@ export const pluginManifestSchema = z.object({
       estimated: z.boolean().optional(),
     })
     .optional(),
+  commitments: z
+    .object({
+      kinds: z.array(z.enum(["reservation", "savings_plan", "committed_use"])).min(1),
+    })
+    .optional(),
   credits: z
     .object({
       label: z.string().optional(),

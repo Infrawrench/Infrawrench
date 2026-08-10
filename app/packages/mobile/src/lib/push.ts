@@ -191,6 +191,11 @@ export function pushDataToPath(data: MobilePushData): string {
       return `/org/${data.orgId}`;
     case "budget_breach":
       return `/org/${data.orgId}/costs`;
+    // A change alert lands on the Costs tab too: the change-alerts section
+    // there lists the fired events with their previous → current amounts,
+    // which is exactly what the push summarised.
+    case "cost_change":
+      return `/org/${data.orgId}/costs`;
     // A cost anomaly is a "what happened just now?" alert, so it opens the
     // moment view centred on the tap — the anomaly event, plus whatever else
     // (deploys, incidents, drift) coincided with it. The Costs tab is one tap
@@ -311,6 +316,19 @@ export function parsePushData(raw: unknown): MobilePushData | null {
         return null;
       }
       return { type: "cost_anomaly", orgId, day, dimension, dimensionKey };
+    }
+    case "cost_change": {
+      const alertId = data["alertId"];
+      const periodKey = data["periodKey"];
+      const groupKey = data["groupKey"];
+      if (
+        typeof alertId !== "string" ||
+        typeof periodKey !== "string" ||
+        typeof groupKey !== "string"
+      ) {
+        return null;
+      }
+      return { type: "cost_change", orgId, alertId, periodKey, groupKey };
     }
     case "metric_alert": {
       const ruleId = data["ruleId"];

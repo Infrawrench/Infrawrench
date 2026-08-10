@@ -36,6 +36,7 @@ import { cmdRecordings } from "./commands/recordings";
 import { cmdAccess } from "./commands/access";
 import { cmdHygiene } from "./commands/hygiene";
 import { cmdCredits } from "./commands/credits";
+import { cmdCommitments } from "./commands/commitments";
 import { cmdProbes } from "./commands/probes";
 import { cmdStatusPages } from "./commands/status-pages";
 import { cmdOwnership } from "./commands/ownership";
@@ -69,10 +70,14 @@ COMMANDS
                       [--basis cash|amortized] [--charge-type usage|credit|tax|… (repeatable)]
                       [--currency USD  convert to your org's display currency at its stated rates]
                       [--where "provider = 'aws' AND tag['env'] != 'dev'"  filter, as text]
+                      [--filter <name|id>  a saved cost filter, resolved server-side; ANDs with --where]
   costs --anomalies   days a provider or service spiked past its own baseline   [--days 30]
+  costs --alerts      change-based cost alerts + recent firings ("spend moved >X% vs the
+                      prior period" — distinct from budgets and anomalies)   [--limit 20]
   costs push          push your own cost rows   --source <name> [--file rows.json | stdin]
   reports             the org's saved cost reports (named cost graphs)
   reports <name|id>   run one saved report and chart it
+  reports send <n|id> deliver a report to its schedules (Slack/Teams/email) right now
   exports             scheduled cost exports (raw rows → warehouse/object store), with the
                       last run's status and error
   exports run <n|id>  run one export now and list the objects it wrote
@@ -107,6 +112,8 @@ COMMANDS
   leases              resource leases (TTLs): deadlines, auto-delete flags & status
   access              break-glass requests & live permission elevations
   credits             prepaid balances with burn rate & runway ("6 days left")
+  commitments         reserved instances, savings plans & committed-use discounts:
+                      coverage, utilization & the savings planner's recommendations
   hygiene             unused API keys, unreferenced SSH keys & unexercised
                       write permissions   [--days 30|90|180|365]
   access active       only the elevations in force right now
@@ -164,6 +171,9 @@ FLAGS
                       tag['key'] = 'v'. Dimensions: provider, account, service, region,
                       resource, tag, charge_type, commitment. OR is not supported (the filter
                       is a conjunction) — use IN ('a','b') for several values of one dimension
+  --filter <name|id>  costs: apply a saved cost filter by reference — resolved on the server
+                      at query time, so it always means what it means everywhere else; combines
+                      with --where by AND
   --source <name>     who is pushing (required by page and costs push)
   --key <k>           page throttle key   --title <t>   --cooldown <min>   --voice
   -f, --file <path>   JSON rows for costs push / config document (stdin when omitted)
@@ -435,6 +445,9 @@ export async function runCli(): Promise<void> {
         break;
       case "credits":
         await cmdCredits(ctx);
+        break;
+      case "commitments":
+        await cmdCommitments(ctx);
         break;
       case "probes":
         // `infrawrench probes <id|name>` charts one probe's latency history.

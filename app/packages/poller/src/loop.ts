@@ -29,8 +29,10 @@ import { TickLoop } from "@infrawrench/server-core/tick-loop";
 import { pollAccount, type PollAccountRow } from "./poll-account";
 import { pollAccountCosts } from "./cost-poll";
 import { pollAccountCredits } from "./credit-poll";
+import { pollAccountCommitments } from "./commitment-poll";
 import {
   claimDueAccounts,
+  claimDueCommitmentAccounts,
   claimDueCostAccounts,
   claimDueCreditAccounts,
   claimDueWorkflows,
@@ -85,6 +87,8 @@ export class PollerLoop extends TickLoop {
   private costCapablePluginIds: string[] | null = null;
   /** Plugin IDs whose manifest declares a `credits` capability; likewise lazy. */
   private creditCapablePluginIds: string[] | null = null;
+  /** Plugin IDs whose manifest declares a `commitments` capability; likewise lazy. */
+  private commitmentCapablePluginIds: string[] | null = null;
   /** Epoch ms of the last retention pass; 0 means "run on the first tick". */
   private lastRetentionAt = 0;
 
@@ -113,6 +117,12 @@ export class PollerLoop extends TickLoop {
     // no cost API at all — and a provider whose billing endpoint is down must
     // not stop us reading a balance that is about to hit zero.
     await this.tickCredits();
+
+    // Commitment inventories (daily cadence per account). Separate from the
+    // cost pass for the same reason credits are: reservations and savings
+    // plans come from management APIs, not billing ones, and a billing
+    // outage must not stop us noticing a commitment that expires tomorrow.
+    await this.tickCommitments();
 
     // Fourth pass: weekly digests. A no-op outside the Monday-morning send
     // window; the conditional-UPDATE claim inside makes it replica- and
@@ -261,6 +271,23 @@ export class PollerLoop extends TickLoop {
       await Promise.allSettled(claimed.map((row) => pollAccountCredits(row)));
     } catch (e) {
       console.error("[poller] credit tick failed:", e);
+    }
+  }
+
+  /** Claim accounts due a commitment-inventory read and run them. */
+  private async tickCommitments(): Promise<void> {
+    try {
+      if (!this.commitmentCapablePluginIds) {
+        const loaded = await loadPlugins();
+        this.commitmentCapablePluginIds = loaded
+          .filter((l) => l.plugin.manifest.commitments)
+          .map((l) => l.plugin.manifest.id);
+      }
+      const claimed = await claimDueCommitmentAccounts(COST_LIMIT, this.commitmentCapablePluginIds);
+      if (claimed.length === 0) return;
+      await Promise.allSettled(claimed.map((row) => pollAccountCommitments(row)));
+    } catch (e) {
+      console.error("[commitments] commitment tick failed:", e);
     }
   }
 

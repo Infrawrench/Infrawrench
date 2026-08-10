@@ -14,6 +14,10 @@ crosses a threshold you chose, anomaly detection works out of the box: the basel
 learned from your own history, so a spike stands out whether your org spends fifty dollars a
 month or fifty thousand. The thresholds it judges against can be
 [tuned per organization](#tuning-detection) when the defaults are too loud or too quiet.
+The third member of the family, [change alerts](./cost-change-alerts.md), sits between the
+two: you configure a relative threshold — "this scope moved more than X% (or $Y) versus the
+prior period" — on a scope and cadence you choose, which catches the deliberate 15% creep
+that is never a statistical outlier and never crosses a budget.
 
 ## Two kinds of finding
 

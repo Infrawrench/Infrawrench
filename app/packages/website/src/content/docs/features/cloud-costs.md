@@ -394,3 +394,7 @@ The fit follows the graph's [cost basis](#cash-and-amortized), which matters mor
 ## Prepaid credit
 
 Cost graphs answer "what did we spend". For providers that work off a prepaid pot rather than an invoice, the more urgent question is "how long until it runs out" — see [credit burndown](./credit-burndown.md), which sits on the same Costs panel.
+
+## Commitments
+
+The other question a spend graph can't answer is "are the reservations and savings plans we bought actually paying for themselves". See [Commitments](./commitments.md) — the holdings, how much of the usage bill they cover, their utilization, and a planner that sizes what to buy next — also on the Costs panel.

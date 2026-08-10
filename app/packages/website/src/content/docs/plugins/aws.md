@@ -72,6 +72,14 @@ AWS accounts feed [cost graphs & budgets](../features/cloud-costs.md) via Cost E
 - AWS charges **$0.01 per Cost Explorer request**. Infrawrench fetches once a day (plus a one-time history backfill in month-sized chunks), so expect a few cents per month per account.
 - Per-resource cost breakdown is not collected (Cost Explorer only retains it for 14 days).
 
+## Commitments
+
+AWS accounts feed the [Commitments](../features/commitments.md) section: **EC2 Reserved Instances** and **RDS Reserved Instances** (collected per region) and **Savings Plans** (a single global list), refreshed daily — expired and queued records included.
+
+- Needs `ec2:DescribeReservedInstances`, `rds:DescribeReservedDBInstances` and `savingsplans:DescribeSavingsPlans` — add them alongside `ce:GetCostAndUsage`.
+- A Compute Savings Plan shows "All regions", which is exact: it follows your compute wherever it runs.
+- Savings Plans' recurring payment is deliberately not shown — AWS documents no period for the figure its API returns, and guessing between hourly and monthly would be a 730× error.
+
 ## Dependency graph
 
 The VPC wiring is declared, so the [dependency graph](../features/dependency-graph.md) draws it exactly rather than inferring it: EC2 instances link to their VPC, subnet and security groups, and subnets, security groups, load balancers, target groups, NAT gateways and internet gateways link to their VPC. These arrows appear as soon as the account syncs — nothing to wire by hand.

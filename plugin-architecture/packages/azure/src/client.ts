@@ -24,9 +24,11 @@
  *   - shared.ts                    common types/constants
  */
 import type {
+  CommitmentRecord,
   CostEstimate,
   CostFetchRange,
   CostRow,
+  HostServices,
   PluginClient,
   ResourceInstance,
   DetailViewSchema,
@@ -73,6 +75,7 @@ import { buildAzureDashboardStats } from "./dashboard-stats.js";
 import { fetchAzureMetricSeries } from "./metrics.js";
 import { renderAzureDetail, renderAzureSidebarItem } from "./renderers.js";
 import { fetchAzureCostData } from "./cost-data.js";
+import { fetchAzureCommitments } from "./commitments.js";
 import { deleteAzureResource } from "./delete-handlers.js";
 import { attachAzureResource } from "./attach-handlers.js";
 import { applyAzureManifest, getAzureManifest } from "./manifest.js";
@@ -93,6 +96,13 @@ interface TokenCache {
 export class AzureClient implements PluginClient {
   private readonly creds: AzureCredentials;
   private readonly resourceTypes: ResourceTypeDefinition[];
+  /**
+   * Host services, when the host provides them. Threaded through so new call
+   * paths (commitments) can route HTTP through `services.http` — which is
+   * what makes per-account bastion routing reach Azure. Existing paths still
+   * use direct `fetch`; migrating them is a separate, deliberate change.
+   */
+  private readonly services: HostServices | undefined;
   private tokenCache: TokenCache | null = null;
   private storageTokenCache: TokenCache | null = null;
   private graphTokenCache: TokenCache | null = null;
@@ -100,8 +110,13 @@ export class AzureClient implements PluginClient {
   private pricingRateCache = new Map<string, AzurePricingCacheEntry>();
   private pricingRateInFlight = new Map<string, Promise<AzurePricingRates>>();
 
-  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
+  constructor(
+    credentials: Record<string, string>,
+    resourceTypes: ResourceTypeDefinition[] = [],
+    services?: HostServices,
+  ) {
     this.resourceTypes = resourceTypes;
+    this.services = services;
     const tenantId = credentials["tenantId"];
     const clientId = credentials["clientId"];
     const clientSecret = credentials["clientSecret"];
@@ -441,6 +456,27 @@ export class AzureClient implements PluginClient {
 
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
     return fetchAzureCostData(this.httpCtx, range);
+  }
+
+  async fetchCommitments(_accountId: string): Promise<CommitmentRecord[]> {
+    // Routed through the host's HTTP service when available so per-account
+    // bastion routing applies — the reason the constructor takes `services`.
+    return fetchAzureCommitments({
+      getJson: async <T>(url: string): Promise<T> => {
+        const http = this.services?.http;
+        if (!http) return this.get<T>(url);
+        const tok = await this.token();
+        const res = await http.request({
+          url,
+          method: "GET",
+          headers: { Authorization: `Bearer ${tok}` },
+        });
+        if (res.status < 200 || res.status >= 300) {
+          throw new Error(`Azure API ${res.status}: ${res.body}`);
+        }
+        return JSON.parse(res.body) as T;
+      },
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

@@ -115,6 +115,10 @@ export async function loadCloudCreditBurndown(orgId: string): Promise<CreditBurn
   return invoke("cloud_credit_burndown", { orgId });
 }
 
+export async function loadCloudCommitments(orgId: string): Promise<CommitmentsFeed> {
+  return invoke("cloud_commitments", { orgId });
+}
+
 export async function listCloudBudgets(orgId: string): Promise<BudgetWithStatus[]> {
   return invoke("cloud_list_budgets", { orgId });
 }

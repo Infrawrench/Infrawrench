@@ -202,6 +202,184 @@ export interface CostRow {
 }
 
 /**
+ * Commitment inventory.
+ *
+ * A commitment is capacity bought ahead of use: an AWS Reserved Instance or
+ * Savings Plan, a GCP committed-use discount, an Azure reservation. They are
+ * the largest single lever on a big cloud bill, and they are invisible in a
+ * spend graph — the purchase is one spike, the discount is a slightly lower
+ * slope, and whether the thing is paying for itself is a question no daily
+ * total answers. This contract makes the holdings themselves first-class:
+ * a plugin that can list them declares `commitments` on its manifest and
+ * implements {@link PluginClient.fetchCommitments}; the host stores the
+ * records and joins them against cost rows via {@link CostRow.commitmentId}.
+ *
+ * The cardinal rule of every field below: **omit, never substitute**. A
+ * missing amount renders as "not reported"; a zero renders as "free"; and one
+ * of those two ends up in a finance review. Providers differ wildly in what
+ * they report (Azure's list API returns no purchase price at all, GCP's
+ * returns no money of any kind), and inventing a number to fill the gap is
+ * strictly worse than the gap.
+ */
+
+/**
+ * What was bought.
+ *
+ * - `reservation` — capacity for a specific resource shape (EC2/RDS RIs,
+ *   Azure reservations). Usually scoped to an instance family and often a
+ *   region or zone.
+ * - `savings_plan` — a spend commitment ("$X/hour of compute, whatever it
+ *   runs on") rather than a capacity one. AWS Savings Plans.
+ * - `committed_use` — GCP's contract form: committed *units* of resource
+ *   (vCPUs, GB of memory) in a region for a term.
+ */
+export type CommitmentKind = "reservation" | "savings_plan" | "committed_use";
+
+/**
+ * Normalized lifecycle state. Providers each have a zoo of states
+ * (payment-pending, retired, queued-deleted, Split, Merged, CANCELLED…);
+ * three answers cover every question a reader actually asks.
+ *
+ * Normalization rules, chosen so mistakes understate rather than overstate
+ * holdings:
+ * - payment-failed / queued-deleted / cancelled → `expired` (the discount is
+ *   not being applied, whatever the provider's word for it).
+ * - pending-return → `active` (the provider is still applying the discount
+ *   until the return settles).
+ * - any state a plugin does not recognise → `expired`. A future provider
+ *   state mapped to `active` would inflate the org's apparent coverage; the
+ *   same state mapped to `expired` merely hides a commitment until the
+ *   mapping is taught about it.
+ */
+export type CommitmentState = "active" | "expired" | "queued";
+
+/**
+ * How the commitment is paid for. `all_upfront` / `partial_upfront` /
+ * `no_upfront` are the AWS trichotomy; `monthly` is Azure's billing-plan
+ * form (the whole price in monthly installments — distinct from
+ * `no_upfront`, which is pay-per-use-hour at the discounted rate).
+ */
+export type CommitmentPaymentOption = "all_upfront" | "partial_upfront" | "no_upfront" | "monthly";
+
+/**
+ * One committed unit quantity for a unit-denominated commitment (GCP CUDs):
+ * `{ unit: "VCPU", amount: 32 }`, `{ unit: "MEMORY_GB", amount: 128 }`.
+ * The unit string is provider-native and passed through untranslated — the
+ * reader is going to compare it against the provider's console.
+ */
+export interface CommitmentUnitAmount {
+  unit: string;
+  amount: number;
+}
+
+/**
+ * One provider-reported utilization aggregate — Azure is the only provider
+ * that returns its own utilization on the list response, at 1/7/30-day
+ * grains. Passed through verbatim and **never blended with anything the host
+ * derives**: the provider's number is computed against the provider's own
+ * meter, ours against ingested cost rows, and averaging the two produces a
+ * figure that is checkable against neither.
+ */
+export interface CommitmentProviderUtilization {
+  /** Trailing window the aggregate covers, in days (1, 7, 30). */
+  grainDays: number;
+  /** Utilization percentage over that window, 0–100, as the provider reports it. */
+  percentage: number;
+}
+
+/**
+ * One commitment, as the provider reports it.
+ *
+ * Field register — every field, what it means, and why it is optional when
+ * it is:
+ *
+ * - `id` — provider-native identifier, and the join key against
+ *   {@link CostRow.commitmentId}. Use whatever the billing data carries:
+ *   EC2's `DescribeReservedInstances` returns no ARN, so the bare
+ *   reservation id is the key there; RDS RIs and Savings Plans have ARNs in
+ *   the billing data, so prefer those. Must be stable across fetches —
+ *   it is the upsert identity.
+ * - `kind` — see {@link CommitmentKind}.
+ * - `description` — human-readable summary ("2× m5.xlarge Linux/UNIX",
+ *   "Compute Savings Plan", the reservation's display name). Never empty;
+ *   this is the row label.
+ * - `scope` — provider scope qualifier when one exists: an AZ for a
+ *   zonal RI, "Shared"/"Single" for an Azure applied-scope, an EC2 instance
+ *   family for an EC2 Instance Savings Plan. Omit when the provider has no
+ *   such concept for this record.
+ * - `region` — provider region the commitment applies to. **Absent is a real
+ *   state, not missing data**: an AWS Compute Savings Plan or a
+ *   regionally-unscoped reservation applies across regions, and stamping a
+ *   region on it would wrongly narrow it. Renderers say "All regions".
+ * - `startDate` / `endDate` — ISO-8601 timestamps of the term. `endDate` may
+ *   be *derived* as start + provider-reported duration when the provider
+ *   reports no end of its own (RDS RIs) — that is exact arithmetic on
+ *   provider data, not a substitution. Omit it only when neither an end nor
+ *   a duration is reported.
+ * - `termDays` — the purchased term length **as the provider reports it**
+ *   (from `duration`/`termDurationInSeconds`/`plan`/`term`), never derived
+ *   from `endDate - startDate`: a split or merged commitment (Azure does
+ *   this on exchange) keeps its original term but gets fresh dates, and the
+ *   date difference no longer spans the term. Deriving dates from the term
+ *   is fine; deriving the term from dates is the bug.
+ * - `paymentOption` — see {@link CommitmentPaymentOption}. Omit when the
+ *   provider does not report one.
+ * - `currency` — ISO 4217 code for every money field on this record. Omit
+ *   when the record carries no money at all (GCP, Azure list responses).
+ * - `upfrontAmount` — what was paid up front for the whole holding, in
+ *   `currency`. Per-record total: providers that quote per-instance prices
+ *   (EC2 RIs) must multiply by the instance count before reporting. Omit
+ *   when unknown — never 0 unless the provider says 0.
+ * - `recurringAmount` / `recurringPeriod` — the recurring charge and the
+ *   period it recurs on. The pair is atomic: an amount without a period is
+ *   a 730× ambiguity (hourly vs monthly), so a plugin that cannot state the
+ *   period omits both. This is why AWS Savings Plans'
+ *   `recurringPaymentAmount` is deliberately not mapped — its period is
+ *   documented nowhere.
+ * - `hourlyCommitmentAmount` — for spend commitments: the committed spend
+ *   per hour in `currency` (a Savings Plan's `commitment`). This is the
+ *   number utilization is measured against.
+ * - `unitCommitments` — for unit-denominated commitments: the committed
+ *   quantities. **`hourlyCommitmentAmount` XOR `unitCommitments` is the
+ *   load-bearing split**: a record with the former supports "did we spend
+ *   the committed dollars" (answerable from cost rows); a record with only
+ *   the latter supports "are we using the committed vCPUs", which cost rows
+ *   cannot answer — and the host must say "unknown" there, not 0%.
+ * - `state` — see {@link CommitmentState}.
+ * - `providerUtilization` — see {@link CommitmentProviderUtilization}.
+ */
+export interface CommitmentRecord {
+  id: string;
+  kind: CommitmentKind;
+  description: string;
+  scope?: string;
+  region?: string;
+  /** ISO-8601 timestamp. */
+  startDate: string;
+  /** ISO-8601 timestamp. Omitted when the provider reports no end. */
+  endDate?: string;
+  termDays?: number;
+  paymentOption?: CommitmentPaymentOption;
+  currency?: string;
+  upfrontAmount?: number;
+  recurringAmount?: number;
+  recurringPeriod?: "hour" | "month";
+  hourlyCommitmentAmount?: number;
+  unitCommitments?: CommitmentUnitAmount[];
+  state: CommitmentState;
+  providerUtilization?: CommitmentProviderUtilization[];
+}
+
+/**
+ * Declares that this plugin can list purchased commitments for an account
+ * via `fetchCommitments`. `kinds` names what the provider sells — it drives
+ * the empty-state copy and the docs, not any fetch behaviour.
+ */
+export interface CommitmentsCapabilityDeclaration {
+  kinds: CommitmentKind[];
+}
+
+/**
  * A link the host renders next to a cost-collection failure. Same shape as
  * `CredentialField.helpLink` — opened through the host's external-URL handler
  * so it works in the browser, the desktop shell, and the mobile app.

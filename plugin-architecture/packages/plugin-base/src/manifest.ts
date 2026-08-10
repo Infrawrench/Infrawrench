@@ -150,6 +150,15 @@ export interface PluginManifest {
    */
   costs?: CostCapabilityDeclaration;
   /**
+   * If present, this plugin can list purchased commitments (reservations,
+   * savings plans, committed-use discounts) for an account via
+   * `fetchCommitments`, and the host schedules a low-frequency collection
+   * pass for its accounts. Independent of `costs`: the inventory of what was
+   * bought and the record of what was spent come from different provider
+   * APIs.
+   */
+  commitments?: CommitmentsCapabilityDeclaration;
+  /**
    * If present, this plugin can report a prepaid credit balance for an
    * account via `fetchCreditBalance`, and the host schedules a low-frequency
    * collection pass that turns the resulting series into a burn rate and a
@@ -402,6 +411,19 @@ export interface PluginClient {
    * so bastion routing and custom CAs keep working.
    */
   fetchCostData?(accountId: string, range: CostFetchRange): Promise<CostRow[]>;
+  /**
+   * List every commitment the provider reports for this account — active,
+   * queued, and expired alike. Only called when the manifest declares
+   * `commitments`. No date range: the provider's list APIs return the whole
+   * holding, and the host needs expired records to close out utilization
+   * history.
+   *
+   * Must **throw rather than return a partial list**: the host replaces its
+   * stored inventory with what this returns, so a silently-partial result
+   * reads as commitments having ended. A per-region failure fails the whole
+   * fetch.
+   */
+  fetchCommitments?(accountId: string): Promise<CommitmentRecord[]>;
   /**
    * Read the account's prepaid credit balance(s). Only called when the
    * manifest declares `credits`. Called on a low-frequency background pass
@@ -897,7 +919,14 @@ export interface Plugin {
 }
 
 // Forward declarations — defined in their own modules but used here
-import type { CostCapabilityDeclaration, CostEstimate, CostFetchRange, CostRow } from "./cost.js";
+import type {
+  CommitmentRecord,
+  CommitmentsCapabilityDeclaration,
+  CostCapabilityDeclaration,
+  CostEstimate,
+  CostFetchRange,
+  CostRow,
+} from "./cost.js";
 import type { CreditBalance, CreditsCapabilityDeclaration } from "./credits.js";
 import type { PolicyTemplate, PreflightDeclaration, PreflightResult } from "./preflight.js";
 import type { StatusFeedDeclaration, StatusIncident } from "./status-feed.js";

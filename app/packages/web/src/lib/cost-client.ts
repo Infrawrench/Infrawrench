@@ -150,6 +150,7 @@ export function createWebCostsClient(orgId: string): CostsClient {
     getShowback: (from?: string, to?: string) =>
       apiGet<ShowbackReport>(`/api/org/${orgId}/costs/showback${rangeQuery(from, to)}`),
     getCreditBurndown: () => apiGet<CreditBurndown>(`/api/org/${orgId}/credits`),
+    getCommitments: () => apiGet<CommitmentsFeed>(`/api/org/${orgId}/commitments`),
   };
 }
 

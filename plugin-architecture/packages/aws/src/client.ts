@@ -9,6 +9,7 @@ import type {
   CreateResourceConfig,
   DashboardStat,
   MetricSeries,
+  CommitmentRecord,
   CostEstimate,
   CostFetchRange,
   CostRow,
@@ -116,6 +117,7 @@ import {
 import { estimateAwsCost } from "./cost-estimate.js";
 import { fetchEc2MonthlyPrices, HOURS_PER_MONTH as PRICING_HOURS_PER_MONTH } from "./pricing.js";
 import { fetchAwsCostData } from "./cost-data.js";
+import { fetchAwsCommitments } from "./commitments.js";
 import { attachResource as attachResourceImpl } from "./attach-handlers.js";
 import { resolveOutput as resolveOutputImpl } from "./resolve-output.js";
 import { deleteResource as deleteResourceImpl } from "./delete-handlers.js";
@@ -512,6 +514,14 @@ export class AWSClient implements PluginClient {
 
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
     return fetchAwsCostData(this.creds, range);
+  }
+
+  async fetchCommitments(_accountId: string): Promise<CommitmentRecord[]> {
+    // EC2/RDS reservations are regional: fan out across every enabled region
+    // (commitments.ts bounds the concurrency). Savings Plans are global and
+    // fetched once inside.
+    const regions = await this.getEnabledRegions();
+    return fetchAwsCommitments(this.creds, regions);
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

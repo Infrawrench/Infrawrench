@@ -95,3 +95,12 @@ The service account needs `roles/bigquery.jobUser` on its project and `roles/big
 Until all three steps are done, GCP cost graphs stay empty and the dashboard shows a banner saying so, linked straight to the billing export settings for this account's project — see [when collection fails](../features/cloud-costs.md#when-collection-fails).
 
 Expect one more wait after that. The table is created before it holds anything, so a correctly configured export still returns no rows for its first day or two — Google backfills nothing and starts writing only once its billing pipeline catches up. During that window the account reports no error and the dashboard says [there is nothing to collect yet](../features/cloud-costs.md#when-there-is-nothing-to-collect-yet) rather than showing a failure. If it has been longer than that, confirm the export is still enabled and writing to the dataset you pasted — an export can create its table and then never deliver if it is turned off again.
+
+## Commitments
+
+GCP accounts feed the [Commitments](../features/commitments.md) section with **committed-use discounts**, listed daily via the Compute Engine commitments API (`compute.commitments.list`, included in `roles/compute.viewer` — no billing export required for this part).
+
+Two things are specific to GCP here:
+
+- A committed-use discount is denominated in **resource units** — vCPUs, GB of memory, local SSD — and Google's API reports **no money for it at all**. The row shows the committed units and "price not reported"; a substituted dollar figure would be an invention.
+- Because the commitment is in units rather than dollars, its utilization cannot be derived from cost rows. It reads "not measurable from spend" rather than a percentage — deliberately, since 0% and "unknown" must not look alike.

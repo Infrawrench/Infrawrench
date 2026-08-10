@@ -117,5 +117,6 @@ export function createDesktopCostsClient(): CostsClient {
       loadCloudUntaggedSpend(requireOrgId(), from, to),
     getShowback: (from?: string, to?: string) => loadCloudShowback(requireOrgId(), from, to),
     getCreditBurndown: () => loadCloudCreditBurndown(requireOrgId()),
+    getCommitments: () => loadCloudCommitments(requireOrgId()),
   };
 }

@@ -4,6 +4,7 @@ import { Modal } from "../components/Modal.js";
 import { SavingsSection } from "../savings/SavingsSection.js";
 import { OversizedSection } from "../savings/OversizedSection.js";
 import { CreditBurndownSection } from "./CreditBurndownSection.js";
+import { CommitmentsSection } from "./CommitmentsSection.js";
 import type {
   OrphanedResource,
   OrphansClient,
@@ -302,12 +303,28 @@ export function CostsPanel({
           </div>
         </section>
 
+        {/* Below Budgets on purpose: budgets are the most consequential
+            referents of a saved filter, and the section's edit modal names
+            them before a re-scope is saved. */}
+        {client.listSavedFilters && <SavedFiltersSection client={client} />}
+
         <TagGovernanceSection client={client} />
 
         <CostAnomaliesSection client={client} />
+        {/* Next to anomalies on purpose — the two are siblings a user should
+            compare: anomalies are unconfigured statistical outliers, change
+            alerts are configured "moved more than X% vs the prior period". */}
+        <CostChangeAlertsSection client={client} />
         {/* Above the savings sections on purpose: those are about spending
             less, this is about not stopping. A pot running dry is an outage. */}
         <CreditBurndownSection client={client} {...(onOpenExternal ? { onOpenExternal } : {})} />
+
+        {/* First of the savings-shaped sections: commitments are the largest
+            single lever on a big bill, and the planner's recommendations are
+            what the orphan/oversize findings below should be weighed against.
+            Distinct from the credit burndown above — credits are a prepaid
+            pot with a runway, commitments are a purchase with a term. */}
+        <CommitmentsSection client={client} />
 
         {orphans && <SavingsSection client={orphans} onOpenResource={onOpenResource} />}
         {rightsizing && (
