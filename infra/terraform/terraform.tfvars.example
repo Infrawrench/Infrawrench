@@ -202,9 +202,11 @@ app_env = {
   # ANTHROPIC_API_KEY is what enables the Claude models in the picker. Without
   # it, picking one returns a configuration error and chat falls back to
   # nothing — leave it set unless you intend Gemini-only. The same key also
-  # backs the weekly digest's opt-in AI summary paragraph (read by the poller
-  # as well as web); without it that paragraph is skipped with a log line and
-  # the digest still sends its deterministic content.
+  # backs `infra.ai()` in workflows (read by the poller as well as web —
+  # without it the generated typings mark infra.ai unavailable and a call
+  # throws) and the weekly digest's opt-in AI summary paragraph; without it
+  # that paragraph is skipped with a log line and the digest still sends its
+  # deterministic content.
   # Optional
   # ANTHROPIC_API_KEY    = "..."
   # OPENAI_API_KEY       = "..."

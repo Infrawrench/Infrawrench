@@ -126,6 +126,10 @@ export const WORKFLOW_OPERATION_PERMISSIONS: Readonly<Record<string, string | nu
 
   // --- the run talking to itself -----------------------------------------
   fetch: null,
+  // `null` like fetch: an AI call touches nothing in the org — the prompt is
+  // all the model sees — and its spend is bounded by the org's monthly AI cap
+  // (billing/ai-usage.ts), which is billing policy, not a role's permission.
+  ai: null,
   prompt: null,
   line: null,
   log: null,

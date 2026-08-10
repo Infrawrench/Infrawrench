@@ -50,6 +50,12 @@ vi.mock("@infrawrench/server-core/workflows/runner", () => ({
   listOrgSshKeyNames: vi.fn().mockResolvedValue([]),
 }));
 
+// Avoid pulling server-core's AI billing (and its real db client / drizzle `sql`
+// usage) into this suite — the drizzle-orm mock above is intentionally partial.
+vi.mock("@infrawrench/server-core/workflows/ai", () => ({
+  isWorkflowAiConfigured: () => false,
+}));
+
 vi.mock("../workflow-host", () => ({
   listOrgPlugins: vi.fn().mockResolvedValue([]),
 }));

@@ -280,6 +280,47 @@ In a **local** desktop workflow there's no cluster and no proxy: the request is 
 
 A run can make up to 250 requests, and time spent in `fetch` counts against the run's execution budget (unlike SSH waits, which are excluded) — so a loop that polls an API can't outlive the run.
 
+### Asking a model for help
+
+> **Cloud feature** — the call is made server-side with the deployment's API key, so it's unavailable in local desktop workflows, and it's metered like [AI chat](./ai-chat.md).
+
+Some steps need judgement rather than a rule: is this log tail alarming, which of these errors are the same incident, what should the page actually say. `infra.ai(...)` sends one prompt to a model and resolves with its reply:
+
+```ts
+// Cron: hourly. Let the model read the log tail before waking anyone up.
+const cluster = infra.accounts.kubernetes.getByName("prod");
+for (const pod of await cluster.pods.list()) {
+  const restarts = Number(pod.fields.restarts ?? 0);
+  if (restarts <= 5) continue;
+  const { text } = await pod
+    .logs({ tailLines: 200 })
+    .then((l) =>
+      infra.ai(
+        `These are the last 200 log lines of a crash-looping pod. In two sentences, what is failing and does it look self-inflicted (bad config, OOM) or external (dependency down)?\n\n${l.text}`,
+      ),
+    );
+  await infra.page(`${pod.displayName} restarted ${restarts} times. ${text}`, {
+    key: pod.displayName,
+  });
+}
+```
+
+**The model sees only what you pass it.** Unlike [writing workflows with an AI client](#writing-workflows-with-an-ai-client), `infra.ai` is not an agent: it has no tools, no access to your accounts or resources, and no memory between calls. Paste the material you want it to work from — a log tail, a diff, a list of alerts — into the prompt.
+
+| Option      | Default             | What it does                                                                          |
+| ----------- | ------------------- | ------------------------------------------------------------------------------------- |
+| `model`     | `"claude-sonnet-5"` | Also `"claude-haiku-4-5"` (fastest, cheapest) or `"claude-opus-5"` (most capable).    |
+| `system`    | none                | A system prompt framing how to answer ("Reply with one word: PAGE or IGNORE.").       |
+| `maxTokens` | `1024`              | Cap on the reply length, up to 8192. Check `stopReason === "max_tokens"` for cutoffs. |
+
+The result carries `text`, the concrete `model` that answered, `stopReason` (`"end"` or `"max_tokens"`), the token counts, and `costMicros` — what the call cost in millionths of a dollar.
+
+**Billing.** Calls are metered exactly like [AI chat](./ai-chat.md) and draw from the **same monthly AI spend pool**: the org's configured cap, or the $5/month free tier for orgs without a paid plan. Once the pool is spent, `infra.ai` throws (and so does chat) until the cap is raised or the month rolls over. Chat turns and workflow runs share one reservation lock before each model call so concurrent consumers cannot all clear the same below-cap check; in-flight holds are refreshed while the call runs and expire within minutes if a process dies mid-call. Stopping a run cancels an in-flight request and drops its reservation. A prompt is billed as input tokens, so mind what a cron loop feeds it — an hourly workflow that sends 200k characters to Opus adds up.
+
+Limits: 20 calls per run, prompts up to 200,000 characters, and a per-call timeout of two minutes. Time spent waiting on the model does not count against the run's execution budget (like SSH waits, unlike `fetch`) — the call cap is what bounds an `infra.ai` loop.
+
+If the model declines to answer (a safety refusal), the call throws rather than resolving with an empty string, so a branch on the reply can't silently take the wrong arm — catch it if you have a fallback.
+
 ### Paging a human
 
 A workflow that finds a problem can wake someone up. `infra.page(...)` delivers to the same recipients as [sync-failure incidents and budget alerts](./mobile-push-notifications.md): SMS (and optionally a voice call) through your org's Twilio credentials, mobile push to everyone who has the app installed, and any [Slack](./slack-alerts.md) or [Microsoft Teams](./teams-alerts.md) channels opted into pages. Configure who receives them under **Settings → Notifications**.
@@ -457,7 +498,7 @@ A workflow belongs either to your machine or to an organization, and the **deskt
 
 Switching orgs swaps the list; nothing is copied between the two. A workflow written locally stays local until you recreate it in the org (copy the source across — the `infra` object is the same shape on both sides, as long as the org has accounts for the providers it names).
 
-Two things follow from where a workflow lives. Its **capabilities** differ slightly: local workflows have no cost store, so `infra.costs` is unavailable, and `infra.page` becomes a native OS notification instead of fanning out to SMS, push, Slack, and Teams. And its **automated triggers** differ — see the trigger table below.
+Two things follow from where a workflow lives. Its **capabilities** differ slightly: local workflows have no cost store, so `infra.costs` is unavailable; `infra.ai` and `infra.waitForApproval` are cloud-only too; and `infra.page` becomes a native OS notification instead of fanning out to SMS, push, Slack, and Teams. And its **automated triggers** differ — see the trigger table below.
 
 ## Pinning a workflow to a dashboard
 
@@ -599,7 +640,7 @@ Every operation the sandbox performs is checked against the permissions of the u
 
 Reading a resource output needs `secrets:read` rather than `resources:read` because an output can be a connection string or a generated password — the same rule the `get_resource_outputs` tool follows.
 
-Logging, `infra.output`, metrics, `infra.fetch`, paging and approvals need no permission: they touch nothing outside the run.
+Logging, `infra.output`, metrics, `infra.fetch`, `infra.ai`, paging and approvals need no permission: they touch nothing outside the run — an AI call's spend is bounded by the org's [monthly AI cap](./ai-chat.md), which is billing policy rather than a role.
 
 Who a run acts for depends on how it started:
 

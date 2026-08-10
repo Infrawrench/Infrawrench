@@ -41,6 +41,7 @@ import { buildWorkflowSshDeps } from "./ssh-host";
 import { buildWorkflowFetch } from "./fetch";
 import { enrichPlugin } from "./create-fields-cache";
 import { buildSshKeyFieldResolver } from "./ssh-key-fields";
+import { buildWorkflowAi } from "./ai";
 import { clearWorkflowPage, pageFromWorkflow } from "./paging";
 import { requestApprovalAndWait } from "./approvals";
 import { buildWorkflowAuthorizer } from "./authorize";
@@ -337,6 +338,15 @@ export function buildOrgWorkflowHost(
     // Outbound HTTP leaves through the egress proxy, never from the pod the
     // isolate runs in (see ./fetch.ts).
     fetch: buildWorkflowFetch(),
+    // One-shot model calls (infra.ai): made server-side with the deployment's
+    // API key, metered against the org's monthly AI cap, capped per run.
+    // The run abort signal cancels an in-flight Anthropic request on Stop.
+    ai: buildWorkflowAi({
+      organizationId,
+      workflowId,
+      ...(extras.runId ? { runId: extras.runId } : {}),
+      ...(extras.signal ? { signal: extras.signal } : {}),
+    }),
     page: (spec) =>
       pageFromWorkflow(
         {

@@ -27,6 +27,7 @@ import {
   type WorkflowTrigger,
 } from "@infrawrench/workflow-runtime";
 import { listOrgSshKeyNames } from "@infrawrench/server-core/workflows/runner";
+import { isWorkflowAiConfigured } from "@infrawrench/server-core/workflows/ai";
 
 import { db } from "../db/client";
 import { budgets, workflowMetrics, workflowRuns, workflows } from "../db/schema";
@@ -407,6 +408,9 @@ async function workflowTypingsInput(
     costs: true,
     // Cloud runs have the approvals surface, so `infra.waitForApproval` is available.
     approvals: true,
+    // Available only when this deployment holds an Anthropic key — otherwise
+    // the editor says so instead of the run failing.
+    ai: isWorkflowAiConfigured(),
     sshKeyNames,
   };
 }
