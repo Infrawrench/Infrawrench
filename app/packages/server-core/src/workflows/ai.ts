@@ -126,9 +126,9 @@ export async function aiFromWorkflow(
       ctx.signal ? { signal: ctx.signal } : undefined,
     );
 
-    // Stop after the provider returned: drop the reservation and do not bill.
-    // The platform may still owe Anthropic for a completed response; the org
-    // should not, once they asked the run to stop.
+    // Stop after the provider returned: do not bill. The platform may still
+    // owe Anthropic for a completed response; the org should not, once they
+    // asked the run to stop. The finally below drops the reservation.
     if (ctx.signal?.aborted) throw stoppedError();
 
     const usage = {
@@ -146,7 +146,6 @@ export async function aiFromWorkflow(
       model: response.model || spec.model,
       usage,
     });
-    await releaseAiSpendReservation(reservationId);
 
     // Safety classifiers answer 200 with `stop_reason: "refusal"` and no
     // content. An empty string would be a confusing non-answer to branch on, so
@@ -170,11 +169,15 @@ export async function aiFromWorkflow(
       costMicros,
     };
   } catch (err) {
+    if (ctx.signal?.aborted || isAbortError(err)) throw stoppedError();
+    throw err;
+  } finally {
+    // Swallow release failures: a transient DELETE must not discard an already
+    // recorded result (or turn a real provider error into a secondary one).
+    // An abandoned row ages out via AI_SPEND_RESERVATION_TTL_MS.
     await releaseAiSpendReservation(reservationId).catch((releaseErr) => {
       console.error("[workflows/ai] failed to release AI spend reservation:", releaseErr);
     });
-    if (ctx.signal?.aborted || isAbortError(err)) throw stoppedError();
-    throw err;
   }
 }
 
